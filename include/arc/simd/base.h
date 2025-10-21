@@ -20,12 +20,9 @@ struct simd
 
     constexpr simd() noexcept = default;
 
-    constexpr explicit simd(value_type value)
+    constexpr explicit simd(value_type value) noexcept
+        : simd(std::make_index_sequence<blocks()>(), [&](std::size_t) { return op_type::fill(value); })
     {
-        for (auto& block : data)
-        {
-            block = op_type::fill(value);
-        }
     }
 
     static constexpr std::size_t size() noexcept
@@ -33,12 +30,23 @@ struct simd
         return N;
     }
 
+    static constexpr std::size_t blocks() noexcept
+    {
+        return simd_storage<T, N>::blocks;
+    }
+
 private:
     template <class T, std::size_t N, std::size_t... Index, class Op>
     friend constexpr simd<T, N> apply(const simd<T, N>& a, const simd<T, N>& b, std::index_sequence<Index...>, Op op) noexcept;
 
+    template <std::size_t... Index, class Op>
+    constexpr explicit simd(std::index_sequence<Index...>, Op op) noexcept
+        : data{ op(Index)... }
+    {
+    }
+
     template <class... Blocks>
-    constexpr explicit simd(Blocks... blocks)
+    constexpr explicit simd(Blocks... blocks) noexcept
         : data{ blocks... }
     {
     }
@@ -64,7 +72,7 @@ constexpr simd<T, N> apply(const simd<T, N>& a, std::index_sequence<Index...>, O
     return simd<T, N>(op(a.data[Index])...);
 }
 
-template <class T, std::size_t N>
+template <class T, std::size_t N, class Op>
 constexpr simd<T, N> apply(const simd<T, N>& a, Op op) noexcept
 {
     return apply(a, std::make_index_sequence<simd_storage<T, N>::blocks>{}, op);
