@@ -40,8 +40,8 @@ struct simd_storage
     static constexpr std::size_t blocks = (N + lanes - 1) / lanes;
 
     using value_type = T;
-    using register_type = typename simd_register_t<T, lanes>;
-    using storage_type = std::array<register_type, blocks>;
+    using register_type = typename simd_register_t<value_type, lanes>;
+    using data_type = std::array<register_type, blocks>;
 };
 
 }
