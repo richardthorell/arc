@@ -2,6 +2,14 @@
 
 #include <immintrin.h>
 
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wignored-attributes"
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wignored-attributes"
+#endif
+
 namespace arc
 {
 template <class T, std::size_t N>
@@ -339,3 +347,8 @@ struct simd_op<__m128i>
     }
 };
 }
+
+#if defined(__clang__) || defined(__GNUC__)
+#  pragma clang diagnostic pop
+#  pragma GCC diagnostic pop
+#endif
