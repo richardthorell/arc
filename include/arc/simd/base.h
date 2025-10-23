@@ -18,7 +18,7 @@ template <class T, std::size_t N>
 struct simd
 {
     using value_type = T;
-    using storage_type = typename simd_storage<value_type, N>;
+    using storage_type = simd_storage<value_type, N>;
     using data_type = typename storage_type::data_type;
     using register_type = typename storage_type::register_type;
     using op_type = simd_op<register_type>;
@@ -42,26 +42,26 @@ struct simd
     }
 
 private:
-    template <std::size_t N>
+    template <std::size_t M>
     friend struct simd_mask;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd<T, N> apply(std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd<U, M> apply(std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd<T, N> apply(const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd<U, M> apply(const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd<T, N> apply(const simd<T, N>&, const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd<U, M> apply(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd_mask<N> compare(const simd<T, N>&, const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd_mask<M> compare(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd<T, N> masked(const simd_mask<N>&, const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd<U, M> masked(const simd_mask<M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd<T, N> masked(const simd_mask<N>&, const simd<T, N>&, const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd<U, M> masked(const simd_mask<M>&, const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
     template <std::size_t... Index, class Op>
     constexpr explicit simd(std::index_sequence<Index...>, Op op) noexcept
@@ -82,7 +82,7 @@ template <std::size_t N>
 struct simd_mask
 {
     using value_type = uint32_t;
-    using storage_type = typename simd_storage<value_type, N>;
+    using storage_type = simd_storage<value_type, N>;
     using data_type = typename storage_type::data_type;
     using register_type = typename storage_type::register_type;
     using op_type = simd_op<register_type>;
@@ -111,29 +111,29 @@ struct simd_mask
     }
 
 private:
-    template <std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd_mask<N> apply(std::index_sequence<Index...>, Op) noexcept;
+    template <std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd_mask<M> apply(std::index_sequence<Index...>, Op) noexcept;
 
-    template <std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd_mask<N> apply(const simd_mask<N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd_mask<M> apply(const simd_mask<M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd_mask<N> apply(const simd_mask<N>&, const simd_mask<N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd_mask<M> apply(const simd_mask<M>&, const simd_mask<M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd_mask<N> compare(const simd<T, N>&, const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd_mask<M> compare(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd<T, N> masked(const simd_mask<N>&, const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd<U, M> masked(const simd_mask<M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <class T, std::size_t N, std::size_t... Index, class Op>
-    friend constexpr simd<T, N> masked(const simd_mask<N>&, const simd<T, N>&, const simd<T, N>&, std::index_sequence<Index...>, Op) noexcept;
+    template <class U, std::size_t M, std::size_t... Index, class Op>
+    friend constexpr simd<U, M> masked(const simd_mask<M>&, const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
-    template <std::size_t N>
-    friend constexpr bool any(const simd_mask<N>&) noexcept;
+    template <std::size_t M>
+    friend constexpr bool any(const simd_mask<M>&) noexcept;
 
-    template <std::size_t N>
-    friend constexpr bool all(const simd_mask<N>&) noexcept;
+    template <std::size_t M>
+    friend constexpr bool all(const simd_mask<M>&) noexcept;
 
     template <std::size_t... Index, class Op>
     constexpr explicit simd_mask(std::index_sequence<Index...>, Op op) noexcept
