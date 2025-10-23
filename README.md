@@ -1,6 +1,6 @@
 # ARC — A Modern C++ SIMD and Math Library
 
-[![Build](https://github.com/richardthorell/arc/actions/workflows/ci.yml/badge.svg)](https://github.com/richardthorell/arc/actions)
+[![Build](https://github.com/richardthorell/arc/actions/workflows/tests.yml/badge.svg)](https://github.com/richardthorell/arc/actions)
 ![License](https://img.shields.io/github/license/richardthorell/arc)
 ![C++](https://img.shields.io/badge/C%2B%2B-20-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-cross--platform-lightgrey.svg)
