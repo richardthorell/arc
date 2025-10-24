@@ -1,9 +1,7 @@
 #pragma once
 
 #include <arc/simd/concepts.h>
-
-// TODO: Include instructions headers based on detected architecture
-#include <arc/simd/arch/x64.h>
+#include <arc/simd/arch/arch.h>
 
 #include <array>
 
