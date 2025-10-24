@@ -23,6 +23,13 @@ struct simd_register;
 template <class T>
 struct simd_op;
 
+
+/**
+ * @brief Maximum number of lanes for a given data type based on available SIMD extensions.
+ */
+template <class T>
+inline constexpr std::size_t simd_max_lanes = 1;
+
 } // namespace arc
 
 
