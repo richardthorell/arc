@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstdint>
+
+namespace arc
+{
+
 /**
  * @brief Map data types and sizes to SIMD register types.
  * 
@@ -18,6 +23,8 @@ struct simd_register;
 template <class T>
 struct simd_op;
 
+} // namespace arc
+
 
 #if defined(__x86_64__) || defined(_M_X64)
     #include "arc/simd/arch/x64/registers.h"
@@ -29,6 +36,8 @@ struct simd_op;
     #error "Unsupported SIMD architecture"
 #endif
 
+namespace arc
+{
 
 /**
  * @brief Helper alias to get the SIMD register type for a given type and size.
@@ -38,3 +47,5 @@ struct simd_op;
  */
 template <class T, std::size_t N>
 using simd_register_t = typename simd_register<T, N>::type;
+
+} // namespace arc
