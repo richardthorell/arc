@@ -17,6 +17,8 @@ struct simd_mask
 
     using simd_type = simd<value_type, N>;
 
+    using op_type = simd_op<register_type>;
+
     constexpr explicit simd_mask(const simd_type& value)
         : data{value.data}
     {
@@ -44,8 +46,6 @@ private:
     using data_type = typename block_type::data_type;
 
     using register_type = typename block_type::register_type;
-
-    using op_type = simd_op<register_type>;
 
     template <std::size_t M, std::size_t... Index, class Op>
     friend constexpr simd_mask<M> apply(std::index_sequence<Index...>, Op) noexcept;

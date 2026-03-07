@@ -38,6 +38,11 @@ struct simd
     using mask_type = simd_mask<N>;
 
     /**
+     * @brief SIMD operation type.
+     */
+    using op_type = simd_op<register_type>;
+
+    /**
      * @brief Default constructor.
      */
     constexpr simd() noexcept = default;
@@ -88,11 +93,6 @@ private:
      * @brief SIMD register type.
      */
     using register_type = typename block_type::register_type;
-
-    /**
-     * @brief SIMD operation type.
-     */
-    using op_type = simd_op<register_type>;
 
     template <std::size_t M>
     friend struct simd_mask;
