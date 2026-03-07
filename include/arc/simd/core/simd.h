@@ -115,6 +115,12 @@ private:
     template <class U, std::size_t M, std::size_t... Index, class Op>
     friend constexpr simd<U, M> masked(const simd_mask<M>&, const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
+    template <class U, std::size_t M>
+    friend constexpr simd<U, M> load(const U*) noexcept;
+
+    template <class U, std::size_t M>
+    friend constexpr void store(U*, const simd<U, M>&) noexcept;
+
     template <std::size_t... Index, class Op>
     constexpr explicit simd(std::index_sequence<Index...>, Op op) noexcept
         : data{ op(Index)... }
