@@ -211,6 +211,32 @@ constexpr simd<T, N> neg(const simd<T, N>& a) noexcept
 }
 
 
+// Reduction operations
+template <class T, std::size_t N>
+constexpr T sum(const simd<T, N>& a) noexcept
+{
+    return apply(a, ops_for<simd<T, N>>::sum);
+}
+
+template <class T, std::size_t N>
+constexpr T dot(const simd<T, N>& a, const simd<T, N>& b) noexcept
+{
+    return apply(a, b, ops_for<simd<T, N>>::dot);
+}
+
+template <class T, std::size_t N>
+constexpr T min_element(const simd<T, N>& a) noexcept
+{
+    return apply(a, ops_for<simd<T, N>>::min_element);
+}
+
+template <class T, std::size_t N>
+constexpr T max_element(const simd<T, N>& a) noexcept
+{
+    return apply(a, ops_for<simd<T, N>>::max_element);
+}
+
+
 // Min/Max operations
 template <class T, std::size_t N>
 constexpr simd<T, N> min(const simd<T, N>& a, const simd<T, N>& b) noexcept
