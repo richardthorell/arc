@@ -59,6 +59,22 @@ constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, Op op) noexcept
     return apply(a, b, std::make_index_sequence<simd<T, N>::blocks()>{}, op);
 }
 
+template <class T, std::size_t N, std::size_t... Index, class Op>
+constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, const simd<T, N>& c, std::index_sequence<Index...>, Op op) noexcept
+{
+    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0], c.data[0]))>) {
+        (op(a.data[Index], b.data[Index], c.data[Index]), ...);
+    } else {
+        return simd<T, N>(op(a.data[Index], b.data[Index], c.data[Index])...);
+    }
+}
+
+template <class T, std::size_t N, class Op>
+constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, const simd<T, N>& c, Op op) noexcept
+{
+    return apply(a, b, c, std::make_index_sequence<simd<T, N>::blocks()>{}, op);
+}
+
 template <std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(std::index_sequence<Index...>, Op op) noexcept
 {
@@ -409,6 +425,24 @@ template <class T, std::size_t N>
 constexpr simd<T, N> sqrt(const simd<T, N>& value) noexcept
 {
     return apply(value, ops_for<simd<T, N>>::sqrt);
+}
+
+template <class T, std::size_t N>
+constexpr simd<T, N> rsqrt(const simd<T, N>& value) noexcept
+{
+    return apply(value, ops_for<simd<T, N>>::rsqrt);
+}
+
+template <class T, std::size_t N>
+constexpr simd<T, N> reciprocal(const simd<T, N>& value) noexcept
+{
+    return apply(value, ops_for<simd<T, N>>::reciprocal);
+}
+
+template <class T, std::size_t N>
+constexpr simd<T, N> fma(const simd<T, N>& a, const simd<T, N>& b, const simd<T, N>& c) noexcept
+{
+    return apply(a, b, c, ops_for<simd<T, N>>::fma);
 }
 
 template <class T, std::size_t N>

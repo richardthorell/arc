@@ -129,6 +129,21 @@ struct simd_op<__m128>
         return _mm_sqrt_ps(a);
     }
 
+    static inline __m128 rsqrt(__m128 a) noexcept
+    {
+        return _mm_rsqrt_ps(a);
+    }
+
+    static inline __m128 reciprocal(__m128 a) noexcept
+    {
+        return _mm_rcp_ps(a);
+    }
+
+    static inline __m128 fma(__m128 a, __m128 b, __m128 c) noexcept
+    {
+        return _mm_fmadd_ps(a, b, c);
+    }
+
     static inline __m128 round(__m128 a) noexcept
     {
         return _mm_round_ps(a, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
@@ -299,6 +314,21 @@ struct simd_op<__m128d>
     static inline __m128d sqrt(__m128d a) noexcept
     {
         return _mm_sqrt_pd(a);
+    }
+
+    static inline __m128d rsqrt(__m128d a) noexcept
+    {
+        return _mm_div_pd(_mm_set1_pd(1.0), _mm_sqrt_pd(a));
+    }
+
+    static inline __m128d reciprocal(__m128d a) noexcept
+    {
+        return _mm_div_pd(_mm_set1_pd(1.0), a);
+    }
+
+    static inline __m128d fma(__m128d a, __m128d b, __m128d c) noexcept
+    {
+        return _mm_fmadd_pd(a, b, c);
     }
 
     static inline __m128d round(__m128d a) noexcept
@@ -614,6 +644,21 @@ struct simd_op<__m256>
         return _mm256_sqrt_ps(a);
     }
 
+    static inline __m256 rsqrt(__m256 a) noexcept
+    {
+        return _mm256_rsqrt_ps(a);
+    }
+
+    static inline __m256 reciprocal(__m256 a) noexcept
+    {
+        return _mm256_rcp_ps(a);
+    }
+
+    static inline __m256 fma(__m256 a, __m256 b, __m256 c) noexcept
+    {
+        return _mm256_fmadd_ps(a, b, c);
+    }
+
     static inline __m256 round(__m256 a) noexcept
     {
         return _mm256_round_ps(a, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
@@ -781,6 +826,21 @@ struct simd_op<__m256d>
     static inline __m256d sqrt(__m256d a) noexcept
     {
         return _mm256_sqrt_pd(a);
+    }
+
+    static inline __m256d rsqrt(__m256d a) noexcept
+    {
+        return _mm256_div_pd(_mm256_set1_pd(1.0), _mm256_sqrt_pd(a));
+    }
+
+    static inline __m256d reciprocal(__m256d a) noexcept
+    {
+        return _mm256_div_pd(_mm256_set1_pd(1.0), a);
+    }
+
+    static inline __m256d fma(__m256d a, __m256d b, __m256d c) noexcept
+    {
+        return _mm256_fmadd_pd(a, b, c);
     }
 
     static inline __m256d round(__m256d a) noexcept
@@ -1093,6 +1153,21 @@ struct simd_op<__m512>
         return _mm512_sqrt_ps(a);
     }
 
+    static inline __m512 rsqrt(__m512 a) noexcept
+    {
+        return _mm512_rsqrt14_ps(a);
+    }
+
+    static inline __m512 reciprocal(__m512 a) noexcept
+    {
+        return _mm512_rcp14_ps(a);
+    }
+
+    static inline __m512 fma(__m512 a, __m512 b, __m512 c) noexcept
+    {
+        return _mm512_fmadd_ps(a, b, c);
+    }
+
     static inline __m512 round(__m512 a) noexcept
     {
         return _mm512_roundscale_ps(a, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
@@ -1236,6 +1311,21 @@ struct simd_op<__m512d>
     static inline __m512d sqrt(__m512d a) noexcept
     {
         return _mm512_sqrt_pd(a);
+    }
+
+    static inline __m512d rsqrt(__m512d a) noexcept
+    {
+        return _mm512_div_pd(_mm512_set1_pd(1.0), _mm512_sqrt_pd(a));
+    }
+
+    static inline __m512d reciprocal(__m512d a) noexcept
+    {
+        return _mm512_div_pd(_mm512_set1_pd(1.0), a);
+    }
+
+    static inline __m512d fma(__m512d a, __m512d b, __m512d c) noexcept
+    {
+        return _mm512_fmadd_pd(a, b, c);
     }
 
     static inline __m512d round(__m512d a) noexcept

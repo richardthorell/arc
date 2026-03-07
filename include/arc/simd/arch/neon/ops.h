@@ -129,6 +129,21 @@ struct simd_op<float32x4_t>
         return vsqrtq_f32(a);
     }
 
+    static inline float32x4_t rsqrt(float32x4_t a) noexcept
+    {
+        return vrsqrteq_f32(a);
+    }
+
+    static inline float32x4_t reciprocal(float32x4_t a) noexcept
+    {
+        return vrecpeq_f32(a);
+    }
+
+    static inline float32x4_t fma(float32x4_t a, float32x4_t b, float32x4_t c) noexcept
+    {
+        return vfmaq_f32(c, a, b);
+    }
+
     static inline float32x4_t round(float32x4_t a) noexcept
     {
         return vrndnq_f32(a);
@@ -477,6 +492,21 @@ struct simd_op<float64x2_t>
     static inline double max_element(float64x2_t a) noexcept
     {
         return vget_lane_f64(vpmaxq_f64(a, a), 0);
+    }
+
+    static inline float64x2_t rsqrt(float64x2_t a) noexcept
+    {
+        return vrsqrteq_f64(a);
+    }
+
+    static inline float64x2_t reciprocal(float64x2_t a) noexcept
+    {
+        return vrecpeq_f64(a);
+    }
+
+    static inline float64x2_t fma(float64x2_t a, float64x2_t b, float64x2_t c) noexcept
+    {
+        return vfmaq_f64(c, a, b);
     }
 };
 #endif
