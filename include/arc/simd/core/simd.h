@@ -40,7 +40,7 @@ struct simd
     /**
      * @brief SIMD operation type.
      */
-    using op_type = simd_op<register_type>;
+    using op_type = simd_op<typename simd_block<T, N>::register_type>;
 
     /**
      * @brief Default constructor.
