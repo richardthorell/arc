@@ -173,8 +173,7 @@ struct simd_op<__m128>
 
     static inline float dot(__m128 a, __m128 b) noexcept
     {
-        __m128 prod = _mm_mul_ps(a, b);
-        return sum(prod);
+        return sum(_mm_mul_ps(a, b));
     }
 
     static inline float min_element(__m128 a) noexcept
@@ -359,8 +358,7 @@ struct simd_op<__m128d>
 
     static inline double dot(__m128d a, __m128d b) noexcept
     {
-        __m128d prod = _mm_mul_pd(a, b);
-        return sum(prod);
+        return sum(_mm_mul_pd(a, b));
     }
 
     static inline double min_element(__m128d a) noexcept
@@ -499,8 +497,7 @@ struct simd_op<__m128i>
 
     static inline int32_t dot(__m128i a, __m128i b) noexcept
     {
-        __m128i prod = _mm_mullo_epi32(a, b);
-        return sum(prod);
+        return sum(_mm_mullo_epi32(a, b));
     }
 
     static inline int32_t min_element(__m128i a) noexcept
@@ -681,26 +678,22 @@ struct simd_op<__m256>
 
     static inline float sum(__m256 a) noexcept
     {
-        __m128 sum128 = _mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1));
-        return sum(sum128);
+        return simd_op<__m128>::sum(_mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1)));
     }
 
     static inline float dot(__m256 a, __m256 b) noexcept
     {
-        __m256 prod = _mm256_mul_ps(a, b);
-        return sum(prod);
+        return sum(_mm256_mul_ps(a, b));
     }
 
     static inline float min_element(__m256 a) noexcept
     {
-        __m128 min128 = _mm_min_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1));
-        return min_element(min128);
+        return simd_op<__m128>::min_element(_mm_min_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1)));
     }
 
     static inline float max_element(__m256 a) noexcept
     {
-        __m128 max128 = _mm_max_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1));
-        return max_element(max128);
+        return simd_op<__m128>::max_element(_mm_max_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1)));
     }
 };
 
@@ -865,26 +858,22 @@ struct simd_op<__m256d>
 
     static inline double sum(__m256d a) noexcept
     {
-        __m128d sum128 = _mm_add_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1));
-        return sum(sum128);
+        return simd_op< __m128d>::sum(_mm_add_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
     }
 
     static inline double dot(__m256d a, __m256d b) noexcept
     {
-        __m256d prod = _mm256_mul_pd(a, b);
-        return sum(prod);
+        return sum(_mm256_mul_pd(a, b));
     }
 
     static inline double min_element(__m256d a) noexcept
     {
-        __m128d min128 = _mm_min_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1));
-        return min_element(min128);
+        return simd_op< __m128d>::min_element(_mm_min_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
     }
 
     static inline double max_element(__m256d a) noexcept
     {
-        __m128d max128 = _mm_max_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1));
-        return max_element(max128);
+        return simd_op< __m128d>::max_element(_mm_max_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
     }
 };
 
@@ -1004,26 +993,22 @@ struct simd_op<__m256i>
 
     static inline int32_t sum(__m256i a) noexcept
     {
-        __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1));
-        return sum(sum128);
+        return simd_op<__m128i>::sum(_mm_add_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1)));
     }
 
     static inline int32_t dot(__m256i a, __m256i b) noexcept
     {
-        __m256i prod = _mm256_mullo_epi32(a, b);
-        return sum(prod);
+        return sum(_mm256_mullo_epi32(a, b));
     }
 
     static inline int32_t min_element(__m256i a) noexcept
     {
-        __m128i min128 = _mm_min_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1));
-        return min_element(min128);
+        return simd_op<__m128i>::min_element(_mm_min_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1)));
     }
 
     static inline int32_t max_element(__m256i a) noexcept
     {
-        __m128i max128 = _mm_max_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1));
-        return max_element(max128);
+        return simd_op<__m128i>::max_element(_mm_max_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1)));
     }
 };
 #endif

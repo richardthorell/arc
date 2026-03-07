@@ -121,6 +121,12 @@ private:
     template <class U, std::size_t M>
     friend constexpr void store(U*, const simd<U, M>&) noexcept;
 
+    template <class U, std::size_t M, std::size_t... Index, class Map, class ReduceOp>
+    friend constexpr U reduce(const simd<U, M>&, std::index_sequence<Index...>, Map, ReduceOp) noexcept;
+
+    template <class U, std::size_t M, std::size_t... Index, class Map, class ReduceOp>
+    friend constexpr U reduce(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Map, ReduceOp) noexcept;
+
     template <std::size_t... Index, class Op>
     constexpr explicit simd(std::index_sequence<Index...>, Op op) noexcept
         : data{ op(Index)... }

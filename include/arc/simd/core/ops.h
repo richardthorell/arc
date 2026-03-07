@@ -14,9 +14,12 @@ constexpr simd<T, N> select(const simd_mask<N>&, const simd<T, N>&, const simd<T
 template <class T, std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(Index...))>) {
+    if constexpr (std::is_void_v<decltype(op(Index...))>)
+    {
         (op(Index), ...);
-    } else {
+    }
+    else
+    {
         return simd<T, N>(op(Index)...);
     }
 }
@@ -30,9 +33,12 @@ constexpr auto apply(Op op) noexcept
 template <class T, std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd<T, N>& a, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[0]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0]))>)
+    {
         (op(a.data[Index]), ...);
-    } else {
+    }
+    else
+    {
         return simd<T, N>(op(a.data[Index])...);
     }
 }
@@ -46,9 +52,12 @@ constexpr auto apply(const simd<T, N>& a, Op op) noexcept
 template <class T, std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0]))>)
+    {
         (op(a.data[Index], b.data[Index]), ...);
-    } else {
+    }
+    else
+    {
         return simd<T, N>(op(a.data[Index], b.data[Index])...);
     }
 }
@@ -62,9 +71,12 @@ constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, Op op) noexcept
 template <class T, std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, const simd<T, N>& c, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0], c.data[0]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0], c.data[0]))>)
+    {
         (op(a.data[Index], b.data[Index], c.data[Index]), ...);
-    } else {
+    }
+    else
+    {
         return simd<T, N>(op(a.data[Index], b.data[Index], c.data[Index])...);
     }
 }
@@ -78,9 +90,12 @@ constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, const simd<T, N>&
 template <std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(Index...))>) {
+    if constexpr (std::is_void_v<decltype(op(Index...))>)
+    {
         (op(Index), ...);
-    } else {
+    }
+    else
+    {
         return simd_mask<N>{ op(Index)... };
     }
 }
@@ -94,9 +109,12 @@ constexpr auto apply(Op op) noexcept
 template <std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd_mask<N>& a, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[0]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0]))>)
+    {
         (op(a.data[Index]), ...);
-    } else {
+    }
+    else
+    {
         return simd_mask<N>{ op(a.data[Index])... };
     }
 }
@@ -110,9 +128,12 @@ constexpr auto apply(const simd_mask<N>& a, Op op) noexcept
 template <std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd_mask<N>& a, const simd_mask<N>& b, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0]))>)
+    {
         (op(a.data[Index], b.data[Index]), ...);
-    } else {
+    }
+    else
+    {
         return simd_mask<N>{ op(a.data[Index], b.data[Index])... };
     }
 }
@@ -121,6 +142,34 @@ template <std::size_t N, class Op>
 constexpr auto apply(const simd_mask<N>& a, const simd_mask<N>& b, Op op) noexcept
 {
     return apply(a, b, std::make_index_sequence<simd_mask<N>::blocks()>{}, op);
+}
+
+template <class T, std::size_t N, std::size_t... Index, class Map, class ReduceOp>
+constexpr T reduce(const simd<T, N>& a, std::index_sequence<Index...>, Map map, ReduceOp op) noexcept
+{
+    T result{};
+    ((result = Index == 0 ? map(a.data[Index]) : op(result, map(a.data[Index]))), ...);
+    return result;
+}
+
+template <class T, std::size_t N, class Map, class ReduceOp>
+constexpr T reduce(const simd<T, N>& a, Map map, ReduceOp op) noexcept
+{
+    return reduce(a, std::make_index_sequence<simd<T, N>::blocks()>{}, map, op);
+}
+
+template <class T, std::size_t N, std::size_t... Index, class Map, class ReduceOp>
+constexpr T reduce(const simd<T, N>& a, const simd<T, N>& b, std::index_sequence<Index...>, Map map, ReduceOp op) noexcept
+{
+    T result{};
+    ((result = Index == 0 ? map(a.data[Index], b.data[Index]) : op(result, map(a.data[Index], b.data[Index]))), ...);
+    return result;
+}
+
+template <class T, std::size_t N, class Map, class ReduceOp>
+constexpr T reduce(const simd<T, N>& a, const simd<T, N>& b, Map map, ReduceOp op) noexcept
+{
+    return reduce(a, b, std::make_index_sequence<simd<T, N>::blocks()>{}, map, op);
 }
 
 template <class T, std::size_t N, std::size_t... Index, class Op>
@@ -231,25 +280,54 @@ constexpr simd<T, N> neg(const simd<T, N>& a) noexcept
 template <class T, std::size_t N>
 constexpr T sum(const simd<T, N>& a) noexcept
 {
-    return apply(a, ops_for<simd<T, N>>::sum);
+    return reduce(
+        a,
+        ops_for<simd<T, N>>::sum,
+        [](T x, T y)
+        {
+            return x + y;
+        }
+    );
 }
 
 template <class T, std::size_t N>
 constexpr T dot(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, ops_for<simd<T, N>>::dot);
+    return reduce(
+        a,
+        b,
+        ops_for<simd<T, N>>::dot,
+        [](T x, T y)
+        {
+            return x + y;
+        }
+    );
 }
 
 template <class T, std::size_t N>
 constexpr T min_element(const simd<T, N>& a) noexcept
 {
-    return apply(a, ops_for<simd<T, N>>::min_element);
+    return reduce(
+        a,
+        ops_for<simd<T, N>>::min_element,
+        [](T x, T y)
+        {
+            return x < y ? x : y;
+        }
+    );
 }
 
 template <class T, std::size_t N>
 constexpr T max_element(const simd<T, N>& a) noexcept
 {
-    return apply(a, ops_for<simd<T, N>>::max_element);
+    return reduce(
+        a,
+        ops_for<simd<T, N>>::max_element,
+        [](T x, T y)
+        {
+            return x > y ? x : y;
+        }
+    );
 }
 
 
