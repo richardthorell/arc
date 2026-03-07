@@ -30,7 +30,7 @@ constexpr auto apply(Op op) noexcept
 template <class T, std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd<T, N>& a, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[Index]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0]))>) {
         (op(a.data[Index]), ...);
     } else {
         return simd<T, N>(op(a.data[Index])...);
@@ -46,7 +46,7 @@ constexpr auto apply(const simd<T, N>& a, Op op) noexcept
 template <class T, std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd<T, N>& a, const simd<T, N>& b, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[Index], b.data[Index]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0]))>) {
         (op(a.data[Index], b.data[Index]), ...);
     } else {
         return simd<T, N>(op(a.data[Index], b.data[Index])...);
@@ -78,7 +78,7 @@ constexpr auto apply(Op op) noexcept
 template <std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd_mask<N>& a, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[Index]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0]))>) {
         (op(a.data[Index]), ...);
     } else {
         return simd_mask<N>{ op(a.data[Index])... };
@@ -94,7 +94,7 @@ constexpr auto apply(const simd_mask<N>& a, Op op) noexcept
 template <std::size_t N, std::size_t... Index, class Op>
 constexpr auto apply(const simd_mask<N>& a, const simd_mask<N>& b, std::index_sequence<Index...>, Op op) noexcept
 {
-    if constexpr (std::is_void_v<decltype(op(a.data[Index], b.data[Index]))>) {
+    if constexpr (std::is_void_v<decltype(op(a.data[0], b.data[0]))>) {
         (op(a.data[Index], b.data[Index]), ...);
     } else {
         return simd_mask<N>{ op(a.data[Index], b.data[Index])... };
