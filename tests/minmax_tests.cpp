@@ -28,3 +28,57 @@ TEST_CASE("min_max", "[simd]")
     REQUIRE(max_vals[2] == 6.0f);
     REQUIRE(max_vals[3] == 7.0f);
 }
+
+TEST_CASE("min_element", "[simd]")
+{
+    float data[4] = {3.0f, 1.0f, 4.0f, 2.0f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::min_element(a);
+    
+    REQUIRE(result == 1.0f);
+}
+
+TEST_CASE("max_element", "[simd]")
+{
+    float data[4] = {3.0f, 1.0f, 4.0f, 2.0f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::max_element(a);
+    
+    REQUIRE(result == 4.0f);
+}
+
+TEST_CASE("min_element_int", "[simd]")
+{
+    int32_t data[4] = {3, 1, 4, 2};
+    auto a = arc::load<int32_t, 4>(data);
+    int32_t result = arc::min_element(a);
+    
+    REQUIRE(result == 1);
+}
+
+TEST_CASE("max_element_int", "[simd]")
+{
+    int32_t data[4] = {3, 1, 4, 2};
+    auto a = arc::load<int32_t, 4>(data);
+    int32_t result = arc::max_element(a);
+    
+    REQUIRE(result == 4);
+}
+
+TEST_CASE("min_element_double", "[simd]")
+{
+    double data[2] = {3.5, 1.5};
+    auto a = arc::load<double, 2>(data);
+    double result = arc::min_element(a);
+    
+    REQUIRE(result == 1.5);
+}
+
+TEST_CASE("max_element_double", "[simd]")
+{
+    double data[2] = {3.5, 1.5};
+    auto a = arc::load<double, 2>(data);
+    double result = arc::max_element(a);
+    
+    REQUIRE(result == 3.5);
+}

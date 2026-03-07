@@ -148,6 +148,33 @@ struct simd_op<__m128>
     {
         return _mm_round_ps(a, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
     }
+
+    static inline float sum(__m128 a) noexcept
+    {
+        __m128 sum = _mm_add_ps(a, _mm_movehl_ps(a, a));
+        sum = _mm_add_ss(sum, _mm_shuffle_ps(sum, sum, 1));
+        return _mm_cvtss_f32(sum);
+    }
+
+    static inline float dot(__m128 a, __m128 b) noexcept
+    {
+        __m128 prod = _mm_mul_ps(a, b);
+        return sum(prod);
+    }
+
+    static inline float min_element(__m128 a) noexcept
+    {
+        __m128 min_val = _mm_min_ps(a, _mm_movehl_ps(a, a));
+        min_val = _mm_min_ss(min_val, _mm_shuffle_ps(min_val, min_val, 1));
+        return _mm_cvtss_f32(min_val);
+    }
+
+    static inline float max_element(__m128 a) noexcept
+    {
+        __m128 max_val = _mm_max_ps(a, _mm_movehl_ps(a, a));
+        max_val = _mm_max_ss(max_val, _mm_shuffle_ps(max_val, max_val, 1));
+        return _mm_cvtss_f32(max_val);
+    }
 };
 
 
@@ -293,6 +320,30 @@ struct simd_op<__m128d>
     {
         return _mm_round_pd(a, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
     }
+
+    static inline double sum(__m128d a) noexcept
+    {
+        __m128d sum = _mm_add_sd(a, _mm_unpackhi_pd(a, a));
+        return _mm_cvtsd_f64(sum);
+    }
+
+    static inline double dot(__m128d a, __m128d b) noexcept
+    {
+        __m128d prod = _mm_mul_pd(a, b);
+        return sum(prod);
+    }
+
+    static inline double min_element(__m128d a) noexcept
+    {
+        __m128d min_val = _mm_min_sd(a, _mm_unpackhi_pd(a, a));
+        return _mm_cvtsd_f64(min_val);
+    }
+
+    static inline double max_element(__m128d a) noexcept
+    {
+        __m128d max_val = _mm_max_sd(a, _mm_unpackhi_pd(a, a));
+        return _mm_cvtsd_f64(max_val);
+    }
 };
 
 
@@ -407,6 +458,33 @@ struct simd_op<__m128i>
     static inline bool all(__m128i a) noexcept
     {
         return _mm_testc_si128(a, _mm_set1_epi32(-1));
+    }
+
+    static inline int32_t sum(__m128i a) noexcept
+    {
+        __m128i sum = _mm_add_epi32(a, _mm_srli_si128(a, 8));
+        sum = _mm_add_epi32(sum, _mm_srli_si128(sum, 4));
+        return _mm_cvtsi128_si32(sum);
+    }
+
+    static inline int32_t dot(__m128i a, __m128i b) noexcept
+    {
+        __m128i prod = _mm_mullo_epi32(a, b);
+        return sum(prod);
+    }
+
+    static inline int32_t min_element(__m128i a) noexcept
+    {
+        __m128i min_val = _mm_min_epi32(a, _mm_srli_si128(a, 8));
+        min_val = _mm_min_epi32(min_val, _mm_srli_si128(min_val, 4));
+        return _mm_cvtsi128_si32(min_val);
+    }
+
+    static inline int32_t max_element(__m128i a) noexcept
+    {
+        __m128i max_val = _mm_max_epi32(a, _mm_srli_si128(a, 8));
+        max_val = _mm_max_epi32(max_val, _mm_srli_si128(max_val, 4));
+        return _mm_cvtsi128_si32(max_val);
     }
 };
 #endif
@@ -555,6 +633,30 @@ struct simd_op<__m256>
     {
         return _mm256_round_ps(a, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
     }
+
+    static inline float sum(__m256 a) noexcept
+    {
+        __m128 sum128 = _mm_add_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1));
+        return sum(sum128);
+    }
+
+    static inline float dot(__m256 a, __m256 b) noexcept
+    {
+        __m256 prod = _mm256_mul_ps(a, b);
+        return sum(prod);
+    }
+
+    static inline float min_element(__m256 a) noexcept
+    {
+        __m128 min128 = _mm_min_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1));
+        return min_element(min128);
+    }
+
+    static inline float max_element(__m256 a) noexcept
+    {
+        __m128 max128 = _mm_max_ps(_mm256_castps256_ps128(a), _mm256_extractf128_ps(a, 1));
+        return max_element(max128);
+    }
 };
 
 
@@ -700,6 +802,30 @@ struct simd_op<__m256d>
     {
         return _mm256_round_pd(a, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
     }
+
+    static inline double sum(__m256d a) noexcept
+    {
+        __m128d sum128 = _mm_add_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1));
+        return sum(sum128);
+    }
+
+    static inline double dot(__m256d a, __m256d b) noexcept
+    {
+        __m256d prod = _mm256_mul_pd(a, b);
+        return sum(prod);
+    }
+
+    static inline double min_element(__m256d a) noexcept
+    {
+        __m128d min128 = _mm_min_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1));
+        return min_element(min128);
+    }
+
+    static inline double max_element(__m256d a) noexcept
+    {
+        __m128d max128 = _mm_max_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1));
+        return max_element(max128);
+    }
 };
 
 
@@ -814,6 +940,30 @@ struct simd_op<__m256i>
     static inline bool all(__m256i a) noexcept
     {
         return _mm256_testc_si256(a, _mm256_set1_epi32(-1));
+    }
+
+    static inline int32_t sum(__m256i a) noexcept
+    {
+        __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1));
+        return sum(sum128);
+    }
+
+    static inline int32_t dot(__m256i a, __m256i b) noexcept
+    {
+        __m256i prod = _mm256_mullo_epi32(a, b);
+        return sum(prod);
+    }
+
+    static inline int32_t min_element(__m256i a) noexcept
+    {
+        __m128i min128 = _mm_min_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1));
+        return min_element(min128);
+    }
+
+    static inline int32_t max_element(__m256i a) noexcept
+    {
+        __m128i max128 = _mm_max_epi32(_mm256_castsi256_si128(a), _mm256_extracti128_si256(a, 1));
+        return max_element(max128);
     }
 };
 #endif

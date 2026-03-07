@@ -148,6 +148,29 @@ struct simd_op<float32x4_t>
     {
         return vrndq_f32(a);
     }
+
+    static inline float sum(float32x4_t a) noexcept
+    {
+        float32x2_t sum = vadd_f32(vget_low_f32(a), vget_high_f32(a));
+        return vget_lane_f32(vpadd_f32(sum, sum), 0);
+    }
+
+    static inline float dot(float32x4_t a, float32x4_t b) noexcept
+    {
+        return sum(vmulq_f32(a, b));
+    }
+
+    static inline float min_element(float32x4_t a) noexcept
+    {
+        float32x2_t min_val = vpmin_f32(vget_low_f32(a), vget_high_f32(a));
+        return vget_lane_f32(vpmin_f32(min_val, min_val), 0);
+    }
+
+    static inline float max_element(float32x4_t a) noexcept
+    {
+        float32x2_t max_val = vpmax_f32(vget_low_f32(a), vget_high_f32(a));
+        return vget_lane_f32(vpmax_f32(max_val, max_val), 0);
+    }
 };
 
 
@@ -264,6 +287,29 @@ struct simd_op<int32x4_t>
     {
         uint32x2_t tmp = vand_u32(vget_low_u32(a), vget_high_u32(a));
         return vget_lane_u32(vpmin_u32(tmp, tmp), 0) != 0;
+    }
+
+    static inline int32_t sum(int32x4_t a) noexcept
+    {
+        int32x2_t sum = vadd_s32(vget_low_s32(a), vget_high_s32(a));
+        return vget_lane_s32(vpadd_s32(sum, sum), 0);
+    }
+
+    static inline int32_t dot(int32x4_t a, int32x4_t b) noexcept
+    {
+        return sum(vmulq_s32(a, b));
+    }
+
+    static inline int32_t min_element(int32x4_t a) noexcept
+    {
+        int32x2_t min_val = vpmin_s32(vget_low_s32(a), vget_high_s32(a));
+        return vget_lane_s32(vpmin_s32(min_val, min_val), 0);
+    }
+
+    static inline int32_t max_element(int32x4_t a) noexcept
+    {
+        int32x2_t max_val = vpmax_s32(vget_low_s32(a), vget_high_s32(a));
+        return vget_lane_s32(vpmax_s32(max_val, max_val), 0);
     }
 };
 #endif
@@ -411,6 +457,26 @@ struct simd_op<float64x2_t>
     static inline float64x2_t trunc(float64x2_t a) noexcept
     {
         return vrndq_f64(a);
+    }
+
+    static inline double sum(float64x2_t a) noexcept
+    {
+        return vget_lane_f64(vpaddq_f64(a, a), 0);
+    }
+
+    static inline double dot(float64x2_t a, float64x2_t b) noexcept
+    {
+        return sum(vmulq_f64(a, b));
+    }
+
+    static inline double min_element(float64x2_t a) noexcept
+    {
+        return vget_lane_f64(vpminq_f64(a, a), 0);
+    }
+
+    static inline double max_element(float64x2_t a) noexcept
+    {
+        return vget_lane_f64(vpmaxq_f64(a, a), 0);
     }
 };
 #endif
