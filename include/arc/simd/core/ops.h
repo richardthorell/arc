@@ -90,7 +90,7 @@ constexpr simd_mask<N> compare(const simd<T, N>& a, const simd<T, N>& b, std::in
 template <class T, std::size_t N, class Op>
 constexpr simd_mask<N> compare(const simd<T, N>& a, const simd<T, N>& b, Op op) noexcept
 {
-    return compare(a, b, std::make_index_sequence<simd_storage<T, N>::blocks>{}, op);
+    return compare(a, b, std::make_index_sequence<simd_block<T, N>::blocks>{}, op);
 }
 
 template <class T, std::size_t N, std::size_t... Index, class Op>
@@ -125,7 +125,7 @@ constexpr simd<T, N> load(const T* ptr) noexcept
     return apply<T, N>(
         [&](std::size_t block_index)
         {
-            return ops_for<simd<T, N>>::load(ptr + block_index * simd_storage<T, N>::lanes);
+            return ops_for<simd<T, N>>::load(ptr + block_index * simd_block<T, N>::lanes);
         }
     );
 }
@@ -136,7 +136,7 @@ constexpr void store(T* ptr, const simd<T, N>& value) noexcept
     apply<T, N>(
         [&](std::size_t block_index)
         {
-            ops_for<simd<T, N>>::store(ptr + block_index * simd_storage<T, N>::lanes, value.data[block_index]);
+            ops_for<simd<T, N>>::store(ptr + block_index * simd_block<T, N>::lanes, value.data[block_index]);
         }
     );
 }

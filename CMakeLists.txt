@@ -11,7 +11,7 @@ target_include_directories(arc INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Optional: enable SIMD instruction sets
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    target_compile_options(arc INTERFACE -march=native)
+    target_compile_options(arc INTERFACE -march=native -Wno-ignored-attributes)
 elseif (MSVC)
     target_compile_options(arc INTERFACE /arch:AVX2)
 endif()
