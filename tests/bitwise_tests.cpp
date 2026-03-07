@@ -15,9 +15,9 @@ TEST_CASE("bitwise", "[simd]")
     int32_t or_vals[4];
     int32_t xor_vals[4];
     
-    arc::store(and_vals, and_result);
-    arc::store(or_vals, or_result);
-    arc::store(xor_vals, xor_result);
+    arc::store_aligned(and_vals, and_result);
+    arc::store_aligned(or_vals, or_result);
+    arc::store_aligned(xor_vals, xor_result);
     
     REQUIRE(and_vals[0] == 1); // 101 & 011 = 001
     REQUIRE(or_vals[0] == 7);  // 101 | 011 = 111

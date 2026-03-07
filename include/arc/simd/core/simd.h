@@ -119,10 +119,16 @@ private:
     friend constexpr simd<U, M> masked(const simd_mask<M>&, const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
     template <class U, std::size_t M>
-    friend constexpr simd<U, M> load(const U*) noexcept;
+    friend constexpr simd<U, M> load_aligned(const U*) noexcept;
 
     template <class U, std::size_t M>
-    friend constexpr void store(U*, const simd<U, M>&) noexcept;
+    friend constexpr void store_aligned(U*, const simd<U, M>&) noexcept;
+
+    template <class U, std::size_t M>
+    friend constexpr simd<U, M> load_unaligned(const U*) noexcept;
+
+    template <class U, std::size_t M>
+    friend constexpr void store_unaligned(U*, const simd<U, M>&) noexcept;
 
     template <class U, std::size_t M, std::size_t... Index, class Map, class ReduceOp>
     friend constexpr U reduce(const simd<U, M>&, std::index_sequence<Index...>, Map, ReduceOp) noexcept;
@@ -164,7 +170,7 @@ inline simd<T, N> make_simd(Iter first, Sent last)
     {
         for (std::size_t b = 0; b < full_blocks; ++b)
         {
-            result.data[b] = ops::load(std::to_address(first) + b * block::lanes);
+            result.data[b] = ops::load_aligned(std::to_address(first) + b * block::lanes);
         }
     }
     else
@@ -177,7 +183,7 @@ inline simd<T, N> make_simd(Iter first, Sent last)
             for (std::size_t l = 0; l < block::lanes && it != last; ++l, ++it)
                 tmp[l] = *it;
 
-            result.data[b] = ops::load(tmp.data());
+            result.data[b] = ops::load_aligned(tmp.data());
         }
     }
 
@@ -188,7 +194,7 @@ inline simd<T, N> make_simd(Iter first, Sent last)
         for (std::size_t i = 0; i < remainder && first != last; ++i, ++first)
             tmp[i] = *first;
 
-        result.data[full_blocks] = ops::load(tmp.data());
+        result.data[full_blocks] = ops::load_aligned(tmp.data());
     }
 
     return result;

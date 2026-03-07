@@ -9,12 +9,12 @@ namespace arc
 template <>
 struct simd_op<float32x4_t>
 {
-    static inline float32x4_t load(const float* ptr) noexcept
+    static inline float32x4_t load_aligned(const float* ptr) noexcept
     {
         return vld1q_f32(ptr);
     }
 
-    static inline void store(float* ptr, float32x4_t value) noexcept
+    static inline void store_aligned(float* ptr, float32x4_t value) noexcept
     {
         vst1q_f32(ptr, value);
     }
@@ -27,6 +27,16 @@ struct simd_op<float32x4_t>
     static inline void store_unaligned(float* ptr, float32x4_t value) noexcept
     {
         vst1q_f32(ptr, value);
+    }
+
+    static inline float32x4_t masked_load(const float* ptr, uint32x4_t mask, float32x4_t default_value) noexcept
+    {
+        return vbslq_f32(mask, vld1q_f32(ptr), default_value);
+    }
+
+    static inline void masked_store(float* ptr, float32x4_t value, uint32x4_t mask) noexcept
+    {
+        vst1q_f32(ptr, vbslq_f32(mask, value, vld1q_f32(ptr)));
     }
 
     static inline float32x4_t fill(float value) noexcept
@@ -192,12 +202,12 @@ struct simd_op<float32x4_t>
 template <>
 struct simd_op<int32x4_t>
 {
-    static inline int32x4_t load(const int32_t* ptr) noexcept
+    static inline int32x4_t load_aligned(const int32_t* ptr) noexcept
     {
         return vld1q_s32(ptr);
     }
 
-    static inline void store(int32_t* ptr, int32x4_t value) noexcept
+    static inline void store_aligned(int32_t* ptr, int32x4_t value) noexcept
     {
         vst1q_s32(ptr, value);
     }
@@ -210,6 +220,16 @@ struct simd_op<int32x4_t>
     static inline void store_unaligned(int32_t* ptr, int32x4_t value) noexcept
     {
         vst1q_s32(ptr, value);
+    }
+
+    static inline int32x4_t masked_load(const int32_t* ptr, uint32x4_t mask, int32x4_t default_value) noexcept
+    {
+        return vbslq_s32(mask, vld1q_s32(ptr), default_value);
+    }
+
+    static inline void masked_store(int32_t* ptr, int32x4_t value, uint32x4_t mask) noexcept
+    {
+        vst1q_s32(ptr, vbslq_s32(mask, value, vld1q_s32(ptr)));
     }
 
     static inline int32x4_t fill(int32_t value) noexcept
@@ -334,12 +354,12 @@ struct simd_op<int32x4_t>
 template <>
 struct simd_op<float64x2_t>
 {
-    static inline float64x2_t load(const double* ptr) noexcept
+    static inline float64x2_t load_aligned(const double* ptr) noexcept
     {
         return vld1q_f64(ptr);
     }
 
-    static inline void store(double* ptr, float64x2_t value) noexcept
+    static inline void store_aligned(double* ptr, float64x2_t value) noexcept
     {
         vst1q_f64(ptr, value);
     }
@@ -352,6 +372,16 @@ struct simd_op<float64x2_t>
     static inline void store_unaligned(double* ptr, float64x2_t value) noexcept
     {
         vst1q_f64(ptr, value);
+    }
+
+    static inline float64x2_t masked_load(const double* ptr, uint32x4_t mask, float64x2_t default_value) noexcept
+    {
+        return vbslq_f64(mask, vld1q_f64(ptr), default_value);
+    }
+
+    static inline void masked_store(double* ptr, float64x2_t value, uint32x4_t mask) noexcept
+    {
+        vst1q_f64(ptr, vbslq_f64(mask, value, vld1q_f64(ptr)));
     }
 
     static inline float64x2_t fill(double value) noexcept

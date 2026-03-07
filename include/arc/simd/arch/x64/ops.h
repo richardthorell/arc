@@ -9,12 +9,12 @@ namespace arc
 template <>
 struct simd_op<__m128>
 {
-    static inline __m128 load(const float* ptr) noexcept
+    static inline __m128 load_aligned(const float* ptr) noexcept
     {
         return _mm_load_ps(ptr);
     }
 
-    static inline void store(float* ptr, __m128 value) noexcept
+    static inline void store_aligned(float* ptr, __m128 value) noexcept
     {
         _mm_store_ps(ptr, value);
     }
@@ -27,6 +27,16 @@ struct simd_op<__m128>
     static inline void store_unaligned(float* ptr, __m128 value) noexcept
     {
         _mm_storeu_ps(ptr, value);
+    }
+
+    static inline __m128 masked_load(const float* ptr, __m128i mask, __m128 default_value) noexcept
+    {
+        return _mm_blendv_ps(default_value, _mm_loadu_ps(ptr), _mm_castsi128_ps(mask));
+    }
+
+    static inline void masked_store(float* ptr, __m128 value, __m128i mask) noexcept
+    {
+        _mm_storeu_ps(ptr, _mm_blendv_ps(_mm_loadu_ps(ptr), value, _mm_castsi128_ps(mask)));
     }
 
     static inline __m128 fill(float value) noexcept
@@ -195,12 +205,12 @@ struct simd_op<__m128>
 template <>
 struct simd_op<__m128d>
 {
-    static inline __m128d load(const double* ptr) noexcept
+    static inline __m128d load_aligned(const double* ptr) noexcept
     {
         return _mm_load_pd(ptr);
     }
 
-    static inline void store(double* ptr, __m128d value) noexcept
+    static inline void store_aligned(double* ptr, __m128d value) noexcept
     {
         _mm_store_pd(ptr, value);
     }
@@ -213,6 +223,16 @@ struct simd_op<__m128d>
     static inline void store_unaligned(double* ptr, __m128d value) noexcept
     {
         _mm_storeu_pd(ptr, value);
+    }
+
+    static inline __m128d masked_load(const double* ptr, __m128i mask, __m128d default_value) noexcept
+    {
+        return _mm_blendv_pd(default_value, _mm_loadu_pd(ptr), _mm_castsi128_pd(mask));
+    }
+
+    static inline void masked_store(double* ptr, __m128d value, __m128i mask) noexcept
+    {
+        _mm_storeu_pd(ptr, _mm_blendv_pd(_mm_loadu_pd(ptr), value, _mm_castsi128_pd(mask)));
     }
 
     static inline __m128d fill(double value) noexcept
@@ -378,12 +398,12 @@ struct simd_op<__m128d>
 template <>
 struct simd_op<__m128i>
 {
-    static inline __m128i load(const int32_t* ptr) noexcept
+    static inline __m128i load_aligned(const int32_t* ptr) noexcept
     {
         return _mm_load_si128(reinterpret_cast<const __m128i*>(ptr));
     }
 
-    static inline void store(int32_t* ptr, __m128i value) noexcept
+    static inline void store_aligned(int32_t* ptr, __m128i value) noexcept
     {
         _mm_store_si128(reinterpret_cast<__m128i*>(ptr), value);
     }
@@ -396,6 +416,16 @@ struct simd_op<__m128i>
     static inline void store_unaligned(int32_t* ptr, __m128i value) noexcept
     {
         _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), value);
+    }
+
+    static inline __m128i masked_load(const int32_t* ptr, __m128i mask, __m128i default_value) noexcept
+    {
+        return _mm_blendv_epi8(default_value, _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), mask);
+    }
+
+    static inline void masked_store(int32_t* ptr, __m128i value, __m128i mask) noexcept
+    {
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), _mm_blendv_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), value, mask));
     }
 
     static inline __m128i fill(int32_t value) noexcept
@@ -521,12 +551,12 @@ struct simd_op<__m128i>
 template <>
 struct simd_op<__m256>
 {
-    static inline __m256 load(const float* ptr) noexcept
+    static inline __m256 load_aligned(const float* ptr) noexcept
     {
         return _mm256_load_ps(ptr);
     }
 
-    static inline void store(float* ptr, __m256 value) noexcept
+    static inline void store_aligned(float* ptr, __m256 value) noexcept
     {
         _mm256_store_ps(ptr, value);
     }
@@ -539,6 +569,16 @@ struct simd_op<__m256>
     static inline void store_unaligned(float* ptr, __m256 value) noexcept
     {
         _mm256_storeu_ps(ptr, value);
+    }
+
+    static inline __m256 masked_load(const float* ptr, __m256i mask, __m256 default_value) noexcept
+    {
+        return _mm256_blendv_ps(default_value, _mm256_loadu_ps(ptr), _mm256_castsi256_ps(mask));
+    }
+
+    static inline void masked_store(float* ptr, __m256 value, __m256i mask) noexcept
+    {
+        _mm256_storeu_ps(ptr, _mm256_blendv_ps(_mm256_loadu_ps(ptr), value, _mm256_castsi256_ps(mask)));
     }
 
     static inline __m256 fill(float value) noexcept
@@ -701,12 +741,12 @@ struct simd_op<__m256>
 template <>
 struct simd_op<__m256d>
 {
-    static inline __m256d load(const double* ptr) noexcept
+    static inline __m256d load_aligned(const double* ptr) noexcept
     {
         return _mm256_load_pd(ptr);
     }
 
-    static inline void store(double* ptr, __m256d value) noexcept
+    static inline void store_aligned(double* ptr, __m256d value) noexcept
     {
         _mm256_store_pd(ptr, value);
     }
@@ -719,6 +759,16 @@ struct simd_op<__m256d>
     static inline void store_unaligned(double* ptr, __m256d value) noexcept
     {
         _mm256_storeu_pd(ptr, value);
+    }
+
+    static inline __m256d masked_load(const double* ptr, __m256i mask, __m256d default_value) noexcept
+    {
+        return _mm256_blendv_pd(default_value, _mm256_loadu_pd(ptr), _mm256_castsi256_pd(mask));
+    }
+
+    static inline void masked_store(double* ptr, __m256d value, __m256i mask) noexcept
+    {
+        _mm256_storeu_pd(ptr, _mm256_blendv_pd(_mm256_loadu_pd(ptr), value, _mm256_castsi256_pd(mask)));
     }
 
     static inline __m256d fill(double value) noexcept
@@ -881,12 +931,12 @@ struct simd_op<__m256d>
 template <>
 struct simd_op<__m256i>
 {
-    static inline __m256i load(const int32_t* ptr) noexcept
+    static inline __m256i load_aligned(const int32_t* ptr) noexcept
     {
         return _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
     }
 
-    static inline void store(int32_t* ptr, __m256i value) noexcept
+    static inline void store_aligned(int32_t* ptr, __m256i value) noexcept
     {
         _mm256_store_si256(reinterpret_cast<__m256i*>(ptr), value);
     }
@@ -899,6 +949,16 @@ struct simd_op<__m256i>
     static inline void store_unaligned(int32_t* ptr, __m256i value) noexcept
     {
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(ptr), value);
+    }
+
+    static inline __m256i masked_load(const int32_t* ptr, __m256i mask, __m256i default_value) noexcept
+    {
+        return _mm256_blendv_epi8(default_value, _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)), mask);
+    }
+
+    static inline void masked_store(int32_t* ptr, __m256i value, __m256i mask) noexcept
+    {
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(ptr), _mm256_blendv_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)), value, mask));
     }
 
     static inline __m256i fill(int32_t value) noexcept
@@ -1018,12 +1078,12 @@ struct simd_op<__m256i>
 template <>
 struct simd_op<__m512>
 {
-    static inline __m512 load(const float* ptr) noexcept
+    static inline __m512 load_aligned(const float* ptr) noexcept
     {
         return _mm512_load_ps(ptr);
     }
 
-    static inline void store(float* ptr, __m512 value) noexcept
+    static inline void store_aligned(float* ptr, __m512 value) noexcept
     {
         _mm512_store_ps(ptr, value);
     }
@@ -1036,6 +1096,16 @@ struct simd_op<__m512>
     static inline void store_unaligned(float* ptr, __m512 value) noexcept
     {
         _mm512_storeu_ps(ptr, value);
+    }
+
+    static inline __m512 masked_load(const float* ptr, __mmask16 mask, __m512 default_value) noexcept
+    {
+        return _mm512_mask_blend_ps(mask, default_value, _mm512_loadu_ps(ptr));
+    }
+
+    static inline void masked_store(float* ptr, __m512 value, __mmask16 mask) noexcept
+    {
+        _mm512_mask_storeu_ps(ptr, mask, value);
     }
 
     static inline __m512 fill(float value) noexcept
@@ -1178,12 +1248,12 @@ struct simd_op<__m512>
 template <>
 struct simd_op<__m512d>
 {
-    static inline __m512d load(const double* ptr) noexcept
+    static inline __m512d load_aligned(const double* ptr) noexcept
     {
         return _mm512_load_pd(ptr);
     }
 
-    static inline void store(double* ptr, __m512d value) noexcept
+    static inline void store_aligned(double* ptr, __m512d value) noexcept
     {
         _mm512_store_pd(ptr, value);
     }
@@ -1196,6 +1266,16 @@ struct simd_op<__m512d>
     static inline void store_unaligned(double* ptr, __m512d value) noexcept
     {
         _mm512_storeu_pd(ptr, value);
+    }
+
+    static inline __m512d masked_load(const double* ptr, __mmask8 mask, __m512d default_value) noexcept
+    {
+        return _mm512_mask_blend_pd(mask, default_value, _mm512_loadu_pd(ptr));
+    }
+
+    static inline void masked_store(double* ptr, __m512d value, __mmask8 mask) noexcept
+    {
+        _mm512_mask_storeu_pd(ptr, mask, value);
     }
 
     static inline __m512d fill(double value) noexcept
@@ -1338,12 +1418,12 @@ struct simd_op<__m512d>
 template <>
 struct simd_op<__m512i>
 {
-    static inline __m512i load(const int32_t* ptr) noexcept
+    static inline __m512i load_aligned(const int32_t* ptr) noexcept
     {
         return _mm512_load_si512(reinterpret_cast<const void*>(ptr));
     }
 
-    static inline void store(int32_t* ptr, __m512i value) noexcept
+    static inline void store_aligned(int32_t* ptr, __m512i value) noexcept
     {
         _mm512_store_si512(reinterpret_cast<void*>(ptr), value);
     }
@@ -1356,6 +1436,16 @@ struct simd_op<__m512i>
     static inline void store_unaligned(int32_t* ptr, __m512i value) noexcept
     {
         _mm512_storeu_si512(reinterpret_cast<void*>(ptr), value);
+    }
+
+    static inline __m512i masked_load(const int32_t* ptr, __mmask16 mask, __m512i default_value) noexcept
+    {
+        return _mm512_mask_blend_epi32(mask, default_value, _mm512_loadu_si512(reinterpret_cast<const void*>(ptr)));
+    }
+
+    static inline void masked_store(int32_t* ptr, __m512i value, __mmask16 mask) noexcept
+    {
+        _mm512_mask_storeu_epi32(reinterpret_cast<void*>(ptr), mask, value);
     }
 
     static inline __m512i fill(int32_t value) noexcept

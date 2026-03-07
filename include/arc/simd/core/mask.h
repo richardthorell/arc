@@ -104,6 +104,9 @@ private:
     friend constexpr simd<U, M> masked(const simd_mask<M>&, const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
     template <std::size_t M>
+    friend constexpr simd_mask<M> prefix_mask(std::size_t) noexcept;
+
+    template <std::size_t M>
     friend constexpr bool any(const simd_mask<M>&) noexcept;
 
     template <std::size_t M>
