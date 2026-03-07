@@ -98,13 +98,13 @@ private:
     friend struct simd_mask;
 
     template <class U, std::size_t M, std::size_t... Index, class Op>
-    friend constexpr simd<U, M> apply(std::index_sequence<Index...>, Op) noexcept;
+    friend constexpr auto apply(std::index_sequence<Index...>, Op) noexcept;
 
     template <class U, std::size_t M, std::size_t... Index, class Op>
-    friend constexpr simd<U, M> apply(const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
+    friend constexpr auto apply(const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
     template <class U, std::size_t M, std::size_t... Index, class Op>
-    friend constexpr simd<U, M> apply(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
+    friend constexpr auto apply(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
 
     template <class U, std::size_t M, std::size_t... Index, class Op>
     friend constexpr simd_mask<M> compare(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;

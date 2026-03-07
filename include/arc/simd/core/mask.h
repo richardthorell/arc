@@ -86,13 +86,13 @@ private:
     using register_type = typename block_type::register_type;
 
     template <std::size_t M, std::size_t... Index, class Op>
-    friend constexpr simd_mask<M> apply(std::index_sequence<Index...>, Op) noexcept;
+    friend constexpr auto apply(std::index_sequence<Index...>, Op) noexcept;
 
     template <std::size_t M, std::size_t... Index, class Op>
-    friend constexpr simd_mask<M> apply(const simd_mask<M>&, std::index_sequence<Index...>, Op) noexcept;
+    friend constexpr auto apply(const simd_mask<M>&, std::index_sequence<Index...>, Op) noexcept;
 
     template <std::size_t M, std::size_t... Index, class Op>
-    friend constexpr simd_mask<M> apply(const simd_mask<M>&, const simd_mask<M>&, std::index_sequence<Index...>, Op) noexcept;
+    friend constexpr auto apply(const simd_mask<M>&, const simd_mask<M>&, std::index_sequence<Index...>, Op) noexcept;
 
     template <class U, std::size_t M, std::size_t... Index, class Op>
     friend constexpr simd_mask<M> compare(const simd<U, M>&, const simd<U, M>&, std::index_sequence<Index...>, Op) noexcept;
