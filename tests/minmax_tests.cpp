@@ -38,6 +38,33 @@ TEST_CASE("min_element", "[simd]")
     REQUIRE(result == 1.0f);
 }
 
+TEST_CASE("min_element_negative", "[simd]")
+{
+    float data[4] = {-1.0f, -5.0f, -3.0f, -7.0f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::min_element(a);
+    
+    REQUIRE(result == -7.0f);
+}
+
+TEST_CASE("min_element_mixed", "[simd]")
+{
+    float data[4] = {1.5f, -2.5f, 3.0f, -1.0f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::min_element(a);
+    
+    REQUIRE(result == -2.5f);
+}
+
+TEST_CASE("min_element_same", "[simd]")
+{
+    float data[4] = {2.5f, 2.5f, 2.5f, 2.5f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::min_element(a);
+    
+    REQUIRE(result == 2.5f);
+}
+
 TEST_CASE("max_element", "[simd]")
 {
     float data[4] = {3.0f, 1.0f, 4.0f, 2.0f};
@@ -45,6 +72,33 @@ TEST_CASE("max_element", "[simd]")
     float result = arc::max_element(a);
     
     REQUIRE(result == 4.0f);
+}
+
+TEST_CASE("max_element_negative", "[simd]")
+{
+    float data[4] = {-1.0f, -5.0f, -3.0f, -7.0f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::max_element(a);
+    
+    REQUIRE(result == -1.0f);
+}
+
+TEST_CASE("max_element_mixed", "[simd]")
+{
+    float data[4] = {1.5f, -2.5f, 3.0f, -1.0f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::max_element(a);
+    
+    REQUIRE(result == 3.0f);
+}
+
+TEST_CASE("max_element_same", "[simd]")
+{
+    float data[4] = {2.5f, 2.5f, 2.5f, 2.5f};
+    auto a = arc::load<float, 4>(data);
+    float result = arc::max_element(a);
+    
+    REQUIRE(result == 2.5f);
 }
 
 TEST_CASE("min_element_int", "[simd]")
