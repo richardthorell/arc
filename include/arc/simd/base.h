@@ -1,19 +1,13 @@
 #pragma once
 
-#include <arc/simd/storage.h>
+// TODO: Temporary
+#include <arc/simd/core/simd.h>
+#include <arc/simd/core/mask.h>
 
 namespace arc
 {
 
-template <class T, std::size_t N>
-struct simd;
-
-template <std::size_t N>
-struct simd_mask;
-
-template <class T, std::size_t N>
-constexpr simd<T, N> select(const simd_mask<N>&, const simd<T, N>&, const simd<T, N>&) noexcept;
-
+#if 0
 template <class T, std::size_t N>
 struct simd
 {
@@ -23,6 +17,35 @@ struct simd
     using register_type = typename storage_type::register_type;
     using op_type = simd_op<register_type>;
     using mask_type = simd_mask<N>;
+
+    struct reference
+    {
+        constexpr operator value_type() const noexcept
+        {
+            alignas(register_type) value_type temp[storage_type::lanes];
+            op_type::store(temp, parent.data[index]);
+            return temp[0];
+        }
+
+        constexpr reference& operator=(value_type value) noexcept
+        {
+            alignas(register_type) value_type temp[storage_type::lanes];
+            op_type::store(temp, parent.data[index]);
+            temp[0] = value;
+            parent.data[index] = op_type::load(temp);
+            return *this;
+        }
+
+    private:
+        constexpr reference(simd& p, std::size_t i) noexcept
+            : parent{p}
+            , index{i}
+        {
+        }
+    
+        simd& parent;
+        std::size_t index;
+    };
 
     constexpr simd() noexcept = default;
 
@@ -77,7 +100,9 @@ private:
 
     data_type data;
 };
+#endif
 
+#if 0
 template <std::size_t N>
 struct simd_mask
 {
@@ -149,6 +174,9 @@ private:
 
     data_type data;
 };
+#endif
+template <class T, std::size_t N>
+constexpr simd<T, N> select(const simd_mask<N>&, const simd<T, N>&, const simd<T, N>&) noexcept;
 
 template <class T, std::size_t N, std::size_t... Index, class Op>
 constexpr simd<T, N> apply(std::index_sequence<Index...>, Op op) noexcept
@@ -266,7 +294,7 @@ constexpr simd<T, N> load(const T* ptr) noexcept
     return apply<T, N>(
         [&](std::size_t block_index)
         {
-            return simd_op<typename simd_storage<T, N>::register_type>::load(ptr + block_index * simd_storage<T, N>::lanes);
+            return ops_for<simd<T, N>>::load(ptr + block_index * simd_storage<T, N>::lanes);
         }
     );
 }
@@ -277,7 +305,7 @@ constexpr void store(T* ptr, const simd<T, N>& value) noexcept
     apply<T, N>(
         [&](std::size_t block_index)
         {
-            simd_op<typename simd_storage<T, N>::register_type>::store(ptr + block_index * simd_storage<T, N>::lanes, value.data[block_index]);
+            ops_for<simd<T, N>>::store(ptr + block_index * simd_storage<T, N>::lanes, value.data[block_index]);
         }
     );
 }
@@ -288,7 +316,7 @@ constexpr simd<T, N> fill(T value) noexcept
     return apply<T, N>(
         [&](std::size_t)
         {
-            return simd_op<typename simd_storage<T, N>::register_type>::fill(value);
+            return ops_for<simd<T, N>>::fill(value);
         }
     );
 }
@@ -298,31 +326,31 @@ constexpr simd<T, N> fill(T value) noexcept
 template <class T, std::size_t N>
 constexpr simd<T, N> add(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::add);
+    return apply(a, b, ops_for<simd<T, N>>::add);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> sub(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::sub);
+    return apply(a, b, ops_for<simd<T, N>>::sub);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> mul(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::mul);
+    return apply(a, b, ops_for<simd<T, N>>::mul);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> div(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::div);
+    return apply(a, b, ops_for<simd<T, N>>::div);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> neg(const simd<T, N>& a) noexcept
 {
-    return apply(a, simd_op<typename simd_storage<T, N>::register_type>::neg);
+    return apply(a, ops_for<simd<T, N>>::neg);
 }
 
 
@@ -330,13 +358,13 @@ constexpr simd<T, N> neg(const simd<T, N>& a) noexcept
 template <class T, std::size_t N>
 constexpr simd<T, N> min(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::min);
+    return apply(a, b, ops_for<simd<T, N>>::min);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> max(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::max);
+    return apply(a, b, ops_for<simd<T, N>>::max);
 }
 
 
@@ -344,49 +372,49 @@ constexpr simd<T, N> max(const simd<T, N>& a, const simd<T, N>& b) noexcept
 template <class T, std::size_t N>
 constexpr simd<T, N> bitwise_and(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::bitwise_and);
+    return apply(a, b, ops_for<simd<T, N>>::bitwise_and);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> bitwise_or(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::bitwise_or);
+    return apply(a, b, ops_for<simd<T, N>>::bitwise_or);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> bitwise_xor(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_storage<T, N>::register_type>::bitwise_xor);
+    return apply(a, b, ops_for<simd<T, N>>::bitwise_xor);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> bitwise_not(const simd<T, N>& a) noexcept
 {
-    return apply(a, simd_op<typename simd_storage<T, N>::register_type>::bitwise_not);
+    return apply(a, ops_for<simd<T, N>>::bitwise_not);
 }
 
 template <std::size_t N>
 constexpr simd_mask<N> bitwise_and(const simd_mask<N>& a, const simd_mask<N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_mask<N>::register_type>::bitwise_and);
+    return apply(a, b, ops_for<simd_mask<N>>::bitwise_and);
 }
 
 template <std::size_t N>
 constexpr simd_mask<N> bitwise_or(const simd_mask<N>& a, const simd_mask<N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_mask<N>::register_type>::bitwise_or);
+    return apply(a, b, ops_for<simd_mask<N>>::bitwise_or);
 }
 
 template <std::size_t N>
 constexpr simd_mask<N> bitwise_xor(const simd_mask<N>& a, const simd_mask<N>& b) noexcept
 {
-    return apply(a, b, simd_op<typename simd_mask<N>::register_type>::bitwise_xor);
+    return apply(a, b, ops_for<simd_mask<N>>::bitwise_xor);
 }
 
 template <std::size_t N>
 constexpr simd_mask<N> bitwise_not(const simd_mask<N>& a) noexcept
 {
-    return apply(a, simd_op<typename simd_mask<N>::register_type>::bitwise_not);
+    return apply(a, ops_for<simd_mask<N>>::bitwise_not);
 }
 
 
@@ -396,7 +424,7 @@ constexpr bool any(const simd_mask<N>& mask) noexcept
 {
     return [&]<std::size_t... Index>(std::index_sequence<Index...>)
     {
-        return (... || simd_op<typename simd_mask<N>::register_type>::any(mask.data[Index]));
+        return (... || ops_for<simd_mask<N>>::any(mask.data[Index]));
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }
 
@@ -405,7 +433,7 @@ constexpr bool all(const simd_mask<N>& mask) noexcept
 {
     return [&]<std::size_t... Index>(std::index_sequence<Index...>)
     {
-        return (... && simd_op<typename simd_mask<N>::register_type>::all(mask.data[Index]));
+        return (... && ops_for<simd_mask<N>>::all(mask.data[Index]));
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }
 
@@ -420,37 +448,37 @@ constexpr bool none(const simd_mask<N>& mask) noexcept
 template <class T, std::size_t N>
 constexpr simd_mask<N> cmp_eq(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return compare(a, b, simd_op<typename simd<T, N>::register_type>::cmp_eq);
+    return compare(a, b, ops_for<simd<T, N>>::cmp_eq);
 }
 
 template <class T, std::size_t N>
 constexpr simd_mask<N> cmp_ne(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return compare(a, b, simd_op<typename simd<T, N>::register_type>::cmp_ne);
+    return compare(a, b, ops_for<simd<T, N>>::cmp_ne);
 }
 
 template <class T, std::size_t N>
 constexpr simd_mask<N> cmp_lt(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return compare(a, b, simd_op<typename simd<T, N>::register_type>::cmp_lt);
+    return compare(a, b, ops_for<simd<T, N>>::cmp_lt);
 }
 
 template <class T, std::size_t N>
 constexpr simd_mask<N> cmp_le(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return compare(a, b, simd_op<typename simd<T, N>::register_type>::cmp_le);
+    return compare(a, b, ops_for<simd<T, N>>::cmp_le);
 }
 
 template <class T, std::size_t N>
 constexpr simd_mask<N> cmp_gt(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return compare(a, b, simd_op<typename simd<T, N>::register_type>::cmp_gt);
+    return compare(a, b, ops_for<simd<T, N>>::cmp_gt);
 }
 
 template <class T, std::size_t N>
 constexpr simd_mask<N> cmp_ge(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return compare(a, b, simd_op<typename simd<T, N>::register_type>::cmp_ge);
+    return compare(a, b, ops_for<simd<T, N>>::cmp_ge);
 }
 
 
@@ -460,7 +488,7 @@ constexpr simd<T, N> select(const simd_mask<N>& mask, const simd<T, N>& a, const
 {
     return [&]<std::size_t... Index>(std::index_sequence<Index...>)
     {
-        return simd<T, N>{ simd_op<typename simd<T, N>::register_type>::blend(a.data[Index], b.data[Index], mask.data[Index])... };
+        return simd<T, N>{ ops_for<simd<T, N>>::blend(a.data[Index], b.data[Index], mask.data[Index])... };
     }(std::make_index_sequence<simd<T, N>::blocks()>{});
 }
 
@@ -497,31 +525,31 @@ constexpr simd<T, N> saturate(const simd<T, N>& value) noexcept
 template <class T, std::size_t N>
 constexpr simd<T, N> sqrt(const simd<T, N>& value) noexcept
 {
-    return apply(value, simd_op<typename simd<T, N>::register_type>::sqrt);
+    return apply(value, ops_for<simd<T, N>>::sqrt);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> round(const simd<T, N>& value) noexcept
 {
-    return apply(value, simd_op<typename simd<T, N>::register_type>::round);
+    return apply(value, ops_for<simd<T, N>>::round);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> floor(const simd<T, N>& value) noexcept
 {
-    return apply(value, simd_op<typename simd<T, N>::register_type>::floor);
+    return apply(value, ops_for<simd<T, N>>::floor);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> ceil(const simd<T, N>& value) noexcept
 {
-    return apply(value, simd_op<typename simd<T, N>::register_type>::ceil);
+    return apply(value, ops_for<simd<T, N>>::ceil);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> trunc(const simd<T, N>& value) noexcept
 {
-    return apply(value, simd_op<typename simd<T, N>::register_type>::trunc);
+    return apply(value, ops_for<simd<T, N>>::trunc);
 }
 
 // Masked operations
