@@ -39,6 +39,18 @@ struct simd_op<__m128>
         _mm_storeu_ps(ptr, _mm_blendv_ps(_mm_loadu_ps(ptr), value, _mm_castsi128_ps(mask)));
     }
 
+    template <std::size_t I>
+    static inline float extract(__m128 value) noexcept
+    {
+        return _mm_cvtss_f32(_mm_shuffle_ps(value, value, _MM_SHUFFLE(I, I, I, I)));
+    }
+
+    template <std::size_t I>
+    static inline __m128 insert(__m128 value, float element) noexcept
+    {
+        return _mm_move_ss(value, _mm_set_ss(element));
+    }
+
     static inline __m128 fill(float value) noexcept
     {
         return _mm_set1_ps(value);
@@ -235,6 +247,18 @@ struct simd_op<__m128d>
         _mm_storeu_pd(ptr, _mm_blendv_pd(_mm_loadu_pd(ptr), value, _mm_castsi128_pd(mask)));
     }
 
+    template <std::size_t I>
+    static inline double extract(__m128d value) noexcept
+    {
+        return _mm_cvtsd_f64(_mm_shuffle_pd(value, value, I));
+    }
+
+    template <std::size_t I>
+    static inline __m128d insert(__m128d value, double element) noexcept
+    {
+        return _mm_move_sd(value, _mm_set_sd(element));
+    }
+
     static inline __m128d fill(double value) noexcept
     {
         return _mm_set1_pd(value);
@@ -428,6 +452,18 @@ struct simd_op<__m128i>
         _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), _mm_blendv_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), value, mask));
     }
 
+    template <std::size_t I>
+    static inline int32_t extract(__m128i value) noexcept
+    {
+        return _mm_cvtsi128_si32(_mm_shuffle_epi32(value, _MM_SHUFFLE(I, I, I, I)));
+    }
+
+    template <std::size_t I>
+    static inline __m128i insert(__m128i value, int32_t element) noexcept
+    {
+        return _mm_insert_epi32(value, element, I);
+    }
+
     static inline __m128i fill(int32_t value) noexcept
     {
         return _mm_set1_epi32(value);
@@ -579,6 +615,18 @@ struct simd_op<__m256>
     static inline void masked_store(float* ptr, __m256 value, __m256i mask) noexcept
     {
         _mm256_storeu_ps(ptr, _mm256_blendv_ps(_mm256_loadu_ps(ptr), value, _mm256_castsi256_ps(mask)));
+    }
+
+    template <std::size_t I>
+    static inline float extract(__m256 value) noexcept
+    {
+        return _mm_cvtss_f32(_mm256_castps256_ps128(_mm256_permutevar8x32_ps(value, _mm256_set1_epi32(I))));
+    }
+
+    template <std::size_t I>
+    static inline __m256 insert(__m256 value, float element) noexcept
+    {
+        return _mm256_blend_ps(value, _mm256_castps128_ps256(_mm_move_ss(_mm256_castps256_ps128(value), _mm_set_ss(element))), 1 << I);
     }
 
     static inline __m256 fill(float value) noexcept
@@ -771,6 +819,18 @@ struct simd_op<__m256d>
         _mm256_storeu_pd(ptr, _mm256_blendv_pd(_mm256_loadu_pd(ptr), value, _mm256_castsi256_pd(mask)));
     }
 
+    template <std::size_t I>
+    static inline double extract(__m256d value) noexcept
+    {
+        return _mm_cvtsd_f64(_mm256_castpd256_pd128(_mm256_permutevar_pd(value, _mm256_set1_epi64x(I))));
+    }
+
+    template <std::size_t I>
+    static inline __m256d insert(__m256d value, double element) noexcept
+    {
+        return _mm256_blend_pd(value, _mm256_castpd128_pd256(_mm_move_sd(_mm256_castpd256_pd128(value), _mm_set_sd(element))), 1 << I);
+    }
+
     static inline __m256d fill(double value) noexcept
     {
         return _mm256_set1_pd(value);
@@ -961,6 +1021,18 @@ struct simd_op<__m256i>
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(ptr), _mm256_blendv_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)), value, mask));
     }
 
+    template <std::size_t I>
+    static inline int32_t extract(__m256i value) noexcept
+    {
+        return _mm256_extract_epi32(value, I);
+    }
+
+    template <std::size_t I>
+    static inline __m256i insert(__m256i value, int32_t element) noexcept
+    {
+        return _mm256_insert_epi32(value, element, I);
+    }
+
     static inline __m256i fill(int32_t value) noexcept
     {
         return _mm256_set1_epi32(value);
@@ -1106,6 +1178,18 @@ struct simd_op<__m512>
     static inline void masked_store(float* ptr, __m512 value, __mmask16 mask) noexcept
     {
         _mm512_mask_storeu_ps(ptr, mask, value);
+    }
+
+    template <std::size_t I>
+    static inline float extract(__m512 value) noexcept
+    {
+        return _mm512_cvtss_f32(_mm512_permute_ps(value, _MM_SHUFFLE(I, I, I, I)));
+    }
+
+    template <std::size_t I>
+    static inline __m512 insert(__m512 value, float element) noexcept
+    {
+        return _mm512_mask_blend_ps(1 << I, value, _mm512_set1_ps(element));
     }
 
     static inline __m512 fill(float value) noexcept
@@ -1278,6 +1362,18 @@ struct simd_op<__m512d>
         _mm512_mask_storeu_pd(ptr, mask, value);
     }
 
+    template <std::size_t I>
+    static inline double extract(__m512d value) noexcept
+    {
+        return _mm512_cvtsd_f64(_mm512_permute_pd(value, 1 << I));
+    }
+
+    template <std::size_t I>
+    static inline __m512d insert(__m512d value, double element) noexcept
+    {
+        return _mm512_mask_blend_pd(1 << I, value, _mm512_set1_pd(element));
+    }
+
     static inline __m512d fill(double value) noexcept
     {
         return _mm512_set1_pd(value);
@@ -1446,6 +1542,18 @@ struct simd_op<__m512i>
     static inline void masked_store(int32_t* ptr, __m512i value, __mmask16 mask) noexcept
     {
         _mm512_mask_storeu_epi32(reinterpret_cast<void*>(ptr), mask, value);
+    }
+
+    template <std::size_t I>
+    static inline int32_t extract(__m512i value) noexcept
+    {
+        return _mm512_extract_epi32(value, I);
+    }
+
+    template <std::size_t I>
+    static inline __m512i insert(__m512i value, int32_t element) noexcept
+    {
+        return _mm512_insert_epi32(value, element, I);
     }
 
     static inline __m512i fill(int32_t value) noexcept

@@ -9,6 +9,8 @@ namespace arc
 namespace detail
 {
 
+struct simd_access;
+
 template <class T, std::size_t N>
 concept simd_register_available = requires
 {

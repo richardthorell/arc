@@ -39,6 +39,16 @@ struct simd_op<float32x4_t>
         vst1q_f32(ptr, vbslq_f32(mask, value, vld1q_f32(ptr)));
     }
 
+    static inline float32x4_t extract(float32x4_t value, std::size_t index) noexcept
+    {
+        return vdupq_n_f32(vgetq_lane_f32(value, index));
+    }
+
+    static inline float32x4_t insert(float32x4_t value, float element, std::size_t index) noexcept
+    {
+        return vsetq_lane_f32(element, value, index);
+    }
+
     static inline float32x4_t fill(float value) noexcept
     {
         return vdupq_n_f32(value);
@@ -232,6 +242,16 @@ struct simd_op<int32x4_t>
         vst1q_s32(ptr, vbslq_s32(mask, value, vld1q_s32(ptr)));
     }
 
+    static inline int32x4_t extract(int32x4_t value, std::size_t index) noexcept
+    {
+        return vdupq_n_s32(vgetq_lane_s32(value, index));
+    }
+
+    static inline int32x4_t insert(int32x4_t value, int32_t element, std::size_t index) noexcept
+    {
+        return vsetq_lane_s32(element, value, index);
+    }
+
     static inline int32x4_t fill(int32_t value) noexcept
     {
         return vdupq_n_s32(value);
@@ -382,6 +402,16 @@ struct simd_op<float64x2_t>
     static inline void masked_store(double* ptr, float64x2_t value, uint32x4_t mask) noexcept
     {
         vst1q_f64(ptr, vbslq_f64(mask, value, vld1q_f64(ptr)));
+    }
+
+    static inline float64x2_t extract(float64x2_t value, std::size_t index) noexcept
+    {
+        return vdupq_n_f64(vgetq_lane_f64(value, index));
+    }
+
+    static inline float64x2_t insert(float64x2_t value, double element, std::size_t index) noexcept
+    {
+        return vsetq_lane_f64(element, value, index);
     }
 
     static inline float64x2_t fill(double value) noexcept

@@ -3,6 +3,7 @@
 #include <arc/simd/core/ops/detail.h>
 #include <arc/simd/core/ops/mask_helpers.h>
 #include <arc/simd/core/ops/memory.h>
+#include <arc/simd/core/ops/lanes.h>
 #include <arc/simd/core/ops/arithmetic.h>
 #include <arc/simd/core/ops/reductions.h>
 #include <arc/simd/core/ops/minmax.h>

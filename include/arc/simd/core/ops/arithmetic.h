@@ -8,31 +8,31 @@ namespace arc
 template <class T, std::size_t N>
 constexpr simd<T, N> add(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, ops_for<simd<T, N>>::add);
+    return apply<simd<T, N>>(ops_for<simd<T, N>>::add, a, b);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> sub(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, ops_for<simd<T, N>>::sub);
+    return apply<simd<T, N>>(ops_for<simd<T, N>>::sub, a, b);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> mul(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, ops_for<simd<T, N>>::mul);
+    return apply<simd<T, N>>(ops_for<simd<T, N>>::mul, a, b);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> div(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
-    return apply(a, b, ops_for<simd<T, N>>::div);
+    return apply<simd<T, N>>(ops_for<simd<T, N>>::div, a, b);
 }
 
 template <class T, std::size_t N>
 constexpr simd<T, N> neg(const simd<T, N>& a) noexcept
 {
-    return apply(a, ops_for<simd<T, N>>::neg);
+    return apply<simd<T, N>>(ops_for<simd<T, N>>::neg, a);
 }
 
 } // namespace arc
