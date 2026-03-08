@@ -48,7 +48,7 @@ struct simd_op<__m128>
     template <std::size_t I>
     static inline __m128 insert(__m128 value, float element) noexcept
     {
-        return _mm_move_ss(value, _mm_set_ss(element));
+        return _mm_insert_ps(value, _mm_set_ss(element), I << 4);
     }
 
     static inline __m128 fill(float value) noexcept
@@ -256,7 +256,7 @@ struct simd_op<__m128d>
     template <std::size_t I>
     static inline __m128d insert(__m128d value, double element) noexcept
     {
-        return _mm_move_sd(value, _mm_set_sd(element));
+        return _mm_blend_pd(value, _mm_set1_pd(element), 1 << I);
     }
 
     static inline __m128d fill(double value) noexcept
@@ -626,7 +626,7 @@ struct simd_op<__m256>
     template <std::size_t I>
     static inline __m256 insert(__m256 value, float element) noexcept
     {
-        return _mm256_blend_ps(value, _mm256_castps128_ps256(_mm_move_ss(_mm256_castps256_ps128(value), _mm_set_ss(element))), 1 << I);
+        return _mm256_blend_ps(value, _mm256_set1_ps(element), 1 << I);
     }
 
     static inline __m256 fill(float value) noexcept
@@ -828,7 +828,7 @@ struct simd_op<__m256d>
     template <std::size_t I>
     static inline __m256d insert(__m256d value, double element) noexcept
     {
-        return _mm256_blend_pd(value, _mm256_castpd128_pd256(_mm_move_sd(_mm256_castpd256_pd128(value), _mm_set_sd(element))), 1 << I);
+        return _mm256_blend_pd(value, _mm256_set1_pd(element), 1 << I);
     }
 
     static inline __m256d fill(double value) noexcept
