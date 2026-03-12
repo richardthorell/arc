@@ -7,6 +7,8 @@
 #include <arc/simd/core/ops/arithmetic.h>
 #include <arc/simd/core/ops/reductions.h>
 #include <arc/simd/core/ops/minmax.h>
+#include <arc/simd/core/ops/permute.h>
+#include <arc/simd/core/ops/zip.h>
 #include <arc/simd/core/ops/bitwise.h>
 #include <arc/simd/core/ops/mask_reductions.h>
 #include <arc/simd/core/ops/comparisons.h>
