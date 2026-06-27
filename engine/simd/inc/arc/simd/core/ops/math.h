@@ -60,7 +60,7 @@ constexpr simd<T, N> clamp_min(const simd<T, N>& value, const simd<T, N>& min_va
 }
 
 /**
- * @briefClamps each element of the SIMD vector to be at most the corresponding element of max_value.
+ * @brief Clamps each element of the SIMD vector to be at most the corresponding element of max_value.
  * 
  * @tparam T The element type of the SIMD vector.
  * @tparam N The number of elements in the SIMD vector.

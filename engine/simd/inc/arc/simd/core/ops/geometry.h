@@ -10,6 +10,7 @@
 namespace arc
 {
 
+/// @brief Return the dot product of the first three lanes.
 template <class T, std::size_t N>
 constexpr T dot3(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
@@ -19,6 +20,7 @@ constexpr T dot3(const simd<T, N>& a, const simd<T, N>& b) noexcept
            extract<2>(a) * extract<2>(b);
 }
 
+/// @brief Return the dot product of the first four lanes.
 template <class T, std::size_t N>
 constexpr T dot4(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
@@ -29,30 +31,35 @@ constexpr T dot4(const simd<T, N>& a, const simd<T, N>& b) noexcept
            extract<3>(a) * extract<3>(b);
 }
 
+/// @brief Return squared length using the first three lanes.
 template <class T, std::size_t N>
 constexpr T length_squared3(const simd<T, N>& value) noexcept
 {
     return dot3(value, value);
 }
 
+/// @brief Return squared length using the first four lanes.
 template <class T, std::size_t N>
 constexpr T length_squared4(const simd<T, N>& value) noexcept
 {
     return dot4(value, value);
 }
 
+/// @brief Return length using the first three lanes.
 template <class T, std::size_t N>
 inline T length3(const simd<T, N>& value) noexcept
 {
     return static_cast<T>(std::sqrt(length_squared3(value)));
 }
 
+/// @brief Return length using the first four lanes.
 template <class T, std::size_t N>
 inline T length4(const simd<T, N>& value) noexcept
 {
     return static_cast<T>(std::sqrt(length_squared4(value)));
 }
 
+/// @brief Normalize the first three lanes, using `fallback` for zero length.
 template <class T, std::size_t N>
 inline simd<T, N> normalize3(const simd<T, N>& value, T fallback = T{}) noexcept
 {
@@ -73,6 +80,7 @@ inline simd<T, N> normalize3(const simd<T, N>& value, T fallback = T{}) noexcept
     return detail::simd_from_array<T, N>(lanes);
 }
 
+/// @brief Normalize the first four lanes, using `fallback` for zero length.
 template <class T, std::size_t N>
 inline simd<T, N> normalize4(const simd<T, N>& value, T fallback = T{}) noexcept
 {
@@ -95,6 +103,7 @@ inline simd<T, N> normalize4(const simd<T, N>& value, T fallback = T{}) noexcept
     return detail::simd_from_array<T, N>(lanes);
 }
 
+/// @brief Return the 3D cross product in the first three lanes.
 template <class T, std::size_t N>
 constexpr simd<T, N> cross3(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
@@ -108,18 +117,21 @@ constexpr simd<T, N> cross3(const simd<T, N>& a, const simd<T, N>& b) noexcept
     return detail::simd_from_array<T, N>(result);
 }
 
+/// @brief Linearly interpolate between two SIMD vectors.
 template <class T, std::size_t N>
 constexpr simd<T, N> lerp(const simd<T, N>& a, const simd<T, N>& b, T t) noexcept
 {
     return a + (b - a) * fill<T, N>(t);
 }
 
+/// @brief Reflect a 3D incident vector around a 3D normal.
 template <class T, std::size_t N>
 constexpr simd<T, N> reflect3(const simd<T, N>& incident, const simd<T, N>& normal) noexcept
 {
     return incident - normal * fill<T, N>(static_cast<T>(2) * dot3(incident, normal));
 }
 
+/// @brief Project a 3D vector onto another 3D vector.
 template <class T, std::size_t N>
 constexpr simd<T, N> project3(const simd<T, N>& value, const simd<T, N>& onto) noexcept
 {
@@ -129,6 +141,7 @@ constexpr simd<T, N> project3(const simd<T, N>& value, const simd<T, N>& onto) n
     return onto * fill<T, N>(dot3(value, onto) / denom);
 }
 
+/// @brief Transpose four SIMD rows that represent a 4x4 matrix.
 template <class T>
 constexpr std::array<simd<T, 4>, 4> transpose4x4(const std::array<simd<T, 4>, 4>& rows) noexcept
 {
@@ -140,6 +153,7 @@ constexpr std::array<simd<T, 4>, 4> transpose4x4(const std::array<simd<T, 4>, 4>
     return result;
 }
 
+/// @brief Transform a 4D SIMD vector by four SIMD matrix rows.
 template <class T>
 constexpr simd<T, 4> transform4(const std::array<simd<T, 4>, 4>& rows, const simd<T, 4>& value) noexcept
 {
@@ -151,6 +165,7 @@ constexpr simd<T, 4> transform4(const std::array<simd<T, 4>, 4>& rows, const sim
     });
 }
 
+/// @brief Transform a 3D point by a 4x4 matrix represented as rows.
 template <class T>
 constexpr simd<T, 4> transform_point3(const std::array<simd<T, 4>, 4>& rows, const simd<T, 4>& point) noexcept
 {
@@ -159,6 +174,7 @@ constexpr simd<T, 4> transform_point3(const std::array<simd<T, 4>, 4>& rows, con
     return transform4(rows, detail::simd_from_array<T, 4>(p));
 }
 
+/// @brief Transform a 3D direction by a 4x4 matrix represented as rows.
 template <class T>
 constexpr simd<T, 4> transform_direction3(const std::array<simd<T, 4>, 4>& rows, const simd<T, 4>& direction) noexcept
 {

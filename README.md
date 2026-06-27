@@ -1,13 +1,18 @@
 # ARC
 
-ARC is growing into a 3D engine monorepo.
+ARC is an early-stage 3D engine monorepo. The current codebase is focused on
+the low-level foundation an engine needs before higher-level rendering,
+scene, asset, and editor systems land.
 
-The repository is organized around a few top-level areas:
+## Current Shape
 
-- `engine/` contains the core engine library, split into modules such as `simd/`, `math/`, and `geometric/`.
+- `engine/` contains the core engine library.
+- `engine/simd/` provides portable SIMD primitives and game-oriented SIMD helpers.
+- `engine/math/` provides vector, matrix, and quaternion types built on top of SIMD where available.
+- `engine/geometric/` provides simple 2D/3D primitives such as points, lines, boxes, circles, and spheres.
 - `editor/` is reserved for future editor tooling.
-- `samples/` is reserved for example applications and experiments.
-- `tests/` is reserved for high-level engine/editor/sample integration tests.
+- `samples/` is reserved for examples and experiments.
+- `tests/` is reserved for future high-level integration scenarios.
 
 ## Building
 
@@ -17,8 +22,15 @@ cmake --build build --config Release --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-The current SIMD include path remains compatible:
+## Public Includes
+
+The current engine foundation can be consumed through module headers:
 
 ```cpp
 #include <arc/simd.h>
+#include <math/math.h>
+#include <geometric/geometric.h>
 ```
+
+More specific math and geometric headers are also available when a translation
+unit only needs part of the API.

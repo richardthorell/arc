@@ -5,6 +5,7 @@
 namespace arc
 {
 
+/// @brief Return the sum of all SIMD lanes.
 template <class T, std::size_t N>
 constexpr T sum(const simd<T, N>& a) noexcept
 {
@@ -18,6 +19,7 @@ constexpr T sum(const simd<T, N>& a) noexcept
     );
 }
 
+/// @brief Return the dot product of two SIMD vectors.
 template <class T, std::size_t N>
 constexpr T dot(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
@@ -32,6 +34,7 @@ constexpr T dot(const simd<T, N>& a, const simd<T, N>& b) noexcept
     );
 }
 
+/// @brief Return the minimum lane value.
 template <class T, std::size_t N>
 constexpr T min_element(const simd<T, N>& a) noexcept
 {
@@ -45,6 +48,7 @@ constexpr T min_element(const simd<T, N>& a) noexcept
     );
 }
 
+/// @brief Return the maximum lane value.
 template <class T, std::size_t N>
 constexpr T max_element(const simd<T, N>& a) noexcept
 {

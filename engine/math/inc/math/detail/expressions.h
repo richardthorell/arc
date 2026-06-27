@@ -12,9 +12,12 @@
 namespace arc::math
 {
 
+/// @brief Storage order used by `matrix::data()` while preserving logical `(row, col)` access.
 enum class matrix_layout
 {
+    /// @brief Consecutive elements in memory advance by column within each row.
     row_major,
+    /// @brief Consecutive elements in memory advance by row within each column.
     column_major
 };
 

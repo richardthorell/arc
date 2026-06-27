@@ -6,6 +6,11 @@
 namespace arc
 {
 
+/**
+ * @brief Load `N` values from an aligned pointer into a SIMD vector.
+ *
+ * The pointer must satisfy the active backend's alignment requirements.
+ */
 template <class T, std::size_t N>
 constexpr simd<T, N> load_aligned(const T* ptr) noexcept
 {
@@ -17,6 +22,11 @@ constexpr simd<T, N> load_aligned(const T* ptr) noexcept
     );
 }
 
+/**
+ * @brief Store a SIMD vector to an aligned pointer.
+ *
+ * The pointer must satisfy the active backend's alignment requirements.
+ */
 template <class T, std::size_t N>
 constexpr void store_aligned(T* ptr, const simd<T, N>& value) noexcept
 {
@@ -30,6 +40,7 @@ constexpr void store_aligned(T* ptr, const simd<T, N>& value) noexcept
     );
 }
 
+/// @brief Load `N` values from a pointer with no alignment requirement.
 template <class T, std::size_t N>
 constexpr simd<T, N> load_unaligned(const T* ptr) noexcept
 {
@@ -41,6 +52,7 @@ constexpr simd<T, N> load_unaligned(const T* ptr) noexcept
     );
 }
 
+/// @brief Store a SIMD vector to a pointer with no alignment requirement.
 template <class T, std::size_t N>
 constexpr void store_unaligned(T* ptr, const simd<T, N>& value) noexcept
 {
@@ -54,6 +66,7 @@ constexpr void store_unaligned(T* ptr, const simd<T, N>& value) noexcept
     );
 }
 
+/// @brief Load active lanes selected by a mask and use `default_value` elsewhere.
 template <class T, std::size_t N>
 constexpr simd<T, N> masked_load(const T* ptr, const simd_mask<N>& mask, const simd<T, N>& default_value = simd<T, N>{}) noexcept
 {
@@ -71,6 +84,7 @@ constexpr simd<T, N> masked_load(const T* ptr, const simd_mask<N>& mask, const s
     );
 }
 
+/// @brief Store only lanes selected by a mask.
 template <class T, std::size_t N>
 constexpr void masked_store(T* ptr, const simd<T, N>& value, const simd_mask<N>& mask) noexcept
 {
@@ -88,18 +102,21 @@ constexpr void masked_store(T* ptr, const simd<T, N>& value, const simd_mask<N>&
     );
 }
 
+/// @brief Load up to `count` lanes and zero-fill inactive lanes.
 template <class T, std::size_t N>
 constexpr simd<T, N> load_partial(const T* ptr, std::size_t count) noexcept
 {
     return masked_load(ptr, prefix_mask<N>(count));
 }
 
+/// @brief Store up to `count` lanes from a SIMD vector.
 template <class T, std::size_t N>
 constexpr void store_partial(T* ptr, const simd<T, N>& v, std::size_t count) noexcept
 {
     masked_store(ptr, v, prefix_mask<N>(count));
 }
 
+/// @brief Return a SIMD vector with every lane set to `value`.
 template <class T, std::size_t N>
 constexpr simd<T, N> fill(T value) noexcept
 {

@@ -5,23 +5,41 @@
 namespace arc::math
 {
 
+/**
+ * @brief Fixed-size matrix value with configurable storage layout.
+ *
+ * Matrix indexing is always logical through `(row, col)`. The `Layout`
+ * template argument controls contiguous storage order exposed by `data()`.
+ * Elementwise arithmetic is lazy; use `matmul` for linear algebra products.
+ */
 template <class T, std::size_t Rows, std::size_t Cols = Rows, matrix_layout Layout = matrix_layout::column_major>
 class matrix final : public detail::matrix_expr<matrix<T, Rows, Cols, Layout>>
 {
 public:
+    /// @brief Scalar element type stored in the matrix.
     using value_type = T;
+    /// @brief Number of logical rows.
     static constexpr std::size_t rows = Rows;
+    /// @brief Number of logical columns.
     static constexpr std::size_t cols = Cols;
+    /// @brief Storage layout used by `data()`.
     static constexpr matrix_layout layout = Layout;
+    /// @brief Total number of scalar elements.
     static constexpr std::size_t size = Rows * Cols;
 
+    /// @brief Construct a zero-initialized matrix.
     constexpr matrix() noexcept = default;
 
+    /// @brief Fill every matrix element with the same scalar value.
     constexpr explicit matrix(T value) noexcept
     {
         values_.fill(value);
     }
 
+    /**
+     * @brief Construct from exactly `Rows * Cols` storage-order values.
+     * @throws std::length_error when the initializer length does not match the matrix size.
+     */
     constexpr matrix(std::initializer_list<T> values)
     {
         if (values.size() != size)
@@ -36,6 +54,7 @@ public:
         requires (
             detail::expr_traits<std::remove_cvref_t<Expr>>::rows == Rows &&
             detail::expr_traits<std::remove_cvref_t<Expr>>::cols == Cols)
+    /// @brief Materialize a compatible matrix expression into this matrix.
     constexpr matrix(const Expr& expr) noexcept
     {
         assign(expr);
@@ -45,27 +64,32 @@ public:
         requires (
             detail::expr_traits<std::remove_cvref_t<Expr>>::rows == Rows &&
             detail::expr_traits<std::remove_cvref_t<Expr>>::cols == Cols)
+    /// @brief Assign and materialize a compatible matrix expression.
     constexpr matrix& operator=(const Expr& expr) noexcept
     {
         assign(expr);
         return *this;
     }
 
+    /// @brief Return mutable contiguous storage in the matrix layout order.
     constexpr T* data() noexcept
     {
         return values_.data();
     }
 
+    /// @brief Return immutable contiguous storage in the matrix layout order.
     constexpr const T* data() const noexcept
     {
         return values_.data();
     }
 
+    /// @brief Access an element by logical row and column.
     constexpr T& operator()(std::size_t row, std::size_t col) noexcept
     {
         return values_[storage_index(row, col)];
     }
 
+    /// @brief Access an element by logical row and column.
     constexpr const T& operator()(std::size_t row, std::size_t col) const noexcept
     {
         return values_[storage_index(row, col)];
@@ -89,6 +113,8 @@ private:
     std::array<T, size> values_{};
 };
 
+/// @name Common matrix aliases
+/// @{
 using matrix2f = matrix<float, 2>;
 using matrix3f = matrix<float, 3>;
 using matrix4f = matrix<float, 4>;
@@ -101,6 +127,7 @@ using matrix4x4f = matrix<float, 4, 4>;
 using matrix2x2d = matrix<double, 2, 2>;
 using matrix3x3d = matrix<double, 3, 3>;
 using matrix4x4d = matrix<double, 4, 4>;
+/// @}
 
 namespace detail
 {
@@ -148,6 +175,7 @@ struct expr_traits<matrix_scalar_expr<Op, ScalarOnLeft, Scalar, Expr>>
 } // namespace detail
 
 template <detail::matrix_expression Expr>
+/// @brief Materialize a matrix expression as a concrete `matrix`.
 constexpr auto eval(const Expr& expr) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
@@ -156,6 +184,7 @@ constexpr auto eval(const Expr& expr) noexcept
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
     requires detail::same_matrix_dimensions<Lhs, Rhs>
+/// @brief Build a lazy elementwise matrix addition expression.
 constexpr auto add(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::matrix_binary_expr<detail::add_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
@@ -163,6 +192,7 @@ constexpr auto add(Lhs&& lhs, Rhs&& rhs)
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
     requires detail::same_matrix_dimensions<Lhs, Rhs>
+/// @brief Build a lazy elementwise matrix subtraction expression.
 constexpr auto sub(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::matrix_binary_expr<detail::sub_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
@@ -170,6 +200,7 @@ constexpr auto sub(Lhs&& lhs, Rhs&& rhs)
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
     requires detail::same_matrix_dimensions<Lhs, Rhs>
+/// @brief Build a lazy elementwise matrix multiplication expression.
 constexpr auto mul(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::matrix_binary_expr<detail::mul_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
@@ -177,12 +208,14 @@ constexpr auto mul(Lhs&& lhs, Rhs&& rhs)
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
     requires detail::same_matrix_dimensions<Lhs, Rhs>
+/// @brief Build a lazy elementwise matrix division expression.
 constexpr auto div(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::matrix_binary_expr<detail::div_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
 }
 
 template <detail::matrix_expression Expr>
+/// @brief Build a lazy matrix negation expression.
 constexpr auto neg(Expr&& expr)
 {
     return detail::matrix_neg_expr<Expr>{ std::forward<Expr>(expr) };
@@ -190,6 +223,7 @@ constexpr auto neg(Expr&& expr)
 
 template <detail::matrix_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression adding a scalar to every matrix element.
 constexpr auto add(Expr&& expr, Scalar scalar)
 {
     return detail::matrix_scalar_expr<detail::add_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
@@ -197,6 +231,7 @@ constexpr auto add(Expr&& expr, Scalar scalar)
 
 template <class Scalar, detail::matrix_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression adding every matrix element to a scalar.
 constexpr auto add(Scalar scalar, Expr&& expr)
 {
     return detail::matrix_scalar_expr<detail::add_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
@@ -204,6 +239,7 @@ constexpr auto add(Scalar scalar, Expr&& expr)
 
 template <detail::matrix_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression subtracting a scalar from every matrix element.
 constexpr auto sub(Expr&& expr, Scalar scalar)
 {
     return detail::matrix_scalar_expr<detail::sub_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
@@ -211,6 +247,7 @@ constexpr auto sub(Expr&& expr, Scalar scalar)
 
 template <class Scalar, detail::matrix_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression subtracting every matrix element from a scalar.
 constexpr auto sub(Scalar scalar, Expr&& expr)
 {
     return detail::matrix_scalar_expr<detail::sub_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
@@ -218,6 +255,7 @@ constexpr auto sub(Scalar scalar, Expr&& expr)
 
 template <detail::matrix_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression multiplying every matrix element by a scalar.
 constexpr auto mul(Expr&& expr, Scalar scalar)
 {
     return detail::matrix_scalar_expr<detail::mul_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
@@ -225,6 +263,7 @@ constexpr auto mul(Expr&& expr, Scalar scalar)
 
 template <class Scalar, detail::matrix_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression multiplying a scalar by every matrix element.
 constexpr auto mul(Scalar scalar, Expr&& expr)
 {
     return detail::matrix_scalar_expr<detail::mul_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
@@ -232,6 +271,7 @@ constexpr auto mul(Scalar scalar, Expr&& expr)
 
 template <detail::matrix_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression dividing every matrix element by a scalar.
 constexpr auto div(Expr&& expr, Scalar scalar)
 {
     return detail::matrix_scalar_expr<detail::div_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
@@ -239,12 +279,14 @@ constexpr auto div(Expr&& expr, Scalar scalar)
 
 template <class Scalar, detail::matrix_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
+/// @brief Build a lazy expression dividing a scalar by every matrix element.
 constexpr auto div(Scalar scalar, Expr&& expr)
 {
     return detail::matrix_scalar_expr<detail::div_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
 }
 
 template <class T, std::size_t N, matrix_layout Layout = matrix_layout::column_major>
+/// @brief Return an `N x N` identity matrix.
 constexpr auto identity() noexcept
 {
     matrix<T, N, N, Layout> result{};
@@ -254,6 +296,7 @@ constexpr auto identity() noexcept
 }
 
 template <detail::matrix_expression Expr>
+/// @brief Return the transpose of a matrix expression.
 constexpr auto transpose(const Expr& expr) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
@@ -267,6 +310,7 @@ constexpr auto transpose(const Expr& expr) noexcept
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
     requires (detail::expr_traits<std::remove_cvref_t<Lhs>>::cols == detail::expr_traits<std::remove_cvref_t<Rhs>>::rows)
+/// @brief Return the linear algebra matrix product of two compatible matrices.
 constexpr auto matmul(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     using lhs_traits = detail::expr_traits<std::remove_cvref_t<Lhs>>;
@@ -292,6 +336,7 @@ template <detail::matrix_expression Mat, detail::vector_expression Vec>
         detail::expr_traits<std::remove_cvref_t<Mat>>::rows == 4 &&
         detail::expr_traits<std::remove_cvref_t<Mat>>::cols == 4 &&
         detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
+/// @brief Transform a 3D direction by the linear part of a 4x4 matrix.
 constexpr auto transform_vector(const Mat& mat, const Vec& vec) noexcept
 {
     using value_type = std::common_type_t<detail::expr_value_t<Mat>, detail::expr_value_t<Vec>>;
@@ -307,6 +352,7 @@ template <detail::matrix_expression Mat, detail::vector_expression Vec>
         detail::expr_traits<std::remove_cvref_t<Mat>>::rows == 4 &&
         detail::expr_traits<std::remove_cvref_t<Mat>>::cols == 4 &&
         detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
+/// @brief Transform a 3D point by a 4x4 matrix using homogeneous `w = 1`.
 constexpr auto transform_point(const Mat& mat, const Vec& vec) noexcept
 {
     using value_type = std::common_type_t<detail::expr_value_t<Mat>, detail::expr_value_t<Vec>>;
@@ -326,6 +372,7 @@ constexpr auto transform_point(const Mat& mat, const Vec& vec) noexcept
 
 template <detail::vector_expression Expr, matrix_layout Layout = matrix_layout::column_major>
     requires (detail::expr_traits<std::remove_cvref_t<Expr>>::size == 3)
+/// @brief Return a 4x4 translation matrix from a 3D offset vector.
 constexpr auto translation(const Expr& offset) noexcept
 {
     using value_type = detail::expr_value_t<Expr>;
@@ -337,6 +384,7 @@ constexpr auto translation(const Expr& offset) noexcept
 }
 
 template <class T, matrix_layout Layout = matrix_layout::column_major>
+/// @brief Return a 4x4 translation matrix from scalar offsets.
 constexpr auto translation(T x, T y, T z) noexcept
 {
     return translation<vector<T, 3>, Layout>(vector<T, 3>{ x, y, z });
@@ -344,6 +392,7 @@ constexpr auto translation(T x, T y, T z) noexcept
 
 template <detail::vector_expression Expr, matrix_layout Layout = matrix_layout::column_major>
     requires (detail::expr_traits<std::remove_cvref_t<Expr>>::size == 3)
+/// @brief Return a 4x4 non-uniform scaling matrix from a 3D scale vector.
 constexpr auto scaling(const Expr& scale) noexcept
 {
     using value_type = detail::expr_value_t<Expr>;
@@ -355,12 +404,14 @@ constexpr auto scaling(const Expr& scale) noexcept
 }
 
 template <class T, matrix_layout Layout = matrix_layout::column_major>
+/// @brief Return a 4x4 non-uniform scaling matrix from scalar scale values.
 constexpr auto scaling(T x, T y, T z) noexcept
 {
     return scaling<vector<T, 3>, Layout>(vector<T, 3>{ x, y, z });
 }
 
 template <class T, matrix_layout Layout = matrix_layout::column_major>
+/// @brief Return a 4x4 rotation matrix around the X axis.
 inline auto rotation_x(T radians) noexcept
 {
     auto result = identity<T, 4, Layout>();
@@ -374,6 +425,7 @@ inline auto rotation_x(T radians) noexcept
 }
 
 template <class T, matrix_layout Layout = matrix_layout::column_major>
+/// @brief Return a 4x4 rotation matrix around the Y axis.
 inline auto rotation_y(T radians) noexcept
 {
     auto result = identity<T, 4, Layout>();
@@ -387,6 +439,7 @@ inline auto rotation_y(T radians) noexcept
 }
 
 template <class T, matrix_layout Layout = matrix_layout::column_major>
+/// @brief Return a 4x4 rotation matrix around the Z axis.
 inline auto rotation_z(T radians) noexcept
 {
     auto result = identity<T, 4, Layout>();

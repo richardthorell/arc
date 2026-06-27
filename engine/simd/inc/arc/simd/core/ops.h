@@ -1,5 +1,10 @@
 #pragma once
 
+/**
+ * @file arc/simd/core/ops.h
+ * @brief Aggregate include for backend-agnostic SIMD operations.
+ */
+
 #include <arc/simd/core/ops/detail.h>
 #include <arc/simd/core/ops/mask_helpers.h>
 #include <arc/simd/core/ops/memory.h>

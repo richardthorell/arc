@@ -99,7 +99,11 @@ WARN_AS_ERROR          = NO
 WARN_FORMAT            = "$file:$line: $text"
 WARN_LOGFILE           =
 
-INPUT                  = engine/simd/inc engine/math/inc README.md engine/README.md
+INPUT                  = engine/simd/inc \
+                         engine/math/inc \
+                         engine/geometric/inc \
+                         README.md \
+                         engine/README.md
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.h \
                          *.hpp \
@@ -110,8 +114,11 @@ FILE_PATTERNS          = *.h \
                          *.md
 RECURSIVE              = YES
 
-EXCLUDE                = engine/simd/tests \
+EXCLUDE                = engine/simd/inc/arc/simd/arch \
+                         engine/simd/inc/arc/simd/core/ops/detail.h \
+                         engine/simd/tests \
                          engine/math/tests \
+                         engine/geometric/tests \
                          tests \
                          build \
                          out \
@@ -122,6 +129,8 @@ EXCLUDE_SYMLINKS       = NO
 EXCLUDE_PATTERNS       = */CMakeFiles/* \
                          */_deps/* \
                          */vcpkg_installed/*
+EXCLUDE_SYMBOLS        = arc::detail::* \
+                         arc::math::detail::*
 
 EXAMPLE_PATH           =
 EXAMPLE_PATTERNS       =

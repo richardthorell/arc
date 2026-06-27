@@ -6,6 +6,7 @@
 namespace arc
 {
 
+/// @brief Return the conjugate of a quaternion stored as `(x, y, z, w)`.
 template <class T>
 constexpr simd<T, 4> quat_conjugate(const simd<T, 4>& q) noexcept
 {
@@ -17,12 +18,14 @@ constexpr simd<T, 4> quat_conjugate(const simd<T, 4>& q) noexcept
     });
 }
 
+/// @brief Normalize a quaternion stored as `(x, y, z, w)`.
 template <class T>
 inline simd<T, 4> quat_normalize(const simd<T, 4>& q) noexcept
 {
     return normalize4(q);
 }
 
+/// @brief Return the Hamilton product of two quaternions stored as `(x, y, z, w)`.
 template <class T>
 constexpr simd<T, 4> quat_mul(const simd<T, 4>& a, const simd<T, 4>& b) noexcept
 {
@@ -43,6 +46,7 @@ constexpr simd<T, 4> quat_mul(const simd<T, 4>& a, const simd<T, 4>& b) noexcept
     });
 }
 
+/// @brief Rotate a 3D vector by a quaternion stored as `(x, y, z, w)`.
 template <class T>
 constexpr simd<T, 4> quat_rotate3(const simd<T, 4>& q, const simd<T, 4>& vector) noexcept
 {
