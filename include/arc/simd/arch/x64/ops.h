@@ -427,7 +427,17 @@ struct simd_op<__m128i>
         return _mm_load_si128(reinterpret_cast<const __m128i*>(ptr));
     }
 
+    static inline __m128i load_aligned(const uint32_t* ptr) noexcept
+    {
+        return _mm_load_si128(reinterpret_cast<const __m128i*>(ptr));
+    }
+
     static inline void store_aligned(int32_t* ptr, __m128i value) noexcept
+    {
+        _mm_store_si128(reinterpret_cast<__m128i*>(ptr), value);
+    }
+
+    static inline void store_aligned(uint32_t* ptr, __m128i value) noexcept
     {
         _mm_store_si128(reinterpret_cast<__m128i*>(ptr), value);
     }
@@ -437,7 +447,17 @@ struct simd_op<__m128i>
         return _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
     }
 
+    static inline __m128i load_unaligned(const uint32_t* ptr) noexcept
+    {
+        return _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
+    }
+
     static inline void store_unaligned(int32_t* ptr, __m128i value) noexcept
+    {
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), value);
+    }
+
+    static inline void store_unaligned(uint32_t* ptr, __m128i value) noexcept
     {
         _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), value);
     }
@@ -467,6 +487,11 @@ struct simd_op<__m128i>
     static inline __m128i fill(int32_t value) noexcept
     {
         return _mm_set1_epi32(value);
+    }
+
+    static inline __m128i fill(uint32_t value) noexcept
+    {
+        return _mm_set1_epi32(static_cast<int32_t>(value));
     }
 
     static inline __m128i add(__m128i a, __m128i b) noexcept
@@ -996,7 +1021,17 @@ struct simd_op<__m256i>
         return _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
     }
 
+    static inline __m256i load_aligned(const uint32_t* ptr) noexcept
+    {
+        return _mm256_load_si256(reinterpret_cast<const __m256i*>(ptr));
+    }
+
     static inline void store_aligned(int32_t* ptr, __m256i value) noexcept
+    {
+        _mm256_store_si256(reinterpret_cast<__m256i*>(ptr), value);
+    }
+
+    static inline void store_aligned(uint32_t* ptr, __m256i value) noexcept
     {
         _mm256_store_si256(reinterpret_cast<__m256i*>(ptr), value);
     }
@@ -1006,7 +1041,17 @@ struct simd_op<__m256i>
         return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr));
     }
 
+    static inline __m256i load_unaligned(const uint32_t* ptr) noexcept
+    {
+        return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr));
+    }
+
     static inline void store_unaligned(int32_t* ptr, __m256i value) noexcept
+    {
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(ptr), value);
+    }
+
+    static inline void store_unaligned(uint32_t* ptr, __m256i value) noexcept
     {
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(ptr), value);
     }
@@ -1036,6 +1081,11 @@ struct simd_op<__m256i>
     static inline __m256i fill(int32_t value) noexcept
     {
         return _mm256_set1_epi32(value);
+    }
+
+    static inline __m256i fill(uint32_t value) noexcept
+    {
+        return _mm256_set1_epi32(static_cast<int32_t>(value));
     }
 
     static inline __m256i add(__m256i a, __m256i b) noexcept
@@ -1519,7 +1569,17 @@ struct simd_op<__m512i>
         return _mm512_load_si512(reinterpret_cast<const void*>(ptr));
     }
 
+    static inline __m512i load_aligned(const uint32_t* ptr) noexcept
+    {
+        return _mm512_load_si512(reinterpret_cast<const void*>(ptr));
+    }
+
     static inline void store_aligned(int32_t* ptr, __m512i value) noexcept
+    {
+        _mm512_store_si512(reinterpret_cast<void*>(ptr), value);
+    }
+
+    static inline void store_aligned(uint32_t* ptr, __m512i value) noexcept
     {
         _mm512_store_si512(reinterpret_cast<void*>(ptr), value);
     }
@@ -1529,7 +1589,17 @@ struct simd_op<__m512i>
         return _mm512_loadu_si512(reinterpret_cast<const void*>(ptr));
     }
 
+    static inline __m512i load_unaligned(const uint32_t* ptr) noexcept
+    {
+        return _mm512_loadu_si512(reinterpret_cast<const void*>(ptr));
+    }
+
     static inline void store_unaligned(int32_t* ptr, __m512i value) noexcept
+    {
+        _mm512_storeu_si512(reinterpret_cast<void*>(ptr), value);
+    }
+
+    static inline void store_unaligned(uint32_t* ptr, __m512i value) noexcept
     {
         _mm512_storeu_si512(reinterpret_cast<void*>(ptr), value);
     }
@@ -1559,6 +1629,11 @@ struct simd_op<__m512i>
     static inline __m512i fill(int32_t value) noexcept
     {
         return _mm512_set1_epi32(value);
+    }
+
+    static inline __m512i fill(uint32_t value) noexcept
+    {
+        return _mm512_set1_epi32(static_cast<int32_t>(value));
     }
 
     static inline __m512i add(__m512i a, __m512i b) noexcept

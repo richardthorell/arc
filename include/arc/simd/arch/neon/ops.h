@@ -41,12 +41,36 @@ struct simd_op<float32x4_t>
 
     static inline float32x4_t extract(float32x4_t value, std::size_t index) noexcept
     {
-        return vdupq_n_f32(vgetq_lane_f32(value, index));
+        switch (index)
+        {
+        case 0: return vdupq_n_f32(vgetq_lane_f32(value, 0));
+        case 1: return vdupq_n_f32(vgetq_lane_f32(value, 1));
+        case 2: return vdupq_n_f32(vgetq_lane_f32(value, 2));
+        default: return vdupq_n_f32(vgetq_lane_f32(value, 3));
+        }
+    }
+
+    template <std::size_t I>
+    static inline float extract(float32x4_t value) noexcept
+    {
+        return vgetq_lane_f32(value, I);
     }
 
     static inline float32x4_t insert(float32x4_t value, float element, std::size_t index) noexcept
     {
-        return vsetq_lane_f32(element, value, index);
+        switch (index)
+        {
+        case 0: return vsetq_lane_f32(element, value, 0);
+        case 1: return vsetq_lane_f32(element, value, 1);
+        case 2: return vsetq_lane_f32(element, value, 2);
+        default: return vsetq_lane_f32(element, value, 3);
+        }
+    }
+
+    template <std::size_t I>
+    static inline float32x4_t insert(float32x4_t value, float element) noexcept
+    {
+        return vsetq_lane_f32(element, value, I);
     }
 
     static inline float32x4_t fill(float value) noexcept
@@ -244,12 +268,36 @@ struct simd_op<int32x4_t>
 
     static inline int32x4_t extract(int32x4_t value, std::size_t index) noexcept
     {
-        return vdupq_n_s32(vgetq_lane_s32(value, index));
+        switch (index)
+        {
+        case 0: return vdupq_n_s32(vgetq_lane_s32(value, 0));
+        case 1: return vdupq_n_s32(vgetq_lane_s32(value, 1));
+        case 2: return vdupq_n_s32(vgetq_lane_s32(value, 2));
+        default: return vdupq_n_s32(vgetq_lane_s32(value, 3));
+        }
+    }
+
+    template <std::size_t I>
+    static inline int32_t extract(int32x4_t value) noexcept
+    {
+        return vgetq_lane_s32(value, I);
     }
 
     static inline int32x4_t insert(int32x4_t value, int32_t element, std::size_t index) noexcept
     {
-        return vsetq_lane_s32(element, value, index);
+        switch (index)
+        {
+        case 0: return vsetq_lane_s32(element, value, 0);
+        case 1: return vsetq_lane_s32(element, value, 1);
+        case 2: return vsetq_lane_s32(element, value, 2);
+        default: return vsetq_lane_s32(element, value, 3);
+        }
+    }
+
+    template <std::size_t I>
+    static inline int32x4_t insert(int32x4_t value, int32_t element) noexcept
+    {
+        return vsetq_lane_s32(element, value, I);
     }
 
     static inline int32x4_t fill(int32_t value) noexcept
@@ -367,6 +415,194 @@ struct simd_op<int32x4_t>
         return vget_lane_s32(vpmax_s32(max_val, max_val), 0);
     }
 };
+
+template <>
+struct simd_op<uint32x4_t>
+{
+    static inline uint32x4_t load_aligned(const uint32_t* ptr) noexcept
+    {
+        return vld1q_u32(ptr);
+    }
+
+    static inline void store_aligned(uint32_t* ptr, uint32x4_t value) noexcept
+    {
+        vst1q_u32(ptr, value);
+    }
+
+    static inline uint32x4_t load_unaligned(const uint32_t* ptr) noexcept
+    {
+        return vld1q_u32(ptr);
+    }
+
+    static inline void store_unaligned(uint32_t* ptr, uint32x4_t value) noexcept
+    {
+        vst1q_u32(ptr, value);
+    }
+
+    static inline uint32x4_t masked_load(const uint32_t* ptr, uint32x4_t mask, uint32x4_t default_value) noexcept
+    {
+        return vbslq_u32(mask, vld1q_u32(ptr), default_value);
+    }
+
+    static inline void masked_store(uint32_t* ptr, uint32x4_t value, uint32x4_t mask) noexcept
+    {
+        vst1q_u32(ptr, vbslq_u32(mask, value, vld1q_u32(ptr)));
+    }
+
+    static inline uint32x4_t extract(uint32x4_t value, std::size_t index) noexcept
+    {
+        switch (index)
+        {
+        case 0: return vdupq_n_u32(vgetq_lane_u32(value, 0));
+        case 1: return vdupq_n_u32(vgetq_lane_u32(value, 1));
+        case 2: return vdupq_n_u32(vgetq_lane_u32(value, 2));
+        default: return vdupq_n_u32(vgetq_lane_u32(value, 3));
+        }
+    }
+
+    template <std::size_t I>
+    static inline uint32_t extract(uint32x4_t value) noexcept
+    {
+        return vgetq_lane_u32(value, I);
+    }
+
+    static inline uint32x4_t insert(uint32x4_t value, uint32_t element, std::size_t index) noexcept
+    {
+        switch (index)
+        {
+        case 0: return vsetq_lane_u32(element, value, 0);
+        case 1: return vsetq_lane_u32(element, value, 1);
+        case 2: return vsetq_lane_u32(element, value, 2);
+        default: return vsetq_lane_u32(element, value, 3);
+        }
+    }
+
+    template <std::size_t I>
+    static inline uint32x4_t insert(uint32x4_t value, uint32_t element) noexcept
+    {
+        return vsetq_lane_u32(element, value, I);
+    }
+
+    static inline uint32x4_t fill(uint32_t value) noexcept
+    {
+        return vdupq_n_u32(value);
+    }
+
+    static inline uint32x4_t add(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vaddq_u32(a, b);
+    }
+
+    static inline uint32x4_t sub(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vsubq_u32(a, b);
+    }
+
+    static inline uint32x4_t neg(uint32x4_t a) noexcept
+    {
+        return vsubq_u32(vdupq_n_u32(0), a);
+    }
+
+    static inline uint32x4_t min(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vminq_u32(a, b);
+    }
+
+    static inline uint32x4_t max(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vmaxq_u32(a, b);
+    }
+
+    static inline uint32x4_t bitwise_and(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vandq_u32(a, b);
+    }
+
+    static inline uint32x4_t bitwise_or(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vorrq_u32(a, b);
+    }
+
+    static inline uint32x4_t bitwise_xor(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return veorq_u32(a, b);
+    }
+
+    static inline uint32x4_t bitwise_not(uint32x4_t a) noexcept
+    {
+        return vmvnq_u32(a);
+    }
+
+    static inline uint32x4_t cmp_eq(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vceqq_u32(a, b);
+    }
+
+    static inline uint32x4_t cmp_ne(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vmvnq_u32(vceqq_u32(a, b));
+    }
+
+    static inline uint32x4_t cmp_lt(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vcltq_u32(a, b);
+    }
+
+    static inline uint32x4_t cmp_le(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vcleq_u32(a, b);
+    }
+
+    static inline uint32x4_t cmp_gt(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vcgtq_u32(a, b);
+    }
+
+    static inline uint32x4_t cmp_ge(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return vcgeq_u32(a, b);
+    }
+
+    static inline uint32x4_t blend(uint32x4_t a, uint32x4_t b, uint32x4_t mask) noexcept
+    {
+        return vbslq_u32(mask, b, a);
+    }
+
+    static inline bool any(uint32x4_t a) noexcept
+    {
+        uint32x2_t tmp = vorr_u32(vget_low_u32(a), vget_high_u32(a));
+        return vget_lane_u32(vpmax_u32(tmp, tmp), 0) != 0;
+    }
+
+    static inline bool all(uint32x4_t a) noexcept
+    {
+        uint32x2_t tmp = vand_u32(vget_low_u32(a), vget_high_u32(a));
+        return vget_lane_u32(vpmin_u32(tmp, tmp), 0) == 0xFFFFFFFFu;
+    }
+
+    static inline uint32_t sum(uint32x4_t a) noexcept
+    {
+        uint32x2_t sum = vadd_u32(vget_low_u32(a), vget_high_u32(a));
+        return vget_lane_u32(vpadd_u32(sum, sum), 0);
+    }
+
+    static inline uint32_t dot(uint32x4_t a, uint32x4_t b) noexcept
+    {
+        return sum(vmulq_u32(a, b));
+    }
+
+    static inline uint32_t min_element(uint32x4_t a) noexcept
+    {
+        uint32x2_t min_val = vpmin_u32(vget_low_u32(a), vget_high_u32(a));
+        return vget_lane_u32(vpmin_u32(min_val, min_val), 0);
+    }
+
+    static inline uint32_t max_element(uint32x4_t a) noexcept
+    {
+        uint32x2_t max_val = vpmax_u32(vget_low_u32(a), vget_high_u32(a));
+        return vget_lane_u32(vpmax_u32(max_val, max_val), 0);
+    }
+};
 #endif
 
 
@@ -406,12 +642,32 @@ struct simd_op<float64x2_t>
 
     static inline float64x2_t extract(float64x2_t value, std::size_t index) noexcept
     {
-        return vdupq_n_f64(vgetq_lane_f64(value, index));
+        switch (index)
+        {
+        case 0: return vdupq_n_f64(vgetq_lane_f64(value, 0));
+        default: return vdupq_n_f64(vgetq_lane_f64(value, 1));
+        }
+    }
+
+    template <std::size_t I>
+    static inline double extract(float64x2_t value) noexcept
+    {
+        return vgetq_lane_f64(value, I);
     }
 
     static inline float64x2_t insert(float64x2_t value, double element, std::size_t index) noexcept
     {
-        return vsetq_lane_f64(element, value, index);
+        switch (index)
+        {
+        case 0: return vsetq_lane_f64(element, value, 0);
+        default: return vsetq_lane_f64(element, value, 1);
+        }
+    }
+
+    template <std::size_t I>
+    static inline float64x2_t insert(float64x2_t value, double element) noexcept
+    {
+        return vsetq_lane_f64(element, value, I);
     }
 
     static inline float64x2_t fill(double value) noexcept
