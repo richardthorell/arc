@@ -40,6 +40,9 @@ inline constexpr std::size_t simd_max_lanes = 1;
 #elif defined(__ARM_NEON) || defined(__ARM_NEON__)
     #include "arc/simd/arch/neon/registers.h"
     #include "arc/simd/arch/neon/ops.h"
+#elif defined(__riscv)
+    #include "arc/simd/arch/riscv/registers.h"
+    #include "arc/simd/arch/riscv/ops.h"
 #else
     #error "Unsupported SIMD architecture"
 #endif
