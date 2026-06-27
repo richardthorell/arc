@@ -4,7 +4,7 @@ DOXYFILE_ENCODING      = UTF-8
 
 PROJECT_NAME           = "arc"
 PROJECT_NUMBER         =
-PROJECT_BRIEF          = "A modern C++ SIMD and math library"
+PROJECT_BRIEF          = "A 3D engine monorepo with a SIMD and math foundation"
 PROJECT_LOGO           =
 OUTPUT_DIRECTORY       = docs-build
 CREATE_SUBDIRS         = NO
@@ -99,7 +99,7 @@ WARN_AS_ERROR          = NO
 WARN_FORMAT            = "$file:$line: $text"
 WARN_LOGFILE           =
 
-INPUT                  = include README.md
+INPUT                  = engine/simd/inc engine/math/inc README.md engine/README.md
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.h \
                          *.hpp \
@@ -110,7 +110,9 @@ FILE_PATTERNS          = *.h \
                          *.md
 RECURSIVE              = YES
 
-EXCLUDE                = tests \
+EXCLUDE                = engine/simd/tests \
+                         engine/math/tests \
+                         tests \
                          build \
                          out \
                          docs-build \

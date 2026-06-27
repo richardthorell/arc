@@ -16,7 +16,7 @@ jobs:
         uses: jwlawson/actions-setup-cmake@v2
 
       - name: Configure project
-        run: cmake -B build -S tests -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release --parallel

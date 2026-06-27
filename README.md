@@ -1,36 +1,24 @@
-# ARC — A Modern C++ SIMD and Math Library
+# ARC
 
-[![Build](https://github.com/richardthorell/arc/actions/workflows/tests.yml/badge.svg)](https://github.com/richardthorell/arc/actions)
-![License](https://img.shields.io/github/license/richardthorell/arc)
-![C++](https://img.shields.io/badge/C%2B%2B-20-blue.svg)
-![Platform](https://img.shields.io/badge/platform-cross--platform-lightgrey.svg)
+ARC is growing into a 3D engine monorepo.
 
----
+The repository is organized around a few top-level areas:
 
-### Overview
+- `engine/` contains the core engine library, split into modules such as `simd/` and `math/`.
+- `editor/` is reserved for future editor tooling.
+- `samples/` is reserved for example applications and experiments.
+- `tests/` is reserved for high-level engine/editor/sample integration tests.
 
-**ARC** is a modern, header-only C++ library designed to provide a clean and extensible abstraction over SIMD operations.  
-It aims to unify low-level SIMD intrinsics under a single, intuitive API while maintaining full performance through compile-time specialization.
-
-The library provides:
-- Type-safe SIMD abstractions (`simd<T, N>` and `simd_mask<N>`)
-- Free-function based API (no heavy class hierarchies)
-- Consistent arithmetic, logical, and comparison operations
-- Masked and conditional operations
-- Extensible design for different architectures (SSE, AVX, NEON, etc.)
-- Easy integration into modern CMake projects
-
----
-
-### Building & Testing
-
-This is a **header-only** library — no installation required.
-
-To build and run the tests (using **Catch2** and **CMake**):
+## Building
 
 ```bash
-git clone https://github.com/richardthorell/arc.git
-cd arc/tests
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release --parallel
+ctest --test-dir build --output-on-failure
+```
+
+The current SIMD include path remains compatible:
+
+```cpp
+#include <arc/simd.h>
+```
