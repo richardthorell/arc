@@ -15,11 +15,12 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/arc_module.cmake")
 
 add_subdirectory(simd)
 add_subdirectory(math)
+add_subdirectory(geometric)
 
 add_library(arc INTERFACE)
 target_link_libraries(arc
     INTERFACE
-        arc-math
+        arc-geometric
 )
 
 if(NOT TARGET arc::arc)

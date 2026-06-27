@@ -6,6 +6,7 @@ Current modules:
 
 - `simd/` provides the SIMD foundation through the `arc-simd` target and `arc::simd` alias.
 - `math/` provides the math foundation through the `arc-math` target and `arc::math` alias. It depends on `arc-simd`.
+- `geometric/` provides 2D/3D primitive types through the `arc-geometric` target and `arc::geometric` alias. It depends on `arc-math`.
 - `arc` remains the aggregate compatibility target for consumers that want the whole engine foundation.
 
 The SIMD public include path remains:
@@ -21,6 +22,16 @@ The math public include paths are:
 #include <math/matrix.h>
 #include <math/quaternion.h>
 #include <math/math.h>
+```
+
+The geometric public include paths are:
+
+```cpp
+#include <geometric/point.h>
+#include <geometric/line.h>
+#include <geometric/box.h>
+#include <geometric/circle.h>
+#include <geometric/geometric.h>
 ```
 
 The SIMD module provides:
