@@ -14,6 +14,8 @@ option(ARC_BUILD_HIGH_LEVEL_TESTS "Build ARC high-level integration tests" OFF)
 add_subdirectory(engine)
 
 if(ARC_BUILD_EDITOR)
+    add_subdirectory(third_party)
+
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
         add_subdirectory(editor)
     else()
