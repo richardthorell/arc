@@ -7,7 +7,10 @@ Current modules:
 - `simd/` provides the SIMD foundation through the `arc-simd` target and `arc::simd` alias.
 - `math/` provides the math foundation through the `arc-math` target and `arc::math` alias. It depends on `arc-simd`.
 - `geometric/` provides 2D/3D primitive types through the `arc-geometric` target and `arc::geometric` alias. It depends on `arc-math`.
-- `framework/` provides the platform-neutral application lifecycle through the `arc-framework` target and `arc::framework` alias. It depends on `arc-geometric`.
+- `diagnostics/` provides logging through the `arc-diagnostics` target and `arc::diagnostics` alias.
+- `jobs/` provides shared worker-pool services through the `arc-jobs` target and `arc::jobs` alias. It depends on `arc-diagnostics`.
+- `memory/` provides tracked memory-resource instrumentation through the `arc-memory` target and `arc::memory` alias. It depends on `arc-diagnostics`.
+- `framework/` provides the platform-neutral application lifecycle and runtime module manager through the `arc-framework` target and `arc::framework` alias. It depends on `arc-geometric`, `arc-jobs`, and `arc-memory`.
 - `platform/windows/` provides the optional raw Win32 entry host through the `arc-platform-windows` target and `arc::platform-windows` alias. It depends on `arc`.
 - `arc` remains the aggregate compatibility target for consumers that want the whole engine foundation.
 
@@ -40,6 +43,14 @@ The framework public include path is:
 
 ```cpp
 #include <arc/framework.h>
+```
+
+The diagnostics, jobs, and memory public include paths are:
+
+```cpp
+#include <arc/diagnostics.h>
+#include <arc/jobs.h>
+#include <arc/memory.h>
 ```
 
 The SIMD module provides:

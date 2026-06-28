@@ -9,6 +9,8 @@
 namespace arc
 {
 
+class module_registry;
+
 /**
  * @brief Startup configuration requested by an application.
  */
@@ -49,6 +51,11 @@ public:
      * @brief Called once when the runtime starts.
      */
     virtual void on_start();
+
+    /**
+     * @brief Register runtime modules before startup.
+     */
+    virtual void register_modules(module_registry& registry);
 
     /**
      * @brief Called once per frame while the runtime is running.

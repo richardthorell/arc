@@ -7,4 +7,5 @@
 
 #include <arc/application.h>
 #include <arc/event.h>
+#include <arc/module.h>
 #include <arc/runtime.h>

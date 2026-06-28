@@ -1,6 +1,8 @@
 #pragma once
 
 #include <arc/application.h>
+#include <arc/jobs.h>
+#include <arc/module.h>
 
 #include <chrono>
 
@@ -64,11 +66,25 @@ public:
      */
     const application_config& config() const noexcept;
 
+    /**
+     * @brief Return the shared runtime job system.
+     */
+    job_system& jobs() noexcept;
+
+    /**
+     * @brief Return the shared runtime module manager.
+     */
+    module_manager& modules() noexcept;
+
 private:
     using clock = std::chrono::steady_clock;
 
     application* app_{};
     application_config config_{};
+    job_system jobs_{};
+    module_context module_context_;
+    module_manager modules_;
+    bool modules_registered_{};
     bool started_{};
     bool running_{};
     clock::time_point start_time_{};

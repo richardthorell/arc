@@ -1,7 +1,7 @@
 arc_add_module(
-    NAME arc-framework
+    NAME arc-memory
     TYPE STATIC
-    DEPS arc-geometric arc-jobs arc-memory
+    DEPS arc-diagnostics
     NO_TESTS
 )
 

@@ -16,6 +16,10 @@ void application::on_start()
 {
 }
 
+void application::register_modules(module_registry&)
+{
+}
+
 void application::on_update(const frame_time&)
 {
 }
@@ -36,6 +40,8 @@ runtime::runtime(application& app)
 runtime::runtime(application& app, application_config config)
     : app_(&app)
     , config_(normalize_config(std::move(config)))
+    , jobs_()
+    , module_context_(jobs_, default_logger(), default_tracked_memory_resource())
 {
 }
 
@@ -60,6 +66,12 @@ void runtime::start()
     start_time_ = clock::now();
     last_frame_time_ = start_time_;
     current_time_ = {};
+    if (!modules_registered_)
+    {
+        app_->register_modules(modules_.registry());
+        modules_registered_ = true;
+    }
+    modules_.start(module_context_);
     app_->on_start();
 }
 
@@ -75,6 +87,7 @@ frame_time runtime::tick()
     current_time_.total_seconds = std::chrono::duration<double>(now - start_time_).count();
     last_frame_time_ = now;
 
+    modules_.update(module_context_, current_time_);
     app_->on_update(current_time_);
     ++current_time_.frame_index;
     return current_time_;
@@ -85,6 +98,7 @@ void runtime::dispatch(const event& value)
     if (!started_)
         start();
 
+    modules_.dispatch(module_context_, value);
     app_->on_event(value);
     if (value.type == event_type::close_requested)
         request_stop();
@@ -101,6 +115,7 @@ void runtime::shutdown()
         return;
 
     app_->on_shutdown();
+    modules_.shutdown(module_context_);
     started_ = false;
     running_ = false;
 }
@@ -118,6 +133,16 @@ bool runtime::started() const noexcept
 const application_config& runtime::config() const noexcept
 {
     return config_;
+}
+
+job_system& runtime::jobs() noexcept
+{
+    return jobs_;
+}
+
+module_manager& runtime::modules() noexcept
+{
+    return modules_;
 }
 
 } // namespace arc

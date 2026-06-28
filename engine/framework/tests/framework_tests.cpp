@@ -2,6 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -49,6 +51,86 @@ public:
 
 private:
     arc::application_config config_;
+};
+
+class recording_module final : public arc::module
+{
+public:
+    recording_module(std::string module_name, std::vector<std::string>* calls, std::vector<std::string> deps = {})
+        : module_name_(std::move(module_name))
+        , calls_(calls)
+        , deps_(std::move(deps))
+    {
+    }
+
+    std::string_view name() const override
+    {
+        return module_name_;
+    }
+
+    std::vector<std::string> dependencies() const override
+    {
+        return deps_;
+    }
+
+    void on_start(arc::module_context& context) override
+    {
+        REQUIRE(context.jobs().run_inline() == false);
+        calls_->push_back(module_name_ + ":start");
+    }
+
+    void on_update(arc::module_context&, const arc::frame_time&) override
+    {
+        calls_->push_back(module_name_ + ":update");
+    }
+
+    void on_event(arc::module_context&, const arc::event&) override
+    {
+        calls_->push_back(module_name_ + ":event");
+    }
+
+    void on_shutdown(arc::module_context&) override
+    {
+        calls_->push_back(module_name_ + ":shutdown");
+    }
+
+private:
+    std::string module_name_;
+    std::vector<std::string>* calls_{};
+    std::vector<std::string> deps_;
+};
+
+class modular_application final : public arc::application
+{
+public:
+    void register_modules(arc::module_registry& registry) override
+    {
+        calls.push_back("register");
+        registry.add(std::make_unique<recording_module>("graphics", &calls));
+        registry.add(std::make_unique<recording_module>("physics", &calls, std::vector<std::string>{ "graphics" }));
+    }
+
+    void on_start() override
+    {
+        calls.push_back("app:start");
+    }
+
+    void on_update(const arc::frame_time&) override
+    {
+        calls.push_back("app:update");
+    }
+
+    void on_event(const arc::event&) override
+    {
+        calls.push_back("app:event");
+    }
+
+    void on_shutdown() override
+    {
+        calls.push_back("app:shutdown");
+    }
+
+    std::vector<std::string> calls;
 };
 
 } // namespace
@@ -130,4 +212,68 @@ TEST_CASE("runtime uses application provided config")
     REQUIRE(runtime.config().title == "Test App");
     REQUIRE(runtime.config().initial_width == 800);
     REQUIRE(runtime.config().initial_height == 600);
+}
+
+TEST_CASE("runtime starts, updates, dispatches, and shuts modules in order")
+{
+    modular_application app;
+    arc::runtime runtime(app);
+
+    runtime.start();
+    runtime.tick();
+
+    arc::event event{};
+    event.type = arc::event_type::resized;
+    runtime.dispatch(event);
+    runtime.shutdown();
+
+    REQUIRE(app.calls == std::vector<std::string>{
+        "register",
+        "graphics:start",
+        "physics:start",
+        "app:start",
+        "graphics:update",
+        "physics:update",
+        "app:update",
+        "graphics:event",
+        "physics:event",
+        "app:event",
+        "app:shutdown",
+        "physics:shutdown",
+        "graphics:shutdown" });
+}
+
+TEST_CASE("module manager rejects dependency problems")
+{
+    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::module_context context(jobs, arc::default_logger(), arc::default_tracked_memory_resource());
+
+    SECTION("unknown dependency")
+    {
+        arc::module_manager manager;
+        std::vector<std::string> calls;
+        manager.registry().add(std::make_unique<recording_module>("physics", &calls, std::vector<std::string>{ "graphics" }));
+
+        REQUIRE_THROWS_AS(manager.start(context), std::invalid_argument);
+    }
+
+    SECTION("duplicate names")
+    {
+        arc::module_manager manager;
+        std::vector<std::string> calls;
+        manager.registry().add(std::make_unique<recording_module>("graphics", &calls));
+        manager.registry().add(std::make_unique<recording_module>("graphics", &calls));
+
+        REQUIRE_THROWS_AS(manager.start(context), std::invalid_argument);
+    }
+
+    SECTION("dependency cycles")
+    {
+        arc::module_manager manager;
+        std::vector<std::string> calls;
+        manager.registry().add(std::make_unique<recording_module>("a", &calls, std::vector<std::string>{ "b" }));
+        manager.registry().add(std::make_unique<recording_module>("b", &calls, std::vector<std::string>{ "a" }));
+
+        REQUIRE_THROWS_AS(manager.start(context), std::invalid_argument);
+    }
 }
