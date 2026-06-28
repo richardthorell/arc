@@ -1,0 +1,123 @@
+#include <arc/runtime.h>
+
+#include <utility>
+
+namespace arc
+{
+
+application::~application() = default;
+
+application_config application::configure() const
+{
+    return {};
+}
+
+void application::on_start()
+{
+}
+
+void application::on_update(const frame_time&)
+{
+}
+
+void application::on_event(const event&)
+{
+}
+
+void application::on_shutdown()
+{
+}
+
+runtime::runtime(application& app)
+    : runtime(app, app.configure())
+{
+}
+
+runtime::runtime(application& app, application_config config)
+    : app_(&app)
+    , config_(normalize_config(std::move(config)))
+{
+}
+
+application_config runtime::normalize_config(application_config config)
+{
+    if (config.title.empty())
+        config.title = "ARC Application";
+    if (config.initial_width == 0)
+        config.initial_width = 1280;
+    if (config.initial_height == 0)
+        config.initial_height = 720;
+    return config;
+}
+
+void runtime::start()
+{
+    if (started_)
+        return;
+
+    started_ = true;
+    running_ = true;
+    start_time_ = clock::now();
+    last_frame_time_ = start_time_;
+    current_time_ = {};
+    app_->on_start();
+}
+
+frame_time runtime::tick()
+{
+    if (!started_)
+        start();
+    if (!running_)
+        return current_time_;
+
+    const auto now = clock::now();
+    current_time_.delta_seconds = std::chrono::duration<double>(now - last_frame_time_).count();
+    current_time_.total_seconds = std::chrono::duration<double>(now - start_time_).count();
+    last_frame_time_ = now;
+
+    app_->on_update(current_time_);
+    ++current_time_.frame_index;
+    return current_time_;
+}
+
+void runtime::dispatch(const event& value)
+{
+    if (!started_)
+        start();
+
+    app_->on_event(value);
+    if (value.type == event_type::close_requested)
+        request_stop();
+}
+
+void runtime::request_stop() noexcept
+{
+    running_ = false;
+}
+
+void runtime::shutdown()
+{
+    if (!started_)
+        return;
+
+    app_->on_shutdown();
+    started_ = false;
+    running_ = false;
+}
+
+bool runtime::running() const noexcept
+{
+    return running_;
+}
+
+bool runtime::started() const noexcept
+{
+    return started_;
+}
+
+const application_config& runtime::config() const noexcept
+{
+    return config_;
+}
+
+} // namespace arc

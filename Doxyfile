@@ -102,6 +102,7 @@ WARN_LOGFILE           =
 INPUT                  = engine/simd/inc \
                          engine/math/inc \
                          engine/geometric/inc \
+                         engine/framework/inc \
                          README.md \
                          engine/README.md
 INPUT_ENCODING         = UTF-8
@@ -119,6 +120,8 @@ EXCLUDE                = engine/simd/inc/arc/simd/arch \
                          engine/simd/tests \
                          engine/math/tests \
                          engine/geometric/tests \
+                         engine/framework/tests \
+                         engine/platform \
                          tests \
                          build \
                          out \

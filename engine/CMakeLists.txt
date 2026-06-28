@@ -11,16 +11,25 @@ endif()
 
 option(ARC_BUILD_ENGINE_TESTS "Build ARC engine unit tests" ON)
 
+if(WIN32)
+    set(_arc_build_platform_windows_default ON)
+else()
+    set(_arc_build_platform_windows_default OFF)
+endif()
+
+option(ARC_BUILD_PLATFORM_WINDOWS "Build ARC Windows platform entry targets" ${_arc_build_platform_windows_default})
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/arc_module.cmake")
 
 add_subdirectory(simd)
 add_subdirectory(math)
 add_subdirectory(geometric)
+add_subdirectory(framework)
 
 add_library(arc INTERFACE)
 target_link_libraries(arc
     INTERFACE
-        arc-geometric
+        arc-framework
 )
 
 if(NOT TARGET arc::arc)
@@ -29,4 +38,11 @@ endif()
 
 if(NOT TARGET arc::engine)
     add_library(arc::engine ALIAS arc)
+endif()
+
+if(ARC_BUILD_PLATFORM_WINDOWS)
+    if(NOT WIN32)
+        message(FATAL_ERROR "ARC_BUILD_PLATFORM_WINDOWS is ON, but the current platform is not Windows")
+    endif()
+    add_subdirectory(platform/windows)
 endif()

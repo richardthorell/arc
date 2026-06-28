@@ -10,6 +10,8 @@ scene, asset, and editor systems land.
 - `engine/simd/` provides portable SIMD primitives and game-oriented SIMD helpers.
 - `engine/math/` provides vector, matrix, and quaternion types built on top of SIMD where available.
 - `engine/geometric/` provides simple 2D/3D primitives such as points, lines, boxes, circles, and spheres.
+- `engine/framework/` provides the platform-neutral application lifecycle.
+- `engine/platform/windows/` provides the optional raw Win32 entry host.
 - `editor/` is reserved for future editor tooling.
 - `samples/` is reserved for examples and experiments.
 - `tests/` is reserved for future high-level integration scenarios.
@@ -30,6 +32,7 @@ The current engine foundation can be consumed through module headers:
 #include <arc/simd.h>
 #include <math/math.h>
 #include <geometric/geometric.h>
+#include <arc/framework.h>
 ```
 
 More specific math and geometric headers are also available when a translation
