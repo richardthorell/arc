@@ -43,3 +43,6 @@
 # Build directory
 build/
 build-*/
+
+# Editor runtime state
+imgui.ini
