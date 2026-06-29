@@ -150,6 +150,10 @@ public:
         {
             if (const auto* upload = std::get_if<mesh_upload_event>(&event.payload))
                 upload_mesh(*upload);
+            else if (const auto* texture = std::get_if<texture_upload_event>(&event.payload))
+                upload_texture(*texture);
+            else if (const auto* material = std::get_if<material_upload_event>(&event.payload))
+                upload_material(*material);
             else if (const auto* draw = std::get_if<draw_mesh_event>(&event.payload))
                 frame_draws_.push_back(*draw);
             else if (const auto* light = std::get_if<directional_light_event>(&event.payload))
@@ -481,6 +485,11 @@ private:
         std::uint32_t index_count{};
     };
 
+    struct gpu_texture
+    {
+        texture_data data;
+    };
+
     void append_render_world(const render_world_event& event)
     {
         if (!event.packet)
@@ -723,6 +732,8 @@ private:
             destroy_buffer(mesh.indices);
         }
         meshes_.clear();
+        textures_.clear();
+        materials_.clear();
     }
 
     bool upload_buffer(const void* source, VkDeviceSize size, VkBufferUsageFlags usage, gpu_buffer& destination)
@@ -815,6 +826,24 @@ private:
             destroy_buffer(found->second.indices);
         }
         meshes_[key] = std::move(mesh);
+    }
+
+    void upload_texture(const texture_upload_event& event)
+    {
+        if (!event.texture)
+            return;
+
+        textures_[resource_key(event.handle)] = gpu_texture{ .data = *event.texture };
+        if (!event.texture->has_pixels() && !event.texture->encoded.empty())
+            arc::debug("render.vulkan", "Texture '" + event.label + "' kept as encoded data until image decoding is available");
+    }
+
+    void upload_material(const material_upload_event& event)
+    {
+        if (!event.material)
+            return;
+
+        materials_[resource_key(event.handle)] = *event.material;
     }
 
     void destroy_mesh_pipeline() noexcept
@@ -1459,6 +1488,17 @@ private:
                 constants.light_color[0] = light.color[0];
                 constants.light_color[1] = light.color[1];
                 constants.light_color[2] = light.color[2];
+                if (const auto material = materials_.find(resource_key(draw.material)); material != materials_.end())
+                {
+                    const auto& desc = material->second;
+                    constants.base_color[0] = desc.base_color[0];
+                    constants.base_color[1] = desc.base_color[1];
+                    constants.base_color[2] = desc.base_color[2];
+                    constants.base_color[3] = desc.base_color[3];
+                    constants.visualization[1] = desc.metallic;
+                    constants.visualization[2] = desc.roughness;
+                    constants.visualization[3] = desc.alpha_cutoff;
+                }
                 constants.visualization[0] = static_cast<float>(draw.visualization);
                 vkCmdPushConstants(
                     command_buffer,
@@ -1522,6 +1562,8 @@ private:
     std::vector<std::string> pending_graph_pass_names_;
     std::vector<std::string> pending_debug_markers_;
     std::unordered_map<std::uint64_t, gpu_mesh> meshes_;
+    std::unordered_map<std::uint64_t, gpu_texture> textures_;
+    std::unordered_map<std::uint64_t, material_desc> materials_;
     std::vector<draw_mesh_event> frame_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
 

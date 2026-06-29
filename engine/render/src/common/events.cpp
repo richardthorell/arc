@@ -9,6 +9,10 @@ render_event_type render_event::type() const noexcept
 {
     if (std::holds_alternative<mesh_upload_event>(payload))
         return render_event_type::mesh_upload;
+    if (std::holds_alternative<texture_upload_event>(payload))
+        return render_event_type::texture_upload;
+    if (std::holds_alternative<material_upload_event>(payload))
+        return render_event_type::material_upload;
     if (std::holds_alternative<viewport_resize_event>(payload))
         return render_event_type::viewport_resize;
     if (std::holds_alternative<draw_mesh_event>(payload))
@@ -65,6 +69,20 @@ void render_event_writer::mesh_upload(mesh_handle handle, std::shared_ptr<const 
 {
     render_event event{};
     event.payload = mesh_upload_event{ .handle = handle, .mesh = std::move(mesh), .label = std::move(label) };
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::texture_upload(texture_handle handle, std::shared_ptr<const texture_data> texture, std::string label)
+{
+    render_event event{};
+    event.payload = texture_upload_event{ .handle = handle, .texture = std::move(texture), .label = std::move(label) };
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::material_upload(material_handle handle, std::shared_ptr<const material_desc> material, std::string label)
+{
+    render_event event{};
+    event.payload = material_upload_event{ .handle = handle, .material = std::move(material), .label = std::move(label) };
     buffer_->push(std::move(event));
 }
 

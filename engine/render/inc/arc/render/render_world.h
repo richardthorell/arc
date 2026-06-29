@@ -2,6 +2,7 @@
 
 #include <arc/render/events.h>
 #include <arc/render/handles.h>
+#include <arc/render/material.h>
 #include <arc/render/render_graph.h>
 #include <arc/geometric/box.h>
 #include <arc/math/matrix.h>
@@ -25,30 +26,6 @@ enum class scene_render_pass : std::uint8_t
     forward_transparent,
     editor_picking,
     selection_outline
-};
-
-/**
- * @brief Alpha/material queue mode used for sorting and pass selection.
- */
-enum class material_alpha_mode : std::uint8_t
-{
-    opaque,
-    masked,
-    blend
-};
-
-/**
- * @brief Renderer material description used by the first scene pipeline.
- */
-struct material_desc
-{
-    material_handle handle{};
-    math::vector4f base_color{ 1.0f, 1.0f, 1.0f, 1.0f };
-    float metallic{};
-    float roughness{ 0.6f };
-    float alpha_cutoff{ 0.5f };
-    material_alpha_mode alpha_mode{ material_alpha_mode::opaque };
-    bool double_sided{};
 };
 
 /**

@@ -10,6 +10,8 @@ option(ARC_USE_SYSTEM_VULKAN "Use a system-provided Vulkan package" OFF)
 option(ARC_USE_SYSTEM_VOLK "Use a system-provided volk package" OFF)
 option(ARC_USE_SYSTEM_VMA "Use a system-provided Vulkan Memory Allocator package" OFF)
 option(ARC_USE_SYSTEM_SLANG "Use a system-provided Slang package" OFF)
+option(ARC_USE_SYSTEM_STB "Use a system-provided stb package" OFF)
+option(ARC_FETCH_STB "Fetch stb when ARC_USE_SYSTEM_STB is OFF" OFF)
 
 if(ARC_BUILD_EDITOR)
     add_library(arc-third-party-sdl INTERFACE)
@@ -146,6 +148,7 @@ if(ARC_BUILD_RENDER_VULKAN)
     add_library(arc-third-party-volk INTERFACE)
     add_library(arc-third-party-vma INTERFACE)
     add_library(arc-third-party-slang INTERFACE)
+    add_library(arc-third-party-stb INTERFACE)
 
     if(NOT TARGET arc::third-party-vulkan)
         add_library(arc::third-party-vulkan ALIAS arc-third-party-vulkan)
@@ -158,6 +161,9 @@ if(ARC_BUILD_RENDER_VULKAN)
     endif()
     if(NOT TARGET arc::third-party-slang)
         add_library(arc::third-party-slang ALIAS arc-third-party-slang)
+    endif()
+    if(NOT TARGET arc::third-party-stb)
+        add_library(arc::third-party-stb ALIAS arc-third-party-stb)
     endif()
 
     if(ARC_USE_SYSTEM_VULKAN)
@@ -243,6 +249,22 @@ if(ARC_BUILD_RENDER_VULKAN)
         endif()
     else()
     target_compile_definitions(arc-third-party-slang INTERFACE ARC_RENDER_SLANG_UNAVAILABLE=1)
+    endif()
+
+    if(ARC_USE_SYSTEM_STB)
+        find_path(ARC_STB_INCLUDE_DIR stb_image.h REQUIRED)
+        target_include_directories(arc-third-party-stb INTERFACE "${ARC_STB_INCLUDE_DIR}")
+    elseif(ARC_FETCH_STB)
+        FetchContent_Declare(
+            stb
+            GIT_REPOSITORY https://github.com/nothings/stb.git
+            GIT_TAG master
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(stb)
+        target_include_directories(arc-third-party-stb INTERFACE "${stb_SOURCE_DIR}")
+    else()
+        target_compile_definitions(arc-third-party-stb INTERFACE ARC_RENDER_STB_UNAVAILABLE=1)
     endif()
 
     if(ARC_BUILD_EDITOR AND TARGET arc-third-party-imgui)

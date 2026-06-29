@@ -134,7 +134,8 @@ bool operator==(const graphics_pipeline_key& lhs, const graphics_pipeline_key& r
         lhs.depth_test == rhs.depth_test &&
         lhs.depth_write == rhs.depth_write &&
         lhs.wireframe == rhs.wireframe &&
-        lhs.alpha_blend == rhs.alpha_blend;
+        lhs.alpha_blend == rhs.alpha_blend &&
+        lhs.permutation == rhs.permutation;
 }
 
 std::size_t pipeline_handle_cache::key_hash::operator()(const graphics_pipeline_key& key) const noexcept
@@ -155,6 +156,7 @@ std::size_t pipeline_handle_cache::key_hash::operator()(const graphics_pipeline_
     seed = combine(seed, std::hash<bool>{}(key.depth_write));
     seed = combine(seed, std::hash<bool>{}(key.wireframe));
     seed = combine(seed, std::hash<bool>{}(key.alpha_blend));
+    seed = combine(seed, hash_shader_permutation_key(key.permutation));
     return seed;
 }
 

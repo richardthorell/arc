@@ -108,6 +108,9 @@ std::filesystem::path write_triangle_glb()
     append_u16(bin, 0);
     append_u16(bin, 1);
     append_u16(bin, 2);
+    const std::size_t image_offset = bin.size();
+    for (const std::byte value : { std::byte{ 0x89 }, std::byte{ 0x50 }, std::byte{ 0x4e }, std::byte{ 0x47 } })
+        bin.push_back(value);
     pad4(bin, std::byte{ 0 });
 
     const std::string json =
@@ -117,13 +120,23 @@ std::filesystem::path write_triangle_glb()
         "{\"buffer\":0,\"byteOffset\":" + std::to_string(position_offset) + ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" + std::to_string(normal_offset) + ",\"byteLength\":36},"
         "{\"buffer\":0,\"byteOffset\":" + std::to_string(uv_offset) + ",\"byteLength\":24},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(index_offset) + ",\"byteLength\":6}],"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(index_offset) + ",\"byteLength\":6},"
+        "{\"buffer\":0,\"byteOffset\":" + std::to_string(image_offset) + ",\"byteLength\":4}],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
         "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
         "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
         "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2},\"indices\":3}]}]}";
+        "\"images\":[{\"name\":\"BaseColor\",\"mimeType\":\"image/png\",\"bufferView\":4}],"
+        "\"textures\":[{\"source\":0}],"
+        "\"materials\":[{\"name\":\"TestMaterial\",\"alphaMode\":\"MASK\",\"alphaCutoff\":0.35,"
+        "\"doubleSided\":true,"
+        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.25,0.5,0.75,0.9],"
+        "\"metallicFactor\":0.2,\"roughnessFactor\":0.7,\"baseColorTexture\":{\"index\":0}},"
+        "\"normalTexture\":{\"index\":0,\"scale\":0.8},"
+        "\"occlusionTexture\":{\"index\":0,\"strength\":0.6},"
+        "\"emissiveTexture\":{\"index\":0},\"emissiveFactor\":[0.1,0.2,0.3]}],"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2},\"indices\":3,\"material\":0}]}]}";
 
     std::vector<std::byte> json_bytes(reinterpret_cast<const std::byte*>(json.data()), reinterpret_cast<const std::byte*>(json.data() + json.size()));
     pad4(json_bytes, std::byte{ ' ' });
@@ -198,13 +211,21 @@ TEST_CASE("render event writer emits mesh upload and draw events")
     arc::render::render_event_buffer buffer;
     arc::render::render_event_writer writer(buffer);
     arc::render::mesh_handle mesh{ .index = 4, .generation = 2 };
+    arc::render::texture_handle texture{ .index = 5, .generation = 1 };
+    arc::render::material_handle material{ .index = 6, .generation = 1 };
     auto mesh_data = std::make_shared<arc::render::mesh_data>();
     mesh_data->name = "triangle";
+    auto texture_data = std::make_shared<arc::render::texture_data>();
+    texture_data->name = "white";
+    auto material_data = std::make_shared<arc::render::material_desc>();
+    material_data->name = "default";
 
     writer.mesh_upload(mesh, mesh_data, "triangle");
+    writer.texture_upload(texture, texture_data, "white");
+    writer.material_upload(material, material_data, "default");
     writer.draw_mesh(
         mesh,
-        {},
+        material,
         arc::math::identity<float, 4>(),
         arc::math::identity<float, 4>(),
         arc::render::render_mode::wireframe,
@@ -214,20 +235,25 @@ TEST_CASE("render event writer emits mesh upload and draw events")
         "triangle");
     writer.directional_light({ 0.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f }, 3.0f, true, "Sun");
 
-    REQUIRE(buffer.events().size() == 3);
+    REQUIRE(buffer.events().size() == 5);
     REQUIRE(buffer.events()[0].type() == arc::render::render_event_type::mesh_upload);
     const auto& upload = std::get<arc::render::mesh_upload_event>(buffer.events()[0].payload);
     REQUIRE(upload.handle == mesh);
     REQUIRE(upload.mesh == mesh_data);
-    REQUIRE(buffer.events()[1].type() == arc::render::render_event_type::draw);
-    const auto& draw = std::get<arc::render::draw_mesh_event>(buffer.events()[1].payload);
+    REQUIRE(buffer.events()[1].type() == arc::render::render_event_type::texture_upload);
+    REQUIRE(std::get<arc::render::texture_upload_event>(buffer.events()[1].payload).texture == texture_data);
+    REQUIRE(buffer.events()[2].type() == arc::render::render_event_type::material_upload);
+    REQUIRE(std::get<arc::render::material_upload_event>(buffer.events()[2].payload).material == material_data);
+    REQUIRE(buffer.events()[3].type() == arc::render::render_event_type::draw);
+    const auto& draw = std::get<arc::render::draw_mesh_event>(buffer.events()[3].payload);
     REQUIRE(draw.mesh == mesh);
+    REQUIRE(draw.material == material);
     REQUIRE(draw.mode == arc::render::render_mode::wireframe);
     REQUIRE(draw.visualization == arc::render::mesh_visualization_mode::world_normal);
     REQUIRE(draw.selected);
     REQUIRE(draw.label == "triangle");
-    REQUIRE(buffer.events()[2].type() == arc::render::render_event_type::directional_light);
-    const auto& light = std::get<arc::render::directional_light_event>(buffer.events()[2].payload);
+    REQUIRE(buffer.events()[4].type() == arc::render::render_event_type::directional_light);
+    const auto& light = std::get<arc::render::directional_light_event>(buffer.events()[4].payload);
     REQUIRE(light.label == "Sun");
     REQUIRE(light.intensity == Catch::Approx(3.0f));
 }
@@ -446,6 +472,38 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     REQUIRE(upload.mesh->indices.size() == 3);
 }
 
+TEST_CASE("renderer creates texture and material resources")
+{
+    arc::render::renderer renderer;
+    arc::render::texture_data texture;
+    texture.name = "encoded";
+    texture.mime_type = "image/png";
+    texture.encoded = { std::byte{ 1 }, std::byte{ 2 } };
+
+    const auto texture_handle = renderer.create_texture(std::move(texture));
+    REQUIRE(renderer.texture_alive(texture_handle));
+
+    arc::render::material_desc material;
+    material.name = "pbr";
+    material.base_color_texture = texture_handle;
+    material.metallic = 0.25f;
+    material.roughness = 0.8f;
+    material.alpha_mode = arc::render::material_alpha_mode::masked;
+
+    const auto material_handle = renderer.create_material(material);
+    REQUIRE(renderer.material_alive(material_handle));
+
+    const auto packet = renderer.frame_queue().commit(1);
+    REQUIRE(packet.events.size() == 2);
+    REQUIRE(packet.events[0].type() == arc::render::render_event_type::texture_upload);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::material_upload);
+    const auto& uploaded = std::get<arc::render::material_upload_event>(packet.events[1].payload);
+    REQUIRE(uploaded.handle == material_handle);
+    REQUIRE(uploaded.material->handle == material_handle);
+    REQUIRE(uploaded.material->base_color_texture == texture_handle);
+    REQUIRE(uploaded.material->alpha_mode == arc::render::material_alpha_mode::masked);
+}
+
 TEST_CASE("descriptor slots reject stale generations")
 {
     arc::render::descriptor_slot_pool pool;
@@ -511,6 +569,30 @@ TEST_CASE("pipeline handle cache reuses equivalent keys")
     REQUIRE(cache.find(key) == pipeline);
     key.wireframe = true;
     REQUIRE_FALSE(cache.find(key).valid());
+    key.wireframe = false;
+    key.permutation.has_normal_texture = true;
+    REQUIRE_FALSE(cache.find(key).valid());
+}
+
+TEST_CASE("shader permutation keys capture material features")
+{
+    arc::render::material_desc material;
+    material.alpha_mode = arc::render::material_alpha_mode::blend;
+    material.normal_texture = { .index = 1, .generation = 1 };
+    material.emissive_texture = { .index = 2, .generation = 1 };
+    material.clear_coat_factor = 0.5f;
+
+    const auto key = arc::render::make_shader_permutation_key(material, 3, true);
+    REQUIRE(key.alpha_mode == arc::render::material_alpha_mode::blend);
+    REQUIRE(key.debug_view == 3);
+    REQUIRE(key.has_normal_texture);
+    REQUIRE(key.has_emissive_texture);
+    REQUIRE(key.clear_coat);
+    REQUIRE(key.wireframe);
+
+    auto other = key;
+    other.wireframe = false;
+    REQUIRE(hash_shader_permutation_key(key) != hash_shader_permutation_key(other));
 }
 
 namespace
@@ -575,6 +657,23 @@ TEST_CASE("GLB mesh loader reads static triangle geometry")
     REQUIRE(result.mesh.vertices[0].position[1] == 0.5f);
     REQUIRE(result.mesh.vertices[0].normal[2] == 1.0f);
     REQUIRE(result.mesh.vertices[1].texcoord[1] == 1.0f);
+    REQUIRE(result.mesh.material_index == 0);
+    REQUIRE(result.textures.size() == 1);
+    REQUIRE(result.textures[0].mime_type == "image/png");
+    REQUIRE(result.textures[0].encoded.size() == 4);
+    REQUIRE(result.materials.size() == 1);
+    REQUIRE(result.materials[0].material.name == "TestMaterial");
+    REQUIRE(result.materials[0].material.alpha_mode == arc::render::material_alpha_mode::masked);
+    REQUIRE(result.materials[0].material.alpha_cutoff == Catch::Approx(0.35f));
+    REQUIRE(result.materials[0].material.base_color[2] == Catch::Approx(0.75f));
+    REQUIRE(result.materials[0].material.metallic == Catch::Approx(0.2f));
+    REQUIRE(result.materials[0].material.roughness == Catch::Approx(0.7f));
+    REQUIRE(result.materials[0].material.double_sided);
+    REQUIRE(result.materials[0].material.normal_scale == Catch::Approx(0.8f));
+    REQUIRE(result.materials[0].material.occlusion_strength == Catch::Approx(0.6f));
+    REQUIRE(result.materials[0].material.emissive_factor[1] == Catch::Approx(0.2f));
+    REQUIRE(result.materials[0].textures.base_color == 0);
+    REQUIRE(result.materials[0].textures.normal == 0);
 
     std::filesystem::remove(path);
 }

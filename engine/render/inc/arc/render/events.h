@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/render/handles.h>
+#include <arc/render/material.h>
 #include <arc/render/mesh.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
@@ -24,6 +25,8 @@ struct render_world_packet;
 enum class render_event_type : std::uint8_t
 {
     mesh_upload,
+    texture_upload,
+    material_upload,
     viewport_resize,
     draw,
     directional_light,
@@ -77,6 +80,26 @@ struct mesh_upload_event
 {
     mesh_handle handle{};
     std::shared_ptr<const mesh_data> mesh;
+    std::string label;
+};
+
+/**
+ * @brief Upload a texture into backend-owned GPU resources.
+ */
+struct texture_upload_event
+{
+    texture_handle handle{};
+    std::shared_ptr<const texture_data> texture;
+    std::string label;
+};
+
+/**
+ * @brief Upload or replace a renderer material description.
+ */
+struct material_upload_event
+{
+    material_handle handle{};
+    std::shared_ptr<const material_desc> material;
     std::string label;
 };
 
@@ -165,6 +188,8 @@ struct render_world_event
 
 using render_event_payload = std::variant<
     mesh_upload_event,
+    texture_upload_event,
+    material_upload_event,
     viewport_resize_event,
     draw_mesh_event,
     directional_light_event,
@@ -238,6 +263,16 @@ public:
      * @brief Append a static mesh upload request.
      */
     void mesh_upload(mesh_handle handle, std::shared_ptr<const mesh_data> mesh, std::string label = {});
+
+    /**
+     * @brief Append a texture upload request.
+     */
+    void texture_upload(texture_handle handle, std::shared_ptr<const texture_data> texture, std::string label = {});
+
+    /**
+     * @brief Append a material upload request.
+     */
+    void material_upload(material_handle handle, std::shared_ptr<const material_desc> material, std::string label = {});
 
     /**
      * @brief Append a static mesh draw request.

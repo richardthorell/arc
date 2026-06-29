@@ -38,6 +38,7 @@ struct primitive
     std::size_t normal_accessor{};
     std::size_t texcoord_accessor{};
     std::size_t index_accessor{};
+    std::size_t material_index{ material_texture_indices::invalid };
     bool has_normal{};
     bool has_texcoord{};
 };
@@ -194,6 +195,76 @@ std::optional<std::string> parse_string(std::string_view object, std::string_vie
     return match[1].str();
 }
 
+std::optional<float> parse_float(std::string_view object, std::string_view key)
+{
+    const std::regex pattern("\"" + std::string(key) + "\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)");
+    std::cmatch match;
+    if (!std::regex_search(object.data(), object.data() + object.size(), match, pattern))
+        return std::nullopt;
+    return std::stof(match[1].str());
+}
+
+std::optional<bool> parse_bool(std::string_view object, std::string_view key)
+{
+    const std::regex pattern("\"" + std::string(key) + "\"\\s*:\\s*(true|false)");
+    std::cmatch match;
+    if (!std::regex_search(object.data(), object.data() + object.size(), match, pattern))
+        return std::nullopt;
+    return match[1].str() == "true";
+}
+
+std::optional<std::string> extract_object_for_key(std::string_view json, std::string_view key)
+{
+    const auto key_pos = json.find('"' + std::string(key) + '"');
+    if (key_pos == std::string_view::npos)
+        return std::nullopt;
+
+    const auto object_begin = json.find('{', key_pos);
+    if (object_begin == std::string_view::npos)
+        return std::nullopt;
+
+    int depth = 0;
+    for (std::size_t index = object_begin; index < json.size(); ++index)
+    {
+        if (json[index] == '{')
+            ++depth;
+        else if (json[index] == '}')
+        {
+            --depth;
+            if (depth == 0)
+                return std::string(json.substr(object_begin, index - object_begin + 1));
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::vector<float>> parse_float_array(std::string_view object, std::string_view key)
+{
+    const auto key_pos = object.find('"' + std::string(key) + '"');
+    if (key_pos == std::string_view::npos)
+        return std::nullopt;
+
+    const auto begin = object.find('[', key_pos);
+    const auto end = object.find(']', begin);
+    if (begin == std::string_view::npos || end == std::string_view::npos || end <= begin)
+        return std::nullopt;
+
+    std::vector<float> values;
+    const std::string body(object.substr(begin + 1, end - begin - 1));
+    const std::regex number("-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?");
+    for (std::sregex_iterator it(body.begin(), body.end(), number), last; it != last; ++it)
+        values.push_back(std::stof((*it)[0].str()));
+    return values;
+}
+
+std::size_t parse_texture_index(std::string_view object, std::string_view key)
+{
+    const auto texture_object = extract_object_for_key(object, key);
+    if (!texture_object)
+        return material_texture_indices::invalid;
+    return parse_size(*texture_object, "index").value_or(material_texture_indices::invalid);
+}
+
 std::vector<buffer_view> parse_buffer_views(std::string_view json)
 {
     std::vector<buffer_view> result;
@@ -250,8 +321,107 @@ std::optional<primitive> parse_first_primitive(std::string_view json)
     result.normal_accessor = parse_size(object, "NORMAL").value_or(0);
     result.texcoord_accessor = parse_size(object, "TEXCOORD_0").value_or(0);
     result.index_accessor = parse_size(object, "indices").value_or(static_cast<std::size_t>(-1));
+    result.material_index = parse_size(object, "material").value_or(material_texture_indices::invalid);
     result.has_normal = object.find("\"NORMAL\"") != std::string::npos;
     result.has_texcoord = object.find("\"TEXCOORD_0\"") != std::string::npos;
+    return result;
+}
+
+std::vector<std::size_t> parse_texture_sources(std::string_view json)
+{
+    std::vector<std::size_t> result;
+    const auto array = extract_array(json, "textures");
+    if (!array)
+        return result;
+
+    for (const auto& object : extract_objects(*array))
+        result.push_back(parse_size(object, "source").value_or(material_texture_indices::invalid));
+    return result;
+}
+
+std::vector<texture_data> parse_images(std::string_view json, const std::vector<buffer_view>& views, std::span<const std::byte> bin)
+{
+    std::vector<texture_data> result;
+    const auto array = extract_array(json, "images");
+    if (!array)
+        return result;
+
+    for (const auto& object : extract_objects(*array))
+    {
+        texture_data texture;
+        texture.name = parse_string(object, "name").value_or("");
+        texture.mime_type = parse_string(object, "mimeType").value_or("");
+        const auto view_index = parse_size(object, "bufferView");
+        if (view_index && *view_index < views.size())
+        {
+            const auto& view = views[*view_index];
+            if (view.byte_offset <= bin.size() && view.byte_length <= bin.size() - view.byte_offset)
+            {
+                texture.encoded.assign(
+                    bin.begin() + static_cast<std::ptrdiff_t>(view.byte_offset),
+                    bin.begin() + static_cast<std::ptrdiff_t>(view.byte_offset + view.byte_length));
+            }
+        }
+        result.push_back(std::move(texture));
+    }
+    return result;
+}
+
+std::size_t texture_image_index(const std::vector<std::size_t>& texture_sources, std::size_t texture_index)
+{
+    if (texture_index == material_texture_indices::invalid || texture_index >= texture_sources.size())
+        return material_texture_indices::invalid;
+    return texture_sources[texture_index];
+}
+
+std::vector<material_import> parse_materials(std::string_view json, const std::vector<std::size_t>& texture_sources)
+{
+    std::vector<material_import> result;
+    const auto array = extract_array(json, "materials");
+    if (!array)
+        return result;
+
+    for (const auto& object : extract_objects(*array))
+    {
+        material_import import;
+        import.material.name = parse_string(object, "name").value_or("");
+        import.material.double_sided = parse_bool(object, "doubleSided").value_or(false);
+        import.material.alpha_cutoff = parse_float(object, "alphaCutoff").value_or(0.5f);
+        const auto alpha_mode = parse_string(object, "alphaMode").value_or("OPAQUE");
+        if (alpha_mode == "MASK")
+            import.material.alpha_mode = material_alpha_mode::masked;
+        else if (alpha_mode == "BLEND")
+            import.material.alpha_mode = material_alpha_mode::blend;
+
+        if (const auto pbr = extract_object_for_key(object, "pbrMetallicRoughness"))
+        {
+            if (const auto base_color = parse_float_array(*pbr, "baseColorFactor"); base_color && base_color->size() >= 4)
+            {
+                import.material.base_color = math::vector4f{
+                    (*base_color)[0],
+                    (*base_color)[1],
+                    (*base_color)[2],
+                    (*base_color)[3]
+                };
+            }
+            import.material.metallic = parse_float(*pbr, "metallicFactor").value_or(import.material.metallic);
+            import.material.roughness = parse_float(*pbr, "roughnessFactor").value_or(import.material.roughness);
+            import.textures.base_color = texture_image_index(texture_sources, parse_texture_index(*pbr, "baseColorTexture"));
+            import.textures.metallic_roughness = texture_image_index(texture_sources, parse_texture_index(*pbr, "metallicRoughnessTexture"));
+        }
+
+        import.textures.normal = texture_image_index(texture_sources, parse_texture_index(object, "normalTexture"));
+        import.textures.occlusion = texture_image_index(texture_sources, parse_texture_index(object, "occlusionTexture"));
+        import.textures.emissive = texture_image_index(texture_sources, parse_texture_index(object, "emissiveTexture"));
+        if (const auto normal_texture = extract_object_for_key(object, "normalTexture"))
+            import.material.normal_scale = parse_float(*normal_texture, "scale").value_or(1.0f);
+        if (const auto occlusion_texture = extract_object_for_key(object, "occlusionTexture"))
+            import.material.occlusion_strength = parse_float(*occlusion_texture, "strength").value_or(1.0f);
+        if (const auto emissive = parse_float_array(object, "emissiveFactor"); emissive && emissive->size() >= 3)
+            import.material.emissive_factor = math::vector3f{ (*emissive)[0], (*emissive)[1], (*emissive)[2] };
+
+        result.push_back(std::move(import));
+    }
     return result;
 }
 
@@ -374,6 +544,7 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
 
     mesh_data mesh;
     mesh.name = path.stem().string();
+    mesh.material_index = primitive->material_index;
     mesh.vertices.resize(positions.count);
 
     for (std::size_t index = 0; index < positions.count; ++index)
@@ -408,7 +579,15 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
         mesh.indices.push_back(*value);
     }
 
-    return { .mesh = std::move(mesh), .message = "loaded GLB mesh" };
+    const auto texture_sources = parse_texture_sources(json);
+    auto textures = parse_images(json, views, bin);
+    auto materials = parse_materials(json, texture_sources);
+    return {
+        .mesh = std::move(mesh),
+        .textures = std::move(textures),
+        .materials = std::move(materials),
+        .message = "loaded GLB mesh"
+    };
 }
 
 } // namespace arc::render

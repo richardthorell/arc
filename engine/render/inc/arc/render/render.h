@@ -7,6 +7,7 @@
 
 #include <arc/render/events.h>
 #include <arc/render/handles.h>
+#include <arc/render/material.h>
 #include <arc/render/mesh.h>
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>

@@ -21,6 +21,7 @@ target_link_libraries(arc-render-vulkan
         arc-third-party-volk
         arc-third-party-vma
         arc-third-party-slang
+        arc-third-party-stb
 )
 
 target_compile_definitions(arc-render-vulkan

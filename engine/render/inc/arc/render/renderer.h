@@ -3,6 +3,7 @@
 #include <arc/framework/module.h>
 #include <arc/render/events.h>
 #include <arc/render/handles.h>
+#include <arc/render/material.h>
 #include <arc/render/mesh.h>
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
@@ -55,9 +56,29 @@ public:
     mesh_handle create_mesh(mesh_data mesh);
 
     /**
+     * @brief Create a renderer-owned texture resource and enqueue its upload.
+     */
+    texture_handle create_texture(texture_data texture);
+
+    /**
+     * @brief Create a renderer-owned material resource and enqueue its upload.
+     */
+    material_handle create_material(material_desc material);
+
+    /**
      * @brief Return whether a mesh handle still references a live renderer mesh.
      */
     bool mesh_alive(mesh_handle handle) const;
+
+    /**
+     * @brief Return whether a texture handle still references a live renderer texture.
+     */
+    bool texture_alive(texture_handle handle) const;
+
+    /**
+     * @brief Return whether a material handle still references a live renderer material.
+     */
+    bool material_alive(material_handle handle) const;
 
     /**
      * @brief Resize the backend-owned viewport render target.
@@ -84,6 +105,8 @@ private:
     std::unique_ptr<render_backend> backend_;
     render_frame_queue frame_queue_;
     handle_pool mesh_handles_;
+    handle_pool texture_handles_;
+    handle_pool material_handles_;
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
 };

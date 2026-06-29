@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/render/handles.h>
+#include <arc/render/material.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -161,6 +162,7 @@ struct graphics_pipeline_key
     bool depth_write{};
     bool wireframe{};
     bool alpha_blend{};
+    shader_permutation_key permutation{};
 
     friend bool operator==(const graphics_pipeline_key& lhs, const graphics_pipeline_key& rhs) noexcept;
 };

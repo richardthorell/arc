@@ -59,9 +59,44 @@ mesh_handle renderer::create_mesh(mesh_data mesh)
     return handle;
 }
 
+texture_handle renderer::create_texture(texture_data texture)
+{
+    const texture_handle handle = texture_handles_.allocate();
+    auto shared_texture = std::make_shared<texture_data>(std::move(texture));
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.texture_upload(handle, shared_texture, shared_texture->name);
+    frame_queue_.submit(std::move(buffer));
+    return handle;
+}
+
+material_handle renderer::create_material(material_desc material)
+{
+    const material_handle handle = material_handles_.allocate();
+    material.handle = handle;
+    auto shared_material = std::make_shared<material_desc>(std::move(material));
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.material_upload(handle, shared_material, shared_material->name);
+    frame_queue_.submit(std::move(buffer));
+    return handle;
+}
+
 bool renderer::mesh_alive(mesh_handle handle) const
 {
     return mesh_handles_.alive(handle);
+}
+
+bool renderer::texture_alive(texture_handle handle) const
+{
+    return texture_handles_.alive(handle);
+}
+
+bool renderer::material_alive(material_handle handle) const
+{
+    return material_handles_.alive(handle);
 }
 
 void renderer::resize_viewport(std::uint32_t width, std::uint32_t height)
