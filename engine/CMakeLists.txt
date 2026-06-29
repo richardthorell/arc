@@ -28,11 +28,15 @@ add_subdirectory(diagnostics)
 add_subdirectory(jobs)
 add_subdirectory(memory)
 add_subdirectory(framework)
+add_subdirectory(input)
+add_subdirectory(render)
+add_subdirectory(scene)
 
 add_library(arc INTERFACE)
 target_link_libraries(arc
     INTERFACE
-        arc-framework
+        arc-scene
+        arc-input
 )
 
 if(NOT TARGET arc::arc)

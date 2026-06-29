@@ -17,6 +17,11 @@ public:
     void set_size(float width, float height) noexcept;
 
     /**
+     * @brief Set the viewport rectangle in screen/window coordinates.
+     */
+    void set_screen_rect(float x, float y, float width, float height) noexcept;
+
+    /**
      * @brief Set whether the viewport currently has keyboard focus.
      */
     void set_focused(bool value) noexcept;
@@ -51,9 +56,36 @@ public:
      */
     bool hovered() const noexcept;
 
+    /**
+     * @brief Return viewport origin X in screen/window coordinates.
+     */
+    float screen_x() const noexcept;
+
+    /**
+     * @brief Return viewport origin Y in screen/window coordinates.
+     */
+    float screen_y() const noexcept;
+
+    /**
+     * @brief Return whether a screen/window coordinate lies within the viewport.
+     */
+    bool contains_screen_point(float x, float y) const noexcept;
+
+    /**
+     * @brief Convert screen/window X coordinate to viewport-local X coordinate.
+     */
+    float local_x(float screen_x) const noexcept;
+
+    /**
+     * @brief Convert screen/window Y coordinate to viewport-local Y coordinate.
+     */
+    float local_y(float screen_y) const noexcept;
+
 private:
     std::uint32_t width_{};
     std::uint32_t height_{};
+    float screen_x_{};
+    float screen_y_{};
     bool focused_{};
     bool hovered_{};
 };

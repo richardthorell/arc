@@ -1,6 +1,5 @@
 #include <arc/framework.h>
 #include <arc/log.h>
-
 #include <memory>
 
 namespace
@@ -18,12 +17,18 @@ public:
         config.resizable = true;
         config.visible = true;
         config.start_focused = true;
+        config.maximized = true;
         return config;
     }
 
     void on_start() override
     {
         arc::info("editor", "Editor runtime started");
+    }
+
+    void register_modules(arc::module_registry&) override
+    {
+        arc::info("editor", "Editor render host owns the active renderer backend");
     }
 
     void on_shutdown() override

@@ -14,6 +14,9 @@ scene, asset, and editor systems land.
 - `engine/jobs/` provides the shared job/thread worker service.
 - `engine/memory/` provides tracked memory-resource instrumentation.
 - `engine/framework/` provides the platform-neutral application lifecycle.
+- `engine/input/` provides runtime keyboard, mouse, and future gamepad bindings.
+- `engine/render/` provides the backend-neutral rendering foundation.
+- `engine/scene/` provides ECS scene primitives and render extraction.
 - `engine/platform/windows/` provides the optional raw Win32 entry host.
 - `editor/` contains the first cross-platform editor shell.
 - `third_party/` centralizes external dependency setup for editor and future engine modules.
@@ -41,6 +44,10 @@ To build it if needed and run it:
 python run_editor.py
 ```
 
+The editor runner enables the Vulkan renderer by default. Use
+`python run_editor.py --no-vulkan-render` to build the temporary SDL-renderer
+editor path instead.
+
 ## Public Includes
 
 The current engine foundation can be consumed through module headers:
@@ -53,6 +60,9 @@ The current engine foundation can be consumed through module headers:
 #include <arc/jobs.h>
 #include <arc/memory.h>
 #include <arc/framework.h>
+#include <arc/input.h>
+#include <arc/render.h>
+#include <arc/scene.h>
 ```
 
 More specific math and geometric headers are also available when a translation

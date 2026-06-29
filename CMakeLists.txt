@@ -10,12 +10,15 @@ include(CTest)
 option(ARC_BUILD_EDITOR "Build ARC editor targets" OFF)
 option(ARC_BUILD_SAMPLES "Build ARC sample targets" OFF)
 option(ARC_BUILD_HIGH_LEVEL_TESTS "Build ARC high-level integration tests" OFF)
+option(ARC_BUILD_RENDER_VULKAN "Build ARC Vulkan render backend" OFF)
+
+if(ARC_BUILD_EDITOR OR ARC_BUILD_RENDER_VULKAN)
+    add_subdirectory(third_party)
+endif()
 
 add_subdirectory(engine)
 
 if(ARC_BUILD_EDITOR)
-    add_subdirectory(third_party)
-
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
         add_subdirectory(editor)
     else()

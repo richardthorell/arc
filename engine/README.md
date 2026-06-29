@@ -11,6 +11,9 @@ Current modules:
 - `jobs/` provides shared worker-pool services through the `arc-jobs` target and `arc::jobs` alias. It depends on `arc-diagnostics`.
 - `memory/` provides tracked memory-resource instrumentation through the `arc-memory` target and `arc::memory` alias. It depends on `arc-diagnostics`.
 - `framework/` provides the platform-neutral application lifecycle and runtime module manager through the `arc-framework` target and `arc::framework` alias. It depends on `arc-geometric`, `arc-jobs`, and `arc-memory`.
+- `input/` provides runtime input bindings through the `arc-input` target and `arc::input` alias. It depends on `arc-framework`.
+- `render/` provides the backend-neutral renderer foundation through the `arc-render` target and `arc::render` alias. It depends on `arc-framework`.
+- `scene/` provides ECS scene primitives and render extraction through the `arc-scene` target and `arc::scene` alias. It depends on `arc-render`.
 - `platform/windows/` provides the optional raw Win32 entry host through the `arc-platform-windows` target and `arc::platform-windows` alias. It depends on `arc`.
 - `arc` remains the aggregate compatibility target for consumers that want the whole engine foundation.
 
@@ -51,6 +54,19 @@ The diagnostics, jobs, and memory public include paths are:
 #include <arc/diagnostics.h>
 #include <arc/jobs.h>
 #include <arc/memory.h>
+```
+
+The render public include path is:
+
+```cpp
+#include <arc/render.h>
+```
+
+The input and scene public include paths are:
+
+```cpp
+#include <arc/input.h>
+#include <arc/scene.h>
 ```
 
 The SIMD module provides:

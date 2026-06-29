@@ -22,6 +22,7 @@ struct application_config
     bool resizable{ true };
     bool visible{ true };
     bool start_focused{ true };
+    bool maximized{ false };
 };
 
 /**

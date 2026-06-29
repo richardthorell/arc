@@ -17,7 +17,8 @@ void editor_console_sink::write(const log_record& record)
     entries_.push_back({
         .level = record.level,
         .category = std::string(record.category),
-        .message = std::string(record.message)
+        .message = std::string(record.message),
+        .timestamp = record.timestamp
     });
 }
 

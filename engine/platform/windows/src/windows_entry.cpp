@@ -240,7 +240,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 
     if (config.visible)
     {
-        ShowWindow(window, show_command);
+        ShowWindow(window, config.maximized ? SW_SHOWMAXIMIZED : show_command);
         UpdateWindow(window);
         if (config.start_focused)
             SetForegroundWindow(window);

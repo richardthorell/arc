@@ -2,6 +2,7 @@
 
 #include <arc/log.h>
 
+#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <mutex>
@@ -19,6 +20,7 @@ struct console_log_entry
     log_level level{ log_level::info };
     std::string category;
     std::string message;
+    std::chrono::system_clock::time_point timestamp{};
 };
 
 /**

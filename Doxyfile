@@ -106,6 +106,9 @@ INPUT                  = engine/simd/inc \
                          engine/jobs/inc \
                          engine/memory/inc \
                          engine/framework/inc \
+                         engine/input/inc \
+                         engine/render/inc \
+                         engine/scene/inc \
                          editor/inc \
                          README.md \
                          engine/README.md
@@ -128,6 +131,7 @@ EXCLUDE                = engine/simd/inc/arc/simd/arch \
                          engine/jobs/tests \
                          engine/memory/tests \
                          engine/framework/tests \
+                         engine/render/tests \
                          editor/tests \
                          engine/platform \
                          third_party \

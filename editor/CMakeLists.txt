@@ -1,5 +1,6 @@
 add_library(arc-editor-core STATIC
     src/editor_console.cpp
+    src/editor_interaction.cpp
     src/editor_viewport.cpp
     src/sdl_events.cpp
 )
@@ -34,11 +35,28 @@ target_compile_features(arc_editor
         cxx_std_20
 )
 
+target_compile_definitions(arc_editor
+    PRIVATE
+        "ARC_EDITOR_ASSET_ROOT=\"${CMAKE_SOURCE_DIR}/assets\""
+)
+
 target_link_libraries(arc_editor
     PRIVATE
         arc-editor-core
         arc-third-party-imgui
+        arc-third-party-imgizmo
 )
+
+if(ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
+    target_link_libraries(arc_editor
+        PRIVATE
+            arc-render-vulkan
+    )
+    target_compile_definitions(arc_editor
+        PRIVATE
+            ARC_EDITOR_ENABLE_VULKAN_RENDER=1
+    )
+endif()
 
 if(BUILD_TESTING)
     add_subdirectory(tests)

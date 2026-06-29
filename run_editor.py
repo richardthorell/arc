@@ -42,6 +42,13 @@ def parse_args():
     parser.add_argument("--config", default="Release", help="CMake configuration to build and run.")
     parser.add_argument("--cmake", default="cmake", help="CMake executable to invoke.")
     parser.add_argument("--parallel", default=None, help="Parallel build job count. Defaults to the host CPU count.")
+    parser.add_argument(
+        "--no-vulkan-render",
+        action="store_false",
+        dest="vulkan_render",
+        default=True,
+        help="Run the editor without building the Vulkan render backend.",
+    )
     parser.add_argument("--force-build", action="store_true", help="Build even if the editor executable already exists.")
     parser.add_argument("--build-only", action="store_true", help="Build the editor without launching it.")
     return parser.parse_args()
@@ -53,7 +60,7 @@ def run(command, cwd):
     subprocess.check_call(command, cwd=cwd)
 
 
-def cmake_cache_has_editor(build_dir):
+def cmake_cache_matches(build_dir, vulkan_render):
     cache = os.path.join(build_dir, "CMakeCache.txt")
     if not os.path.exists(cache):
         return False
@@ -64,7 +71,11 @@ def cmake_cache_has_editor(build_dir):
     except IOError:
         return False
 
-    return "ARC_BUILD_EDITOR:BOOL=ON" in text
+    expected_vulkan = "ON" if vulkan_render else "OFF"
+    return (
+        "ARC_BUILD_EDITOR:BOOL=ON" in text and
+        "ARC_BUILD_RENDER_VULKAN:BOOL={}".format(expected_vulkan) in text
+    )
 
 
 def editor_executable_candidates(build_dir, config):
@@ -93,7 +104,8 @@ def main():
         return 1
 
     executable = find_editor_executable(build_dir, args.config)
-    needs_build = args.force_build or executable is None
+    cache_matches = cmake_cache_matches(build_dir, args.vulkan_render)
+    needs_build = args.force_build or executable is None or not cache_matches
 
     if needs_build:
         configure_command = [
@@ -104,8 +116,9 @@ def main():
             repo_root,
             "-DCMAKE_BUILD_TYPE={}".format(args.config),
             "-DARC_BUILD_EDITOR=ON",
+            "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
         ]
-        if not cmake_cache_has_editor(build_dir):
+        if not cache_matches:
             run(configure_command, repo_root)
 
         jobs = args.parallel or str(cpu_count())
