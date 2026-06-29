@@ -21,6 +21,11 @@ struct render_scene_result
     std::size_t directional_light_count{};
     std::size_t point_light_count{};
     std::size_t spot_light_count{};
+    std::size_t skipped_directional_light_count{};
+    std::size_t skipped_point_light_count{};
+    std::size_t skipped_spot_light_count{};
+    std::size_t reflection_probe_count{};
+    std::size_t irradiance_probe_count{};
     std::size_t selected_count{};
     std::size_t culled_count{};
     std::size_t instance_batch_count{};

@@ -3,6 +3,7 @@
 #include <arc/framework/module.h>
 #include <arc/render/events.h>
 #include <arc/render/handles.h>
+#include <arc/render/lighting.h>
 #include <arc/render/material.h>
 #include <arc/render/mesh.h>
 #include <arc/render/render_backend.h>
@@ -66,6 +67,11 @@ public:
     material_handle create_material(material_desc material);
 
     /**
+     * @brief Create a renderer-owned environment resource.
+     */
+    environment_handle create_environment(environment_desc environment);
+
+    /**
      * @brief Return whether a mesh handle still references a live renderer mesh.
      */
     bool mesh_alive(mesh_handle handle) const;
@@ -79,6 +85,11 @@ public:
      * @brief Return whether a material handle still references a live renderer material.
      */
     bool material_alive(material_handle handle) const;
+
+    /**
+     * @brief Return whether an environment handle still references a live renderer environment.
+     */
+    bool environment_alive(environment_handle handle) const;
 
     /**
      * @brief Resize the backend-owned viewport render target.
@@ -107,6 +118,7 @@ private:
     handle_pool mesh_handles_;
     handle_pool texture_handles_;
     handle_pool material_handles_;
+    handle_pool environment_handles_;
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
 };

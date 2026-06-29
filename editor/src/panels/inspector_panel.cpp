@@ -24,6 +24,51 @@ void draw_reset_button(const char* id, const char* tooltip, const auto& reset)
         ImGui::SetTooltip("%s", tooltip);
 }
 
+const char* unit_label(render::light_intensity_unit unit) noexcept
+{
+    switch (unit)
+    {
+    case render::light_intensity_unit::unitless:
+        return "Unitless";
+    case render::light_intensity_unit::lumen:
+        return "Lumen";
+    case render::light_intensity_unit::candela:
+        return "Candela";
+    case render::light_intensity_unit::lux:
+        return "Lux";
+    }
+    return "Unitless";
+}
+
+void draw_unit_combo(render::light_intensity_unit& unit)
+{
+    int selected = static_cast<int>(unit);
+    const char* labels[]{ "Unitless", "Lumen", "Candela", "Lux" };
+    ImGui::TextUnformatted("Unit");
+    ImGui::SameLine(ui::scaled(92.0f));
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::Combo("##light-unit", &selected, labels, 4))
+        unit = static_cast<render::light_intensity_unit>(selected);
+}
+
+template <class Light>
+void draw_common_light_fields(Light& light)
+{
+    ui::checkbox_field("Enabled", &light.enabled);
+    float color[3]{ light.color[0], light.color[1], light.color[2] };
+    if (ui::color_field3("Color", color))
+        light.color = { color[0], color[1], color[2] };
+    ui::checkbox_field("Temperature", &light.use_color_temperature);
+    if (light.use_color_temperature)
+        ui::float_field("Kelvin", &light.temperature_kelvin, 25.0f);
+    draw_unit_combo(light.intensity_unit);
+    ui::float_field("Intensity", &light.intensity, 0.05f);
+    ui::checkbox_field("Cast Shadows", &light.casts_shadows);
+    ImGui::TextUnformatted("Cookie");
+    ImGui::SameLine(ui::scaled(92.0f));
+    ui::muted_text(light.cookie_texture.valid() ? "Assigned" : "None");
+}
+
 } // namespace
 
 void draw_inspector_panel(editor_scene_state& editor_scene)
@@ -105,11 +150,29 @@ void draw_inspector_panel(editor_scene_state& editor_scene)
     {
         if (ui::component_card_begin("Directional Light"))
         {
-            float color[3]{ light->color[0], light->color[1], light->color[2] };
-            if (ui::color_field3("Color", color))
-                light->color = { color[0], color[1], color[2] };
-            ui::float_field("Intensity", &light->intensity, 0.05f);
-            ui::checkbox_field("Cast Shadows", &light->casts_shadows);
+            draw_common_light_fields(*light);
+            ui::component_card_end();
+        }
+    }
+
+    if (auto* light = editor_scene.scene.try_get<scene::point_light_component>(editor_scene.selected_entity))
+    {
+        if (ui::component_card_begin("Point Light"))
+        {
+            draw_common_light_fields(*light);
+            ui::float_field("Range", &light->range, 0.05f);
+            ui::component_card_end();
+        }
+    }
+
+    if (auto* light = editor_scene.scene.try_get<scene::spot_light_component>(editor_scene.selected_entity))
+    {
+        if (ui::component_card_begin("Spot Light"))
+        {
+            draw_common_light_fields(*light);
+            ui::float_field("Range", &light->range, 0.05f);
+            ui::float_field("Inner", &light->inner_angle, 0.01f);
+            ui::float_field("Outer", &light->outer_angle, 0.01f);
             ui::component_card_end();
         }
     }

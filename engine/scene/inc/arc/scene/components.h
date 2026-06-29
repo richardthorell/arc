@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/render/handles.h>
+#include <arc/render/lighting.h>
 #include <arc/geometric/box.h>
 #include <arc/math/math.h>
 
@@ -190,6 +191,11 @@ struct directional_light_component
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
     float intensity{ 1.0f };
     bool casts_shadows{ false };
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
+    render::texture_handle cookie_texture{};
 };
 
 /**
@@ -201,6 +207,11 @@ struct point_light_component
     float intensity{ 1.0f };
     float range{ 10.0f };
     bool casts_shadows{ false };
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
+    render::texture_handle cookie_texture{};
 };
 
 /**
@@ -214,6 +225,31 @@ struct spot_light_component
     float inner_angle{ 0.35f };
     float outer_angle{ 0.75f };
     bool casts_shadows{ false };
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
+    render::texture_handle cookie_texture{};
+};
+
+/**
+ * @brief Reflection probe scaffold for future local specular environment capture.
+ */
+struct reflection_probe_component
+{
+    float radius{ 5.0f };
+    float intensity{ 1.0f };
+    bool enabled{ true };
+};
+
+/**
+ * @brief Irradiance probe scaffold for future diffuse global illumination.
+ */
+struct irradiance_probe_component
+{
+    float radius{ 5.0f };
+    float intensity{ 1.0f };
+    bool enabled{ true };
 };
 
 } // namespace arc::scene

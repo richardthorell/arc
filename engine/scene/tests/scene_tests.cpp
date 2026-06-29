@@ -212,12 +212,34 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
         arc::math::vector3f{ 1.0f, 0.9f, 0.7f },
         2.0f,
         true);
+    auto& sun_light = scene.get<arc::scene::directional_light_component>(sun);
+    sun_light.use_color_temperature = true;
+    sun_light.temperature_kelvin = 3000.0f;
+    sun_light.intensity_unit = arc::render::light_intensity_unit::lux;
+
+    const auto disabled_point = scene.create();
+    scene.emplace<arc::scene::active_component>(disabled_point);
+    scene.emplace<arc::scene::transform_component>(disabled_point);
+    scene.emplace<arc::scene::point_light_component>(
+        disabled_point,
+        arc::math::vector3f{ 0.2f, 0.3f, 1.0f },
+        10.0f,
+        5.0f,
+        false,
+        false);
+
+    const auto reflection_probe = scene.create();
+    scene.emplace<arc::scene::active_component>(reflection_probe);
+    scene.emplace<arc::scene::transform_component>(reflection_probe);
+    scene.emplace<arc::scene::reflection_probe_component>(reflection_probe, 8.0f, 1.5f, true);
 
     const auto result = arc::scene::render_scene(scene, renderer, 640, 360);
     REQUIRE(result.camera_found);
     REQUIRE(result.renderable_count == 0);
     REQUIRE(result.submitted_draw_count == 0);
     REQUIRE(result.directional_light_count == 1);
+    REQUIRE(result.point_light_count == 0);
+    REQUIRE(result.reflection_probe_count == 1);
 
     const auto packet = renderer.frame_queue().commit(2);
     REQUIRE(packet.events.size() == 1);
@@ -229,6 +251,12 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     REQUIRE(light.label == "Sun");
     REQUIRE(light.intensity == Catch::Approx(2.0f));
     REQUIRE(light.casts_shadows);
+    REQUIRE(light.use_color_temperature);
+    REQUIRE(light.temperature_kelvin == Catch::Approx(3000.0f));
+    REQUIRE(light.intensity_unit == arc::render::light_intensity_unit::lux);
+    REQUIRE(light.color[0] >= light.color[2]);
+    REQUIRE(world_event.packet->reflection_probes.size() == 1);
+    REQUIRE(world_event.packet->reflection_probes[0].radius == Catch::Approx(8.0f));
 }
 
 TEST_CASE("render scene extracts skinned and instanced render items")

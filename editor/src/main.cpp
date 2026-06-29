@@ -1303,6 +1303,15 @@ void draw_stats_panel(
         editor_scene.last_render.directional_light_count,
         editor_scene.last_render.point_light_count,
         editor_scene.last_render.spot_light_count);
+    ImGui::Text(
+        "Skipped Lights: %zu dir / %zu point / %zu spot",
+        editor_scene.last_render.skipped_directional_light_count,
+        editor_scene.last_render.skipped_point_light_count,
+        editor_scene.last_render.skipped_spot_light_count);
+    ImGui::Text(
+        "Probes: %zu reflection / %zu irradiance",
+        editor_scene.last_render.reflection_probe_count,
+        editor_scene.last_render.irradiance_probe_count);
     ImGui::Text("Mesh Upload: %s", editor_scene.mesh_uploaded ? "Queued" : "Missing");
     ImGui::Separator();
     ImGui::Text("Allocations: %zu", memory.allocation_count);

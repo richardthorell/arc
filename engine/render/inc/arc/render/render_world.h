@@ -88,6 +88,28 @@ struct render_item
 };
 
 /**
+ * @brief Reflection probe extracted for future local specular environment lighting.
+ */
+struct reflection_probe_data
+{
+    math::vector3f position{};
+    float radius{ 5.0f };
+    float intensity{ 1.0f };
+    std::string label;
+};
+
+/**
+ * @brief Irradiance probe extracted for future diffuse environment lighting.
+ */
+struct irradiance_probe_data
+{
+    math::vector3f position{};
+    float radius{ 5.0f };
+    float intensity{ 1.0f };
+    std::string label;
+};
+
+/**
  * @brief Batch of adjacent render items that can be instanced together.
  */
 struct render_instance_batch
@@ -141,6 +163,8 @@ struct render_world_packet
     std::vector<directional_light_event> directional_lights;
     std::vector<point_light_event> point_lights;
     std::vector<spot_light_event> spot_lights;
+    std::vector<reflection_probe_data> reflection_probes;
+    std::vector<irradiance_probe_data> irradiance_probes;
     std::vector<render_item> items;
     std::vector<std::uint32_t> visible_items;
     std::vector<render_instance_batch> instance_batches;

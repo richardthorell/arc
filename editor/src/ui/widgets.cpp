@@ -98,28 +98,23 @@ bool entity_row(const char* label, const char* icon, bool selected, bool visible
 
     const ImVec2 min = ImGui::GetCursorScreenPos();
     const float height = scaled(26.0f);
-    const bool clicked = ImGui::Selectable("##entity-row", selected, 0, ImVec2(0.0f, height));
+    const float width = ImGui::GetContentRegionAvail().x;
+    const bool clicked = ImGui::InvisibleButton("entity-row", ImVec2(width, height));
     const bool hovered = ImGui::IsItemHovered();
-    const ImVec2 max(min.x + ImGui::GetContentRegionAvail().x + ImGui::GetStyle().ItemSpacing.x, min.y + height);
+    const ImVec2 max(min.x + width, min.y + height);
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     if (selected)
         draw_list->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(ImVec4(colors::accent.x, colors::accent.y, colors::accent.z, 0.24f)), scaled(4.0f));
     else if (hovered)
         draw_list->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 1.0f, 1.0f, 0.045f)), scaled(4.0f));
 
-    ImGui::SetCursorScreenPos(ImVec2(min.x + scaled(8.0f), min.y + scaled(5.0f)));
-    ImGui::PushStyleColor(ImGuiCol_Text, selected ? colors::text : colors::text_muted);
-    ImGui::TextUnformatted(icon);
-    ImGui::SameLine(0.0f, scaled(8.0f));
-    ImGui::PushStyleColor(ImGuiCol_Text, selected ? colors::text : colors::text);
-    ImGui::TextUnformatted(label);
-    ImGui::PopStyleColor(2);
+    const ImU32 icon_color = ImGui::ColorConvertFloat4ToU32(selected ? colors::text : colors::text_muted);
+    const ImU32 label_color = ImGui::ColorConvertFloat4ToU32(colors::text);
+    const ImVec2 text_pos(min.x + scaled(8.0f), min.y + scaled(5.0f));
+    draw_list->AddText(text_pos, icon_color, icon);
+    draw_list->AddText(ImVec2(text_pos.x + scaled(24.0f), text_pos.y), label_color, label);
     if (locked)
-    {
-        ImGui::SameLine(ImGui::GetWindowWidth() - scaled(38.0f));
-        muted_text("lock");
-    }
-    ImGui::SetCursorScreenPos(ImVec2(min.x, min.y + height + ImGui::GetStyle().ItemSpacing.y));
+        draw_list->AddText(ImVec2(max.x - scaled(34.0f), text_pos.y), icon_color, "lock");
 
     if (!visible)
         ImGui::PopStyleVar();

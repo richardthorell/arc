@@ -1,6 +1,7 @@
 #include <arc/scene/render_scene.h>
 
 #include <arc/diagnostics/log.h>
+#include <arc/render/lighting.h>
 #include <arc/render/render_world.h>
 #include <arc/scene/transforms.h>
 
@@ -46,6 +47,13 @@ bool entity_selected(const registry& scene, entity value)
 {
     const auto* selection = scene.try_get<selection_component>(value);
     return selection && selection->selected;
+}
+
+math::vector3f effective_light_color(const math::vector3f& color, bool use_temperature, float kelvin)
+{
+    if (!use_temperature)
+        return color;
+    return math::mul(color, render::color_temperature_rgb(kelvin));
 }
 
 void append_mesh_item(
@@ -203,13 +211,18 @@ render_scene_result render_scene(
 
     scene.view<transform_component, directional_light_component>().each(
         [&](entity value, const transform_component& transform, const directional_light_component& light) {
-            if (!entity_is_active(scene, value))
+            if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.directional_lights.push_back({
                 .direction = forward_direction(transform),
-                .color = light.color,
+                .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
                 .casts_shadows = light.casts_shadows,
+                .enabled = light.enabled,
+                .use_color_temperature = light.use_color_temperature,
+                .temperature_kelvin = light.temperature_kelvin,
+                .intensity_unit = light.intensity_unit,
+                .cookie_texture = light.cookie_texture,
                 .label = entity_label(scene, value)
             });
             ++result.directional_light_count;
@@ -217,14 +230,19 @@ render_scene_result render_scene(
 
     scene.view<transform_component, point_light_component>().each(
         [&](entity value, const transform_component& transform, const point_light_component& light) {
-            if (!entity_is_active(scene, value))
+            if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.point_lights.push_back({
                 .position = transform.position,
-                .color = light.color,
+                .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
                 .range = light.range,
                 .casts_shadows = light.casts_shadows,
+                .enabled = light.enabled,
+                .use_color_temperature = light.use_color_temperature,
+                .temperature_kelvin = light.temperature_kelvin,
+                .intensity_unit = light.intensity_unit,
+                .cookie_texture = light.cookie_texture,
                 .label = entity_label(scene, value)
             });
             ++result.point_light_count;
@@ -232,21 +250,60 @@ render_scene_result render_scene(
 
     scene.view<transform_component, spot_light_component>().each(
         [&](entity value, const transform_component& transform, const spot_light_component& light) {
-            if (!entity_is_active(scene, value))
+            if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.spot_lights.push_back({
                 .position = transform.position,
                 .direction = forward_direction(transform),
-                .color = light.color,
+                .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
                 .range = light.range,
                 .inner_angle = light.inner_angle,
                 .outer_angle = light.outer_angle,
                 .casts_shadows = light.casts_shadows,
+                .enabled = light.enabled,
+                .use_color_temperature = light.use_color_temperature,
+                .temperature_kelvin = light.temperature_kelvin,
+                .intensity_unit = light.intensity_unit,
+                .cookie_texture = light.cookie_texture,
                 .label = entity_label(scene, value)
             });
             ++result.spot_light_count;
         });
+
+    scene.view<transform_component, reflection_probe_component>().each(
+        [&](entity value, const transform_component& transform, const reflection_probe_component& probe) {
+            if (!entity_is_active(scene, value) || !probe.enabled)
+                return;
+            world_packet.reflection_probes.push_back({
+                .position = transform.position,
+                .radius = probe.radius,
+                .intensity = probe.intensity,
+                .label = entity_label(scene, value)
+            });
+            ++result.reflection_probe_count;
+        });
+
+    scene.view<transform_component, irradiance_probe_component>().each(
+        [&](entity value, const transform_component& transform, const irradiance_probe_component& probe) {
+            if (!entity_is_active(scene, value) || !probe.enabled)
+                return;
+            world_packet.irradiance_probes.push_back({
+                .position = transform.position,
+                .radius = probe.radius,
+                .intensity = probe.intensity,
+                .label = entity_label(scene, value)
+            });
+            ++result.irradiance_probe_count;
+        });
+
+    const auto lighting = render::pack_scene_lighting(
+        world_packet.directional_lights,
+        world_packet.point_lights,
+        world_packet.spot_lights);
+    result.skipped_directional_light_count = lighting.skipped_directional_count;
+    result.skipped_point_light_count = lighting.skipped_point_count;
+    result.skipped_spot_light_count = lighting.skipped_spot_count;
 
     render::prepare_render_world(world_packet);
     result.submitted_draw_count = world_packet.visible_items.size();

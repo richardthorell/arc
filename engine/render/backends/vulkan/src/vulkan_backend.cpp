@@ -1,6 +1,7 @@
 #include <arc/render/vulkan/vulkan_backend.h>
 
 #include <arc/diagnostics/log.h>
+#include <arc/render/lighting.h>
 #include <arc/render/render_world.h>
 #include <arc/render/resources.h>
 
@@ -94,6 +95,7 @@ public:
             vkDeviceWaitIdle(device_);
         destroy_mesh_pipeline();
         destroy_white_texture();
+        destroy_buffer(light_buffer_);
         destroy_meshes();
         destroy_support_objects();
         if (allocator_ != VK_NULL_HANDLE)
@@ -145,6 +147,8 @@ public:
     {
         frame_draws_.clear();
         frame_directional_lights_.clear();
+        frame_point_lights_.clear();
+        frame_spot_lights_.clear();
         pending_debug_markers_.clear();
         for (const auto& event : packet.events)
         {
@@ -154,10 +158,16 @@ public:
                 upload_texture(*texture);
             else if (const auto* material = std::get_if<material_upload_event>(&event.payload))
                 upload_material(*material);
+            else if (const auto* environment = std::get_if<environment_upload_event>(&event.payload))
+                upload_environment(*environment);
             else if (const auto* draw = std::get_if<draw_mesh_event>(&event.payload))
                 frame_draws_.push_back(*draw);
             else if (const auto* light = std::get_if<directional_light_event>(&event.payload))
                 frame_directional_lights_.push_back(*light);
+            else if (const auto* light = std::get_if<point_light_event>(&event.payload))
+                frame_point_lights_.push_back(*light);
+            else if (const auto* light = std::get_if<spot_light_event>(&event.payload))
+                frame_spot_lights_.push_back(*light);
             else if (const auto* world = std::get_if<render_world_event>(&event.payload))
                 append_render_world(*world);
             else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
@@ -176,6 +186,14 @@ public:
         pending_graph_pass_names_.reserve(graph.passes.size());
         for (const auto& pass : graph.passes)
             pending_graph_pass_names_.push_back(pass.name);
+
+        frame_lighting_ = pack_scene_lighting(
+            frame_directional_lights_,
+            frame_point_lights_,
+            frame_spot_lights_,
+            active_environment());
+        update_light_buffer();
+        warn_about_skipped_lights(frame_lighting_);
 
         std::ostringstream message;
         message << "vulkan accepted frame " << packet.frame_index << " with "
@@ -490,6 +508,18 @@ private:
         texture_data data;
     };
 
+    struct gpu_environment
+    {
+        environment_desc data;
+    };
+
+    struct folded_light_constants
+    {
+        math::vector3f direction{ 0.35f, -0.85f, -0.40f };
+        math::vector3f color{ 1.0f, 0.96f, 0.88f };
+        float intensity{ 1.0f };
+    };
+
     void append_render_world(const render_world_event& event)
     {
         if (!event.packet)
@@ -500,6 +530,14 @@ private:
             frame_directional_lights_.end(),
             packet.directional_lights.begin(),
             packet.directional_lights.end());
+        frame_point_lights_.insert(
+            frame_point_lights_.end(),
+            packet.point_lights.begin(),
+            packet.point_lights.end());
+        frame_spot_lights_.insert(
+            frame_spot_lights_.end(),
+            packet.spot_lights.begin(),
+            packet.spot_lights.end());
 
         for (const auto index : packet.visible_items)
         {
@@ -734,6 +772,7 @@ private:
         meshes_.clear();
         textures_.clear();
         materials_.clear();
+        environments_.clear();
     }
 
     bool upload_buffer(const void* source, VkDeviceSize size, VkBufferUsageFlags usage, gpu_buffer& destination)
@@ -844,6 +883,141 @@ private:
             return;
 
         materials_[resource_key(event.handle)] = *event.material;
+    }
+
+    void upload_environment(const environment_upload_event& event)
+    {
+        if (!event.environment)
+            return;
+
+        environments_[resource_key(event.handle)] = gpu_environment{ .data = *event.environment };
+        active_environment_ = event.handle;
+    }
+
+    const environment_desc* active_environment() const noexcept
+    {
+        const auto found = environments_.find(resource_key(active_environment_));
+        return found == environments_.end() ? nullptr : &found->second.data;
+    }
+
+    void update_light_buffer()
+    {
+        if (light_buffer_.buffer == VK_NULL_HANDLE)
+        {
+            if (!create_buffer(
+                    sizeof(scene_lighting_data),
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VMA_MEMORY_USAGE_CPU_TO_GPU,
+                    light_buffer_))
+            {
+                arc::warn("render.vulkan", "Failed to allocate scene light buffer");
+                return;
+            }
+        }
+
+        void* mapped{};
+        if (vmaMapMemory(allocator_, light_buffer_.allocation, &mapped) != VK_SUCCESS)
+            return;
+        std::memcpy(mapped, &frame_lighting_, sizeof(frame_lighting_));
+        vmaUnmapMemory(allocator_, light_buffer_.allocation);
+    }
+
+    void warn_about_skipped_lights(const scene_lighting_data& lighting)
+    {
+        if (lighting.skipped_directional_count > 0)
+            arc::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_directional_count) + " directional light(s) over the v1 cap");
+        if (lighting.skipped_point_count > 0)
+            arc::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_point_count) + " point light(s) over the v1 cap");
+        if (lighting.skipped_spot_count > 0)
+            arc::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_spot_count) + " spot light(s) over the v1 cap");
+    }
+
+    static math::vector3f vector_sub(const math::vector3f& lhs, const math::vector3f& rhs) noexcept
+    {
+        return { lhs[0] - rhs[0], lhs[1] - rhs[1], lhs[2] - rhs[2] };
+    }
+
+    static math::vector3f vector_mul(const math::vector3f& value, float scale) noexcept
+    {
+        return { value[0] * scale, value[1] * scale, value[2] * scale };
+    }
+
+    static math::vector3f vector_add(const math::vector3f& lhs, const math::vector3f& rhs) noexcept
+    {
+        return { lhs[0] + rhs[0], lhs[1] + rhs[1], lhs[2] + rhs[2] };
+    }
+
+    static float vector_dot(const math::vector3f& lhs, const math::vector3f& rhs) noexcept
+    {
+        return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2];
+    }
+
+    static math::vector3f vector_normalize(const math::vector3f& value) noexcept
+    {
+        const float length_sq = std::max(vector_dot(value, value), 0.000001f);
+        const float inv_length = 1.0f / std::sqrt(length_sq);
+        return vector_mul(value, inv_length);
+    }
+
+    folded_light_constants fold_lighting_for_draw(const draw_mesh_event& draw) const noexcept
+    {
+        const math::vector3f origin{ draw.model(0, 3), draw.model(1, 3), draw.model(2, 3) };
+        math::vector3f color{
+            frame_lighting_.ambient_color_intensity[0] * frame_lighting_.ambient_color_intensity[3],
+            frame_lighting_.ambient_color_intensity[1] * frame_lighting_.ambient_color_intensity[3],
+            frame_lighting_.ambient_color_intensity[2] * frame_lighting_.ambient_color_intensity[3]
+        };
+        math::vector3f weighted_direction{};
+        float total_weight{};
+
+        for (std::uint32_t index = 0; index < frame_lighting_.directional_count; ++index)
+        {
+            const auto& light = frame_lighting_.directional_lights[index];
+            const float contribution = std::max(light.direction_intensity[3], 0.0f);
+            color = vector_add(color, vector_mul({ light.color_flags[0], light.color_flags[1], light.color_flags[2] }, contribution));
+            weighted_direction = vector_add(weighted_direction, vector_mul(
+                { light.direction_intensity[0], light.direction_intensity[1], light.direction_intensity[2] },
+                contribution));
+            total_weight += contribution;
+        }
+
+        for (std::uint32_t index = 0; index < frame_lighting_.point_count; ++index)
+        {
+            const auto& light = frame_lighting_.point_lights[index];
+            const math::vector3f position{ light.position_range[0], light.position_range[1], light.position_range[2] };
+            const float range = std::max(light.position_range[3], 0.001f);
+            const math::vector3f to_light = vector_sub(position, origin);
+            const float distance_sq = std::max(vector_dot(to_light, to_light), 0.000001f);
+            const float attenuation = std::max(0.0f, 1.0f - std::sqrt(distance_sq) / range);
+            const float contribution = light.color_intensity[3] * attenuation * attenuation;
+            color = vector_add(color, vector_mul({ light.color_intensity[0], light.color_intensity[1], light.color_intensity[2] }, contribution));
+            weighted_direction = vector_add(weighted_direction, vector_mul(vector_mul(vector_normalize(to_light), -1.0f), contribution));
+            total_weight += contribution;
+        }
+
+        for (std::uint32_t index = 0; index < frame_lighting_.spot_count; ++index)
+        {
+            const auto& light = frame_lighting_.spot_lights[index];
+            const math::vector3f position{ light.position_range[0], light.position_range[1], light.position_range[2] };
+            const float range = std::max(light.position_range[3], 0.001f);
+            const math::vector3f to_light = vector_sub(position, origin);
+            const float attenuation = std::max(0.0f, 1.0f - std::sqrt(vector_dot(to_light, to_light)) / range);
+            const math::vector3f light_forward = vector_normalize({ light.direction_inner_angle[0], light.direction_inner_angle[1], light.direction_inner_angle[2] });
+            const float cone_cos = vector_dot(vector_mul(vector_normalize(to_light), -1.0f), light_forward);
+            const float inner = std::cos(light.direction_inner_angle[3]);
+            const float outer = std::cos(light.params[0]);
+            const float cone = outer == inner ? 1.0f : std::clamp((cone_cos - outer) / (inner - outer), 0.0f, 1.0f);
+            const float contribution = light.color_intensity[3] * attenuation * attenuation * cone;
+            color = vector_add(color, vector_mul({ light.color_intensity[0], light.color_intensity[1], light.color_intensity[2] }, contribution));
+            weighted_direction = vector_add(weighted_direction, vector_mul(vector_mul(vector_normalize(to_light), -1.0f), contribution));
+            total_weight += contribution;
+        }
+
+        folded_light_constants folded;
+        folded.color = color;
+        folded.intensity = 1.0f;
+        folded.direction = total_weight > 0.0001f ? vector_normalize(weighted_direction) : folded.direction;
+        return folded;
     }
 
     void destroy_mesh_pipeline() noexcept
@@ -1465,10 +1639,6 @@ private:
             vkCmdSetScissor(command_buffer, 0, 1, &scissor);
             vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_layout_, 0, 1, &white_descriptor_set_, 0, nullptr);
 
-            const directional_light_event light = frame_directional_lights_.empty()
-                ? directional_light_event{}
-                : frame_directional_lights_.front();
-
             const auto draw_with_pipeline = [&](const draw_mesh_event& draw, VkPipeline pipeline) {
                 if (pipeline == VK_NULL_HANDLE)
                     return;
@@ -1481,13 +1651,14 @@ private:
                 mesh_push_constants constants{};
                 std::copy(mvp.data(), mvp.data() + 16, constants.model_view_projection);
                 std::copy(draw.model.data(), draw.model.data() + 16, constants.model);
-                constants.light_direction_intensity[0] = light.direction[0];
-                constants.light_direction_intensity[1] = light.direction[1];
-                constants.light_direction_intensity[2] = light.direction[2];
-                constants.light_direction_intensity[3] = light.intensity;
-                constants.light_color[0] = light.color[0];
-                constants.light_color[1] = light.color[1];
-                constants.light_color[2] = light.color[2];
+                const auto folded_light = fold_lighting_for_draw(draw);
+                constants.light_direction_intensity[0] = folded_light.direction[0];
+                constants.light_direction_intensity[1] = folded_light.direction[1];
+                constants.light_direction_intensity[2] = folded_light.direction[2];
+                constants.light_direction_intensity[3] = folded_light.intensity;
+                constants.light_color[0] = folded_light.color[0];
+                constants.light_color[1] = folded_light.color[1];
+                constants.light_color[2] = folded_light.color[2];
                 if (const auto material = materials_.find(resource_key(draw.material)); material != materials_.end())
                 {
                     const auto& desc = material->second;
@@ -1564,8 +1735,14 @@ private:
     std::unordered_map<std::uint64_t, gpu_mesh> meshes_;
     std::unordered_map<std::uint64_t, gpu_texture> textures_;
     std::unordered_map<std::uint64_t, material_desc> materials_;
+    std::unordered_map<std::uint64_t, gpu_environment> environments_;
     std::vector<draw_mesh_event> frame_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
+    std::vector<point_light_event> frame_point_lights_;
+    std::vector<spot_light_event> frame_spot_lights_;
+    scene_lighting_data frame_lighting_;
+    gpu_buffer light_buffer_;
+    environment_handle active_environment_;
 
     VkDescriptorSetLayout white_descriptor_set_layout_{};
     VkDescriptorPool white_descriptor_pool_{};

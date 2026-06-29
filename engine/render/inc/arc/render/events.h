@@ -17,6 +17,8 @@
 namespace arc::render
 {
 
+enum class light_intensity_unit : std::uint8_t;
+struct environment_desc;
 struct render_world_packet;
 
 /**
@@ -27,6 +29,7 @@ enum class render_event_type : std::uint8_t
     mesh_upload,
     texture_upload,
     material_upload,
+    environment_upload,
     viewport_resize,
     draw,
     directional_light,
@@ -104,6 +107,16 @@ struct material_upload_event
 };
 
 /**
+ * @brief Upload or replace an environment description.
+ */
+struct environment_upload_event
+{
+    environment_handle handle{};
+    std::shared_ptr<const environment_desc> environment;
+    std::string label;
+};
+
+/**
  * @brief Resize the backend-owned viewport render target.
  */
 struct viewport_resize_event
@@ -137,6 +150,11 @@ struct directional_light_event
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
     float intensity{ 1.0f };
     bool casts_shadows{};
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    light_intensity_unit intensity_unit{};
+    texture_handle cookie_texture{};
     std::string label;
 };
 
@@ -150,6 +168,11 @@ struct point_light_event
     float intensity{ 1.0f };
     float range{ 10.0f };
     bool casts_shadows{};
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    light_intensity_unit intensity_unit{};
+    texture_handle cookie_texture{};
     std::string label;
 };
 
@@ -166,6 +189,11 @@ struct spot_light_event
     float inner_angle{ 0.35f };
     float outer_angle{ 0.75f };
     bool casts_shadows{};
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    light_intensity_unit intensity_unit{};
+    texture_handle cookie_texture{};
     std::string label;
 };
 
@@ -190,6 +218,7 @@ using render_event_payload = std::variant<
     mesh_upload_event,
     texture_upload_event,
     material_upload_event,
+    environment_upload_event,
     viewport_resize_event,
     draw_mesh_event,
     directional_light_event,
@@ -275,6 +304,11 @@ public:
     void material_upload(material_handle handle, std::shared_ptr<const material_desc> material, std::string label = {});
 
     /**
+     * @brief Append an environment upload request.
+     */
+    void environment_upload(environment_handle handle, std::shared_ptr<const environment_desc> environment, std::string label = {});
+
+    /**
      * @brief Append a static mesh draw request.
      */
     void draw_mesh(
@@ -306,7 +340,12 @@ public:
         const math::vector3f& color,
         float intensity,
         bool casts_shadows,
-        std::string label = {});
+        std::string label = {},
+        bool enabled = true,
+        bool use_color_temperature = false,
+        float temperature_kelvin = 6500.0f,
+        light_intensity_unit intensity_unit = {},
+        texture_handle cookie_texture = {});
 
     /**
      * @brief Append a point light.
@@ -317,7 +356,12 @@ public:
         float intensity,
         float range,
         bool casts_shadows,
-        std::string label = {});
+        std::string label = {},
+        bool enabled = true,
+        bool use_color_temperature = false,
+        float temperature_kelvin = 6500.0f,
+        light_intensity_unit intensity_unit = {},
+        texture_handle cookie_texture = {});
 
     /**
      * @brief Append a spot light.
@@ -331,7 +375,12 @@ public:
         float inner_angle,
         float outer_angle,
         bool casts_shadows,
-        std::string label = {});
+        std::string label = {},
+        bool enabled = true,
+        bool use_color_temperature = false,
+        float temperature_kelvin = 6500.0f,
+        light_intensity_unit intensity_unit = {},
+        texture_handle cookie_texture = {});
 
     /**
      * @brief Append a debug marker event.

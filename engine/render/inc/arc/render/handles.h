@@ -80,5 +80,6 @@ using shader_handle = resource_handle;
 using pipeline_handle = resource_handle;
 using material_handle = resource_handle;
 using mesh_handle = resource_handle;
+using environment_handle = resource_handle;
 
 } // namespace arc::render

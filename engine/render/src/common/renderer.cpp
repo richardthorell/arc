@@ -84,6 +84,19 @@ material_handle renderer::create_material(material_desc material)
     return handle;
 }
 
+environment_handle renderer::create_environment(environment_desc environment)
+{
+    const environment_handle handle = environment_handles_.allocate();
+    environment.handle = handle;
+    auto shared_environment = std::make_shared<environment_desc>(std::move(environment));
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.environment_upload(handle, shared_environment, shared_environment->name);
+    frame_queue_.submit(std::move(buffer));
+    return handle;
+}
+
 bool renderer::mesh_alive(mesh_handle handle) const
 {
     return mesh_handles_.alive(handle);
@@ -97,6 +110,11 @@ bool renderer::texture_alive(texture_handle handle) const
 bool renderer::material_alive(material_handle handle) const
 {
     return material_handles_.alive(handle);
+}
+
+bool renderer::environment_alive(environment_handle handle) const
+{
+    return environment_handles_.alive(handle);
 }
 
 void renderer::resize_viewport(std::uint32_t width, std::uint32_t height)

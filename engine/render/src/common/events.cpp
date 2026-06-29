@@ -13,6 +13,8 @@ render_event_type render_event::type() const noexcept
         return render_event_type::texture_upload;
     if (std::holds_alternative<material_upload_event>(payload))
         return render_event_type::material_upload;
+    if (std::holds_alternative<environment_upload_event>(payload))
+        return render_event_type::environment_upload;
     if (std::holds_alternative<viewport_resize_event>(payload))
         return render_event_type::viewport_resize;
     if (std::holds_alternative<draw_mesh_event>(payload))
@@ -86,6 +88,16 @@ void render_event_writer::material_upload(material_handle handle, std::shared_pt
     buffer_->push(std::move(event));
 }
 
+void render_event_writer::environment_upload(
+    environment_handle handle,
+    std::shared_ptr<const environment_desc> environment,
+    std::string label)
+{
+    render_event event{};
+    event.payload = environment_upload_event{ .handle = handle, .environment = std::move(environment), .label = std::move(label) };
+    buffer_->push(std::move(event));
+}
+
 void render_event_writer::draw_mesh(
     mesh_handle mesh,
     material_handle material,
@@ -136,7 +148,12 @@ void render_event_writer::directional_light(
     const math::vector3f& color,
     float intensity,
     bool casts_shadows,
-    std::string label)
+    std::string label,
+    bool enabled,
+    bool use_color_temperature,
+    float temperature_kelvin,
+    light_intensity_unit intensity_unit,
+    texture_handle cookie_texture)
 {
     render_event event{};
     event.payload = directional_light_event{
@@ -144,6 +161,11 @@ void render_event_writer::directional_light(
         .color = color,
         .intensity = intensity,
         .casts_shadows = casts_shadows,
+        .enabled = enabled,
+        .use_color_temperature = use_color_temperature,
+        .temperature_kelvin = temperature_kelvin,
+        .intensity_unit = intensity_unit,
+        .cookie_texture = cookie_texture,
         .label = std::move(label)
     };
     buffer_->push(std::move(event));
@@ -155,7 +177,12 @@ void render_event_writer::point_light(
     float intensity,
     float range,
     bool casts_shadows,
-    std::string label)
+    std::string label,
+    bool enabled,
+    bool use_color_temperature,
+    float temperature_kelvin,
+    light_intensity_unit intensity_unit,
+    texture_handle cookie_texture)
 {
     render_event event{};
     event.payload = point_light_event{
@@ -164,6 +191,11 @@ void render_event_writer::point_light(
         .intensity = intensity,
         .range = range,
         .casts_shadows = casts_shadows,
+        .enabled = enabled,
+        .use_color_temperature = use_color_temperature,
+        .temperature_kelvin = temperature_kelvin,
+        .intensity_unit = intensity_unit,
+        .cookie_texture = cookie_texture,
         .label = std::move(label)
     };
     buffer_->push(std::move(event));
@@ -178,7 +210,12 @@ void render_event_writer::spot_light(
     float inner_angle,
     float outer_angle,
     bool casts_shadows,
-    std::string label)
+    std::string label,
+    bool enabled,
+    bool use_color_temperature,
+    float temperature_kelvin,
+    light_intensity_unit intensity_unit,
+    texture_handle cookie_texture)
 {
     render_event event{};
     event.payload = spot_light_event{
@@ -190,6 +227,11 @@ void render_event_writer::spot_light(
         .inner_angle = inner_angle,
         .outer_angle = outer_angle,
         .casts_shadows = casts_shadows,
+        .enabled = enabled,
+        .use_color_temperature = use_color_temperature,
+        .temperature_kelvin = temperature_kelvin,
+        .intensity_unit = intensity_unit,
+        .cookie_texture = cookie_texture,
         .label = std::move(label)
     };
     buffer_->push(std::move(event));

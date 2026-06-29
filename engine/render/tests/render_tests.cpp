@@ -504,6 +504,75 @@ TEST_CASE("renderer creates texture and material resources")
     REQUIRE(uploaded.material->alpha_mode == arc::render::material_alpha_mode::masked);
 }
 
+TEST_CASE("renderer creates environment resources")
+{
+    arc::render::renderer renderer;
+    arc::render::environment_desc environment;
+    environment.name = "studio";
+    environment.fallback_color = { 0.20f, 0.22f, 0.25f };
+    environment.intensity = 1.5f;
+
+    const auto handle = renderer.create_environment(environment);
+    REQUIRE(handle.valid());
+    REQUIRE(renderer.environment_alive(handle));
+
+    const auto packet = renderer.frame_queue().commit(12);
+    REQUIRE(packet.events.size() == 1);
+    REQUIRE(packet.events[0].type() == arc::render::render_event_type::environment_upload);
+    const auto& upload = std::get<arc::render::environment_upload_event>(packet.events[0].payload);
+    REQUIRE(upload.handle == handle);
+    REQUIRE(upload.environment);
+    REQUIRE(upload.environment->handle == handle);
+    REQUIRE(upload.environment->intensity == Catch::Approx(1.5f));
+}
+
+TEST_CASE("scene lighting data packs sorted capped light arrays")
+{
+    std::vector<arc::render::directional_light_event> directional;
+    for (std::uint32_t index = 0; index < arc::render::max_directional_lights + 2; ++index)
+    {
+        directional.push_back({
+            .direction = { 0.0f, -1.0f, 0.0f },
+            .color = { 1.0f, 1.0f, 1.0f },
+            .intensity = static_cast<float>(index + 1),
+            .label = "sun"
+        });
+    }
+
+    std::vector<arc::render::point_light_event> points{
+        { .position = { 1.0f, 2.0f, 3.0f }, .color = { 1.0f, 0.5f, 0.25f }, .intensity = 80.0f, .range = 4.0f, .intensity_unit = arc::render::light_intensity_unit::lumen },
+        { .position = { 0.0f, 0.0f, 0.0f }, .color = { 1.0f, 1.0f, 1.0f }, .intensity = 2.0f, .range = 8.0f }
+    };
+    std::vector<arc::render::spot_light_event> spots{
+        { .position = { 0.0f, 1.0f, 0.0f }, .direction = { 0.0f, -1.0f, 0.0f }, .color = { 0.8f, 0.9f, 1.0f }, .intensity = 3.0f, .range = 10.0f, .inner_angle = 0.2f, .outer_angle = 0.7f }
+    };
+
+    arc::render::environment_desc environment;
+    environment.fallback_color = { 0.1f, 0.2f, 0.3f };
+    environment.intensity = 1.25f;
+
+    const auto data = arc::render::pack_scene_lighting(directional, points, spots, &environment);
+    REQUIRE(data.directional_count == arc::render::max_directional_lights);
+    REQUIRE(data.skipped_directional_count == 2);
+    REQUIRE(data.directional_lights[0].direction_intensity[3] == Catch::Approx(6.0f));
+    REQUIRE(data.point_count == 2);
+    REQUIRE(data.point_lights[0].color_intensity[3] == Catch::Approx(2.0f));
+    REQUIRE(data.spot_count == 1);
+    REQUIRE(data.spot_lights[0].params[0] == Catch::Approx(0.7f));
+    REQUIRE(data.ambient_color_intensity[1] == Catch::Approx(0.2f));
+}
+
+TEST_CASE("light unit and temperature helpers provide stable defaults")
+{
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::unitless, 2.0f, 4.0f) == Catch::Approx(2.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::candela, 5.0f, 2.0f) == Catch::Approx(5.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lux, 3.0f, 2.0f) == Catch::Approx(12.0f));
+    const auto warm = arc::render::color_temperature_rgb(3000.0f);
+    const auto cool = arc::render::color_temperature_rgb(9000.0f);
+    REQUIRE(warm[0] >= warm[2]);
+    REQUIRE(cool[2] >= cool[0]);
+}
+
 TEST_CASE("descriptor slots reject stale generations")
 {
     arc::render::descriptor_slot_pool pool;

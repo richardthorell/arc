@@ -27,7 +27,9 @@ enum class material_alpha_mode : std::uint8_t
 enum class texture_format : std::uint8_t
 {
     rgba8_unorm,
-    rgba8_srgb
+    rgba8_srgb,
+    rgba16f,
+    rgba32f
 };
 
 /**
