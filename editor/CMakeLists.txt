@@ -1,8 +1,20 @@
 add_library(arc-editor-core STATIC
     src/editor_console.cpp
     src/editor_interaction.cpp
+    src/editor_state.cpp
     src/editor_viewport.cpp
+    src/panels/console_panel.cpp
+    src/panels/content_browser_panel.cpp
+    src/panels/inspector_panel.cpp
+    src/panels/profiler_panel.cpp
+    src/panels/render_graph_panel.cpp
+    src/panels/scene_hierarchy_panel.cpp
+    src/panels/shader_graph_panel.cpp
+    src/panels/status_bar.cpp
+    src/panels/toolbar_panel.cpp
     src/sdl_events.cpp
+    src/ui/theme.cpp
+    src/ui/widgets.cpp
 )
 
 target_compile_features(arc-editor-core
@@ -19,6 +31,7 @@ target_link_libraries(arc-editor-core
     PUBLIC
         arc
         arc-third-party-sdl
+        arc-third-party-imgui
 )
 
 if(NOT TARGET arc::editor-core)
