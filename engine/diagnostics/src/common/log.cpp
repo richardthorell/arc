@@ -1,4 +1,4 @@
-#include <arc/log.h>
+#include <arc/diagnostics/log.h>
 
 #include <iostream>
 #include <utility>

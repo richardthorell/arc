@@ -4,10 +4,10 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_viewport.h>
 #include <arc/editor/sdl_events.h>
-#include <arc/framework.h>
-#include <arc/input.h>
-#include <arc/render.h>
-#include <arc/scene.h>
+#include <arc/framework/framework.h>
+#include <arc/input/input.h>
+#include <arc/render/render.h>
+#include <arc/scene/scene.h>
 
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
 #include <arc/render/vulkan/vulkan_backend.h>
@@ -1694,13 +1694,32 @@ void draw_stats_panel(
     ImGui::End();
 }
 
-void draw_profiler_panel()
+void draw_profiler_panel(const arc::render::renderer& renderer)
 {
     ImGui::Begin("Profiler");
-    ImGui::TextDisabled("No GPU captures yet.");
-    ImGui::Text("CPU frame: waiting for renderer timings");
-    ImGui::Text("GPU frame: waiting for backend timing queries");
-    ImGui::Text("Frame graph compile: pending real scene passes");
+    const auto profile = renderer.last_frame_profile();
+    if (profile.summary.empty())
+    {
+        ImGui::TextDisabled("No GPU captures yet.");
+        ImGui::Text("CPU frame: waiting for renderer timings");
+        ImGui::Text("GPU frame: waiting for backend timing queries");
+        ImGui::Text("Frame graph compile: pending real scene passes");
+    }
+    else
+    {
+        ImGui::Text("Frame: %llu", static_cast<unsigned long long>(profile.frame_index));
+        ImGui::TextWrapped("%s", profile.summary.c_str());
+        ImGui::Separator();
+        if (profile.pass_timings.empty())
+        {
+            ImGui::TextDisabled("GPU timestamp results pending.");
+        }
+        else
+        {
+            for (const auto& timing : profile.pass_timings)
+                ImGui::Text("%s: %.3f ms", timing.name.c_str(), timing.milliseconds);
+        }
+    }
     ImGui::End();
 }
 
@@ -2082,7 +2101,7 @@ int main(int, char**)
         draw_content_browser_panel(editor_assets);
         draw_asset_browser_panel();
         draw_console_panel(*console_sink, ui_state);
-        draw_profiler_panel();
+        draw_profiler_panel(editor_renderer);
         draw_render_graph_panel();
         draw_shader_graph_panel();
         draw_stats_panel(
@@ -2110,7 +2129,7 @@ int main(int, char**)
             overlay_for_shading(ui_state.viewport_shading));
         const auto submit_result = editor_renderer.render_frame(
             last_time.frame_index,
-            arc::render::make_clear_present_graph("viewport"));
+            arc::render::make_scene_draw_graph("viewport"));
         if (!submit_result.submitted && !submit_result.message.empty())
             arc::error("editor", submit_result.message);
 #endif

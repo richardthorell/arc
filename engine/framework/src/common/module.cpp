@@ -1,6 +1,6 @@
-#include <arc/module.h>
+#include <arc/framework/module.h>
 
-#include <arc/application.h>
+#include <arc/framework/application.h>
 
 #include <stdexcept>
 #include <unordered_map>

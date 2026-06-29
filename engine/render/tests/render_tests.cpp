@@ -1,4 +1,4 @@
-#include <arc/render.h>
+#include <arc/render/render.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -277,14 +277,114 @@ TEST_CASE("render graph orders passes by declared resources")
     REQUIRE(compiled.passes[1].name == "present");
 }
 
+TEST_CASE("render graph compiles typed resources and transitions")
+{
+    arc::render::render_graph graph;
+    graph.add_resource({
+        .name = "viewport",
+        .kind = arc::render::render_resource_kind::color_texture,
+        .extent = { .width = 1280, .height = 720 },
+        .format = "rgba8",
+        .persistent = true
+    });
+
+    graph.add_pass({
+        .name = "viewport clear",
+        .kind = arc::render::render_pass_kind::clear,
+        .writes = { {
+            .resource = "viewport",
+            .kind = arc::render::render_resource_kind::color_texture,
+            .usage = arc::render::render_resource_usage::color_attachment,
+            .write = true,
+            .load_op = arc::render::render_load_op::clear
+        } }
+    });
+    graph.add_pass({
+        .name = "imgui sample",
+        .kind = arc::render::render_pass_kind::imgui,
+        .reads = { {
+            .resource = "viewport",
+            .kind = arc::render::render_resource_kind::color_texture,
+            .usage = arc::render::render_resource_usage::sampled
+        } }
+    });
+
+    const auto compiled = graph.compile();
+    REQUIRE(compiled.resources.size() == 1);
+    REQUIRE(compiled.resources[0].name == "viewport");
+    REQUIRE(compiled.passes.size() == 2);
+    REQUIRE(compiled.passes[0].writes[0].usage == arc::render::render_resource_usage::color_attachment);
+    REQUIRE(compiled.transitions.size() == 1);
+    REQUIRE(compiled.transitions[0].resource == "viewport");
+    REQUIRE(compiled.transitions[0].before == arc::render::render_resource_usage::color_attachment);
+    REQUIRE(compiled.transitions[0].after == arc::render::render_resource_usage::sampled);
+}
+
 TEST_CASE("clear present graph declares the bring-up passes")
 {
     const auto graph = arc::render::make_clear_present_graph("viewport");
     const auto compiled = graph.compile();
 
     REQUIRE(compiled.passes.size() == 2);
+    REQUIRE(compiled.resources.size() == 1);
     REQUIRE(compiled.passes[0].kind == arc::render::render_pass_kind::clear);
     REQUIRE(compiled.passes[1].kind == arc::render::render_pass_kind::present);
+    REQUIRE_FALSE(compiled.transitions.empty());
+}
+
+TEST_CASE("scene draw graph declares modern viewport pass order")
+{
+    const auto graph = arc::render::make_scene_draw_graph("viewport");
+    const auto compiled = graph.compile();
+
+    REQUIRE(compiled.passes.size() == 6);
+    REQUIRE(compiled.passes[0].name == "depth prepass");
+    REQUIRE(compiled.passes[1].name == "gbuffer pass");
+    REQUIRE(compiled.passes[2].name == "forward transparent pass");
+    REQUIRE(compiled.passes[3].name == "editor picking pass");
+    REQUIRE(compiled.passes[4].name == "selection outline pass");
+    REQUIRE(compiled.passes[5].name == "present viewport");
+    REQUIRE(compiled.resources.size() == 6);
+    REQUIRE_FALSE(compiled.transitions.empty());
+}
+
+TEST_CASE("render world preparation culls sorts batches and emits indirect commands")
+{
+    arc::render::render_world_packet packet;
+    packet.camera.view_projection = arc::math::identity<float, 4>();
+    packet.items.push_back({
+        .mesh = { .index = 1, .generation = 1 },
+        .material = { .index = 2, .generation = 1 },
+        .world_bounds = arc::geometric::box3f{
+            arc::geometric::point3f{ -0.5f, -0.5f, -0.5f },
+            arc::geometric::point3f{ 0.5f, 0.5f, 0.5f } },
+        .label = "A"
+    });
+    packet.items.push_back({
+        .mesh = { .index = 1, .generation = 1 },
+        .material = { .index = 2, .generation = 1 },
+        .world_bounds = arc::geometric::box3f{
+            arc::geometric::point3f{ -0.25f, -0.25f, -0.25f },
+            arc::geometric::point3f{ 0.25f, 0.25f, 0.25f } },
+        .label = "B"
+    });
+    packet.items.push_back({
+        .mesh = { .index = 5, .generation = 1 },
+        .material = { .index = 7, .generation = 1 },
+        .world_bounds = arc::geometric::box3f{
+            arc::geometric::point3f{ 4.0f, 4.0f, 4.0f },
+            arc::geometric::point3f{ 5.0f, 5.0f, 5.0f } },
+        .label = "culled"
+    });
+
+    arc::render::prepare_render_world(packet);
+
+    REQUIRE(packet.visible_items.size() == 2);
+    REQUIRE(packet.culled_item_count == 1);
+    REQUIRE(packet.instance_batches.size() == 1);
+    REQUIRE(packet.instance_batches[0].item_count == 2);
+    REQUIRE(packet.indirect_draws.size() == 1);
+    REQUIRE(packet.indirect_draws[0].instance_count == 2);
 }
 
 TEST_CASE("renderer submits committed packets to attached backend")
@@ -344,6 +444,124 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     REQUIRE(upload.handle == handle);
     REQUIRE(upload.mesh->vertices.size() == 3);
     REQUIRE(upload.mesh->indices.size() == 3);
+}
+
+TEST_CASE("descriptor slots reject stale generations")
+{
+    arc::render::descriptor_slot_pool pool;
+    const auto first = pool.allocate(arc::render::descriptor_resource_type::sampled_image);
+    REQUIRE(first.valid());
+    REQUIRE(pool.alive(first));
+
+    REQUIRE(pool.release(first));
+    REQUIRE_FALSE(pool.alive(first));
+
+    const auto second = pool.allocate(arc::render::descriptor_resource_type::sampled_image);
+    REQUIRE(second.index == first.index);
+    REQUIRE(second.generation != first.generation);
+    REQUIRE(pool.alive(second));
+}
+
+TEST_CASE("deferred resource releaser waits for completed frames")
+{
+    arc::render::deferred_resource_releaser releaser;
+    int released = 0;
+    releaser.defer(4, [&]() { released += 1; });
+    releaser.defer(7, [&]() { released += 10; });
+
+    REQUIRE(releaser.collect(3) == 0);
+    REQUIRE(released == 0);
+    REQUIRE(releaser.collect(4) == 1);
+    REQUIRE(released == 1);
+    REQUIRE(releaser.pending_count() == 1);
+    REQUIRE(releaser.collect(8) == 1);
+    REQUIRE(released == 11);
+}
+
+TEST_CASE("frame allocator resets transient allocations")
+{
+    arc::render::frame_allocator allocator(16);
+    auto* first = static_cast<std::uint32_t*>(allocator.allocate(sizeof(std::uint32_t), alignof(std::uint32_t)));
+    *first = 42;
+    REQUIRE(allocator.used() >= sizeof(std::uint32_t));
+
+    allocator.reset();
+    REQUIRE(allocator.used() == 0);
+    auto* second = static_cast<std::uint32_t*>(allocator.allocate(sizeof(std::uint32_t), alignof(std::uint32_t)));
+    *second = 7;
+    REQUIRE(*second == 7);
+}
+
+TEST_CASE("pipeline handle cache reuses equivalent keys")
+{
+    arc::render::pipeline_handle_cache cache;
+    arc::render::graphics_pipeline_key key{
+        .vertex_shader = { .index = 1, .generation = 1 },
+        .fragment_shader = { .index = 2, .generation = 1 },
+        .vertex_layout = "pnu",
+        .color_format = "rgba16f",
+        .depth_format = "d32",
+        .depth_test = true,
+        .depth_write = true
+    };
+    arc::render::pipeline_handle pipeline{ .index = 9, .generation = 3 };
+
+    REQUIRE_FALSE(cache.find(key).valid());
+    cache.insert(key, pipeline);
+    REQUIRE(cache.find(key) == pipeline);
+    key.wireframe = true;
+    REQUIRE_FALSE(cache.find(key).valid());
+}
+
+namespace
+{
+
+class counting_shader_compiler final : public arc::render::shader_compiler
+{
+public:
+    arc::render::shader_compile_result compile(const arc::render::shader_compile_request& request) override
+    {
+        ++count;
+        return {
+            .succeeded = true,
+            .diagnostics = request.source_path,
+            .bytecode = { std::uint8_t(count) },
+            .reflection = { .entry_points = { request.entry_point } }
+        };
+    }
+
+    int count{};
+};
+
+} // namespace
+
+TEST_CASE("shader library cache reuses unchanged source requests")
+{
+    const auto path = std::filesystem::temp_directory_path() / "arc_shader_cache_test.slang";
+    {
+        std::ofstream file(path);
+        file << "float4 main() : SV_Target { return 1; }";
+    }
+
+    counting_shader_compiler compiler;
+    arc::render::shader_library_cache cache;
+    arc::render::shader_compile_request request{
+        .source_path = path.string(),
+        .entry_point = "main",
+        .profile = "fragment",
+        .target = arc::render::shader_target::spirv
+    };
+
+    const auto first = cache.compile_or_get(compiler, request);
+    const auto second = cache.compile_or_get(compiler, request);
+
+    REQUIRE(first.succeeded);
+    REQUIRE(second.succeeded);
+    REQUIRE(compiler.count == 1);
+    REQUIRE(cache.size() == 1);
+    REQUIRE_FALSE(cache.source_changed(request));
+
+    std::filesystem::remove(path);
 }
 
 TEST_CASE("GLB mesh loader reads static triangle geometry")

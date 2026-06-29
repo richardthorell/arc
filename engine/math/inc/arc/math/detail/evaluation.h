@@ -1,8 +1,8 @@
 #pragma once
 
-#include <arc/simd.h>
+#include <arc/simd/simd.h>
 
-#include <math/detail/expressions.h>
+#include <arc/math/detail/expressions.h>
 
 namespace arc::math::detail
 {

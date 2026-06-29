@@ -1,9 +1,9 @@
 #pragma once
 
 #include <arc/editor/editor_viewport.h>
-#include <arc/input.h>
-#include <arc/scene.h>
-#include <math/math.h>
+#include <arc/input/input.h>
+#include <arc/scene/scene.h>
+#include <arc/math/math.h>
 
 #include <cstdint>
 

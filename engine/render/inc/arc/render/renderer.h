@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arc/module.h>
+#include <arc/framework/module.h>
 #include <arc/render/events.h>
 #include <arc/render/handles.h>
 #include <arc/render/mesh.h>
@@ -68,6 +68,11 @@ public:
      * @brief Return the current backend-owned viewport texture.
      */
     render_viewport_texture viewport_texture() const noexcept;
+
+    /**
+     * @brief Return the latest backend frame profile, if any.
+     */
+    render_backend_frame_profile last_frame_profile() const;
 
     /**
      * @brief Build and submit one frame.

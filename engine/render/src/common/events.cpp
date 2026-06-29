@@ -19,6 +19,8 @@ render_event_type render_event::type() const noexcept
         return render_event_type::point_light;
     if (std::holds_alternative<spot_light_event>(payload))
         return render_event_type::spot_light;
+    if (std::holds_alternative<render_world_event>(payload))
+        return render_event_type::render_world;
     return render_event_type::debug_marker;
 }
 
@@ -179,6 +181,13 @@ void render_event_writer::debug_marker(std::string label)
 {
     render_event event{};
     event.payload = debug_marker_event{ .label = std::move(label) };
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::render_world(std::shared_ptr<const render_world_packet> packet, std::string label)
+{
+    render_event event{};
+    event.payload = render_world_event{ .packet = std::move(packet), .label = std::move(label) };
     buffer_->push(std::move(event));
 }
 

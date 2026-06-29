@@ -1,6 +1,6 @@
 #include <catch2/catch_all.hpp>
 
-#include <arc/simd.h>
+#include <arc/simd/simd.h>
 
 TEST_CASE("extract lane 0 float", "[simd][lanes]")
 {

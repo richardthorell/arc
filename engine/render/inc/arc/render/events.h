@@ -2,8 +2,8 @@
 
 #include <arc/render/handles.h>
 #include <arc/render/mesh.h>
-#include <math/matrix.h>
-#include <math/vector.h>
+#include <arc/math/matrix.h>
+#include <arc/math/vector.h>
 
 #include <cstdint>
 #include <memory>
@@ -16,6 +16,8 @@
 namespace arc::render
 {
 
+struct render_world_packet;
+
 /**
  * @brief Kinds of renderer events produced by game/editor threads.
  */
@@ -27,6 +29,7 @@ enum class render_event_type : std::uint8_t
     directional_light,
     point_light,
     spot_light,
+    render_world,
     debug_marker
 };
 
@@ -151,6 +154,15 @@ struct debug_marker_event
     std::string label;
 };
 
+/**
+ * @brief Submit a prepared scene render packet to the backend.
+ */
+struct render_world_event
+{
+    std::shared_ptr<const render_world_packet> packet;
+    std::string label;
+};
+
 using render_event_payload = std::variant<
     mesh_upload_event,
     viewport_resize_event,
@@ -158,6 +170,7 @@ using render_event_payload = std::variant<
     directional_light_event,
     point_light_event,
     spot_light_event,
+    render_world_event,
     debug_marker_event>;
 
 /**
@@ -289,6 +302,11 @@ public:
      * @brief Append a debug marker event.
      */
     void debug_marker(std::string label);
+
+    /**
+     * @brief Append a prepared scene render packet.
+     */
+    void render_world(std::shared_ptr<const render_world_packet> packet, std::string label = {});
 
 private:
     render_event_buffer* buffer_{};

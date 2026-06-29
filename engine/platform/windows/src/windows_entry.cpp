@@ -5,7 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#include <arc/framework.h>
+#include <arc/framework/framework.h>
 
 #include <windows.h>
 #include <windowsx.h>

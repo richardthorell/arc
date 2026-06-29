@@ -1,7 +1,7 @@
 #include <arc/render/renderer.h>
 
-#include <arc/application.h>
-#include <arc/log.h>
+#include <arc/framework/application.h>
+#include <arc/diagnostics/log.h>
 
 #include <utility>
 
@@ -13,6 +13,11 @@ void render_backend::resize_viewport(std::uint32_t, std::uint32_t)
 }
 
 render_viewport_texture render_backend::viewport_texture() const noexcept
+{
+    return {};
+}
+
+render_backend_frame_profile render_backend::last_frame_profile() const
 {
     return {};
 }
@@ -72,6 +77,13 @@ render_viewport_texture renderer::viewport_texture() const noexcept
     if (!backend_)
         return {};
     return backend_->viewport_texture();
+}
+
+render_backend_frame_profile renderer::last_frame_profile() const
+{
+    if (!backend_)
+        return {};
+    return backend_->last_frame_profile();
 }
 
 render_submit_result renderer::render_frame(std::uint64_t frame_index, const render_graph& graph)

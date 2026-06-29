@@ -2,7 +2,7 @@
 
 #include <catch2/catch_all.hpp>
 
-#include <arc/simd.h>
+#include <arc/simd/simd.h>
 
 TEST_CASE("add", "[simd]")
 {

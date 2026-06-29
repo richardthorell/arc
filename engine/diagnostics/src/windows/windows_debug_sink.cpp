@@ -5,7 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#include <arc/log.h>
+#include <arc/diagnostics/log.h>
 
 #include <windows.h>
 

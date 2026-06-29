@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file arc/scene.h
+ * @file arc/scene/scene.h
  * @brief Aggregate include for ARC scene and ECS APIs.
  */
 

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <arc/event.h>
-#include <arc/jobs.h>
-#include <arc/log.h>
-#include <arc/memory.h>
+#include <arc/framework/event.h>
+#include <arc/jobs/jobs.h>
+#include <arc/diagnostics/log.h>
+#include <arc/memory/memory.h>
 
 #include <memory>
 #include <string>

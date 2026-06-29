@@ -1,6 +1,6 @@
 #pragma once
 
-#include <math/vector.h>
+#include <arc/math/vector.h>
 
 namespace arc::geometric
 {

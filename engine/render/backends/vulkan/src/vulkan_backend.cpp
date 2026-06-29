@@ -1,6 +1,8 @@
 #include <arc/render/vulkan/vulkan_backend.h>
 
-#include <arc/log.h>
+#include <arc/diagnostics/log.h>
+#include <arc/render/render_world.h>
+#include <arc/render/resources.h>
 
 #include "builtin_shaders.h"
 
@@ -52,6 +54,13 @@ struct mesh_push_constants
     float visualization[4]{};
 };
 
+struct gpu_scope_record
+{
+    std::string name;
+    std::uint32_t begin_query{};
+    std::uint32_t end_query{};
+};
+
 class vulkan_render_backend final : public vulkan_backend
 {
 public:
@@ -73,6 +82,7 @@ public:
         , graphics_queue_family_(graphics_queue_family)
         , capabilities_(capabilities)
     {
+        create_support_objects();
     }
 
     ~vulkan_render_backend() override
@@ -85,6 +95,7 @@ public:
         destroy_mesh_pipeline();
         destroy_white_texture();
         destroy_meshes();
+        destroy_support_objects();
         if (allocator_ != VK_NULL_HANDLE)
             vmaDestroyAllocator(allocator_);
         if (device_ != VK_NULL_HANDLE)
@@ -134,6 +145,7 @@ public:
     {
         frame_draws_.clear();
         frame_directional_lights_.clear();
+        pending_debug_markers_.clear();
         for (const auto& event : packet.events)
         {
             if (const auto* upload = std::get_if<mesh_upload_event>(&event.payload))
@@ -142,7 +154,24 @@ public:
                 frame_draws_.push_back(*draw);
             else if (const auto* light = std::get_if<directional_light_event>(&event.payload))
                 frame_directional_lights_.push_back(*light);
+            else if (const auto* world = std::get_if<render_world_event>(&event.payload))
+                append_render_world(*world);
+            else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
+                pending_debug_markers_.push_back(marker->label);
         }
+
+        last_profile_.frame_index = packet.frame_index;
+        last_profile_.summary.clear();
+        last_profile_.summary.reserve(64);
+        last_profile_.summary += std::to_string(graph.passes.size());
+        last_profile_.summary += " graph pass(es), ";
+        last_profile_.summary += std::to_string(packet.events.size());
+        last_profile_.summary += " render event(s)";
+
+        pending_graph_pass_names_.clear();
+        pending_graph_pass_names_.reserve(graph.passes.size());
+        for (const auto& pass : graph.passes)
+            pending_graph_pass_names_.push_back(pass.name);
 
         std::ostringstream message;
         message << "vulkan accepted frame " << packet.frame_index << " with "
@@ -172,6 +201,11 @@ public:
 #else
         return {};
 #endif
+    }
+
+    render_backend_frame_profile last_frame_profile() const override
+    {
+        return last_profile_;
     }
 
     bool initialize_imgui(std::uint32_t width, std::uint32_t height, std::string& message) override
@@ -305,6 +339,8 @@ public:
 
         ImGui_ImplVulkanH_Frame* frame = &window_.Frames[window_.FrameIndex];
         vkWaitForFences(device_, 1, &frame->Fence, VK_TRUE, UINT64_MAX);
+        collect_timestamp_results();
+        retire_completed_resources();
         vkResetFences(device_, 1, &frame->Fence);
         vkResetCommandPool(device_, frame->CommandPool, 0);
 
@@ -313,7 +349,14 @@ public:
         begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(frame->CommandBuffer, &begin_info);
 
+        begin_debug_label(frame->CommandBuffer, "ARC frame", { 0.16f, 0.45f, 1.0f, 1.0f });
+        reset_timestamp_queries(frame->CommandBuffer);
+        for (const auto& marker : pending_debug_markers_)
+            insert_debug_label(frame->CommandBuffer, marker, { 0.25f, 0.75f, 1.0f, 1.0f });
+
+        const auto viewport_scope = begin_gpu_scope(frame->CommandBuffer, graph_pass_name(0, "viewport clear/mesh"));
         render_viewport(frame->CommandBuffer);
+        end_gpu_scope(frame->CommandBuffer, viewport_scope);
 
         VkClearValue clear_value{};
         clear_value.color.float32[0] = 0.055f;
@@ -321,6 +364,7 @@ public:
         clear_value.color.float32[2] = 0.086f;
         clear_value.color.float32[3] = 1.0f;
 
+        const auto imgui_scope = begin_gpu_scope(frame->CommandBuffer, "imgui pass");
         VkRenderPassBeginInfo render_pass{};
         render_pass.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         render_pass.renderPass = window_.RenderPass;
@@ -332,6 +376,8 @@ public:
         vkCmdBeginRenderPass(frame->CommandBuffer, &render_pass, VK_SUBPASS_CONTENTS_INLINE);
         ImGui_ImplVulkan_RenderDrawData(static_cast<ImDrawData*>(draw_data), frame->CommandBuffer);
         vkCmdEndRenderPass(frame->CommandBuffer);
+        end_gpu_scope(frame->CommandBuffer, imgui_scope);
+        end_debug_label(frame->CommandBuffer);
         vkEndCommandBuffer(frame->CommandBuffer);
 
         VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -371,6 +417,7 @@ public:
         }
 
         window_.SemaphoreIndex = (window_.SemaphoreIndex + 1) % window_.SemaphoreCount;
+        last_completed_frame_ = last_profile_.frame_index;
         return true;
 #else
         (void)draw_data;
@@ -396,6 +443,31 @@ public:
     }
 
 private:
+    struct vulkan_context
+    {
+        VkInstance instance{};
+        VkPhysicalDevice physical_device{};
+        VkDevice device{};
+        VkQueue graphics_queue{};
+        std::uint32_t graphics_queue_family{};
+        render_capabilities capabilities{};
+    };
+
+    struct vulkan_command_context
+    {
+        VkCommandPool graphics_pool{};
+        VkCommandBuffer graphics_buffer{};
+        VkFence fence{};
+    };
+
+    struct vulkan_swapchain_state
+    {
+        VkSwapchainKHR swapchain{};
+        VkFormat format{};
+        VkExtent2D extent{};
+        bool rebuild_requested{};
+    };
+
     struct gpu_buffer
     {
         VkBuffer buffer{};
@@ -408,6 +480,194 @@ private:
         gpu_buffer indices;
         std::uint32_t index_count{};
     };
+
+    void append_render_world(const render_world_event& event)
+    {
+        if (!event.packet)
+            return;
+
+        const auto& packet = *event.packet;
+        frame_directional_lights_.insert(
+            frame_directional_lights_.end(),
+            packet.directional_lights.begin(),
+            packet.directional_lights.end());
+
+        for (const auto index : packet.visible_items)
+        {
+            if (index >= packet.items.size())
+                continue;
+            const auto& item = packet.items[index];
+            frame_draws_.push_back({
+                .mesh = item.mesh,
+                .material = item.material,
+                .model = item.model,
+                .view_projection = packet.camera.view_projection,
+                .mode = packet.mode,
+                .visualization = packet.visualization,
+                .selected = packet.overlay == editor_overlay_mode::all_wireframe ||
+                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected),
+                .wire_color = math::vector4f{ 0.28f, 0.62f, 1.0f, 1.0f },
+                .label = item.label
+            });
+        }
+    }
+
+    void create_support_objects()
+    {
+        VkPipelineCacheCreateInfo pipeline_cache_info{};
+        pipeline_cache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        if (vkCreatePipelineCache(device_, &pipeline_cache_info, nullptr, &vk_pipeline_cache_) != VK_SUCCESS)
+            vk_pipeline_cache_ = VK_NULL_HANDLE;
+
+        VkPhysicalDeviceProperties properties{};
+        vkGetPhysicalDeviceProperties(physical_device_, &properties);
+        timestamp_period_ = properties.limits.timestampPeriod;
+
+        std::uint32_t family_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &family_count, nullptr);
+        std::vector<VkQueueFamilyProperties> families(family_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &family_count, families.data());
+        timestamps_supported_ =
+            graphics_queue_family_ < families.size() &&
+            families[graphics_queue_family_].timestampValidBits > 0;
+
+        if (timestamps_supported_)
+        {
+            VkQueryPoolCreateInfo query_pool{};
+            query_pool.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            query_pool.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            query_pool.queryCount = max_timestamp_queries_;
+            if (vkCreateQueryPool(device_, &query_pool, nullptr, &timestamp_query_pool_) != VK_SUCCESS)
+            {
+                timestamp_query_pool_ = VK_NULL_HANDLE;
+                timestamps_supported_ = false;
+            }
+        }
+
+        descriptor_slots_.allocate(descriptor_resource_type::sampled_image);
+    }
+
+    void destroy_support_objects() noexcept
+    {
+        deferred_releases_.collect(UINT64_MAX);
+        if (timestamp_query_pool_ != VK_NULL_HANDLE)
+        {
+            vkDestroyQueryPool(device_, timestamp_query_pool_, nullptr);
+            timestamp_query_pool_ = VK_NULL_HANDLE;
+        }
+        if (vk_pipeline_cache_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineCache(device_, vk_pipeline_cache_, nullptr);
+            vk_pipeline_cache_ = VK_NULL_HANDLE;
+        }
+    }
+
+    void retire_completed_resources()
+    {
+        deferred_releases_.collect(last_completed_frame_);
+        frame_arena_.reset();
+    }
+
+    std::string graph_pass_name(std::size_t index, std::string_view fallback) const
+    {
+        if (index < pending_graph_pass_names_.size() && !pending_graph_pass_names_[index].empty())
+            return pending_graph_pass_names_[index];
+        return std::string(fallback);
+    }
+
+    void begin_debug_label(VkCommandBuffer command_buffer, std::string_view name, const std::array<float, 4>& color) const
+    {
+        if (vkCmdBeginDebugUtilsLabelEXT == nullptr || name.empty())
+            return;
+
+        VkDebugUtilsLabelEXT label{};
+        label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        label.pLabelName = name.data();
+        std::copy(color.begin(), color.end(), label.color);
+        vkCmdBeginDebugUtilsLabelEXT(command_buffer, &label);
+    }
+
+    void insert_debug_label(VkCommandBuffer command_buffer, std::string_view name, const std::array<float, 4>& color) const
+    {
+        if (vkCmdInsertDebugUtilsLabelEXT == nullptr || name.empty())
+            return;
+
+        VkDebugUtilsLabelEXT label{};
+        label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+        label.pLabelName = name.data();
+        std::copy(color.begin(), color.end(), label.color);
+        vkCmdInsertDebugUtilsLabelEXT(command_buffer, &label);
+    }
+
+    void end_debug_label(VkCommandBuffer command_buffer) const
+    {
+        if (vkCmdEndDebugUtilsLabelEXT != nullptr)
+            vkCmdEndDebugUtilsLabelEXT(command_buffer);
+    }
+
+    void reset_timestamp_queries(VkCommandBuffer command_buffer)
+    {
+        next_timestamp_query_ = 0;
+        timestamp_scopes_.clear();
+        if (timestamp_query_pool_ != VK_NULL_HANDLE)
+            vkCmdResetQueryPool(command_buffer, timestamp_query_pool_, 0, max_timestamp_queries_);
+    }
+
+    std::uint32_t begin_gpu_scope(VkCommandBuffer command_buffer, std::string_view name)
+    {
+        begin_debug_label(command_buffer, name, { 0.10f, 0.55f, 1.0f, 1.0f });
+        if (timestamp_query_pool_ == VK_NULL_HANDLE || next_timestamp_query_ + 1 >= max_timestamp_queries_)
+            return UINT32_MAX;
+
+        const std::uint32_t begin_query = next_timestamp_query_++;
+        const std::uint32_t end_query = next_timestamp_query_++;
+        timestamp_scopes_.push_back({
+            .name = std::string(name),
+            .begin_query = begin_query,
+            .end_query = end_query
+        });
+        vkCmdWriteTimestamp(command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestamp_query_pool_, begin_query);
+        return end_query;
+    }
+
+    void end_gpu_scope(VkCommandBuffer command_buffer, std::uint32_t end_query)
+    {
+        if (timestamp_query_pool_ != VK_NULL_HANDLE && end_query != UINT32_MAX)
+            vkCmdWriteTimestamp(command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestamp_query_pool_, end_query);
+        end_debug_label(command_buffer);
+    }
+
+    void collect_timestamp_results()
+    {
+        if (timestamp_query_pool_ == VK_NULL_HANDLE || timestamp_scopes_.empty())
+            return;
+
+        std::array<std::uint64_t, max_timestamp_queries_> values{};
+        const VkResult result = vkGetQueryPoolResults(
+            device_,
+            timestamp_query_pool_,
+            0,
+            max_timestamp_queries_,
+            sizeof(values),
+            values.data(),
+            sizeof(std::uint64_t),
+            VK_QUERY_RESULT_64_BIT);
+        if (result != VK_SUCCESS)
+            return;
+
+        last_profile_.pass_timings.clear();
+        last_profile_.pass_timings.reserve(timestamp_scopes_.size());
+        for (const auto& scope : timestamp_scopes_)
+        {
+            if (scope.end_query >= values.size() || values[scope.end_query] < values[scope.begin_query])
+                continue;
+            const auto ticks = values[scope.end_query] - values[scope.begin_query];
+            last_profile_.pass_timings.push_back({
+                .name = scope.name,
+                .milliseconds = static_cast<double>(ticks) * static_cast<double>(timestamp_period_) / 1'000'000.0
+            });
+        }
+    }
 
     bool create_buffer(
         VkDeviceSize size,
@@ -424,6 +684,25 @@ private:
         VmaAllocationCreateInfo allocation{};
         allocation.usage = memory_usage;
         return vmaCreateBuffer(allocator_, &buffer, &allocation, &out.buffer, &out.allocation, nullptr) == VK_SUCCESS;
+    }
+
+    bool submit_upload_commands(VkCommandBuffer command_buffer)
+    {
+        VkFenceCreateInfo fence_info{};
+        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        VkFence fence{};
+        if (vkCreateFence(device_, &fence_info, nullptr, &fence) != VK_SUCCESS)
+            return false;
+
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &command_buffer;
+        const VkResult submit_result = vkQueueSubmit(queue_, 1, &submit, fence);
+        if (submit_result == VK_SUCCESS)
+            vkWaitForFences(device_, 1, &fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(device_, fence, nullptr);
+        return submit_result == VK_SUCCESS;
     }
 
     void destroy_buffer(gpu_buffer& value) noexcept
@@ -499,17 +778,11 @@ private:
         vkCmdCopyBuffer(command_buffer, staging.buffer, destination.buffer, 1, &copy);
         vkEndCommandBuffer(command_buffer);
 
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &command_buffer;
-        const VkResult result = vkQueueSubmit(queue_, 1, &submit, VK_NULL_HANDLE);
-        if (result == VK_SUCCESS)
-            vkQueueWaitIdle(queue_);
+        const bool submitted = submit_upload_commands(command_buffer);
 
         vkDestroyCommandPool(device_, pool, nullptr);
         destroy_buffer(staging);
-        if (result != VK_SUCCESS)
+        if (!submitted)
         {
             destroy_buffer(destination);
             return false;
@@ -718,12 +991,7 @@ private:
         vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &to_shader);
         vkEndCommandBuffer(command_buffer);
 
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &command_buffer;
-        vkQueueSubmit(queue_, 1, &submit, VK_NULL_HANDLE);
-        vkQueueWaitIdle(queue_);
+        submit_upload_commands(command_buffer);
         vkDestroyCommandPool(device_, pool, nullptr);
         destroy_buffer(staging);
 
@@ -880,12 +1148,12 @@ private:
         pipeline.layout = mesh_pipeline_layout_;
         pipeline.renderPass = VK_NULL_HANDLE;
 
-        const VkResult result = vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline, nullptr, &mesh_pipeline_);
+        const VkResult result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &mesh_pipeline_);
         if (result == VK_SUCCESS && capabilities_.fill_mode_non_solid)
         {
             raster.polygonMode = VK_POLYGON_MODE_LINE;
             depth.depthWriteEnable = VK_FALSE;
-            const VkResult wire_result = vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipeline, nullptr, &mesh_wire_pipeline_);
+            const VkResult wire_result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &mesh_wire_pipeline_);
             if (wire_result != VK_SUCCESS)
                 arc::warn("render.vulkan", "Vulkan wireframe pipeline creation failed; shaded rendering will continue");
         }
@@ -1235,6 +1503,24 @@ private:
     VmaAllocator allocator_{};
     std::uint32_t graphics_queue_family_{};
     render_capabilities capabilities_{};
+    vulkan_context context_{};
+    vulkan_swapchain_state swapchain_state_{};
+    vulkan_command_context command_context_{};
+    descriptor_slot_pool descriptor_slots_;
+    deferred_resource_releaser deferred_releases_;
+    frame_allocator frame_arena_{ 256u * 1024u };
+    pipeline_handle_cache pipeline_handles_;
+    VkPipelineCache vk_pipeline_cache_{};
+    static constexpr std::uint32_t max_timestamp_queries_{ 64 };
+    VkQueryPool timestamp_query_pool_{};
+    float timestamp_period_{ 1.0f };
+    bool timestamps_supported_{};
+    std::uint32_t next_timestamp_query_{};
+    std::vector<gpu_scope_record> timestamp_scopes_;
+    render_backend_frame_profile last_profile_;
+    std::uint64_t last_completed_frame_{};
+    std::vector<std::string> pending_graph_pass_names_;
+    std::vector<std::string> pending_debug_markers_;
     std::unordered_map<std::uint64_t, gpu_mesh> meshes_;
     std::vector<draw_mesh_event> frame_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
@@ -1378,6 +1664,21 @@ bool supports_required_features(const render_capabilities& capabilities)
             capabilities.dynamic_rendering;
 }
 
+bool instance_extension_available(const char* name)
+{
+    std::uint32_t extension_count = 0;
+    if (vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr) != VK_SUCCESS)
+        return false;
+
+    std::vector<VkExtensionProperties> extensions(extension_count);
+    if (vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, extensions.data()) != VK_SUCCESS)
+        return false;
+
+    return std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties& extension) {
+        return std::strcmp(extension.extensionName, name) == 0;
+    });
+}
+
 } // namespace
 
 bool vulkan_loader_available() noexcept
@@ -1398,7 +1699,13 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     app_info.engineVersion = VK_MAKE_VERSION(0, 1, 0);
     app_info.apiVersion = VK_API_VERSION_1_3;
 
-    const auto instance_extensions = make_c_strings(config.instance_extensions);
+    auto requested_instance_extensions = config.instance_extensions;
+    if (instance_extension_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) &&
+        std::find(requested_instance_extensions.begin(), requested_instance_extensions.end(), VK_EXT_DEBUG_UTILS_EXTENSION_NAME) == requested_instance_extensions.end())
+    {
+        requested_instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+    const auto instance_extensions = make_c_strings(requested_instance_extensions);
 
     VkInstanceCreateInfo instance_info{};
     instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;

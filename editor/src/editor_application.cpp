@@ -1,5 +1,5 @@
-#include <arc/framework.h>
-#include <arc/log.h>
+#include <arc/framework/framework.h>
+#include <arc/diagnostics/log.h>
 #include <memory>
 
 namespace

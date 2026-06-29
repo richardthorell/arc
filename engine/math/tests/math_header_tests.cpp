@@ -1,7 +1,7 @@
-#include <math/vector.h>
-#include <math/matrix.h>
-#include <math/quaternion.h>
-#include <math/math.h>
+#include <arc/math/vector.h>
+#include <arc/math/matrix.h>
+#include <arc/math/quaternion.h>
+#include <arc/math/math.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

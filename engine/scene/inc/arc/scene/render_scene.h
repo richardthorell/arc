@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/render/renderer.h>
+#include <arc/render/render_world.h>
 #include <arc/scene/components.h>
 #include <arc/scene/registry.h>
 
@@ -21,6 +22,9 @@ struct render_scene_result
     std::size_t point_light_count{};
     std::size_t spot_light_count{};
     std::size_t selected_count{};
+    std::size_t culled_count{};
+    std::size_t instance_batch_count{};
+    std::size_t indirect_draw_count{};
 };
 
 /**

@@ -1,10 +1,11 @@
 #pragma once
 
 #include <arc/render/handles.h>
-#include <geometric/box.h>
-#include <math/math.h>
+#include <arc/geometric/box.h>
+#include <arc/math/math.h>
 
 #include <string>
+#include <vector>
 
 namespace arc::scene
 {
@@ -129,6 +130,56 @@ struct mesh_renderer_component
     render::mesh_handle mesh{};
     render::material_handle material{};
     bool visible{ true };
+};
+
+/**
+ * @brief Renderable skinned mesh component. Animation data can fill the skin palette later.
+ */
+struct skinned_mesh_renderer_component
+{
+    render::mesh_handle mesh{};
+    render::material_handle material{};
+    render::buffer_handle skin_matrices{};
+    std::uint32_t joint_count{};
+    bool visible{ true };
+};
+
+/**
+ * @brief One mesh/material choice in a screen-size LOD chain.
+ */
+struct lod_level
+{
+    float screen_coverage{ 1.0f };
+    render::mesh_handle mesh{};
+    render::material_handle material{};
+};
+
+/**
+ * @brief LOD settings for render extraction.
+ */
+struct lod_component
+{
+    std::vector<lod_level> levels;
+    bool enabled{ true };
+};
+
+/**
+ * @brief Simple instance group using one mesh/material pair.
+ */
+struct instance_group_component
+{
+    render::mesh_handle mesh{};
+    render::material_handle material{};
+    std::uint32_t instance_count{ 1 };
+    bool visible{ true };
+};
+
+/**
+ * @brief Scene render layer mask used by extraction and culling.
+ */
+struct render_layer_component
+{
+    std::uint32_t mask{ 1u };
 };
 
 /**

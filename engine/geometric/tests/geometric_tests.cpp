@@ -1,8 +1,8 @@
-#include <geometric/point.h>
-#include <geometric/line.h>
-#include <geometric/box.h>
-#include <geometric/circle.h>
-#include <geometric/geometric.h>
+#include <arc/geometric/point.h>
+#include <arc/geometric/line.h>
+#include <arc/geometric/box.h>
+#include <arc/geometric/circle.h>
+#include <arc/geometric/geometric.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arc/log.h>
+#include <arc/diagnostics/log.h>
 
 #include <chrono>
 #include <cstddef>

@@ -114,6 +114,25 @@ struct render_submit_result
 };
 
 /**
+ * @brief One named GPU/backend timing sample in milliseconds.
+ */
+struct render_pass_timing
+{
+    std::string name;
+    double milliseconds{};
+};
+
+/**
+ * @brief Backend frame profile data exposed to tools such as the editor profiler.
+ */
+struct render_backend_frame_profile
+{
+    std::uint64_t frame_index{};
+    std::vector<render_pass_timing> pass_timings;
+    std::string summary;
+};
+
+/**
  * @brief Opaque UI-facing texture exported by a backend.
  */
 struct render_viewport_texture
@@ -163,6 +182,11 @@ public:
      * @brief Return an opaque texture identifier for editor display.
      */
     virtual render_viewport_texture viewport_texture() const noexcept;
+
+    /**
+     * @brief Return the most recent backend frame profile.
+     */
+    virtual render_backend_frame_profile last_frame_profile() const;
 };
 
 /**

@@ -1,4 +1,4 @@
-#include <arc/scene.h>
+#include <arc/scene/scene.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -125,11 +125,14 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
 
     const auto packet = renderer.frame_queue().commit(1);
     REQUIRE(packet.events.size() == 1);
-    REQUIRE(packet.events[0].type() == arc::render::render_event_type::draw);
-    const auto& draw = std::get<arc::render::draw_mesh_event>(packet.events[0].payload);
-    REQUIRE(draw.mesh == mesh);
-    REQUIRE(draw.mode == arc::render::render_mode::wireframe);
-    REQUIRE(draw.selected);
+    REQUIRE(packet.events[0].type() == arc::render::render_event_type::render_world);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
+    REQUIRE(world_event.packet);
+    REQUIRE(world_event.packet->visible_items.size() == 1);
+    const auto& item = world_event.packet->items[world_event.packet->visible_items[0]];
+    REQUIRE(item.mesh == mesh);
+    REQUIRE(world_event.packet->mode == arc::render::render_mode::wireframe);
+    REQUIRE(item.selected);
 }
 
 TEST_CASE("render scene can request wireframe overlay for every draw")
@@ -160,10 +163,11 @@ TEST_CASE("render scene can request wireframe overlay for every draw")
 
     const auto packet = renderer.frame_queue().commit(1);
     REQUIRE(packet.events.size() == 1);
-    const auto& draw = std::get<arc::render::draw_mesh_event>(packet.events[0].payload);
-    REQUIRE(draw.mode == arc::render::render_mode::shaded);
-    REQUIRE(draw.visualization == arc::render::mesh_visualization_mode::albedo);
-    REQUIRE(draw.selected);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
+    REQUIRE(world_event.packet);
+    REQUIRE(world_event.packet->mode == arc::render::render_mode::shaded);
+    REQUIRE(world_event.packet->visualization == arc::render::mesh_visualization_mode::albedo);
+    REQUIRE(world_event.packet->overlay == arc::render::editor_overlay_mode::all_wireframe);
 }
 
 TEST_CASE("render scene skips extraction without active camera")
@@ -217,9 +221,86 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
 
     const auto packet = renderer.frame_queue().commit(2);
     REQUIRE(packet.events.size() == 1);
-    REQUIRE(packet.events[0].type() == arc::render::render_event_type::directional_light);
-    const auto& light = std::get<arc::render::directional_light_event>(packet.events[0].payload);
+    REQUIRE(packet.events[0].type() == arc::render::render_event_type::render_world);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
+    REQUIRE(world_event.packet);
+    REQUIRE(world_event.packet->directional_lights.size() == 1);
+    const auto& light = world_event.packet->directional_lights[0];
     REQUIRE(light.label == "Sun");
     REQUIRE(light.intensity == Catch::Approx(2.0f));
     REQUIRE(light.casts_shadows);
+}
+
+TEST_CASE("render scene extracts skinned and instanced render items")
+{
+    arc::scene::registry scene;
+    arc::render::renderer renderer;
+
+    const auto camera_entity = scene.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    scene.emplace<arc::scene::camera_component>(camera_entity);
+
+    const auto skinned = scene.create();
+    scene.emplace<arc::scene::transform_component>(skinned);
+    scene.emplace<arc::scene::skinned_mesh_renderer_component>(
+        skinned,
+        arc::render::mesh_handle{ .index = 10, .generation = 1 },
+        arc::render::material_handle{ .index = 2, .generation = 1 },
+        arc::render::buffer_handle{ .index = 4, .generation = 1 },
+        64u,
+        true);
+
+    const auto instanced = scene.create();
+    scene.emplace<arc::scene::transform_component>(instanced);
+    scene.emplace<arc::scene::instance_group_component>(
+        instanced,
+        arc::render::mesh_handle{ .index = 11, .generation = 1 },
+        arc::render::material_handle{ .index = 3, .generation = 1 },
+        12u,
+        true);
+
+    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
+    REQUIRE(result.camera_found);
+    REQUIRE(result.renderable_count == 2);
+    REQUIRE(result.submitted_draw_count == 2);
+    REQUIRE(result.indirect_draw_count >= 1);
+
+    const auto packet = renderer.frame_queue().commit(3);
+    REQUIRE(packet.events.size() == 1);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
+    REQUIRE(world_event.packet);
+    REQUIRE(world_event.packet->items.size() == 2);
+    REQUIRE(world_event.packet->items[0].skin_joint_count == 64);
+    REQUIRE(world_event.packet->items[1].instance_count == 12);
+}
+
+TEST_CASE("render scene applies first valid LOD mesh")
+{
+    arc::scene::registry scene;
+    arc::render::renderer renderer;
+    const arc::render::mesh_handle base_mesh{ .index = 1, .generation = 1 };
+    const arc::render::mesh_handle lod_mesh{ .index = 9, .generation = 1 };
+
+    const auto camera_entity = scene.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    scene.emplace<arc::scene::camera_component>(camera_entity);
+
+    const auto mesh_entity = scene.create();
+    scene.emplace<arc::scene::transform_component>(mesh_entity);
+    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, base_mesh, arc::render::material_handle{}, true);
+    scene.emplace<arc::scene::lod_component>(
+        mesh_entity,
+        std::vector<arc::scene::lod_level>{ { .screen_coverage = 1.0f, .mesh = lod_mesh } },
+        true);
+
+    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
+    REQUIRE(result.submitted_draw_count == 1);
+
+    const auto packet = renderer.frame_queue().commit(4);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
+    REQUIRE(world_event.packet->items[0].mesh == lod_mesh);
 }

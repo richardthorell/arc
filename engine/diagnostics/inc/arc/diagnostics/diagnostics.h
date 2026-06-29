@@ -1,8 +1,8 @@
 #pragma once
 
 /**
- * @file arc/diagnostics.h
+ * @file arc/diagnostics/diagnostics.h
  * @brief Aggregate include for ARC diagnostics APIs.
  */
 
-#include <arc/log.h>
+#include <arc/diagnostics/log.h>

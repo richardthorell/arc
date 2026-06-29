@@ -1,8 +1,8 @@
 #pragma once
 
-#include <arc/application.h>
-#include <arc/jobs.h>
-#include <arc/module.h>
+#include <arc/framework/application.h>
+#include <arc/jobs/jobs.h>
+#include <arc/framework/module.h>
 
 #include <chrono>
 

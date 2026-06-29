@@ -1,4 +1,4 @@
-#include <arc/diagnostics.h>
+#include <arc/diagnostics/diagnostics.h>
 
 #include <catch2/catch_test_macros.hpp>
 

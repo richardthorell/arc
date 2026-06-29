@@ -1,6 +1,6 @@
-#include <arc/input.h>
+#include <arc/input/input.h>
 
-#include <arc/event.h>
+#include <arc/framework/event.h>
 
 #include <cassert>
 

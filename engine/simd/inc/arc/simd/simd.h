@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * @file arc/simd.h
+ * @file arc/simd/simd.h
  * @brief Aggregate include for the public ARC SIMD API.
  */
 
