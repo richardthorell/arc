@@ -67,6 +67,27 @@ void draw_toolbar(editor_ui_state& state)
     if (ui::toolbar_button("Grid", state.show_world_grid, ImVec2(ui::scaled(58.0f), ui::scaled(31.0f))))
         state.show_world_grid = !state.show_world_grid;
     same_group_spacing();
+    if (ui::toolbar_button("Shadows", state.show_shadows, ImVec2(ui::scaled(88.0f), ui::scaled(31.0f))))
+        state.show_shadows = !state.show_shadows;
+    same_group_spacing();
+    if (ui::toolbar_button("Sky", state.show_sky, ImVec2(ui::scaled(50.0f), ui::scaled(31.0f))))
+        state.show_sky = !state.show_sky;
+    same_group_spacing();
+    if (ui::toolbar_button("Fog", state.show_fog, ImVec2(ui::scaled(50.0f), ui::scaled(31.0f))))
+        state.show_fog = !state.show_fog;
+    same_group_spacing();
+    if (ui::toolbar_button("Terrain", state.show_terrain, ImVec2(ui::scaled(78.0f), ui::scaled(31.0f))))
+        state.show_terrain = !state.show_terrain;
+    same_group_spacing();
+    if (ui::toolbar_button("Water", state.show_water, ImVec2(ui::scaled(66.0f), ui::scaled(31.0f))))
+        state.show_water = !state.show_water;
+    same_group_spacing();
+    if (ui::toolbar_button("Veg", state.show_vegetation, ImVec2(ui::scaled(52.0f), ui::scaled(31.0f))))
+        state.show_vegetation = !state.show_vegetation;
+    same_group_spacing();
+    if (ui::toolbar_button("Decals", state.show_decals, ImVec2(ui::scaled(70.0f), ui::scaled(31.0f))))
+        state.show_decals = !state.show_decals;
+    same_group_spacing();
     ui::toolbar_button("Snap", false, ImVec2(ui::scaled(58.0f), ui::scaled(31.0f)));
     ui::toolbar_separator();
 

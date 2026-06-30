@@ -1,6 +1,7 @@
 #define SDL_MAIN_HANDLED
 
 #include <arc/editor/editor_console.h>
+#include <arc/editor/asset_drag_drop.h>
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/editor_ui_state.h>
@@ -8,6 +9,7 @@
 #include <arc/editor/panels/console_panel.h>
 #include <arc/editor/panels/content_browser_panel.h>
 #include <arc/editor/panels/inspector_panel.h>
+#include <arc/editor/panels/material_editor_panel.h>
 #include <arc/editor/panels/profiler_panel.h>
 #include <arc/editor/panels/render_graph_panel.h>
 #include <arc/editor/panels/scene_hierarchy_panel.h>
@@ -27,6 +29,7 @@
 #endif
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_dialog.h>
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
 #include <SDL3/SDL_vulkan.h>
 #endif
@@ -74,6 +77,92 @@ using arc::editor::ui::scaled;
 #if !defined(ARC_EDITOR_ASSET_ROOT)
 #define ARC_EDITOR_ASSET_ROOT "assets"
 #endif
+
+struct scene_dialog_request
+{
+    bool pending{};
+    bool replace{};
+    std::filesystem::path path;
+};
+
+void SDLCALL scene_dialog_callback(void* userdata, const char* const* filelist, int)
+{
+    auto* request = static_cast<scene_dialog_request*>(userdata);
+    if (!request || !filelist || !filelist[0])
+        return;
+    request->path = filelist[0];
+    request->pending = true;
+}
+
+void show_scene_file_dialog(SDL_Window* window, scene_dialog_request& request, bool replace)
+{
+    request.replace = replace;
+    static constexpr SDL_DialogFileFilter filters[] = {
+        { "Scene assets", "fbx;glb;gltf" }
+    };
+    SDL_ShowOpenFileDialog(scene_dialog_callback, &request, window, filters, 1, nullptr, false);
+}
+
+void draw_scene_import_modal(arc::editor::editor_scene_import_state& import_state)
+{
+    using arc::editor::editor_scene_import_status;
+    if (!import_state.modal_open && import_state.status == editor_scene_import_status::idle)
+        return;
+
+    if (import_state.modal_open)
+        ImGui::OpenPopup("Importing Scene");
+
+    ImGui::SetNextWindowSize(ImVec2(scaled(500.0f), 0.0f), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal("Importing Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+
+    float progress{};
+    arc::render::scene_import_stage stage{ arc::render::scene_import_stage::loading };
+    std::string message;
+    std::vector<std::string> diagnostics;
+    if (import_state.shared)
+    {
+        std::scoped_lock lock(import_state.shared->mutex);
+        progress = import_state.shared->progress;
+        stage = import_state.shared->stage;
+        message = import_state.shared->message;
+        diagnostics = import_state.shared->diagnostics;
+    }
+    if (message.empty())
+        message = import_state.result.message.empty() ? "Preparing import" : import_state.result.message;
+
+    ImGui::TextUnformatted(import_state.source_path.filename().string().c_str());
+    arc::editor::ui::muted_text(arc::editor::scene_import_stage_label(stage));
+    ImGui::ProgressBar(progress, ImVec2(-1.0f, scaled(18.0f)));
+    ImGui::TextWrapped("%s", message.c_str());
+
+    if (!diagnostics.empty())
+    {
+        ImGui::Spacing();
+        arc::editor::ui::muted_text("Diagnostics");
+        ImGui::BeginChild("import-diagnostics", ImVec2(-1.0f, scaled(96.0f)), ImGuiChildFlags_Borders);
+        for (const auto& diagnostic : diagnostics)
+            ImGui::TextWrapped("%s", diagnostic.c_str());
+        ImGui::EndChild();
+    }
+
+    ImGui::Spacing();
+    if (import_state.status == editor_scene_import_status::running)
+    {
+        if (ImGui::Button("Cancel", ImVec2(scaled(96.0f), 0.0f)) && import_state.shared)
+            import_state.shared->cancel_requested = true;
+    }
+    else
+    {
+        if (ImGui::Button("Close", ImVec2(scaled(96.0f), 0.0f)))
+        {
+            arc::editor::reset_scene_import(import_state);
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    ImGui::EndPopup();
+}
 
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
 bool create_sdl_vulkan_surface(VkInstance instance, VkSurfaceKHR* surface, void* user_data)
@@ -131,8 +220,8 @@ editor_asset_state load_default_editor_assets()
     editor_asset_state assets{};
     assets.root = editor_asset_root();
     assets.default_mesh_path = assets.root / "models" / "UAL2_Standard.glb";
-    assets.default_vertex_shader_path = assets.root / "shaders" / "default_unlit.vert";
-    assets.default_fragment_shader_path = assets.root / "shaders" / "default_unlit.frag";
+    assets.default_vertex_shader_path = assets.root / "shaders" / "default_phong.vert";
+    assets.default_fragment_shader_path = assets.root / "shaders" / "default_phong.frag";
 
     auto mesh_result = arc::render::load_gltf_mesh(assets.default_mesh_path);
     assets.default_mesh_message = mesh_result.message;
@@ -247,16 +336,20 @@ editor_scene_state create_default_editor_scene(
     const auto sun = state.scene.create();
     state.sun_entity = sun;
     arc::scene::transform_component sun_transform;
-    sun_transform.rotation = arc::math::from_axis_angle(arc::math::vector3f{ 1.0f, 0.0f, 0.0f }, -0.72f);
+    sun_transform.rotation = arc::editor::quaternion_from_euler_degrees({ -50.0f, -35.0f, 0.0f });
     state.scene.emplace<arc::scene::name_component>(sun, "Sun");
     state.scene.emplace<arc::scene::tag_component>(sun, "Light");
     state.scene.emplace<arc::scene::active_component>(sun);
     state.scene.emplace<arc::scene::transform_component>(sun, sun_transform);
     state.scene.emplace<arc::scene::directional_light_component>(
         sun,
-        arc::math::vector3f{ 1.0f, 0.94f, 0.82f },
-        2.8f,
+        arc::math::vector3f{ 1.0f, 1.0f, 1.0f },
+        1.8f,
         true);
+
+    arc::editor::add_world_environment_to_scene(state);
+    if (renderer)
+        arc::editor::add_terrain_to_scene(state, *renderer);
 
     if (state.default_mesh.valid())
     {
@@ -552,7 +645,8 @@ void draw_main_menu(
     bool& exit_requested,
     editor_ui_state& state,
     const editor_project_state& project,
-    editor_window_chrome& chrome)
+    editor_window_chrome& chrome,
+    scene_dialog_request& scene_dialog)
 {
     if (!ImGui::BeginMenuBar())
         return;
@@ -574,6 +668,11 @@ void draw_main_menu(
 
     if (ImGui::BeginMenu("File"))
     {
+        if (ImGui::MenuItem("Open Scene..."))
+            show_scene_file_dialog(window, scene_dialog, true);
+        if (ImGui::MenuItem("Import Scene Into Current..."))
+            show_scene_file_dialog(window, scene_dialog, false);
+        ImGui::Separator();
         if (ImGui::MenuItem("Exit"))
             exit_requested = true;
         ImGui::EndMenu();
@@ -593,6 +692,12 @@ void draw_main_menu(
         ImGui::MenuItem("Lighting", nullptr, false, false);
         ImGui::Separator();
         ImGui::MenuItem("World Grid", nullptr, &state.show_world_grid);
+        ImGui::MenuItem("Sky", nullptr, &state.show_sky);
+        ImGui::MenuItem("Height Fog", nullptr, &state.show_fog);
+        ImGui::MenuItem("Terrain", nullptr, &state.show_terrain);
+        ImGui::MenuItem("Water", nullptr, &state.show_water);
+        ImGui::MenuItem("Vegetation", nullptr, &state.show_vegetation);
+        ImGui::MenuItem("Decals", nullptr, &state.show_decals);
         ImGui::EndMenu();
     }
 
@@ -706,7 +811,8 @@ void draw_dockspace(
     bool& exit_requested,
     editor_ui_state& state,
     const editor_project_state& project,
-    editor_window_chrome& chrome)
+    editor_window_chrome& chrome,
+    scene_dialog_request& scene_dialog)
 {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const float status_height = scaled(30.0f);
@@ -731,7 +837,7 @@ void draw_dockspace(
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(scaled(8.0f), scaled(10.0f)));
     ImGui::Begin("ARC Editor Dockspace", nullptr, flags);
 
-    draw_main_menu(window, exit_requested, state, project, chrome);
+    draw_main_menu(window, exit_requested, state, project, chrome, scene_dialog);
     ImGui::PopStyleVar(3);
     arc::editor::draw_toolbar(state);
     const ImGuiID dockspace_id = ImGui::GetID("ArcEditorDockspace");
@@ -864,7 +970,10 @@ void draw_viewport_overlay_controls(
 void draw_viewport_panel(
     arc::editor::editor_viewport& viewport,
     editor_ui_state& state,
-    const editor_metrics_state& metrics
+    const editor_metrics_state& metrics,
+    editor_scene_state& editor_scene,
+    const editor_asset_state& editor_assets,
+    arc::render::renderer* renderer
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
     ,
     arc::render::vulkan::vulkan_backend* vulkan_backend
@@ -917,6 +1026,47 @@ void draw_viewport_panel(
     }
     viewport.set_focused(ImGui::IsItemFocused());
     viewport.set_hovered(ImGui::IsItemHovered());
+    arc::editor::editor_asset_payload payload;
+    if (arc::editor::accept_asset_drag_drop(payload))
+    {
+        if (payload.kind != arc::editor::editor_asset_kind::material)
+        {
+            arc::warn("editor.materials", "Only material assets can be dropped onto the scene viewport");
+        }
+        else if (!renderer)
+        {
+            arc::warn("editor.materials", "No renderer is available for viewport material assignment");
+        }
+        else
+        {
+            const auto* camera_transform = editor_scene.scene.try_get<arc::scene::transform_component>(editor_scene.camera_entity);
+            const auto* camera = editor_scene.scene.try_get<arc::scene::camera_component>(editor_scene.camera_entity);
+            const ImVec2 mouse = ImGui::GetMousePos();
+            if (camera_transform && camera && viewport.contains_screen_point(mouse.x, mouse.y))
+            {
+                const auto ray = arc::editor::screen_ray_from_camera(
+                    *camera,
+                    *camera_transform,
+                    viewport,
+                    viewport.local_x(mouse.x),
+                    viewport.local_y(mouse.y));
+                std::string message;
+                const auto hit = arc::editor::apply_material_asset_to_viewport_hit(
+                    editor_scene.material_library,
+                    *renderer,
+                    editor_assets.root,
+                    payload.relative_path,
+                    editor_scene.scene,
+                    ray,
+                    editor_scene.selected_entity,
+                    &message);
+                if (hit.valid())
+                    arc::info("editor.materials", message);
+                else
+                    arc::warn("editor.materials", message.empty() ? "Material drop missed all renderable entities" : message);
+            }
+        }
+    }
 
     draw_list->AddRect(origin, end, IM_COL32(48, 56, 64, 130));
 
@@ -975,6 +1125,65 @@ ImGuizmo::OPERATION gizmo_operation_for_tool(arc::editor::editor_tool tool) noex
     return ImGuizmo::TRANSLATE;
 }
 
+float matrix_value(const std::array<float, 16>& matrix, std::size_t row, std::size_t col) noexcept
+{
+    return matrix[col * 4 + row];
+}
+
+arc::math::vector3f column_vector(const std::array<float, 16>& matrix, std::size_t col) noexcept
+{
+    return {
+        matrix_value(matrix, 0, col),
+        matrix_value(matrix, 1, col),
+        matrix_value(matrix, 2, col)
+    };
+}
+
+arc::math::quatf quaternion_from_transform_matrix(const std::array<float, 16>& matrix, const arc::math::vector3f& scale) noexcept
+{
+    const auto inv_scale = [](float value) noexcept {
+        return std::abs(value) <= 0.000001f ? 1.0f : 1.0f / value;
+    };
+
+    const auto x_axis = arc::math::mul(column_vector(matrix, 0), inv_scale(scale[0]));
+    const auto y_axis = arc::math::mul(column_vector(matrix, 1), inv_scale(scale[1]));
+    const auto z_axis = arc::math::mul(column_vector(matrix, 2), inv_scale(scale[2]));
+
+    const float m00 = x_axis[0];
+    const float m01 = y_axis[0];
+    const float m02 = z_axis[0];
+    const float m10 = x_axis[1];
+    const float m11 = y_axis[1];
+    const float m12 = z_axis[1];
+    const float m20 = x_axis[2];
+    const float m21 = y_axis[2];
+    const float m22 = z_axis[2];
+
+    const float trace = m00 + m11 + m22;
+    arc::math::quatf result;
+    if (trace > 0.0f)
+    {
+        const float s = std::sqrt(trace + 1.0f) * 2.0f;
+        result = { (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, 0.25f * s };
+    }
+    else if (m00 > m11 && m00 > m22)
+    {
+        const float s = std::sqrt(1.0f + m00 - m11 - m22) * 2.0f;
+        result = { 0.25f * s, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s };
+    }
+    else if (m11 > m22)
+    {
+        const float s = std::sqrt(1.0f + m11 - m00 - m22) * 2.0f;
+        result = { (m01 + m10) / s, 0.25f * s, (m12 + m21) / s, (m02 - m20) / s };
+    }
+    else
+    {
+        const float s = std::sqrt(1.0f + m22 - m00 - m11) * 2.0f;
+        result = { (m02 + m20) / s, (m12 + m21) / s, 0.25f * s, (m10 - m01) / s };
+    }
+    return arc::math::normalize(result);
+}
+
 void draw_transform_gizmo(
     editor_scene_state& editor_scene,
     const arc::editor::editor_viewport& viewport,
@@ -1021,13 +1230,14 @@ void draw_transform_gizmo(
             ImGuizmo::WORLD,
             model_data.data()))
     {
-        std::array<float, 3> translation{};
-        std::array<float, 3> rotation{};
-        std::array<float, 3> scale{};
-        ImGuizmo::DecomposeMatrixToComponents(model_data.data(), translation.data(), rotation.data(), scale.data());
-        transform->set_position({ translation[0], translation[1], translation[2] });
-        transform->set_rotation(arc::editor::quaternion_from_euler_degrees({ rotation[0], rotation[1], rotation[2] }));
-        transform->set_scale({ scale[0], scale[1], scale[2] });
+        const arc::math::vector3f scale{
+            arc::math::length(column_vector(model_data, 0)),
+            arc::math::length(column_vector(model_data, 1)),
+            arc::math::length(column_vector(model_data, 2))
+        };
+        transform->set_position({ model_data[12], model_data[13], model_data[14] });
+        transform->set_rotation(quaternion_from_transform_matrix(model_data, scale));
+        transform->set_scale(scale);
     }
     draw_list->PopClipRect();
 }
@@ -1312,6 +1522,19 @@ void draw_stats_panel(
         "Probes: %zu reflection / %zu irradiance",
         editor_scene.last_render.reflection_probe_count,
         editor_scene.last_render.irradiance_probe_count);
+    ImGui::Text(
+        "Environment: %zu sky / %zu fog",
+        editor_scene.last_render.sky_atmosphere_count,
+        editor_scene.last_render.height_fog_count);
+    ImGui::Text(
+        "Terrain/Water: %zu / %zu",
+        editor_scene.last_render.terrain_count,
+        editor_scene.last_render.water_count);
+    ImGui::Text(
+        "Vegetation: %zu patch(es), %zu instance(s)",
+        editor_scene.last_render.vegetation_count,
+        editor_scene.last_render.vegetation_instance_count);
+    ImGui::Text("Decals: %zu", editor_scene.last_render.decal_count);
     ImGui::Text("Mesh Upload: %s", editor_scene.mesh_uploaded ? "Queued" : "Missing");
     ImGui::Separator();
     ImGui::Text("Allocations: %zu", memory.allocation_count);
@@ -1395,6 +1618,7 @@ int main(int, char**)
 
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
     arc::render::renderer editor_renderer;
+    arc::render::renderer* editor_renderer_for_ui = &editor_renderer;
     arc::render::vulkan::vulkan_backend* vulkan_backend{};
     {
         std::uint32_t extension_count = 0;
@@ -1434,6 +1658,8 @@ int main(int, char**)
         }
     }
 #else
+    arc::render::renderer editor_renderer_fallback;
+    arc::render::renderer* editor_renderer_for_ui = &editor_renderer_fallback;
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer)
     {
@@ -1496,6 +1722,8 @@ int main(int, char**)
     arc::editor::editor_viewport editor_viewport;
     editor_ui_state ui_state;
     editor_mouse_state mouse_state;
+    scene_dialog_request scene_dialog;
+    arc::editor::editor_scene_import_state scene_import;
     arc::editor::editor_camera_controller editor_camera;
     arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
     arc::input::input_manager input;
@@ -1572,11 +1800,55 @@ int main(int, char**)
 
         const editor_metrics_state metrics = make_metrics_state(last_time, editor_scene);
 
-        draw_dockspace(window, exit_requested, ui_state, project_state, window_chrome);
+        if (scene_dialog.pending)
+        {
+            const auto mode = scene_dialog.replace
+                ? arc::editor::editor_scene_open_mode::replace
+                : arc::editor::editor_scene_open_mode::append;
+            if (!arc::editor::start_scene_import(scene_import, editor_assets.root, scene_dialog.path, mode))
+                arc::warn("editor.assets", "A scene import is already running");
+            scene_dialog.pending = false;
+            scene_dialog.path.clear();
+        }
+
+        if (arc::editor::poll_scene_import(scene_import))
+        {
+            for (const auto& diagnostic : scene_import.result.diagnostics)
+                arc::warn("editor.assets", diagnostic);
+            if (scene_import.status == arc::editor::editor_scene_import_status::succeeded)
+            {
+                const auto source_path = scene_import.source_path;
+                const auto mode = scene_import.mode;
+                auto imported = std::move(scene_import.result);
+                const auto result = arc::editor::apply_scene_import_result_to_editor(
+                    editor_scene,
+                    *editor_renderer_for_ui,
+                    source_path,
+                    std::move(imported),
+                    mode);
+                if (!result.succeeded)
+                    arc::error("editor.assets", result.message);
+                arc::editor::reset_scene_import(scene_import);
+            }
+            else if (scene_import.status == arc::editor::editor_scene_import_status::failed)
+            {
+                arc::error("editor.assets", scene_import.result.message);
+            }
+            else if (scene_import.status == arc::editor::editor_scene_import_status::cancelled)
+            {
+                arc::warn("editor.assets", scene_import.result.message.empty() ? "Scene import cancelled" : scene_import.result.message);
+            }
+        }
+
+        draw_dockspace(window, exit_requested, ui_state, project_state, window_chrome, scene_dialog);
+        draw_scene_import_modal(scene_import);
         draw_viewport_panel(
             editor_viewport,
             ui_state,
-            metrics
+            metrics,
+            editor_scene,
+            editor_assets,
+            editor_renderer_for_ui
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
             ,
             vulkan_backend
@@ -1593,14 +1865,31 @@ int main(int, char**)
         draw_transform_gizmo(editor_scene, editor_viewport, ui_state.active_tool);
         update_editor_camera_controls(editor_scene, editor_camera, editor_viewport, input, mouse_state);
         handle_viewport_selection(editor_scene, editor_viewport, input, mouse_state);
+        if (editor_scene.focus_imported_scene_requested)
+        {
+            arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
+            editor_scene.focus_imported_scene_requested = false;
+        }
         draw_command_palette(ui_state, editor_scene, editor_camera);
-        arc::editor::draw_scene_hierarchy_panel(editor_scene);
-        arc::editor::draw_inspector_panel(editor_scene);
+        arc::editor::draw_scene_hierarchy_panel(
+            editor_scene,
+#if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
+            editor_renderer
+#else
+            editor_renderer_fallback
+#endif
+        );
+        arc::editor::draw_inspector_panel(editor_scene, editor_assets, editor_renderer_for_ui);
+        arc::editor::draw_material_editor_panel(editor_scene, editor_assets, editor_renderer_for_ui);
         if (ui_state.show_bottom_panels)
         {
-            arc::editor::draw_content_browser_panel(editor_assets);
+            arc::editor::draw_content_browser_panel(editor_assets, editor_scene, editor_renderer_for_ui, &scene_import);
             arc::editor::draw_console_panel(*console_sink, ui_state);
+#if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
             arc::editor::draw_profiler_panel(editor_renderer);
+#else
+            arc::editor::draw_profiler_panel(editor_renderer_fallback);
+#endif
             arc::editor::draw_render_graph_panel();
             arc::editor::draw_shader_graph_panel();
             draw_stats_panel(
@@ -1626,7 +1915,15 @@ int main(int, char**)
             editor_viewport.height(),
             render_mode_for_shading(ui_state.viewport_shading),
             visualization_for_shading(ui_state.viewport_shading),
-            overlay_for_shading(ui_state.viewport_shading));
+            overlay_for_shading(ui_state.viewport_shading),
+            ui_state.show_shadows,
+            arc::scene::render_environment_visibility{
+                .sky = ui_state.show_sky,
+                .fog = ui_state.show_fog,
+                .terrain = ui_state.show_terrain,
+                .water = ui_state.show_water,
+                .vegetation = ui_state.show_vegetation,
+                .decals = ui_state.show_decals });
         const auto submit_result = editor_renderer.render_frame(
             last_time.frame_index,
             arc::render::make_scene_draw_graph("viewport"));

@@ -26,6 +26,16 @@ math::quatf quaternion_from_yaw_pitch(float yaw, float pitch) noexcept
     return math::normalize(math::quatf{ cy * sp, sy * cp, -sy * sp, cy * cp });
 }
 
+math::quatf multiply_quaternion(const math::quatf& lhs, const math::quatf& rhs) noexcept
+{
+    return math::quatf{
+        lhs[3] * rhs[0] + lhs[0] * rhs[3] + lhs[1] * rhs[2] - lhs[2] * rhs[1],
+        lhs[3] * rhs[1] - lhs[0] * rhs[2] + lhs[1] * rhs[3] + lhs[2] * rhs[0],
+        lhs[3] * rhs[2] + lhs[0] * rhs[1] - lhs[1] * rhs[0] + lhs[2] * rhs[3],
+        lhs[3] * rhs[3] - lhs[0] * rhs[0] - lhs[1] * rhs[1] - lhs[2] * rhs[2]
+    };
+}
+
 math::vector3f point_to_vector(const geometric::point3f& point) noexcept
 {
     return math::vector3f{ point[0], point[1], point[2] };
@@ -299,19 +309,10 @@ math::quatf quaternion_from_euler_degrees(const math::vector3f& degrees) noexcep
     const float x = degrees[0] * degrees_to_radians;
     const float y = degrees[1] * degrees_to_radians;
     const float z = degrees[2] * degrees_to_radians;
-    const float cx = std::cos(x * 0.5f);
-    const float sx = std::sin(x * 0.5f);
-    const float cy = std::cos(y * 0.5f);
-    const float sy = std::sin(y * 0.5f);
-    const float cz = std::cos(z * 0.5f);
-    const float sz = std::sin(z * 0.5f);
-
-    return math::normalize(math::quatf{
-        sx * cy * cz + cx * sy * sz,
-        cx * sy * cz - sx * cy * sz,
-        cx * cy * sz + sx * sy * cz,
-        cx * cy * cz - sx * sy * sz
-    });
+    const auto qx = math::from_axis_angle(math::vector3f{ 1.0f, 0.0f, 0.0f }, x);
+    const auto qy = math::from_axis_angle(math::vector3f{ 0.0f, 1.0f, 0.0f }, y);
+    const auto qz = math::from_axis_angle(math::vector3f{ 0.0f, 0.0f, 1.0f }, z);
+    return math::normalize(multiply_quaternion(multiply_quaternion(qy, qx), qz));
 }
 
 math::vector3f euler_degrees_from_quaternion(const math::quatf& rotation) noexcept
@@ -322,18 +323,33 @@ math::vector3f euler_degrees_from_quaternion(const math::quatf& rotation) noexce
     const float z = q[2];
     const float w = q[3];
 
-    const float sinr_cosp = 2.0f * (w * x + y * z);
-    const float cosr_cosp = 1.0f - 2.0f * (x * x + y * y);
-    const float roll = std::atan2(sinr_cosp, cosr_cosp);
+    const float m00 = 1.0f - 2.0f * y * y - 2.0f * z * z;
+    const float m02 = 2.0f * x * z + 2.0f * y * w;
+    const float m10 = 2.0f * x * y + 2.0f * z * w;
+    const float m11 = 1.0f - 2.0f * x * x - 2.0f * z * z;
+    const float m12 = 2.0f * y * z - 2.0f * x * w;
+    const float m20 = 2.0f * x * z - 2.0f * y * w;
+    const float m22 = 1.0f - 2.0f * x * x - 2.0f * y * y;
 
-    const float sinp = 2.0f * (w * y - z * x);
-    const float pitch = std::abs(sinp) >= 1.0f ? std::copysign(pi * 0.5f, sinp) : std::asin(sinp);
+    const float x_angle = std::asin(std::clamp(-m12, -1.0f, 1.0f));
+    const float cx = std::cos(x_angle);
+    float y_angle{};
+    float z_angle{};
+    if (std::abs(cx) > 0.0001f)
+    {
+        y_angle = std::atan2(m02, m22);
+        z_angle = std::atan2(m10, m11);
+    }
+    else
+    {
+        y_angle = std::atan2(-m20, m00);
+    }
 
-    const float siny_cosp = 2.0f * (w * z + x * y);
-    const float cosy_cosp = 1.0f - 2.0f * (y * y + z * z);
-    const float yaw = std::atan2(siny_cosp, cosy_cosp);
-
-    return math::vector3f{ roll * radians_to_degrees, pitch * radians_to_degrees, yaw * radians_to_degrees };
+    return math::vector3f{
+        x_angle * radians_to_degrees,
+        y_angle * radians_to_degrees,
+        z_angle * radians_to_degrees
+    };
 }
 
 } // namespace arc::editor

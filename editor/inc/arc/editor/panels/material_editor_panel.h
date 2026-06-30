@@ -5,9 +5,9 @@
 namespace arc::editor
 {
 
-void draw_inspector_panel(
+void draw_material_editor_panel(
     editor_scene_state& editor_scene,
     const editor_asset_state& editor_assets,
-    render::renderer* renderer = nullptr);
+    render::renderer* renderer);
 
 } // namespace arc::editor

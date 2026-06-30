@@ -44,6 +44,13 @@ struct editor_ui_state
     viewport_camera_mode viewport_camera{ viewport_camera_mode::perspective };
     editor_tool active_tool{ editor_tool::translate };
     bool show_world_grid{ true };
+    bool show_shadows{ true };
+    bool show_sky{ true };
+    bool show_fog{ true };
+    bool show_terrain{ true };
+    bool show_water{ true };
+    bool show_vegetation{ false };
+    bool show_decals{ true };
     bool console_collapse{ false };
     bool console_auto_scroll{ true };
     bool console_show_trace{ true };

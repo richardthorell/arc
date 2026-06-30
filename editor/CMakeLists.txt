@@ -1,11 +1,15 @@
 add_library(arc-editor-core STATIC
+    src/asset_drag_drop.cpp
     src/editor_console.cpp
     src/editor_interaction.cpp
     src/editor_state.cpp
     src/editor_viewport.cpp
+    src/material_asset.cpp
+    src/material_library.cpp
     src/panels/console_panel.cpp
     src/panels/content_browser_panel.cpp
     src/panels/inspector_panel.cpp
+    src/panels/material_editor_panel.cpp
     src/panels/profiler_panel.cpp
     src/panels/render_graph_panel.cpp
     src/panels/scene_hierarchy_panel.cpp
