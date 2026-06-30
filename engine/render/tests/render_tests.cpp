@@ -659,6 +659,14 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     REQUIRE(data.spot_count == 1);
     REQUIRE(data.spot_lights[0].params[0] == Catch::Approx(0.7f));
     REQUIRE(data.ambient_color_intensity[1] == Catch::Approx(0.2f));
+
+    environment.prefiltered = true;
+    environment.diffuse_irradiance = { 0.4f, 0.5f, 0.6f };
+    environment.diffuse_intensity = 0.75f;
+    const auto prefiltered = arc::render::pack_scene_lighting({}, {}, {}, &environment);
+    REQUIRE(prefiltered.ambient_color_intensity[0] == Catch::Approx(0.4f));
+    REQUIRE(prefiltered.ambient_color_intensity[2] == Catch::Approx(0.6f));
+    REQUIRE(prefiltered.ambient_color_intensity[3] == Catch::Approx(0.75f));
 }
 
 TEST_CASE("light unit and temperature helpers provide stable defaults")
@@ -824,6 +832,10 @@ TEST_CASE("GLB mesh loader reads static triangle geometry")
     REQUIRE(result.mesh.indices == std::vector<std::uint32_t>{ 0, 1, 2 });
     REQUIRE(result.mesh.vertices[0].position[1] == 0.5f);
     REQUIRE(result.mesh.vertices[0].normal[2] == 1.0f);
+    REQUIRE(result.mesh.vertices[0].tangent[0] == Catch::Approx(1.0f));
+    REQUIRE(result.mesh.vertices[0].tangent[1] == Catch::Approx(0.0f));
+    REQUIRE(result.mesh.vertices[0].tangent[2] == Catch::Approx(0.0f));
+    REQUIRE(result.mesh.vertices[0].tangent[3] == Catch::Approx(1.0f));
     REQUIRE(result.mesh.vertices[1].texcoord[1] == 1.0f);
     REQUIRE(result.mesh.material_index == 0);
     REQUIRE(result.textures.size() == 1);
@@ -888,6 +900,35 @@ TEST_CASE("DDS loader parses uncompressed RGBA8 texture metadata")
     REQUIRE(result.texture.format == arc::render::texture_format::rgba8_unorm);
     REQUIRE(result.texture.mips.size() == 1);
     REQUIRE(result.texture.mips[0].size == 16);
+}
+
+TEST_CASE("texture loader infers material texture color space from file names")
+{
+    auto bytes = make_dds_header(4, 4, 1, 0x00000004u, 0x31545844u);
+    bytes.resize(bytes.size() + 8);
+
+    const auto root = std::filesystem::temp_directory_path();
+    const auto base_color_path = root / "MASTER_Stone_BaseColor.dds";
+    const auto normal_path = root / "MASTER_Stone_Normal.dds";
+    {
+        std::ofstream file(base_color_path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+    {
+        std::ofstream file(normal_path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+
+    const auto base_color = arc::render::load_texture_asset(base_color_path);
+    const auto normal = arc::render::load_texture_asset(normal_path);
+
+    REQUIRE(base_color.succeeded());
+    REQUIRE(normal.succeeded());
+    REQUIRE(base_color.texture.format == arc::render::texture_format::bc1_rgba_srgb);
+    REQUIRE(normal.texture.format == arc::render::texture_format::bc1_rgba_unorm);
+
+    std::filesystem::remove(base_color_path);
+    std::filesystem::remove(normal_path);
 }
 
 TEST_CASE("DDS loader rejects invalid and truncated payloads")

@@ -31,7 +31,7 @@ enum class light_intensity_unit : std::uint8_t
 };
 
 /**
- * @brief Renderer environment source. Prefiltering is a follow-up pass.
+ * @brief Renderer environment source and v1 prefilter outputs.
  */
 struct environment_desc
 {
@@ -40,6 +40,11 @@ struct environment_desc
     texture_handle equirectangular_texture{};
     math::vector3f fallback_color{ 0.12f, 0.12f, 0.12f };
     float intensity{ 1.0f };
+    math::vector3f diffuse_irradiance{ 0.12f, 0.12f, 0.12f };
+    float diffuse_intensity{ 1.0f };
+    texture_handle irradiance_texture{};
+    texture_handle prefiltered_specular_texture{};
+    bool prefiltered{};
 };
 
 /**

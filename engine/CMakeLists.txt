@@ -30,6 +30,11 @@ add_subdirectory(memory)
 add_subdirectory(framework)
 add_subdirectory(input)
 add_subdirectory(render)
+
+if(ARC_BUILD_RENDER_VULKAN)
+    add_subdirectory(render-vulkan)
+endif()
+
 add_subdirectory(scene)
 
 add_library(arc INTERFACE)

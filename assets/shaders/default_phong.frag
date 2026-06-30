@@ -5,11 +5,16 @@ layout(location = 1) in vec3 in_world_position;
 layout(location = 2) in vec4 in_color;
 layout(location = 3) in vec2 in_texcoord;
 layout(location = 4) in float in_view_depth;
+layout(location = 5) in vec4 in_tangent;
 
 layout(location = 0) out vec4 out_color;
 
 layout(set = 0, binding = 0) uniform sampler2D base_texture;
-layout(set = 0, binding = 1) uniform sampler2DArrayShadow shadow_map;
+layout(set = 0, binding = 1) uniform sampler2D metallic_roughness_texture;
+layout(set = 0, binding = 2) uniform sampler2D normal_texture;
+layout(set = 0, binding = 3) uniform sampler2D occlusion_texture;
+layout(set = 0, binding = 4) uniform sampler2D emissive_texture;
+layout(set = 0, binding = 5) uniform sampler2DArrayShadow shadow_map;
 
 layout(push_constant) uniform mesh_constants
 {
@@ -22,14 +27,33 @@ layout(push_constant) uniform mesh_constants
     vec4 visualization;
     vec4 fog_color_density;
     vec4 fog_params;
+    vec4 material_params;
 } constants;
 
-layout(set = 0, binding = 2) uniform shadow_data
+layout(set = 0, binding = 6) uniform shadow_data
 {
     mat4 light_view_projection[4];
     vec4 cascade_splits;
     vec4 params;
 } shadows;
+
+const float PI = 3.14159265359;
+
+bool has_texture(float flag)
+{
+    return mod(floor(constants.light_color.w / flag), 2.0) >= 1.0;
+}
+
+float saturate(float value)
+{
+    return clamp(value, 0.0, 1.0);
+}
+
+vec3 aces_filmic(vec3 color)
+{
+    color *= 1.08;
+    return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
+}
 
 float sample_shadow(vec3 world_position)
 {
@@ -92,26 +116,79 @@ vec3 apply_height_fog(vec3 color)
     return mix(color, fog_color, fog_amount);
 }
 
+vec3 material_normal()
+{
+    vec3 n = normalize(in_normal);
+    if (!has_texture(4.0))
+        return n;
+
+    vec3 t = normalize(in_tangent.xyz);
+    t = normalize(t - n * dot(n, t));
+    vec3 b = normalize(cross(n, t) * in_tangent.w);
+    vec3 mapped = texture(normal_texture, in_texcoord).xyz * 2.0 - vec3(1.0);
+    mapped.xy *= constants.material_params.x;
+    return normalize(mat3(t, b, n) * mapped);
+}
+
+float distribution_ggx(float n_dot_h, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float denom = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
+    return a2 / max(PI * denom * denom, 0.00001);
+}
+
+float geometry_schlick_ggx(float n_dot_v, float roughness)
+{
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return n_dot_v / max(n_dot_v * (1.0 - k) + k, 0.00001);
+}
+
+vec3 fresnel_schlick(float cos_theta, vec3 f0)
+{
+    return f0 + (1.0 - f0) * pow(1.0 - cos_theta, 5.0);
+}
+
 void main()
 {
-    vec4 material_color = texture(base_texture, in_texcoord) * in_color;
-    vec3 normal = normalize(in_normal);
+    vec4 sampled_base = has_texture(1.0) ? texture(base_texture, in_texcoord) : vec4(1.0);
+    vec4 material_color = sampled_base * in_color;
+    int alpha_mode = int(constants.material_params.w + 0.5);
+    if (alpha_mode == 1 && material_color.a < constants.visualization.w)
+        discard;
+
+    vec3 normal = material_normal();
     vec3 light_dir = normalize(-constants.light_direction_intensity.xyz);
     vec3 view_dir = normalize(constants.camera_position.xyz - in_world_position);
     vec3 half_dir = normalize(light_dir + view_dir);
 
-    float diffuse = max(dot(normal, light_dir), 0.0);
-    float roughness = clamp(constants.visualization.z, 0.04, 1.0);
-    float metallic = clamp(constants.visualization.y, 0.0, 1.0);
-    float spec_power = mix(96.0, 8.0, roughness);
-    float specular_term = pow(max(dot(normal, half_dir), 0.0), spec_power);
+    vec4 mr = has_texture(2.0) ? texture(metallic_roughness_texture, in_texcoord) : vec4(1.0);
+    float roughness = clamp(constants.visualization.z * mr.g, 0.04, 1.0);
+    float metallic = clamp(constants.visualization.y * mr.b, 0.0, 1.0);
+    float ao = has_texture(8.0)
+        ? mix(1.0, texture(occlusion_texture, in_texcoord).r, constants.material_params.y)
+        : 1.0;
+    vec3 emissive = has_texture(16.0)
+        ? texture(emissive_texture, in_texcoord).rgb * constants.material_params.z
+        : vec3(0.0);
+
+    float n_dot_l = saturate(dot(normal, light_dir));
+    float n_dot_v = saturate(dot(normal, view_dir));
+    float n_dot_h = saturate(dot(normal, half_dir));
+    float h_dot_v = saturate(dot(half_dir, view_dir));
+
     vec3 f0 = mix(vec3(0.04), material_color.rgb, metallic);
-    vec3 diffuse_color = material_color.rgb * (1.0 - metallic);
-    vec3 light = constants.light_color.rgb * constants.light_direction_intensity.w;
+    vec3 f = fresnel_schlick(h_dot_v, f0);
+    float d = distribution_ggx(n_dot_h, roughness);
+    float g = geometry_schlick_ggx(n_dot_l, roughness) * geometry_schlick_ggx(n_dot_v, roughness);
+    vec3 specular = (d * g * f) / max(4.0 * n_dot_v * n_dot_l, 0.0001);
+    vec3 diffuse = (1.0 - f) * (1.0 - metallic) * material_color.rgb / PI;
+    vec3 radiance = constants.light_color.rgb * constants.light_direction_intensity.w;
     float shadow = sample_shadow(in_world_position);
-    vec3 ambient = vec3(0.12) * material_color.rgb;
-    vec3 direct = (diffuse_color * diffuse + f0 * specular_term) * light * shadow;
-    vec3 lit_color = ambient + direct;
+    vec3 direct = (diffuse + specular) * radiance * n_dot_l * shadow;
+    vec3 ambient = material_color.rgb * ao * 0.18;
+    vec3 lit_color = ambient + direct + emissive;
 
     int mode = int(constants.visualization.x + 0.5);
     vec3 color = lit_color;
@@ -128,15 +205,20 @@ void main()
     else if (mode == 6)
         color = vec3(metallic);
     else if (mode == 7)
-        color = vec3(1.0);
+        color = vec3(ao);
     else if (mode == 8)
-        color = vec3(0.0);
+        color = emissive;
     else if (mode == 9)
-        color = vec3(diffuse * shadow);
+        color = vec3(n_dot_l * shadow);
     else if (mode == 10)
         color = vec3(in_texcoord, 0.0);
     else
         color = apply_height_fog(color);
 
+    if (mode == 0)
+    {
+        color *= max(constants.camera_position.w, 0.001);
+        color = aces_filmic(color);
+    }
     out_color = vec4(color, material_color.a);
 }

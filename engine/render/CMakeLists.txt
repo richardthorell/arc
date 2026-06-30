@@ -15,7 +15,3 @@ endif()
 if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
     add_subdirectory(tests)
 endif()
-
-if(ARC_BUILD_RENDER_VULKAN)
-    add_subdirectory(backends/vulkan)
-endif()

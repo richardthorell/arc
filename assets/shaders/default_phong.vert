@@ -4,12 +4,14 @@ layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec2 in_texcoord;
 layout(location = 3) in vec4 in_color;
+layout(location = 4) in vec4 in_tangent;
 
 layout(location = 0) out vec3 out_normal;
 layout(location = 1) out vec3 out_world_position;
 layout(location = 2) out vec4 out_color;
 layout(location = 3) out vec2 out_texcoord;
 layout(location = 4) out float out_view_depth;
+layout(location = 5) out vec4 out_tangent;
 
 layout(push_constant) uniform mesh_constants
 {
@@ -22,6 +24,7 @@ layout(push_constant) uniform mesh_constants
     vec4 visualization;
     vec4 fog_color_density;
     vec4 fog_params;
+    vec4 material_params;
 } constants;
 
 void main()
@@ -32,5 +35,6 @@ void main()
     out_color = in_color * constants.base_color;
     out_texcoord = in_texcoord;
     out_view_depth = length(constants.camera_position.xyz - world_position.xyz);
+    out_tangent = vec4(mat3(constants.model) * in_tangent.xyz, in_tangent.w);
     gl_Position = constants.model_view_projection * vec4(in_position, 1.0);
 }

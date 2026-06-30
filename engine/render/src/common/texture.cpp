@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
+#include <string_view>
 
 namespace arc::render
 {
@@ -35,6 +37,66 @@ std::string lowercase(std::string value)
         return static_cast<char>(std::tolower(ch));
     });
     return value;
+}
+
+bool contains_any(std::string_view value, std::initializer_list<std::string_view> needles) noexcept
+{
+    for (const auto needle : needles)
+    {
+        if (value.find(needle) != std::string_view::npos)
+            return true;
+    }
+    return false;
+}
+
+texture_format with_srgb(texture_format format) noexcept
+{
+    switch (format)
+    {
+    case texture_format::rgba8_unorm:
+        return texture_format::rgba8_srgb;
+    case texture_format::bc1_rgba_unorm:
+        return texture_format::bc1_rgba_srgb;
+    case texture_format::bc2_rgba_unorm:
+        return texture_format::bc2_rgba_srgb;
+    case texture_format::bc3_rgba_unorm:
+        return texture_format::bc3_rgba_srgb;
+    case texture_format::bc7_rgba_unorm:
+        return texture_format::bc7_rgba_srgb;
+    default:
+        return format;
+    }
+}
+
+texture_format with_linear(texture_format format) noexcept
+{
+    switch (format)
+    {
+    case texture_format::rgba8_srgb:
+        return texture_format::rgba8_unorm;
+    case texture_format::bc1_rgba_srgb:
+        return texture_format::bc1_rgba_unorm;
+    case texture_format::bc2_rgba_srgb:
+        return texture_format::bc2_rgba_unorm;
+    case texture_format::bc3_rgba_srgb:
+        return texture_format::bc3_rgba_unorm;
+    case texture_format::bc7_rgba_srgb:
+        return texture_format::bc7_rgba_unorm;
+    default:
+        return format;
+    }
+}
+
+void apply_filename_color_space(texture_data& texture, const std::filesystem::path& path)
+{
+    const auto name = lowercase((path.filename().string() + " " + texture.name));
+    if (contains_any(name, { "normal", "_n.", "_nor", "roughness", "metallic", "metalness", "metallicroughness", "occlusion", "_ao", "ambientocclusion" }))
+    {
+        texture.format = with_linear(texture.format);
+        return;
+    }
+    if (contains_any(name, { "basecolor", "base_color", "albedo", "diffuse", "emissive", "emission" }))
+        texture.format = with_srgb(texture.format);
 }
 
 std::string mime_type_for_path(const std::filesystem::path& path)
@@ -318,14 +380,23 @@ texture_load_result load_texture_asset(const std::filesystem::path& path)
     {
         auto result = parse_dds_texture(bytes, path.filename().string());
         if (result.succeeded())
+        {
             result.texture.name = path.filename().string();
+            result.texture.source_path = path;
+            apply_filename_color_space(result.texture, path);
+        }
         return result;
     }
 
     texture_data texture;
     texture.name = path.filename().string();
+    texture.source_path = path;
     texture.mime_type = mime_type_for_path(path);
+    texture.format = lowercase(path.extension().string()) == ".hdr"
+        ? texture_format::rgba32f
+        : texture_format::rgba8_srgb;
     texture.encoded = std::move(bytes);
+    apply_filename_color_space(texture, path);
     return { .texture = std::move(texture), .message = "loaded encoded texture" };
 }
 

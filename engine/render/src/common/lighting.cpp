@@ -101,11 +101,13 @@ scene_lighting_data pack_scene_lighting(
     scene_lighting_data data{};
     if (environment)
     {
+        const auto ambient = environment->prefiltered ? environment->diffuse_irradiance : environment->fallback_color;
+        const float intensity = environment->prefiltered ? environment->diffuse_intensity : environment->intensity;
         data.ambient_color_intensity = {
-            environment->fallback_color[0],
-            environment->fallback_color[1],
-            environment->fallback_color[2],
-            environment->intensity
+            ambient[0],
+            ambient[1],
+            ambient[2],
+            intensity
         };
     }
 

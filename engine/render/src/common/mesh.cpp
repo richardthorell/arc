@@ -473,6 +473,96 @@ std::size_t component_size(std::uint32_t component_type)
     }
 }
 
+math::vector2f vertex_uv(const mesh_vertex& vertex) noexcept
+{
+    return { vertex.texcoord[0], vertex.texcoord[1] };
+}
+
+math::vector3f vertex_position(const mesh_vertex& vertex) noexcept
+{
+    return { vertex.position[0], vertex.position[1], vertex.position[2] };
+}
+
+math::vector3f vertex_normal(const mesh_vertex& vertex) noexcept
+{
+    return { vertex.normal[0], vertex.normal[1], vertex.normal[2] };
+}
+
+math::vector3f vertex_tangent(const mesh_vertex& vertex) noexcept
+{
+    return { vertex.tangent[0], vertex.tangent[1], vertex.tangent[2] };
+}
+
+math::vector3f safe_normalize(const math::vector3f& value, math::vector3f fallback) noexcept
+{
+    if (math::length_squared(value) <= 0.000001f)
+        return fallback;
+    return math::normalize(value);
+}
+
+void accumulate_tangent(mesh_vertex& vertex, const math::vector3f& tangent) noexcept
+{
+    vertex.tangent[0] += tangent[0];
+    vertex.tangent[1] += tangent[1];
+    vertex.tangent[2] += tangent[2];
+}
+
+void generate_tangents(mesh_data& mesh)
+{
+    if (mesh.vertices.empty() || mesh.indices.size() < 3)
+        return;
+
+    for (auto& vertex : mesh.vertices)
+        vertex.tangent[0] = vertex.tangent[1] = vertex.tangent[2] = 0.0f;
+
+    for (std::size_t index = 0; index + 2 < mesh.indices.size(); index += 3)
+    {
+        const auto i0 = mesh.indices[index + 0];
+        const auto i1 = mesh.indices[index + 1];
+        const auto i2 = mesh.indices[index + 2];
+        if (i0 >= mesh.vertices.size() || i1 >= mesh.vertices.size() || i2 >= mesh.vertices.size())
+            continue;
+
+        auto& v0 = mesh.vertices[i0];
+        auto& v1 = mesh.vertices[i1];
+        auto& v2 = mesh.vertices[i2];
+        const auto p0 = vertex_position(v0);
+        const auto p1 = vertex_position(v1);
+        const auto p2 = vertex_position(v2);
+        const auto uv0 = vertex_uv(v0);
+        const auto uv1 = vertex_uv(v1);
+        const auto uv2 = vertex_uv(v2);
+        const auto edge1 = math::sub(p1, p0);
+        const auto edge2 = math::sub(p2, p0);
+        const auto duv1 = math::sub(uv1, uv0);
+        const auto duv2 = math::sub(uv2, uv0);
+        const float determinant = duv1[0] * duv2[1] - duv2[0] * duv1[1];
+        if (std::abs(determinant) <= 0.000001f)
+            continue;
+
+        const float inv_det = 1.0f / determinant;
+        const auto tangent = math::mul(math::sub(math::mul(edge1, duv2[1]), math::mul(edge2, duv1[1])), inv_det);
+        accumulate_tangent(v0, tangent);
+        accumulate_tangent(v1, tangent);
+        accumulate_tangent(v2, tangent);
+    }
+
+    for (auto& vertex : mesh.vertices)
+    {
+        const auto normal = safe_normalize(vertex_normal(vertex), { 0.0f, 1.0f, 0.0f });
+        auto tangent = vertex_tangent(vertex);
+        tangent = math::sub(tangent, math::mul(normal, math::dot(normal, tangent)));
+        tangent = safe_normalize(tangent, { 1.0f, 0.0f, 0.0f });
+        vertex.normal[0] = normal[0];
+        vertex.normal[1] = normal[1];
+        vertex.normal[2] = normal[2];
+        vertex.tangent[0] = tangent[0];
+        vertex.tangent[1] = tangent[1];
+        vertex.tangent[2] = tangent[2];
+        vertex.tangent[3] = 1.0f;
+    }
+}
+
 const std::byte* accessor_data(
     const accessor& value,
     const std::vector<buffer_view>& views,
@@ -1049,6 +1139,7 @@ scene_import_result load_fbx_scene_asset(
                 imported_mesh.name += " Part " + std::to_string(part_index);
             imported_mesh.vertices.reserve(part.num_triangles * 3);
             imported_mesh.indices.reserve(part.num_triangles * 3);
+            const bool has_imported_tangents = mesh->vertex_tangent.exists;
 
             const ufbx_material* material = nullptr;
             if (part.index < node->materials.count)
@@ -1083,6 +1174,22 @@ scene_import_result load_fbx_scene_asset(
                     vertex.normal[1] = static_cast<float>(normal.y);
                     vertex.normal[2] = static_cast<float>(normal.z);
                     normalize3(vertex.normal);
+                    if (mesh->vertex_tangent.exists)
+                    {
+                        const ufbx_vec3 tangent = ufbx_transform_direction(&normal_to_node, ufbx_get_vertex_vec3(&mesh->vertex_tangent, ix));
+                        vertex.tangent[0] = static_cast<float>(tangent.x);
+                        vertex.tangent[1] = static_cast<float>(tangent.y);
+                        vertex.tangent[2] = static_cast<float>(tangent.z);
+                        vertex.tangent[3] = 1.0f;
+                        if (mesh->vertex_bitangent.exists)
+                        {
+                            const ufbx_vec3 bitangent = ufbx_transform_direction(&normal_to_node, ufbx_get_vertex_vec3(&mesh->vertex_bitangent, ix));
+                            const math::vector3f n{ vertex.normal[0], vertex.normal[1], vertex.normal[2] };
+                            const math::vector3f t{ vertex.tangent[0], vertex.tangent[1], vertex.tangent[2] };
+                            const math::vector3f b{ static_cast<float>(bitangent.x), static_cast<float>(bitangent.y), static_cast<float>(bitangent.z) };
+                            vertex.tangent[3] = math::dot(math::cross(n, t), b) < 0.0f ? -1.0f : 1.0f;
+                        }
+                    }
                     vertex.texcoord[0] = static_cast<float>(uv.x);
                     vertex.texcoord[1] = static_cast<float>(uv.y);
                     vertex.color[0] = static_cast<float>(color.x);
@@ -1098,6 +1205,8 @@ scene_import_result load_fbx_scene_asset(
             if (imported_mesh.vertices.empty() || imported_mesh.indices.empty())
                 continue;
 
+            if (!has_imported_tangents)
+                generate_tangents(imported_mesh);
             const auto mesh_index = result.meshes.size();
             result.meshes.push_back(std::move(imported_mesh));
             result.nodes.push_back({
@@ -1214,6 +1323,7 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
             return { .message = "failed to read index data" };
         mesh.indices.push_back(*value);
     }
+    generate_tangents(mesh);
 
     const auto texture_sources = parse_texture_sources(json);
     auto textures = parse_images(json, views, bin);
