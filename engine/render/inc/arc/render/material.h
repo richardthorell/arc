@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -29,7 +30,29 @@ enum class texture_format : std::uint8_t
     rgba8_unorm,
     rgba8_srgb,
     rgba16f,
-    rgba32f
+    rgba32f,
+    bc1_rgba_unorm,
+    bc1_rgba_srgb,
+    bc2_rgba_unorm,
+    bc2_rgba_srgb,
+    bc3_rgba_unorm,
+    bc3_rgba_srgb,
+    bc4_r_unorm,
+    bc5_rg_unorm,
+    bc6h_rgb_ufloat,
+    bc7_rgba_unorm,
+    bc7_rgba_srgb
+};
+
+/**
+ * @brief Byte range for one texture mip level in the encoded payload.
+ */
+struct texture_mip_data
+{
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::size_t offset{};
+    std::size_t size{};
 };
 
 /**
@@ -42,12 +65,17 @@ enum class texture_format : std::uint8_t
 struct texture_data
 {
     std::string name;
+    std::filesystem::path source_path;
     std::uint32_t width{};
     std::uint32_t height{};
     texture_format format{ texture_format::rgba8_srgb };
     std::vector<std::byte> pixels;
     std::vector<std::byte> encoded;
+    std::vector<texture_mip_data> mips;
     std::string mime_type;
+    std::uint32_t array_layers{ 1 };
+    bool compressed{};
+    bool dds{};
 
     /**
      * @brief Return whether this texture has decoded pixels ready for upload.
@@ -55,6 +83,14 @@ struct texture_data
     bool has_pixels() const noexcept
     {
         return width != 0 && height != 0 && !pixels.empty();
+    }
+
+    /**
+     * @brief Return whether this texture carries encoded mip payloads.
+     */
+    bool has_encoded_mips() const noexcept
+    {
+        return width != 0 && height != 0 && !encoded.empty() && !mips.empty();
     }
 };
 

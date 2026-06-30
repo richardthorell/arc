@@ -105,7 +105,7 @@ void render_event_writer::draw_mesh(
     const math::matrix4f& view_projection,
     std::string label)
 {
-    draw_mesh(
+    draw_mesh_tinted(
         mesh,
         material,
         model,
@@ -113,6 +113,7 @@ void render_event_writer::draw_mesh(
         render_mode::shaded,
         mesh_visualization_mode::standard,
         false,
+        math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
         math::vector4f{ 0.25f, 0.65f, 1.0f, 1.0f },
         std::move(label));
 }
@@ -128,6 +129,31 @@ void render_event_writer::draw_mesh(
     const math::vector4f& wire_color,
     std::string label)
 {
+    draw_mesh_tinted(
+        mesh,
+        material,
+        model,
+        view_projection,
+        mode,
+        visualization,
+        selected,
+        math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+        wire_color,
+        std::move(label));
+}
+
+void render_event_writer::draw_mesh_tinted(
+    mesh_handle mesh,
+    material_handle material,
+    const math::matrix4f& model,
+    const math::matrix4f& view_projection,
+    render_mode mode,
+    mesh_visualization_mode visualization,
+    bool selected,
+    const math::vector4f& base_color_tint,
+    const math::vector4f& wire_color,
+    std::string label)
+{
     render_event event{};
     event.payload = draw_mesh_event{
         .mesh = mesh,
@@ -137,6 +163,7 @@ void render_event_writer::draw_mesh(
         .mode = mode,
         .visualization = visualization,
         .selected = selected,
+        .base_color_tint = base_color_tint,
         .wire_color = wire_color,
         .label = std::move(label)
     };
@@ -153,7 +180,8 @@ void render_event_writer::directional_light(
     bool use_color_temperature,
     float temperature_kelvin,
     light_intensity_unit intensity_unit,
-    texture_handle cookie_texture)
+    texture_handle cookie_texture,
+    shadow_settings shadow)
 {
     render_event event{};
     event.payload = directional_light_event{
@@ -166,6 +194,7 @@ void render_event_writer::directional_light(
         .temperature_kelvin = temperature_kelvin,
         .intensity_unit = intensity_unit,
         .cookie_texture = cookie_texture,
+        .shadow = shadow,
         .label = std::move(label)
     };
     buffer_->push(std::move(event));
@@ -182,7 +211,8 @@ void render_event_writer::point_light(
     bool use_color_temperature,
     float temperature_kelvin,
     light_intensity_unit intensity_unit,
-    texture_handle cookie_texture)
+    texture_handle cookie_texture,
+    shadow_settings shadow)
 {
     render_event event{};
     event.payload = point_light_event{
@@ -196,6 +226,7 @@ void render_event_writer::point_light(
         .temperature_kelvin = temperature_kelvin,
         .intensity_unit = intensity_unit,
         .cookie_texture = cookie_texture,
+        .shadow = shadow,
         .label = std::move(label)
     };
     buffer_->push(std::move(event));
@@ -215,7 +246,8 @@ void render_event_writer::spot_light(
     bool use_color_temperature,
     float temperature_kelvin,
     light_intensity_unit intensity_unit,
-    texture_handle cookie_texture)
+    texture_handle cookie_texture,
+    shadow_settings shadow)
 {
     render_event event{};
     event.payload = spot_light_event{
@@ -232,6 +264,7 @@ void render_event_writer::spot_light(
         .temperature_kelvin = temperature_kelvin,
         .intensity_unit = intensity_unit,
         .cookie_texture = cookie_texture,
+        .shadow = shadow,
         .label = std::move(label)
     };
     buffer_->push(std::move(event));

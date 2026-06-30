@@ -12,6 +12,40 @@ option(ARC_USE_SYSTEM_VMA "Use a system-provided Vulkan Memory Allocator package
 option(ARC_USE_SYSTEM_SLANG "Use a system-provided Slang package" OFF)
 option(ARC_USE_SYSTEM_STB "Use a system-provided stb package" OFF)
 option(ARC_FETCH_STB "Fetch stb when ARC_USE_SYSTEM_STB is OFF" OFF)
+option(ARC_USE_SYSTEM_UFBX "Use a system-provided ufbx package" OFF)
+option(ARC_FETCH_UFBX "Fetch ufbx when ARC_USE_SYSTEM_UFBX is OFF" ON)
+
+add_library(arc-third-party-ufbx INTERFACE)
+if(NOT TARGET arc::third-party-ufbx)
+    add_library(arc::third-party-ufbx ALIAS arc-third-party-ufbx)
+endif()
+set(ARC_THIRD_PARTY_UFBX_AVAILABLE OFF CACHE INTERNAL "Whether ufbx is available for ARC importers")
+
+if(ARC_USE_SYSTEM_UFBX)
+    find_path(ARC_UFBX_INCLUDE_DIR ufbx.h REQUIRED)
+    find_library(ARC_UFBX_LIBRARY ufbx REQUIRED)
+    target_include_directories(arc-third-party-ufbx INTERFACE "${ARC_UFBX_INCLUDE_DIR}")
+    target_link_libraries(arc-third-party-ufbx INTERFACE "${ARC_UFBX_LIBRARY}")
+    set(ARC_THIRD_PARTY_UFBX_AVAILABLE ON CACHE INTERNAL "Whether ufbx is available for ARC importers" FORCE)
+elseif(ARC_FETCH_THIRD_PARTY AND ARC_FETCH_UFBX)
+    enable_language(C)
+    FetchContent_Declare(
+        ufbx
+        GIT_REPOSITORY https://github.com/ufbx/ufbx.git
+        GIT_TAG master
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(ufbx)
+
+    if(EXISTS "${ufbx_SOURCE_DIR}/ufbx.c" AND EXISTS "${ufbx_SOURCE_DIR}/ufbx.h")
+        add_library(arc-third-party-ufbx-static STATIC "${ufbx_SOURCE_DIR}/ufbx.c")
+        target_include_directories(arc-third-party-ufbx-static PUBLIC "${ufbx_SOURCE_DIR}")
+        target_link_libraries(arc-third-party-ufbx INTERFACE arc-third-party-ufbx-static)
+        set(ARC_THIRD_PARTY_UFBX_AVAILABLE ON CACHE INTERNAL "Whether ufbx is available for ARC importers" FORCE)
+    endif()
+else()
+    target_compile_definitions(arc-third-party-ufbx INTERFACE ARC_RENDER_UFBX_UNAVAILABLE=1)
+endif()
 
 if(ARC_BUILD_EDITOR)
     add_library(arc-third-party-sdl INTERFACE)

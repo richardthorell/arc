@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
@@ -68,6 +69,41 @@ void append_u32(std::vector<std::byte>& bytes, std::uint32_t value)
 {
     const auto* data = reinterpret_cast<const std::byte*>(&value);
     bytes.insert(bytes.end(), data, data + sizeof(value));
+}
+
+void write_u32_at(std::vector<std::byte>& bytes, std::size_t offset, std::uint32_t value)
+{
+    std::memcpy(bytes.data() + offset, &value, sizeof(value));
+}
+
+std::vector<std::byte> make_dds_header(
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t mip_count,
+    std::uint32_t pixel_flags,
+    std::uint32_t four_cc,
+    std::uint32_t rgb_bit_count = 0,
+    std::uint32_t r_mask = 0,
+    std::uint32_t g_mask = 0,
+    std::uint32_t b_mask = 0,
+    std::uint32_t a_mask = 0)
+{
+    std::vector<std::byte> bytes(128);
+    write_u32_at(bytes, 0, 0x20534444);
+    write_u32_at(bytes, 4, 124);
+    write_u32_at(bytes, 8, 0x0002100Fu);
+    write_u32_at(bytes, 12, height);
+    write_u32_at(bytes, 16, width);
+    write_u32_at(bytes, 28, mip_count);
+    write_u32_at(bytes, 76, 32);
+    write_u32_at(bytes, 80, pixel_flags);
+    write_u32_at(bytes, 84, four_cc);
+    write_u32_at(bytes, 88, rgb_bit_count);
+    write_u32_at(bytes, 92, r_mask);
+    write_u32_at(bytes, 96, g_mask);
+    write_u32_at(bytes, 100, b_mask);
+    write_u32_at(bytes, 104, a_mask);
+    return bytes;
 }
 
 void append_f32(std::vector<std::byte>& bytes, float value)
@@ -233,9 +269,20 @@ TEST_CASE("render event writer emits mesh upload and draw events")
         true,
         arc::math::vector4f{ 1.0f, 0.5f, 0.0f, 1.0f },
         "triangle");
+    writer.draw_mesh_tinted(
+        mesh,
+        material,
+        arc::math::identity<float, 4>(),
+        arc::math::identity<float, 4>(),
+        arc::render::render_mode::shaded,
+        arc::render::mesh_visualization_mode::standard,
+        false,
+        arc::math::vector4f{ 0.25f, 0.5f, 0.75f, 1.0f },
+        arc::math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+        "tinted");
     writer.directional_light({ 0.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f }, 3.0f, true, "Sun");
 
-    REQUIRE(buffer.events().size() == 5);
+    REQUIRE(buffer.events().size() == 6);
     REQUIRE(buffer.events()[0].type() == arc::render::render_event_type::mesh_upload);
     const auto& upload = std::get<arc::render::mesh_upload_event>(buffer.events()[0].payload);
     REQUIRE(upload.handle == mesh);
@@ -244,6 +291,8 @@ TEST_CASE("render event writer emits mesh upload and draw events")
     REQUIRE(std::get<arc::render::texture_upload_event>(buffer.events()[1].payload).texture == texture_data);
     REQUIRE(buffer.events()[2].type() == arc::render::render_event_type::material_upload);
     REQUIRE(std::get<arc::render::material_upload_event>(buffer.events()[2].payload).material == material_data);
+    const auto& tinted = std::get<arc::render::draw_mesh_event>(buffer.events()[4].payload);
+    REQUIRE(tinted.base_color_tint[0] == Catch::Approx(0.25f));
     REQUIRE(buffer.events()[3].type() == arc::render::render_event_type::draw);
     const auto& draw = std::get<arc::render::draw_mesh_event>(buffer.events()[3].payload);
     REQUIRE(draw.mesh == mesh);
@@ -252,8 +301,8 @@ TEST_CASE("render event writer emits mesh upload and draw events")
     REQUIRE(draw.visualization == arc::render::mesh_visualization_mode::world_normal);
     REQUIRE(draw.selected);
     REQUIRE(draw.label == "triangle");
-    REQUIRE(buffer.events()[4].type() == arc::render::render_event_type::directional_light);
-    const auto& light = std::get<arc::render::directional_light_event>(buffer.events()[4].payload);
+    REQUIRE(buffer.events()[5].type() == arc::render::render_event_type::directional_light);
+    const auto& light = std::get<arc::render::directional_light_event>(buffer.events()[5].payload);
     REQUIRE(light.label == "Sun");
     REQUIRE(light.intensity == Catch::Approx(3.0f));
 }
@@ -363,15 +412,48 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
     const auto graph = arc::render::make_scene_draw_graph("viewport");
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 6);
-    REQUIRE(compiled.passes[0].name == "depth prepass");
-    REQUIRE(compiled.passes[1].name == "gbuffer pass");
-    REQUIRE(compiled.passes[2].name == "forward transparent pass");
-    REQUIRE(compiled.passes[3].name == "editor picking pass");
-    REQUIRE(compiled.passes[4].name == "selection outline pass");
-    REQUIRE(compiled.passes[5].name == "present viewport");
-    REQUIRE(compiled.resources.size() == 6);
+    REQUIRE(compiled.passes.size() == 11);
+    const auto pass_index = [&](std::string_view name) {
+        for (std::size_t index = 0; index < compiled.passes.size(); ++index)
+        {
+            if (compiled.passes[index].name == name)
+                return index;
+        }
+        return compiled.passes.size();
+    };
+
+    const std::size_t shadow_index = pass_index("directional shadow cascades");
+    const std::size_t sky_index = pass_index("sky atmosphere");
+    const std::size_t depth_index = pass_index("depth prepass");
+    const std::size_t gbuffer_index = pass_index("gbuffer pass");
+    const std::size_t terrain_index = pass_index("terrain pass");
+    const std::size_t vegetation_index = pass_index("vegetation pass");
+    const std::size_t water_index = pass_index("water/forward transparent pass");
+    const std::size_t fog_index = pass_index("height fog");
+    for (std::size_t index = 0; index < compiled.passes.size(); ++index)
+        REQUIRE_FALSE(compiled.passes[index].name.empty());
+
+    REQUIRE(shadow_index < gbuffer_index);
+    REQUIRE(depth_index < gbuffer_index);
+    REQUIRE(sky_index < terrain_index);
+    REQUIRE(gbuffer_index < terrain_index);
+    REQUIRE(terrain_index < vegetation_index);
+    REQUIRE(vegetation_index < water_index);
+    REQUIRE(water_index < fog_index);
+    REQUIRE(compiled.passes.back().name == "present viewport");
+    REQUIRE(compiled.resources.size() == 7);
     REQUIRE_FALSE(compiled.transitions.empty());
+}
+
+TEST_CASE("directional shadow cascade splits are deterministic and ordered")
+{
+    const auto splits = arc::render::cascade_splits(0.1f, 100.0f, 0.65f);
+
+    REQUIRE(splits[0] > 0.1f);
+    REQUIRE(splits[0] < splits[1]);
+    REQUIRE(splits[1] < splits[2]);
+    REQUIRE(splits[2] < splits[3]);
+    REQUIRE(splits[3] == Catch::Approx(100.0f));
 }
 
 TEST_CASE("render world preparation culls sorts batches and emits indirect commands")
@@ -502,6 +584,23 @@ TEST_CASE("renderer creates texture and material resources")
     REQUIRE(uploaded.material->handle == material_handle);
     REQUIRE(uploaded.material->base_color_texture == texture_handle);
     REQUIRE(uploaded.material->alpha_mode == arc::render::material_alpha_mode::masked);
+
+    auto updated = material;
+    updated.name = "pbr_updated";
+    updated.roughness = 0.35f;
+    updated.base_color = { 0.25f, 0.5f, 0.75f, 1.0f };
+
+    REQUIRE(renderer.update_material(material_handle, updated));
+    const auto update_packet = renderer.frame_queue().commit(2);
+    REQUIRE(update_packet.events.size() == 1);
+    REQUIRE(update_packet.events[0].type() == arc::render::render_event_type::material_upload);
+    const auto& material_update = std::get<arc::render::material_upload_event>(update_packet.events[0].payload);
+    REQUIRE(material_update.handle == material_handle);
+    REQUIRE(material_update.material->handle == material_handle);
+    REQUIRE(material_update.material->roughness == Catch::Approx(0.35f));
+    REQUIRE(material_update.material->base_color[2] == Catch::Approx(0.75f));
+
+    REQUIRE_FALSE(renderer.update_material({ .index = 999, .generation = 1 }, updated));
 }
 
 TEST_CASE("renderer creates environment resources")
@@ -745,6 +844,189 @@ TEST_CASE("GLB mesh loader reads static triangle geometry")
     REQUIRE(result.materials[0].textures.normal == 0);
 
     std::filesystem::remove(path);
+}
+
+TEST_CASE("DDS loader parses BC1 texture metadata")
+{
+    auto bytes = make_dds_header(4, 4, 1, 0x00000004u, 0x31545844u);
+    bytes.resize(bytes.size() + 8);
+
+    const auto result = arc::render::parse_dds_texture(bytes, "bc1.dds");
+
+    INFO(result.message);
+    REQUIRE(result.succeeded());
+    REQUIRE(result.texture.dds);
+    REQUIRE(result.texture.compressed);
+    REQUIRE(result.texture.format == arc::render::texture_format::bc1_rgba_unorm);
+    REQUIRE(result.texture.width == 4);
+    REQUIRE(result.texture.height == 4);
+    REQUIRE(result.texture.mips.size() == 1);
+    REQUIRE(result.texture.mips[0].size == 8);
+    REQUIRE(result.texture.encoded.size() == 8);
+}
+
+TEST_CASE("DDS loader parses uncompressed RGBA8 texture metadata")
+{
+    auto bytes = make_dds_header(
+        2,
+        2,
+        1,
+        0x00000041u,
+        0,
+        32,
+        0x000000ff,
+        0x0000ff00,
+        0x00ff0000,
+        0xff000000);
+    bytes.resize(bytes.size() + 16);
+
+    const auto result = arc::render::parse_dds_texture(bytes, "rgba.dds");
+
+    INFO(result.message);
+    REQUIRE(result.succeeded());
+    REQUIRE_FALSE(result.texture.compressed);
+    REQUIRE(result.texture.format == arc::render::texture_format::rgba8_unorm);
+    REQUIRE(result.texture.mips.size() == 1);
+    REQUIRE(result.texture.mips[0].size == 16);
+}
+
+TEST_CASE("DDS loader rejects invalid and truncated payloads")
+{
+    std::vector<std::byte> invalid(8);
+    REQUIRE_FALSE(arc::render::parse_dds_texture(invalid, "bad.dds").succeeded());
+
+    auto truncated = make_dds_header(8, 8, 1, 0x00000004u, 0x31545844u);
+    truncated.resize(truncated.size() + 4);
+    const auto result = arc::render::parse_dds_texture(truncated, "truncated.dds");
+    REQUIRE_FALSE(result.succeeded());
+}
+
+TEST_CASE("scene asset loader wraps GLB meshes and reports scene import failures cleanly")
+{
+    const auto path = write_triangle_glb();
+    const auto glb = arc::render::load_scene_asset(path);
+
+    INFO(glb.message);
+    REQUIRE(glb.succeeded());
+    REQUIRE(glb.meshes.size() == 1);
+    REQUIRE(glb.nodes.size() == 1);
+    REQUIRE(glb.nodes[0].mesh_index == 0);
+    REQUIRE(glb.materials.size() == 1);
+
+    const auto fbx = arc::render::load_scene_asset(path.parent_path() / "missing.fbx");
+    REQUIRE_FALSE(fbx.succeeded());
+    REQUIRE_FALSE(fbx.message.empty());
+
+    std::filesystem::remove(path);
+}
+
+#if defined(ARC_RENDER_TEST_UFBX_DATA_ROOT)
+TEST_CASE("scene asset loader imports static FBX meshes with ufbx")
+{
+    const std::filesystem::path fixture =
+        std::filesystem::path(ARC_RENDER_TEST_UFBX_DATA_ROOT) / "blender_279_nested_meshes_7400_binary.fbx";
+    REQUIRE(std::filesystem::exists(fixture));
+
+    const auto temp_root = std::filesystem::temp_directory_path() / "arc-render-fbx-import-test";
+    std::error_code ec;
+    std::filesystem::remove_all(temp_root, ec);
+    std::filesystem::create_directories(temp_root, ec);
+
+    arc::render::scene_import_options options;
+    options.asset_root = temp_root;
+    options.import_directory = temp_root / "imported" / "nested_meshes";
+
+    std::vector<arc::render::scene_import_progress> progress;
+    const auto result = arc::render::load_scene_asset(fixture, options, [&](const arc::render::scene_import_progress& value) {
+        progress.push_back(value);
+        return true;
+    });
+
+    INFO(result.message);
+    for (const auto& diagnostic : result.diagnostics)
+        INFO(diagnostic);
+    REQUIRE(result.succeeded());
+    REQUIRE(result.meshes.size() >= 1);
+    REQUIRE(result.nodes.size() >= 1);
+    REQUIRE(result.nodes.front().mesh_index < result.meshes.size());
+    REQUIRE(std::filesystem::exists(result.manifest_path));
+    REQUIRE_FALSE(progress.empty());
+    REQUIRE(progress.back().stage == arc::render::scene_import_stage::finalizing);
+
+    std::filesystem::remove_all(temp_root, ec);
+}
+
+TEST_CASE("scene asset loader extracts FBX material assets and embedded textures")
+{
+    const std::filesystem::path fixture =
+        std::filesystem::path(ARC_RENDER_TEST_UFBX_DATA_ROOT) / "blender_279_internal_textures_7400_binary.fbx";
+    REQUIRE(std::filesystem::exists(fixture));
+
+    const auto temp_root = std::filesystem::temp_directory_path() / "arc-render-fbx-texture-import-test";
+    std::error_code ec;
+    std::filesystem::remove_all(temp_root, ec);
+    std::filesystem::create_directories(temp_root, ec);
+
+    arc::render::scene_import_options options;
+    options.asset_root = temp_root;
+    options.import_directory = temp_root / "imported" / "internal_textures";
+
+    const auto result = arc::render::load_scene_asset(fixture, options);
+
+    INFO(result.message);
+    for (const auto& diagnostic : result.diagnostics)
+        INFO(diagnostic);
+    REQUIRE(result.succeeded());
+    REQUIRE_FALSE(result.materials.empty());
+    REQUIRE_FALSE(result.textures.empty());
+    REQUIRE(std::filesystem::exists(result.manifest_path));
+    REQUIRE(std::filesystem::exists(result.materials.front().asset_path));
+    REQUIRE_FALSE(result.textures.front().source_path.empty());
+    REQUIRE(std::filesystem::exists(temp_root / result.textures.front().source_path));
+
+    std::filesystem::remove_all(temp_root, ec);
+}
+#endif
+
+TEST_CASE("primitive mesh builders create renderable geometry")
+{
+    const auto plane = arc::render::make_plane_mesh(2.0f);
+    REQUIRE(plane.name == "Plane");
+    REQUIRE(plane.vertices.size() == 4);
+    REQUIRE(plane.indices == std::vector<std::uint32_t>{ 0, 1, 2, 0, 2, 3 });
+    REQUIRE(plane.vertices[0].normal[1] == Catch::Approx(1.0f));
+
+    const auto cube = arc::render::make_cube_mesh();
+    REQUIRE(cube.vertices.size() == 24);
+    REQUIRE(cube.indices.size() == 36);
+
+    const auto sphere = arc::render::make_uv_sphere_mesh(0.5f, 8, 4);
+    REQUIRE(sphere.vertices.size() == 45);
+    REQUIRE(sphere.indices.size() == 8 * 4 * 6);
+
+    const auto cylinder = arc::render::make_cylinder_mesh(0.5f, 1.0f, 8);
+    REQUIRE(cylinder.vertices.size() == 20);
+    REQUIRE(cylinder.indices.size() == 8 * 12);
+
+    const auto terrain = arc::render::make_terrain_grid_mesh(8.0f, 8, 1.0f);
+    REQUIRE(terrain.name == "Terrain");
+    REQUIRE(terrain.vertices.size() == 81);
+    REQUIRE(terrain.indices.size() == 8 * 8 * 6);
+    bool has_height_variation = false;
+    bool has_tilted_normal = false;
+    bool has_color_variation = false;
+    for (const auto& vertex : terrain.vertices)
+    {
+        has_height_variation = has_height_variation || std::abs(vertex.position[1]) > 0.01f;
+        has_tilted_normal = has_tilted_normal || vertex.normal[1] < 0.995f;
+        has_color_variation = has_color_variation ||
+            std::abs(vertex.color[0] - terrain.vertices.front().color[0]) > 0.01f ||
+            std::abs(vertex.color[1] - terrain.vertices.front().color[1]) > 0.01f ||
+            std::abs(vertex.color[2] - terrain.vertices.front().color[2]) > 0.01f;
+    }
+    REQUIRE(has_height_variation);
+    REQUIRE(has_tilted_normal);
+    REQUIRE(has_color_variation);
 }
 
 TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")

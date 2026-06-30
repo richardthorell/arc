@@ -77,6 +77,30 @@ enum class editor_overlay_mode : std::uint8_t
 };
 
 /**
+ * @brief Shadow filtering requested by a light.
+ */
+enum class shadow_filter : std::uint8_t
+{
+    none,
+    pcf_3x3,
+    pcf_5x5,
+    pcss
+};
+
+/**
+ * @brief Per-light shadow authoring settings.
+ */
+struct shadow_settings
+{
+    bool enabled{ true };
+    std::uint32_t resolution{ 2048 };
+    float bias{ 0.0015f };
+    float normal_bias{ 0.01f };
+    float strength{ 0.75f };
+    shadow_filter filter{ shadow_filter::pcf_3x3 };
+};
+
+/**
  * @brief Upload a static mesh into backend-owned GPU resources.
  */
 struct mesh_upload_event
@@ -137,6 +161,7 @@ struct draw_mesh_event
     render_mode mode{ render_mode::shaded };
     mesh_visualization_mode visualization{ mesh_visualization_mode::standard };
     bool selected{};
+    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
     math::vector4f wire_color{ 0.25f, 0.65f, 1.0f, 1.0f };
     std::string label;
 };
@@ -155,6 +180,7 @@ struct directional_light_event
     float temperature_kelvin{ 6500.0f };
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
+    shadow_settings shadow{};
     std::string label;
 };
 
@@ -173,6 +199,7 @@ struct point_light_event
     float temperature_kelvin{ 6500.0f };
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
+    shadow_settings shadow{ .enabled = false };
     std::string label;
 };
 
@@ -194,6 +221,7 @@ struct spot_light_event
     float temperature_kelvin{ 6500.0f };
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
+    shadow_settings shadow{ .enabled = false };
     std::string label;
 };
 
@@ -333,6 +361,21 @@ public:
         std::string label = {});
 
     /**
+     * @brief Append a static mesh draw request with editor render state and entity tint.
+     */
+    void draw_mesh_tinted(
+        mesh_handle mesh,
+        material_handle material,
+        const math::matrix4f& model,
+        const math::matrix4f& view_projection,
+        render_mode mode = render_mode::shaded,
+        mesh_visualization_mode visualization = mesh_visualization_mode::standard,
+        bool selected = false,
+        const math::vector4f& base_color_tint = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+        const math::vector4f& wire_color = math::vector4f{ 0.25f, 0.65f, 1.0f, 1.0f },
+        std::string label = {});
+
+    /**
      * @brief Append a directional light.
      */
     void directional_light(
@@ -345,7 +388,8 @@ public:
         bool use_color_temperature = false,
         float temperature_kelvin = 6500.0f,
         light_intensity_unit intensity_unit = {},
-        texture_handle cookie_texture = {});
+        texture_handle cookie_texture = {},
+        shadow_settings shadow = {});
 
     /**
      * @brief Append a point light.
@@ -361,7 +405,8 @@ public:
         bool use_color_temperature = false,
         float temperature_kelvin = 6500.0f,
         light_intensity_unit intensity_unit = {},
-        texture_handle cookie_texture = {});
+        texture_handle cookie_texture = {},
+        shadow_settings shadow = { .enabled = false });
 
     /**
      * @brief Append a spot light.
@@ -380,7 +425,8 @@ public:
         bool use_color_temperature = false,
         float temperature_kelvin = 6500.0f,
         light_intensity_unit intensity_unit = {},
-        texture_handle cookie_texture = {});
+        texture_handle cookie_texture = {},
+        shadow_settings shadow = { .enabled = false });
 
     /**
      * @brief Append a debug marker event.

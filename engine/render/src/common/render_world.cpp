@@ -169,7 +169,20 @@ render_graph make_scene_draw_graph(std::string_view target_name)
     graph.add_resource({ .name = "gbuffer_normal", .kind = render_resource_kind::color_texture });
     graph.add_resource({ .name = "editor_picking", .kind = render_resource_kind::color_texture, .persistent = true });
     graph.add_resource({ .name = "selection_mask", .kind = render_resource_kind::color_texture, .persistent = true });
+    graph.add_resource({ .name = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .persistent = true });
 
+    graph.add_pass({
+        .name = "directional shadow cascades",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::custom,
+        .writes = { { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::clear } }
+    });
+    graph.add_pass({
+        .name = "sky atmosphere",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::clear,
+        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear } }
+    });
     graph.add_pass({
         .name = "depth prepass",
         .queue = render_queue_type::graphics,
@@ -180,21 +193,56 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         .name = "gbuffer pass",
         .queue = render_queue_type::graphics,
         .kind = render_pass_kind::gbuffer,
-        .reads = { { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment } },
+        .reads = {
+            { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
+            { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+        },
         .writes = {
             { .resource = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
             { .resource = "gbuffer_normal", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear }
         }
     });
     graph.add_pass({
-        .name = "forward transparent pass",
+        .name = "terrain pass",
         .queue = render_queue_type::graphics,
         .kind = render_pass_kind::custom,
         .reads = {
             { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
+            { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
             { .resource = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
         },
-        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear } }
+        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+    });
+    graph.add_pass({
+        .name = "vegetation pass",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::custom,
+        .reads = {
+            { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
+            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment }
+        },
+        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+    });
+    graph.add_pass({
+        .name = "water/forward transparent pass",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::custom,
+        .reads = {
+            { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
+            { .resource = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment }
+        },
+        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+    });
+    graph.add_pass({
+        .name = "height fog",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::custom,
+        .reads = {
+            { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
+        },
+        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
     });
     graph.add_pass({
         .name = "editor picking pass",

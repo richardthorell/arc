@@ -84,6 +84,21 @@ material_handle renderer::create_material(material_desc material)
     return handle;
 }
 
+bool renderer::update_material(material_handle handle, material_desc material)
+{
+    if (!material_handles_.alive(handle))
+        return false;
+
+    material.handle = handle;
+    auto shared_material = std::make_shared<material_desc>(std::move(material));
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.material_upload(handle, shared_material, shared_material->name);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
 environment_handle renderer::create_environment(environment_desc environment)
 {
     const environment_handle handle = environment_handles_.allocate();

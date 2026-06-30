@@ -108,7 +108,12 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(mesh_entity);
     scene.emplace<arc::scene::selection_component>(mesh_entity, true);
-    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{}, true);
+    scene.emplace<arc::scene::mesh_renderer_component>(
+        mesh_entity,
+        mesh,
+        arc::render::material_handle{},
+        true,
+        arc::math::vector4f{ 0.2f, 0.4f, 0.6f, 1.0f });
 
     const auto result = arc::scene::render_scene(
         scene,
@@ -133,6 +138,8 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     REQUIRE(item.mesh == mesh);
     REQUIRE(world_event.packet->mode == arc::render::render_mode::wireframe);
     REQUIRE(item.selected);
+    REQUIRE(item.base_color_tint[2] == Catch::Approx(0.6f));
+    REQUIRE(world_event.packet->shadows_enabled);
 }
 
 TEST_CASE("render scene can request wireframe overlay for every draw")
@@ -216,6 +223,8 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     sun_light.use_color_temperature = true;
     sun_light.temperature_kelvin = 3000.0f;
     sun_light.intensity_unit = arc::render::light_intensity_unit::lux;
+    sun_light.shadow.resolution = 4096;
+    sun_light.shadow.filter = arc::render::shadow_filter::pcf_5x5;
 
     const auto disabled_point = scene.create();
     scene.emplace<arc::scene::active_component>(disabled_point);
@@ -254,6 +263,9 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     REQUIRE(light.use_color_temperature);
     REQUIRE(light.temperature_kelvin == Catch::Approx(3000.0f));
     REQUIRE(light.intensity_unit == arc::render::light_intensity_unit::lux);
+    REQUIRE(light.shadow.enabled);
+    REQUIRE(light.shadow.resolution == 4096);
+    REQUIRE(light.shadow.filter == arc::render::shadow_filter::pcf_5x5);
     REQUIRE(light.color[0] >= light.color[2]);
     REQUIRE(world_event.packet->reflection_probes.size() == 1);
     REQUIRE(world_event.packet->reflection_probes[0].radius == Catch::Approx(8.0f));

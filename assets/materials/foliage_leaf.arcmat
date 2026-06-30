@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Foliage Leaf",
+  "shader": "arc/foliage_wind",
+  "domain": "surface",
+  "blendMode": "masked",
+  "doubleSided": true,
+  "surface": {
+    "baseColor": [0.24, 0.50, 0.18, 1.0],
+    "metallic": 0.0,
+    "roughness": 0.68,
+    "normalScale": 1.0,
+    "aoStrength": 1.0,
+    "emissiveColor": [0.0, 0.0, 0.0],
+    "emissiveStrength": 0.0,
+    "alphaCutoff": 0.42
+  },
+  "textures": {
+    "baseColor": "",
+    "metallicRoughness": "",
+    "normal": "",
+    "ao": "",
+    "emissive": "",
+    "height": ""
+  },
+  "advanced": {
+    "clearCoat": 0.0,
+    "sheen": 0.2,
+    "transmission": 0.08,
+    "subsurface": 0.22,
+    "anisotropy": 0.0,
+    "parallaxHeightScale": 0.0
+  },
+  "graph": null
+}

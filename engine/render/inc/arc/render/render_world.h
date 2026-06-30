@@ -84,6 +84,7 @@ struct render_item
     bool selected{};
     bool transparent{};
     bool casts_shadows{ true };
+    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
     std::string label;
 };
 
@@ -106,6 +107,98 @@ struct irradiance_probe_data
     math::vector3f position{};
     float radius{ 5.0f };
     float intensity{ 1.0f };
+    std::string label;
+};
+
+/**
+ * @brief Procedural sky atmosphere data extracted for one frame.
+ */
+struct sky_atmosphere_data
+{
+    bool enabled{};
+    float planet_radius{ 6360.0f };
+    float atmosphere_radius{ 6420.0f };
+    float rayleigh_strength{ 1.0f };
+    float mie_strength{ 0.35f };
+    float ozone_strength{ 0.15f };
+    math::vector3f tint{ 0.56f, 0.72f, 1.0f };
+    float exposure{ 1.0f };
+    float sun_disk_size{ 0.025f };
+    float sun_disk_intensity{ 1.4f };
+    std::string label;
+};
+
+/**
+ * @brief Height fog data extracted for one frame.
+ */
+struct height_fog_data
+{
+    bool enabled{};
+    math::vector3f color{ 0.58f, 0.67f, 0.76f };
+    float density{ 0.035f };
+    float height_falloff{ 0.12f };
+    float start_distance{ 8.0f };
+    float max_opacity{ 0.55f };
+    float sun_scattering_strength{ 0.25f };
+    std::string label;
+};
+
+/**
+ * @brief Extracted terrain metadata for editor/render diagnostics.
+ */
+struct terrain_render_data
+{
+    render_object_id object_id{};
+    math::vector3f position{};
+    float size{ 1.0f };
+    std::uint32_t subdivisions{};
+    float height_scale{};
+    bool receive_shadows{ true };
+    std::string label;
+};
+
+/**
+ * @brief Extracted water metadata for simple animated water rendering.
+ */
+struct water_render_data
+{
+    render_object_id object_id{};
+    math::vector3f position{};
+    float size{ 1.0f };
+    math::vector3f color{ 0.16f, 0.35f, 0.48f };
+    float roughness{ 0.18f };
+    float wave_scale{ 0.08f };
+    float wave_speed{ 0.45f };
+    float transparency{ 0.45f };
+    std::string label;
+};
+
+/**
+ * @brief Extracted vegetation metadata for simple generated foliage.
+ */
+struct vegetation_render_data
+{
+    render_object_id object_id{};
+    math::vector3f position{};
+    std::uint32_t density{};
+    float patch_size{ 1.0f };
+    math::vector3f color{ 0.22f, 0.46f, 0.18f };
+    float wind_strength{ 0.25f };
+    float wind_speed{ 0.8f };
+    std::string label;
+};
+
+/**
+ * @brief Extracted decal metadata for projected decal scaffolding.
+ */
+struct decal_render_data
+{
+    render_object_id object_id{};
+    math::matrix4f model{ math::identity<float, 4>() };
+    geometric::box3f world_bounds{};
+    math::vector4f color{ 1.0f, 1.0f, 1.0f, 0.75f };
+    texture_handle texture{};
+    float opacity{ 0.75f };
     std::string label;
 };
 
@@ -160,11 +253,18 @@ struct render_world_packet
     render_mode mode{ render_mode::shaded };
     mesh_visualization_mode visualization{ mesh_visualization_mode::standard };
     editor_overlay_mode overlay{ editor_overlay_mode::selected_wireframe };
+    bool shadows_enabled{ true };
     std::vector<directional_light_event> directional_lights;
     std::vector<point_light_event> point_lights;
     std::vector<spot_light_event> spot_lights;
     std::vector<reflection_probe_data> reflection_probes;
     std::vector<irradiance_probe_data> irradiance_probes;
+    sky_atmosphere_data sky;
+    height_fog_data fog;
+    std::vector<terrain_render_data> terrains;
+    std::vector<water_render_data> waters;
+    std::vector<vegetation_render_data> vegetation;
+    std::vector<decal_render_data> decals;
     std::vector<render_item> items;
     std::vector<std::uint32_t> visible_items;
     std::vector<render_instance_batch> instance_batches;

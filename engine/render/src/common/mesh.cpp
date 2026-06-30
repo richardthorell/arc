@@ -1,20 +1,40 @@
 #include <arc/render/mesh.h>
+#include <arc/render/texture.h>
+
+#if defined(ARC_RENDER_HAS_UFBX)
+#include <ufbx.h>
+#endif
 
 #include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <cmath>
+#include <map>
+#include <memory>
 #include <optional>
 #include <regex>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace arc::render
 {
 namespace
 {
+
+std::string lowercase(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
 
 struct buffer_view
 {
@@ -517,6 +537,622 @@ std::optional<std::uint32_t> read_index(
     return std::nullopt;
 }
 
+std::string string_from_path(const std::filesystem::path& path)
+{
+    return path.generic_string();
+}
+
+std::string escape_json(std::string_view value)
+{
+    std::string result;
+    result.reserve(value.size());
+    for (const char ch : value)
+    {
+        switch (ch)
+        {
+        case '\\':
+            result += "\\\\";
+            break;
+        case '"':
+            result += "\\\"";
+            break;
+        case '\n':
+            result += "\\n";
+            break;
+        case '\r':
+            break;
+        default:
+            result += ch;
+            break;
+        }
+    }
+    return result;
+}
+
+std::string sanitize_asset_name(std::string value, std::string fallback)
+{
+    if (value.empty())
+        value = std::move(fallback);
+    for (char& ch : value)
+    {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (!std::isalnum(uch) && ch != '-' && ch != '_')
+            ch = '_';
+    }
+    while (!value.empty() && value.front() == '_')
+        value.erase(value.begin());
+    while (!value.empty() && value.back() == '_')
+        value.pop_back();
+    return value.empty() ? "asset" : value;
+}
+
+std::filesystem::path default_import_directory(
+    const std::filesystem::path& source,
+    const scene_import_options& options)
+{
+    if (!options.import_directory.empty())
+        return options.import_directory;
+    const auto root = options.asset_root.empty() ? std::filesystem::current_path() / "assets" : options.asset_root;
+    return root / "imported" / sanitize_asset_name(source.stem().string(), "scene");
+}
+
+std::filesystem::path asset_relative_path(
+    const std::filesystem::path& asset_root,
+    const std::filesystem::path& path)
+{
+    std::error_code ec;
+    const auto relative = std::filesystem::relative(path, asset_root, ec);
+    if (!ec && !relative.empty())
+        return relative.lexically_normal();
+    return path.filename();
+}
+
+bool report_progress(
+    const scene_import_progress_callback& callback,
+    scene_import_stage stage,
+    float progress,
+    std::string message)
+{
+    if (!callback)
+        return true;
+    return callback({ .stage = stage, .progress = progress, .message = std::move(message) });
+}
+
+bool is_cancelled(const scene_import_options& options)
+{
+    return options.cancel_requested && options.cancel_requested->load();
+}
+
+const char* blend_mode_name(material_alpha_mode mode) noexcept
+{
+    switch (mode)
+    {
+    case material_alpha_mode::opaque:
+        return "opaque";
+    case material_alpha_mode::masked:
+        return "masked";
+    case material_alpha_mode::blend:
+        return "blend";
+    }
+    return "opaque";
+}
+
+bool write_material_asset(
+    const std::filesystem::path& path,
+    const material_import& imported,
+    std::string& diagnostic)
+{
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec)
+    {
+        diagnostic = "failed to create material folder: " + ec.message();
+        return false;
+    }
+
+    std::ofstream stream(path, std::ios::binary);
+    if (!stream)
+    {
+        diagnostic = "failed to write material asset: " + path.string();
+        return false;
+    }
+
+    const auto& material = imported.material;
+    const auto write_texture = [&](const char* key, const std::string& value, bool comma) {
+        stream << "    \"" << key << "\": \"" << escape_json(value) << "\"" << (comma ? "," : "") << "\n";
+    };
+
+    stream << "{\n";
+    stream << "  \"version\": 1,\n";
+    stream << "  \"name\": \"" << escape_json(material.name) << "\",\n";
+    stream << "  \"shader\": \"arc/default_phong\",\n";
+    stream << "  \"domain\": \"surface\",\n";
+    stream << "  \"blendMode\": \"" << blend_mode_name(material.alpha_mode) << "\",\n";
+    stream << "  \"doubleSided\": " << (material.double_sided ? "true" : "false") << ",\n";
+    stream << "  \"surface\": {\n";
+    stream << "    \"baseColor\": { \"r\": " << material.base_color[0] << ", \"g\": " << material.base_color[1] << ", \"b\": " << material.base_color[2] << ", \"a\": " << material.base_color[3] << " },\n";
+    stream << "    \"metallic\": " << material.metallic << ",\n";
+    stream << "    \"roughness\": " << material.roughness << ",\n";
+    stream << "    \"normalScale\": " << material.normal_scale << ",\n";
+    stream << "    \"aoStrength\": " << material.occlusion_strength << ",\n";
+    stream << "    \"emissive\": { \"r\": " << material.emissive_factor[0] << ", \"g\": " << material.emissive_factor[1] << ", \"b\": " << material.emissive_factor[2] << " },\n";
+    stream << "    \"emissiveStrength\": " << material.emissive_strength << ",\n";
+    stream << "    \"alphaCutoff\": " << material.alpha_cutoff << "\n";
+    stream << "  },\n";
+    stream << "  \"textures\": {\n";
+    write_texture("baseColor", imported.texture_paths.base_color, true);
+    write_texture("metallicRoughness", imported.texture_paths.metallic_roughness, true);
+    write_texture("normal", imported.texture_paths.normal, true);
+    write_texture("ao", imported.texture_paths.occlusion, true);
+    write_texture("emissive", imported.texture_paths.emissive, true);
+    write_texture("height", "", false);
+    stream << "  },\n";
+    stream << "  \"advanced\": {\n";
+    stream << "    \"clearCoat\": " << material.clear_coat_factor << ",\n";
+    stream << "    \"clearCoatRoughness\": " << material.clear_coat_roughness << ",\n";
+    stream << "    \"sheen\": " << material.sheen_factor << ",\n";
+    stream << "    \"transmission\": " << material.transmission_factor << ",\n";
+    stream << "    \"subsurface\": " << material.subsurface_factor << ",\n";
+    stream << "    \"anisotropy\": " << material.anisotropy_factor << ",\n";
+    stream << "    \"anisotropyRotation\": " << material.anisotropy_rotation << ",\n";
+    stream << "    \"parallaxHeightScale\": " << material.parallax_height_scale << "\n";
+    stream << "  },\n";
+    stream << "  \"graph\": null\n";
+    stream << "}\n";
+    return true;
+}
+
+#if defined(ARC_RENDER_HAS_UFBX)
+
+std::string to_string(ufbx_string value)
+{
+    return value.data && value.length != 0 ? std::string(value.data, value.length) : std::string{};
+}
+
+math::vector3f to_vec3(ufbx_vec3 value)
+{
+    return math::vector3f{ static_cast<float>(value.x), static_cast<float>(value.y), static_cast<float>(value.z) };
+}
+
+math::quatf to_quat(ufbx_quat value)
+{
+    return math::quatf{
+        static_cast<float>(value.x),
+        static_cast<float>(value.y),
+        static_cast<float>(value.z),
+        static_cast<float>(value.w)
+    };
+}
+
+void assign_map_texture(
+    material_texture_indices& indices,
+    material_texture_paths& paths,
+    std::size_t texture_index,
+    const std::string& texture_path,
+    std::size_t material_texture_indices::* index_member,
+    std::string material_texture_paths::* path_member)
+{
+    if (texture_index == material_texture_indices::invalid)
+        return;
+    indices.*index_member = texture_index;
+    paths.*path_member = texture_path;
+}
+
+std::filesystem::path first_existing_texture_path(
+    const std::filesystem::path& source_folder,
+    const std::filesystem::path& asset_root,
+    const ufbx_texture* texture)
+{
+    if (!texture)
+        return {};
+
+    std::vector<std::filesystem::path> candidates;
+    const auto filename = to_string(texture->filename);
+    const auto absolute = to_string(texture->absolute_filename);
+    const auto relative = to_string(texture->relative_filename);
+    if (!absolute.empty())
+        candidates.emplace_back(absolute);
+    if (!filename.empty())
+        candidates.emplace_back(filename);
+    if (!relative.empty())
+        candidates.emplace_back(source_folder / relative);
+    if (!relative.empty())
+        candidates.emplace_back(asset_root / relative);
+    if (!filename.empty())
+        candidates.emplace_back(source_folder / filename);
+    if (!filename.empty())
+        candidates.emplace_back(asset_root / filename);
+
+    for (const auto& candidate : candidates)
+    {
+        std::error_code ec;
+        if (!candidate.empty() && std::filesystem::exists(candidate, ec))
+            return candidate;
+    }
+    return {};
+}
+
+std::string texture_extension(const ufbx_texture* texture, const std::filesystem::path& source)
+{
+    if (!source.extension().empty())
+        return source.extension().string();
+    if (texture)
+    {
+        auto relative = std::filesystem::path(to_string(texture->relative_filename));
+        if (!relative.extension().empty())
+            return relative.extension().string();
+        auto filename = std::filesystem::path(to_string(texture->filename));
+        if (!filename.extension().empty())
+            return filename.extension().string();
+    }
+    return ".bin";
+}
+
+std::size_t import_texture(
+    const ufbx_texture* texture,
+    scene_import_result& result,
+    const scene_import_options& options,
+    const std::filesystem::path& source_folder,
+    const std::filesystem::path& texture_folder,
+    std::unordered_map<const ufbx_texture*, std::size_t>& texture_indices,
+    std::string& relative_out)
+{
+    if (!texture)
+        return material_texture_indices::invalid;
+    if (const auto found = texture_indices.find(texture); found != texture_indices.end())
+    {
+        relative_out = result.textures[found->second].source_path.generic_string();
+        return found->second;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(texture_folder, ec);
+    if (ec)
+    {
+        result.diagnostics.push_back("failed to create texture import folder: " + ec.message());
+        return material_texture_indices::invalid;
+    }
+
+    const auto source_path = first_existing_texture_path(source_folder, options.asset_root, texture);
+    const auto base_name = sanitize_asset_name(to_string(texture->name), "texture");
+    const auto extension = texture_extension(texture, source_path);
+    const auto destination = texture_folder / (base_name + extension);
+
+    bool wrote_file = false;
+    if (texture->content.data && texture->content.size != 0)
+    {
+        std::ofstream out(destination, std::ios::binary);
+        if (out)
+        {
+            out.write(reinterpret_cast<const char*>(texture->content.data), static_cast<std::streamsize>(texture->content.size));
+            wrote_file = static_cast<bool>(out);
+        }
+    }
+    else if (!source_path.empty())
+    {
+        std::filesystem::copy_file(source_path, destination, std::filesystem::copy_options::overwrite_existing, ec);
+        wrote_file = !ec;
+    }
+
+    if (!wrote_file)
+    {
+        result.diagnostics.push_back("texture could not be copied or extracted: " + base_name);
+        return material_texture_indices::invalid;
+    }
+
+    auto loaded = load_texture_asset(destination);
+    if (!loaded.succeeded())
+    {
+        result.diagnostics.push_back("imported texture could not be loaded: " + destination.filename().string() + " (" + loaded.message + ")");
+        return material_texture_indices::invalid;
+    }
+
+    loaded.texture.source_path = asset_relative_path(options.asset_root, destination);
+    relative_out = loaded.texture.source_path.generic_string();
+    const auto index = result.textures.size();
+    result.textures.push_back(std::move(loaded.texture));
+    texture_indices[texture] = index;
+    return index;
+}
+
+std::size_t import_material(
+    const ufbx_material* material,
+    scene_import_result& result,
+    const scene_import_options& options,
+    const std::filesystem::path& source_folder,
+    const std::filesystem::path& import_folder,
+    std::unordered_map<const ufbx_material*, std::size_t>& material_indices,
+    std::unordered_map<const ufbx_texture*, std::size_t>& texture_indices)
+{
+    if (!material)
+        return material_texture_indices::invalid;
+    if (const auto found = material_indices.find(material); found != material_indices.end())
+        return found->second;
+
+    material_import imported;
+    imported.material.name = to_string(material->name);
+    if (imported.material.name.empty())
+        imported.material.name = "Imported Material";
+
+    const auto& pbr = material->pbr;
+    if (pbr.base_color.has_value || pbr.base_color.value_components >= 3)
+    {
+        imported.material.base_color[0] = static_cast<float>(pbr.base_color.value_vec3.x);
+        imported.material.base_color[1] = static_cast<float>(pbr.base_color.value_vec3.y);
+        imported.material.base_color[2] = static_cast<float>(pbr.base_color.value_vec3.z);
+    }
+    else if (material->fbx.diffuse_color.has_value || material->fbx.diffuse_color.value_components >= 3)
+    {
+        imported.material.base_color[0] = static_cast<float>(material->fbx.diffuse_color.value_vec3.x);
+        imported.material.base_color[1] = static_cast<float>(material->fbx.diffuse_color.value_vec3.y);
+        imported.material.base_color[2] = static_cast<float>(material->fbx.diffuse_color.value_vec3.z);
+    }
+
+    if (pbr.opacity.has_value)
+    {
+        imported.material.base_color[3] = static_cast<float>(pbr.opacity.value_real);
+        if (imported.material.base_color[3] < 0.999f)
+            imported.material.alpha_mode = material_alpha_mode::blend;
+    }
+    imported.material.metallic = pbr.metalness.has_value ? static_cast<float>(pbr.metalness.value_real) : imported.material.metallic;
+    imported.material.roughness = pbr.roughness.has_value ? static_cast<float>(pbr.roughness.value_real) : imported.material.roughness;
+    if (pbr.emission_color.has_value || pbr.emission_color.value_components >= 3)
+    {
+        imported.material.emissive_factor = math::vector3f{
+            static_cast<float>(pbr.emission_color.value_vec3.x),
+            static_cast<float>(pbr.emission_color.value_vec3.y),
+            static_cast<float>(pbr.emission_color.value_vec3.z)
+        };
+    }
+    if (pbr.emission_factor.has_value)
+        imported.material.emissive_strength = static_cast<float>(pbr.emission_factor.value_real);
+    imported.material.double_sided = material->features.double_sided.enabled;
+
+    const auto texture_folder = import_folder / "textures";
+    const auto import_map = [&](const ufbx_material_map& map, std::size_t material_texture_indices::* index_member, std::string material_texture_paths::* path_member) {
+        if (!map.texture || !map.texture_enabled)
+            return;
+        std::string relative;
+        const auto index = import_texture(map.texture, result, options, source_folder, texture_folder, texture_indices, relative);
+        assign_map_texture(imported.textures, imported.texture_paths, index, relative, index_member, path_member);
+    };
+    import_map(pbr.base_color, &material_texture_indices::base_color, &material_texture_paths::base_color);
+    import_map(pbr.metalness, &material_texture_indices::metallic_roughness, &material_texture_paths::metallic_roughness);
+    import_map(pbr.roughness, &material_texture_indices::metallic_roughness, &material_texture_paths::metallic_roughness);
+    import_map(pbr.normal_map, &material_texture_indices::normal, &material_texture_paths::normal);
+    import_map(pbr.ambient_occlusion, &material_texture_indices::occlusion, &material_texture_paths::occlusion);
+    import_map(pbr.emission_color, &material_texture_indices::emissive, &material_texture_paths::emissive);
+
+    const auto material_folder = import_folder / "materials";
+    imported.asset_path = material_folder / (sanitize_asset_name(imported.material.name, "material") + ".arcmat");
+    std::string diagnostic;
+    if (!write_material_asset(imported.asset_path, imported, diagnostic))
+        result.diagnostics.push_back(diagnostic);
+
+    const auto index = result.materials.size();
+    result.materials.push_back(std::move(imported));
+    material_indices[material] = index;
+    return index;
+}
+
+void normalize3(float* values)
+{
+    const float length = std::sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2]);
+    if (length <= 0.000001f)
+    {
+        values[0] = 0.0f;
+        values[1] = 1.0f;
+        values[2] = 0.0f;
+        return;
+    }
+    values[0] /= length;
+    values[1] /= length;
+    values[2] /= length;
+}
+
+scene_import_result load_fbx_scene_asset(
+    const std::filesystem::path& path,
+    const scene_import_options& options,
+    const scene_import_progress_callback& progress)
+{
+    scene_import_result result;
+    result.import_directory = default_import_directory(path, options);
+    result.manifest_path = result.import_directory / "import.json";
+    if (!report_progress(progress, scene_import_stage::loading, 0.0f, "Loading FBX"))
+        return { .message = "FBX import cancelled" };
+
+    ufbx_load_opts load_options{};
+    load_options.generate_missing_normals = true;
+    load_options.normalize_normals = true;
+    load_options.use_blender_pbr_material = true;
+    load_options.ignore_animation = true;
+    load_options.load_external_files = true;
+    load_options.ignore_missing_external_files = true;
+    if (options.normalize_axes)
+        load_options.target_axes = ufbx_axes_right_handed_y_up;
+    if (options.normalize_units)
+        load_options.target_unit_meters = 1.0f;
+
+    struct progress_user
+    {
+        const scene_import_progress_callback* callback{};
+        const scene_import_options* options{};
+    } progress_data{ &progress, &options };
+    load_options.progress_cb.fn = [](void* user, const ufbx_progress* fbx_progress) -> ufbx_progress_result {
+        auto* data = static_cast<progress_user*>(user);
+        if (is_cancelled(*data->options))
+            return UFBX_PROGRESS_CANCEL;
+        float amount = 0.0f;
+        if (fbx_progress && fbx_progress->bytes_total != 0)
+            amount = static_cast<float>(static_cast<double>(fbx_progress->bytes_read) / static_cast<double>(fbx_progress->bytes_total)) * 0.35f;
+        return report_progress(*data->callback, scene_import_stage::loading, amount, "Loading FBX")
+            ? UFBX_PROGRESS_CONTINUE
+            : UFBX_PROGRESS_CANCEL;
+    };
+    load_options.progress_cb.user = &progress_data;
+    load_options.progress_interval_hint = 64 * 1024;
+
+    ufbx_error error{};
+    ufbx_scene* scene = ufbx_load_file(path.string().c_str(), &load_options, &error);
+    if (!scene)
+    {
+        char buffer[512]{};
+        ufbx_format_error(buffer, sizeof(buffer), &error);
+        result.message = std::string("FBX import failed: ") + buffer;
+        return result;
+    }
+
+    struct scene_deleter
+    {
+        void operator()(ufbx_scene* value) const noexcept { ufbx_free_scene(value); }
+    };
+    std::unique_ptr<ufbx_scene, scene_deleter> scene_guard(scene);
+
+    std::filesystem::create_directories(result.import_directory);
+    std::unordered_map<const ufbx_material*, std::size_t> material_indices;
+    std::unordered_map<const ufbx_texture*, std::size_t> texture_indices;
+    const auto source_folder = path.parent_path();
+
+    if (!report_progress(progress, scene_import_stage::building_materials, 0.38f, "Importing materials"))
+        return { .message = "FBX import cancelled" };
+
+    const auto node_count = std::max<std::size_t>(1, scene->nodes.count);
+    for (std::size_t node_index = 0; node_index < scene->nodes.count; ++node_index)
+    {
+        if (is_cancelled(options))
+            return { .message = "FBX import cancelled" };
+        const ufbx_node* node = scene->nodes.data[node_index];
+        if (!node || !node->mesh || !node->visible)
+            continue;
+
+        const ufbx_mesh* mesh = node->mesh;
+        const float mesh_progress = 0.45f + 0.45f * static_cast<float>(node_index) / static_cast<float>(node_count);
+        if (!report_progress(progress, scene_import_stage::building_meshes, mesh_progress, "Building meshes"))
+            return { .message = "FBX import cancelled" };
+
+        ufbx_transform node_transform = ufbx_matrix_to_transform(&node->node_to_world);
+        ufbx_matrix normal_to_node = ufbx_matrix_for_normals(&node->geometry_to_node);
+
+        for (std::size_t part_index = 0; part_index < mesh->material_parts.count; ++part_index)
+        {
+            const ufbx_mesh_part& part = mesh->material_parts.data[part_index];
+            if (part.num_triangles == 0)
+                continue;
+
+            mesh_data imported_mesh;
+            imported_mesh.name = to_string(node->name);
+            if (imported_mesh.name.empty())
+                imported_mesh.name = to_string(mesh->name);
+            if (imported_mesh.name.empty())
+                imported_mesh.name = "FBX Mesh";
+            if (mesh->material_parts.count > 1)
+                imported_mesh.name += " Part " + std::to_string(part_index);
+            imported_mesh.vertices.reserve(part.num_triangles * 3);
+            imported_mesh.indices.reserve(part.num_triangles * 3);
+
+            const ufbx_material* material = nullptr;
+            if (part.index < node->materials.count)
+                material = node->materials.data[part.index];
+            else if (part.index < mesh->materials.count)
+                material = mesh->materials.data[part.index];
+            const auto material_index = import_material(material, result, options, source_folder, result.import_directory, material_indices, texture_indices);
+            imported_mesh.material_index = material_index;
+
+            for (std::size_t face_index = 0; face_index < part.num_faces; ++face_index)
+            {
+                const ufbx_face face = mesh->faces.data[part.face_indices.data[face_index]];
+                if (face.num_indices < 3)
+                    continue;
+                std::vector<std::uint32_t> tri_indices(face.num_indices * 3);
+                const auto tri_count = ufbx_triangulate_face(tri_indices.data(), tri_indices.size(), mesh, face);
+                for (std::size_t vertex_index = 0; vertex_index < tri_count * 3; ++vertex_index)
+                {
+                    const std::uint32_t ix = tri_indices[vertex_index];
+                    const ufbx_vec3 position = ufbx_transform_position(&node->geometry_to_node, ufbx_get_vertex_vec3(&mesh->vertex_position, ix));
+                    const ufbx_vec3 normal = mesh->vertex_normal.exists
+                        ? ufbx_transform_direction(&normal_to_node, ufbx_get_vertex_vec3(&mesh->vertex_normal, ix))
+                        : ufbx_vec3{ 0.0, 1.0, 0.0 };
+                    const ufbx_vec2 uv = mesh->vertex_uv.exists ? ufbx_get_vertex_vec2(&mesh->vertex_uv, ix) : ufbx_vec2{};
+                    const ufbx_vec4 color = mesh->vertex_color.exists ? ufbx_get_vertex_vec4(&mesh->vertex_color, ix) : ufbx_vec4{ 1.0, 1.0, 1.0, 1.0 };
+
+                    mesh_vertex vertex;
+                    vertex.position[0] = static_cast<float>(position.x);
+                    vertex.position[1] = static_cast<float>(position.y);
+                    vertex.position[2] = static_cast<float>(position.z);
+                    vertex.normal[0] = static_cast<float>(normal.x);
+                    vertex.normal[1] = static_cast<float>(normal.y);
+                    vertex.normal[2] = static_cast<float>(normal.z);
+                    normalize3(vertex.normal);
+                    vertex.texcoord[0] = static_cast<float>(uv.x);
+                    vertex.texcoord[1] = static_cast<float>(uv.y);
+                    vertex.color[0] = static_cast<float>(color.x);
+                    vertex.color[1] = static_cast<float>(color.y);
+                    vertex.color[2] = static_cast<float>(color.z);
+                    vertex.color[3] = static_cast<float>(color.w);
+
+                    imported_mesh.indices.push_back(static_cast<std::uint32_t>(imported_mesh.vertices.size()));
+                    imported_mesh.vertices.push_back(vertex);
+                }
+            }
+
+            if (imported_mesh.vertices.empty() || imported_mesh.indices.empty())
+                continue;
+
+            const auto mesh_index = result.meshes.size();
+            result.meshes.push_back(std::move(imported_mesh));
+            result.nodes.push_back({
+                .name = result.meshes.back().name,
+                .mesh_index = mesh_index,
+                .material_index = material_index,
+                .position = to_vec3(node_transform.translation),
+                .rotation = to_quat(node_transform.rotation),
+                .scale = to_vec3(node_transform.scale)
+            });
+        }
+    }
+
+    if (!report_progress(progress, scene_import_stage::finalizing, 0.95f, "Writing import manifest"))
+        return { .message = "FBX import cancelled" };
+
+    std::ofstream manifest(result.manifest_path, std::ios::binary);
+    if (manifest)
+    {
+        manifest << "{\n";
+        manifest << "  \"version\": 1,\n";
+        manifest << "  \"source\": \"" << escape_json(path.string()) << "\",\n";
+        manifest << "  \"meshes\": " << result.meshes.size() << ",\n";
+        manifest << "  \"materials\": " << result.materials.size() << ",\n";
+        manifest << "  \"textures\": " << result.textures.size() << ",\n";
+        manifest << "  \"nodes\": [\n";
+        for (std::size_t index = 0; index < result.nodes.size(); ++index)
+        {
+            manifest << "    \"" << escape_json(result.nodes[index].name) << "\"";
+            manifest << (index + 1 == result.nodes.size() ? "\n" : ",\n");
+        }
+        manifest << "  ],\n";
+        manifest << "  \"diagnostics\": [\n";
+        for (std::size_t index = 0; index < result.diagnostics.size(); ++index)
+        {
+            manifest << "    \"" << escape_json(result.diagnostics[index]) << "\"";
+            manifest << (index + 1 == result.diagnostics.size() ? "\n" : ",\n");
+        }
+        manifest << "  ]\n";
+        manifest << "}\n";
+    }
+    else
+    {
+        result.diagnostics.push_back("failed to write import manifest");
+    }
+
+    report_progress(progress, scene_import_stage::finalizing, 1.0f, "Import complete");
+    result.message = result.succeeded()
+        ? "loaded FBX scene"
+        : "FBX scene contained no static renderable meshes";
+    return result;
+}
+
+#endif
+
 } // namespace
 
 mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
@@ -588,6 +1224,66 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
         .materials = std::move(materials),
         .message = "loaded GLB mesh"
     };
+}
+
+scene_import_result load_scene_asset(
+    const std::filesystem::path& path,
+    const scene_import_options& options,
+    scene_import_progress_callback progress)
+{
+    const auto extension = lowercase(path.extension().string());
+    if (extension == ".glb")
+    {
+        if (!report_progress(progress, scene_import_stage::loading, 0.05f, "Loading GLB"))
+            return { .message = "GLB import cancelled" };
+        auto mesh_result = load_gltf_mesh(path);
+        scene_import_result result;
+        result.import_directory = default_import_directory(path, options);
+        result.manifest_path = result.import_directory / "import.json";
+        result.message = mesh_result.message;
+        if (!mesh_result.succeeded())
+            return result;
+
+        result.meshes.push_back(std::move(mesh_result.mesh));
+        result.textures = std::move(mesh_result.textures);
+        result.materials = std::move(mesh_result.materials);
+        result.nodes.push_back({
+            .name = result.meshes.front().name.empty() ? path.stem().string() : result.meshes.front().name,
+            .mesh_index = 0,
+            .material_index = result.meshes.front().material_index
+        });
+        report_progress(progress, scene_import_stage::finalizing, 1.0f, "Import complete");
+        result.message = "loaded GLB scene";
+        return result;
+    }
+
+    if (extension == ".gltf")
+    {
+        return {
+            .diagnostics = { "text glTF import is not wired yet; export GLB for this importer" },
+            .message = "text glTF scene import is not supported yet"
+        };
+    }
+
+    if (extension == ".fbx")
+    {
+#if defined(ARC_RENDER_HAS_UFBX)
+        return load_fbx_scene_asset(path, options, progress);
+#else
+        return {
+            .diagnostics = { "FBX importer is not available; enable ARC_FETCH_UFBX or ARC_USE_SYSTEM_UFBX." },
+            .message = "FBX scene import is unavailable in this build"
+        };
+#endif
+    }
+
+    return { .message = "unsupported scene asset extension: " + extension };
+}
+
+scene_import_result load_scene_asset(const std::filesystem::path& path)
+{
+    scene_import_options options;
+    return load_scene_asset(path, options);
 }
 
 } // namespace arc::render

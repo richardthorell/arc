@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "name": "Brushed Metal",
+  "shader": "arc/default_phong",
+  "domain": "surface",
+  "blendMode": "opaque",
+  "doubleSided": false,
+  "surface": {
+    "baseColor": [0.72, 0.70, 0.66, 1.0],
+    "metallic": 1.0,
+    "roughness": 0.34,
+    "normalScale": 0.75,
+    "aoStrength": 1.0,
+    "emissiveColor": [0.0, 0.0, 0.0],
+    "emissiveStrength": 0.0,
+    "alphaCutoff": 0.5
+  },
+  "textures": {
+    "baseColor": "",
+    "metallicRoughness": "",
+    "normal": "",
+    "ao": "",
+    "emissive": "",
+    "height": ""
+  },
+  "advanced": {
+    "clearCoat": 0.0,
+    "sheen": 0.0,
+    "transmission": 0.0,
+    "subsurface": 0.0,
+    "anisotropy": 0.65,
+    "parallaxHeightScale": 0.0
+  },
+  "graph": null
+}

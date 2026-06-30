@@ -162,4 +162,24 @@ scene_lighting_data pack_scene_lighting(
     return data;
 }
 
+std::array<float, directional_shadow_cascade_count> cascade_splits(float near_plane, float far_plane, float split_lambda) noexcept
+{
+    near_plane = std::max(0.001f, near_plane);
+    far_plane = std::max(near_plane + 0.001f, far_plane);
+    split_lambda = std::clamp(split_lambda, 0.0f, 1.0f);
+
+    std::array<float, directional_shadow_cascade_count> result{};
+    const float range = far_plane - near_plane;
+    const float ratio = far_plane / near_plane;
+    for (std::uint32_t index = 0; index < directional_shadow_cascade_count; ++index)
+    {
+        const float p = static_cast<float>(index + 1) / static_cast<float>(directional_shadow_cascade_count);
+        const float logarithmic = near_plane * std::pow(ratio, p);
+        const float uniform = near_plane + range * p;
+        result[index] = split_lambda * logarithmic + (1.0f - split_lambda) * uniform;
+    }
+    result.back() = far_plane;
+    return result;
+}
+
 } // namespace arc::render

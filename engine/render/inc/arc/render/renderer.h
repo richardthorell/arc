@@ -67,6 +67,11 @@ public:
     material_handle create_material(material_desc material);
 
     /**
+     * @brief Replace an existing renderer material description without changing its handle.
+     */
+    bool update_material(material_handle handle, material_desc material);
+
+    /**
      * @brief Create a renderer-owned environment resource.
      */
     environment_handle create_environment(environment_desc environment);

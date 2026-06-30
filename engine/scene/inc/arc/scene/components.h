@@ -131,6 +131,7 @@ struct mesh_renderer_component
     render::mesh_handle mesh{};
     render::material_handle material{};
     bool visible{ true };
+    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
 /**
@@ -196,6 +197,7 @@ struct directional_light_component
     float temperature_kelvin{ 6500.0f };
     render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
     render::texture_handle cookie_texture{};
+    render::shadow_settings shadow{};
 };
 
 /**
@@ -212,6 +214,7 @@ struct point_light_component
     float temperature_kelvin{ 6500.0f };
     render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
     render::texture_handle cookie_texture{};
+    render::shadow_settings shadow{ .enabled = false };
 };
 
 /**
@@ -230,6 +233,7 @@ struct spot_light_component
     float temperature_kelvin{ 6500.0f };
     render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
     render::texture_handle cookie_texture{};
+    render::shadow_settings shadow{ .enabled = false };
 };
 
 /**
@@ -250,6 +254,93 @@ struct irradiance_probe_component
     float radius{ 5.0f };
     float intensity{ 1.0f };
     bool enabled{ true };
+};
+
+/**
+ * @brief Procedural outdoor sky atmosphere settings.
+ */
+struct sky_atmosphere_component
+{
+    bool enabled{ true };
+    float planet_radius{ 6360.0f };
+    float atmosphere_radius{ 6420.0f };
+    float rayleigh_strength{ 1.0f };
+    float mie_strength{ 0.35f };
+    float ozone_strength{ 0.15f };
+    math::vector3f tint{ 0.56f, 0.72f, 1.0f };
+    float exposure{ 1.0f };
+    float sun_disk_size{ 0.025f };
+    float sun_disk_intensity{ 1.4f };
+};
+
+/**
+ * @brief Distance and altitude based fog settings.
+ */
+struct height_fog_component
+{
+    bool enabled{ true };
+    math::vector3f color{ 0.58f, 0.67f, 0.76f };
+    float density{ 0.035f };
+    float height_falloff{ 0.12f };
+    float start_distance{ 8.0f };
+    float max_opacity{ 0.55f };
+    float sun_scattering_strength{ 0.25f };
+};
+
+/**
+ * @brief Generated terrain surface settings for the editor/world foundation.
+ */
+struct terrain_component
+{
+    bool enabled{ true };
+    float size{ 32.0f };
+    std::uint32_t subdivisions{ 64 };
+    float height_scale{ 1.45f };
+    math::vector3f base_color{ 1.0f, 1.0f, 1.0f };
+    render::material_handle material{};
+    bool receive_shadows{ true };
+};
+
+/**
+ * @brief Flat water body settings for the first outdoor scene pass.
+ */
+struct water_component
+{
+    bool enabled{ true };
+    float size{ 8.0f };
+    math::vector3f color{ 0.16f, 0.35f, 0.48f };
+    float roughness{ 0.18f };
+    float wave_scale{ 0.08f };
+    float wave_speed{ 0.45f };
+    float transparency{ 0.45f };
+};
+
+/**
+ * @brief Simple generated vegetation patch settings.
+ */
+struct vegetation_component
+{
+    bool enabled{ true };
+    std::uint32_t density{ 96 };
+    float patch_size{ 8.0f };
+    math::vector3f color{ 0.22f, 0.46f, 0.18f };
+    float wind_strength{ 0.25f };
+    float wind_speed{ 0.8f };
+};
+
+/**
+ * @brief Decal projection scaffold for editor-authored surface detail.
+ */
+struct decal_component
+{
+    bool enabled{ true };
+    geometric::box3f local_bounds{
+        geometric::point3f{ -0.5f, -0.5f, -0.5f },
+        geometric::point3f{ 0.5f, 0.5f, 0.5f }
+    };
+    math::vector4f color{ 1.0f, 1.0f, 1.0f, 0.75f };
+    render::texture_handle texture{};
+    float opacity{ 0.75f };
 };
 
 } // namespace arc::scene

@@ -68,7 +68,8 @@ void append_mesh_item(
     bool transparent = false,
     render::buffer_handle skin = {},
     std::uint32_t joint_count = 0,
-    std::uint32_t instance_count = 1)
+    std::uint32_t instance_count = 1,
+    const math::vector4f& base_color_tint = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f })
 {
     if (!entity_is_active(scene, value))
         return;
@@ -92,8 +93,28 @@ void append_mesh_item(
         .visible = visible,
         .selected = selected,
         .transparent = transparent,
+        .base_color_tint = base_color_tint,
         .label = entity_label(scene, value)
     });
+}
+
+bool environment_mesh_visible(
+    const registry& scene,
+    entity value,
+    const render_environment_visibility& visibility,
+    bool& transparent)
+{
+    transparent = false;
+    if (const auto* terrain = scene.try_get<terrain_component>(value))
+        return visibility.terrain && terrain->enabled;
+    if (const auto* water = scene.try_get<water_component>(value))
+    {
+        transparent = true;
+        return visibility.water && water->enabled;
+    }
+    if (const auto* vegetation = scene.try_get<vegetation_component>(value))
+        return visibility.vegetation && vegetation->enabled;
+    return true;
 }
 
 void apply_lod(
@@ -126,7 +147,9 @@ render_scene_result render_scene(
     std::uint32_t viewport_height,
     render::render_mode mode,
     render::mesh_visualization_mode visualization,
-    render::editor_overlay_mode overlay)
+    render::editor_overlay_mode overlay,
+    bool shadows_enabled,
+    render_environment_visibility environment_visibility)
 {
     render_scene_result result{};
 
@@ -165,15 +188,125 @@ render_scene_result render_scene(
     world_packet.mode = mode;
     world_packet.visualization = visualization;
     world_packet.overlay = overlay;
+    world_packet.shadows_enabled = shadows_enabled;
     world_packet.viewport_width = viewport_width;
     world_packet.viewport_height = viewport_height;
 
+    scene.view<sky_atmosphere_component>().each(
+        [&](entity value, const sky_atmosphere_component& sky) {
+            if (world_packet.sky.enabled || !environment_visibility.sky || !entity_is_active(scene, value) || !sky.enabled)
+                return;
+            world_packet.sky = {
+                .enabled = true,
+                .planet_radius = sky.planet_radius,
+                .atmosphere_radius = sky.atmosphere_radius,
+                .rayleigh_strength = sky.rayleigh_strength,
+                .mie_strength = sky.mie_strength,
+                .ozone_strength = sky.ozone_strength,
+                .tint = sky.tint,
+                .exposure = sky.exposure,
+                .sun_disk_size = sky.sun_disk_size,
+                .sun_disk_intensity = sky.sun_disk_intensity,
+                .label = entity_label(scene, value)
+            };
+            ++result.sky_atmosphere_count;
+        });
+
+    scene.view<height_fog_component>().each(
+        [&](entity value, const height_fog_component& fog) {
+            if (world_packet.fog.enabled || !environment_visibility.fog || !entity_is_active(scene, value) || !fog.enabled)
+                return;
+            world_packet.fog = {
+                .enabled = true,
+                .color = fog.color,
+                .density = fog.density,
+                .height_falloff = fog.height_falloff,
+                .start_distance = fog.start_distance,
+                .max_opacity = fog.max_opacity,
+                .sun_scattering_strength = fog.sun_scattering_strength,
+                .label = entity_label(scene, value)
+            };
+            ++result.height_fog_count;
+        });
+
     scene.view<transform_component, mesh_renderer_component>().each(
         [&](entity value, const transform_component& transform, const mesh_renderer_component& mesh_renderer) {
+            bool transparent{};
+            if (!environment_mesh_visible(scene, value, environment_visibility, transparent))
+                return;
             auto mesh = mesh_renderer.mesh;
             auto material = mesh_renderer.material;
             apply_lod(scene, value, mesh, material);
-            append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible);
+            append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible, transparent, {}, 0, 1, mesh_renderer.base_color_tint);
+        });
+
+    scene.view<transform_component, terrain_component>().each(
+        [&](entity value, const transform_component& transform, const terrain_component& terrain) {
+            if (!environment_visibility.terrain || !entity_is_active(scene, value) || !terrain.enabled)
+                return;
+            world_packet.terrains.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
+                .position = transform.position,
+                .size = terrain.size,
+                .subdivisions = terrain.subdivisions,
+                .height_scale = terrain.height_scale,
+                .receive_shadows = terrain.receive_shadows,
+                .label = entity_label(scene, value)
+            });
+            ++result.terrain_count;
+        });
+
+    scene.view<transform_component, water_component>().each(
+        [&](entity value, const transform_component& transform, const water_component& water) {
+            if (!environment_visibility.water || !entity_is_active(scene, value) || !water.enabled)
+                return;
+            world_packet.waters.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
+                .position = transform.position,
+                .size = water.size,
+                .color = water.color,
+                .roughness = water.roughness,
+                .wave_scale = water.wave_scale,
+                .wave_speed = water.wave_speed,
+                .transparency = water.transparency,
+                .label = entity_label(scene, value)
+            });
+            ++result.water_count;
+        });
+
+    scene.view<transform_component, vegetation_component>().each(
+        [&](entity value, const transform_component& transform, const vegetation_component& vegetation) {
+            if (!environment_visibility.vegetation || !entity_is_active(scene, value) || !vegetation.enabled)
+                return;
+            world_packet.vegetation.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
+                .position = transform.position,
+                .density = vegetation.density,
+                .patch_size = vegetation.patch_size,
+                .color = vegetation.color,
+                .wind_strength = vegetation.wind_strength,
+                .wind_speed = vegetation.wind_speed,
+                .label = entity_label(scene, value)
+            });
+            ++result.vegetation_count;
+            result.vegetation_instance_count += vegetation.density;
+        });
+
+    scene.view<transform_component, decal_component>().each(
+        [&](entity value, const transform_component& transform, const decal_component& decal) {
+            if (!environment_visibility.decals || !entity_is_active(scene, value) || !decal.enabled)
+                return;
+            const math::matrix4f world = transform.dirty ? local_matrix(transform) : transform.world;
+            world_packet.decals.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
+                .model = world,
+                .world_bounds = world_bounds_for(scene, value, transform),
+                .color = decal.color,
+                .texture = decal.texture,
+                .opacity = decal.opacity,
+                .label = entity_label(scene, value)
+            });
+            ++result.decal_count;
         });
 
     scene.view<transform_component, skinned_mesh_renderer_component>().each(
@@ -223,6 +356,7 @@ render_scene_result render_scene(
                 .temperature_kelvin = light.temperature_kelvin,
                 .intensity_unit = light.intensity_unit,
                 .cookie_texture = light.cookie_texture,
+                .shadow = light.shadow,
                 .label = entity_label(scene, value)
             });
             ++result.directional_light_count;
@@ -243,6 +377,7 @@ render_scene_result render_scene(
                 .temperature_kelvin = light.temperature_kelvin,
                 .intensity_unit = light.intensity_unit,
                 .cookie_texture = light.cookie_texture,
+                .shadow = light.shadow,
                 .label = entity_label(scene, value)
             });
             ++result.point_light_count;
@@ -266,6 +401,7 @@ render_scene_result render_scene(
                 .temperature_kelvin = light.temperature_kelvin,
                 .intensity_unit = light.intensity_unit,
                 .cookie_texture = light.cookie_texture,
+                .shadow = light.shadow,
                 .label = entity_label(scene, value)
             });
             ++result.spot_light_count;

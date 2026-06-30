@@ -32,6 +32,15 @@ target_compile_definitions(arc_render_tests
   PRIVATE
     "ARC_RENDER_TEST_ASSET_ROOT=\"${CMAKE_SOURCE_DIR}/assets\""
 )
+if(ARC_THIRD_PARTY_UFBX_AVAILABLE)
+  FetchContent_GetProperties(ufbx SOURCE_DIR ufbx_SOURCE_DIR)
+endif()
+if(ARC_THIRD_PARTY_UFBX_AVAILABLE AND DEFINED ufbx_SOURCE_DIR AND EXISTS "${ufbx_SOURCE_DIR}/data")
+  target_compile_definitions(arc_render_tests
+    PRIVATE
+      "ARC_RENDER_TEST_UFBX_DATA_ROOT=\"${ufbx_SOURCE_DIR}/data\""
+  )
+endif()
 
 include(Catch)
 catch_discover_tests(arc_render_tests)

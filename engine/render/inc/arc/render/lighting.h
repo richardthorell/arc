@@ -17,6 +17,7 @@ namespace arc::render
 inline constexpr std::uint32_t max_directional_lights = 4;
 inline constexpr std::uint32_t max_point_lights = 64;
 inline constexpr std::uint32_t max_spot_lights = 64;
+inline constexpr std::uint32_t directional_shadow_cascade_count = 4;
 
 /**
  * @brief Authoring unit used by scene lights.
@@ -86,6 +87,64 @@ struct scene_lighting_data
     std::uint32_t skipped_point_count{};
     std::uint32_t skipped_spot_count{};
 };
+
+/**
+ * @brief One directional shadow cascade in packed renderer form.
+ */
+struct directional_shadow_cascade_data
+{
+    math::matrix4f light_view_projection{ math::identity<float, 4>() };
+    float split_depth{};
+};
+
+/**
+ * @brief Directional CSM settings/data prepared for a frame.
+ */
+struct directional_shadow_data
+{
+    std::array<directional_shadow_cascade_data, directional_shadow_cascade_count> cascades{};
+    shadow_settings settings{};
+    bool enabled{};
+};
+
+/**
+ * @brief Cache key for future directional shadow reuse.
+ */
+struct directional_shadow_cache_key
+{
+    std::uint32_t light_index{};
+    std::uint32_t resolution{};
+    shadow_filter filter{ shadow_filter::pcf_3x3 };
+
+    friend constexpr bool operator==(const directional_shadow_cache_key&, const directional_shadow_cache_key&) noexcept = default;
+};
+
+/**
+ * @brief Cache key for future point-light cubemap shadows.
+ */
+struct point_shadow_cache_key
+{
+    std::uint32_t light_index{};
+    std::uint32_t resolution{};
+
+    friend constexpr bool operator==(const point_shadow_cache_key&, const point_shadow_cache_key&) noexcept = default;
+};
+
+/**
+ * @brief Cache key for future spotlight shadows.
+ */
+struct spot_shadow_cache_key
+{
+    std::uint32_t light_index{};
+    std::uint32_t resolution{};
+
+    friend constexpr bool operator==(const spot_shadow_cache_key&, const spot_shadow_cache_key&) noexcept = default;
+};
+
+/**
+ * @brief Return deterministic cascade split depths.
+ */
+std::array<float, directional_shadow_cascade_count> cascade_splits(float near_plane, float far_plane, float split_lambda = 0.65f) noexcept;
 
 /**
  * @brief Convert a color temperature in Kelvin to linear RGB approximation.
