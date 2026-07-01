@@ -165,8 +165,12 @@ render_graph make_scene_draw_graph(std::string_view target_name)
     render_graph graph;
     graph.add_resource({ .name = target, .kind = render_resource_kind::color_texture, .persistent = true });
     graph.add_resource({ .name = "scene_depth", .kind = render_resource_kind::depth_texture, .persistent = true });
-    graph.add_resource({ .name = "gbuffer_albedo", .kind = render_resource_kind::color_texture });
-    graph.add_resource({ .name = "gbuffer_normal", .kind = render_resource_kind::color_texture });
+    graph.add_resource({ .name = "scene_color", .kind = render_resource_kind::color_texture, .format = "rgba16f", .persistent = true });
+    graph.add_resource({ .name = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .format = "rgba16f" });
+    graph.add_resource({ .name = "gbuffer_normal", .kind = render_resource_kind::color_texture, .format = "rgba16f" });
+    graph.add_resource({ .name = "gbuffer_material", .kind = render_resource_kind::color_texture, .format = "rgba16f" });
+    graph.add_resource({ .name = "gbuffer_motion", .kind = render_resource_kind::color_texture, .format = "rg16f" });
+    graph.add_resource({ .name = "gbuffer_object_id", .kind = render_resource_kind::color_texture, .format = "r32ui", .persistent = true });
     graph.add_resource({ .name = "editor_picking", .kind = render_resource_kind::color_texture, .persistent = true });
     graph.add_resource({ .name = "selection_mask", .kind = render_resource_kind::color_texture, .persistent = true });
     graph.add_resource({ .name = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .persistent = true });
@@ -199,7 +203,27 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         },
         .writes = {
             { .resource = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
-            { .resource = "gbuffer_normal", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear }
+            { .resource = "gbuffer_normal", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
+            { .resource = "gbuffer_material", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
+            { .resource = "gbuffer_motion", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
+            { .resource = "gbuffer_object_id", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear }
+        }
+    });
+    graph.add_pass({
+        .name = "deferred lighting",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::lighting,
+        .reads = {
+            { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .resource = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = "gbuffer_normal", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = "gbuffer_material", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = "gbuffer_motion", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = "gbuffer_object_id", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+        },
+        .writes = {
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear }
         }
     });
     graph.add_pass({
@@ -209,9 +233,10 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         .reads = {
             { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
             { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment },
             { .resource = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
         },
-        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+        .writes = { { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
     });
     graph.add_pass({
         .name = "vegetation pass",
@@ -219,9 +244,9 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         .kind = render_pass_kind::custom,
         .reads = {
             { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
-            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment }
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment }
         },
-        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+        .writes = { { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
     });
     graph.add_pass({
         .name = "water/forward transparent pass",
@@ -230,9 +255,9 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         .reads = {
             { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
             { .resource = "gbuffer_albedo", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
-            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment }
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment }
         },
-        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+        .writes = { { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
     });
     graph.add_pass({
         .name = "height fog",
@@ -240,9 +265,9 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         .kind = render_pass_kind::custom,
         .reads = {
             { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
-            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
         },
-        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+        .writes = { { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
     });
     graph.add_pass({
         .name = "editor picking pass",
@@ -250,7 +275,7 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         .kind = render_pass_kind::custom,
         .reads = {
             { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
-            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
+            { .resource = "gbuffer_object_id", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
         },
         .writes = { { .resource = "editor_picking", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear } }
     });
@@ -260,18 +285,23 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         .kind = render_pass_kind::custom,
         .reads = {
             { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
-            { .resource = "editor_picking", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
+            { .resource = "editor_picking", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
         },
-        .writes = { { .resource = "selection_mask", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear } }
+        .writes = {
+            { .resource = "selection_mask", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load }
+        }
     });
     graph.add_pass({
         .name = "present viewport",
         .queue = render_queue_type::graphics,
         .kind = render_pass_kind::present,
         .reads = {
-            { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .resource = "selection_mask", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
-        }
+        },
+        .writes = { { .resource = target, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear } }
     });
     return graph;
 }

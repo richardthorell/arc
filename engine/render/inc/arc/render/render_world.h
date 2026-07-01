@@ -29,20 +29,6 @@ enum class scene_render_pass : std::uint8_t
 };
 
 /**
- * @brief Stable editor/game object id carried into picking and outline passes.
- */
-struct render_object_id
-{
-    std::uint32_t index{ resource_handle::invalid_index };
-    std::uint32_t generation{};
-
-    constexpr bool valid() const noexcept
-    {
-        return index != resource_handle::invalid_index;
-    }
-};
-
-/**
  * @brief One camera extracted for scene rendering.
  */
 struct render_camera

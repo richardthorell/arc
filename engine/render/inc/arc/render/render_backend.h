@@ -130,6 +130,29 @@ struct render_backend_frame_profile
     std::uint64_t frame_index{};
     std::vector<render_pass_timing> pass_timings;
     std::string summary;
+    compiled_render_graph graph;
+};
+
+/**
+ * @brief One asynchronous editor ObjectID picking request.
+ */
+struct render_object_pick_request
+{
+    std::uint32_t x{};
+    std::uint32_t y{};
+};
+
+/**
+ * @brief Result from the latest asynchronous ObjectID pick readback.
+ */
+struct render_object_pick_result
+{
+    bool available{};
+    bool hit{};
+    render_object_id object{};
+    std::uint32_t x{};
+    std::uint32_t y{};
+    std::uint64_t frame_index{};
 };
 
 /**
@@ -187,6 +210,16 @@ public:
      * @brief Return the most recent backend frame profile.
      */
     virtual render_backend_frame_profile last_frame_profile() const;
+
+    /**
+     * @brief Request an async ObjectID readback at viewport pixel coordinates.
+     */
+    virtual void request_object_pick(render_object_pick_request request);
+
+    /**
+     * @brief Return the latest async ObjectID readback result.
+     */
+    virtual render_object_pick_result last_object_pick() const;
 };
 
 /**

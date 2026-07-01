@@ -22,6 +22,15 @@ render_backend_frame_profile render_backend::last_frame_profile() const
     return {};
 }
 
+void render_backend::request_object_pick(render_object_pick_request)
+{
+}
+
+render_object_pick_result render_backend::last_object_pick() const
+{
+    return {};
+}
+
 renderer::renderer(renderer_config config)
     : config_(config)
 {
@@ -152,6 +161,19 @@ render_backend_frame_profile renderer::last_frame_profile() const
     if (!backend_)
         return {};
     return backend_->last_frame_profile();
+}
+
+void renderer::request_object_pick(std::uint32_t x, std::uint32_t y)
+{
+    if (backend_)
+        backend_->request_object_pick({ .x = x, .y = y });
+}
+
+render_object_pick_result renderer::last_object_pick() const
+{
+    if (!backend_)
+        return {};
+    return backend_->last_object_pick();
 }
 
 render_submit_result renderer::render_frame(std::uint64_t frame_index, const render_graph& graph)

@@ -160,6 +160,7 @@ struct draw_mesh_event
     math::matrix4f view_projection{ math::identity<float, 4>() };
     render_mode mode{ render_mode::shaded };
     mesh_visualization_mode visualization{ mesh_visualization_mode::standard };
+    render_object_id object_id{};
     bool selected{};
     math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
     math::vector4f wire_color{ 0.25f, 0.65f, 1.0f, 1.0f };

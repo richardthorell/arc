@@ -1270,6 +1270,7 @@ void update_editor_camera_controls(
 void handle_viewport_selection(
     editor_scene_state& editor_scene,
     const arc::editor::editor_viewport& viewport,
+    arc::render::renderer& renderer,
     const arc::input::input_manager& input,
     const editor_mouse_state& mouse)
 {
@@ -1282,6 +1283,22 @@ void handle_viewport_selection(
     const auto* camera = editor_scene.scene.try_get<arc::scene::camera_component>(editor_scene.camera_entity);
     if (!camera_transform || !camera)
         return;
+
+    const auto local_x = static_cast<std::uint32_t>(std::max(0.0f, viewport.local_x(mouse.x)));
+    const auto local_y = static_cast<std::uint32_t>(std::max(0.0f, viewport.local_y(mouse.y)));
+    renderer.request_object_pick(local_x, local_y);
+    const auto gpu_pick = renderer.last_object_pick();
+    if (gpu_pick.available && gpu_pick.x == local_x && gpu_pick.y == local_y)
+    {
+        if (gpu_pick.hit)
+            arc::editor::select_entity(
+                editor_scene.scene,
+                arc::scene::entity{ .index = gpu_pick.object.index, .generation = gpu_pick.object.generation },
+                editor_scene.selected_entity);
+        else
+            arc::editor::clear_selection(editor_scene.scene, editor_scene.selected_entity);
+        return;
+    }
 
     const auto ray = arc::editor::screen_ray_from_camera(
         *camera,
@@ -1864,7 +1881,7 @@ int main(int, char**)
         draw_selected_bounds(editor_scene, editor_viewport);
         draw_transform_gizmo(editor_scene, editor_viewport, ui_state.active_tool);
         update_editor_camera_controls(editor_scene, editor_camera, editor_viewport, input, mouse_state);
-        handle_viewport_selection(editor_scene, editor_viewport, input, mouse_state);
+        handle_viewport_selection(editor_scene, editor_viewport, *editor_renderer_for_ui, input, mouse_state);
         if (editor_scene.focus_imported_scene_requested)
         {
             arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
@@ -1890,7 +1907,7 @@ int main(int, char**)
 #else
             arc::editor::draw_profiler_panel(editor_renderer_fallback);
 #endif
-            arc::editor::draw_render_graph_panel();
+            arc::editor::draw_render_graph_panel(*editor_renderer_for_ui);
             arc::editor::draw_shader_graph_panel();
             draw_stats_panel(
                 runtime,

@@ -1,13 +1,59 @@
 #include <arc/editor/panels/render_graph_panel.h>
 
 #include <arc/editor/ui/widgets.h>
+#include <arc/render/renderer.h>
 
 #include <imgui.h>
 
 namespace arc::editor
 {
 
-void draw_render_graph_panel()
+namespace
+{
+
+const char* resource_kind_label(render::render_resource_kind kind) noexcept
+{
+    switch (kind)
+    {
+    case render::render_resource_kind::color_texture:
+        return "Color";
+    case render::render_resource_kind::depth_texture:
+        return "Depth";
+    case render::render_resource_kind::buffer:
+        return "Buffer";
+    case render::render_resource_kind::swapchain_image:
+        return "Swapchain";
+    default:
+        return "Unknown";
+    }
+}
+
+const char* pass_kind_label(render::render_pass_kind kind) noexcept
+{
+    switch (kind)
+    {
+    case render::render_pass_kind::clear:
+        return "Clear";
+    case render::render_pass_kind::depth_prepass:
+        return "Depth";
+    case render::render_pass_kind::gbuffer:
+        return "G-buffer";
+    case render::render_pass_kind::lighting:
+        return "Lighting";
+    case render::render_pass_kind::post_process:
+        return "Post";
+    case render::render_pass_kind::imgui:
+        return "ImGui";
+    case render::render_pass_kind::present:
+        return "Present";
+    default:
+        return "Custom";
+    }
+}
+
+} // namespace
+
+void draw_render_graph_panel(const render::renderer& renderer)
 {
     if (!ui::begin_panel("Render Graph"))
     {
@@ -15,9 +61,82 @@ void draw_render_graph_panel()
         return;
     }
 
-    ui::empty_state("Render graph view pending", "Named passes are visible in captures; the interactive graph view will land with the deferred renderer.");
-    ImGui::Separator();
-    ui::muted_text("Current frame path: viewport clear -> scene draw -> imgui -> present");
+    const auto profile = renderer.last_frame_profile();
+    if (profile.graph.passes.empty())
+    {
+        ui::empty_state("No render graph yet", "Run a frame with a renderer backend to inspect compiled passes and resources.");
+        ui::end_panel();
+        return;
+    }
+
+    ui::section_header("Passes");
+    if (ImGui::BeginTable("render-graph-passes", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+    {
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 36.0f);
+        ImGui::TableSetupColumn("Pass");
+        ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Resources");
+        ImGui::TableHeadersRow();
+        for (std::size_t index = 0; index < profile.graph.passes.size(); ++index)
+        {
+            const auto& pass = profile.graph.passes[index];
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::Text("%zu", index);
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(pass.name.c_str());
+            ImGui::TableNextColumn();
+            ui::muted_text(pass_kind_label(pass.kind));
+            ImGui::TableNextColumn();
+            ImGui::Text("%zu read / %zu write", pass.reads.size(), pass.writes.size());
+        }
+        ImGui::EndTable();
+    }
+
+    ui::section_header("Resources");
+    if (ImGui::BeginTable("render-graph-resources", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+    {
+        ImGui::TableSetupColumn("Resource");
+        ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Lifetime", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableHeadersRow();
+        for (const auto& resource : profile.graph.resources)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(resource.name.c_str());
+            ImGui::TableNextColumn();
+            ui::muted_text(resource_kind_label(resource.kind));
+            ImGui::TableNextColumn();
+            ui::muted_text(resource.format.empty() ? "-" : resource.format.c_str());
+            ImGui::TableNextColumn();
+            ui::muted_text(resource.persistent ? "Persistent" : "Transient");
+        }
+        ImGui::EndTable();
+    }
+
+    ui::section_header("Transitions");
+    if (profile.graph.transitions.empty())
+        ui::muted_text("No resource transitions recorded.");
+    else if (ImGui::BeginTable("render-graph-transitions", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+    {
+        ImGui::TableSetupColumn("Resource");
+        ImGui::TableSetupColumn("From", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn("To", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableHeadersRow();
+        for (const auto& transition : profile.graph.transitions)
+        {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(transition.resource.c_str());
+            ImGui::TableNextColumn();
+            ImGui::Text("%u", static_cast<unsigned>(transition.before));
+            ImGui::TableNextColumn();
+            ImGui::Text("%u", static_cast<unsigned>(transition.after));
+        }
+        ImGui::EndTable();
+    }
 
     ui::end_panel();
 }

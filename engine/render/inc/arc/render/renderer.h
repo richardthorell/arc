@@ -112,6 +112,16 @@ public:
     render_backend_frame_profile last_frame_profile() const;
 
     /**
+     * @brief Request an async ObjectID readback at viewport pixel coordinates.
+     */
+    void request_object_pick(std::uint32_t x, std::uint32_t y);
+
+    /**
+     * @brief Return the latest async ObjectID readback result.
+     */
+    render_object_pick_result last_object_pick() const;
+
+    /**
      * @brief Build and submit one frame.
      */
     render_submit_result render_frame(std::uint64_t frame_index, const render_graph& graph);

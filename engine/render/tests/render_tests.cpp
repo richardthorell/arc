@@ -42,6 +42,9 @@ public:
         last_frame = packet.frame_index;
         last_event_count = packet.events.size();
         last_pass_count = graph.passes.size();
+        profile.frame_index = packet.frame_index;
+        profile.graph = graph;
+        profile.summary = "recorded";
         return { .submitted = true, .message = "submitted" };
     }
 
@@ -56,13 +59,27 @@ public:
         return { .id = texture_id, .width = viewport_width, .height = viewport_height };
     }
 
+    arc::render::render_backend_frame_profile last_frame_profile() const override
+    {
+        return profile;
+    }
+
+    void request_object_pick(arc::render::render_object_pick_request request) override
+    {
+        pick_request = request;
+        pick_requested = true;
+    }
+
     arc::render::render_capabilities capabilities_{};
+    arc::render::render_backend_frame_profile profile{};
+    arc::render::render_object_pick_request pick_request{};
     std::uint64_t last_frame{};
     std::size_t last_event_count{};
     std::size_t last_pass_count{};
     std::uint64_t texture_id{ 99 };
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
+    bool pick_requested{};
 };
 
 void append_u32(std::vector<std::byte>& bytes, std::uint32_t value)
@@ -412,7 +429,7 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
     const auto graph = arc::render::make_scene_draw_graph("viewport");
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 11);
+    REQUIRE(compiled.passes.size() == 12);
     const auto pass_index = [&](std::string_view name) {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
@@ -426,6 +443,7 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
     const std::size_t sky_index = pass_index("sky atmosphere");
     const std::size_t depth_index = pass_index("depth prepass");
     const std::size_t gbuffer_index = pass_index("gbuffer pass");
+    const std::size_t deferred_index = pass_index("deferred lighting");
     const std::size_t terrain_index = pass_index("terrain pass");
     const std::size_t vegetation_index = pass_index("vegetation pass");
     const std::size_t water_index = pass_index("water/forward transparent pass");
@@ -435,13 +453,14 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
 
     REQUIRE(shadow_index < gbuffer_index);
     REQUIRE(depth_index < gbuffer_index);
+    REQUIRE(gbuffer_index < deferred_index);
+    REQUIRE(deferred_index < terrain_index);
     REQUIRE(sky_index < terrain_index);
-    REQUIRE(gbuffer_index < terrain_index);
     REQUIRE(terrain_index < vegetation_index);
     REQUIRE(vegetation_index < water_index);
     REQUIRE(water_index < fog_index);
     REQUIRE(compiled.passes.back().name == "present viewport");
-    REQUIRE(compiled.resources.size() == 7);
+    REQUIRE(compiled.resources.size() == 11);
     REQUIRE_FALSE(compiled.transitions.empty());
 }
 
@@ -513,6 +532,40 @@ TEST_CASE("renderer submits committed packets to attached backend")
     REQUIRE(backend_ptr->last_frame == 42);
     REQUIRE(backend_ptr->last_event_count == 1);
     REQUIRE(backend_ptr->last_pass_count == 2);
+}
+
+TEST_CASE("renderer exposes compiled render graph snapshots through frame profile")
+{
+    auto backend = std::make_unique<recording_backend>();
+    auto* backend_ptr = backend.get();
+    arc::render::renderer renderer;
+    renderer.set_backend(std::move(backend));
+
+    const auto result = renderer.render_frame(7, arc::render::make_scene_draw_graph("viewport"));
+
+    REQUIRE(result.submitted);
+    const auto profile = renderer.last_frame_profile();
+    REQUIRE(profile.frame_index == 7);
+    REQUIRE(profile.summary == "recorded");
+    REQUIRE(profile.graph.passes.size() == backend_ptr->last_pass_count);
+    REQUIRE_FALSE(profile.graph.resources.empty());
+    REQUIRE(profile.graph.resources[2].name == "scene_color");
+    REQUIRE(profile.graph.resources[2].format == "rgba16f");
+}
+
+TEST_CASE("renderer forwards ObjectID pick requests to backend")
+{
+    auto backend = std::make_unique<recording_backend>();
+    auto* backend_ptr = backend.get();
+    arc::render::renderer renderer;
+    renderer.set_backend(std::move(backend));
+
+    renderer.request_object_pick(12, 34);
+
+    REQUIRE(backend_ptr->pick_requested);
+    REQUIRE(backend_ptr->pick_request.x == 12);
+    REQUIRE(backend_ptr->pick_request.y == 34);
+    REQUIRE_FALSE(renderer.last_object_pick().available);
 }
 
 TEST_CASE("renderer forwards viewport resize events to backend")

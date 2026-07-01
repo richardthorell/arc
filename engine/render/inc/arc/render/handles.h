@@ -82,4 +82,31 @@ using material_handle = resource_handle;
 using mesh_handle = resource_handle;
 using environment_handle = resource_handle;
 
+/**
+ * @brief Stable editor/game object id written into picking and outline buffers.
+ */
+struct render_object_id
+{
+    std::uint32_t index{ resource_handle::invalid_index };
+    std::uint32_t generation{};
+
+    /**
+     * @brief Return whether this id can identify a scene object.
+     */
+    constexpr bool valid() const noexcept
+    {
+        return index != resource_handle::invalid_index;
+    }
+
+    friend constexpr bool operator==(render_object_id lhs, render_object_id rhs) noexcept
+    {
+        return lhs.index == rhs.index && lhs.generation == rhs.generation;
+    }
+
+    friend constexpr bool operator!=(render_object_id lhs, render_object_id rhs) noexcept
+    {
+        return !(lhs == rhs);
+    }
+};
+
 } // namespace arc::render
