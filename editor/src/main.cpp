@@ -918,7 +918,10 @@ void draw_viewport_overlay_controls(
         viewport_shading_mode::ao,
         viewport_shading_mode::emission,
         viewport_shading_mode::lighting,
-        viewport_shading_mode::uv0
+        viewport_shading_mode::uv0,
+        viewport_shading_mode::cascade_debug,
+        viewport_shading_mode::shadow_mask,
+        viewport_shading_mode::light_complexity
     };
 
     const float button_height = scaled(34.0f);

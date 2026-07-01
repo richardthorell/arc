@@ -92,6 +92,73 @@ math::matrix4f orthographic_rh_zo(float width, float height, float near_plane, f
     return result;
 }
 
+bool inverse_matrix4(const math::matrix4f& input, math::matrix4f& output) noexcept
+{
+    float augmented[4][8]{};
+    for (std::uint32_t row = 0; row < 4; ++row)
+    {
+        for (std::uint32_t col = 0; col < 4; ++col)
+            augmented[row][col] = input(row, col);
+        augmented[row][4 + row] = 1.0f;
+    }
+
+    for (std::uint32_t col = 0; col < 4; ++col)
+    {
+        std::uint32_t pivot = col;
+        for (std::uint32_t row = col + 1; row < 4; ++row)
+        {
+            if (std::abs(augmented[row][col]) > std::abs(augmented[pivot][col]))
+                pivot = row;
+        }
+        if (std::abs(augmented[pivot][col]) < 0.000001f)
+            return false;
+
+        if (pivot != col)
+        {
+            for (std::uint32_t index = 0; index < 8; ++index)
+                std::swap(augmented[pivot][index], augmented[col][index]);
+        }
+
+        const float divisor = augmented[col][col];
+        for (float& value : augmented[col])
+            value /= divisor;
+
+        for (std::uint32_t row = 0; row < 4; ++row)
+        {
+            if (row == col)
+                continue;
+            const float factor = augmented[row][col];
+            for (std::uint32_t index = 0; index < 8; ++index)
+                augmented[row][index] -= factor * augmented[col][index];
+        }
+    }
+
+    for (std::uint32_t row = 0; row < 4; ++row)
+    {
+        for (std::uint32_t col = 0; col < 4; ++col)
+            output(row, col) = augmented[row][4 + col];
+    }
+    return true;
+}
+
+math::vector3f transform_clip_point(const math::matrix4f& matrix, float x, float y, float z) noexcept
+{
+    const float clip[4]{ x, y, z, 1.0f };
+    float result[4]{};
+    for (std::uint32_t row = 0; row < 4; ++row)
+    {
+        for (std::uint32_t col = 0; col < 4; ++col)
+            result[row] += matrix(row, col) * clip[col];
+    }
+    const float inv_w = std::abs(result[3]) > 0.000001f ? 1.0f / result[3] : 1.0f;
+    return { result[0] * inv_w, result[1] * inv_w, result[2] * inv_w };
+}
+
+math::vector3f matrix_row3(const math::matrix4f& matrix, std::uint32_t row) noexcept
+{
+    return { matrix(row, 0), matrix(row, 1), matrix(row, 2) };
+}
+
 struct mesh_push_constants
 {
     float model_view_projection[16]{};
@@ -118,6 +185,7 @@ struct deferred_push_constants
     float light_direction_intensity[4]{ 0.35f, -0.85f, -0.40f, 1.0f };
     float light_color_exposure[4]{ 1.0f, 1.0f, 1.0f, 1.0f };
     float ambient_visualization[4]{ 0.18f, 0.18f, 0.18f, 0.0f };
+    float debug_counts[4]{};
 };
 
 struct shadow_uniform_data
@@ -125,6 +193,7 @@ struct shadow_uniform_data
     float light_view_projection[directional_shadow_cascade_count][16]{};
     float cascade_splits[4]{};
     float params[4]{};
+    float cascade_texel_size[4]{};
 };
 
 struct gpu_scope_record
@@ -2365,6 +2434,7 @@ private:
             gbuffer_albedo_.view == VK_NULL_HANDLE ||
             gbuffer_normal_.view == VK_NULL_HANDLE ||
             gbuffer_material_.view == VK_NULL_HANDLE ||
+            gbuffer_motion_.view == VK_NULL_HANDLE ||
             gbuffer_object_id_.view == VK_NULL_HANDLE)
             return false;
 
@@ -2384,7 +2454,7 @@ private:
 
         if (gbuffer_descriptor_set_layout_ == VK_NULL_HANDLE)
         {
-            std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+            std::array<VkDescriptorSetLayoutBinding, 5> bindings{};
             for (std::uint32_t index = 0; index < bindings.size(); ++index)
             {
                 bindings[index].binding = index;
@@ -2405,7 +2475,7 @@ private:
         {
             VkDescriptorPoolSize pool_size{};
             pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            pool_size.descriptorCount = 4;
+            pool_size.descriptorCount = 5;
             VkDescriptorPoolCreateInfo pool{};
             pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             pool.maxSets = 1;
@@ -2432,14 +2502,15 @@ private:
         if (gbuffer_descriptor_set_ == VK_NULL_HANDLE)
             return;
 
-        std::array<VkDescriptorImageInfo, 4> images{};
+        std::array<VkDescriptorImageInfo, 5> images{};
         const VkSampler sampler = gbuffer_sampler_ != VK_NULL_HANDLE ? gbuffer_sampler_ : white_sampler_;
         images[0] = { sampler, gbuffer_albedo_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[1] = { sampler, gbuffer_normal_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[2] = { sampler, gbuffer_material_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[3] = { sampler, gbuffer_object_id_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        images[4] = { sampler, gbuffer_motion_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 
-        std::array<VkWriteDescriptorSet, 4> writes{};
+        std::array<VkWriteDescriptorSet, 5> writes{};
         for (std::uint32_t index = 0; index < writes.size(); ++index)
         {
             writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -3121,18 +3192,6 @@ private:
             return data;
         }
 
-        math::vector3f center = frame_camera_.position;
-        float radius = 8.0f;
-        if (!frame_draws_.empty())
-        {
-            center = {};
-            for (const auto& draw : frame_draws_)
-                center = math::add(center, matrix_translation(draw.model));
-            center = math::mul(center, 1.0f / static_cast<float>(frame_draws_.size()));
-            for (const auto& draw : frame_draws_)
-                radius = std::max(radius, math::length(math::sub(matrix_translation(draw.model), center)) + 4.0f);
-        }
-
         auto light_direction = math::normalize(light->direction);
         if (math::length_squared(light_direction) < 0.0001f)
             light_direction = math::vector3f{ 0.35f, -0.85f, -0.40f };
@@ -3140,23 +3199,92 @@ private:
             ? math::vector3f{ 0.0f, 0.0f, 1.0f }
             : math::vector3f{ 0.0f, 1.0f, 0.0f };
 
+        math::matrix4f inverse_view_projection{};
+        const bool has_inverse = inverse_matrix4(frame_camera_.view_projection, inverse_view_projection);
+        std::array<math::vector3f, 4> near_corners{};
+        std::array<math::vector3f, 4> far_corners{};
+        if (has_inverse)
+        {
+            constexpr std::array<std::array<float, 2>, 4> ndc_corners{ {
+                { -1.0f, -1.0f },
+                { 1.0f, -1.0f },
+                { 1.0f, 1.0f },
+                { -1.0f, 1.0f }
+            } };
+            for (std::uint32_t index = 0; index < 4; ++index)
+            {
+                near_corners[index] = transform_clip_point(inverse_view_projection, ndc_corners[index][0], ndc_corners[index][1], 0.0f);
+                far_corners[index] = transform_clip_point(inverse_view_projection, ndc_corners[index][0], ndc_corners[index][1], 1.0f);
+            }
+        }
+
+        float previous_split = near_plane;
         for (std::uint32_t cascade = 0; cascade < directional_shadow_cascade_count; ++cascade)
         {
-            const float cascade_scale = 0.35f + 0.65f * (static_cast<float>(cascade + 1) / static_cast<float>(directional_shadow_cascade_count));
-            const float cascade_radius = std::max(4.0f, radius * cascade_scale);
-            const auto eye = math::sub(center, math::mul(light_direction, cascade_radius * 2.5f));
-            const auto view = look_at_rh(eye, center, up);
+            const float current_split = data.cascade_splits[cascade];
+            std::array<math::vector3f, 8> corners{};
+            if (has_inverse)
+            {
+                const float start_t = std::clamp((previous_split - near_plane) / (far_plane - near_plane), 0.0f, 1.0f);
+                const float end_t = std::clamp((current_split - near_plane) / (far_plane - near_plane), 0.0f, 1.0f);
+                for (std::uint32_t index = 0; index < 4; ++index)
+                {
+                    const auto ray = math::sub(far_corners[index], near_corners[index]);
+                    corners[index] = math::add(near_corners[index], math::mul(ray, start_t));
+                    corners[index + 4] = math::add(near_corners[index], math::mul(ray, end_t));
+                }
+            }
+            else
+            {
+                const float size = std::max(4.0f, current_split * 0.25f);
+                const auto center = math::add(frame_camera_.position, math::vector3f{ 0.0f, 0.0f, -current_split });
+                corners = {
+                    math::add(center, math::vector3f{ -size, -size, -size }),
+                    math::add(center, math::vector3f{ size, -size, -size }),
+                    math::add(center, math::vector3f{ size, size, -size }),
+                    math::add(center, math::vector3f{ -size, size, -size }),
+                    math::add(center, math::vector3f{ -size, -size, size }),
+                    math::add(center, math::vector3f{ size, -size, size }),
+                    math::add(center, math::vector3f{ size, size, size }),
+                    math::add(center, math::vector3f{ -size, size, size })
+                };
+            }
+
+            math::vector3f center{};
+            for (const auto& corner : corners)
+                center = math::add(center, corner);
+            center = math::mul(center, 1.0f / static_cast<float>(corners.size()));
+
+            float cascade_radius = 0.0f;
+            for (const auto& corner : corners)
+                cascade_radius = std::max(cascade_radius, math::length(math::sub(corner, center)));
+            cascade_radius = std::max(4.0f, cascade_radius);
+
+            auto view = look_at_rh(math::sub(center, math::mul(light_direction, cascade_radius * 2.5f)), center, up);
+            const float texel_size = (cascade_radius * 2.0f) / static_cast<float>(std::max(1u, light->shadow.resolution));
+            if (texel_size > 0.0f)
+            {
+                const auto light_center = math::transform_point(view, center);
+                const float snapped_x = std::floor(light_center[0] / texel_size) * texel_size;
+                const float snapped_y = std::floor(light_center[1] / texel_size) * texel_size;
+                const auto right = matrix_row3(view, 0);
+                const auto light_up = matrix_row3(view, 1);
+                center = math::add(center, math::mul(right, snapped_x - light_center[0]));
+                center = math::add(center, math::mul(light_up, snapped_y - light_center[1]));
+                view = look_at_rh(math::sub(center, math::mul(light_direction, cascade_radius * 2.5f)), center, up);
+            }
+
             const auto projection = orthographic_rh_zo(cascade_radius * 2.0f, cascade_radius * 2.0f, 0.1f, cascade_radius * 5.0f);
             const auto light_view_projection = math::matmul(projection, view);
             std::copy(light_view_projection.data(), light_view_projection.data() + 16, data.light_view_projection[cascade]);
+            data.cascade_texel_size[cascade] = texel_size;
+            previous_split = current_split;
         }
 
-        const float filter_radius = light->shadow.filter == shadow_filter::pcf_5x5 ? 2.0f :
-            light->shadow.filter == shadow_filter::none ? 0.0f : 1.0f;
         data.params[0] = std::clamp(light->shadow.strength, 0.0f, 1.0f);
         data.params[1] = std::max(0.0f, light->shadow.bias);
-        data.params[2] = filter_radius;
-        data.params[3] = static_cast<float>(directional_shadow_cascade_count);
+        data.params[2] = std::max(0.0f, light->shadow.normal_bias);
+        data.params[3] = static_cast<float>(light->shadow.filter);
         return data;
     }
 
@@ -3560,6 +3688,10 @@ private:
             constants.ambient_visualization[1] = frame_lighting_.ambient_color_intensity[1] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[2] = frame_lighting_.ambient_color_intensity[2] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[3] = frame_draws_.empty() ? 0.0f : static_cast<float>(frame_draws_.front().visualization);
+            constants.debug_counts[0] = static_cast<float>(frame_lighting_.point_count);
+            constants.debug_counts[1] = static_cast<float>(frame_lighting_.spot_count);
+            constants.debug_counts[2] = 16.0f;
+            constants.debug_counts[3] = static_cast<float>(frame_lighting_.skipped_point_count + frame_lighting_.skipped_spot_count);
 
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, deferred_pipeline_);
             vkCmdBindDescriptorSets(

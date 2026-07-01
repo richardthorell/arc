@@ -429,7 +429,7 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
     const auto graph = arc::render::make_scene_draw_graph("viewport");
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 12);
+    REQUIRE(compiled.passes.size() == 15);
     const auto pass_index = [&](std::string_view name) {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
@@ -440,9 +440,12 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
     };
 
     const std::size_t shadow_index = pass_index("directional shadow cascades");
+    const std::size_t spot_shadow_index = pass_index("spot shadow maps");
+    const std::size_t point_shadow_index = pass_index("point shadow cubemaps");
     const std::size_t sky_index = pass_index("sky atmosphere");
     const std::size_t depth_index = pass_index("depth prepass");
     const std::size_t gbuffer_index = pass_index("gbuffer pass");
+    const std::size_t cluster_index = pass_index("clustered light culling");
     const std::size_t deferred_index = pass_index("deferred lighting");
     const std::size_t terrain_index = pass_index("terrain pass");
     const std::size_t vegetation_index = pass_index("vegetation pass");
@@ -452,15 +455,19 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
         REQUIRE_FALSE(compiled.passes[index].name.empty());
 
     REQUIRE(shadow_index < gbuffer_index);
+    REQUIRE(spot_shadow_index < deferred_index);
+    REQUIRE(point_shadow_index < deferred_index);
     REQUIRE(depth_index < gbuffer_index);
     REQUIRE(gbuffer_index < deferred_index);
+    REQUIRE(depth_index < cluster_index);
+    REQUIRE(cluster_index < deferred_index);
     REQUIRE(deferred_index < terrain_index);
     REQUIRE(sky_index < terrain_index);
     REQUIRE(terrain_index < vegetation_index);
     REQUIRE(vegetation_index < water_index);
     REQUIRE(water_index < fog_index);
     REQUIRE(compiled.passes.back().name == "present viewport");
-    REQUIRE(compiled.resources.size() == 11);
+    REQUIRE(compiled.resources.size() == 14);
     REQUIRE_FALSE(compiled.transitions.empty());
 }
 

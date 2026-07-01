@@ -35,6 +35,7 @@ layout(set = 0, binding = 6) uniform shadow_data
     mat4 light_view_projection[4];
     vec4 cascade_splits;
     vec4 params;
+    vec4 cascade_texel_size;
 } shadows;
 
 const float PI = 3.14159265359;
@@ -75,8 +76,13 @@ float sample_shadow(vec3 world_position)
     if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0 || depth < 0.0 || depth > 1.0)
         return 1.0;
 
-    float radius = shadows.params.z;
-    float bias = shadows.params.y;
+    int filter_mode = int(shadows.params.w + 0.5);
+    float radius = filter_mode == 2 ? 2.0 : 1.0;
+    if (filter_mode == 0)
+        radius = 0.0;
+    else if (filter_mode == 3)
+        radius = mix(1.5, 4.0, clamp(depth, 0.0, 1.0));
+    float bias = shadows.params.y + shadows.params.z * clamp(1.0 - dot(normalize(in_normal), normalize(-constants.light_direction_intensity.xyz)), 0.0, 1.0);
     vec2 texel = vec2(1.0 / float(textureSize(shadow_map, 0).x));
     float visibility = 0.0;
     float samples = 0.0;

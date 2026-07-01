@@ -7,12 +7,14 @@ layout(set = 0, binding = 0) uniform sampler2D gbuffer_albedo;
 layout(set = 0, binding = 1) uniform sampler2D gbuffer_normal;
 layout(set = 0, binding = 2) uniform sampler2D gbuffer_material;
 layout(set = 0, binding = 3) uniform usampler2D gbuffer_object_id;
+layout(set = 0, binding = 4) uniform sampler2D gbuffer_motion;
 
 layout(push_constant) uniform deferred_constants
 {
     vec4 light_direction_intensity;
     vec4 light_color_exposure;
     vec4 ambient_visualization;
+    vec4 debug_counts;
 } constants;
 
 const float PI = 3.14159265359;
@@ -39,6 +41,7 @@ void main()
     vec4 normal_ao = texture(gbuffer_normal, in_uv);
     vec4 material = texture(gbuffer_material, in_uv);
     uint object_id = texture(gbuffer_object_id, in_uv).r;
+    vec2 shadow_debug = texture(gbuffer_motion, in_uv).rg;
     if (object_id == 0u && albedo.a <= 0.0)
         discard;
 
@@ -47,6 +50,7 @@ void main()
     float metallic = saturate(material.x);
     float roughness = clamp(material.y, 0.04, 1.0);
     float emissive_strength = max(material.z, 0.0);
+    float shadow = clamp(material.w, 0.0, 1.0);
     int mode = int(constants.ambient_visualization.w + 0.5);
 
     vec3 light_dir = normalize(-constants.light_direction_intensity.xyz);
@@ -60,7 +64,7 @@ void main()
     vec3 specular = f * (1.0 - roughness);
     vec3 radiance = constants.light_color_exposure.rgb * constants.light_direction_intensity.w;
     vec3 ambient = albedo.rgb * constants.ambient_visualization.rgb * ao;
-    vec3 lit = ambient + (diffuse + specular) * radiance * n_dot_l + albedo.rgb * emissive_strength;
+    vec3 lit = ambient + (diffuse + specular) * radiance * n_dot_l * shadow + albedo.rgb * emissive_strength;
 
     vec3 color = lit;
     if (mode == 1)
@@ -83,6 +87,23 @@ void main()
         color = vec3(n_dot_l);
     else if (mode == 10)
         color = vec3(in_uv, 0.0);
+    else if (mode == 11)
+    {
+        vec3 cascade_colors[4] = vec3[](
+            vec3(0.16, 0.55, 1.0),
+            vec3(0.20, 0.95, 0.40),
+            vec3(1.00, 0.78, 0.18),
+            vec3(1.00, 0.24, 0.30));
+        int cascade = clamp(int(shadow_debug.x * 3.0 + 0.5), 0, 3);
+        color = cascade_colors[cascade];
+    }
+    else if (mode == 12)
+        color = vec3(shadow);
+    else if (mode == 13)
+    {
+        float normalized = clamp((constants.debug_counts.x + constants.debug_counts.y) / max(constants.debug_counts.z, 1.0), 0.0, 1.0);
+        color = mix(vec3(0.08, 0.18, 0.45), vec3(1.0, 0.18, 0.05), normalized);
+    }
     else
         color = aces_filmic(color * max(constants.light_color_exposure.w, 0.001));
 

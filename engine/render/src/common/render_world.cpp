@@ -174,12 +174,27 @@ render_graph make_scene_draw_graph(std::string_view target_name)
     graph.add_resource({ .name = "editor_picking", .kind = render_resource_kind::color_texture, .persistent = true });
     graph.add_resource({ .name = "selection_mask", .kind = render_resource_kind::color_texture, .persistent = true });
     graph.add_resource({ .name = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .persistent = true });
+    graph.add_resource({ .name = "spot_shadow_atlas", .kind = render_resource_kind::depth_texture, .persistent = true });
+    graph.add_resource({ .name = "point_shadow_cubemaps", .kind = render_resource_kind::depth_texture, .persistent = true });
+    graph.add_resource({ .name = "clustered_light_grid", .kind = render_resource_kind::buffer, .persistent = true });
 
     graph.add_pass({
         .name = "directional shadow cascades",
         .queue = render_queue_type::graphics,
         .kind = render_pass_kind::custom,
         .writes = { { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::clear } }
+    });
+    graph.add_pass({
+        .name = "spot shadow maps",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::custom,
+        .writes = { { .resource = "spot_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::clear } }
+    });
+    graph.add_pass({
+        .name = "point shadow cubemaps",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::custom,
+        .writes = { { .resource = "point_shadow_cubemaps", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::clear } }
     });
     graph.add_pass({
         .name = "sky atmosphere",
@@ -210,6 +225,17 @@ render_graph make_scene_draw_graph(std::string_view target_name)
         }
     });
     graph.add_pass({
+        .name = "clustered light culling",
+        .queue = render_queue_type::graphics,
+        .kind = render_pass_kind::custom,
+        .reads = {
+            { .resource = "scene_depth", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+        },
+        .writes = {
+            { .resource = "clustered_light_grid", .kind = render_resource_kind::buffer, .usage = render_resource_usage::storage, .write = true }
+        }
+    });
+    graph.add_pass({
         .name = "deferred lighting",
         .queue = render_queue_type::graphics,
         .kind = render_pass_kind::lighting,
@@ -220,7 +246,10 @@ render_graph make_scene_draw_graph(std::string_view target_name)
             { .resource = "gbuffer_material", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .resource = "gbuffer_motion", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .resource = "gbuffer_object_id", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
-            { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+            { .resource = "directional_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .resource = "spot_shadow_atlas", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .resource = "point_shadow_cubemaps", .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .resource = "clustered_light_grid", .kind = render_resource_kind::buffer, .usage = render_resource_usage::sampled }
         },
         .writes = {
             { .resource = "scene_color", .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear }

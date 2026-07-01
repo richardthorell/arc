@@ -63,7 +63,10 @@ enum class mesh_visualization_mode : std::uint8_t
     ao,
     emission,
     lighting,
-    uv0
+    uv0,
+    cascade_debug,
+    shadow_mask,
+    light_complexity
 };
 
 /**
