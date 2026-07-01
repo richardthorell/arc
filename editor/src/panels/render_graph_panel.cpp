@@ -69,6 +69,18 @@ void draw_render_graph_panel(const render::renderer& renderer)
         return;
     }
 
+    if (profile.clustered_lights.available)
+    {
+        ui::section_header("Clustered Lighting");
+        ImGui::Text(
+            "%u x %u tiles, %u depth slices, %u clusters",
+            profile.clustered_lights.tiles_x,
+            profile.clustered_lights.tiles_y,
+            profile.clustered_lights.depth_slices,
+            profile.clustered_lights.cluster_count);
+        ui::muted_text("CPU-built diagnostics path; GPU clustered culling can replace this buffer later.");
+    }
+
     ui::section_header("Passes");
     if (ImGui::BeginTable("render-graph-passes", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
     {

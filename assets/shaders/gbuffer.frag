@@ -67,21 +67,28 @@ vec2 sample_shadow(vec3 world_position, vec3 normal)
     if (shadows.params.x <= 0.0)
         return vec2(1.0, 0.0);
 
-    float view_depth = length(constants.camera_position.xyz - world_position);
     int cascade = 0;
-    if (view_depth > shadows.cascade_splits.x)
-        cascade = 1;
-    if (view_depth > shadows.cascade_splits.y)
-        cascade = 2;
-    if (view_depth > shadows.cascade_splits.z)
-        cascade = 3;
-
-    vec4 shadow_position = shadows.light_view_projection[cascade] * vec4(world_position, 1.0);
-    vec3 projected = shadow_position.xyz / shadow_position.w;
-    vec2 uv = projected.xy * 0.5 + vec2(0.5);
-    float depth = projected.z;
-    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0 || depth < 0.0 || depth > 1.0)
-        return vec2(1.0, float(cascade));
+    vec2 uv = vec2(0.0);
+    float depth = 1.0;
+    bool covered = false;
+    for (int candidate = 0; candidate < 4; ++candidate)
+    {
+        vec4 shadow_position = shadows.light_view_projection[candidate] * vec4(world_position, 1.0);
+        vec3 projected = shadow_position.xyz / shadow_position.w;
+        vec2 candidate_uv = projected.xy * 0.5 + vec2(0.5);
+        if (candidate_uv.x >= 0.0 && candidate_uv.y >= 0.0 &&
+            candidate_uv.x <= 1.0 && candidate_uv.y <= 1.0 &&
+            projected.z >= 0.0 && projected.z <= 1.0)
+        {
+            cascade = candidate;
+            uv = candidate_uv;
+            depth = projected.z;
+            covered = true;
+            break;
+        }
+    }
+    if (!covered)
+        return vec2(1.0, 3.0);
 
     vec3 light_dir = normalize(-constants.light_direction_intensity.xyz);
     float normal_bias = shadows.params.z * clamp(1.0 - dot(normal, light_dir), 0.0, 1.0);

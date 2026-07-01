@@ -62,18 +62,26 @@ float sample_shadow(vec3 world_position)
         return 1.0;
 
     int cascade = 0;
-    if (in_view_depth > shadows.cascade_splits.x)
-        cascade = 1;
-    if (in_view_depth > shadows.cascade_splits.y)
-        cascade = 2;
-    if (in_view_depth > shadows.cascade_splits.z)
-        cascade = 3;
-
-    vec4 shadow_position = shadows.light_view_projection[cascade] * vec4(world_position, 1.0);
-    vec3 projected = shadow_position.xyz / shadow_position.w;
-    vec2 uv = projected.xy * 0.5 + vec2(0.5);
-    float depth = projected.z;
-    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0 || depth < 0.0 || depth > 1.0)
+    vec2 uv = vec2(0.0);
+    float depth = 1.0;
+    bool covered = false;
+    for (int candidate = 0; candidate < 4; ++candidate)
+    {
+        vec4 shadow_position = shadows.light_view_projection[candidate] * vec4(world_position, 1.0);
+        vec3 projected = shadow_position.xyz / shadow_position.w;
+        vec2 candidate_uv = projected.xy * 0.5 + vec2(0.5);
+        if (candidate_uv.x >= 0.0 && candidate_uv.y >= 0.0 &&
+            candidate_uv.x <= 1.0 && candidate_uv.y <= 1.0 &&
+            projected.z >= 0.0 && projected.z <= 1.0)
+        {
+            cascade = candidate;
+            uv = candidate_uv;
+            depth = projected.z;
+            covered = true;
+            break;
+        }
+    }
+    if (!covered)
         return 1.0;
 
     int filter_mode = int(shadows.params.w + 0.5);

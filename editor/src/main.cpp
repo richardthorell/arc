@@ -112,7 +112,10 @@ void draw_scene_import_modal(arc::editor::editor_scene_import_state& import_stat
     if (import_state.modal_open)
         ImGui::OpenPopup("Importing Scene");
 
-    ImGui::SetNextWindowSize(ImVec2(scaled(500.0f), 0.0f), ImGuiCond_Appearing);
+    const float modal_width = scaled(560.0f);
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(modal_width, 0.0f),
+        ImVec2(modal_width, scaled(720.0f)));
     if (!ImGui::BeginPopupModal("Importing Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         return;
 
@@ -131,16 +134,22 @@ void draw_scene_import_modal(arc::editor::editor_scene_import_state& import_stat
     if (message.empty())
         message = import_state.result.message.empty() ? "Preparing import" : import_state.result.message;
 
-    ImGui::TextUnformatted(import_state.source_path.filename().string().c_str());
+    const float content_width = std::max(scaled(240.0f), ImGui::GetContentRegionAvail().x);
+    const auto source_name = import_state.source_path.filename().string();
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + content_width);
+    ImGui::TextUnformatted(source_name.c_str());
+    ImGui::PopTextWrapPos();
     arc::editor::ui::muted_text(arc::editor::scene_import_stage_label(stage));
-    ImGui::ProgressBar(progress, ImVec2(-1.0f, scaled(18.0f)));
+    ImGui::ProgressBar(progress, ImVec2(content_width, scaled(18.0f)));
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + content_width);
     ImGui::TextWrapped("%s", message.c_str());
+    ImGui::PopTextWrapPos();
 
     if (!diagnostics.empty())
     {
         ImGui::Spacing();
         arc::editor::ui::muted_text("Diagnostics");
-        ImGui::BeginChild("import-diagnostics", ImVec2(-1.0f, scaled(96.0f)), ImGuiChildFlags_Borders);
+        ImGui::BeginChild("import-diagnostics", ImVec2(content_width, scaled(96.0f)), ImGuiChildFlags_Borders);
         for (const auto& diagnostic : diagnostics)
             ImGui::TextWrapped("%s", diagnostic.c_str());
         ImGui::EndChild();
@@ -346,6 +355,11 @@ editor_scene_state create_default_editor_scene(
         arc::math::vector3f{ 1.0f, 1.0f, 1.0f },
         1.8f,
         true);
+    auto& sun_light = state.scene.get<arc::scene::directional_light_component>(sun);
+    sun_light.shadow.resolution = 4096;
+    sun_light.shadow.filter = arc::render::shadow_filter::pcf_3x3;
+    sun_light.shadow.bias = 0.0008f;
+    sun_light.shadow.normal_bias = 0.003f;
 
     arc::editor::add_world_environment_to_scene(state);
     if (renderer)
@@ -1502,11 +1516,13 @@ void draw_stats_panel(
     const arc::editor::editor_viewport& viewport,
     const editor_asset_state& editor_assets,
     const editor_scene_state& editor_scene,
+    const arc::render::renderer& renderer,
     arc::render::render_mode render_mode,
     viewport_shading_mode shading_mode,
     arc::editor::editor_tool active_tool)
 {
     const arc::memory_stats memory = arc::default_memory_stats();
+    const auto profile = renderer.last_frame_profile();
 
     ImGui::Begin("Stats");
     ImGui::Text("Frame: %llu", static_cast<unsigned long long>(time.frame_index));
@@ -1538,6 +1554,20 @@ void draw_stats_panel(
         editor_scene.last_render.skipped_directional_light_count,
         editor_scene.last_render.skipped_point_light_count,
         editor_scene.last_render.skipped_spot_light_count);
+    if (profile.clustered_lights.available)
+    {
+        ImGui::Text(
+            "Clusters: %u x %u x %u (%u)",
+            profile.clustered_lights.tiles_x,
+            profile.clustered_lights.tiles_y,
+            profile.clustered_lights.depth_slices,
+            profile.clustered_lights.cluster_count);
+        ImGui::Text(
+            "Cluster refs: %u point / %u spot / %u overflow",
+            profile.clustered_lights.point_light_references,
+            profile.clustered_lights.spot_light_references,
+            profile.clustered_lights.overflow_count);
+    }
     ImGui::Text(
         "Probes: %zu reflection / %zu irradiance",
         editor_scene.last_render.reflection_probe_count,
@@ -1880,11 +1910,18 @@ int main(int, char**)
                 ? arc::scene::camera_projection::orthographic
                 : arc::scene::camera_projection::perspective;
         }
-        draw_world_grid(editor_scene, editor_viewport, ui_state.show_world_grid);
-        draw_selected_bounds(editor_scene, editor_viewport);
-        draw_transform_gizmo(editor_scene, editor_viewport, ui_state.active_tool);
-        update_editor_camera_controls(editor_scene, editor_camera, editor_viewport, input, mouse_state);
-        handle_viewport_selection(editor_scene, editor_viewport, *editor_renderer_for_ui, input, mouse_state);
+        const bool import_modal_active = scene_import.modal_open ||
+            scene_import.status == arc::editor::editor_scene_import_status::running ||
+            scene_import.status == arc::editor::editor_scene_import_status::failed ||
+            scene_import.status == arc::editor::editor_scene_import_status::cancelled;
+        if (!import_modal_active)
+        {
+            draw_world_grid(editor_scene, editor_viewport, ui_state.show_world_grid);
+            draw_selected_bounds(editor_scene, editor_viewport);
+            draw_transform_gizmo(editor_scene, editor_viewport, ui_state.active_tool);
+            update_editor_camera_controls(editor_scene, editor_camera, editor_viewport, input, mouse_state);
+            handle_viewport_selection(editor_scene, editor_viewport, *editor_renderer_for_ui, input, mouse_state);
+        }
         if (editor_scene.focus_imported_scene_requested)
         {
             arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
@@ -1918,6 +1955,7 @@ int main(int, char**)
                 editor_viewport,
                 editor_assets,
                 editor_scene,
+                *editor_renderer_for_ui,
                 render_mode_for_shading(ui_state.viewport_shading),
                 ui_state.viewport_shading,
                 ui_state.active_tool);

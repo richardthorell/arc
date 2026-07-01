@@ -123,6 +123,22 @@ struct render_pass_timing
 };
 
 /**
+ * @brief Lightweight clustered-light culling summary for editor diagnostics.
+ */
+struct clustered_light_grid_profile
+{
+    std::uint32_t tile_size_pixels{ 32 };
+    std::uint32_t tiles_x{};
+    std::uint32_t tiles_y{};
+    std::uint32_t depth_slices{ 16 };
+    std::uint32_t cluster_count{};
+    std::uint32_t point_light_references{};
+    std::uint32_t spot_light_references{};
+    std::uint32_t overflow_count{};
+    bool available{};
+};
+
+/**
  * @brief Backend frame profile data exposed to tools such as the editor profiler.
  */
 struct render_backend_frame_profile
@@ -131,6 +147,7 @@ struct render_backend_frame_profile
     std::vector<render_pass_timing> pass_timings;
     std::string summary;
     compiled_render_graph graph;
+    clustered_light_grid_profile clustered_lights;
 };
 
 /**

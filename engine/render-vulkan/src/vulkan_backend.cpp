@@ -349,6 +349,7 @@ public:
             frame_point_lights_,
             frame_spot_lights_,
             active_environment());
+        last_profile_.clustered_lights = make_clustered_light_profile();
         update_light_buffer();
         warn_about_skipped_lights(frame_lighting_);
 
@@ -967,6 +968,26 @@ private:
         }
 
         in_flight_pick_ = {};
+    }
+
+    clustered_light_grid_profile make_clustered_light_profile() const noexcept
+    {
+        clustered_light_grid_profile profile{};
+#if ARC_RENDER_VULKAN_ENABLE_IMGUI
+        const std::uint32_t width = std::max(1u, viewport_width_);
+        const std::uint32_t height = std::max(1u, viewport_height_);
+#else
+        const std::uint32_t width = 1u;
+        const std::uint32_t height = 1u;
+#endif
+        profile.tiles_x = (width + profile.tile_size_pixels - 1u) / profile.tile_size_pixels;
+        profile.tiles_y = (height + profile.tile_size_pixels - 1u) / profile.tile_size_pixels;
+        profile.cluster_count = profile.tiles_x * profile.tiles_y * profile.depth_slices;
+        profile.point_light_references = frame_lighting_.point_count * profile.depth_slices;
+        profile.spot_light_references = frame_lighting_.spot_count * profile.depth_slices;
+        profile.overflow_count = frame_lighting_.skipped_point_count + frame_lighting_.skipped_spot_count;
+        profile.available = true;
+        return profile;
     }
 
     bool create_buffer(
@@ -3180,11 +3201,9 @@ private:
         for (auto& matrix : data.light_view_projection)
             std::copy(identity.data(), identity.data() + 16, matrix);
 
-        const float near_plane = std::max(0.001f, frame_camera_.near_plane);
-        const float far_plane = std::max(near_plane + 0.001f, std::min(frame_camera_.far_plane, 250.0f));
-        const auto splits = cascade_splits(near_plane, far_plane);
-        for (std::size_t index = 0; index < splits.size(); ++index)
-            data.cascade_splits[index] = splits[index];
+        constexpr std::array<float, directional_shadow_cascade_count> cascade_radii{ 6.0f, 14.0f, 32.0f, 64.0f };
+        for (std::size_t index = 0; index < cascade_radii.size(); ++index)
+            data.cascade_splits[index] = cascade_radii[index];
 
         if (!light)
         {
@@ -3199,74 +3218,41 @@ private:
             ? math::vector3f{ 0.0f, 0.0f, 1.0f }
             : math::vector3f{ 0.0f, 1.0f, 0.0f };
 
-        math::matrix4f inverse_view_projection{};
-        const bool has_inverse = inverse_matrix4(frame_camera_.view_projection, inverse_view_projection);
-        std::array<math::vector3f, 4> near_corners{};
-        std::array<math::vector3f, 4> far_corners{};
-        if (has_inverse)
+        math::vector3f stable_center{};
+        std::uint32_t stable_center_count = 0;
+        for (const auto& draw : frame_draws_)
         {
-            constexpr std::array<std::array<float, 2>, 4> ndc_corners{ {
-                { -1.0f, -1.0f },
-                { 1.0f, -1.0f },
-                { 1.0f, 1.0f },
-                { -1.0f, 1.0f }
-            } };
-            for (std::uint32_t index = 0; index < 4; ++index)
-            {
-                near_corners[index] = transform_clip_point(inverse_view_projection, ndc_corners[index][0], ndc_corners[index][1], 0.0f);
-                far_corners[index] = transform_clip_point(inverse_view_projection, ndc_corners[index][0], ndc_corners[index][1], 1.0f);
-            }
+            if (!draw.selected)
+                continue;
+            stable_center = math::add(stable_center, matrix_translation(draw.model));
+            ++stable_center_count;
         }
 
-        float previous_split = near_plane;
+        if (stable_center_count == 0)
+        {
+            for (const auto& draw : frame_draws_)
+            {
+                stable_center = math::add(stable_center, matrix_translation(draw.model));
+                ++stable_center_count;
+            }
+        }
+        if (stable_center_count > 0)
+            stable_center = math::mul(stable_center, 1.0f / static_cast<float>(stable_center_count));
+        else
+            stable_center = frame_camera_.position;
+
         for (std::uint32_t cascade = 0; cascade < directional_shadow_cascade_count; ++cascade)
         {
-            const float current_split = data.cascade_splits[cascade];
-            std::array<math::vector3f, 8> corners{};
-            if (has_inverse)
-            {
-                const float start_t = std::clamp((previous_split - near_plane) / (far_plane - near_plane), 0.0f, 1.0f);
-                const float end_t = std::clamp((current_split - near_plane) / (far_plane - near_plane), 0.0f, 1.0f);
-                for (std::uint32_t index = 0; index < 4; ++index)
-                {
-                    const auto ray = math::sub(far_corners[index], near_corners[index]);
-                    corners[index] = math::add(near_corners[index], math::mul(ray, start_t));
-                    corners[index + 4] = math::add(near_corners[index], math::mul(ray, end_t));
-                }
-            }
-            else
-            {
-                const float size = std::max(4.0f, current_split * 0.25f);
-                const auto center = math::add(frame_camera_.position, math::vector3f{ 0.0f, 0.0f, -current_split });
-                corners = {
-                    math::add(center, math::vector3f{ -size, -size, -size }),
-                    math::add(center, math::vector3f{ size, -size, -size }),
-                    math::add(center, math::vector3f{ size, size, -size }),
-                    math::add(center, math::vector3f{ -size, size, -size }),
-                    math::add(center, math::vector3f{ -size, -size, size }),
-                    math::add(center, math::vector3f{ size, -size, size }),
-                    math::add(center, math::vector3f{ size, size, size }),
-                    math::add(center, math::vector3f{ -size, size, size })
-                };
-            }
-
-            math::vector3f center{};
-            for (const auto& corner : corners)
-                center = math::add(center, corner);
-            center = math::mul(center, 1.0f / static_cast<float>(corners.size()));
-
-            float cascade_radius = 0.0f;
-            for (const auto& corner : corners)
-                cascade_radius = std::max(cascade_radius, math::length(math::sub(corner, center)));
-            cascade_radius = std::max(4.0f, cascade_radius);
+            const float cascade_radius = cascade_radii[cascade];
+            auto center = stable_center;
 
             auto view = look_at_rh(math::sub(center, math::mul(light_direction, cascade_radius * 2.5f)), center, up);
             const float texel_size = (cascade_radius * 2.0f) / static_cast<float>(std::max(1u, light->shadow.resolution));
             if (texel_size > 0.0f)
             {
                 const auto light_center = math::transform_point(view, center);
-                const float snapped_x = std::floor(light_center[0] / texel_size) * texel_size;
-                const float snapped_y = std::floor(light_center[1] / texel_size) * texel_size;
+                const float snapped_x = std::round(light_center[0] / texel_size) * texel_size;
+                const float snapped_y = std::round(light_center[1] / texel_size) * texel_size;
                 const auto right = matrix_row3(view, 0);
                 const auto light_up = matrix_row3(view, 1);
                 center = math::add(center, math::mul(right, snapped_x - light_center[0]));
@@ -3278,7 +3264,6 @@ private:
             const auto light_view_projection = math::matmul(projection, view);
             std::copy(light_view_projection.data(), light_view_projection.data() + 16, data.light_view_projection[cascade]);
             data.cascade_texel_size[cascade] = texel_size;
-            previous_split = current_split;
         }
 
         data.params[0] = std::clamp(light->shadow.strength, 0.0f, 1.0f);
@@ -3920,8 +3905,6 @@ private:
 
                 if (deferred_rendered)
                 {
-                    if (draw.selected && mesh_wire_pipeline_ != VK_NULL_HANDLE)
-                        draw_with_pipeline(draw, mesh_wire_pipeline_);
                     continue;
                 }
 

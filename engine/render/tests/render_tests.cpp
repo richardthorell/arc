@@ -45,6 +45,17 @@ public:
         profile.frame_index = packet.frame_index;
         profile.graph = graph;
         profile.summary = "recorded";
+        profile.clustered_lights = {
+            .tile_size_pixels = 32,
+            .tiles_x = 2,
+            .tiles_y = 3,
+            .depth_slices = 16,
+            .cluster_count = 96,
+            .point_light_references = 4,
+            .spot_light_references = 2,
+            .overflow_count = 1,
+            .available = true
+        };
         return { .submitted = true, .message = "submitted" };
     }
 
@@ -558,6 +569,9 @@ TEST_CASE("renderer exposes compiled render graph snapshots through frame profil
     REQUIRE_FALSE(profile.graph.resources.empty());
     REQUIRE(profile.graph.resources[2].name == "scene_color");
     REQUIRE(profile.graph.resources[2].format == "rgba16f");
+    REQUIRE(profile.clustered_lights.available);
+    REQUIRE(profile.clustered_lights.cluster_count == 96);
+    REQUIRE(profile.clustered_lights.overflow_count == 1);
 }
 
 TEST_CASE("renderer forwards ObjectID pick requests to backend")

@@ -30,13 +30,34 @@ std::uint32_t render_layer_mask(const registry& scene, entity value)
     return layer ? layer->mask : 1u;
 }
 
+geometric::box3f transform_bounds(const geometric::box3f& local_bounds, const math::matrix4f& world)
+{
+    const auto corner_at = [&](std::uint32_t index) {
+        return math::vector3f{
+            (index & 1u) != 0u ? local_bounds.max[0] : local_bounds.min[0],
+            (index & 2u) != 0u ? local_bounds.max[1] : local_bounds.min[1],
+            (index & 4u) != 0u ? local_bounds.max[2] : local_bounds.min[2]
+        };
+    };
+
+    auto transformed = math::transform_point(world, corner_at(0));
+    geometric::box3f result{
+        geometric::point3f{ transformed },
+        geometric::point3f{ transformed }
+    };
+    for (std::uint32_t index = 1; index < 8; ++index)
+    {
+        transformed = math::transform_point(world, corner_at(index));
+        result = geometric::expand(result, geometric::point3f{ transformed });
+    }
+    return result;
+}
+
 geometric::box3f world_bounds_for(const registry& scene, entity value, const transform_component& transform)
 {
     const auto* bounds = scene.try_get<bounds_component>(value);
     if (bounds)
-        return bounds->dirty ? geometric::box3f{
-            geometric::point3f{ transform.position - math::vector3f{ 0.5f, 0.5f, 0.5f } },
-            geometric::point3f{ transform.position + math::vector3f{ 0.5f, 0.5f, 0.5f } } } : bounds->world_bounds;
+        return bounds->dirty ? transform_bounds(bounds->local_bounds, transform.dirty ? local_matrix(transform) : transform.world) : bounds->world_bounds;
     return geometric::box3f{
         geometric::point3f{ transform.position - math::vector3f{ 0.5f, 0.5f, 0.5f } },
         geometric::point3f{ transform.position + math::vector3f{ 0.5f, 0.5f, 0.5f } }

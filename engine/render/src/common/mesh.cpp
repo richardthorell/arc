@@ -1191,7 +1191,9 @@ scene_import_result load_fbx_scene_asset(
                         }
                     }
                     vertex.texcoord[0] = static_cast<float>(uv.x);
-                    vertex.texcoord[1] = static_cast<float>(uv.y);
+                    vertex.texcoord[1] = mesh->vertex_uv.exists ? 1.0f - static_cast<float>(uv.y) : 0.0f;
+                    if (mesh->vertex_tangent.exists)
+                        vertex.tangent[3] = -vertex.tangent[3];
                     vertex.color[0] = static_cast<float>(color.x);
                     vertex.color[1] = static_cast<float>(color.y);
                     vertex.color[2] = static_cast<float>(color.z);

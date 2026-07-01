@@ -142,6 +142,43 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     REQUIRE(world_event.packet->shadows_enabled);
 }
 
+TEST_CASE("render scene culling uses transformed dirty local bounds")
+{
+    arc::scene::registry scene;
+    arc::render::renderer renderer;
+    const arc::render::mesh_handle mesh{ .index = 2, .generation = 1 };
+
+    const auto camera_entity = scene.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    scene.emplace<arc::scene::camera_component>(camera_entity);
+
+    const auto mesh_entity = scene.create();
+    arc::scene::transform_component transform;
+    transform.position = arc::math::vector3f{ 20.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(mesh_entity, transform);
+    scene.emplace<arc::scene::bounds_component>(
+        mesh_entity,
+        arc::geometric::box3f{
+            arc::geometric::point3f{ arc::math::vector3f{ -22.0f, -1.0f, -6.0f } },
+            arc::geometric::point3f{ arc::math::vector3f{ -18.0f, 1.0f, -4.0f } } },
+        arc::geometric::box3f{},
+        true);
+    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{}, true);
+
+    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
+    REQUIRE(result.renderable_count == 1);
+    REQUIRE(result.submitted_draw_count == 1);
+    REQUIRE(result.culled_count == 0);
+
+    const auto packet = renderer.frame_queue().commit(1);
+    REQUIRE(packet.events.size() == 1);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
+    REQUIRE(world_event.packet);
+    REQUIRE(world_event.packet->visible_items.size() == 1);
+}
+
 TEST_CASE("render scene can request wireframe overlay for every draw")
 {
     arc::scene::registry scene;
