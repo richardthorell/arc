@@ -1144,6 +1144,126 @@ TEST_CASE("primitive mesh builders create renderable geometry")
     REQUIRE(has_color_variation);
 }
 
+TEST_CASE("virtual mesh builder handles empty input")
+{
+    const arc::render::mesh_data source;
+    const auto virtual_mesh = arc::render::build_virtual_mesh(source);
+
+    REQUIRE(virtual_mesh.vertices.empty());
+    REQUIRE(virtual_mesh.indices.empty());
+    REQUIRE(virtual_mesh.clusters.empty());
+    REQUIRE(virtual_mesh.lod_nodes.empty());
+    REQUIRE(virtual_mesh.stats.source_vertex_count == 0);
+    REQUIRE(virtual_mesh.stats.source_triangle_count == 0);
+    REQUIRE(virtual_mesh.stats.cluster_count == 0);
+    REQUIRE(virtual_mesh.stats.average_triangles_per_cluster == Catch::Approx(0.0f));
+    REQUIRE(virtual_mesh.stats.material_group_count == 0);
+    REQUIRE(virtual_mesh.stats.invalid_triangle_count == 0);
+}
+
+TEST_CASE("virtual mesh builder creates one bounded cluster for a triangle")
+{
+    arc::render::mesh_data source;
+    source.material_index = 7;
+    source.vertices.resize(3);
+    source.vertices[0].position[0] = 0.0f;
+    source.vertices[0].position[1] = 0.0f;
+    source.vertices[0].position[2] = 0.0f;
+    source.vertices[1].position[0] = 2.0f;
+    source.vertices[1].position[1] = 0.0f;
+    source.vertices[1].position[2] = 0.0f;
+    source.vertices[2].position[0] = 0.0f;
+    source.vertices[2].position[1] = 2.0f;
+    source.vertices[2].position[2] = 0.0f;
+    source.indices = { 0, 1, 2 };
+
+    const auto virtual_mesh = arc::render::build_virtual_mesh(source);
+
+    REQUIRE(virtual_mesh.vertices.size() == 3);
+    REQUIRE(virtual_mesh.indices == source.indices);
+    REQUIRE(virtual_mesh.clusters.size() == 1);
+    const auto& cluster = virtual_mesh.clusters.front();
+    REQUIRE(cluster.first_index == 0);
+    REQUIRE(cluster.index_count == 3);
+    REQUIRE(cluster.first_triangle == 0);
+    REQUIRE(cluster.triangle_count == 1);
+    REQUIRE(cluster.first_vertex == 0);
+    REQUIRE(cluster.vertex_count == 3);
+    REQUIRE(cluster.material_index == 7);
+    REQUIRE(cluster.bounds_min[0] == Catch::Approx(0.0f));
+    REQUIRE(cluster.bounds_min[1] == Catch::Approx(0.0f));
+    REQUIRE(cluster.bounds_max[0] == Catch::Approx(2.0f));
+    REQUIRE(cluster.bounds_max[1] == Catch::Approx(2.0f));
+    REQUIRE(cluster.sphere_center[0] == Catch::Approx(1.0f));
+    REQUIRE(cluster.sphere_center[1] == Catch::Approx(1.0f));
+    REQUIRE(cluster.sphere_radius == Catch::Approx(std::sqrt(2.0f)));
+    REQUIRE(virtual_mesh.stats.material_group_count == 1);
+}
+
+TEST_CASE("virtual mesh builder splits fixed-size clusters deterministically")
+{
+    arc::render::mesh_data source;
+    source.material_index = 3;
+    source.vertices.resize(390);
+    source.indices.reserve(390);
+    for (std::uint32_t triangle = 0; triangle < 130; ++triangle)
+    {
+        const std::uint32_t base = triangle * 3;
+        source.vertices[base + 0].position[0] = static_cast<float>(triangle);
+        source.vertices[base + 1].position[0] = static_cast<float>(triangle);
+        source.vertices[base + 1].position[1] = 1.0f;
+        source.vertices[base + 2].position[0] = static_cast<float>(triangle);
+        source.vertices[base + 2].position[2] = 1.0f;
+        source.indices.insert(source.indices.end(), { base, base + 1, base + 2 });
+    }
+
+    const auto first = arc::render::build_virtual_mesh(source);
+    const auto second = arc::render::build_virtual_mesh(source);
+
+    REQUIRE(first.clusters.size() == 2);
+    REQUIRE(first.clusters[0].triangle_count == 128);
+    REQUIRE(first.clusters[0].index_count == 384);
+    REQUIRE(first.clusters[1].first_triangle == 128);
+    REQUIRE(first.clusters[1].triangle_count == 2);
+    REQUIRE(first.stats.source_triangle_count == 130);
+    REQUIRE(first.stats.cluster_count == 2);
+    REQUIRE(first.stats.average_triangles_per_cluster == Catch::Approx(65.0f));
+    REQUIRE(first.stats.invalid_triangle_count == 0);
+    REQUIRE(second.indices == first.indices);
+    REQUIRE(second.clusters.size() == first.clusters.size());
+    REQUIRE(second.clusters[0].first_index == first.clusters[0].first_index);
+    REQUIRE(second.clusters[0].triangle_count == first.clusters[0].triangle_count);
+    REQUIRE(second.clusters[1].sphere_radius == Catch::Approx(first.clusters[1].sphere_radius));
+}
+
+TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid triangles")
+{
+    arc::render::mesh_data source;
+    source.material_index = 11;
+    source.vertices.resize(6);
+    for (std::uint32_t index = 0; index < source.vertices.size(); ++index)
+        source.vertices[index].position[0] = static_cast<float>(index);
+    source.indices = {
+        0, 1, 2,
+        3, 4, 5,
+        0, 99, 1,
+        2
+    };
+
+    const auto virtual_mesh = arc::render::build_virtual_mesh(source, { .max_triangles_per_cluster = 1 });
+
+    REQUIRE(virtual_mesh.indices == std::vector<std::uint32_t>{ 0, 1, 2, 3, 4, 5 });
+    REQUIRE(virtual_mesh.clusters.size() == 2);
+    REQUIRE(virtual_mesh.clusters[0].triangle_count == 1);
+    REQUIRE(virtual_mesh.clusters[1].triangle_count == 1);
+    REQUIRE(virtual_mesh.clusters[0].material_index == 11);
+    REQUIRE(virtual_mesh.clusters[1].material_index == 11);
+    REQUIRE(virtual_mesh.stats.source_vertex_count == 6);
+    REQUIRE(virtual_mesh.stats.source_triangle_count == 3);
+    REQUIRE(virtual_mesh.stats.invalid_triangle_count == 2);
+    REQUIRE(virtual_mesh.stats.material_group_count == 1);
+}
+
 TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")
 {
     const std::filesystem::path path = std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT) / "models" / "UAL2_Standard.glb";
