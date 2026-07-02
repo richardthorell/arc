@@ -73,6 +73,29 @@ def read_xml(path: Path) -> ET.Element:
         raise RuntimeError(f"Failed to parse {path}: {exc}") from exc
 
 
+def compound_ref(node: ET.Element) -> dict[str, Any]:
+    refid = node.get("refid", "")
+    result: dict[str, Any] = {
+        "id": refid,
+        "name": node_text(node),
+    }
+
+    visibility = node.get("prot", "")
+    if visibility:
+        result["visibility"] = visibility
+
+    virtual_value = node.get("virt", "")
+    if virtual_value:
+        result["virtual"] = virtual_value != "non-virtual"
+        result["virtualKind"] = virtual_value
+
+    if refid:
+        result["path"] = f"api/compounds/{refid}.json"
+        result["xmlPath"] = f"xml/{refid}.xml"
+
+    return result
+
+
 def member_signature(member: ET.Element) -> str:
     definition = child_text(member, "definition")
     args = child_text(member, "argsstring")
@@ -163,6 +186,14 @@ def parse_compound(xml_dir: Path, refid: str, fallback_kind: str, fallback_name:
         "source": {"xmlPath": f"xml/{refid}.xml"},
     }
 
+    inherits = [compound_ref(node) for node in compound.findall("basecompoundref")]
+    if inherits:
+        result["inherits"] = inherits
+
+    derived_by = [compound_ref(node) for node in compound.findall("derivedcompoundref")]
+    if derived_by:
+        result["derivedBy"] = derived_by
+
     for include in compound.findall("includes"):
         text = node_text(include)
         if text:
@@ -197,7 +228,7 @@ def parse_compound(xml_dir: Path, refid: str, fallback_kind: str, fallback_name:
 
 
 def compound_summary(compound: dict[str, Any]) -> dict[str, Any]:
-    return {
+    summary = {
         "id": compound["id"],
         "kind": compound.get("kind", ""),
         "name": compound.get("name", ""),
@@ -207,6 +238,13 @@ def compound_summary(compound: dict[str, Any]) -> dict[str, Any]:
         "path": f"api/compounds/{compound['id']}.json",
         "xmlPath": compound.get("source", {}).get("xmlPath", f"xml/{compound['id']}.xml"),
     }
+
+    if compound.get("inherits"):
+        summary["inherits"] = compound["inherits"]
+    if compound.get("derivedBy"):
+        summary["derivedBy"] = compound["derivedBy"]
+
+    return summary
 
 
 def search_entries_for(compound: dict[str, Any]) -> list[dict[str, Any]]:
