@@ -50,14 +50,14 @@ jobs:
           cp -R docs-build/xml/. docs-site/xml/
           python3 tools/doxygen_xml_to_json.py \
             --xml-dir docs-build/xml \
-            --out docs-site/api/arc-doxygen.json \
+            --out-dir docs-site/api \
             --project arc \
             --repo richardthorell/arc
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          data = json.loads(Path('docs-site/api/arc-doxygen.json').read_text(encoding='utf-8'))
+          data = json.loads(Path('docs-site/api/index.json').read_text(encoding='utf-8'))
           stats = data.get('stats', {})
           html = f'''<!doctype html>
           <html lang="en">
@@ -75,8 +75,10 @@ jobs:
               <h1>arc Doxygen Data</h1>
               <p>Generated static API documentation data for Lovable or other web frontends.</p>
               <ul>
-                <li><a href="api/arc-doxygen.json">api/arc-doxygen.json</a></li>
-                <li><a href="xml/index.xml">xml/index.xml</a></li>
+                <li><a href="api/index.json">api/index.json</a> — browse index</li>
+                <li><a href="api/search.json">api/search.json</a> — search index</li>
+                <li><a href="api/compounds/">api/compounds/&lt;refid&gt;.json</a> — detail JSON files</li>
+                <li><a href="xml/index.xml">xml/index.xml</a> — raw Doxygen XML</li>
               </ul>
               <p><strong>Compounds:</strong> {stats.get('compounds', 0)}</p>
               <p><strong>Search items:</strong> {stats.get('searchItems', 0)}</p>
