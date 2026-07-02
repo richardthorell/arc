@@ -190,6 +190,7 @@ struct editor_mouse_state
     float select_drag_distance{};
     bool has_position{};
     bool shift_down{};
+    bool alt_down{};
 
     void begin_frame() noexcept
     {
@@ -1272,7 +1273,9 @@ void update_editor_camera_controls(
     if (viewport.hovered())
     {
         const bool gizmo_capturing_mouse = ImGuizmo::IsUsing() || ImGuizmo::IsOver();
-        if (!gizmo_capturing_mouse && (input.down("viewport.pan") || (input.down("viewport.orbit") && mouse.shift_down)))
+        if (!gizmo_capturing_mouse && (input.down("viewport.forward") || (input.down("viewport.orbit") && mouse.alt_down)))
+            camera.move_forward(mouse.delta_y);
+        else if (!gizmo_capturing_mouse && (input.down("viewport.pan") || (input.down("viewport.orbit") && mouse.shift_down)))
             camera.pan(mouse.delta_x, mouse.delta_y);
         else if (!gizmo_capturing_mouse && input.down("viewport.orbit"))
             camera.orbit(mouse.delta_x, mouse.delta_y);
@@ -1784,6 +1787,9 @@ int main(int, char**)
         "viewport.pan",
         { .device = arc::input::input_device_type::mouse, .code = static_cast<int>(arc::mouse_button::middle) });
     input.bind_action(
+        "viewport.forward",
+        { .device = arc::input::input_device_type::mouse, .code = static_cast<int>(arc::mouse_button::right) });
+    input.bind_action(
         "viewport.select",
         { .device = arc::input::input_device_type::mouse, .code = static_cast<int>(arc::mouse_button::left) });
     input.bind_action(
@@ -1813,7 +1819,9 @@ int main(int, char**)
         while (SDL_PollEvent(&sdl_event))
         {
             ImGui_ImplSDL3_ProcessEvent(&sdl_event);
-            mouse_state.shift_down = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
+            const auto modifiers = SDL_GetModState();
+            mouse_state.shift_down = (modifiers & SDL_KMOD_SHIFT) != 0;
+            mouse_state.alt_down = (modifiers & SDL_KMOD_ALT) != 0;
 
             arc::event arc_event{};
             if (arc::editor::translate_sdl_event(sdl_event, arc_event))

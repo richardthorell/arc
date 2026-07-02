@@ -91,6 +91,11 @@ TEST_CASE("transform and camera helpers use right handed minus z forward")
     REQUIRE(forward[0] == Catch::Approx(0.0f));
     REQUIRE(forward[1] == Catch::Approx(0.0f));
     REQUIRE(forward[2] == Catch::Approx(-1.0f));
+
+    const auto up = arc::scene::up_direction(camera_transform);
+    REQUIRE(up[0] == Catch::Approx(0.0f));
+    REQUIRE(up[1] == Catch::Approx(1.0f));
+    REQUIRE(up[2] == Catch::Approx(0.0f));
 }
 
 TEST_CASE("render scene extracts visible mesh draw events from active camera")

@@ -57,6 +57,11 @@ public:
     void pan(float delta_x, float delta_y) noexcept;
 
     /**
+     * @brief Move the camera/focus forward along the current look direction.
+     */
+    void move_forward(float delta_y) noexcept;
+
+    /**
      * @brief Dolly camera by wheel delta.
      */
     void zoom(float wheel_delta) noexcept;

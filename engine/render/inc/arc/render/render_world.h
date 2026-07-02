@@ -35,6 +35,8 @@ struct render_camera
 {
     math::matrix4f view_projection{ math::identity<float, 4>() };
     math::vector3f position{};
+    math::vector3f forward{ 0.0f, 0.0f, -1.0f };
+    math::vector3f up{ 0.0f, 1.0f, 0.0f };
     math::vector4f clear_color{ 0.118f, 0.118f, 0.118f, 1.0f };
     float near_plane{ 0.01f };
     float far_plane{ 1000.0f };

@@ -30,7 +30,8 @@ layout(push_constant) uniform mesh_constants
 void main()
 {
     vec4 world_position = constants.model * vec4(in_position, 1.0);
-    out_normal = mat3(constants.model) * in_normal;
+    mat3 normal_matrix = transpose(inverse(mat3(constants.model)));
+    out_normal = normal_matrix * in_normal;
     out_world_position = world_position.xyz;
     out_color = in_color * constants.base_color;
     out_texcoord = in_texcoord;

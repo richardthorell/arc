@@ -203,6 +203,8 @@ render_scene_result render_scene(
     render::render_world_packet world_packet;
     world_packet.camera.view_projection = vp;
     world_packet.camera.position = camera_transform->position;
+    world_packet.camera.forward = forward_direction(*camera_transform);
+    world_packet.camera.up = up_direction(*camera_transform);
     world_packet.camera.clear_color = camera->clear_color;
     world_packet.camera.near_plane = camera->near_plane;
     world_packet.camera.far_plane = camera->far_plane;

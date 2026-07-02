@@ -248,7 +248,8 @@ public:
         destroy_shadow_resources();
         destroy_white_texture();
         destroy_buffer(pick_readback_buffer_);
-        destroy_buffer(shadow_uniform_buffer_);
+        for (auto& buffer : shadow_uniform_buffers_)
+            destroy_buffer(buffer);
         destroy_buffer(light_buffer_);
         destroy_meshes();
         destroy_support_objects();
@@ -300,6 +301,7 @@ public:
     render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) override
     {
         frame_draws_.clear();
+        frame_shadow_draws_.clear();
         frame_directional_lights_.clear();
         frame_point_lights_.clear();
         frame_spot_lights_.clear();
@@ -317,7 +319,10 @@ public:
             else if (const auto* environment = std::get_if<environment_upload_event>(&event.payload))
                 upload_environment(*environment);
             else if (const auto* draw = std::get_if<draw_mesh_event>(&event.payload))
+            {
                 frame_draws_.push_back(*draw);
+                frame_shadow_draws_.push_back(*draw);
+            }
             else if (const auto* light = std::get_if<directional_light_event>(&event.payload))
                 frame_directional_lights_.push_back(*light);
             else if (const auto* light = std::get_if<point_light_event>(&event.payload))
@@ -526,6 +531,7 @@ public:
             message = "failed to acquire Vulkan swapchain image";
             return false;
         }
+        active_frame_index_ = window_.FrameIndex;
 
         ImGui_ImplVulkanH_Frame* frame = &window_.Frames[window_.FrameIndex];
         vkWaitForFences(device_, 1, &frame->Fence, VK_TRUE, UINT64_MAX);
@@ -698,7 +704,7 @@ private:
     struct gpu_material
     {
         material_desc data;
-        VkDescriptorSet descriptor_set{};
+        std::vector<VkDescriptorSet> descriptor_sets;
     };
 
     struct folded_light_constants
@@ -739,6 +745,22 @@ private:
             return;
 
         const auto& packet = *event.packet;
+        const auto make_draw = [&](const render_item& item, bool selected_for_overlay) {
+            return draw_mesh_event{
+                .mesh = item.mesh,
+                .material = item.material,
+                .model = item.model,
+                .view_projection = packet.camera.view_projection,
+                .mode = packet.mode,
+                .visualization = packet.visualization,
+                .object_id = item.object_id,
+                .selected = selected_for_overlay,
+                .base_color_tint = item.base_color_tint,
+                .wire_color = math::vector4f{ 0.28f, 0.62f, 1.0f, 1.0f },
+                .label = item.label
+            };
+        };
+
         frame_directional_lights_.insert(
             frame_directional_lights_.end(),
             packet.directional_lights.begin(),
@@ -757,20 +779,17 @@ private:
             if (index >= packet.items.size())
                 continue;
             const auto& item = packet.items[index];
-            frame_draws_.push_back({
-                .mesh = item.mesh,
-                .material = item.material,
-                .model = item.model,
-                .view_projection = packet.camera.view_projection,
-                .mode = packet.mode,
-                .visualization = packet.visualization,
-                .object_id = item.object_id,
-                .selected = packet.overlay == editor_overlay_mode::all_wireframe ||
-                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected),
-                .base_color_tint = item.base_color_tint,
-                .wire_color = math::vector4f{ 0.28f, 0.62f, 1.0f, 1.0f },
-                .label = item.label
-            });
+            frame_draws_.push_back(make_draw(
+                item,
+                packet.overlay == editor_overlay_mode::all_wireframe ||
+                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+        }
+
+        for (const auto& item : packet.items)
+        {
+            if (!item.visible || !item.casts_shadows || !item.mesh.valid())
+                continue;
+            frame_shadow_draws_.push_back(make_draw(item, item.selected));
         }
 
         frame_camera_ = packet.camera;
@@ -1447,8 +1466,6 @@ private:
         if (auto found = textures_.find(key); found != textures_.end())
             destroy_texture(found->second);
         textures_[key] = std::move(texture);
-        if (white_descriptor_set_ != VK_NULL_HANDLE)
-            update_all_material_descriptor_sets();
     }
 
     void upload_material(const material_upload_event& event)
@@ -1458,9 +1475,6 @@ private:
 
         auto& material = materials_[resource_key(event.handle)];
         material.data = *event.material;
-        if (ensure_white_texture() && material.descriptor_set == VK_NULL_HANDLE)
-            material.descriptor_set = allocate_material_descriptor_set();
-        update_material_descriptor_set(material.descriptor_set, &material.data);
     }
 
     void upload_environment(const environment_upload_event& event)
@@ -1690,10 +1704,12 @@ private:
     {
         if (const auto material = materials_.find(resource_key(draw.material)); material != materials_.end())
         {
-            if (material->second.descriptor_set != VK_NULL_HANDLE)
-                return material->second.descriptor_set;
+            const auto slot = current_frame_slot();
+            if (slot < material->second.descriptor_sets.size() && material->second.descriptor_sets[slot] != VK_NULL_HANDLE)
+                return material->second.descriptor_sets[slot];
         }
-        return white_descriptor_set_;
+        const auto slot = current_frame_slot();
+        return slot < white_descriptor_sets_.size() ? white_descriptor_sets_[slot] : VK_NULL_HANDLE;
     }
 
     void destroy_mesh_pipeline() noexcept
@@ -1777,7 +1793,9 @@ private:
         {
             vkDestroyDescriptorPool(device_, white_descriptor_pool_, nullptr);
             white_descriptor_pool_ = VK_NULL_HANDLE;
-            white_descriptor_set_ = VK_NULL_HANDLE;
+            white_descriptor_sets_.clear();
+            for (auto& [_, material] : materials_)
+                material.descriptor_sets.clear();
         }
         if (white_descriptor_set_layout_ != VK_NULL_HANDLE)
         {
@@ -1846,15 +1864,59 @@ private:
         shadow_atlas_.resolution = 0;
     }
 
-    bool ensure_shadow_uniform_buffer()
+    std::uint32_t frame_resource_count() const noexcept
     {
-        if (shadow_uniform_buffer_.buffer != VK_NULL_HANDLE)
-            return true;
-        return create_buffer(
-            sizeof(shadow_uniform_data),
-            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-            VMA_MEMORY_USAGE_CPU_TO_GPU,
-            shadow_uniform_buffer_);
+        return std::max(1u, window_.ImageCount);
+    }
+
+    std::uint32_t current_frame_slot() const noexcept
+    {
+        return active_frame_index_ % frame_resource_count();
+    }
+
+    bool ensure_shadow_uniform_buffers()
+    {
+        const auto count = frame_resource_count();
+        if (shadow_uniform_buffers_.size() == count)
+        {
+            bool ready = true;
+            for (const auto& buffer : shadow_uniform_buffers_)
+                ready = ready && buffer.buffer != VK_NULL_HANDLE;
+            if (ready)
+                return true;
+        }
+
+        vkDeviceWaitIdle(device_);
+        for (auto& buffer : shadow_uniform_buffers_)
+            destroy_buffer(buffer);
+        shadow_uniform_buffers_.clear();
+        shadow_uniform_buffers_.resize(count);
+
+        for (auto& buffer : shadow_uniform_buffers_)
+        {
+            if (!create_buffer(
+                    sizeof(shadow_uniform_data),
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VMA_MEMORY_USAGE_CPU_TO_GPU,
+                    buffer))
+                return false;
+        }
+        return true;
+    }
+
+    gpu_buffer* current_shadow_uniform_buffer() noexcept
+    {
+        const auto slot = current_frame_slot();
+        if (slot >= shadow_uniform_buffers_.size())
+            return nullptr;
+        return &shadow_uniform_buffers_[slot];
+    }
+
+    const gpu_buffer* shadow_uniform_buffer_for_slot(std::uint32_t slot) const noexcept
+    {
+        if (slot >= shadow_uniform_buffers_.size())
+            return nullptr;
+        return &shadow_uniform_buffers_[slot];
     }
 
     bool ensure_shadow_resources(const shadow_settings& settings)
@@ -1934,9 +1996,46 @@ private:
         return true;
     }
 
-    void update_material_descriptor_set(VkDescriptorSet descriptor_set, const material_desc* material)
+    bool ensure_material_descriptor_sets(gpu_material& material)
     {
-        if (descriptor_set == VK_NULL_HANDLE || white_view_ == VK_NULL_HANDLE || shadow_atlas_.array_view == VK_NULL_HANDLE || shadow_uniform_buffer_.buffer == VK_NULL_HANDLE)
+        const auto count = frame_resource_count();
+        if (material.descriptor_sets.size() != count)
+            material.descriptor_sets.assign(count, VK_NULL_HANDLE);
+        for (auto& set : material.descriptor_sets)
+        {
+            if (set != VK_NULL_HANDLE)
+                continue;
+            set = allocate_material_descriptor_set();
+            if (set == VK_NULL_HANDLE)
+                return false;
+        }
+        return true;
+    }
+
+    bool ensure_white_descriptor_sets()
+    {
+        const auto count = frame_resource_count();
+        if (white_descriptor_sets_.size() != count)
+            white_descriptor_sets_.assign(count, VK_NULL_HANDLE);
+        for (auto& set : white_descriptor_sets_)
+        {
+            if (set != VK_NULL_HANDLE)
+                continue;
+            set = allocate_material_descriptor_set();
+            if (set == VK_NULL_HANDLE)
+                return false;
+        }
+        return true;
+    }
+
+    void update_material_descriptor_set(VkDescriptorSet descriptor_set, const material_desc* material, std::uint32_t frame_slot)
+    {
+        const auto* shadow_buffer_resource = shadow_uniform_buffer_for_slot(frame_slot);
+        if (descriptor_set == VK_NULL_HANDLE ||
+            white_view_ == VK_NULL_HANDLE ||
+            shadow_atlas_.array_view == VK_NULL_HANDLE ||
+            shadow_buffer_resource == nullptr ||
+            shadow_buffer_resource->buffer == VK_NULL_HANDLE)
             return;
 
         const auto resolve_texture = [&](texture_handle handle, VkSampler& sampler, VkImageView& view) {
@@ -1973,7 +2072,7 @@ private:
         image_infos[5].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
         VkDescriptorBufferInfo shadow_buffer{};
-        shadow_buffer.buffer = shadow_uniform_buffer_.buffer;
+        shadow_buffer.buffer = shadow_buffer_resource->buffer;
         shadow_buffer.offset = 0;
         shadow_buffer.range = sizeof(shadow_uniform_data);
 
@@ -1996,11 +2095,39 @@ private:
         vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
+    void update_material_descriptor_sets(gpu_material& material)
+    {
+        if (!ensure_material_descriptor_sets(material))
+            return;
+        for (std::uint32_t frame_slot = 0; frame_slot < material.descriptor_sets.size(); ++frame_slot)
+            update_material_descriptor_set(material.descriptor_sets[frame_slot], &material.data, frame_slot);
+    }
+
+    void update_white_descriptor_sets()
+    {
+        if (!ensure_white_descriptor_sets())
+            return;
+        for (std::uint32_t frame_slot = 0; frame_slot < white_descriptor_sets_.size(); ++frame_slot)
+            update_material_descriptor_set(white_descriptor_sets_[frame_slot], nullptr, frame_slot);
+    }
+
     void update_all_material_descriptor_sets()
     {
-        update_material_descriptor_set(white_descriptor_set_, nullptr);
+        update_white_descriptor_sets();
         for (auto& [_, material] : materials_)
-            update_material_descriptor_set(material.descriptor_set, &material.data);
+            update_material_descriptor_sets(material);
+    }
+
+    void update_current_material_descriptor_sets()
+    {
+        const auto frame_slot = current_frame_slot();
+        if (ensure_white_descriptor_sets() && frame_slot < white_descriptor_sets_.size())
+            update_material_descriptor_set(white_descriptor_sets_[frame_slot], nullptr, frame_slot);
+        for (auto& [_, material] : materials_)
+        {
+            if (ensure_material_descriptor_sets(material) && frame_slot < material.descriptor_sets.size())
+                update_material_descriptor_set(material.descriptor_sets[frame_slot], &material.data, frame_slot);
+        }
     }
 
     VkDescriptorSet allocate_material_descriptor_set()
@@ -2021,12 +2148,17 @@ private:
 
     bool ensure_white_texture()
     {
-        if (white_descriptor_set_ != VK_NULL_HANDLE)
-            return true;
-
         const auto shadow_resolution = shadow_atlas_.resolution == 0 ? 2048u : shadow_atlas_.resolution;
-        if (!ensure_shadow_uniform_buffer() || !ensure_shadow_resources({ .enabled = false, .resolution = shadow_resolution }))
+        if (!ensure_shadow_uniform_buffers() || !ensure_shadow_resources({ .enabled = false, .resolution = shadow_resolution }))
             return false;
+
+        if (white_descriptor_set_layout_ != VK_NULL_HANDLE &&
+            white_descriptor_pool_ != VK_NULL_HANDLE &&
+            white_view_ != VK_NULL_HANDLE &&
+            white_sampler_ != VK_NULL_HANDLE)
+        {
+            return ensure_white_descriptor_sets();
+        }
 
         std::array<VkDescriptorSetLayoutBinding, 7> bindings{};
         for (std::uint32_t binding_index = 0; binding_index < 6; ++binding_index)
@@ -2146,27 +2278,19 @@ private:
 
         std::array<VkDescriptorPoolSize, 2> pool_sizes{};
         pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        pool_sizes[0].descriptorCount = 24576;
+        pool_sizes[0].descriptorCount = 73728;
         pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        pool_sizes[1].descriptorCount = 4096;
+        pool_sizes[1].descriptorCount = 12288;
         VkDescriptorPoolCreateInfo descriptor_pool{};
         descriptor_pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         descriptor_pool.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        descriptor_pool.maxSets = 4096;
+        descriptor_pool.maxSets = 12288;
         descriptor_pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
         descriptor_pool.pPoolSizes = pool_sizes.data();
         if (vkCreateDescriptorPool(device_, &descriptor_pool, nullptr, &white_descriptor_pool_) != VK_SUCCESS)
             return false;
 
-        VkDescriptorSetAllocateInfo descriptor_allocate{};
-        descriptor_allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        descriptor_allocate.descriptorPool = white_descriptor_pool_;
-        descriptor_allocate.descriptorSetCount = 1;
-        descriptor_allocate.pSetLayouts = &white_descriptor_set_layout_;
-        if (vkAllocateDescriptorSets(device_, &descriptor_allocate, &white_descriptor_set_) != VK_SUCCESS)
-            return false;
-
-        update_material_descriptor_set(white_descriptor_set_, nullptr);
+        update_all_material_descriptor_sets();
         return true;
     }
 
@@ -3135,15 +3259,15 @@ private:
     {
         const auto* light = active_directional_shadow_light();
         const shadow_settings settings = light ? light->shadow : shadow_settings{ .enabled = false, .resolution = 2048 };
-        if (ensure_shadow_uniform_buffer() && ensure_shadow_resources(settings))
+        if (ensure_shadow_uniform_buffers() && ensure_shadow_resources(settings))
         {
             update_shadow_uniform(build_shadow_uniform(light));
         }
 
         if (ensure_mesh_pipeline())
-            update_all_material_descriptor_sets();
+            update_current_material_descriptor_sets();
 
-        if (light && !frame_draws_.empty())
+        if (light && !frame_shadow_draws_.empty())
             ensure_shadow_pipeline();
     }
 
@@ -3218,33 +3342,14 @@ private:
             ? math::vector3f{ 0.0f, 0.0f, 1.0f }
             : math::vector3f{ 0.0f, 1.0f, 0.0f };
 
-        math::vector3f stable_center{};
-        std::uint32_t stable_center_count = 0;
-        for (const auto& draw : frame_draws_)
-        {
-            if (!draw.selected)
-                continue;
-            stable_center = math::add(stable_center, matrix_translation(draw.model));
-            ++stable_center_count;
-        }
-
-        if (stable_center_count == 0)
-        {
-            for (const auto& draw : frame_draws_)
-            {
-                stable_center = math::add(stable_center, matrix_translation(draw.model));
-                ++stable_center_count;
-            }
-        }
-        if (stable_center_count > 0)
-            stable_center = math::mul(stable_center, 1.0f / static_cast<float>(stable_center_count));
-        else
-            stable_center = frame_camera_.position;
+        auto camera_forward = math::normalize(frame_camera_.forward, 0.0f);
+        if (math::length_squared(camera_forward) < 0.0001f)
+            camera_forward = math::vector3f{ 0.0f, 0.0f, -1.0f };
 
         for (std::uint32_t cascade = 0; cascade < directional_shadow_cascade_count; ++cascade)
         {
             const float cascade_radius = cascade_radii[cascade];
-            auto center = stable_center;
+            math::vector3f center = math::add(frame_camera_.position, math::mul(camera_forward, cascade_radius));
 
             auto view = look_at_rh(math::sub(center, math::mul(light_direction, cascade_radius * 2.5f)), center, up);
             const float texel_size = (cascade_radius * 2.0f) / static_cast<float>(std::max(1u, light->shadow.resolution));
@@ -3275,13 +3380,16 @@ private:
 
     void update_shadow_uniform(const shadow_uniform_data& data)
     {
-        if (!ensure_shadow_uniform_buffer())
+        if (!ensure_shadow_uniform_buffers())
+            return;
+        auto* shadow_buffer = current_shadow_uniform_buffer();
+        if (shadow_buffer == nullptr || shadow_buffer->buffer == VK_NULL_HANDLE)
             return;
         void* mapped{};
-        if (vmaMapMemory(allocator_, shadow_uniform_buffer_.allocation, &mapped) != VK_SUCCESS)
+        if (vmaMapMemory(allocator_, shadow_buffer->allocation, &mapped) != VK_SUCCESS)
             return;
         std::memcpy(mapped, &data, sizeof(data));
-        vmaUnmapMemory(allocator_, shadow_uniform_buffer_.allocation);
+        vmaUnmapMemory(allocator_, shadow_buffer->allocation);
     }
 
     bool ensure_shadow_pipeline()
@@ -3401,7 +3509,7 @@ private:
             return;
         const auto uniform = build_shadow_uniform(light);
 
-        if (!light || frame_draws_.empty() || shadow_pipeline_ == VK_NULL_HANDLE)
+        if (!light || frame_shadow_draws_.empty() || shadow_pipeline_ == VK_NULL_HANDLE)
         {
             transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
             return;
@@ -3438,8 +3546,11 @@ private:
             rendering.pDepthAttachment = &depth_attachment;
             vkCmdBeginRendering(command_buffer, &rendering);
 
-            for (const auto& draw : frame_draws_)
+            for (const auto& draw : frame_shadow_draws_)
             {
+                if (material_alpha_mode_for(draw) == material_alpha_mode::blend)
+                    continue;
+
                 auto found = meshes_.find(resource_key(draw.mesh));
                 if (found == meshes_.end())
                     continue;
@@ -3844,7 +3955,7 @@ private:
         depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         vkCmdBeginRendering(command_buffer, &rendering);
 
-        if (!frame_draws_.empty() && mesh_pipeline_ != VK_NULL_HANDLE && white_descriptor_set_ != VK_NULL_HANDLE)
+        if (!frame_draws_.empty() && mesh_pipeline_ != VK_NULL_HANDLE && !white_descriptor_sets_.empty())
         {
             VkViewport viewport{};
             viewport.y = static_cast<float>(viewport_height_);
@@ -3973,6 +4084,7 @@ private:
     std::unordered_map<std::uint64_t, gpu_material> materials_;
     std::unordered_map<std::uint64_t, gpu_environment> environments_;
     std::vector<draw_mesh_event> frame_draws_;
+    std::vector<draw_mesh_event> frame_shadow_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
     std::vector<point_light_event> frame_point_lights_;
     std::vector<spot_light_event> frame_spot_lights_;
@@ -3982,14 +4094,15 @@ private:
     render_camera frame_camera_;
     bool frame_shadows_enabled_{ true };
     gpu_buffer light_buffer_;
-    gpu_buffer shadow_uniform_buffer_;
+    std::vector<gpu_buffer> shadow_uniform_buffers_;
+    std::uint32_t active_frame_index_{};
     environment_handle active_environment_;
     vulkan_shadow_atlas shadow_atlas_;
     vulkan_shadow_cache shadow_cache_;
 
     VkDescriptorSetLayout white_descriptor_set_layout_{};
     VkDescriptorPool white_descriptor_pool_{};
-    VkDescriptorSet white_descriptor_set_{};
+    std::vector<VkDescriptorSet> white_descriptor_sets_;
     VkImage white_image_{};
     VmaAllocation white_allocation_{};
     VkImageView white_view_{};

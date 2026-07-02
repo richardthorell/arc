@@ -23,6 +23,11 @@ math::matrix4f view_matrix(const transform_component& transform) noexcept;
 math::vector3f forward_direction(const transform_component& transform) noexcept;
 
 /**
+ * @brief Return the transform's normalized local +Y up direction in world space.
+ */
+math::vector3f up_direction(const transform_component& transform) noexcept;
+
+/**
  * @brief Build a right-handed perspective projection with Vulkan 0..1 depth.
  */
 math::matrix4f perspective_rh_zo(float fov_y_radians, float aspect, float near_plane, float far_plane) noexcept;

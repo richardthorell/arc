@@ -91,6 +91,14 @@ void editor_camera_controller::pan(float delta_x, float delta_y) noexcept
     focus_ = math::add(focus_, math::mul(up, delta_y * speed));
 }
 
+void editor_camera_controller::move_forward(float delta_y) noexcept
+{
+    const auto rotation = quaternion_from_yaw_pitch(yaw_, pitch_);
+    const auto forward = math::rotate(rotation, math::vector3f{ 0.0f, 0.0f, -1.0f });
+    const float speed = std::clamp(distance_ * 0.006f, 0.015f, 1.5f);
+    focus_ = math::add(focus_, math::mul(forward, -delta_y * speed));
+}
+
 void editor_camera_controller::zoom(float wheel_delta) noexcept
 {
     distance_ = std::clamp(distance_ * std::pow(0.86f, wheel_delta), 0.15f, 500.0f);

@@ -55,6 +55,13 @@ math::vector3f forward_direction(const transform_component& transform) noexcept
     return math::normalize(math::transform_vector(rotation, local_forward));
 }
 
+math::vector3f up_direction(const transform_component& transform) noexcept
+{
+    const auto rotation = rotation_matrix(transform.rotation);
+    const math::vector3f local_up{ 0.0f, 1.0f, 0.0f };
+    return math::normalize(math::transform_vector(rotation, local_up));
+}
+
 math::matrix4f perspective_rh_zo(float fov_y_radians, float aspect, float near_plane, float far_plane) noexcept
 {
     aspect = aspect <= 0.0f ? 1.0f : aspect;
