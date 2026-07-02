@@ -2,6 +2,7 @@
 
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
+#include <arc/render/virtual_mesh.h>
 #include <arc/geometric/box.h>
 #include <arc/math/math.h>
 
@@ -129,6 +130,17 @@ struct camera_component
 struct mesh_renderer_component
 {
     render::mesh_handle mesh{};
+    render::material_handle material{};
+    bool visible{ true };
+    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+};
+
+/**
+ * @brief Renderable virtual mesh component backed by CPU-visible clusters.
+ */
+struct virtual_mesh_renderer_component
+{
+    render::virtual_mesh_handle mesh{};
     render::material_handle material{};
     bool visible{ true };
     math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };

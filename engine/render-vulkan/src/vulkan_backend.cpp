@@ -301,6 +301,7 @@ public:
     render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) override
     {
         frame_draws_.clear();
+        frame_virtual_draws_.clear();
         frame_shadow_draws_.clear();
         frame_directional_lights_.clear();
         frame_point_lights_.clear();
@@ -312,6 +313,8 @@ public:
         {
             if (const auto* upload = std::get_if<mesh_upload_event>(&event.payload))
                 upload_mesh(*upload);
+            else if (const auto* upload = std::get_if<virtual_mesh_upload_event>(&event.payload))
+                upload_virtual_mesh(*upload);
             else if (const auto* texture = std::get_if<texture_upload_event>(&event.payload))
                 upload_texture(*texture);
             else if (const auto* material = std::get_if<material_upload_event>(&event.payload))
@@ -684,6 +687,21 @@ private:
         std::uint32_t index_count{};
     };
 
+    struct gpu_virtual_mesh
+    {
+        gpu_buffer vertices;
+        gpu_buffer indices;
+        std::vector<virtual_mesh_cluster> clusters;
+        std::uint32_t index_count{};
+    };
+
+    struct virtual_cluster_draw
+    {
+        draw_mesh_event draw;
+        virtual_mesh_handle mesh{};
+        std::uint32_t cluster_index{};
+    };
+
     struct gpu_texture
     {
         texture_data data;
@@ -739,6 +757,20 @@ private:
         bool active{};
     };
 
+    static math::vector4f cluster_debug_color(std::uint32_t cluster_index) noexcept
+    {
+        const std::uint32_t hash = cluster_index * 747796405u + 2891336453u;
+        const float r = static_cast<float>((hash >> 0u) & 0xffu) / 255.0f;
+        const float g = static_cast<float>((hash >> 8u) & 0xffu) / 255.0f;
+        const float b = static_cast<float>((hash >> 16u) & 0xffu) / 255.0f;
+        return {
+            0.25f + r * 0.75f,
+            0.25f + g * 0.75f,
+            0.25f + b * 0.75f,
+            1.0f
+        };
+    }
+
     void append_render_world(const render_world_event& event)
     {
         if (!event.packet)
@@ -758,6 +790,35 @@ private:
                 .base_color_tint = item.base_color_tint,
                 .wire_color = math::vector4f{ 0.28f, 0.62f, 1.0f, 1.0f },
                 .label = item.label
+            };
+        };
+        const auto make_virtual_draw = [&](const virtual_render_item& item, bool selected_for_overlay) {
+            auto tint = item.base_color_tint;
+            auto material = item.material;
+            if (packet.visualization == mesh_visualization_mode::cluster_debug)
+            {
+                tint = cluster_debug_color(item.cluster_index);
+                material = {};
+            }
+            const auto visualization = packet.visualization == mesh_visualization_mode::cluster_debug
+                ? mesh_visualization_mode::albedo
+                : packet.visualization;
+            return virtual_cluster_draw{
+                .draw = draw_mesh_event{
+                    .mesh = item.mesh,
+                    .material = material,
+                    .model = item.model,
+                    .view_projection = packet.camera.view_projection,
+                    .mode = packet.mode,
+                    .visualization = visualization,
+                    .object_id = item.object_id,
+                    .selected = selected_for_overlay,
+                    .base_color_tint = tint,
+                    .wire_color = math::vector4f{ 0.28f, 0.62f, 1.0f, 1.0f },
+                    .label = item.label
+                },
+                .mesh = item.mesh,
+                .cluster_index = item.cluster_index
             };
         };
 
@@ -780,6 +841,17 @@ private:
                 continue;
             const auto& item = packet.items[index];
             frame_draws_.push_back(make_draw(
+                item,
+                packet.overlay == editor_overlay_mode::all_wireframe ||
+                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+        }
+
+        for (const auto index : packet.visible_virtual_items)
+        {
+            if (index >= packet.virtual_items.size())
+                continue;
+            const auto& item = packet.virtual_items[index];
+            frame_virtual_draws_.push_back(make_virtual_draw(
                 item,
                 packet.overlay == editor_overlay_mode::all_wireframe ||
                     (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
@@ -1095,6 +1167,12 @@ private:
             destroy_buffer(mesh.indices);
         }
         meshes_.clear();
+        for (auto& [_, mesh] : virtual_meshes_)
+        {
+            destroy_buffer(mesh.vertices);
+            destroy_buffer(mesh.indices);
+        }
+        virtual_meshes_.clear();
         for (auto& [_, texture] : textures_)
             destroy_texture(texture);
         textures_.clear();
@@ -1442,6 +1520,34 @@ private:
             destroy_buffer(found->second.indices);
         }
         meshes_[key] = std::move(mesh);
+    }
+
+    void upload_virtual_mesh(const virtual_mesh_upload_event& event)
+    {
+        if (!event.mesh || event.mesh->vertices.empty() || event.mesh->indices.empty() || event.mesh->clusters.empty())
+            return;
+
+        gpu_virtual_mesh mesh;
+        const VkDeviceSize vertex_size = buffer_size(event.mesh->vertices.size(), sizeof(mesh_vertex));
+        const VkDeviceSize index_size = buffer_size(event.mesh->indices.size(), sizeof(std::uint32_t));
+        if (!upload_buffer(event.mesh->vertices.data(), vertex_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, mesh.vertices) ||
+            !upload_buffer(event.mesh->indices.data(), index_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, mesh.indices))
+        {
+            destroy_buffer(mesh.vertices);
+            destroy_buffer(mesh.indices);
+            arc::error("render.vulkan", "Failed to upload virtual mesh '" + event.label + "'");
+            return;
+        }
+
+        mesh.index_count = static_cast<std::uint32_t>(event.mesh->indices.size());
+        mesh.clusters = event.mesh->clusters;
+        const std::uint64_t key = resource_key(event.handle);
+        if (auto found = virtual_meshes_.find(key); found != virtual_meshes_.end())
+        {
+            destroy_buffer(found->second.vertices);
+            destroy_buffer(found->second.indices);
+        }
+        virtual_meshes_[key] = std::move(mesh);
     }
 
     void upload_texture(const texture_upload_event& event)
@@ -3617,9 +3723,31 @@ private:
         vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
     }
 
+    void draw_indexed_virtual_cluster(
+        VkCommandBuffer command_buffer,
+        const virtual_cluster_draw& draw,
+        VkPipelineLayout layout,
+        VkShaderStageFlags stages)
+    {
+        const auto found = virtual_meshes_.find(resource_key(draw.mesh));
+        if (found == virtual_meshes_.end() || draw.cluster_index >= found->second.clusters.size())
+            return;
+
+        const auto& cluster = found->second.clusters[draw.cluster_index];
+        if (cluster.index_count == 0 || cluster.first_index + cluster.index_count > found->second.index_count)
+            return;
+
+        const auto constants = build_mesh_constants(draw.draw);
+        vkCmdPushConstants(command_buffer, layout, stages, 0, sizeof(constants), &constants);
+        const VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
+        vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
+    }
+
     bool render_deferred_scene(VkCommandBuffer command_buffer)
     {
-        if (frame_draws_.empty() ||
+        if ((frame_draws_.empty() && frame_virtual_draws_.empty()) ||
             !ensure_deferred_targets(viewport_width_, viewport_height_) ||
             !ensure_shadow_pipeline() ||
             !ensure_gbuffer_pipeline() ||
@@ -3631,6 +3759,14 @@ private:
         for (const auto& draw : frame_draws_)
         {
             if (draw.mode != render_mode::wireframe && material_alpha_mode_for(draw) != material_alpha_mode::blend)
+            {
+                has_opaque_draws = true;
+                break;
+            }
+        }
+        for (const auto& draw : frame_virtual_draws_)
+        {
+            if (draw.draw.mode != render_mode::wireframe && material_alpha_mode_for(draw.draw) != material_alpha_mode::blend)
             {
                 has_opaque_draws = true;
                 break;
@@ -3664,6 +3800,12 @@ private:
                 if (draw.mode == render_mode::wireframe || material_alpha_mode_for(draw) == material_alpha_mode::blend)
                     continue;
                 draw_indexed_mesh(command_buffer, draw, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT);
+            }
+            for (const auto& draw : frame_virtual_draws_)
+            {
+                if (draw.draw.mode == render_mode::wireframe || material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
+                    continue;
+                draw_indexed_virtual_cluster(command_buffer, draw, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT);
             }
 
             vkCmdEndRendering(command_buffer);
@@ -3735,6 +3877,26 @@ private:
                     mesh_pipeline_layout_,
                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
             }
+            for (const auto& draw : frame_virtual_draws_)
+            {
+                if (draw.draw.mode == render_mode::wireframe || material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
+                    continue;
+                VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw.draw);
+                vkCmdBindDescriptorSets(
+                    command_buffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    mesh_pipeline_layout_,
+                    0,
+                    1,
+                    &material_descriptor_set,
+                    0,
+                    nullptr);
+                draw_indexed_virtual_cluster(
+                    command_buffer,
+                    draw,
+                    mesh_pipeline_layout_,
+                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+            }
 
             vkCmdEndRendering(command_buffer);
         }
@@ -3783,7 +3945,9 @@ private:
             constants.ambient_visualization[0] = frame_lighting_.ambient_color_intensity[0] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[1] = frame_lighting_.ambient_color_intensity[1] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[2] = frame_lighting_.ambient_color_intensity[2] * frame_lighting_.ambient_color_intensity[3];
-            constants.ambient_visualization[3] = frame_draws_.empty() ? 0.0f : static_cast<float>(frame_draws_.front().visualization);
+            constants.ambient_visualization[3] = !frame_draws_.empty()
+                ? static_cast<float>(frame_draws_.front().visualization)
+                : static_cast<float>(frame_virtual_draws_.front().draw.visualization);
             constants.debug_counts[0] = static_cast<float>(frame_lighting_.point_count);
             constants.debug_counts[1] = static_cast<float>(frame_lighting_.spot_count);
             constants.debug_counts[2] = 16.0f;
@@ -3826,6 +3990,11 @@ private:
                 {
                     if (draw.object_id.valid())
                         readback.objects.emplace(draw.object_id.index + 1u, draw.object_id);
+                }
+                for (const auto& draw : frame_virtual_draws_)
+                {
+                    if (draw.draw.object_id.valid())
+                        readback.objects.emplace(draw.draw.object_id.index + 1u, draw.draw.object_id);
                 }
 
                 transition_graph_image(command_buffer, gbuffer_object_id_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -3955,7 +4124,7 @@ private:
         depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         vkCmdBeginRendering(command_buffer, &rendering);
 
-        if (!frame_draws_.empty() && mesh_pipeline_ != VK_NULL_HANDLE && !white_descriptor_sets_.empty())
+        if ((!frame_draws_.empty() || !frame_virtual_draws_.empty()) && mesh_pipeline_ != VK_NULL_HANDLE && !white_descriptor_sets_.empty())
         {
             VkViewport viewport{};
             viewport.y = static_cast<float>(viewport_height_);
@@ -3999,6 +4168,41 @@ private:
                 vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
                 vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
             };
+            const auto draw_virtual_with_pipeline = [&](const virtual_cluster_draw& draw, VkPipeline pipeline) {
+                if (pipeline == VK_NULL_HANDLE)
+                    return;
+                const auto found = virtual_meshes_.find(resource_key(draw.mesh));
+                if (found == virtual_meshes_.end() || draw.cluster_index >= found->second.clusters.size())
+                    return;
+
+                const auto& cluster = found->second.clusters[draw.cluster_index];
+                if (cluster.index_count == 0 || cluster.first_index + cluster.index_count > found->second.index_count)
+                    return;
+
+                vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+                const auto constants = build_mesh_constants(draw.draw);
+                VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw.draw);
+                vkCmdBindDescriptorSets(
+                    command_buffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    mesh_pipeline_layout_,
+                    0,
+                    1,
+                    &material_descriptor_set,
+                    0,
+                    nullptr);
+                vkCmdPushConstants(
+                    command_buffer,
+                    mesh_pipeline_layout_,
+                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                    0,
+                    sizeof(constants),
+                    &constants);
+                const VkDeviceSize offset = 0;
+                vkCmdBindVertexBuffers(command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
+                vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
+            };
 
             for (const auto& draw : frame_draws_)
             {
@@ -4022,6 +4226,28 @@ private:
                 draw_with_pipeline(draw, mesh_pipeline_);
                 if (draw.selected && mesh_wire_pipeline_ != VK_NULL_HANDLE)
                     draw_with_pipeline(draw, mesh_wire_pipeline_);
+            }
+
+            for (const auto& draw : frame_virtual_draws_)
+            {
+                if (draw.draw.mode == render_mode::wireframe)
+                {
+                    if (mesh_wire_pipeline_ != VK_NULL_HANDLE)
+                        draw_virtual_with_pipeline(draw, mesh_wire_pipeline_);
+                    else
+                        draw_virtual_with_pipeline(draw, mesh_pipeline_);
+                    continue;
+                }
+
+                if (material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
+                    continue;
+
+                if (deferred_rendered)
+                    continue;
+
+                draw_virtual_with_pipeline(draw, mesh_pipeline_);
+                if (draw.draw.selected && mesh_wire_pipeline_ != VK_NULL_HANDLE)
+                    draw_virtual_with_pipeline(draw, mesh_wire_pipeline_);
             }
 
             std::vector<const draw_mesh_event*> transparent_draws;
@@ -4080,10 +4306,12 @@ private:
     object_pick_readback in_flight_pick_;
     std::vector<std::string> pending_debug_markers_;
     std::unordered_map<std::uint64_t, gpu_mesh> meshes_;
+    std::unordered_map<std::uint64_t, gpu_virtual_mesh> virtual_meshes_;
     std::unordered_map<std::uint64_t, gpu_texture> textures_;
     std::unordered_map<std::uint64_t, gpu_material> materials_;
     std::unordered_map<std::uint64_t, gpu_environment> environments_;
     std::vector<draw_mesh_event> frame_draws_;
+    std::vector<virtual_cluster_draw> frame_virtual_draws_;
     std::vector<draw_mesh_event> frame_shadow_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
     std::vector<point_light_event> frame_point_lights_;

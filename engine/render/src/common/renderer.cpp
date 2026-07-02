@@ -7,6 +7,15 @@
 
 namespace arc::render
 {
+namespace
+{
+
+std::uint64_t renderer_resource_key(resource_handle handle) noexcept
+{
+    return (static_cast<std::uint64_t>(handle.generation) << 32u) | handle.index;
+}
+
+} // namespace
 
 void render_backend::resize_viewport(std::uint32_t, std::uint32_t)
 {
@@ -68,6 +77,19 @@ mesh_handle renderer::create_mesh(mesh_data mesh)
     return handle;
 }
 
+virtual_mesh_handle renderer::create_virtual_mesh(virtual_mesh_data mesh)
+{
+    const virtual_mesh_handle handle = virtual_mesh_handles_.allocate();
+    auto shared_mesh = std::make_shared<virtual_mesh_data>(std::move(mesh));
+    virtual_mesh_data_[renderer_resource_key(handle)] = shared_mesh;
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.virtual_mesh_upload(handle, shared_mesh, "virtual mesh");
+    frame_queue_.submit(std::move(buffer));
+    return handle;
+}
+
 texture_handle renderer::create_texture(texture_data texture)
 {
     const texture_handle handle = texture_handles_.allocate();
@@ -124,6 +146,19 @@ environment_handle renderer::create_environment(environment_desc environment)
 bool renderer::mesh_alive(mesh_handle handle) const
 {
     return mesh_handles_.alive(handle);
+}
+
+bool renderer::virtual_mesh_alive(virtual_mesh_handle handle) const
+{
+    return virtual_mesh_handles_.alive(handle);
+}
+
+const virtual_mesh_data* renderer::virtual_mesh_data_for(virtual_mesh_handle handle) const
+{
+    if (!virtual_mesh_handles_.alive(handle))
+        return nullptr;
+    const auto found = virtual_mesh_data_.find(renderer_resource_key(handle));
+    return found == virtual_mesh_data_.end() ? nullptr : found->second.get();
 }
 
 bool renderer::texture_alive(texture_handle handle) const

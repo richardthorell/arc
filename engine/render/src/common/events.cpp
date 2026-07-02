@@ -9,6 +9,8 @@ render_event_type render_event::type() const noexcept
 {
     if (std::holds_alternative<mesh_upload_event>(payload))
         return render_event_type::mesh_upload;
+    if (std::holds_alternative<virtual_mesh_upload_event>(payload))
+        return render_event_type::virtual_mesh_upload;
     if (std::holds_alternative<texture_upload_event>(payload))
         return render_event_type::texture_upload;
     if (std::holds_alternative<material_upload_event>(payload))
@@ -71,6 +73,16 @@ void render_event_writer::mesh_upload(mesh_handle handle, std::shared_ptr<const 
 {
     render_event event{};
     event.payload = mesh_upload_event{ .handle = handle, .mesh = std::move(mesh), .label = std::move(label) };
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::virtual_mesh_upload(
+    virtual_mesh_handle handle,
+    std::shared_ptr<const virtual_mesh_data> mesh,
+    std::string label)
+{
+    render_event event{};
+    event.payload = virtual_mesh_upload_event{ .handle = handle, .mesh = std::move(mesh), .label = std::move(label) };
     buffer_->push(std::move(event));
 }
 

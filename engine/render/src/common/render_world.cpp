@@ -28,6 +28,13 @@ float item_depth(const render_world_packet& packet, const render_item& item)
     return clip[2];
 }
 
+float item_depth(const render_world_packet& packet, const virtual_render_item& item)
+{
+    const auto center = geometric::center(item.world_bounds);
+    const auto clip = math::transform_point(packet.camera.view_projection, center.as_vector());
+    return clip[2];
+}
+
 std::uint64_t batch_key(const render_item& item)
 {
     return (static_cast<std::uint64_t>(item.material.generation) << 48u) |
@@ -79,9 +86,11 @@ std::uint64_t make_render_sort_key(scene_render_pass pass, material_handle mater
 void prepare_render_world(render_world_packet& packet, const render_world_prepare_options& options)
 {
     packet.visible_items.clear();
+    packet.visible_virtual_items.clear();
     packet.instance_batches.clear();
     packet.indirect_draws.clear();
     packet.culled_item_count = 0;
+    packet.culled_virtual_cluster_count = 0;
 
     const auto frustum = make_view_frustum(packet.camera.view_projection);
     for (std::uint32_t index = 0; index < packet.items.size(); ++index)
@@ -100,6 +109,21 @@ void prepare_render_world(render_world_packet& packet, const render_world_prepar
         packet.visible_items.push_back(index);
     }
 
+    for (std::uint32_t index = 0; index < packet.virtual_items.size(); ++index)
+    {
+        auto& item = packet.virtual_items[index];
+        const bool layer_visible = (item.render_layer_mask & options.render_layer_mask) != 0;
+        const bool bounds_visible = !options.enable_frustum_culling || intersects(frustum, item.world_bounds);
+        if (!item.visible || !item.mesh.valid() || !layer_visible || !bounds_visible)
+        {
+            ++packet.culled_virtual_cluster_count;
+            continue;
+        }
+
+        item.sort_key = make_render_sort_key(scene_render_pass::gbuffer, item.material, item.mesh, item_depth(packet, item));
+        packet.visible_virtual_items.push_back(index);
+    }
+
     std::sort(packet.visible_items.begin(), packet.visible_items.end(), [&](std::uint32_t lhs, std::uint32_t rhs) {
         const auto& left = packet.items[lhs];
         const auto& right = packet.items[rhs];
@@ -107,6 +131,12 @@ void prepare_render_world(render_world_packet& packet, const render_world_prepar
             return !left.transparent;
         if (left.transparent)
             return item_depth(packet, left) > item_depth(packet, right);
+        return left.sort_key < right.sort_key;
+    });
+
+    std::sort(packet.visible_virtual_items.begin(), packet.visible_virtual_items.end(), [&](std::uint32_t lhs, std::uint32_t rhs) {
+        const auto& left = packet.virtual_items[lhs];
+        const auto& right = packet.virtual_items[rhs];
         return left.sort_key < right.sort_key;
     });
 

@@ -53,6 +53,15 @@ geometric::box3f transform_bounds(const geometric::box3f& local_bounds, const ma
     return result;
 }
 
+geometric::box3f cluster_bounds(const render::virtual_mesh_cluster& cluster, const math::matrix4f& world)
+{
+    return transform_bounds(
+        geometric::box3f{
+            geometric::point3f{ cluster.bounds_min },
+            geometric::point3f{ cluster.bounds_max } },
+        world);
+}
+
 geometric::box3f world_bounds_for(const registry& scene, entity value, const transform_component& transform)
 {
     const auto* bounds = scene.try_get<bounds_component>(value);
@@ -117,6 +126,53 @@ void append_mesh_item(
         .base_color_tint = base_color_tint,
         .label = entity_label(scene, value)
     });
+}
+
+void append_virtual_mesh_items(
+    registry& scene,
+    render::renderer& renderer,
+    render::render_world_packet& packet,
+    render_scene_result& result,
+    entity value,
+    const transform_component& transform,
+    const virtual_mesh_renderer_component& mesh_renderer)
+{
+    if (!entity_is_active(scene, value))
+        return;
+
+    ++result.renderable_count;
+    const bool selected = entity_selected(scene, value);
+    if (selected)
+        ++result.selected_count;
+
+    if (!mesh_renderer.visible || !renderer.virtual_mesh_alive(mesh_renderer.mesh))
+        return;
+
+    const auto* mesh = renderer.virtual_mesh_data_for(mesh_renderer.mesh);
+    if (!mesh)
+        return;
+
+    const math::matrix4f world = transform.dirty ? local_matrix(transform) : transform.world;
+    const auto object = render::make_render_object_id(value.index, value.generation);
+    const auto layer_mask = render_layer_mask(scene, value);
+    const auto label = entity_label(scene, value);
+    for (std::uint32_t cluster_index = 0; cluster_index < mesh->clusters.size(); ++cluster_index)
+    {
+        const auto& cluster = mesh->clusters[cluster_index];
+        packet.virtual_items.push_back({
+            .mesh = mesh_renderer.mesh,
+            .material = mesh_renderer.material,
+            .cluster_index = cluster_index,
+            .model = world,
+            .world_bounds = cluster_bounds(cluster, world),
+            .render_layer_mask = layer_mask,
+            .object_id = object,
+            .visible = mesh_renderer.visible,
+            .selected = selected,
+            .base_color_tint = mesh_renderer.base_color_tint,
+            .label = label
+        });
+    }
 }
 
 bool environment_mesh_visible(
@@ -261,6 +317,11 @@ render_scene_result render_scene(
             auto material = mesh_renderer.material;
             apply_lod(scene, value, mesh, material);
             append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible, transparent, {}, 0, 1, mesh_renderer.base_color_tint);
+        });
+
+    scene.view<transform_component, virtual_mesh_renderer_component>().each(
+        [&](entity value, const transform_component& transform, const virtual_mesh_renderer_component& mesh_renderer) {
+            append_virtual_mesh_items(scene, renderer, world_packet, result, value, transform, mesh_renderer);
         });
 
     scene.view<transform_component, terrain_component>().each(
@@ -465,8 +526,9 @@ render_scene_result render_scene(
     result.skipped_spot_light_count = lighting.skipped_spot_count;
 
     render::prepare_render_world(world_packet);
-    result.submitted_draw_count = world_packet.visible_items.size();
+    result.submitted_draw_count = world_packet.visible_items.size() + world_packet.visible_virtual_items.size();
     result.culled_count = world_packet.culled_item_count;
+    result.culled_virtual_cluster_count = world_packet.culled_virtual_cluster_count;
     result.instance_batch_count = world_packet.instance_batches.size();
     result.indirect_draw_count = world_packet.indirect_draws.size();
 

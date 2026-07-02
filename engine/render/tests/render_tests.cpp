@@ -628,6 +628,36 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     REQUIRE(upload.mesh->indices.size() == 3);
 }
 
+TEST_CASE("renderer create virtual mesh enqueues typed upload and keeps CPU cluster metadata")
+{
+    arc::render::renderer renderer;
+    arc::render::virtual_mesh_data mesh;
+    mesh.vertices.resize(3);
+    mesh.indices = { 0, 1, 2 };
+    mesh.clusters.push_back({
+        .first_index = 0,
+        .index_count = 3,
+        .triangle_count = 1,
+        .vertex_count = 3,
+        .material_index = 2
+    });
+
+    const auto handle = renderer.create_virtual_mesh(std::move(mesh));
+    REQUIRE(renderer.virtual_mesh_alive(handle));
+    REQUIRE(renderer.virtual_mesh_data_for(handle) != nullptr);
+    REQUIRE(renderer.virtual_mesh_data_for(handle)->clusters.size() == 1);
+
+    const auto packet = renderer.frame_queue().commit(1);
+    REQUIRE(packet.events.size() == 1);
+    REQUIRE(packet.events[0].type() == arc::render::render_event_type::virtual_mesh_upload);
+    const auto& upload = std::get<arc::render::virtual_mesh_upload_event>(packet.events[0].payload);
+    REQUIRE(upload.handle == handle);
+    REQUIRE(upload.mesh->vertices.size() == 3);
+    REQUIRE(upload.mesh->indices.size() == 3);
+    REQUIRE(upload.mesh->clusters.size() == 1);
+    REQUIRE(upload.mesh->clusters[0].index_count == 3);
+}
+
 TEST_CASE("renderer creates texture and material resources")
 {
     arc::render::renderer renderer;

@@ -77,6 +77,26 @@ struct render_item
 };
 
 /**
+ * @brief One CPU-visible virtual mesh cluster draw candidate before backend command generation.
+ */
+struct virtual_render_item
+{
+    virtual_mesh_handle mesh{};
+    material_handle material{};
+    std::uint32_t cluster_index{};
+    math::matrix4f model{ math::identity<float, 4>() };
+    geometric::box3f world_bounds{};
+    std::uint32_t render_layer_mask{ 1u };
+    std::uint64_t sort_key{};
+    render_object_id object_id{};
+    bool visible{ true };
+    bool selected{};
+    bool casts_shadows{ true };
+    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    std::string label;
+};
+
+/**
  * @brief Reflection probe extracted for future local specular environment lighting.
  */
 struct reflection_probe_data
@@ -255,11 +275,14 @@ struct render_world_packet
     std::vector<decal_render_data> decals;
     std::vector<render_item> items;
     std::vector<std::uint32_t> visible_items;
+    std::vector<virtual_render_item> virtual_items;
+    std::vector<std::uint32_t> visible_virtual_items;
     std::vector<render_instance_batch> instance_batches;
     std::vector<indirect_draw_command> indirect_draws;
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
     std::size_t culled_item_count{};
+    std::size_t culled_virtual_cluster_count{};
 };
 
 /**

@@ -3,6 +3,7 @@
 #include <arc/render/handles.h>
 #include <arc/render/material.h>
 #include <arc/render/mesh.h>
+#include <arc/render/virtual_mesh.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
 
@@ -27,6 +28,7 @@ struct render_world_packet;
 enum class render_event_type : std::uint8_t
 {
     mesh_upload,
+    virtual_mesh_upload,
     texture_upload,
     material_upload,
     environment_upload,
@@ -66,7 +68,8 @@ enum class mesh_visualization_mode : std::uint8_t
     uv0,
     cascade_debug,
     shadow_mask,
-    light_complexity
+    light_complexity,
+    cluster_debug
 };
 
 /**
@@ -110,6 +113,16 @@ struct mesh_upload_event
 {
     mesh_handle handle{};
     std::shared_ptr<const mesh_data> mesh;
+    std::string label;
+};
+
+/**
+ * @brief Upload a virtual mesh into backend-owned GPU resources.
+ */
+struct virtual_mesh_upload_event
+{
+    virtual_mesh_handle handle{};
+    std::shared_ptr<const virtual_mesh_data> mesh;
     std::string label;
 };
 
@@ -248,6 +261,7 @@ struct render_world_event
 
 using render_event_payload = std::variant<
     mesh_upload_event,
+    virtual_mesh_upload_event,
     texture_upload_event,
     material_upload_event,
     environment_upload_event,
@@ -324,6 +338,14 @@ public:
      * @brief Append a static mesh upload request.
      */
     void mesh_upload(mesh_handle handle, std::shared_ptr<const mesh_data> mesh, std::string label = {});
+
+    /**
+     * @brief Append a virtual mesh upload request.
+     */
+    void virtual_mesh_upload(
+        virtual_mesh_handle handle,
+        std::shared_ptr<const virtual_mesh_data> mesh,
+        std::string label = {});
 
     /**
      * @brief Append a texture upload request.

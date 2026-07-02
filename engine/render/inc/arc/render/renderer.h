@@ -8,8 +8,10 @@
 #include <arc/render/mesh.h>
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
+#include <arc/render/virtual_mesh.h>
 
 #include <memory>
+#include <unordered_map>
 
 namespace arc::render
 {
@@ -57,6 +59,11 @@ public:
     mesh_handle create_mesh(mesh_data mesh);
 
     /**
+     * @brief Create a renderer-owned virtual mesh resource and enqueue its upload.
+     */
+    virtual_mesh_handle create_virtual_mesh(virtual_mesh_data mesh);
+
+    /**
      * @brief Create a renderer-owned texture resource and enqueue its upload.
      */
     texture_handle create_texture(texture_data texture);
@@ -80,6 +87,16 @@ public:
      * @brief Return whether a mesh handle still references a live renderer mesh.
      */
     bool mesh_alive(mesh_handle handle) const;
+
+    /**
+     * @brief Return whether a virtual mesh handle still references a live renderer virtual mesh.
+     */
+    bool virtual_mesh_alive(virtual_mesh_handle handle) const;
+
+    /**
+     * @brief Return CPU-side virtual mesh metadata needed for cluster extraction.
+     */
+    const virtual_mesh_data* virtual_mesh_data_for(virtual_mesh_handle handle) const;
 
     /**
      * @brief Return whether a texture handle still references a live renderer texture.
@@ -131,11 +148,13 @@ private:
     std::unique_ptr<render_backend> backend_;
     render_frame_queue frame_queue_;
     handle_pool mesh_handles_;
+    handle_pool virtual_mesh_handles_;
     handle_pool texture_handles_;
     handle_pool material_handles_;
     handle_pool environment_handles_;
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
+    std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
 };
 
 /**

@@ -184,6 +184,77 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
     REQUIRE(world_event.packet->visible_items.size() == 1);
 }
 
+TEST_CASE("render scene extracts and culls virtual mesh clusters")
+{
+    arc::scene::registry scene;
+    arc::render::renderer renderer;
+
+    const auto camera_entity = scene.create();
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    scene.emplace<arc::scene::camera_component>(camera_entity);
+
+    arc::render::mesh_data source;
+    source.vertices.resize(6);
+    source.vertices[0].position[0] = -0.5f;
+    source.vertices[0].position[1] = -0.5f;
+    source.vertices[0].position[2] = 0.0f;
+    source.vertices[1].position[0] = 0.5f;
+    source.vertices[1].position[1] = -0.5f;
+    source.vertices[1].position[2] = 0.0f;
+    source.vertices[2].position[0] = 0.0f;
+    source.vertices[2].position[1] = 0.5f;
+    source.vertices[2].position[2] = 0.0f;
+    source.vertices[3].position[0] = 100.0f;
+    source.vertices[3].position[1] = -0.5f;
+    source.vertices[3].position[2] = 0.0f;
+    source.vertices[4].position[0] = 101.0f;
+    source.vertices[4].position[1] = -0.5f;
+    source.vertices[4].position[2] = 0.0f;
+    source.vertices[5].position[0] = 100.5f;
+    source.vertices[5].position[1] = 0.5f;
+    source.vertices[5].position[2] = 0.0f;
+    source.indices = { 0, 1, 2, 3, 4, 5 };
+    const auto virtual_mesh = renderer.create_virtual_mesh(
+        arc::render::build_virtual_mesh(source, { .max_triangles_per_cluster = 1 }));
+
+    const auto mesh_entity = scene.create();
+    scene.emplace<arc::scene::transform_component>(mesh_entity);
+    scene.emplace<arc::scene::selection_component>(mesh_entity, true);
+    scene.emplace<arc::scene::virtual_mesh_renderer_component>(
+        mesh_entity,
+        virtual_mesh,
+        arc::render::material_handle{},
+        true,
+        arc::math::vector4f{ 0.8f, 0.2f, 0.4f, 1.0f });
+
+    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
+    REQUIRE(result.camera_found);
+    REQUIRE(result.renderable_count == 1);
+    REQUIRE(result.selected_count == 1);
+    REQUIRE(result.submitted_draw_count == 1);
+    REQUIRE(result.culled_count == 0);
+    REQUIRE(result.culled_virtual_cluster_count == 1);
+
+    const auto packet = renderer.frame_queue().commit(1);
+    REQUIRE(packet.events.size() == 2);
+    REQUIRE(packet.events[0].type() == arc::render::render_event_type::virtual_mesh_upload);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::render_world);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[1].payload);
+    REQUIRE(world_event.packet);
+    REQUIRE(world_event.packet->visible_items.empty());
+    REQUIRE(world_event.packet->virtual_items.size() == 2);
+    REQUIRE(world_event.packet->visible_virtual_items.size() == 1);
+    const auto& item = world_event.packet->virtual_items[world_event.packet->visible_virtual_items[0]];
+    REQUIRE(item.mesh == virtual_mesh);
+    REQUIRE(item.cluster_index == 0);
+    REQUIRE(item.object_id.index == mesh_entity.index);
+    REQUIRE(item.object_id.generation == mesh_entity.generation);
+    REQUIRE(item.selected);
+    REQUIRE(item.base_color_tint[0] == Catch::Approx(0.8f));
+}
+
 TEST_CASE("render scene can request wireframe overlay for every draw")
 {
     arc::scene::registry scene;

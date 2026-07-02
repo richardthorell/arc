@@ -22,6 +22,7 @@ enum class viewport_shading_mode : std::uint8_t
     emission,
     lighting,
     uv0,
+    cluster_debug,
     cascade_debug,
     shadow_mask,
     light_complexity
@@ -98,6 +99,8 @@ inline const char* viewport_shading_label(viewport_shading_mode mode) noexcept
         return "Lighting";
     case viewport_shading_mode::uv0:
         return "UV0";
+    case viewport_shading_mode::cluster_debug:
+        return "Cluster Debug";
     case viewport_shading_mode::cascade_debug:
         return "Cascade Debug";
     case viewport_shading_mode::shadow_mask:
@@ -147,6 +150,8 @@ inline render::mesh_visualization_mode visualization_for_shading(viewport_shadin
         return render::mesh_visualization_mode::lighting;
     case viewport_shading_mode::uv0:
         return render::mesh_visualization_mode::uv0;
+    case viewport_shading_mode::cluster_debug:
+        return render::mesh_visualization_mode::cluster_debug;
     case viewport_shading_mode::cascade_debug:
         return render::mesh_visualization_mode::cascade_debug;
     case viewport_shading_mode::shadow_mask:

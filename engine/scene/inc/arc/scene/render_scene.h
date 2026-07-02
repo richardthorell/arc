@@ -35,6 +35,7 @@ struct render_scene_result
     std::size_t irradiance_probe_count{};
     std::size_t selected_count{};
     std::size_t culled_count{};
+    std::size_t culled_virtual_cluster_count{};
     std::size_t instance_batch_count{};
     std::size_t indirect_draw_count{};
 };
