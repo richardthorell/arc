@@ -1,4 +1,4 @@
-name: Build: Clang
+name: Build - Clang
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build: Clang
+    name: Build - Clang
     runs-on: ubuntu-latest
 
     steps:
