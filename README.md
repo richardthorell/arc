@@ -1,5 +1,7 @@
 # ARC
 
+[![MSBuild](https://github.com/richardthorell/arc/actions/workflows/msbuild.yml/badge.svg)](https://github.com/richardthorell/arc/actions/workflows/msbuild.yml)
+
 ARC is an early-stage 3D engine monorepo. The current codebase is focused on
 the low-level foundation an engine needs before higher-level rendering,
 scene, asset, and editor systems land.
