@@ -96,13 +96,19 @@ Do not introduce new public include styles unless the project explicitly changes
 
 ## Rendering and Engine Direction
 
-ARC is moving toward a backend-neutral renderer with Vulkan as the active backend. The renderer currently includes the shape of a scene draw pipeline: render items, CPU frustum culling, sorting, instancing batches, indirect draw command scaffolding, and standard graph pass names for depth prepass, G-buffer, transparent, picking, and selection outline.
+ARC should keep the renderer as backend-agnostic as possible. Vulkan is the only active backend right now, but it must be treated as the first backend implementation rather than the renderer architecture itself. Once the engine reaches the right level of maturity, the goal is to add DirectX and Metal backends without having to redesign the high-level renderer, scene extraction, render graph, or editor viewport systems.
+
+The renderer currently includes the shape of a scene draw pipeline: render items, CPU frustum culling, sorting, instancing batches, indirect draw command scaffolding, and standard graph pass names for depth prepass, G-buffer, transparent, picking, and selection outline.
+
+ARC should also be able to support different levels of hardware. Some rendering features may be unavailable, downgraded, or replaced on certain devices, GPUs, platforms, or backend APIs. Design rendering systems around feature detection, capability tiers, graceful fallback paths, and explicit quality/performance settings rather than assuming every target can run the highest-end path.
 
 When changing rendering code:
 
 - Keep backend-neutral concepts separate from Vulkan-specific implementation details.
-- Avoid coupling scene extraction directly to Vulkan objects.
-- Preserve room for multiple render paths, including editor viewport rendering and future high-quality/realistic rendering features.
+- Avoid coupling scene extraction, materials, render graph scheduling, editor viewport logic, or renderer-facing engine APIs directly to Vulkan objects.
+- Preserve room for future DirectX and Metal backends.
+- Preserve room for multiple render paths, including editor viewport rendering, scalable hardware tiers, and future high-quality/realistic rendering features.
+- Model GPU/backend capabilities explicitly when adding features that may not exist on all hardware.
 - Prefer explicit resource lifetime and synchronization boundaries.
 - Keep render graph pass names and packet/data-flow concepts consistent unless intentionally redesigning them.
 
