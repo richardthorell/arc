@@ -4,7 +4,9 @@ Guidance for AI coding agents working in this repository.
 
 ## Project Overview
 
-ARC is an early-stage C++ 3D engine monorepo. The current focus is low-level engine foundation work before higher-level rendering, scene, asset, and editor systems are fully built out.
+ARC is an early-stage C++ 3D engine monorepo with a long-term goal of becoming a fully functional AAA game engine. The project is not there today, but every milestone should deliberately move it closer to being the best engine ever created: fast, scalable, visually exceptional, pleasant to build with, and strong enough for ambitious real-time games.
+
+The current project focus is the graphical foundation and getting the editor up and running. Prioritize work that advances the renderer, Vulkan path, scene-to-renderer data flow, editor viewport, and editor usability while keeping the engine architecture clean enough to grow into a complete production engine.
 
 The codebase is organized around a reusable engine library, a cross-platform editor shell, third-party dependency setup, samples, and tests.
 
