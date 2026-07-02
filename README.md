@@ -1,6 +1,9 @@
 # ARC
 
-[![Build](https://github.com/richardthorell/arc/actions/workflows/build.yml/badge.svg)](https://github.com/richardthorell/arc/actions/workflows/build.yml)
+| Target | Status |
+| --- | --- |
+| Clang | [![Build: Clang](https://github.com/richardthorell/arc/actions/workflows/build.yml/badge.svg?branch=main&job=Build%3A%20Clang)](https://github.com/richardthorell/arc/actions/workflows/build.yml) |
+| VS2022 / MSVC | [![Build: VS2022](https://github.com/richardthorell/arc/actions/workflows/build.yml/badge.svg?branch=main&job=Build%3A%20VS2022)](https://github.com/richardthorell/arc/actions/workflows/build.yml) |
 
 ARC is an early-stage 3D engine monorepo. The current codebase is focused on
 the low-level foundation an engine needs before higher-level rendering,
