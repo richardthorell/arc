@@ -1,6 +1,5 @@
 #include <arc/editor/panels/scene_hierarchy_panel.h>
 
-#include <arc/editor/editor_interaction.h>
 #include <arc/editor/ui/theme.h>
 #include <arc/editor/ui/widgets.h>
 #include <arc/diagnostics/diagnostics.h>
@@ -8,7 +7,9 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdio>
 #include <string>
 
 namespace arc::editor
@@ -31,36 +32,75 @@ bool matches_filter(const char* label, const char* filter)
     return lowercase(label).find(lowercase(filter)) != std::string::npos;
 }
 
-const char* entity_label(const editor_scene_state& state, scene::entity entity, const char* fallback)
+const char* icon_for_kind(host_entity_kind kind) noexcept
 {
-    const auto* name = state.scene.try_get<scene::name_component>(entity);
-    return name ? name->value.c_str() : fallback;
+    switch (kind)
+    {
+    case host_entity_kind::camera:
+        return "C";
+    case host_entity_kind::light:
+        return "*";
+    case host_entity_kind::environment:
+        return "E";
+    case host_entity_kind::mesh:
+    case host_entity_kind::imported:
+        return "M";
+    case host_entity_kind::primitive:
+        return "P";
+    case host_entity_kind::unknown:
+        break;
+    }
+    return "?";
 }
 
-void draw_entity(
-    editor_scene_state& state,
-    scene::entity entity,
-    const char* fallback,
-    const char* icon,
-    const char* filter)
+void log_command_failure(const host_response& result)
 {
-    if (!entity.valid() || !state.scene.alive(entity))
+    if (result.succeeded)
+        return;
+    arc::error("editor.scene", result.error.empty() ? "Host command failed" : result.error);
+}
+
+void draw_entity(arc_host& host, const host_scene_entity_snapshot& entity, const char* filter)
+{
+    if (!matches_filter(entity.name.c_str(), filter))
         return;
 
-    const char* label = entity_label(state, entity, fallback);
-    if (!matches_filter(label, filter))
-        return;
+    ImGui::PushID(static_cast<int>(entity.entity.index));
+    if (ui::entity_row(entity.name.c_str(), icon_for_kind(entity.kind), entity.selected, entity.active))
+        log_command_failure(host.execute(host_select_entity_command{ .entity = entity.entity }));
 
-    const auto* active = state.scene.try_get<scene::active_component>(entity);
-    const bool visible = !active || active->active;
-    const bool selected = entity == state.selected_entity;
-    if (ui::entity_row(label, icon, selected, visible))
-        select_entity(state.scene, entity, state.selected_entity);
+    if (ImGui::BeginPopupContextItem("entity-context"))
+    {
+        static std::array<char, 96> rename_buffer{};
+        if (ImGui::IsWindowAppearing())
+            std::snprintf(rename_buffer.data(), rename_buffer.size(), "%s", entity.name.c_str());
+
+        ImGui::SetNextItemWidth(ui::scaled(180.0f));
+        const bool rename_entered = ImGui::InputText(
+            "##rename",
+            rename_buffer.data(),
+            rename_buffer.size(),
+            ImGuiInputTextFlags_EnterReturnsTrue);
+        if (rename_entered || ImGui::MenuItem("Rename"))
+        {
+            const std::string new_name{ rename_buffer.data() };
+            if (!new_name.empty())
+                log_command_failure(host.execute(host_rename_entity_command{ .entity = entity.entity, .name = new_name }));
+            ImGui::CloseCurrentPopup();
+        }
+        if (ImGui::MenuItem("Delete"))
+        {
+            log_command_failure(host.execute(host_delete_entity_command{ .entity = entity.entity }));
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
 }
 
 } // namespace
 
-void draw_scene_hierarchy_panel(editor_scene_state& editor_scene, render::renderer& renderer)
+void draw_scene_hierarchy_panel(arc_host& host)
 {
     if (!ui::begin_panel("Scene##Hierarchy"))
     {
@@ -79,37 +119,24 @@ void draw_scene_hierarchy_panel(editor_scene_state& editor_scene, render::render
     {
         ImGui::TextUnformatted("Add Primitive");
         ImGui::Separator();
-        const auto add_primitive = [&](const char* label, editor_primitive_type type) {
+        const auto add_entity = [&](const char* label, host_create_entity_kind kind) {
             if (ImGui::MenuItem(label))
             {
-                const auto entity = add_primitive_to_scene(editor_scene, renderer, type);
-                if (entity.valid())
-                    arc::info("editor.scene", std::string("Added primitive: ") + label);
-                else
-                    arc::error("editor.scene", std::string("Failed to add primitive: ") + label);
+                const auto result = host.execute(host_create_entity_command{ .kind = kind });
+                log_command_failure(result);
             }
         };
-        add_primitive("Plane", editor_primitive_type::plane);
-        add_primitive("Cube", editor_primitive_type::cube);
-        add_primitive("Sphere", editor_primitive_type::sphere);
-        add_primitive("Cylinder", editor_primitive_type::cylinder);
+        add_entity("Plane", host_create_entity_kind::plane);
+        add_entity("Cube", host_create_entity_kind::cube);
+        add_entity("Sphere", host_create_entity_kind::sphere);
+        add_entity("Cylinder", host_create_entity_kind::cylinder);
         ImGui::Separator();
         ImGui::TextUnformatted("Add Environment");
-        const auto add_environment = [&](const char* label, const auto& create) {
-            if (ImGui::MenuItem(label))
-            {
-                const auto entity = create();
-                if (entity.valid())
-                    arc::info("editor.scene", std::string("Added environment entity: ") + label);
-                else
-                    arc::error("editor.scene", std::string("Failed to add environment entity: ") + label);
-            }
-        };
-        add_environment("World Environment", [&] { return add_world_environment_to_scene(editor_scene); });
-        add_environment("Terrain", [&] { return add_terrain_to_scene(editor_scene, renderer); });
-        add_environment("Water Plane", [&] { return add_water_to_scene(editor_scene, renderer); });
-        add_environment("Grass Patch", [&] { return add_grass_patch_to_scene(editor_scene, renderer); });
-        add_environment("Decal", [&] { return add_decal_to_scene(editor_scene); });
+        add_entity("World Environment", host_create_entity_kind::world_environment);
+        add_entity("Terrain", host_create_entity_kind::terrain);
+        add_entity("Water Plane", host_create_entity_kind::water);
+        add_entity("Grass Patch", host_create_entity_kind::grass_patch);
+        add_entity("Decal", host_create_entity_kind::decal);
         ImGui::EndPopup();
     }
     ui::panel_toolbar_end();
@@ -118,15 +145,9 @@ void draw_scene_hierarchy_panel(editor_scene_state& editor_scene, render::render
     ImGui::TextUnformatted("World");
     ImGui::PopStyleColor();
     ImGui::Indent(ui::scaled(8.0f));
-    draw_entity(editor_scene, editor_scene.sun_entity, "Sun", "*", scene_search);
-    draw_entity(editor_scene, editor_scene.camera_entity, "Editor Camera", "C", scene_search);
-    for (const auto entity : editor_scene.environment_entities)
-        draw_entity(editor_scene, entity, "Environment", "E", scene_search);
-    draw_entity(editor_scene, editor_scene.mesh_entity, "Default Mesh", "M", scene_search);
-    for (const auto entity : editor_scene.imported_scene_entities)
-        draw_entity(editor_scene, entity, "Imported Mesh", "M", scene_search);
-    for (const auto entity : editor_scene.primitive_entities)
-        draw_entity(editor_scene, entity, "Primitive", "P", scene_search);
+    const auto snapshot = host.scene_snapshot();
+    for (const auto& entity : snapshot.entities)
+        draw_entity(host, entity, scene_search);
     ImGui::Unindent(ui::scaled(8.0f));
 
     ui::end_panel();

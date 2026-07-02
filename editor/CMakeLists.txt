@@ -1,9 +1,11 @@
 add_library(arc-editor-core STATIC
+    src/arc_host.cpp
     src/asset_drag_drop.cpp
     src/editor_console.cpp
     src/editor_interaction.cpp
     src/editor_state.cpp
     src/editor_viewport.cpp
+    src/host_protocol.cpp
     src/material_asset.cpp
     src/material_library.cpp
     src/panels/console_panel.cpp
@@ -74,6 +76,20 @@ if(ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
             ARC_EDITOR_ENABLE_VULKAN_RENDER=1
     )
 endif()
+
+add_executable(arc_host_process
+    src/arc_host_process_main.cpp
+)
+
+target_compile_features(arc_host_process
+    PRIVATE
+        cxx_std_20
+)
+
+target_link_libraries(arc_host_process
+    PRIVATE
+        arc-editor-core
+)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)

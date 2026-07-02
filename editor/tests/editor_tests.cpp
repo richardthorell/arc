@@ -1,3 +1,4 @@
+#include <arc/editor/arc_host.h>
 #include <arc/editor/asset_drag_drop.h>
 #include <arc/editor/editor_console.h>
 #include <arc/editor/editor_interaction.h>
@@ -10,9 +11,40 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <string>
+#include <thread>
+#include <variant>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+namespace
+{
+
+arc::editor::host_entity_id parse_entity_from_response(const std::string& line)
+{
+    arc::editor::host_entity_id entity;
+    const auto index_pos = line.find("\"index\":");
+    const auto generation_pos = line.find("\"generation\":");
+    if (index_pos == std::string::npos || generation_pos == std::string::npos)
+        return entity;
+
+    std::sscanf(line.c_str() + index_pos, "\"index\":%u", &entity.index);
+    std::sscanf(line.c_str() + generation_pos, "\"generation\":%u", &entity.generation);
+    return entity;
+}
+
+} // namespace
 
 TEST_CASE("editor viewport tracks size and focus state")
 {
@@ -227,6 +259,257 @@ TEST_CASE("editor can add a selected primitive mesh entity")
     REQUIRE(scene.primitive_material.valid());
     REQUIRE(scene.primitive_material != scene.default_material);
     REQUIRE(scene.scene.get<arc::scene::mesh_renderer_component>(entity).material == scene.primitive_material);
+}
+
+TEST_CASE("arc host protocol serializes command and query envelopes")
+{
+    const arc::editor::host_entity_id entity{ .index = 7, .generation = 3 };
+    const arc::editor::host_transform transform{
+        .position = { 1.0f, 2.0f, 3.0f },
+        .rotation = { 0.0f, 0.0f, 0.707f, 0.707f },
+        .scale = { 2.0f, 2.0f, 2.0f }
+    };
+
+    const arc::editor::host_command_envelope commands[]{
+        { .request_id = 1, .payload = arc::editor::host_open_project_command{ .name = "Protocol", .root = "D:/Protocol" } },
+        { .request_id = 2, .payload = arc::editor::host_create_entity_command{ .kind = arc::editor::host_create_entity_kind::cube } },
+        { .request_id = 3, .payload = arc::editor::host_select_entity_command{ .entity = entity } },
+        { .request_id = 4, .payload = arc::editor::host_rename_entity_command{ .entity = entity, .name = "Renamed" } },
+        { .request_id = 5, .payload = arc::editor::host_delete_entity_command{ .entity = entity } },
+        { .request_id = 6, .payload = arc::editor::host_set_transform_command{ .entity = entity, .transform = transform } },
+        { .request_id = 7, .payload = arc::editor::host_viewport_attach_command{ .native_handle = 1234, .width = 1280, .height = 720 } },
+        { .request_id = 8, .payload = arc::editor::host_viewport_resize_command{ .width = 640, .height = 360 } },
+        { .request_id = 9, .payload = arc::editor::host_viewport_set_camera_mode_command{ .projection = arc::editor::host_camera_projection::orthographic } },
+        { .request_id = 10, .payload = arc::editor::host_viewport_set_render_options_command{
+            .render_mode = arc::editor::host_render_mode::wireframe,
+            .visualization = arc::editor::host_visualization_mode::world_normal,
+            .overlay = arc::editor::host_overlay_mode::all_wireframe,
+            .shadows = false } }
+    };
+
+    for (const auto& command : commands)
+    {
+        const auto json = arc::editor::to_json(command);
+        arc::editor::host_command_envelope parsed;
+        std::string error;
+        REQUIRE(arc::editor::from_json(json, parsed, error));
+        REQUIRE(parsed.request_id == command.request_id);
+        REQUIRE(parsed.command_type == arc::editor::command_type(command.payload));
+    }
+
+    const arc::editor::host_query_envelope queries[]{
+        { .request_id = 11, .payload = arc::editor::host_scene_hierarchy_query{} },
+        { .request_id = 12, .payload = arc::editor::host_selected_entity_query{} },
+        { .request_id = 13, .payload = arc::editor::host_project_assets_query{} },
+        { .request_id = 14, .payload = arc::editor::host_viewport_state_query{} }
+    };
+
+    for (const auto& query : queries)
+    {
+        const auto json = arc::editor::to_json(query);
+        arc::editor::host_query_envelope parsed;
+        std::string error;
+        REQUIRE(arc::editor::from_json(json, parsed, error));
+        REQUIRE(parsed.request_id == query.request_id);
+        REQUIRE(parsed.query_type == arc::editor::query_type(query.payload));
+    }
+}
+
+TEST_CASE("arc host executes scene commands and exposes snapshots")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+
+    arc::editor::editor_asset_state assets;
+    const auto opened = host->open_project(
+        { .name = "Host Test", .root = std::filesystem::temp_directory_path() },
+        assets);
+    REQUIRE(opened.succeeded);
+
+    const auto created = host->execute(arc::editor::host_command_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_create_entity_command{ .kind = arc::editor::host_create_entity_kind::cube } });
+    REQUIRE(created.succeeded);
+    const auto created_entity = host->selected_entity_snapshot().entity;
+    REQUIRE(created_entity.valid());
+
+    const auto renamed = host->execute(arc::editor::host_command_envelope{
+        .request_id = 2,
+        .payload = arc::editor::host_rename_entity_command{
+            .entity = created_entity,
+            .name = "Command Cube" } });
+    REQUIRE(renamed.succeeded);
+
+    const auto selected = host->selected_entity_snapshot();
+    REQUIRE(selected.entity == created_entity);
+    REQUIRE(selected.name == "Command Cube");
+    REQUIRE(selected.transform.has_value());
+    REQUIRE(std::any_of(selected.components.begin(), selected.components.end(), [](const auto& component) {
+        return component.kind == arc::editor::host_component_kind::transform;
+    }));
+
+    auto transform = *selected.transform;
+    transform.position = { 2.0f, 3.0f, 4.0f };
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+        .request_id = 3,
+        .payload = arc::editor::host_set_transform_command{
+            .entity = created_entity,
+            .transform = transform } }).succeeded);
+    REQUIRE(host->selected_entity_snapshot().transform->position.x == Catch::Approx(2.0f));
+
+    const auto snapshot = host->scene_snapshot();
+    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(), [&](const auto& entity) {
+        return entity.entity == created_entity && entity.name == "Command Cube" && entity.selected;
+    }));
+
+    REQUIRE(host->query({ .request_id = 4, .payload = arc::editor::host_scene_hierarchy_query{} }).succeeded);
+    REQUIRE(host->query({ .request_id = 5, .payload = arc::editor::host_project_assets_query{} }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+        .request_id = 6,
+        .payload = arc::editor::host_delete_entity_command{ .entity = created_entity } }).succeeded);
+    REQUIRE_FALSE(host->selected_entity_snapshot().entity.valid());
+
+    const auto events = host->poll_events();
+    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
+        return event.event_type == arc::editor::host_event_type::entity_created;
+    }));
+    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
+        return event.event_type == arc::editor::host_event_type::entity_deleted;
+    }));
+}
+
+TEST_CASE("arc host process speaks newline delimited json over stdio")
+{
+#if defined(_WIN32) && defined(ARC_HOST_PROCESS_PATH)
+    SECURITY_ATTRIBUTES security{};
+    security.nLength = sizeof(security);
+    security.bInheritHandle = TRUE;
+
+    HANDLE child_stdin_read = nullptr;
+    HANDLE child_stdin_write = nullptr;
+    HANDLE child_stdout_read = nullptr;
+    HANDLE child_stdout_write = nullptr;
+    REQUIRE(CreatePipe(&child_stdin_read, &child_stdin_write, &security, 0));
+    REQUIRE(CreatePipe(&child_stdout_read, &child_stdout_write, &security, 0));
+    REQUIRE(SetHandleInformation(child_stdin_write, HANDLE_FLAG_INHERIT, 0));
+    REQUIRE(SetHandleInformation(child_stdout_read, HANDLE_FLAG_INHERIT, 0));
+
+    STARTUPINFOA startup{};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = child_stdin_read;
+    startup.hStdOutput = child_stdout_write;
+    startup.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+
+    PROCESS_INFORMATION process{};
+    std::string command_line = "\"" ARC_HOST_PROCESS_PATH "\"";
+    REQUIRE(CreateProcessA(
+        nullptr,
+        command_line.data(),
+        nullptr,
+        nullptr,
+        TRUE,
+        0,
+        nullptr,
+        nullptr,
+        &startup,
+        &process));
+
+    CloseHandle(child_stdin_read);
+    CloseHandle(child_stdout_write);
+
+    const auto read_line = [&]() {
+        std::string line;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            DWORD available = 0;
+            REQUIRE(PeekNamedPipe(child_stdout_read, nullptr, 0, nullptr, &available, nullptr));
+            if (available == 0)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+
+            char ch{};
+            DWORD read = 0;
+            REQUIRE(ReadFile(child_stdout_read, &ch, 1, &read, nullptr));
+            if (read == 0)
+                continue;
+            if (ch == '\n')
+                return line;
+            if (ch != '\r')
+                line.push_back(ch);
+        }
+        return line;
+    };
+
+    std::vector<std::string> observed_events;
+    const auto request = [&](std::uint64_t request_id, const std::string& json) {
+        const std::string line = json + '\n';
+        DWORD written = 0;
+        REQUIRE(WriteFile(child_stdin_write, line.data(), static_cast<DWORD>(line.size()), &written, nullptr));
+        REQUIRE(written == line.size());
+
+        for (;;)
+        {
+            auto response = read_line();
+            REQUIRE_FALSE(response.empty());
+            if (response.find("\"kind\":\"response\"") != std::string::npos &&
+                response.find("\"requestId\":" + std::to_string(request_id)) != std::string::npos)
+            {
+                REQUIRE(response.find("\"succeeded\":true") != std::string::npos);
+                return response;
+            }
+            observed_events.push_back(std::move(response));
+        }
+    };
+
+    request(1, arc::editor::to_json(arc::editor::host_command_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_open_project_command{
+            .name = "Process Test",
+            .root = std::filesystem::temp_directory_path() } }));
+
+    const auto create_response = request(2, arc::editor::to_json(arc::editor::host_command_envelope{
+        .request_id = 2,
+        .payload = arc::editor::host_create_entity_command{ .kind = arc::editor::host_create_entity_kind::cube } }));
+    const auto created_entity = parse_entity_from_response(create_response);
+    REQUIRE(created_entity.valid());
+
+    const auto hierarchy_response = request(3, arc::editor::to_json(arc::editor::host_query_envelope{
+        .request_id = 3,
+        .payload = arc::editor::host_scene_hierarchy_query{} }));
+    REQUIRE(hierarchy_response.find("\"entities\"") != std::string::npos);
+
+    request(4, arc::editor::to_json(arc::editor::host_command_envelope{
+        .request_id = 4,
+        .payload = arc::editor::host_rename_entity_command{
+            .entity = created_entity,
+            .name = "Process Cube" } }));
+
+    const auto renamed_hierarchy = request(5, arc::editor::to_json(arc::editor::host_query_envelope{
+        .request_id = 5,
+        .payload = arc::editor::host_scene_hierarchy_query{} }));
+    REQUIRE(renamed_hierarchy.find("Process Cube") != std::string::npos);
+
+    request(6, arc::editor::to_json(arc::editor::host_command_envelope{
+        .request_id = 6,
+        .payload = arc::editor::host_close_project_command{} }));
+
+    CloseHandle(child_stdin_write);
+    WaitForSingleObject(process.hProcess, 5000);
+    CloseHandle(child_stdout_read);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+
+    REQUIRE(std::any_of(observed_events.begin(), observed_events.end(), [](const auto& event) {
+        return event.find("\"type\":\"entity.created\"") != std::string::npos;
+    }));
+#else
+    SUCCEED("arc_host_process integration is enabled on Windows builds with ARC_HOST_PROCESS_PATH");
+#endif
 }
 
 TEST_CASE("editor material assets load save and round trip")

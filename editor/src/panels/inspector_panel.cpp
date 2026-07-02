@@ -113,64 +113,102 @@ void sync_mesh_tint(editor_scene_state& editor_scene, const math::vector3f& colo
 } // namespace
 
 void draw_inspector_panel(
-    editor_scene_state& editor_scene,
+    arc_host& host,
     const editor_asset_state& editor_assets,
     render::renderer* renderer)
 {
+    editor_scene_state& editor_scene = host.scene_for_legacy_panels();
+
     if (!ui::begin_panel("Inspector"))
     {
         ui::end_panel();
         return;
     }
 
-    if (!editor_scene.scene.alive(editor_scene.selected_entity))
+    const auto selected = host.selected_entity_snapshot();
+    if (!selected.entity.valid())
     {
         ui::empty_state("No entity selected", "Select an entity in the hierarchy or viewport to edit its components.");
         ui::end_panel();
         return;
     }
 
-    const auto* name = editor_scene.scene.try_get<scene::name_component>(editor_scene.selected_entity);
     ImGui::PushStyleColor(ImGuiCol_Text, ui::colors::text);
-    ImGui::TextUnformatted(name ? name->value.c_str() : "Unnamed Entity");
+    ImGui::TextUnformatted(selected.name.empty() ? "Unnamed Entity" : selected.name.c_str());
     ImGui::PopStyleColor();
 
-    bool active = true;
-    if (auto* active_component = editor_scene.scene.try_get<scene::active_component>(editor_scene.selected_entity))
-        active = active_component->active;
+    bool active = selected.active;
     ImGui::SameLine(ImGui::GetWindowWidth() - ui::scaled(112.0f));
     if (ImGui::Checkbox("Active", &active))
-        editor_scene.scene.emplace<scene::active_component>(editor_scene.selected_entity, active);
+    {
+        const auto result = host.execute(host_set_active_command{ .entity = selected.entity, .active = active });
+        if (!result.succeeded)
+            arc::error("editor.inspector", result.error);
+    }
 
     std::array<char, 96> tag_text{};
-    if (const auto* tag = editor_scene.scene.try_get<scene::tag_component>(editor_scene.selected_entity))
-        std::snprintf(tag_text.data(), tag_text.size(), "%s", tag->value.c_str());
+    std::snprintf(tag_text.data(), tag_text.size(), "%s", selected.tag.c_str());
     ImGui::SetNextItemWidth(-1.0f);
     if (ImGui::InputTextWithHint("##entity-tag", "Tag", tag_text.data(), tag_text.size()))
-        editor_scene.scene.emplace<scene::tag_component>(editor_scene.selected_entity, std::string{ tag_text.data() });
+    {
+        const auto result = host.execute(host_set_tag_command{ .entity = selected.entity, .tag = std::string{ tag_text.data() } });
+        if (!result.succeeded)
+            arc::error("editor.inspector", result.error);
+    }
     ImGui::Separator();
 
-    if (auto* transform = editor_scene.scene.try_get<scene::transform_component>(editor_scene.selected_entity))
+    if (selected.transform)
     {
+        auto transform = *selected.transform;
         if (ui::component_card_begin("Transform"))
         {
-            float position[3]{ transform->position[0], transform->position[1], transform->position[2] };
-            auto euler = euler_degrees_from_quaternion(transform->rotation);
+            bool transform_changed{};
+            float position[3]{ transform.position.x, transform.position.y, transform.position.z };
+            math::quatf rotation_quat{ transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w };
+            auto euler = euler_degrees_from_quaternion(rotation_quat);
             float rotation[3]{ euler[0], euler[1], euler[2] };
-            float scale[3]{ transform->scale[0], transform->scale[1], transform->scale[2] };
+            float scale[3]{ transform.scale.x, transform.scale.y, transform.scale.z };
             if (ui::vec3_field("Position", position, 0.01f))
-                transform->set_position({ position[0], position[1], position[2] });
-            draw_reset_button("Reset##position", "Reset position", [&] { transform->set_position({ 0.0f, 0.0f, 0.0f }); });
+            {
+                transform.position = { position[0], position[1], position[2] };
+                transform_changed = true;
+            }
+            draw_reset_button("Reset##position", "Reset position", [&] {
+                transform.position = {};
+                transform_changed = true;
+            });
             if (ui::vec3_field("Rotation", rotation, 0.1f))
-                transform->set_rotation(quaternion_from_euler_degrees({ rotation[0], rotation[1], rotation[2] }));
-            draw_reset_button("Reset##rotation", "Reset rotation", [&] { transform->set_rotation({}); });
+            {
+                const auto updated = quaternion_from_euler_degrees({ rotation[0], rotation[1], rotation[2] });
+                transform.rotation = { updated[0], updated[1], updated[2], updated[3] };
+                transform_changed = true;
+            }
+            draw_reset_button("Reset##rotation", "Reset rotation", [&] {
+                transform.rotation = {};
+                transform_changed = true;
+            });
             if (ui::vec3_field("Scale", scale, 0.01f, 0.001f, 1000.0f))
-                transform->set_scale({ scale[0], scale[1], scale[2] });
-            draw_reset_button("Reset##scale", "Reset scale", [&] { transform->set_scale({ 1.0f, 1.0f, 1.0f }); });
+            {
+                transform.scale = { scale[0], scale[1], scale[2] };
+                transform_changed = true;
+            }
+            draw_reset_button("Reset##scale", "Reset scale", [&] {
+                transform.scale = { 1.0f, 1.0f, 1.0f };
+                transform_changed = true;
+            });
+            if (transform_changed)
+            {
+                const auto result = host.execute(host_set_transform_command{
+                    .entity = selected.entity,
+                    .transform = transform });
+                if (!result.succeeded)
+                    arc::error("editor.inspector", result.error);
+            }
             ui::component_card_end();
         }
     }
 
+    // TODO(host): migrate the remaining rich component editors through command/snapshot data.
     if (auto* mesh = editor_scene.scene.try_get<scene::mesh_renderer_component>(editor_scene.selected_entity))
     {
         if (ui::component_card_begin("Mesh Renderer"))

@@ -1,5 +1,6 @@
 #define SDL_MAIN_HANDLED
 
+#include <arc/editor/arc_host.h>
 #include <arc/editor/editor_console.h>
 #include <arc/editor/asset_drag_drop.h>
 #include <arc/editor/editor_interaction.h>
@@ -268,133 +269,6 @@ editor_asset_state load_default_editor_assets()
     return assets;
 }
 
-editor_scene_state create_default_editor_scene(
-    const editor_asset_state& assets,
-    arc::render::renderer* renderer)
-{
-    editor_scene_state state;
-
-    arc::math::vector3f center{};
-    arc::math::vector3f local_min{ -0.5f, -0.5f, -0.5f };
-    arc::math::vector3f local_max{ 0.5f, 0.5f, 0.5f };
-    float radius = 1.0f;
-    if (assets.default_mesh_loaded && !assets.default_mesh.vertices.empty())
-    {
-        local_min = arc::math::vector3f{
-            assets.default_mesh.vertices[0].position[0],
-            assets.default_mesh.vertices[0].position[1],
-            assets.default_mesh.vertices[0].position[2]
-        };
-        local_max = local_min;
-        for (const auto& vertex : assets.default_mesh.vertices)
-        {
-            for (std::size_t axis = 0; axis < 3; ++axis)
-            {
-                local_min[axis] = std::min(local_min[axis], vertex.position[axis]);
-                local_max[axis] = std::max(local_max[axis], vertex.position[axis]);
-            }
-        }
-
-        center = arc::math::mul(arc::math::add(local_min, local_max), 0.5f);
-        const auto span = arc::math::sub(local_max, local_min);
-        radius = std::max({ span[0], span[1], span[2], 1.0f }) * 0.5f;
-    }
-
-    if (renderer && assets.default_mesh_loaded)
-    {
-        state.default_textures.reserve(assets.default_textures.size());
-        for (const auto& texture : assets.default_textures)
-            state.default_textures.push_back(renderer->create_texture(texture));
-
-        arc::render::material_desc material;
-        material.name = assets.default_mesh.name + " Material";
-        if (!assets.default_materials.empty())
-        {
-            const auto material_index = assets.default_mesh.material_index < assets.default_materials.size()
-                ? assets.default_mesh.material_index
-                : std::size_t{ 0 };
-            const auto& imported = assets.default_materials[material_index];
-            material = imported.material;
-
-            const auto assign_texture = [&](std::size_t index, arc::render::texture_handle& handle) {
-                if (index != arc::render::material_texture_indices::invalid && index < state.default_textures.size())
-                    handle = state.default_textures[index];
-            };
-
-            assign_texture(imported.textures.base_color, material.base_color_texture);
-            assign_texture(imported.textures.metallic_roughness, material.metallic_roughness_texture);
-            assign_texture(imported.textures.normal, material.normal_texture);
-            assign_texture(imported.textures.occlusion, material.occlusion_texture);
-            assign_texture(imported.textures.emissive, material.emissive_texture);
-        }
-        state.default_material = renderer->create_material(material);
-        state.default_mesh = renderer->create_mesh(assets.default_mesh);
-        state.mesh_uploaded = state.default_mesh.valid();
-    }
-
-    const auto camera = state.scene.create();
-    state.camera_entity = camera;
-    arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 4.0f };
-    state.scene.emplace<arc::scene::name_component>(camera, "Editor Camera");
-    state.scene.emplace<arc::scene::tag_component>(camera, "Editor");
-    state.scene.emplace<arc::scene::active_component>(camera);
-    state.scene.emplace<arc::scene::transform_component>(camera, camera_transform);
-    state.scene.emplace<arc::scene::camera_component>(camera);
-    state.camera_created = true;
-
-    const auto sun = state.scene.create();
-    state.sun_entity = sun;
-    arc::scene::transform_component sun_transform;
-    sun_transform.rotation = arc::editor::quaternion_from_euler_degrees({ -50.0f, -35.0f, 0.0f });
-    state.scene.emplace<arc::scene::name_component>(sun, "Sun");
-    state.scene.emplace<arc::scene::tag_component>(sun, "Light");
-    state.scene.emplace<arc::scene::active_component>(sun);
-    state.scene.emplace<arc::scene::transform_component>(sun, sun_transform);
-    state.scene.emplace<arc::scene::directional_light_component>(
-        sun,
-        arc::math::vector3f{ 1.0f, 1.0f, 1.0f },
-        1.8f,
-        true);
-    auto& sun_light = state.scene.get<arc::scene::directional_light_component>(sun);
-    sun_light.shadow.resolution = 4096;
-    sun_light.shadow.filter = arc::render::shadow_filter::pcf_3x3;
-    sun_light.shadow.bias = 0.0008f;
-    sun_light.shadow.normal_bias = 0.003f;
-
-    arc::editor::add_world_environment_to_scene(state);
-    if (renderer)
-        arc::editor::add_terrain_to_scene(state, *renderer);
-
-    if (state.default_mesh.valid())
-    {
-        const auto mesh = state.scene.create();
-        state.mesh_entity = mesh;
-        const float scale = 1.8f / radius;
-        arc::scene::transform_component mesh_transform;
-        mesh_transform.position = arc::math::mul(center, -scale);
-        mesh_transform.scale = arc::math::vector3f{ scale, scale, scale };
-        state.scene.emplace<arc::scene::name_component>(mesh, assets.default_mesh.name);
-        state.scene.emplace<arc::scene::tag_component>(mesh, "Mesh");
-        state.scene.emplace<arc::scene::active_component>(mesh);
-        state.scene.emplace<arc::scene::selection_component>(mesh, true);
-        state.scene.emplace<arc::scene::bounds_component>(
-            mesh,
-            arc::geometric::box3f{ arc::geometric::point3f(local_min), arc::geometric::point3f(local_max) },
-            arc::geometric::box3f{ arc::geometric::point3f(local_min), arc::geometric::point3f(local_max) },
-            true);
-        state.scene.emplace<arc::scene::transform_component>(mesh, mesh_transform);
-        state.scene.emplace<arc::scene::mesh_renderer_component>(
-            mesh,
-            state.default_mesh,
-            state.default_material,
-            true);
-        state.selected_entity = mesh;
-    }
-
-    return state;
-}
-
 editor_project_state make_project_state(const editor_asset_state& assets)
 {
     editor_project_state state;
@@ -437,6 +311,50 @@ editor_metrics_state make_metrics_state(const arc::frame_time& time, const edito
     state.fps = time.delta_seconds > 0.0 ? static_cast<float>(1.0 / time.delta_seconds) : 0.0f;
     state.draw_calls = scene.last_render.submitted_draw_count;
     return state;
+}
+
+arc::editor::host_entity_id host_entity_from_scene(arc::scene::entity entity) noexcept
+{
+    return { .index = entity.index, .generation = entity.generation };
+}
+
+arc::editor::host_render_mode host_render_mode_for_shading(viewport_shading_mode mode) noexcept
+{
+    return mode == viewport_shading_mode::wireframe
+        ? arc::editor::host_render_mode::wireframe
+        : arc::editor::host_render_mode::shaded;
+}
+
+arc::editor::host_visualization_mode host_visualization_for_shading(viewport_shading_mode mode) noexcept
+{
+    switch (mode)
+    {
+    case viewport_shading_mode::albedo: return arc::editor::host_visualization_mode::albedo;
+    case viewport_shading_mode::opacity: return arc::editor::host_visualization_mode::opacity;
+    case viewport_shading_mode::world_normal: return arc::editor::host_visualization_mode::world_normal;
+    case viewport_shading_mode::specularity: return arc::editor::host_visualization_mode::specularity;
+    case viewport_shading_mode::gloss: return arc::editor::host_visualization_mode::gloss;
+    case viewport_shading_mode::metalness: return arc::editor::host_visualization_mode::metalness;
+    case viewport_shading_mode::ao: return arc::editor::host_visualization_mode::ao;
+    case viewport_shading_mode::emission: return arc::editor::host_visualization_mode::emission;
+    case viewport_shading_mode::lighting: return arc::editor::host_visualization_mode::lighting;
+    case viewport_shading_mode::uv0: return arc::editor::host_visualization_mode::uv0;
+    case viewport_shading_mode::cluster_debug: return arc::editor::host_visualization_mode::cluster_debug;
+    case viewport_shading_mode::cascade_debug: return arc::editor::host_visualization_mode::cascade_debug;
+    case viewport_shading_mode::shadow_mask: return arc::editor::host_visualization_mode::shadow_mask;
+    case viewport_shading_mode::light_complexity: return arc::editor::host_visualization_mode::light_complexity;
+    case viewport_shading_mode::wireframe:
+    case viewport_shading_mode::standard:
+        break;
+    }
+    return arc::editor::host_visualization_mode::standard;
+}
+
+arc::editor::host_overlay_mode host_overlay_for_shading(viewport_shading_mode mode) noexcept
+{
+    return mode == viewport_shading_mode::wireframe
+        ? arc::editor::host_overlay_mode::none
+        : arc::editor::host_overlay_mode::selected_wireframe;
 }
 
 void update_mouse_state(editor_mouse_state& mouse, const arc::event& event) noexcept
@@ -867,7 +785,7 @@ void draw_dockspace(
 
 void draw_command_palette(
     editor_ui_state& state,
-    editor_scene_state& scene,
+    arc::editor::arc_host& host,
     arc::editor::editor_camera_controller& camera)
 {
     if (state.command_palette_open)
@@ -899,6 +817,7 @@ void draw_command_palette(
         };
 
         command("Focus Selected", [&] {
+            auto& scene = host.scene_for_legacy_panels();
             if (!arc::editor::focus_selected_entity(scene.scene, scene.selected_entity, camera))
                 arc::info("editor.commands", "No selected entity to focus");
         });
@@ -1204,14 +1123,15 @@ arc::math::quatf quaternion_from_transform_matrix(const std::array<float, 16>& m
 }
 
 void draw_transform_gizmo(
-    editor_scene_state& editor_scene,
+    arc::editor::arc_host& host,
     const arc::editor::editor_viewport& viewport,
     arc::editor::editor_tool tool)
 {
+    auto& editor_scene = host.scene_for_legacy_panels();
     if (!viewport.valid() || !editor_scene.scene.alive(editor_scene.selected_entity))
         return;
 
-    auto* transform = editor_scene.scene.try_get<arc::scene::transform_component>(editor_scene.selected_entity);
+    const auto* transform = editor_scene.scene.try_get<arc::scene::transform_component>(editor_scene.selected_entity);
     const auto* camera_transform = editor_scene.scene.try_get<arc::scene::transform_component>(editor_scene.camera_entity);
     const auto* camera = editor_scene.scene.try_get<arc::scene::camera_component>(editor_scene.camera_entity);
     if (!transform || !camera_transform || !camera)
@@ -1254,9 +1174,18 @@ void draw_transform_gizmo(
             arc::math::length(column_vector(model_data, 1)),
             arc::math::length(column_vector(model_data, 2))
         };
-        transform->set_position({ model_data[12], model_data[13], model_data[14] });
-        transform->set_rotation(quaternion_from_transform_matrix(model_data, scale));
-        transform->set_scale(scale);
+        auto updated = *transform;
+        updated.set_position({ model_data[12], model_data[13], model_data[14] });
+        updated.set_rotation(quaternion_from_transform_matrix(model_data, scale));
+        updated.set_scale(scale);
+        const auto result = host.execute(arc::editor::host_set_transform_command{
+            .entity = host_entity_from_scene(editor_scene.selected_entity),
+            .transform = arc::editor::host_transform{
+                .position = { updated.position[0], updated.position[1], updated.position[2] },
+                .rotation = { updated.rotation[0], updated.rotation[1], updated.rotation[2], updated.rotation[3] },
+                .scale = { updated.scale[0], updated.scale[1], updated.scale[2] } } });
+        if (!result.succeeded)
+            arc::error("editor.commands", result.error);
     }
     draw_list->PopClipRect();
 }
@@ -1289,12 +1218,12 @@ void update_editor_camera_controls(
 }
 
 void handle_viewport_selection(
-    editor_scene_state& editor_scene,
+    arc::editor::arc_host& host,
     const arc::editor::editor_viewport& viewport,
-    arc::render::renderer& renderer,
     const arc::input::input_manager& input,
     const editor_mouse_state& mouse)
 {
+    auto& editor_scene = host.scene_for_legacy_panels();
     if (!input.released("viewport.select") || mouse.select_drag_distance > 4.0f || !viewport.contains_screen_point(mouse.x, mouse.y))
         return;
     if (ImGuizmo::IsUsing() || ImGuizmo::IsOver())
@@ -1307,17 +1236,20 @@ void handle_viewport_selection(
 
     const auto local_x = static_cast<std::uint32_t>(std::max(0.0f, viewport.local_x(mouse.x)));
     const auto local_y = static_cast<std::uint32_t>(std::max(0.0f, viewport.local_y(mouse.y)));
+    auto& renderer = host.renderer_for_legacy_clients();
     renderer.request_object_pick(local_x, local_y);
     const auto gpu_pick = renderer.last_object_pick();
     if (gpu_pick.available && gpu_pick.x == local_x && gpu_pick.y == local_y)
     {
         if (gpu_pick.hit)
-            arc::editor::select_entity(
-                editor_scene.scene,
-                arc::scene::entity{ .index = gpu_pick.object.index, .generation = gpu_pick.object.generation },
-                editor_scene.selected_entity);
+        {
+            host.execute(arc::editor::host_select_entity_command{
+                .entity = arc::editor::host_entity_id{ .index = gpu_pick.object.index, .generation = gpu_pick.object.generation } });
+        }
         else
-            arc::editor::clear_selection(editor_scene.scene, editor_scene.selected_entity);
+        {
+            host.execute(arc::editor::host_clear_selection_command{});
+        }
         return;
     }
 
@@ -1329,9 +1261,9 @@ void handle_viewport_selection(
         viewport.local_y(mouse.y));
     const auto picked = arc::editor::pick_bounded_entity(editor_scene.scene, ray);
     if (picked.valid())
-        arc::editor::select_entity(editor_scene.scene, picked, editor_scene.selected_entity);
+        host.execute(arc::editor::host_select_entity_command{ .entity = host_entity_from_scene(picked) });
     else
-        arc::editor::clear_selection(editor_scene.scene, editor_scene.selected_entity);
+        host.execute(arc::editor::host_clear_selection_command{});
 }
 
 bool project_world_point(
@@ -1671,8 +1603,8 @@ int main(int, char**)
         arc::warn("editor", std::string("SDL_SetWindowHitTest failed: ") + SDL_GetError());
 
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
-    arc::render::renderer editor_renderer;
-    arc::render::renderer* editor_renderer_for_ui = &editor_renderer;
+    auto editor_renderer_owner = std::make_unique<arc::render::renderer>();
+    arc::render::renderer* editor_renderer_for_setup = editor_renderer_owner.get();
     arc::render::vulkan::vulkan_backend* vulkan_backend{};
     {
         std::uint32_t extension_count = 0;
@@ -1701,8 +1633,8 @@ int main(int, char**)
             return 5;
         }
 
-        editor_renderer.set_backend(std::move(backend_result.backend));
-        vulkan_backend = arc::render::vulkan::as_vulkan_backend(editor_renderer.backend());
+        editor_renderer_for_setup->set_backend(std::move(backend_result.backend));
+        vulkan_backend = arc::render::vulkan::as_vulkan_backend(editor_renderer_for_setup->backend());
         if (!vulkan_backend)
         {
             std::fprintf(stderr, "Vulkan backend interface is unavailable\n");
@@ -1712,8 +1644,7 @@ int main(int, char**)
         }
     }
 #else
-    arc::render::renderer editor_renderer_fallback;
-    arc::render::renderer* editor_renderer_for_ui = &editor_renderer_fallback;
+    auto editor_renderer_owner = std::make_unique<arc::render::renderer>();
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer)
     {
@@ -1732,11 +1663,15 @@ int main(int, char**)
     const editor_project_state project_state = make_project_state(editor_assets);
     const editor_build_state build_state = make_build_state();
     const editor_source_control_state source_control_state = make_source_control_state();
-#if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
-    editor_scene_state editor_scene = create_default_editor_scene(editor_assets, &editor_renderer);
-#else
-    editor_scene_state editor_scene = create_default_editor_scene(editor_assets, nullptr);
-#endif
+    arc::editor::arc_host_manager host_manager;
+    auto host_ref = host_manager.acquire(std::move(editor_renderer_owner));
+    arc::editor::arc_host& host = *host_ref;
+    auto* editor_renderer_for_ui = &host.renderer_for_legacy_clients();
+    host.open_project(
+        arc::editor::host_open_project_command{
+            .name = project_state.name,
+            .root = project_state.root },
+        editor_assets);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -1779,7 +1714,10 @@ int main(int, char**)
     scene_dialog_request scene_dialog;
     arc::editor::editor_scene_import_state scene_import;
     arc::editor::editor_camera_controller editor_camera;
-    arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
+    {
+        auto& editor_scene = host.scene_for_legacy_panels();
+        arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
+    }
     arc::input::input_manager input;
     input.bind_action(
         "viewport.orbit",
@@ -1857,6 +1795,7 @@ int main(int, char**)
                 ui_state.command_palette_open = true;
         }
 
+        auto& editor_scene = host.scene_for_legacy_panels();
         const editor_metrics_state metrics = make_metrics_state(last_time, editor_scene);
 
         if (scene_dialog.pending)
@@ -1880,8 +1819,8 @@ int main(int, char**)
                 const auto mode = scene_import.mode;
                 auto imported = std::move(scene_import.result);
                 const auto result = arc::editor::apply_scene_import_result_to_editor(
-                    editor_scene,
-                    *editor_renderer_for_ui,
+                    host.scene_for_legacy_panels(),
+                    host.renderer_for_legacy_clients(),
                     source_path,
                     std::move(imported),
                     mode);
@@ -1899,6 +1838,14 @@ int main(int, char**)
             }
         }
 
+        for (const auto& event : host.poll_events())
+        {
+            if (event.event_type == arc::editor::host_event_type::command_failed)
+                arc::error("editor.host", event.message);
+            else if (event.event_type == arc::editor::host_event_type::viewport_error)
+                arc::error("editor.host", event.message);
+        }
+
         draw_dockspace(window, exit_requested, ui_state, project_state, window_chrome, scene_dialog);
         draw_scene_import_modal(scene_import);
         draw_viewport_panel(
@@ -1914,11 +1861,10 @@ int main(int, char**)
 #endif
         );
         if (auto* camera = editor_scene.scene.try_get<arc::scene::camera_component>(editor_scene.camera_entity))
-        {
-            camera->projection = ui_state.viewport_camera == viewport_camera_mode::orthographic
-                ? arc::scene::camera_projection::orthographic
-                : arc::scene::camera_projection::perspective;
-        }
+            host.execute(arc::editor::host_set_camera_projection_command{
+                .projection = ui_state.viewport_camera == viewport_camera_mode::orthographic
+                    ? arc::editor::host_camera_projection::orthographic
+                    : arc::editor::host_camera_projection::perspective });
         const bool import_modal_active = scene_import.modal_open ||
             scene_import.status == arc::editor::editor_scene_import_status::running ||
             scene_import.status == arc::editor::editor_scene_import_status::failed ||
@@ -1927,34 +1873,27 @@ int main(int, char**)
         {
             draw_world_grid(editor_scene, editor_viewport, ui_state.show_world_grid);
             draw_selected_bounds(editor_scene, editor_viewport);
-            draw_transform_gizmo(editor_scene, editor_viewport, ui_state.active_tool);
+            draw_transform_gizmo(host, editor_viewport, ui_state.active_tool);
             update_editor_camera_controls(editor_scene, editor_camera, editor_viewport, input, mouse_state);
-            handle_viewport_selection(editor_scene, editor_viewport, *editor_renderer_for_ui, input, mouse_state);
+            handle_viewport_selection(host, editor_viewport, input, mouse_state);
         }
         if (editor_scene.focus_imported_scene_requested)
         {
             arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
             editor_scene.focus_imported_scene_requested = false;
         }
-        draw_command_palette(ui_state, editor_scene, editor_camera);
-        arc::editor::draw_scene_hierarchy_panel(
-            editor_scene,
-#if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
-            editor_renderer
-#else
-            editor_renderer_fallback
-#endif
-        );
-        arc::editor::draw_inspector_panel(editor_scene, editor_assets, editor_renderer_for_ui);
+        draw_command_palette(ui_state, host, editor_camera);
+        arc::editor::draw_scene_hierarchy_panel(host);
+        arc::editor::draw_inspector_panel(host, editor_assets, editor_renderer_for_ui);
         arc::editor::draw_material_editor_panel(editor_scene, editor_assets, editor_renderer_for_ui);
         if (ui_state.show_bottom_panels)
         {
             arc::editor::draw_content_browser_panel(editor_assets, editor_scene, editor_renderer_for_ui, &scene_import);
             arc::editor::draw_console_panel(*console_sink, ui_state);
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
-            arc::editor::draw_profiler_panel(editor_renderer);
+            arc::editor::draw_profiler_panel(host.renderer_for_legacy_clients());
 #else
-            arc::editor::draw_profiler_panel(editor_renderer_fallback);
+            arc::editor::draw_profiler_panel(host.renderer_for_legacy_clients());
 #endif
             arc::editor::draw_render_graph_panel(*editor_renderer_for_ui);
             arc::editor::draw_shader_graph_panel();
@@ -1975,27 +1914,24 @@ int main(int, char**)
             runtime.request_stop();
 
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
-        editor_scene.last_render = arc::scene::render_scene(
-            editor_scene.scene,
-            editor_renderer,
-            editor_viewport.width(),
-            editor_viewport.height(),
-            render_mode_for_shading(ui_state.viewport_shading),
-            visualization_for_shading(ui_state.viewport_shading),
-            overlay_for_shading(ui_state.viewport_shading),
-            ui_state.show_shadows,
-            arc::scene::render_environment_visibility{
+        const auto viewport_frame = host.request_viewport(
+            arc::editor::host_viewport_request{
+                .frame_index = last_time.frame_index,
+                .width = editor_viewport.width(),
+                .height = editor_viewport.height(),
+                .render_mode = host_render_mode_for_shading(ui_state.viewport_shading),
+                .visualization = host_visualization_for_shading(ui_state.viewport_shading),
+                .overlay = host_overlay_for_shading(ui_state.viewport_shading),
+                .shadows = ui_state.show_shadows,
+                .environment = arc::editor::host_environment_visibility{
                 .sky = ui_state.show_sky,
                 .fog = ui_state.show_fog,
                 .terrain = ui_state.show_terrain,
                 .water = ui_state.show_water,
                 .vegetation = ui_state.show_vegetation,
-                .decals = ui_state.show_decals });
-        const auto submit_result = editor_renderer.render_frame(
-            last_time.frame_index,
-            arc::render::make_scene_draw_graph("viewport"));
-        if (!submit_result.submitted && !submit_result.message.empty())
-            arc::error("editor", submit_result.message);
+                .decals = ui_state.show_decals } });
+        if (!viewport_frame.submitted && !viewport_frame.message.empty())
+            arc::error("editor", viewport_frame.message);
 #endif
 
         ImGui::Render();
@@ -2035,8 +1971,10 @@ int main(int, char**)
 #if !defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
     SDL_DestroyRenderer(renderer);
 #else
-    editor_renderer.set_backend(nullptr);
+    host.renderer_for_legacy_clients().set_backend(nullptr);
 #endif
+    host.execute(arc::editor::host_close_project_command{});
+    host_ref.reset();
     SDL_DestroyWindow(window);
     SDL_Quit();
 

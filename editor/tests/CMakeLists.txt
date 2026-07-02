@@ -23,6 +23,10 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.
 
 add_executable(arc_editor_tests ${TEST_SOURCES})
 target_link_libraries(arc_editor_tests PRIVATE arc-editor-core Catch2::Catch2WithMain)
+if(TARGET arc_host_process)
+  add_dependencies(arc_editor_tests arc_host_process)
+  target_compile_definitions(arc_editor_tests PRIVATE "ARC_HOST_PROCESS_PATH=\"$<TARGET_FILE:arc_host_process>\"")
+endif()
 
 include(Catch)
 catch_discover_tests(arc_editor_tests)
