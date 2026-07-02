@@ -3,6 +3,7 @@
 | Target | Status |
 | --- | --- |
 | Clang | [![Build: Clang](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml) |
+| GCC | [![Build: GCC](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml) |
 | MSVC | [![Build: MSVC](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml) |
 
 ARC is an early-stage 3D engine monorepo. The current codebase is focused on

@@ -1,0 +1,42 @@
+name: Build - GCC
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build - GCC
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ ninja-build
+
+      - name: Configure CMake project
+        run: >
+          cmake -S . -B build
+          -G Ninja
+          -DCMAKE_CXX_COMPILER=g++
+          -DCMAKE_BUILD_TYPE=Release
+          -DARC_BUILD_EDITOR=OFF
+          -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_BUILD_ENGINE_TESTS=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
