@@ -46,3 +46,4 @@ build-*/
 
 # Editor runtime state
 imgui.ini
+assets/imported/
