@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Convert Doxygen XML output into a compact JSON index for web UIs.
+"""Convert Doxygen XML output into static JSON files for web UIs.
 
-The output is intentionally static-site friendly: a single JSON file with enough
-structure for search, browse, and detail pages without needing a backend.
+The generated layout is optimized for a frontend with one reusable page:
+
+  api/index.json                Lightweight browse index
+  api/search.json               Flat search index
+  api/compounds/<refid>.json    One detailed JSON document per Doxygen XML compound
+
+This avoids loading the whole documentation set up front while keeping every
+resource static and GitHub Pages friendly.
 """
 
 from __future__ import annotations
@@ -34,6 +40,11 @@ def node_text(node: ET.Element | None) -> str:
 
 def child_text(node: ET.Element, name: str) -> str:
     return node_text(node.find(name))
+
+
+def write_json(path: Path, payload: dict[str, Any] | list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def location(node: ET.Element) -> dict[str, Any]:
@@ -70,14 +81,10 @@ def member_signature(member: ET.Element) -> str:
 
 
 def parse_member(member: ET.Element, parent_refid: str, parent_name: str) -> dict[str, Any]:
-    name = child_text(member, "name")
-    kind = member.get("kind", "")
-    refid = member.get("id", "")
-
     result: dict[str, Any] = {
-        "id": refid,
-        "name": name,
-        "kind": kind,
+        "id": member.get("id", ""),
+        "name": child_text(member, "name"),
+        "kind": member.get("kind", ""),
         "parentId": parent_refid,
         "parentName": parent_name,
         "visibility": member.get("prot", ""),
@@ -120,20 +127,31 @@ def parse_member(member: ET.Element, parent_refid: str, parent_name: str) -> dic
     return result
 
 
-def parse_compound(xml_dir: Path, refid: str) -> dict[str, Any] | None:
+def parse_compound(xml_dir: Path, refid: str, fallback_kind: str, fallback_name: str) -> dict[str, Any]:
     path = xml_dir / f"{refid}.xml"
     if not path.exists():
-        return None
+        return {
+            "id": refid,
+            "kind": fallback_kind,
+            "name": fallback_name,
+            "brief": "",
+            "description": "",
+            "location": {},
+            "members": [],
+            "inner": [],
+            "includes": [],
+            "source": {"xmlPath": f"xml/{refid}.xml"},
+        }
 
     root = read_xml(path)
     compound = root.find("compounddef")
     if compound is None:
-        return None
+        raise RuntimeError(f"No compounddef found in {path}")
 
-    compound_name = child_text(compound, "compoundname")
+    compound_name = child_text(compound, "compoundname") or fallback_name
     result: dict[str, Any] = {
         "id": refid,
-        "kind": compound.get("kind", ""),
+        "kind": compound.get("kind", "") or fallback_kind,
         "name": compound_name,
         "language": compound.get("language", ""),
         "brief": node_text(compound.find("briefdescription")),
@@ -142,6 +160,7 @@ def parse_compound(xml_dir: Path, refid: str) -> dict[str, Any] | None:
         "members": [],
         "inner": [],
         "includes": [],
+        "source": {"xmlPath": f"xml/{refid}.xml"},
     }
 
     for include in compound.findall("includes"):
@@ -161,6 +180,7 @@ def parse_compound(xml_dir: Path, refid: str) -> dict[str, Any] | None:
                 "id": inner.get("refid", ""),
                 "kind": inner.tag.removeprefix("inner"),
                 "name": node_text(inner),
+                "path": f"api/compounds/{inner.get('refid', '')}.json" if inner.get("refid") else "",
             }
         )
 
@@ -176,106 +196,140 @@ def parse_compound(xml_dir: Path, refid: str) -> dict[str, Any] | None:
     return result
 
 
-def parse_index(xml_dir: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def compound_summary(compound: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": compound["id"],
+        "kind": compound.get("kind", ""),
+        "name": compound.get("name", ""),
+        "brief": compound.get("brief", ""),
+        "location": compound.get("location", {}),
+        "memberCount": len(compound.get("members", [])),
+        "path": f"api/compounds/{compound['id']}.json",
+        "xmlPath": compound.get("source", {}).get("xmlPath", f"xml/{compound['id']}.xml"),
+    }
+
+
+def search_entries_for(compound: dict[str, Any]) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = [
+        {
+            "id": compound["id"],
+            "kind": compound.get("kind", ""),
+            "name": compound.get("name", ""),
+            "brief": compound.get("brief", ""),
+            "parentId": "",
+            "parentName": "",
+            "location": compound.get("location", {}),
+            "path": f"api/compounds/{compound['id']}.json",
+        }
+    ]
+
+    for member in compound.get("members", []):
+        entries.append(
+            {
+                "id": member.get("id", ""),
+                "kind": member.get("kind", ""),
+                "name": member.get("name", ""),
+                "signature": member.get("signature", ""),
+                "brief": member.get("brief", ""),
+                "parentId": compound["id"],
+                "parentName": compound.get("name", ""),
+                "location": member.get("location", {}),
+                "path": f"api/compounds/{compound['id']}.json#{member.get('id', '')}",
+            }
+        )
+
+    return entries
+
+
+def build_site_json(xml_dir: Path, out_dir: Path, project: str, repo: str) -> dict[str, Any]:
     index_path = xml_dir / "index.xml"
     if not index_path.exists():
         raise FileNotFoundError(f"Doxygen index not found: {index_path}")
 
+    generated_at = datetime.now(timezone.utc).isoformat()
     root = read_xml(index_path)
+
     compounds: list[dict[str, Any]] = []
-    search_items: list[dict[str, Any]] = []
+    summaries: list[dict[str, Any]] = []
+    search: list[dict[str, Any]] = []
+    stats: dict[str, int] = {"compounds": 0, "searchItems": 0}
 
     for compound_node in root.findall("compound"):
         refid = compound_node.get("refid", "")
-        kind = compound_node.get("kind", "")
-        name = child_text(compound_node, "name")
-        parsed = parse_compound(xml_dir, refid)
+        if not refid:
+            continue
 
-        if parsed is None:
-            parsed = {
-                "id": refid,
-                "kind": kind,
-                "name": name,
-                "members": [],
-                "inner": [],
-                "includes": [],
-            }
-        else:
-            parsed["kind"] = parsed.get("kind") or kind
-            parsed["name"] = parsed.get("name") or name
-
-        compounds.append(parsed)
-        search_items.append(
-            {
-                "id": parsed["id"],
-                "kind": parsed["kind"],
-                "name": parsed["name"],
-                "brief": parsed.get("brief", ""),
-                "parentId": "",
-                "parentName": "",
-                "location": parsed.get("location", {}),
-            }
+        compound = parse_compound(
+            xml_dir=xml_dir,
+            refid=refid,
+            fallback_kind=compound_node.get("kind", ""),
+            fallback_name=child_text(compound_node, "name"),
         )
 
-        for member in parsed.get("members", []):
-            search_items.append(
-                {
-                    "id": member.get("id", ""),
-                    "kind": member.get("kind", ""),
-                    "name": member.get("name", ""),
-                    "signature": member.get("signature", ""),
-                    "brief": member.get("brief", ""),
-                    "parentId": parsed["id"],
-                    "parentName": parsed["name"],
-                    "location": member.get("location", {}),
-                }
-            )
+        compound_payload = {
+            "schemaVersion": 1,
+            "project": project,
+            "repository": repo,
+            "generatedAt": generated_at,
+            "compound": compound,
+        }
+        write_json(out_dir / "compounds" / f"{refid}.json", compound_payload)
 
-    compounds.sort(key=lambda item: (item.get("kind", ""), item.get("name", "")))
-    search_items.sort(key=lambda item: (item.get("name", ""), item.get("kind", ""), item.get("parentName", "")))
-    return compounds, search_items
+        compounds.append(compound)
+        summaries.append(compound_summary(compound))
+        search.extend(search_entries_for(compound))
 
+        kind_key = f"{compound.get('kind', 'unknown')}Count"
+        stats[kind_key] = stats.get(kind_key, 0) + 1
 
-def build_payload(xml_dir: Path, project: str, repo: str) -> dict[str, Any]:
-    compounds, search_items = parse_index(xml_dir)
+    summaries.sort(key=lambda item: (item.get("kind", ""), item.get("name", "")))
+    search.sort(key=lambda item: (item.get("name", ""), item.get("kind", ""), item.get("parentName", "")))
 
-    stats: dict[str, int] = {
-        "compounds": len(compounds),
-        "searchItems": len(search_items),
-    }
-    for compound in compounds:
-        key = f"{compound.get('kind', 'unknown')}Count"
-        stats[key] = stats.get(key, 0) + 1
+    stats["compounds"] = len(summaries)
+    stats["searchItems"] = len(search)
 
-    return {
+    index_payload = {
         "schemaVersion": 1,
         "project": project,
         "repository": repo,
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "source": {
-            "format": "doxygen-xml",
-            "xmlPath": "xml/index.xml",
+        "generatedAt": generated_at,
+        "source": {"format": "doxygen-xml", "xmlPath": "xml/index.xml"},
+        "paths": {
+            "index": "api/index.json",
+            "search": "api/search.json",
+            "compoundsBase": "api/compounds/",
+            "rawXmlBase": "xml/",
         },
         "stats": stats,
-        "compounds": compounds,
-        "search": search_items,
+        "compounds": summaries,
     }
+
+    search_payload = {
+        "schemaVersion": 1,
+        "project": project,
+        "repository": repo,
+        "generatedAt": generated_at,
+        "stats": stats,
+        "items": search,
+    }
+
+    write_json(out_dir / "index.json", index_payload)
+    write_json(out_dir / "search.json", search_payload)
+
+    return index_payload
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert Doxygen XML into JSON for static web consumers.")
+    parser = argparse.ArgumentParser(description="Convert Doxygen XML into static JSON files for web consumers.")
     parser.add_argument("--xml-dir", type=Path, required=True, help="Directory containing Doxygen XML output")
-    parser.add_argument("--out", type=Path, required=True, help="JSON file to write")
+    parser.add_argument("--out-dir", type=Path, required=True, help="Output directory for generated JSON files")
     parser.add_argument("--project", default="arc", help="Project name for the payload")
     parser.add_argument("--repo", default="richardthorell/arc", help="Repository name for the payload")
     args = parser.parse_args()
 
-    payload = build_payload(args.xml_dir, args.project, args.repo)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
+    payload = build_site_json(args.xml_dir, args.out_dir, args.project, args.repo)
     print(
-        f"Wrote {args.out} with {payload['stats']['compounds']} compounds "
+        f"Wrote docs JSON to {args.out_dir} with {payload['stats']['compounds']} compounds "
         f"and {payload['stats']['searchItems']} search items"
     )
     return 0
