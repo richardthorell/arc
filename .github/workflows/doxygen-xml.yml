@@ -1,0 +1,47 @@
+name: Doxygen XML
+
+on:
+  schedule:
+    # Daily at 09:23 UTC. GitHub schedules use UTC and may be delayed slightly.
+    - cron: "23 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-doxygen-xml:
+    name: Generate Doxygen XML
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+
+      - name: Generate XML
+        run: |
+          cp Doxyfile Doxyfile.ci
+          cat >> Doxyfile.ci <<'EOF'
+
+          # CI XML export overrides
+          GENERATE_HTML = NO
+          GENERATE_XML = YES
+          XML_OUTPUT = xml
+          WARN_AS_ERROR = NO
+          EOF
+
+          doxygen Doxyfile.ci
+          test -d docs-build/xml
+
+      - name: Upload Doxygen XML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-xml-${{ github.run_number }}
+          path: docs-build/xml
+          if-no-files-found: error
+          retention-days: 30
