@@ -1,0 +1,39 @@
+name: MSBuild
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-msbuild:
+    name: Windows MSBuild
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Configure CMake project
+        run: >
+          cmake -S . -B build
+          -G "Visual Studio 17 2022"
+          -A x64
+          -DARC_BUILD_EDITOR=OFF
+          -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_BUILD_ENGINE_TESTS=ON
+          -DBUILD_TESTING=ON
+
+      - name: Build with MSBuild
+        run: msbuild build/arc.sln /m /p:Configuration=Release /p:Platform=x64
+
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure
