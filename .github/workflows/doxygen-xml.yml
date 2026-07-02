@@ -1,4 +1,4 @@
-name: Doxygen XML
+name: Doxygen Docs Data
 
 on:
   schedule:
@@ -8,10 +8,16 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
 
 jobs:
-  generate-doxygen-xml:
-    name: Generate Doxygen XML
+  build-docs-data:
+    name: Build Doxygen XML and JSON
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +29,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y doxygen graphviz
 
-      - name: Generate XML
+      - name: Generate Doxygen XML
         run: |
           cp Doxyfile Doxyfile.ci
           cat >> Doxyfile.ci <<'EOF'
@@ -38,10 +44,65 @@ jobs:
           doxygen Doxyfile.ci
           test -d docs-build/xml
 
-      - name: Upload Doxygen XML artifact
-        uses: actions/upload-artifact@v4
+      - name: Build static docs data site
+        run: |
+          mkdir -p docs-site/api docs-site/xml
+          cp -R docs-build/xml/. docs-site/xml/
+          python3 tools/doxygen_xml_to_json.py \
+            --xml-dir docs-build/xml \
+            --out-dir docs-site/api \
+            --project arc \
+            --repo richardthorell/arc
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('docs-site/api/index.json').read_text(encoding='utf-8'))
+          stats = data.get('stats', {})
+          html = f'''<!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>arc Doxygen Data</title>
+              <style>
+                body {{ font-family: system-ui, sans-serif; max-width: 860px; margin: 48px auto; padding: 0 24px; line-height: 1.5; }}
+                code {{ background: #f4f4f5; padding: 2px 6px; border-radius: 4px; }}
+                a {{ color: #2458d3; }}
+              </style>
+            </head>
+            <body>
+              <h1>arc Doxygen Data</h1>
+              <p>Generated static API documentation data for Lovable or other web frontends.</p>
+              <ul>
+                <li><a href="api/index.json">api/index.json</a> — browse index</li>
+                <li><a href="api/search.json">api/search.json</a> — search index</li>
+                <li><a href="api/compounds/">api/compounds/&lt;refid&gt;.json</a> — detail JSON files</li>
+                <li><a href="xml/index.xml">xml/index.xml</a> — raw Doxygen XML</li>
+              </ul>
+              <p><strong>Compounds:</strong> {stats.get('compounds', 0)}</p>
+              <p><strong>Search items:</strong> {stats.get('searchItems', 0)}</p>
+              <p><strong>Generated:</strong> <code>{data.get('generatedAt', '')}</code></p>
+            </body>
+          </html>
+          '''
+          Path('docs-site/index.html').write_text(html, encoding='utf-8')
+          PY
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: doxygen-xml-${{ github.run_number }}
-          path: docs-build/xml
-          if-no-files-found: error
-          retention-days: 30
+          path: docs-site
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: build-docs-data
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
