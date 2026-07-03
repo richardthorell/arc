@@ -1,0 +1,395 @@
+.arc-viewport-shell {
+  display: grid;
+  grid-template-rows: 34px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #0f1117;
+}
+
+.arc-viewport-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 8px;
+  border-bottom: 1px solid #2b2b2b;
+  background: #202020;
+}
+
+.arc-viewport-title,
+.arc-viewport-view-options,
+.arc-viewport-overlay-top-left,
+.arc-viewport-breadcrumb,
+.arc-viewport-note {
+  display: inline-flex;
+  align-items: center;
+}
+
+.arc-viewport-title {
+  gap: 6px;
+  color: #cccccc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.arc-viewport-view-options {
+  gap: 4px;
+}
+
+.arc-viewport-view-options button {
+  height: 23px;
+  padding: 0 8px;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #cccccc;
+  background: #252526;
+  font-size: 12px;
+}
+
+.arc-viewport-view-options button:hover {
+  background: #2a2d2e;
+}
+
+.arc-viewport-view-options.compact button {
+  min-width: 28px;
+  padding: 0 7px;
+}
+
+.arc-viewport-header-spacer {
+  flex: 1;
+}
+
+.arc-viewport-body {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(84, 134, 178, 0.34), transparent 24%),
+    linear-gradient(180deg, #182333 0%, #101820 44%, #0d1117 100%);
+}
+
+.arc-viewport-scene-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(156deg, transparent 0 42%, rgba(255, 255, 255, 0.08) 42.2% 42.8%, transparent 43%),
+    linear-gradient(144deg, transparent 0 48%, rgba(255, 255, 255, 0.06) 48.2% 48.8%, transparent 49%),
+    radial-gradient(ellipse at 50% 73%, rgba(42, 77, 49, 0.9), transparent 45%),
+    radial-gradient(ellipse at 42% 83%, rgba(72, 52, 31, 0.68), transparent 28%),
+    linear-gradient(180deg, rgba(76, 97, 125, 0.32), transparent 50%);
+}
+
+.arc-viewport-depth-fog {
+  position: absolute;
+  inset: 18% -8% 40% -8%;
+  background:
+    radial-gradient(ellipse at 30% 62%, rgba(202, 215, 225, 0.3), transparent 36%),
+    radial-gradient(ellipse at 70% 58%, rgba(202, 215, 225, 0.22), transparent 34%);
+  filter: blur(14px);
+  opacity: 0.75;
+}
+
+.arc-viewport-terrain {
+  position: absolute;
+  inset: 46% -10% -18% -10%;
+  background:
+    radial-gradient(ellipse at 48% 48%, rgba(50, 91, 55, 0.95), transparent 30%),
+    radial-gradient(ellipse at 25% 70%, rgba(94, 78, 48, 0.9), transparent 24%),
+    radial-gradient(ellipse at 75% 64%, rgba(35, 72, 50, 0.92), transparent 28%),
+    linear-gradient(180deg, rgba(56, 87, 54, 0.95), #101510 74%);
+}
+
+.arc-viewport-terrain::after {
+  position: absolute;
+  inset: 36% 20% 12% 12%;
+  border-radius: 60% 36% 42% 58%;
+  background: linear-gradient(135deg, rgba(46, 99, 120, 0.8), rgba(11, 22, 30, 0.9));
+  box-shadow: 0 0 32px rgba(144, 193, 208, 0.1) inset;
+  content: "";
+}
+
+.arc-viewport-object-shadow {
+  position: absolute;
+  left: 41%;
+  top: 60%;
+  width: 19%;
+  height: 10%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.38);
+  filter: blur(14px);
+}
+
+.arc-viewport-selected-object {
+  position: absolute;
+  left: 42%;
+  top: 44%;
+  width: 17%;
+  height: 20%;
+  transform: perspective(900px) rotateX(3deg) rotateY(-7deg);
+}
+
+.arc-selected-body {
+  position: absolute;
+  left: 15%;
+  right: 12%;
+  bottom: 0;
+  height: 60%;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.08) 0 2px, transparent 2px 10px),
+    linear-gradient(135deg, #7b5433, #332319);
+  box-shadow: 0 0 26px rgba(255, 164, 77, 0.26) inset;
+}
+
+.arc-selected-roof {
+  position: absolute;
+  left: 5%;
+  top: 3%;
+  width: 90%;
+  height: 48%;
+  clip-path: polygon(50% 0, 100% 84%, 0 84%);
+  background: linear-gradient(135deg, #283342, #12171f);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.4);
+}
+
+.arc-selection-outline {
+  position: absolute;
+  inset: 0 4% 0 4%;
+  border: 2px solid #f59e0b;
+  border-radius: 8px;
+  filter: drop-shadow(0 0 7px rgba(245, 158, 11, 0.65));
+  pointer-events: none;
+}
+
+.arc-transform-gizmo {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  width: 88px;
+  height: 88px;
+  transform: translate(-50%, -50%);
+}
+
+.arc-transform-gizmo strong,
+.arc-transform-gizmo span {
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+}
+
+.arc-transform-gizmo strong {
+  left: 39px;
+  top: 39px;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  box-shadow: 0 0 12px rgba(255,255,255,0.65);
+}
+
+.arc-transform-gizmo .axis-y {
+  left: 42px;
+  bottom: 44px;
+  width: 4px;
+  height: 48px;
+  background: #22c55e;
+}
+
+.arc-transform-gizmo .axis-y::before {
+  position: absolute;
+  left: -6px;
+  top: -8px;
+  border-right: 8px solid transparent;
+  border-bottom: 12px solid #22c55e;
+  border-left: 8px solid transparent;
+  content: "";
+}
+
+.arc-transform-gizmo .axis-x {
+  left: 44px;
+  top: 43px;
+  width: 48px;
+  height: 4px;
+  background: #ef4444;
+}
+
+.arc-transform-gizmo .axis-x::before {
+  position: absolute;
+  right: -8px;
+  top: -6px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 12px solid #ef4444;
+  content: "";
+}
+
+.arc-transform-gizmo .axis-z {
+  left: 10px;
+  top: 60px;
+  width: 46px;
+  height: 4px;
+  background: #3b82f6;
+  transform: rotate(-28deg);
+}
+
+.arc-viewport-tool-strip {
+  position: absolute;
+  left: 12px;
+  top: 50px;
+  display: grid;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  background: rgba(24, 24, 24, 0.82);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+}
+
+.arc-viewport-tool-strip button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: #cccccc;
+}
+
+.arc-viewport-tool-strip button:hover,
+.arc-viewport-tool-strip button.active {
+  color: #ffffff;
+  background: #0e639c;
+}
+
+.arc-viewport-stats {
+  position: absolute;
+  right: 14px;
+  top: 48px;
+  min-width: 168px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  background: rgba(15, 17, 23, 0.74);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 34px rgba(0,0,0,0.28);
+}
+
+.arc-viewport-stats dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.arc-viewport-stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  color: #cccccc;
+  font-size: 11px;
+}
+
+.arc-viewport-stats dt {
+  color: #a6a6a6;
+}
+
+.arc-viewport-stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.arc-viewport-overlay-top-left {
+  position: absolute;
+  left: 58px;
+  top: 48px;
+  gap: 6px;
+}
+
+.arc-viewport-overlay-top-left span,
+.arc-viewport-breadcrumb,
+.arc-viewport-note {
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: #cccccc;
+  background: rgba(24, 24, 24, 0.72);
+  font-size: 11px;
+  backdrop-filter: blur(8px);
+}
+
+.arc-viewport-breadcrumb {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+}
+
+.arc-viewport-breadcrumb span::after {
+  margin-left: 6px;
+  color: #8b949e;
+  content: ">";
+}
+
+.arc-axis-gizmo-large {
+  position: absolute;
+  right: 26px;
+  bottom: 38px;
+  width: 74px;
+  height: 74px;
+}
+
+.arc-axis-gizmo-large::before,
+.arc-axis-gizmo-large::after {
+  position: absolute;
+  left: 36px;
+  bottom: 28px;
+  width: 3px;
+  height: 38px;
+  border-radius: 999px;
+  background: #22c55e;
+  content: "";
+}
+
+.arc-axis-gizmo-large::after {
+  width: 42px;
+  height: 3px;
+  background: #ef4444;
+}
+
+.axis-label-y,
+.axis-label-x,
+.axis-label-z {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.axis-label-y {
+  left: 28px;
+  top: 0;
+  background: #22c55e;
+}
+
+.axis-label-x {
+  right: 0;
+  bottom: 22px;
+  background: #ef4444;
+}
+
+.axis-label-z {
+  left: 8px;
+  bottom: 8px;
+  background: #3b82f6;
+}
+
+.arc-viewport-note {
+  position: absolute;
+  right: 124px;
+  bottom: 18px;
+}
