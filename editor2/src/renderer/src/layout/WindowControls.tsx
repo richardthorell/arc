@@ -5,7 +5,7 @@ export function WindowControls() {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
-    void window.arc?.nativeWindow?.isMaximized?.().then(setMaximized);
+    void (window.arc?.nativeWindow?.isMaximized?.() ?? Promise.resolve(false)).then(setMaximized);
     return window.arc?.nativeWindow?.onMaximizedChanged?.(setMaximized);
   }, []);
 
