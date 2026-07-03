@@ -49,6 +49,22 @@ add_executable(arc_editor
     src/main.cpp
 )
 
+set(ARC_EDITOR_TOP_BAR_STYLE_INCLUDE
+    "${CMAKE_CURRENT_SOURCE_DIR}/inc/arc/editor/ui/top_bar_reference_style.h"
+)
+
+if(MSVC)
+    set_source_files_properties(src/main.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "/FI${ARC_EDITOR_TOP_BAR_STYLE_INCLUDE}"
+    )
+else()
+    set_source_files_properties(src/main.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "-include;${ARC_EDITOR_TOP_BAR_STYLE_INCLUDE}"
+    )
+endif()
+
 target_compile_features(arc_editor
     PRIVATE
         cxx_std_20
