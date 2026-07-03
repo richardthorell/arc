@@ -42,6 +42,7 @@ export type RenderStats = {
   drawCalls: number;
   triangles: number;
   visibleEntities: number;
+  lights: number;
   gpuMemoryMb: number;
 };
 
@@ -172,6 +173,7 @@ const project: ProjectSnapshot = {
     drawCalls: 128,
     triangles: 84216,
     visibleEntities: 12,
+    lights: 24,
     gpuMemoryMb: 384,
   },
 };
