@@ -7,7 +7,7 @@
   height: 40px;
   padding-left: 12px;
   border-bottom: 1px solid #1f2933;
-  background: linear-gradient(180deg, #10161d 0%, #0b1016 100%);
+  background: linear-gradient(180deg, #10161d 0%, #0b1016 100%) !important;
   -webkit-app-region: drag;
   user-select: none;
 }
