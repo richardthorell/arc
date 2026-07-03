@@ -1,4 +1,4 @@
-import { Move3D, Pause, Play, RotateCw, Scaling, Square, StepForward } from 'lucide-react';
+import { Box, Move3D, Pause, Play, RotateCw, Square, StepForward } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
 
@@ -18,7 +18,7 @@ export function MainToolbar({ onCommand }: MainToolbarProps) {
       <div className="toolbar-group">
         <button className="toolbar-button selected" onClick={() => onCommand('viewport.translate')}><Move3D size={14} /></button>
         <button className="toolbar-button" onClick={() => onCommand('viewport.rotate')}><RotateCw size={14} /></button>
-        <button className="toolbar-button" onClick={() => onCommand('viewport.scale')}><Scaling size={14} /></button>
+        <button className="toolbar-button" onClick={() => onCommand('viewport.scale')}><Box size={14} /></button>
       </div>
       <div className="toolbar-group">
         <button className="toolbar-select">Pivot</button>
