@@ -1,91 +1,117 @@
-# ARC
+# arc
 
 | Target | Status |
 | --- | --- |
 | Clang | [![Build: Clang](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml) |
 | GCC | [![Build: GCC](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml) |
 | MSVC | [![Build: MSVC](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml) |
+| Documentation | [![Doxygen Docs Data](https://github.com/richardthorell/arc/actions/workflows/doxygen-xml.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/doxygen-xml.yml) |
 
-ARC is an early-stage 3D engine monorepo. The current codebase is focused on
-the low-level foundation an engine needs before higher-level rendering,
-scene, asset, and editor systems land.
+**arc** is a modern C++ 3D game engine focused on performance, clean systems architecture, and editor-driven workflows.
 
-Public engine headers now follow one include convention:
+The engine is built around modular runtime systems, scene and rendering architecture, editor-first workflows, and source-driven tooling. The goal is to provide a compact but capable engine core that supports real-time rendering, scene editing, runtime experimentation, and future game/editor production workflows.
 
-```cpp
-#include <arc/<module>/<header>.h>
+## Overview
+
+arc is organized as a modular engine and editor stack:
+
+- **Engine core** — application framework, diagnostics, jobs, memory tracking, input, and platform-neutral runtime services.
+- **Scene system** — scene representation, entities, components, transforms, lights, cameras, and scene extraction for rendering.
+- **Renderer** — backend-neutral rendering interfaces, render graph concepts, resource handles, scene draw packets, and Vulkan-oriented rendering architecture.
+- **Asset pipeline** — foundation for loading, managing, and preparing engine resources such as meshes, materials, textures, and shaders.
+- **Editor** — cross-platform editor shell built around ImGui/SDL, with the engine rendering into an editor viewport.
+- **Tooling** — generated API documentation, automated CI builds, and source-driven documentation data for the website.
+
+## Rendering
+
+The rendering layer is designed around explicit rendering architecture rather than a monolithic renderer.
+
+Current and planned renderer concepts include:
+
+- Backend-neutral render interfaces
+- Vulkan renderer backend
+- Render graph structure
+- Renderer-owned resource handles
+- Scene extraction into render packets
+- CPU frustum culling
+- Sorting and batching
+- Instancing-ready draw data
+- Indirect draw command scaffolding
+- Standard pass structure for depth, geometry, transparency, picking, and selection outline workflows
+
+The renderer is intended to support both runtime rendering and editor viewport rendering.
+
+## Editor
+
+arc includes an editor shell intended to become the main workflow surface for building and inspecting scenes.
+
+The editor direction is:
+
+- Cross-platform desktop editor
+- ImGui-based interface
+- SDL host/windowing layer
+- Engine-rendered viewport panel
+- Scene hierarchy and inspector panels
+- Asset and resource browsing
+- Runtime and debug visualization
+- Future integration with render graph, scene editing, and profiling tools
+
+The editor is part of the engine workflow rather than a separate application layer bolted on afterward.
+
+## Documentation
+
+API documentation is generated from the source tree using Doxygen.
+
+The documentation pipeline generates Doxygen XML, converts it into static JSON, and publishes it through GitHub Pages for use by the arc website documentation viewer.
+
+Documentation data is published at:
+
+```text
+https://richardthorell.github.io/arc/api/index.json
 ```
 
-## Current Shape
-
-- `engine/` contains the core engine library.
-- `engine/simd/` provides portable SIMD primitives and game-oriented SIMD helpers.
-- `engine/math/` provides vector, matrix, and quaternion types built on top of SIMD where available.
-- `engine/geometric/` provides simple 2D/3D primitives such as points, lines, boxes, circles, and spheres.
-- `engine/diagnostics/` provides logging and diagnostic sinks.
-- `engine/jobs/` provides the shared job/thread worker service.
-- `engine/memory/` provides tracked memory-resource instrumentation.
-- `engine/framework/` provides the platform-neutral application lifecycle.
-- `engine/input/` provides runtime keyboard, mouse, and future gamepad bindings.
-- `engine/render/` provides the backend-neutral rendering foundation, Vulkan
-  backend, render graph, renderer resource handles, and scene draw packet
-  preparation.
-- `engine/scene/` provides ECS scene primitives, render components, lights, and
-  extraction into renderer scene packets.
-- `engine/platform/windows/` provides the optional raw Win32 entry host.
-- `editor/` contains the first cross-platform editor shell.
-- `third_party/` centralizes external dependency setup for editor and future engine modules.
-- `samples/` is reserved for examples and experiments.
-- `tests/` is reserved for future high-level integration scenarios.
+The generated documentation is split into static JSON files so the website can load an index first, then lazy-load details for classes, structs, namespaces, files, and members.
 
 ## Building
+
+Configure and build:
 
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel
+```
+
+Run tests:
+
+```bash
 ctest --test-dir build --output-on-failure
 ```
 
-To build the editor shell:
+Build the editor:
 
 ```bash
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DARC_BUILD_EDITOR=ON
 cmake --build build --config Release --target arc_editor --parallel
 ```
 
-To build it if needed and run it:
+Build and run the editor using the helper script:
 
 ```bash
 python run_editor.py
 ```
 
-The editor runner enables the Vulkan renderer by default. Use
-`python run_editor.py --no-vulkan-render` to build the temporary SDL-renderer
-editor path instead.
+The editor runner enables the Vulkan renderer by default. To use the temporary SDL renderer path instead:
 
-## Public Includes
-
-The current engine foundation can be consumed through module headers:
-
-```cpp
-#include <arc/simd/simd.h>
-#include <arc/math/math.h>
-#include <arc/geometric/geometric.h>
-#include <arc/diagnostics/diagnostics.h>
-#include <arc/jobs/jobs.h>
-#include <arc/memory/memory.h>
-#include <arc/framework/framework.h>
-#include <arc/input/input.h>
-#include <arc/render/render.h>
-#include <arc/scene/scene.h>
+```bash
+python run_editor.py --no-vulkan-render
 ```
 
-More specific math and geometric headers are also available when a translation
-unit only needs part of the API.
+## CI
 
-The renderer is still in bring-up mode. The current milestone has the
-backend-neutral scene draw pipeline shape in place: render items, CPU frustum
-culling, sorting, instancing batches, indirect draw command scaffolding, and
-standard graph pass names for depth prepass, G-buffer, transparent, picking, and
-selection outline. Vulkan currently consumes that packet through the existing
-mesh rendering path while the real G-buffer/picking/outline backend work lands.
+arc is built continuously across multiple compiler toolchains:
+
+- Clang on Ubuntu
+- GCC on Ubuntu
+- MSVC on Windows
+
+Each compiler has its own workflow so build status can be tracked independently.
