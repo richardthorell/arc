@@ -15,8 +15,13 @@
 .titlebar-left,
 .arc-app-brand,
 .menu-bar,
+.window-title {
+  -webkit-app-region: drag;
+}
+
+.menu-bar button,
 .window-controls,
-.workbench-titlebar button,
+.window-controls button,
 .workbench-titlebar input {
   -webkit-app-region: no-drag;
 }
@@ -86,7 +91,7 @@
   font-size: 12px;
   line-height: 1;
   transform: translate(-50%, -50%);
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .window-title span {
