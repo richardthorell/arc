@@ -20,7 +20,7 @@ button { color: inherit; background: transparent; border: 0; }
 
 .workbench-shell {
   display: grid;
-  grid-template-rows: 35px 1fr 24px;
+  grid-template-rows: 40px 1fr 24px;
   width: 100vw;
   height: 100vh;
   background: #1e1e1e;
@@ -32,7 +32,7 @@ button { color: inherit; background: transparent; border: 0; }
   grid-template-columns: 78px auto minmax(320px, 520px) 1fr;
   align-items: center;
   gap: 12px;
-  height: 35px;
+  height: 40px;
   border-bottom: 1px solid #2b2b2b;
   background: #181818;
   user-select: none;
