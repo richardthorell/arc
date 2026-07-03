@@ -282,7 +282,6 @@
 }
 
 .workbench-titlebar {
-  grid-template-columns: 78px auto minmax(360px, 560px) 1fr;
   background: linear-gradient(180deg, #171b22, #11151b);
 }
 
