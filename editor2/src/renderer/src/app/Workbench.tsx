@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import {
   AlertTriangle,
   Box,
-  Bug,
   ChevronDown,
   ChevronRight,
   Code2,
@@ -15,7 +14,6 @@ import {
   Package,
   Search,
   Settings,
-  Sparkles,
 } from 'lucide-react';
 
 import { executeWorkbenchCommand } from './commandRegistry';
@@ -29,6 +27,7 @@ import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
 import { flattenScene, mockHost } from '../services/mockHost';
 import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/mockHost';
+import { ViewportPanel } from '../viewport/ViewportPanel';
 
 import './workbench.css';
 
@@ -252,40 +251,6 @@ function AssetExplorerPanel({ project, selectedAssetId, onSelectAsset }: {
         {project.assets.map((asset) => <AssetRow key={asset.id} asset={asset} selected={asset.id === selectedAssetId} onSelect={() => onSelectAsset(asset.id)} />)}
       </TreeSection>
     </Panel>
-  );
-}
-
-function ViewportPanel({ project, onCommand }: { project: ProjectSnapshot | null; onCommand: (command: CommandId) => void }) {
-  return (
-    <section className="scene-editor foundation-scene-editor">
-      <div className="viewport-toolbar">
-        <div className="viewport-toolbar-group">
-          <button onClick={() => onCommand('scene.play')}>Play</button>
-          <button onClick={() => onCommand('scene.buildLighting')}>Lighting</button>
-          <button onClick={() => onCommand('viewport.frameSelected')}>Frame Selected</button>
-        </div>
-        <div className="viewport-toolbar-group muted">
-          <span>Perspective</span>
-          <span>Lit</span>
-          <span>Gizmos On</span>
-        </div>
-      </div>
-      <div className="viewport-canvas">
-        <div className="viewport-grid" />
-        <div className="axis-gizmo"><span>X</span><span>Y</span><span>Z</span></div>
-        <div className="viewport-card">
-          <Sparkles size={44} />
-          <h2>Scene viewport</h2>
-          <p>Viewport shell only. Real 3D rendering connects through the native host later.</p>
-          <div className="viewport-stats-grid">
-            <Stat label="FPS" value={project?.renderStats.fps ?? 0} />
-            <Stat label="Frame" value={`${project?.renderStats.frameTimeMs ?? 0} ms`} />
-            <Stat label="Draws" value={project?.renderStats.drawCalls ?? 0} />
-            <Stat label="Tris" value={project?.renderStats.triangles.toLocaleString() ?? '0'} />
-          </div>
-        </div>
-      </div>
-    </section>
   );
 }
 

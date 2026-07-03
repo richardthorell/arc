@@ -8,6 +8,8 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | null = null;
 
+const activeWindow = (): BrowserWindow | null => mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+
 const createMainWindow = (): void => {
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -17,7 +19,7 @@ const createMainWindow = (): void => {
     backgroundColor: '#1e1e1e',
     title: 'arc editor2',
     autoHideMenuBar: true,
-    titleBarStyle: 'hidden',
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -30,6 +32,9 @@ const createMainWindow = (): void => {
     void shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', true));
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', false));
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -51,6 +56,24 @@ app.whenReady().then(() => {
     engineHostConnected: false,
     viewportMode: 'placeholder',
   }));
+
+  ipcMain.handle('nativeWindow:minimize', () => activeWindow()?.minimize());
+  ipcMain.handle('nativeWindow:toggleMaximize', () => {
+    const target = activeWindow();
+    if (!target) {
+      return false;
+    }
+
+    if (target.isMaximized()) {
+      target.unmaximize();
+      return false;
+    }
+
+    target.maximize();
+    return true;
+  });
+  ipcMain.handle('nativeWindow:close', () => activeWindow()?.close());
+  ipcMain.handle('nativeWindow:isMaximized', () => activeWindow()?.isMaximized() ?? false);
 
   createMainWindow();
 

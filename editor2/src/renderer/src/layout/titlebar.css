@@ -1,0 +1,58 @@
+.workbench-titlebar {
+  grid-template-columns: 96px auto minmax(360px, 560px) minmax(160px, 1fr) 138px;
+  -webkit-app-region: drag;
+}
+
+.arc-app-brand,
+.menu-bar,
+.command-center,
+.window-controls,
+.workbench-titlebar button,
+.workbench-titlebar input {
+  -webkit-app-region: no-drag;
+}
+
+.arc-app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.arc-logo-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  background: linear-gradient(135deg, #0e639c, #7c3aed);
+  color: #ffffff;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.window-controls {
+  display: grid;
+  grid-template-columns: repeat(3, 46px);
+  justify-self: end;
+  height: 35px;
+}
+
+.window-controls button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 35px;
+  border: 0;
+  border-radius: 0;
+  color: #cccccc;
+  background: transparent;
+}
+
+.window-controls button:hover {
+  color: #ffffff;
+  background: #2a2d2e;
+}
