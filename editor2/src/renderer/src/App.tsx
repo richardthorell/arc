@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Box, Cpu, Database, FolderTree, Gauge, Layers3, Play, Search, Settings, TerminalSquare } from 'lucide-react';
 
 type StartupState = {
@@ -153,7 +154,7 @@ export function App() {
   );
 }
 
-function PanelHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
+function PanelHeader({ icon, title }: { icon: ReactNode; title: string }) {
   return (
     <header className="panel-header">
       {icon}
