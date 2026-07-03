@@ -80,7 +80,7 @@ export function ViewportPanel({ project, onCommand }: ViewportPanelProps) {
             <div><dt>Draw Calls</dt><dd>{stats?.drawCalls.toLocaleString() ?? '0'}</dd></div>
             <div><dt>Triangles</dt><dd>{stats?.triangles.toLocaleString() ?? '0'}</dd></div>
             <div><dt>Objects</dt><dd>{stats?.visibleEntities ?? 0}</dd></div>
-            <div><dt>Lights</dt><dd>{stats ? 24 : 0}</dd></div>
+            <div><dt>Lights</dt><dd>{stats?.lights ?? 0}</dd></div>
           </dl>
         </aside>
 
