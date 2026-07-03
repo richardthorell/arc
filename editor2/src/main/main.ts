@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
 import path from 'node:path';
 
 const isDevelopment = !app.isPackaged;
@@ -14,11 +14,12 @@ const createMainWindow = (): void => {
     height: 1000,
     minWidth: 1180,
     minHeight: 720,
-    backgroundColor: '#0d1117',
+    backgroundColor: '#1e1e1e',
     title: 'arc editor2',
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
     webPreferences: {
-      preload: path.join(__dirname, '../preload/preload.js'),
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -42,6 +43,8 @@ const createMainWindow = (): void => {
 };
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
+
   ipcMain.handle('app:getVersion', () => app.getVersion());
   ipcMain.handle('editor:getStartupState', () => ({
     appVersion: app.getVersion(),
