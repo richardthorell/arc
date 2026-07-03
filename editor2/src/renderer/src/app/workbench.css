@@ -260,3 +260,95 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+
+.ai-suggestion-grid button {
+  min-height: 42px;
+  height: auto;
+  white-space: normal;
+}
+
+.ai-input input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #3c3c3c;
+  color: #cccccc;
+  background: #1e1e1e;
+  outline: 0;
+}
+
+.settings-action {
+  margin: 8px 12px;
+}
+
+.workbench-titlebar {
+  grid-template-columns: 78px auto minmax(360px, 560px) 1fr;
+  background: linear-gradient(180deg, #171b22, #11151b);
+}
+
+.main-toolbar {
+  background: linear-gradient(180deg, #202632, #161b23);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+.toolbar-button,
+.toolbar-select {
+  gap: 6px;
+  background: #222934;
+}
+
+.toolbar-select {
+  min-width: 68px;
+}
+
+.viewport-toolbar {
+  height: 34px;
+  background: #202631;
+}
+
+.viewport-canvas {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(92, 145, 184, 0.34), transparent 24%),
+    radial-gradient(ellipse at 48% 77%, rgba(39, 80, 48, 0.92), transparent 42%),
+    linear-gradient(180deg, #1a2636 0%, #101820 48%, #0d1117 100%);
+}
+
+.viewport-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px),
+    radial-gradient(circle at 50% 40%, rgba(31, 111, 235, 0.18), transparent 38%),
+    linear-gradient(156deg, transparent 0 42%, rgba(255, 255, 255, 0.08) 42.2% 42.8%, transparent 43%),
+    linear-gradient(144deg, transparent 0 48%, rgba(255, 255, 255, 0.06) 48.2% 48.8%, transparent 49%);
+  background-size: 42px 42px, 42px 42px, 100% 100%, 100% 100%, 100% 100%;
+}
+
+.viewport-card {
+  width: min(560px, calc(100% - 84px));
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(23, 27, 36, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.viewport-card::before {
+  position: absolute;
+  left: 50%;
+  top: -92px;
+  width: 210px;
+  height: 132px;
+  border: 2px solid #f59e0b;
+  border-radius: 10px;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.8));
+  content: "";
+}
+
+.axis-gizmo {
+  width: 88px;
+  height: 88px;
+}
+
+.axis-gizmo span {
+  border-color: rgba(255,255,255,0.15);
+  box-shadow: 0 0 18px rgba(0,0,0,0.5);
+}
