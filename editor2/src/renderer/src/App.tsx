@@ -39,6 +39,12 @@ type StartupState = {
 type ActivityView = 'explorer' | 'search' | 'render' | 'debug' | 'extensions';
 type BottomPanel = 'problems' | 'output' | 'debugConsole' | 'terminal' | 'profiler';
 
+const fallbackStartupState: StartupState = {
+  appVersion: 'dev',
+  engineHostConnected: false,
+  viewportMode: 'placeholder',
+};
+
 export function App() {
   const [startupState, setStartupState] = useState<StartupState | null>(null);
   const [project, setProject] = useState<ProjectSnapshot | null>(null);
@@ -49,7 +55,8 @@ export function App() {
   const [lastCommand, setLastCommand] = useState('Workbench ready');
 
   useEffect(() => {
-    void window.arc.getStartupState().then(setStartupState);
+    const startup = window.arc?.getStartupState?.() ?? Promise.resolve(fallbackStartupState);
+    void startup.then(setStartupState).catch(() => setStartupState(fallbackStartupState));
     void mockHost.getProjectSnapshot().then(setProject);
   }, []);
 
