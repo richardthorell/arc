@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Maximize2, Minimize2, Square } from 'lucide-react';
 
 export function WindowControls() {
   const [maximized, setMaximized] = useState(false);
@@ -11,14 +10,14 @@ export function WindowControls() {
 
   return (
     <div className="window-controls" aria-label="Window controls">
-      <button title="Minimize" onClick={() => void window.arc?.nativeWindow?.minimize?.()}>
-        <Minimize2 size={13} />
+      <button title="Minimize" aria-label="Minimize" onClick={() => void window.arc?.nativeWindow?.minimize?.()}>
+        <span className="window-control-icon window-control-minimize" aria-hidden="true" />
       </button>
-      <button title={maximized ? 'Restore' : 'Maximize'} onClick={() => void window.arc?.nativeWindow?.toggleMaximize?.()}>
-        {maximized ? <Square size={12} /> : <Maximize2 size={12} />}
+      <button title={maximized ? 'Restore' : 'Maximize'} aria-label={maximized ? 'Restore' : 'Maximize'} onClick={() => void window.arc?.nativeWindow?.toggleMaximize?.()}>
+        <span className={maximized ? 'window-control-icon window-control-restore' : 'window-control-icon window-control-maximize'} aria-hidden="true" />
       </button>
-      <button className="window-control-exit" title="Exit" onClick={() => void window.arc?.nativeWindow?.close?.()}>
-        ×
+      <button className="window-control-exit" title="Close" aria-label="Close" onClick={() => void window.arc?.nativeWindow?.close?.()}>
+        <span className="window-control-icon window-control-close" aria-hidden="true" />
       </button>
     </div>
   );

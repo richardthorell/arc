@@ -1,5 +1,5 @@
 .workbench-shell {
-  grid-template-rows: 35px 36px 1fr 24px;
+  grid-template-rows: 40px 36px 1fr 24px;
 }
 
 .workbench-body-foundation {
@@ -282,7 +282,6 @@
 }
 
 .workbench-titlebar {
-  grid-template-columns: 78px auto minmax(360px, 560px) 1fr;
   background: linear-gradient(180deg, #171b22, #11151b);
 }
 
