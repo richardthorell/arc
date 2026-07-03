@@ -30,6 +30,16 @@ Package locally:
 npm run package
 ```
 
+## Workbench foundation
+
+The workbench is now split into reusable foundation pieces:
+
+- `app/Workbench.tsx` owns high-level editor composition and state wiring.
+- `app/panelRegistry.ts` defines panel metadata, activity mappings, and default dock membership.
+- `app/commandRegistry.ts` defines editor command IDs and mock/no-op command execution.
+- `app/workbenchStore.ts` persists active activity and dock tabs in local storage.
+- `layout/ActivityBar.tsx`, `layout/DockHost.tsx`, `layout/MenuBar.tsx`, `layout/MainToolbar.tsx`, and `layout/StatusBar.tsx` provide reusable shell components.
+
 ## Current scope
 
 - Electron main process
@@ -37,11 +47,15 @@ npm run package
 - React renderer
 - VS Code-style workbench layout
 - Activity bar and command center
+- Reusable dock host with tabbed regions
+- Panel registry for editor panels
+- Command registry for editor actions
+- Basic layout persistence
 - Scene hierarchy panel backed by mock host data
 - Asset browser backed by mock host data
 - Inspector for selected entities and assets
 - Viewport placeholder with render stats
-- Bottom panel with Problems, Output, Debug Console, Terminal, and Profiler tabs
+- Bottom dock panels for content browser, console, version control, AI assistant, and profiler
 - Mock/no-op host service for commands and data loading
 
 ## Mock host
@@ -60,6 +74,7 @@ When `arc_host_process` is ready, the same UI can be pointed at a real host clie
 
 ## Next phases
 
+- Expand each registered panel into its final production UI
 - Launch and manage `arc_host_process`
 - Replace `mockHost` with a typed host client
 - Back panels with real scene/project data
