@@ -34,16 +34,16 @@ The codebase is organized around a reusable engine library, a cross-platform edi
 Use CMake from the repository root.
 
 ```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel
-ctest --test-dir build --output-on-failure
+cmake --preset default
+cmake --build --preset default --parallel
+ctest --preset default
 ```
 
 To build the editor shell:
 
 ```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DARC_BUILD_EDITOR=ON
-cmake --build build --config Release --target arc_editor --parallel
+cmake --preset editor-vulkan
+cmake --build --preset editor-vulkan --target arc_editor --parallel
 ```
 
 To build and run the editor through the helper script:
@@ -57,6 +57,8 @@ Use this to run the temporary SDL-renderer editor path instead of the Vulkan ren
 ```bash
 python run_editor.py --no-vulkan-render
 ```
+
+Generated CMake output should live under `out/build/...`; avoid adding new root-level `build-*` folders.
 
 ## Public Include Convention
 

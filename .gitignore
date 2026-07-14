@@ -43,6 +43,7 @@
 # Build directory
 build/
 build-*/
+out/
 
 # Node / Electron editor
 editor2/node_modules/

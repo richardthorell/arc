@@ -1,0 +1,87 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default engine build",
+      "binaryDir": "${sourceDir}/out/build/default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "editor-vulkan",
+      "displayName": "Editor with Vulkan renderer",
+      "binaryDir": "${sourceDir}/out/build/editor-vulkan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ARC_BUILD_EDITOR": "ON",
+        "ARC_BUILD_RENDER_VULKAN": "ON"
+      }
+    },
+    {
+      "name": "editor-no-vulkan",
+      "displayName": "Editor without Vulkan renderer",
+      "binaryDir": "${sourceDir}/out/build/editor-no-vulkan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ARC_BUILD_EDITOR": "ON",
+        "ARC_BUILD_RENDER_VULKAN": "OFF"
+      }
+    },
+    {
+      "name": "render-vulkan",
+      "displayName": "Engine with Vulkan renderer",
+      "binaryDir": "${sourceDir}/out/build/render-vulkan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ARC_BUILD_RENDER_VULKAN": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "configuration": "Release"
+    },
+    {
+      "name": "editor-vulkan",
+      "configurePreset": "editor-vulkan",
+      "configuration": "Release"
+    },
+    {
+      "name": "editor-no-vulkan",
+      "configurePreset": "editor-no-vulkan",
+      "configuration": "Release"
+    },
+    {
+      "name": "render-vulkan",
+      "configurePreset": "render-vulkan",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "editor-vulkan",
+      "configurePreset": "editor-vulkan",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -77,21 +77,21 @@ The generated documentation is split into static JSON files so the website can l
 Configure and build:
 
 ```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel
+cmake --preset default
+cmake --build --preset default --parallel
 ```
 
 Run tests:
 
 ```bash
-ctest --test-dir build --output-on-failure
+ctest --preset default
 ```
 
 Build the editor:
 
 ```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DARC_BUILD_EDITOR=ON
-cmake --build build --config Release --target arc_editor --parallel
+cmake --preset editor-vulkan
+cmake --build --preset editor-vulkan --target arc_editor --parallel
 ```
 
 Build and run the editor using the helper script:
@@ -105,6 +105,8 @@ The editor runner enables the Vulkan renderer by default. To use the temporary S
 ```bash
 python run_editor.py --no-vulkan-render
 ```
+
+CMake presets write generated files under `out/build/...` so the repository root stays clear of configuration-specific build folders.
 
 ## CI
 

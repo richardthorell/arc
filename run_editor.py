@@ -15,6 +15,9 @@ import platform
 import subprocess
 import sys
 
+DEFAULT_NATIVE_BUILD_DIR = "out/build/editor-vulkan"
+DEFAULT_NATIVE_NO_VULKAN_BUILD_DIR = "out/build/editor-no-vulkan"
+
 
 def find_executable(name):
     if os.path.isabs(name) and os.path.exists(name):
@@ -59,7 +62,11 @@ def parse_args():
         action="store_true",
         help="Do not automatically run npm install when editor2 dependencies are missing.",
     )
-    parser.add_argument("--build-dir", default="build", help="CMake build directory to use for the native editor.")
+    parser.add_argument(
+        "--build-dir",
+        default=DEFAULT_NATIVE_BUILD_DIR,
+        help="CMake build directory to use for the native editor.",
+    )
     parser.add_argument("--config", default="Release", help="CMake configuration to build and run for the native editor.")
     parser.add_argument("--cmake", default="cmake", help="CMake executable to invoke for the native editor.")
     parser.add_argument("--parallel", default=None, help="Parallel native build job count. Defaults to the host CPU count.")
@@ -115,7 +122,10 @@ def find_native_editor_executable(build_dir, config):
 
 
 def run_native_editor(args, repo_root):
-    build_dir = os.path.abspath(os.path.join(repo_root, args.build_dir))
+    build_dir_name = args.build_dir
+    if build_dir_name == DEFAULT_NATIVE_BUILD_DIR and not args.vulkan_render:
+        build_dir_name = DEFAULT_NATIVE_NO_VULKAN_BUILD_DIR
+    build_dir = os.path.abspath(os.path.join(repo_root, build_dir_name))
     cmake = find_executable(args.cmake)
 
     if cmake is None:

@@ -16,6 +16,6 @@ Samples should include engine headers through the module layout, for example:
 Build samples from the repository root with:
 
 ```bash
-cmake -B build -S . -DARC_BUILD_SAMPLES=ON
-cmake --build build --config Release --target arc_boot_test_app
+cmake -B out/build/samples -S . -DARC_BUILD_SAMPLES=ON
+cmake --build out/build/samples --config Release --target arc_boot_test_app
 ```
