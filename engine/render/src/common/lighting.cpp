@@ -96,7 +96,9 @@ scene_lighting_data pack_scene_lighting(
     const std::vector<directional_light_event>& directional,
     const std::vector<point_light_event>& point,
     const std::vector<spot_light_event>& spot,
-    const environment_desc* environment)
+    const environment_desc* environment,
+    std::uint32_t point_limit,
+    std::uint32_t spot_limit)
 {
     scene_lighting_data data{};
     if (environment)
@@ -116,8 +118,10 @@ scene_lighting_data pack_scene_lighting(
     const auto sorted_spot = sorted_by_contribution(spot);
 
     data.directional_count = static_cast<std::uint32_t>(std::min<std::size_t>(sorted_directional.size(), max_directional_lights));
-    data.point_count = static_cast<std::uint32_t>(std::min<std::size_t>(sorted_point.size(), max_point_lights));
-    data.spot_count = static_cast<std::uint32_t>(std::min<std::size_t>(sorted_spot.size(), max_spot_lights));
+    point_limit = std::min(point_limit, max_point_lights);
+    spot_limit = std::min(spot_limit, max_spot_lights);
+    data.point_count = static_cast<std::uint32_t>(std::min<std::size_t>(sorted_point.size(), point_limit));
+    data.spot_count = static_cast<std::uint32_t>(std::min<std::size_t>(sorted_spot.size(), spot_limit));
     data.skipped_directional_count = static_cast<std::uint32_t>(sorted_directional.size() - data.directional_count);
     data.skipped_point_count = static_cast<std::uint32_t>(sorted_point.size() - data.point_count);
     data.skipped_spot_count = static_cast<std::uint32_t>(sorted_spot.size() - data.spot_count);

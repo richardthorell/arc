@@ -3,6 +3,7 @@
 #include <arc/render/events.h>
 #include <arc/render/handles.h>
 #include <arc/render/material.h>
+#include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
 #include <arc/geometric/box.h>
 #include <arc/math/matrix.h>
@@ -33,13 +34,22 @@ enum class scene_render_pass : std::uint8_t
  */
 struct render_camera
 {
+    math::matrix4f view{ math::identity<float, 4>() };
+    math::matrix4f projection{ math::identity<float, 4>() };
     math::matrix4f view_projection{ math::identity<float, 4>() };
+    math::matrix4f previous_view_projection{ math::identity<float, 4>() };
+    math::matrix4f inverse_view_projection{ math::identity<float, 4>() };
+    math::vector2f jitter{};
     math::vector3f position{};
     math::vector3f forward{ 0.0f, 0.0f, -1.0f };
     math::vector3f up{ 0.0f, 1.0f, 0.0f };
     math::vector4f clear_color{ 0.118f, 0.118f, 0.118f, 1.0f };
     float near_plane{ 0.01f };
     float far_plane{ 1000.0f };
+    std::uint32_t render_width{};
+    std::uint32_t render_height{};
+    std::uint32_t output_width{};
+    std::uint32_t output_height{};
 };
 
 /**
@@ -60,6 +70,7 @@ struct render_item
     material_handle material{};
     std::uint32_t submesh{};
     math::matrix4f model{ math::identity<float, 4>() };
+    math::matrix4f previous_model{ math::identity<float, 4>() };
     geometric::box3f world_bounds{};
     std::uint32_t render_layer_mask{ 1u };
     std::uint64_t sort_key{};
@@ -85,6 +96,7 @@ struct virtual_render_item
     material_handle material{};
     std::uint32_t cluster_index{};
     math::matrix4f model{ math::identity<float, 4>() };
+    math::matrix4f previous_model{ math::identity<float, 4>() };
     geometric::box3f world_bounds{};
     std::uint32_t render_layer_mask{ 1u };
     std::uint64_t sort_key{};
@@ -327,6 +339,14 @@ void prepare_render_world(render_world_packet& packet, const render_world_prepar
 /**
  * @brief Create the standard scene draw graph for viewport rendering.
  */
-render_graph make_scene_draw_graph(std::string_view target_name);
+render_graph make_scene_draw_graph(
+    std::string_view target_name,
+    render_path path = render_path::deferred,
+    bool editor_view = true);
+
+render_graph make_scene_draw_graph(
+    std::string_view target_name,
+    const resolved_render_config& config,
+    bool editor_view = true);
 
 } // namespace arc::render

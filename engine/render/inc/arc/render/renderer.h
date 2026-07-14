@@ -23,6 +23,39 @@ struct renderer_config
 {
     render_backend_type preferred_backend{ render_backend_type::vulkan };
     bool enable_validation{};
+    render_quality_tier quality{ render_quality_tier::auto_select };
+    render_path path{ render_path::auto_select };
+    std::uint32_t adapter_index{ resource_handle::invalid_index };
+    float target_frame_time_ms{ 16.6667f };
+    bool enable_dynamic_resolution{ true };
+    bool force_disable_optional_features{};
+};
+
+/**
+ * @brief Resolve project rendering policy against immutable adapter support.
+ */
+resolved_render_config resolve_render_config(
+    const renderer_config& config,
+    const render_capabilities& capabilities);
+
+/**
+ * @brief Smoothed, quantized dynamic-resolution policy shared by render paths.
+ */
+class dynamic_resolution_controller
+{
+public:
+    void reset(float target_frame_time_ms, float minimum_scale, float maximum_scale) noexcept;
+    float update(float gpu_frame_time_ms) noexcept;
+    float scale() const noexcept;
+
+private:
+    float target_frame_time_ms_{ 16.6667f };
+    float minimum_scale_{ 0.5f };
+    float maximum_scale_{ 1.0f };
+    float scale_{ 1.0f };
+    float smoothed_frame_time_ms_{ 16.6667f };
+    std::uint32_t over_budget_frames_{};
+    std::uint32_t under_budget_frames_{};
 };
 
 /**
@@ -42,11 +75,17 @@ public:
      * @brief Return the active backend, if any.
      */
     render_backend* backend() noexcept;
+    const render_backend* backend() const noexcept;
 
     /**
      * @brief Return the immutable renderer configuration.
      */
     const renderer_config& config() const noexcept;
+
+    /**
+     * @brief Return the concrete path and feature set selected for the backend.
+     */
+    const resolved_render_config& resolved_config() const noexcept;
 
     /**
      * @brief Return the queue used by producers to submit render events.
@@ -145,6 +184,7 @@ public:
 
 private:
     renderer_config config_{};
+    resolved_render_config resolved_config_{};
     std::unique_ptr<render_backend> backend_;
     render_frame_queue frame_queue_;
     handle_pool mesh_handles_;
@@ -154,6 +194,7 @@ private:
     handle_pool environment_handles_;
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
+    dynamic_resolution_controller dynamic_resolution_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
 };
 

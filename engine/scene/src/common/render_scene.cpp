@@ -114,6 +114,7 @@ void append_mesh_item(
         .mesh = mesh,
         .material = material,
         .model = world,
+        .previous_model = world,
         .world_bounds = world_bounds_for(scene, value, transform),
         .render_layer_mask = render_layer_mask(scene, value),
         .object_id = render::make_render_object_id(value.index, value.generation),
@@ -164,6 +165,7 @@ void append_virtual_mesh_items(
             .material = mesh_renderer.material,
             .cluster_index = cluster_index,
             .model = world,
+            .previous_model = world,
             .world_bounds = cluster_bounds(cluster, world),
             .render_layer_mask = layer_mask,
             .object_id = object,
@@ -254,16 +256,27 @@ render_scene_result render_scene(
 
     result.camera_found = true;
     const float aspect = viewport_height == 0 ? 1.0f : static_cast<float>(viewport_width) / static_cast<float>(viewport_height);
-    const math::matrix4f vp = view_projection(*camera, *camera_transform, aspect);
+    const math::matrix4f view = view_matrix(*camera_transform);
+    const math::matrix4f projection = camera->projection == camera_projection::orthographic
+        ? orthographic_rh_zo(camera->orthographic_height, aspect, camera->near_plane, camera->far_plane)
+        : perspective_rh_zo(camera->fov_y_radians, aspect, camera->near_plane, camera->far_plane);
+    const math::matrix4f vp = math::matmul(projection, view);
 
     render::render_world_packet world_packet;
+    world_packet.camera.view = view;
+    world_packet.camera.projection = projection;
     world_packet.camera.view_projection = vp;
+    world_packet.camera.previous_view_projection = vp;
     world_packet.camera.position = camera_transform->position;
     world_packet.camera.forward = forward_direction(*camera_transform);
     world_packet.camera.up = up_direction(*camera_transform);
     world_packet.camera.clear_color = camera->clear_color;
     world_packet.camera.near_plane = camera->near_plane;
     world_packet.camera.far_plane = camera->far_plane;
+    world_packet.camera.render_width = viewport_width;
+    world_packet.camera.render_height = viewport_height;
+    world_packet.camera.output_width = viewport_width;
+    world_packet.camera.output_height = viewport_height;
     world_packet.mode = mode;
     world_packet.visualization = visualization;
     world_packet.overlay = overlay;

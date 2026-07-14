@@ -5,6 +5,7 @@
 #include <volk.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,8 @@ using vulkan_surface_create_fn = bool (*)(VkInstance instance, VkSurfaceKHR* sur
 struct vulkan_backend_config
 {
     bool enable_validation{};
+    std::optional<std::uint32_t> adapter_index;
+    bool force_disable_optional_features{};
     std::vector<std::string> instance_extensions;
     std::vector<std::string> device_extensions;
     vulkan_surface_create_fn create_surface{};
@@ -72,6 +75,11 @@ public:
      * @brief Submit the current Dear ImGui draw data and present the swapchain.
      */
     virtual bool render_imgui_frame(void* draw_data, std::uint32_t width, std::uint32_t height, std::string& message) = 0;
+
+    /**
+     * @brief Render the current engine viewport directly to the presentation surface.
+     */
+    virtual bool render_native_viewport_frame(std::uint32_t width, std::uint32_t height, std::string& message) = 0;
 
     /**
      * @brief Shut down Dear ImGui's Vulkan renderer integration.

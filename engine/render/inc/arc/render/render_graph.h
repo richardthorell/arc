@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -8,6 +9,9 @@
 
 namespace arc::render
 {
+
+class command_encoder;
+using render_pass_record_fn = void (*)(command_encoder& encoder, void* user_data);
 
 /**
  * @brief Queue class requested by a render graph pass.
@@ -47,6 +51,43 @@ enum class render_resource_kind : std::uint8_t
 };
 
 /**
+ * @brief Backend-neutral formats used by render-graph resources.
+ */
+enum class render_format : std::uint8_t
+{
+    unknown,
+    rgba8_unorm,
+    rgba8_srgb,
+    rgba16_float,
+    rg16_float,
+    r8_unorm,
+    r32_uint,
+    d24_unorm_s8_uint,
+    d32_float
+};
+
+/**
+ * @brief Stable reference to one logical resource in a render graph.
+ */
+struct render_graph_resource_handle
+{
+    static constexpr std::uint32_t invalid_index = std::numeric_limits<std::uint32_t>::max();
+    std::uint32_t index{ invalid_index };
+
+    constexpr bool valid() const noexcept { return index != invalid_index; }
+    friend constexpr bool operator==(render_graph_resource_handle, render_graph_resource_handle) noexcept = default;
+};
+
+/**
+ * @brief How a graph resource extent is resolved for a view.
+ */
+enum class render_extent_mode : std::uint8_t
+{
+    absolute,
+    relative_to_view
+};
+
+/**
  * @brief Backend-neutral resource usage requested by a graph pass.
  */
 enum class render_resource_usage : std::uint8_t
@@ -61,6 +102,8 @@ enum class render_resource_usage : std::uint8_t
     vertex_buffer,
     index_buffer,
     uniform_buffer,
+    storage_buffer,
+    indirect_buffer,
     present
 };
 
@@ -101,7 +144,13 @@ struct render_graph_resource
     std::string name;
     render_resource_kind kind{ render_resource_kind::unknown };
     render_extent extent{};
-    std::string format;
+    render_extent_mode extent_mode{ render_extent_mode::relative_to_view };
+    float width_scale{ 1.0f };
+    float height_scale{ 1.0f };
+    render_format format{ render_format::unknown };
+    std::uint32_t mip_levels{ 1 };
+    std::uint32_t array_layers{ 1 };
+    std::uint32_t sample_count{ 1 };
     bool imported{};
     bool persistent{};
 };
@@ -111,6 +160,9 @@ struct render_graph_resource
  */
 struct render_resource_access
 {
+    render_graph_resource_handle handle{};
+    // Transitional label-based access for external graph producers. Compiled
+    // accesses always contain both the strong handle and canonical name.
     std::string resource;
     render_resource_kind kind{ render_resource_kind::unknown };
     render_resource_usage usage{ render_resource_usage::unknown };
@@ -131,6 +183,8 @@ struct render_graph_pass
     render_pass_kind kind{ render_pass_kind::custom };
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
+    render_pass_record_fn record{};
+    void* user_data{};
 };
 
 /**
@@ -144,6 +198,8 @@ struct compiled_render_pass
     render_pass_kind kind{ render_pass_kind::custom };
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
+    render_pass_record_fn record{};
+    void* user_data{};
 };
 
 /**
@@ -151,11 +207,26 @@ struct compiled_render_pass
  */
 struct render_resource_transition
 {
+    render_graph_resource_handle handle{};
     std::string resource;
     render_resource_usage before{ render_resource_usage::unknown };
     render_resource_usage after{ render_resource_usage::unknown };
     std::uint32_t before_pass{};
     std::uint32_t after_pass{};
+    render_queue_type before_queue{ render_queue_type::graphics };
+    render_queue_type after_queue{ render_queue_type::graphics };
+};
+
+/**
+ * @brief Lifetime and physical-allocation assignment for one logical resource.
+ */
+struct render_resource_lifetime
+{
+    render_graph_resource_handle handle{};
+    std::uint32_t first_pass{ std::numeric_limits<std::uint32_t>::max() };
+    std::uint32_t last_pass{};
+    std::uint32_t physical_resource{};
+    std::uint64_t estimated_bytes{};
 };
 
 /**
@@ -166,6 +237,7 @@ struct compiled_render_graph
     std::vector<compiled_render_pass> passes;
     std::vector<render_graph_resource> resources;
     std::vector<render_resource_transition> transitions;
+    std::vector<render_resource_lifetime> lifetimes;
 };
 
 /**
@@ -177,12 +249,17 @@ public:
     /**
      * @brief Declare a graph resource and return its index.
      */
-    std::uint32_t add_resource(render_graph_resource resource);
+    render_graph_resource_handle add_resource(render_graph_resource resource);
 
     /**
      * @brief Find a declared resource by name.
      */
     const render_graph_resource* find_resource(std::string_view name) const noexcept;
+
+    /**
+     * @brief Return a declared resource by strong graph handle.
+     */
+    const render_graph_resource* find_resource(render_graph_resource_handle handle) const noexcept;
 
     /**
      * @brief Add a pass declaration and return its index.
@@ -218,5 +295,10 @@ private:
  * @brief Build the initial clear/present render graph for viewport bring-up.
  */
 render_graph make_clear_present_graph(std::string_view target_name);
+
+/**
+ * @brief Return a stable display label for a typed format.
+ */
+std::string_view render_format_name(render_format format) noexcept;
 
 } // namespace arc::render

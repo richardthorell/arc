@@ -89,6 +89,19 @@ Lower-level render headers can be included directly when needed:
 #include <arc/render/resources.h>
 ```
 
+The raster renderer resolves immutable adapter capabilities into a separate
+quality/path configuration. `low` currently selects the direct forward
+fallback with 32 point/spot lights and 1024-pixel directional shadows;
+`medium` selects the deferred path. Render graphs use typed formats and strong
+resource handles, validate access hazards, and report transitions, lifetimes,
+and transient aliases to the editor.
+
+The active Vulkan implementation targets Vulkan 1.2 and queries optional
+features individually. Dynamic rendering is still required by the current
+Vulkan raster-pass implementation; a legacy `VkRenderPass` executor remains a
+follow-up before Vulkan 1.2 devices without `VK_KHR_dynamic_rendering` are
+supported.
+
 The SIMD module provides:
 
 - Type-safe SIMD abstractions: `simd<T, N>` and `simd_mask<N>`
@@ -102,15 +115,15 @@ The SIMD module provides:
 From the repository root:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release --parallel
-ctest --test-dir build --output-on-failure
+cmake --preset default
+cmake --build --preset default --parallel
+ctest --preset default
 ```
 
 The SIMD tests can also be configured directly:
 
 ```bash
-cmake -S engine/simd/tests -B build-simd-tests
-cmake --build build-simd-tests --parallel
-ctest --test-dir build-simd-tests --output-on-failure
+cmake -S engine/simd/tests -B out/build/simd-tests
+cmake --build out/build/simd-tests --parallel
+ctest --test-dir out/build/simd-tests --output-on-failure
 ```

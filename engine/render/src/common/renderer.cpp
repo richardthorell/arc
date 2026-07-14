@@ -3,12 +3,16 @@
 #include <arc/framework/application.h>
 #include <arc/diagnostics/log.h>
 
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace arc::render
 {
 namespace
 {
+
+constexpr std::uint64_t gibibyte = 1024ull * 1024ull * 1024ull;
 
 std::uint64_t renderer_resource_key(resource_handle handle) noexcept
 {
@@ -17,7 +21,144 @@ std::uint64_t renderer_resource_key(resource_handle handle) noexcept
 
 } // namespace
 
+resolved_render_config resolve_render_config(
+    const renderer_config& config,
+    const render_capabilities& capabilities)
+{
+    resolved_render_config result{};
+    result.requested_quality = config.quality;
+    result.requested_path = config.path;
+    result.target_frame_time_ms = config.target_frame_time_ms > 0.0f
+        ? config.target_frame_time_ms
+        : 16.6667f;
+
+    if (config.quality == render_quality_tier::auto_select)
+    {
+        const bool constrained_memory = capabilities.integrated_gpu ||
+            (capabilities.dedicated_video_memory != 0 &&
+                capabilities.dedicated_video_memory < 2ull * gibibyte);
+        result.quality = constrained_memory ? render_quality_tier::low : render_quality_tier::medium;
+        result.fallback_reasons.push_back(constrained_memory
+            ? "auto-selected low quality for an integrated or memory-constrained adapter"
+            : "auto-selected standard quality");
+    }
+    else if (config.quality == render_quality_tier::high)
+    {
+        result.quality = render_quality_tier::medium;
+        result.fallback_reasons.push_back("high quality currently resolves to the standard renderer");
+    }
+    else
+    {
+        result.quality = config.quality;
+    }
+
+    if (config.path == render_path::auto_select)
+        result.path = result.quality == render_quality_tier::low ? render_path::forward_plus : render_path::deferred;
+    else
+        result.path = config.path;
+
+    if (result.quality == render_quality_tier::low)
+    {
+        result.minimum_render_scale = config.enable_dynamic_resolution ? 0.5f : 1.0f;
+        result.max_point_lights = 32;
+        result.max_spot_lights = 32;
+        result.directional_shadow_cascades = 2;
+        result.directional_shadow_resolution = 1024;
+    }
+    else
+    {
+        result.minimum_render_scale = config.enable_dynamic_resolution ? 0.67f : 1.0f;
+    }
+
+    result.maximum_render_scale = 1.0f;
+    const bool optional_features = !config.force_disable_optional_features;
+    result.features = {
+        .dynamic_rendering = optional_features && capabilities.dynamic_rendering,
+        .synchronization2 = optional_features && capabilities.synchronization2,
+        .timeline_semaphores = optional_features && capabilities.timeline_semaphores,
+        .descriptor_indexing = optional_features && capabilities.descriptor_indexing,
+        .descriptor_buffer = optional_features && capabilities.descriptor_buffer,
+        .draw_indirect = capabilities.draw_indirect,
+        .draw_indirect_count = optional_features && capabilities.draw_indirect_count,
+        .sampler_anisotropy = optional_features && capabilities.sampler_anisotropy,
+        .texture_compression_bc = capabilities.texture_compression_bc,
+        .mesh_shaders = optional_features && capabilities.mesh_shaders,
+        .ray_tracing = optional_features && capabilities.ray_tracing,
+        .variable_rate_shading = optional_features && capabilities.variable_rate_shading
+    };
+
+    if (config.force_disable_optional_features)
+        result.fallback_reasons.push_back("optional GPU features were disabled by renderer configuration");
+    if (!capabilities.dynamic_rendering)
+        result.fallback_reasons.push_back("dynamic rendering is unavailable; use the compatibility render-pass path");
+    if (!capabilities.synchronization2)
+        result.fallback_reasons.push_back("synchronization2 is unavailable; use legacy barriers and submission");
+    if (!capabilities.timeline_semaphores)
+        result.fallback_reasons.push_back("timeline semaphores are unavailable; use per-frame fences");
+    if (!capabilities.descriptor_indexing)
+        result.fallback_reasons.push_back("descriptor indexing is unavailable; use classic descriptor sets");
+
+    return result;
+}
+
+void dynamic_resolution_controller::reset(
+    float target_frame_time_ms,
+    float minimum_scale,
+    float maximum_scale) noexcept
+{
+    target_frame_time_ms_ = std::max(1.0f, target_frame_time_ms);
+    minimum_scale_ = std::clamp(minimum_scale, 0.25f, 1.0f);
+    maximum_scale_ = std::clamp(maximum_scale, minimum_scale_, 1.0f);
+    scale_ = maximum_scale_;
+    smoothed_frame_time_ms_ = target_frame_time_ms_;
+    over_budget_frames_ = 0;
+    under_budget_frames_ = 0;
+}
+
+float dynamic_resolution_controller::update(float gpu_frame_time_ms) noexcept
+{
+    if (!(gpu_frame_time_ms > 0.0f) || !std::isfinite(gpu_frame_time_ms))
+        return scale_;
+
+    smoothed_frame_time_ms_ += (gpu_frame_time_ms - smoothed_frame_time_ms_) * 0.2f;
+    if (smoothed_frame_time_ms_ > target_frame_time_ms_ * 1.04f)
+    {
+        ++over_budget_frames_;
+        under_budget_frames_ = 0;
+        if (over_budget_frames_ >= 3)
+        {
+            scale_ = std::max(minimum_scale_, scale_ - 1.0f / 16.0f);
+            over_budget_frames_ = 0;
+        }
+    }
+    else if (smoothed_frame_time_ms_ < target_frame_time_ms_ * 0.82f)
+    {
+        ++under_budget_frames_;
+        over_budget_frames_ = 0;
+        if (under_budget_frames_ >= 8)
+        {
+            scale_ = std::min(maximum_scale_, scale_ + 1.0f / 16.0f);
+            under_budget_frames_ = 0;
+        }
+    }
+    else
+    {
+        over_budget_frames_ = 0;
+        under_budget_frames_ = 0;
+    }
+    return scale_;
+}
+
+float dynamic_resolution_controller::scale() const noexcept
+{
+    return scale_;
+}
+
 void render_backend::resize_viewport(std::uint32_t, std::uint32_t)
+{
+}
+
+void render_backend::configure(const resolved_render_config&)
 {
 }
 
@@ -40,6 +181,24 @@ render_object_pick_result render_backend::last_object_pick() const
     return {};
 }
 
+void execute_render_graph(const compiled_render_graph& graph, command_encoder& encoder)
+{
+    for (std::uint32_t pass_index = 0; pass_index < graph.passes.size(); ++pass_index)
+    {
+        for (const auto& transition : graph.transitions)
+        {
+            if (transition.after_pass == pass_index)
+                encoder.resource_barrier(transition);
+        }
+
+        const auto& pass = graph.passes[pass_index];
+        encoder.begin_pass(pass);
+        if (pass.record)
+            pass.record(encoder, pass.user_data);
+        encoder.end_pass();
+    }
+}
+
 renderer::renderer(renderer_config config)
     : config_(config)
 {
@@ -48,6 +207,16 @@ renderer::renderer(renderer_config config)
 void renderer::set_backend(std::unique_ptr<render_backend> backend)
 {
     backend_ = std::move(backend);
+    if (backend_)
+    {
+        resolved_config_ = resolve_render_config(config_, backend_->capabilities());
+        dynamic_resolution_.reset(
+            resolved_config_.target_frame_time_ms,
+            resolved_config_.minimum_render_scale,
+            resolved_config_.maximum_render_scale);
+        resolved_config_.render_scale = dynamic_resolution_.scale();
+        backend_->configure(resolved_config_);
+    }
 }
 
 render_backend* renderer::backend() noexcept
@@ -55,9 +224,19 @@ render_backend* renderer::backend() noexcept
     return backend_.get();
 }
 
+const render_backend* renderer::backend() const noexcept
+{
+    return backend_.get();
+}
+
 const renderer_config& renderer::config() const noexcept
 {
     return config_;
+}
+
+const resolved_render_config& renderer::resolved_config() const noexcept
+{
+    return resolved_config_;
 }
 
 render_frame_queue& renderer::frame_queue() noexcept
@@ -218,6 +397,20 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
 
     if (!backend_)
         return { .submitted = false, .message = "no render backend attached" };
+
+    if (config_.enable_dynamic_resolution)
+    {
+        float gpu_frame_time_ms{};
+        for (const auto& timing : backend_->last_frame_profile().pass_timings)
+            gpu_frame_time_ms += static_cast<float>(timing.milliseconds);
+        if (gpu_frame_time_ms > 0.0f)
+        {
+            const float previous_scale = resolved_config_.render_scale;
+            resolved_config_.render_scale = dynamic_resolution_.update(gpu_frame_time_ms);
+            if (resolved_config_.render_scale != previous_scale)
+                backend_->configure(resolved_config_);
+        }
+    }
 
     for (const auto& event : packet.events)
     {

@@ -175,6 +175,8 @@ scene_lighting_data pack_scene_lighting(
     const std::vector<directional_light_event>& directional,
     const std::vector<point_light_event>& point,
     const std::vector<spot_light_event>& spot,
-    const environment_desc* environment = nullptr);
+    const environment_desc* environment = nullptr,
+    std::uint32_t point_limit = max_point_lights,
+    std::uint32_t spot_limit = max_spot_lights);
 
 } // namespace arc::render

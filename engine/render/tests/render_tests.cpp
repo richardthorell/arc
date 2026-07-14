@@ -35,6 +35,11 @@ public:
         return capabilities_;
     }
 
+    void configure(const arc::render::resolved_render_config& config) override
+    {
+        configured = config;
+    }
+
     arc::render::render_submit_result submit(
         const arc::render::render_frame_packet& packet,
         const arc::render::compiled_render_graph& graph) override
@@ -82,6 +87,7 @@ public:
     }
 
     arc::render::render_capabilities capabilities_{};
+    arc::render::resolved_render_config configured{};
     arc::render::render_backend_frame_profile profile{};
     arc::render::render_object_pick_request pick_request{};
     std::uint64_t last_frame{};
@@ -92,6 +98,34 @@ public:
     std::uint32_t viewport_height{};
     bool pick_requested{};
 };
+
+class recording_command_encoder final : public arc::render::command_encoder
+{
+public:
+    void resource_barrier(const arc::render::render_resource_transition& transition) override
+    {
+        barriers.push_back(transition.resource);
+    }
+
+    void begin_pass(const arc::render::compiled_render_pass& pass) override
+    {
+        passes.push_back(pass.name);
+    }
+
+    void end_pass() override
+    {
+        ++ended_passes;
+    }
+
+    std::vector<std::string> barriers;
+    std::vector<std::string> passes;
+    std::size_t ended_passes{};
+};
+
+void count_recorded_pass(arc::render::command_encoder&, void* user_data)
+{
+    ++*static_cast<std::uint32_t*>(user_data);
+}
 
 void append_u32(std::vector<std::byte>& bytes, std::uint32_t value)
 {
@@ -363,15 +397,22 @@ TEST_CASE("render frame queue accepts producer buffers from multiple threads")
 TEST_CASE("render graph orders passes by declared resources")
 {
     arc::render::render_graph graph;
-    graph.add_pass({
-        .name = "present",
-        .kind = arc::render::render_pass_kind::present,
-        .reads = { { .resource = "backbuffer" } }
+    const auto backbuffer = graph.add_resource({
+        .name = "backbuffer",
+        .kind = arc::render::render_resource_kind::color_texture,
+        .format = arc::render::render_format::rgba8_unorm
     });
     graph.add_pass({
         .name = "clear",
         .kind = arc::render::render_pass_kind::clear,
-        .writes = { { .resource = "backbuffer", .write = true } }
+        .writes = { { .handle = backbuffer, .kind = arc::render::render_resource_kind::color_texture,
+            .usage = arc::render::render_resource_usage::color_attachment, .write = true } }
+    });
+    graph.add_pass({
+        .name = "present",
+        .kind = arc::render::render_pass_kind::present,
+        .reads = { { .handle = backbuffer, .kind = arc::render::render_resource_kind::color_texture,
+            .usage = arc::render::render_resource_usage::sampled } }
     });
 
     const auto compiled = graph.compile();
@@ -387,7 +428,7 @@ TEST_CASE("render graph compiles typed resources and transitions")
         .name = "viewport",
         .kind = arc::render::render_resource_kind::color_texture,
         .extent = { .width = 1280, .height = 720 },
-        .format = "rgba8",
+        .format = arc::render::render_format::rgba8_unorm,
         .persistent = true
     });
 
@@ -415,12 +456,82 @@ TEST_CASE("render graph compiles typed resources and transitions")
     const auto compiled = graph.compile();
     REQUIRE(compiled.resources.size() == 1);
     REQUIRE(compiled.resources[0].name == "viewport");
+    REQUIRE(compiled.resources[0].format == arc::render::render_format::rgba8_unorm);
     REQUIRE(compiled.passes.size() == 2);
     REQUIRE(compiled.passes[0].writes[0].usage == arc::render::render_resource_usage::color_attachment);
     REQUIRE(compiled.transitions.size() == 1);
     REQUIRE(compiled.transitions[0].resource == "viewport");
     REQUIRE(compiled.transitions[0].before == arc::render::render_resource_usage::color_attachment);
     REQUIRE(compiled.transitions[0].after == arc::render::render_resource_usage::sampled);
+}
+
+TEST_CASE("compiled render graph executes passes and barriers through a command encoder")
+{
+    arc::render::render_graph graph;
+    const auto target = graph.add_resource({
+        .name = "target",
+        .kind = arc::render::render_resource_kind::color_texture,
+        .format = arc::render::render_format::rgba8_unorm
+    });
+    std::uint32_t recorded{};
+    graph.add_pass({
+        .name = "produce",
+        .writes = { { .handle = target, .kind = arc::render::render_resource_kind::color_texture,
+            .usage = arc::render::render_resource_usage::color_attachment, .write = true } },
+        .record = count_recorded_pass,
+        .user_data = &recorded
+    });
+    graph.add_pass({
+        .name = "consume",
+        .reads = { { .handle = target, .kind = arc::render::render_resource_kind::color_texture,
+            .usage = arc::render::render_resource_usage::sampled } },
+        .record = count_recorded_pass,
+        .user_data = &recorded
+    });
+
+    recording_command_encoder encoder;
+    arc::render::execute_render_graph(graph.compile(), encoder);
+
+    REQUIRE(encoder.passes == std::vector<std::string>{ "produce", "consume" });
+    REQUIRE(encoder.barriers == std::vector<std::string>{ "target" });
+    REQUIRE(encoder.ended_passes == 2);
+    REQUIRE(recorded == 2);
+}
+
+TEST_CASE("render graph rejects invalid resource declarations and internal reads")
+{
+    arc::render::render_graph undeclared;
+    undeclared.add_pass({
+        .name = "bad read",
+        .reads = { { .resource = "missing", .usage = arc::render::render_resource_usage::sampled } }
+    });
+    REQUIRE_THROWS_AS(undeclared.compile(), std::invalid_argument);
+
+    arc::render::render_graph read_before_write;
+    const auto transient = read_before_write.add_resource({
+        .name = "transient",
+        .kind = arc::render::render_resource_kind::color_texture,
+        .format = arc::render::render_format::rgba8_unorm
+    });
+    read_before_write.add_pass({
+        .name = "bad read",
+        .reads = { { .handle = transient, .kind = arc::render::render_resource_kind::color_texture,
+            .usage = arc::render::render_resource_usage::sampled } }
+    });
+    REQUIRE_THROWS_AS(read_before_write.compile(), std::invalid_argument);
+
+    arc::render::render_graph incompatible;
+    const auto depth = incompatible.add_resource({
+        .name = "depth",
+        .kind = arc::render::render_resource_kind::depth_texture,
+        .format = arc::render::render_format::d32_float
+    });
+    incompatible.add_pass({
+        .name = "bad attachment",
+        .writes = { { .handle = depth, .kind = arc::render::render_resource_kind::depth_texture,
+            .usage = arc::render::render_resource_usage::color_attachment, .write = true } }
+    });
+    REQUIRE_THROWS_AS(incompatible.compile(), std::invalid_argument);
 }
 
 TEST_CASE("clear present graph declares the bring-up passes")
@@ -435,12 +546,12 @@ TEST_CASE("clear present graph declares the bring-up passes")
     REQUIRE_FALSE(compiled.transitions.empty());
 }
 
-TEST_CASE("scene draw graph declares modern viewport pass order")
+TEST_CASE("scene draw graph selects only implemented deferred passes")
 {
-    const auto graph = arc::render::make_scene_draw_graph("viewport");
+    const auto graph = arc::render::make_scene_draw_graph("viewport", arc::render::render_path::deferred);
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 15);
+    REQUIRE(compiled.passes.size() == 7);
     const auto pass_index = [&](std::string_view name) {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
@@ -451,35 +562,36 @@ TEST_CASE("scene draw graph declares modern viewport pass order")
     };
 
     const std::size_t shadow_index = pass_index("directional shadow cascades");
-    const std::size_t spot_shadow_index = pass_index("spot shadow maps");
-    const std::size_t point_shadow_index = pass_index("point shadow cubemaps");
     const std::size_t sky_index = pass_index("sky atmosphere");
     const std::size_t depth_index = pass_index("depth prepass");
     const std::size_t gbuffer_index = pass_index("gbuffer pass");
-    const std::size_t cluster_index = pass_index("clustered light culling");
     const std::size_t deferred_index = pass_index("deferred lighting");
-    const std::size_t terrain_index = pass_index("terrain pass");
-    const std::size_t vegetation_index = pass_index("vegetation pass");
-    const std::size_t water_index = pass_index("water/forward transparent pass");
-    const std::size_t fog_index = pass_index("height fog");
+    const std::size_t transparent_index = pass_index("forward transparent");
     for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         REQUIRE_FALSE(compiled.passes[index].name.empty());
 
     REQUIRE(shadow_index < gbuffer_index);
-    REQUIRE(spot_shadow_index < deferred_index);
-    REQUIRE(point_shadow_index < deferred_index);
     REQUIRE(depth_index < gbuffer_index);
     REQUIRE(gbuffer_index < deferred_index);
-    REQUIRE(depth_index < cluster_index);
-    REQUIRE(cluster_index < deferred_index);
-    REQUIRE(deferred_index < terrain_index);
-    REQUIRE(sky_index < terrain_index);
-    REQUIRE(terrain_index < vegetation_index);
-    REQUIRE(vegetation_index < water_index);
-    REQUIRE(water_index < fog_index);
+    REQUIRE(sky_index < deferred_index);
+    REQUIRE(deferred_index < transparent_index);
     REQUIRE(compiled.passes.back().name == "present viewport");
-    REQUIRE(compiled.resources.size() == 14);
+    REQUIRE(compiled.resources.size() == 9);
+    REQUIRE(compiled.resources[4].format == arc::render::render_format::rgba8_srgb);
+    REQUIRE(compiled.lifetimes.size() == compiled.resources.size());
     REQUIRE_FALSE(compiled.transitions.empty());
+}
+
+TEST_CASE("scene draw graph provides a compact forward plus fallback")
+{
+    const auto compiled = arc::render::make_scene_draw_graph(
+        "viewport", arc::render::render_path::forward_plus, false).compile();
+
+    REQUIRE(compiled.passes.size() == 6);
+    REQUIRE(compiled.resources.size() == 4);
+    REQUIRE(compiled.passes[3].name == "forward opaque");
+    for (const auto& pass : compiled.passes)
+        REQUIRE(pass.name != "gbuffer pass");
 }
 
 TEST_CASE("directional shadow cascade splits are deterministic and ordered")
@@ -552,6 +664,73 @@ TEST_CASE("renderer submits committed packets to attached backend")
     REQUIRE(backend_ptr->last_pass_count == 2);
 }
 
+TEST_CASE("renderer resolves low quality policy and optional feature overrides")
+{
+    arc::render::render_capabilities capabilities{};
+    capabilities.dedicated_video_memory = 1024ull * 1024ull * 1024ull;
+    capabilities.dynamic_rendering = true;
+    capabilities.synchronization2 = true;
+    capabilities.timeline_semaphores = true;
+    capabilities.descriptor_indexing = true;
+    capabilities.draw_indirect = true;
+    capabilities.draw_indirect_count = true;
+    capabilities.sampler_anisotropy = true;
+    capabilities.texture_compression_bc = true;
+
+    arc::render::renderer_config config{};
+    config.force_disable_optional_features = true;
+    const auto resolved = arc::render::resolve_render_config(config, capabilities);
+
+    REQUIRE(resolved.quality == arc::render::render_quality_tier::low);
+    REQUIRE(resolved.path == arc::render::render_path::forward_plus);
+    REQUIRE(resolved.minimum_render_scale == Catch::Approx(0.5f));
+    REQUIRE(resolved.max_point_lights == 32);
+    REQUIRE(resolved.directional_shadow_cascades == 2);
+    REQUIRE(resolved.directional_shadow_resolution == 1024);
+    REQUIRE(resolved.features.draw_indirect);
+    REQUIRE(resolved.features.texture_compression_bc);
+    REQUIRE_FALSE(resolved.features.dynamic_rendering);
+    REQUIRE_FALSE(resolved.features.timeline_semaphores);
+    REQUIRE_FALSE(resolved.features.descriptor_indexing);
+    REQUIRE_FALSE(resolved.fallback_reasons.empty());
+}
+
+TEST_CASE("renderer applies resolved configuration when attaching a backend")
+{
+    auto backend = std::make_unique<recording_backend>();
+    backend->capabilities_.dedicated_video_memory = 4ull * 1024ull * 1024ull * 1024ull;
+    backend->capabilities_.dynamic_rendering = true;
+    auto* backend_ptr = backend.get();
+
+    arc::render::renderer_config config{};
+    config.quality = arc::render::render_quality_tier::high;
+    arc::render::renderer renderer(config);
+    renderer.set_backend(std::move(backend));
+
+    REQUIRE(renderer.resolved_config().quality == arc::render::render_quality_tier::medium);
+    REQUIRE(renderer.resolved_config().path == arc::render::render_path::deferred);
+    REQUIRE(backend_ptr->configured.quality == arc::render::render_quality_tier::medium);
+    REQUIRE_FALSE(backend_ptr->configured.fallback_reasons.empty());
+}
+
+TEST_CASE("dynamic resolution uses smoothed hysteresis and sixteenth steps")
+{
+    arc::render::dynamic_resolution_controller controller;
+    controller.reset(16.6667f, 0.5f, 1.0f);
+
+    for (std::uint32_t index = 0; index < 12; ++index)
+        controller.update(30.0f);
+    const float reduced = controller.scale();
+    REQUIRE(reduced < 1.0f);
+    REQUIRE(reduced >= 0.5f);
+    REQUIRE(std::round(reduced * 16.0f) == Catch::Approx(reduced * 16.0f));
+
+    for (std::uint32_t index = 0; index < 48; ++index)
+        controller.update(5.0f);
+    REQUIRE(controller.scale() > reduced);
+    REQUIRE(controller.scale() <= 1.0f);
+}
+
 TEST_CASE("renderer exposes compiled render graph snapshots through frame profile")
 {
     auto backend = std::make_unique<recording_backend>();
@@ -568,7 +747,7 @@ TEST_CASE("renderer exposes compiled render graph snapshots through frame profil
     REQUIRE(profile.graph.passes.size() == backend_ptr->last_pass_count);
     REQUIRE_FALSE(profile.graph.resources.empty());
     REQUIRE(profile.graph.resources[2].name == "scene_color");
-    REQUIRE(profile.graph.resources[2].format == "rgba16f");
+    REQUIRE(profile.graph.resources[2].format == arc::render::render_format::rgba16_float);
     REQUIRE(profile.clustered_lights.available);
     REQUIRE(profile.clustered_lights.cluster_count == 96);
     REQUIRE(profile.clustered_lights.overflow_count == 1);

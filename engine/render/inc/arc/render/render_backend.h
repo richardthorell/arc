@@ -23,13 +23,57 @@ enum class render_backend_type : std::uint8_t
 };
 
 /**
+ * @brief Renderer quality policy selected by a project or resolved from hardware.
+ */
+enum class render_quality_tier : std::uint8_t
+{
+    auto_select,
+    low,
+    medium,
+    high
+};
+
+/**
+ * @brief Backend-neutral raster path used for a view.
+ */
+enum class render_path : std::uint8_t
+{
+    auto_select,
+    forward_plus,
+    deferred
+};
+
+/**
  * @brief Optional backend features exposed through capability queries.
  */
 struct render_capabilities
 {
     render_backend_type backend{ render_backend_type::vulkan };
-    std::uint32_t api_major{ 1 };
-    std::uint32_t api_minor{ 3 };
+    std::uint32_t api_major{};
+    std::uint32_t api_minor{};
+    std::string adapter_name;
+    std::string driver_name;
+    std::uint32_t vendor_id{};
+    std::uint32_t device_id{};
+    std::uint64_t driver_version{};
+    bool discrete_gpu{};
+    bool integrated_gpu{};
+    std::uint64_t dedicated_video_memory{};
+    std::uint64_t shared_system_memory{};
+    std::uint64_t memory_budget{};
+    std::uint64_t memory_usage{};
+    std::uint32_t max_texture_dimension_2d{};
+    std::uint32_t max_color_attachments{};
+    std::uint32_t max_compute_workgroup_invocations{};
+    bool graphics_queue{};
+    bool compute_queue{};
+    bool transfer_queue{};
+    bool presentation{};
+    bool gpu_timestamps{};
+    bool draw_indirect{};
+    bool draw_indirect_count{};
+    bool sampler_anisotropy{};
+    bool texture_compression_bc{};
     bool synchronization2{};
     bool timeline_semaphores{};
     bool dynamic_rendering{};
@@ -39,6 +83,49 @@ struct render_capabilities
     bool ray_tracing{};
     bool variable_rate_shading{};
     bool fill_mode_non_solid{};
+};
+
+/**
+ * @brief Optional features enabled for the active renderer path.
+ *
+ * Capabilities describe immutable adapter facts. This structure describes the
+ * subset the renderer deliberately enabled and may therefore use.
+ */
+struct render_feature_set
+{
+    bool dynamic_rendering{};
+    bool synchronization2{};
+    bool timeline_semaphores{};
+    bool descriptor_indexing{};
+    bool descriptor_buffer{};
+    bool draw_indirect{};
+    bool draw_indirect_count{};
+    bool sampler_anisotropy{};
+    bool texture_compression_bc{};
+    bool mesh_shaders{};
+    bool ray_tracing{};
+    bool variable_rate_shading{};
+};
+
+/**
+ * @brief Concrete settings selected after applying project policy to hardware.
+ */
+struct resolved_render_config
+{
+    render_quality_tier requested_quality{ render_quality_tier::auto_select };
+    render_quality_tier quality{ render_quality_tier::medium };
+    render_path requested_path{ render_path::auto_select };
+    render_path path{ render_path::deferred };
+    render_feature_set features{};
+    float target_frame_time_ms{ 16.6667f };
+    float minimum_render_scale{ 0.67f };
+    float maximum_render_scale{ 1.0f };
+    float render_scale{ 1.0f };
+    std::uint32_t max_point_lights{ 64 };
+    std::uint32_t max_spot_lights{ 64 };
+    std::uint32_t directional_shadow_cascades{ 4 };
+    std::uint32_t directional_shadow_resolution{ 2048 };
+    std::vector<std::string> fallback_reasons;
 };
 
 /**
@@ -75,7 +162,16 @@ class command_encoder
 {
 public:
     virtual ~command_encoder() = default;
+
+    virtual void resource_barrier(const render_resource_transition& transition) = 0;
+    virtual void begin_pass(const compiled_render_pass& pass) = 0;
+    virtual void end_pass() = 0;
 };
+
+/**
+ * @brief Execute a compiled plan through a backend-neutral command encoder.
+ */
+void execute_render_graph(const compiled_render_graph& graph, command_encoder& encoder);
 
 /**
  * @brief Abstract resource allocator.
@@ -148,6 +244,7 @@ struct render_backend_frame_profile
     std::string summary;
     compiled_render_graph graph;
     clustered_light_grid_profile clustered_lights;
+    resolved_render_config configuration;
 };
 
 /**
@@ -207,6 +304,11 @@ public:
      * @brief Return optional feature support.
      */
     virtual const render_capabilities& capabilities() const noexcept = 0;
+
+    /**
+     * @brief Apply the renderer's resolved feature and quality policy.
+     */
+    virtual void configure(const resolved_render_config& config);
 
     /**
      * @brief Submit one immutable frame packet and compiled graph.

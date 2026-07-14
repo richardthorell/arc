@@ -38,6 +38,22 @@ void log_vk_result(VkResult result)
         arc::error("render.vulkan", "Vulkan call failed");
 }
 
+void cmd_begin_rendering(VkCommandBuffer command_buffer, const VkRenderingInfo* rendering)
+{
+    if (vkCmdBeginRendering != nullptr)
+        vkCmdBeginRendering(command_buffer, rendering);
+    else
+        vkCmdBeginRenderingKHR(command_buffer, rendering);
+}
+
+void cmd_end_rendering(VkCommandBuffer command_buffer)
+{
+    if (vkCmdEndRendering != nullptr)
+        vkCmdEndRendering(command_buffer);
+    else
+        vkCmdEndRenderingKHR(command_buffer);
+}
+
 std::uint64_t resource_key(resource_handle handle) noexcept
 {
     return (static_cast<std::uint64_t>(handle.generation) << 32u) | handle.index;
@@ -273,6 +289,22 @@ public:
         return capabilities_;
     }
 
+    void configure(const resolved_render_config& config) override
+    {
+        const float previous_scale = resolved_config_.render_scale;
+        resolved_config_ = config;
+        last_profile_.configuration = config;
+#if ARC_RENDER_VULKAN_ENABLE_IMGUI
+        if (imgui_initialized_ && previous_scale != config.render_scale &&
+            output_viewport_width_ > 0 && output_viewport_height_ > 0)
+        {
+            ensure_viewport(
+                scaled_dimension(output_viewport_width_),
+                scaled_dimension(output_viewport_height_));
+        }
+#endif
+    }
+
     VkInstance instance() const noexcept override
     {
         return instance_;
@@ -347,16 +379,13 @@ public:
         last_profile_.summary += std::to_string(packet.events.size());
         last_profile_.summary += " render event(s)";
 
-        pending_graph_pass_names_.clear();
-        pending_graph_pass_names_.reserve(graph.passes.size());
-        for (const auto& pass : graph.passes)
-            pending_graph_pass_names_.push_back(pass.name);
-
         frame_lighting_ = pack_scene_lighting(
             frame_directional_lights_,
             frame_point_lights_,
             frame_spot_lights_,
-            active_environment());
+            active_environment(),
+            resolved_config_.max_point_lights,
+            resolved_config_.max_spot_lights);
         last_profile_.clustered_lights = make_clustered_light_profile();
         update_light_buffer();
         warn_about_skipped_lights(frame_lighting_);
@@ -370,8 +399,10 @@ public:
     void resize_viewport(std::uint32_t width, std::uint32_t height) override
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
+        output_viewport_width_ = width;
+        output_viewport_height_ = height;
         if (imgui_initialized_ && width > 0 && height > 0)
-            ensure_viewport(width, height);
+            ensure_viewport(scaled_dimension(width), scaled_dimension(height));
 #else
         (void)width;
         (void)height;
@@ -452,7 +483,7 @@ public:
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 
         ImGui_ImplVulkan_InitInfo init_info{};
-        init_info.ApiVersion = VK_API_VERSION_1_3;
+        init_info.ApiVersion = VK_API_VERSION_1_2;
         init_info.Instance = instance_;
         init_info.PhysicalDevice = physical_device_;
         init_info.Device = device_;
@@ -473,7 +504,11 @@ public:
         }
 
         imgui_initialized_ = true;
-        ensure_viewport(std::max(1u, width / 2), std::max(1u, height / 2));
+        output_viewport_width_ = std::max(1u, width / 2);
+        output_viewport_height_ = std::max(1u, height / 2);
+        ensure_viewport(
+            scaled_dimension(output_viewport_width_),
+            scaled_dimension(output_viewport_height_));
         message = "initialized Vulkan editor presentation";
         return true;
 #else
@@ -560,7 +595,9 @@ public:
         render_shadow_maps(frame->CommandBuffer);
         end_gpu_scope(frame->CommandBuffer, shadow_scope);
 
-        const auto viewport_scope = begin_gpu_scope(frame->CommandBuffer, graph_pass_name(0, "viewport clear/mesh"));
+        const auto viewport_scope = begin_gpu_scope(
+            frame->CommandBuffer,
+            resolved_config_.path == render_path::forward_plus ? "forward+ viewport raster" : "deferred viewport raster");
         render_viewport(frame->CommandBuffer);
         end_gpu_scope(frame->CommandBuffer, viewport_scope);
 
@@ -634,17 +671,251 @@ public:
 #endif
     }
 
+    bool render_native_viewport_frame(std::uint32_t width, std::uint32_t height, std::string& message) override
+    {
+#if ARC_RENDER_VULKAN_ENABLE_IMGUI
+        if (surface_ == VK_NULL_HANDLE)
+        {
+            message = "Vulkan backend was created without a presentation surface";
+            return false;
+        }
+        if (width == 0 || height == 0)
+            return true;
+
+        if (!native_swapchain_initialized_)
+        {
+            VkBool32 present_supported = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(physical_device_, graphics_queue_family_, surface_, &present_supported);
+            if (present_supported != VK_TRUE)
+            {
+                message = "Vulkan queue does not support the native viewport surface";
+                return false;
+            }
+
+            const std::array<VkFormat, 4> formats{
+                VK_FORMAT_B8G8R8A8_UNORM,
+                VK_FORMAT_R8G8B8A8_UNORM,
+                VK_FORMAT_B8G8R8_UNORM,
+                VK_FORMAT_R8G8B8_UNORM
+            };
+            window_.Surface = surface_;
+            window_.SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(
+                physical_device_,
+                window_.Surface,
+                formats.data(),
+                formats.size(),
+                VK_COLORSPACE_SRGB_NONLINEAR_KHR);
+
+            const VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
+            window_.PresentMode = ImGui_ImplVulkanH_SelectPresentMode(physical_device_, window_.Surface, &present_mode, 1);
+            ImGui_ImplVulkanH_CreateOrResizeWindow(
+                instance_,
+                physical_device_,
+                device_,
+                &window_,
+                graphics_queue_family_,
+                nullptr,
+                static_cast<int>(width),
+                static_cast<int>(height),
+                min_image_count_,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            viewport_format_ = window_.SurfaceFormat.format;
+            native_swapchain_initialized_ = true;
+        }
+
+        if (swapchain_rebuild_ || window_.Width != static_cast<int>(width) || window_.Height != static_cast<int>(height))
+        {
+            ImGui_ImplVulkanH_CreateOrResizeWindow(
+                instance_,
+                physical_device_,
+                device_,
+                &window_,
+                graphics_queue_family_,
+                nullptr,
+                static_cast<int>(width),
+                static_cast<int>(height),
+                min_image_count_,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            window_.FrameIndex = 0;
+            swapchain_rebuild_ = false;
+        }
+
+        ensure_viewport(scaled_dimension(width), scaled_dimension(height));
+
+        VkSemaphore image_acquired_semaphore = window_.FrameSemaphores[window_.SemaphoreIndex].ImageAcquiredSemaphore;
+        VkSemaphore render_complete_semaphore = window_.FrameSemaphores[window_.SemaphoreIndex].RenderCompleteSemaphore;
+        VkResult result = vkAcquireNextImageKHR(device_, window_.Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &window_.FrameIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+        {
+            swapchain_rebuild_ = true;
+            return true;
+        }
+        if (result != VK_SUCCESS)
+        {
+            message = "failed to acquire native viewport swapchain image";
+            return false;
+        }
+        active_frame_index_ = window_.FrameIndex;
+
+        ImGui_ImplVulkanH_Frame* frame = &window_.Frames[window_.FrameIndex];
+        vkWaitForFences(device_, 1, &frame->Fence, VK_TRUE, UINT64_MAX);
+        collect_timestamp_results();
+        collect_object_pick_result();
+        retire_completed_resources();
+        vkResetFences(device_, 1, &frame->Fence);
+        vkResetCommandPool(device_, frame->CommandPool, 0);
+
+        prepare_frame_gpu_resources();
+
+        VkCommandBufferBeginInfo begin_info{};
+        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(frame->CommandBuffer, &begin_info);
+
+        begin_debug_label(frame->CommandBuffer, "ARC native viewport frame", { 0.16f, 0.45f, 1.0f, 1.0f });
+        reset_timestamp_queries(frame->CommandBuffer);
+
+        const auto shadow_scope = begin_gpu_scope(frame->CommandBuffer, "directional shadow cascades");
+        render_shadow_maps(frame->CommandBuffer);
+        end_gpu_scope(frame->CommandBuffer, shadow_scope);
+
+        const auto viewport_scope = begin_gpu_scope(
+            frame->CommandBuffer,
+            resolved_config_.path == render_path::forward_plus ? "forward+ viewport raster" : "deferred viewport raster");
+        render_viewport(frame->CommandBuffer);
+        end_gpu_scope(frame->CommandBuffer, viewport_scope);
+
+        transition_viewport(frame->CommandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+        VkImageMemoryBarrier swapchain_to_transfer{};
+        swapchain_to_transfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        swapchain_to_transfer.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        swapchain_to_transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        swapchain_to_transfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        swapchain_to_transfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        swapchain_to_transfer.image = frame->Backbuffer;
+        swapchain_to_transfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        swapchain_to_transfer.subresourceRange.levelCount = 1;
+        swapchain_to_transfer.subresourceRange.layerCount = 1;
+        swapchain_to_transfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(
+            frame->CommandBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            1,
+            &swapchain_to_transfer);
+
+        VkImageBlit blit{};
+        blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.layerCount = 1;
+        blit.srcOffsets[1] = {
+            static_cast<std::int32_t>(viewport_width_),
+            static_cast<std::int32_t>(viewport_height_),
+            1
+        };
+        blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.layerCount = 1;
+        blit.dstOffsets[1] = {
+            static_cast<std::int32_t>(width),
+            static_cast<std::int32_t>(height),
+            1
+        };
+        vkCmdBlitImage(
+            frame->CommandBuffer,
+            viewport_image_,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            frame->Backbuffer,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &blit,
+            VK_FILTER_LINEAR);
+
+        VkImageMemoryBarrier swapchain_to_present = swapchain_to_transfer;
+        swapchain_to_present.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        swapchain_to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        swapchain_to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        swapchain_to_present.dstAccessMask = 0;
+        vkCmdPipelineBarrier(
+            frame->CommandBuffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            1,
+            &swapchain_to_present);
+
+        end_debug_label(frame->CommandBuffer);
+        vkEndCommandBuffer(frame->CommandBuffer);
+
+        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.waitSemaphoreCount = 1;
+        submit.pWaitSemaphores = &image_acquired_semaphore;
+        submit.pWaitDstStageMask = &wait_stage;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &frame->CommandBuffer;
+        submit.signalSemaphoreCount = 1;
+        submit.pSignalSemaphores = &render_complete_semaphore;
+        result = vkQueueSubmit(queue_, 1, &submit, frame->Fence);
+        if (result != VK_SUCCESS)
+        {
+            message = "failed to submit native viewport frame";
+            return false;
+        }
+
+        VkPresentInfoKHR present{};
+        present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        present.waitSemaphoreCount = 1;
+        present.pWaitSemaphores = &render_complete_semaphore;
+        present.swapchainCount = 1;
+        present.pSwapchains = &window_.Swapchain;
+        present.pImageIndices = &window_.FrameIndex;
+        result = vkQueuePresentKHR(queue_, &present);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+        {
+            swapchain_rebuild_ = true;
+            return true;
+        }
+        if (result != VK_SUCCESS)
+        {
+            message = "failed to present native viewport frame";
+            return false;
+        }
+
+        window_.SemaphoreIndex = (window_.SemaphoreIndex + 1) % window_.SemaphoreCount;
+        last_completed_frame_ = last_profile_.frame_index;
+        return true;
+#else
+        (void)width;
+        (void)height;
+        message = "Vulkan native viewport presentation support is not compiled";
+        return false;
+#endif
+    }
+
     void shutdown_imgui() noexcept override
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        if (!imgui_initialized_)
+        if (!imgui_initialized_ && !native_swapchain_initialized_)
             return;
 
         vkDeviceWaitIdle(device_);
         destroy_viewport();
-        ImGui_ImplVulkan_Shutdown();
-        ImGui_ImplVulkanH_DestroyWindow(instance_, device_, &window_, nullptr);
+        if (imgui_initialized_)
+            ImGui_ImplVulkan_Shutdown();
+        if (window_.Surface != VK_NULL_HANDLE)
+            ImGui_ImplVulkanH_DestroyWindow(instance_, device_, &window_, nullptr);
         imgui_initialized_ = false;
+        native_swapchain_initialized_ = false;
 #endif
     }
 
@@ -658,6 +929,28 @@ private:
         std::uint32_t graphics_queue_family{};
         render_capabilities capabilities{};
     };
+
+#if ARC_RENDER_VULKAN_ENABLE_IMGUI
+    std::uint32_t scaled_dimension(std::uint32_t value) const noexcept
+    {
+        return std::max(1u, static_cast<std::uint32_t>(
+            std::round(static_cast<float>(value) * resolved_config_.render_scale)));
+    }
+
+    void wait_for_in_flight_frames() const
+    {
+        std::vector<VkFence> fences;
+        fences.reserve(window_.ImageCount);
+        for (std::uint32_t index = 0; index < window_.ImageCount; ++index)
+        {
+            const auto fence = window_.Frames[index].Fence;
+            if (fence != VK_NULL_HANDLE)
+                fences.push_back(fence);
+        }
+        if (!fences.empty())
+            vkWaitForFences(device_, static_cast<std::uint32_t>(fences.size()), fences.data(), VK_TRUE, UINT64_MAX);
+    }
+#endif
 
     struct vulkan_command_context
     {
@@ -782,7 +1075,9 @@ private:
                 .mesh = item.mesh,
                 .material = item.material,
                 .model = item.model,
+                .previous_model = item.previous_model,
                 .view_projection = packet.camera.view_projection,
+                .previous_view_projection = packet.camera.previous_view_projection,
                 .mode = packet.mode,
                 .visualization = packet.visualization,
                 .object_id = item.object_id,
@@ -808,7 +1103,9 @@ private:
                     .mesh = item.mesh,
                     .material = material,
                     .model = item.model,
+                    .previous_model = item.previous_model,
                     .view_projection = packet.camera.view_projection,
+                    .previous_view_projection = packet.camera.previous_view_projection,
                     .mode = packet.mode,
                     .visualization = visualization,
                     .object_id = item.object_id,
@@ -924,13 +1221,6 @@ private:
     {
         deferred_releases_.collect(last_completed_frame_);
         frame_arena_.reset();
-    }
-
-    std::string graph_pass_name(std::size_t index, std::string_view fallback) const
-    {
-        if (index < pending_graph_pass_names_.size() && !pending_graph_pass_names_[index].empty())
-            return pending_graph_pass_names_[index];
-        return std::string(fallback);
     }
 
     void begin_debug_label(VkCommandBuffer command_buffer, std::string_view name, const std::array<float, 4>& color) const
@@ -1992,7 +2282,7 @@ private:
                 return true;
         }
 
-        vkDeviceWaitIdle(device_);
+        wait_for_in_flight_frames();
         for (auto& buffer : shadow_uniform_buffers_)
             destroy_buffer(buffer);
         shadow_uniform_buffers_.clear();
@@ -2031,7 +2321,7 @@ private:
         if (shadow_atlas_.image != VK_NULL_HANDLE && shadow_atlas_.resolution == resolution)
             return true;
 
-        vkDeviceWaitIdle(device_);
+        wait_for_in_flight_frames();
         destroy_shadow_resources();
 
         VkImageCreateInfo image{};
@@ -3124,7 +3414,7 @@ private:
         if (viewport_image_ != VK_NULL_HANDLE && viewport_width_ == width && viewport_height_ == height)
             return;
 
-        vkDeviceWaitIdle(device_);
+        wait_for_in_flight_frames();
         destroy_viewport();
 
         VkImageCreateInfo image{};
@@ -3171,7 +3461,8 @@ private:
             return;
         }
 
-        viewport_descriptor_ = ImGui_ImplVulkan_AddTexture(viewport_sampler_, viewport_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (imgui_initialized_)
+            viewport_descriptor_ = ImGui_ImplVulkan_AddTexture(viewport_sampler_, viewport_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         viewport_width_ = width;
         viewport_height_ = height;
         viewport_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -3364,7 +3655,8 @@ private:
     void prepare_frame_gpu_resources()
     {
         const auto* light = active_directional_shadow_light();
-        const shadow_settings settings = light ? light->shadow : shadow_settings{ .enabled = false, .resolution = 2048 };
+        auto settings = light ? light->shadow : shadow_settings{ .enabled = false, .resolution = 2048 };
+        settings.resolution = std::min(settings.resolution, resolved_config_.directional_shadow_resolution);
         if (ensure_shadow_uniform_buffers() && ensure_shadow_resources(settings))
         {
             update_shadow_uniform(build_shadow_uniform(light));
@@ -3458,7 +3750,7 @@ private:
             math::vector3f center = math::add(frame_camera_.position, math::mul(camera_forward, cascade_radius));
 
             auto view = look_at_rh(math::sub(center, math::mul(light_direction, cascade_radius * 2.5f)), center, up);
-            const float texel_size = (cascade_radius * 2.0f) / static_cast<float>(std::max(1u, light->shadow.resolution));
+            const float texel_size = (cascade_radius * 2.0f) / static_cast<float>(std::max(1u, shadow_atlas_.resolution));
             if (texel_size > 0.0f)
             {
                 const auto light_center = math::transform_point(view, center);
@@ -3480,7 +3772,12 @@ private:
         data.params[0] = std::clamp(light->shadow.strength, 0.0f, 1.0f);
         data.params[1] = std::max(0.0f, light->shadow.bias);
         data.params[2] = std::max(0.0f, light->shadow.normal_bias);
-        data.params[3] = static_cast<float>(light->shadow.filter);
+        const auto filter = resolved_config_.quality == render_quality_tier::low
+            ? shadow_filter::pcf_3x3
+            : static_cast<shadow_filter>(std::min(
+                static_cast<unsigned>(light->shadow.filter),
+                static_cast<unsigned>(shadow_filter::pcf_5x5)));
+        data.params[3] = static_cast<float>(filter);
         return data;
     }
 
@@ -3650,7 +3947,7 @@ private:
             rendering.renderArea.extent = { shadow_atlas_.resolution, shadow_atlas_.resolution };
             rendering.layerCount = 1;
             rendering.pDepthAttachment = &depth_attachment;
-            vkCmdBeginRendering(command_buffer, &rendering);
+            cmd_begin_rendering(command_buffer, &rendering);
 
             for (const auto& draw : frame_shadow_draws_)
             {
@@ -3683,7 +3980,7 @@ private:
                 vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
             }
 
-            vkCmdEndRendering(command_buffer);
+            cmd_end_rendering(command_buffer);
         }
 
         transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
@@ -3791,7 +4088,7 @@ private:
             rendering.renderArea.extent = { viewport_width_, viewport_height_ };
             rendering.layerCount = 1;
             rendering.pDepthAttachment = &depth_attachment;
-            vkCmdBeginRendering(command_buffer, &rendering);
+            cmd_begin_rendering(command_buffer, &rendering);
             set_viewport_and_scissor(command_buffer);
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_);
 
@@ -3808,7 +4105,7 @@ private:
                 draw_indexed_virtual_cluster(command_buffer, draw, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT);
             }
 
-            vkCmdEndRendering(command_buffer);
+            cmd_end_rendering(command_buffer);
         }
 
         transition_graph_image(command_buffer, gbuffer_albedo_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -3853,7 +4150,7 @@ private:
             rendering.colorAttachmentCount = static_cast<std::uint32_t>(color_attachments.size());
             rendering.pColorAttachments = color_attachments.data();
             rendering.pDepthAttachment = &depth_attachment;
-            vkCmdBeginRendering(command_buffer, &rendering);
+            cmd_begin_rendering(command_buffer, &rendering);
             set_viewport_and_scissor(command_buffer);
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gbuffer_pipeline_);
 
@@ -3898,7 +4195,7 @@ private:
                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
             }
 
-            vkCmdEndRendering(command_buffer);
+            cmd_end_rendering(command_buffer);
         }
 
         transition_graph_image(command_buffer, gbuffer_albedo_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -3924,7 +4221,7 @@ private:
             rendering.layerCount = 1;
             rendering.colorAttachmentCount = 1;
             rendering.pColorAttachments = &color_attachment;
-            vkCmdBeginRendering(command_buffer, &rendering);
+            cmd_begin_rendering(command_buffer, &rendering);
             set_viewport_and_scissor(command_buffer);
             deferred_push_constants constants{};
             constants.light_direction_intensity[0] = 0.35f;
@@ -3971,7 +4268,7 @@ private:
                 sizeof(constants),
                 &constants);
             vkCmdDraw(command_buffer, 3, 1, 0, 0);
-            vkCmdEndRendering(command_buffer);
+            cmd_end_rendering(command_buffer);
         }
 
         if (pending_pick_request_ && ensure_pick_readback_buffer())
@@ -4068,7 +4365,7 @@ private:
         rendering.colorAttachmentCount = 1;
         rendering.pColorAttachments = &color_attachment;
         rendering.pDepthAttachment = &depth_attachment;
-        vkCmdBeginRendering(command_buffer, &rendering);
+        cmd_begin_rendering(command_buffer, &rendering);
 
         if (frame_sky_.enabled && ensure_sky_pipeline())
         {
@@ -4115,14 +4412,15 @@ private:
             vkCmdDraw(command_buffer, 3, 1, 0, 0);
         }
 
-        vkCmdEndRendering(command_buffer);
-        const bool deferred_rendered = render_deferred_scene(command_buffer);
+        cmd_end_rendering(command_buffer);
+        const bool deferred_rendered = resolved_config_.path == render_path::deferred &&
+            render_deferred_scene(command_buffer);
 
         transition_viewport(command_buffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-        vkCmdBeginRendering(command_buffer, &rendering);
+        cmd_begin_rendering(command_buffer, &rendering);
 
         if ((!frame_draws_.empty() || !frame_virtual_draws_.empty()) && mesh_pipeline_ != VK_NULL_HANDLE && !white_descriptor_sets_.empty())
         {
@@ -4270,7 +4568,7 @@ private:
             }
         }
 
-        vkCmdEndRendering(command_buffer);
+        cmd_end_rendering(command_buffer);
         transition_viewport(command_buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 #endif
@@ -4283,6 +4581,7 @@ private:
     VmaAllocator allocator_{};
     std::uint32_t graphics_queue_family_{};
     render_capabilities capabilities_{};
+    resolved_render_config resolved_config_{};
     vulkan_context context_{};
     vulkan_swapchain_state swapchain_state_{};
     vulkan_command_context command_context_{};
@@ -4299,7 +4598,6 @@ private:
     std::vector<gpu_scope_record> timestamp_scopes_;
     render_backend_frame_profile last_profile_;
     std::uint64_t last_completed_frame_{};
-    std::vector<std::string> pending_graph_pass_names_;
     std::optional<render_object_pick_request> pending_pick_request_;
     render_object_pick_result last_pick_result_{};
     gpu_buffer pick_readback_buffer_;
@@ -4355,6 +4653,7 @@ private:
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
     ImGui_ImplVulkanH_Window window_{};
     bool imgui_initialized_{};
+    bool native_swapchain_initialized_{};
     bool swapchain_rebuild_{};
     std::uint32_t min_image_count_{ 2 };
     VkFormat viewport_format_{ VK_FORMAT_R16G16B16A16_SFLOAT };
@@ -4377,6 +4676,8 @@ private:
     graph_image selection_mask_{};
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
+    std::uint32_t output_viewport_width_{};
+    std::uint32_t output_viewport_height_{};
 #endif
 };
 
@@ -4396,6 +4697,12 @@ std::vector<const char*> make_c_strings(const std::vector<std::string>& values)
     return result;
 }
 
+void append_unique_extension(std::vector<std::string>& extensions, const char* name)
+{
+    if (std::find(extensions.begin(), extensions.end(), name) == extensions.end())
+        extensions.emplace_back(name);
+}
+
 std::uint32_t find_graphics_queue_family(VkPhysicalDevice physical_device, VkSurfaceKHR surface = VK_NULL_HANDLE)
 {
     std::uint32_t count = 0;
@@ -4405,7 +4712,8 @@ std::uint32_t find_graphics_queue_family(VkPhysicalDevice physical_device, VkSur
 
     for (std::uint32_t index = 0; index < count; ++index)
     {
-        if ((families[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
+        if ((families[index].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) !=
+            (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT))
             continue;
 
         if (surface != VK_NULL_HANDLE)
@@ -4438,20 +4746,8 @@ bool supports_device_extensions(VkPhysicalDevice physical_device, const std::vec
     return true;
 }
 
-render_capabilities query_capabilities(VkPhysicalDevice physical_device)
+render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfaceKHR surface)
 {
-    VkPhysicalDeviceVulkan12Features vulkan12{};
-    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-
-    VkPhysicalDeviceVulkan13Features vulkan13{};
-    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan13.pNext = &vulkan12;
-
-    VkPhysicalDeviceFeatures2 features{};
-    features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features.pNext = &vulkan13;
-    vkGetPhysicalDeviceFeatures2(physical_device, &features);
-
     VkPhysicalDeviceProperties properties{};
     vkGetPhysicalDeviceProperties(physical_device, &properties);
 
@@ -4460,29 +4756,161 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device)
     std::vector<VkExtensionProperties> extensions(extension_count);
     vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &extension_count, extensions.data());
 
+    VkPhysicalDeviceVulkan12Features vulkan12{};
+    vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+    VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering{};
+    dynamic_rendering.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+    VkPhysicalDeviceSynchronization2Features synchronization2{};
+    synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptor_buffer{};
+    descriptor_buffer.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
+    VkPhysicalDeviceMeshShaderFeaturesEXT mesh_shader{};
+    mesh_shader.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT;
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR ray_tracing{};
+    ray_tracing.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+    VkPhysicalDeviceFragmentShadingRateFeaturesKHR fragment_shading_rate{};
+    fragment_shading_rate.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR;
+
+    VkPhysicalDeviceFeatures2 features{};
+    features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    VkBaseOutStructure* tail = reinterpret_cast<VkBaseOutStructure*>(&features);
+    auto append_feature = [&](auto& feature) {
+        tail->pNext = reinterpret_cast<VkBaseOutStructure*>(&feature);
+        tail = reinterpret_cast<VkBaseOutStructure*>(&feature);
+    };
+    const bool vulkan12_or_newer = properties.apiVersion >= VK_API_VERSION_1_2;
+    const bool vulkan13_or_newer = properties.apiVersion >= VK_API_VERSION_1_3;
+    if (vulkan12_or_newer)
+        append_feature(vulkan12);
+    if (vulkan13_or_newer || has_extension(extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME))
+        append_feature(dynamic_rendering);
+    if (vulkan13_or_newer || has_extension(extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
+        append_feature(synchronization2);
+    if (has_extension(extensions, VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME))
+        append_feature(descriptor_buffer);
+    if (has_extension(extensions, VK_EXT_MESH_SHADER_EXTENSION_NAME))
+        append_feature(mesh_shader);
+    if (has_extension(extensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME))
+        append_feature(ray_tracing);
+    if (has_extension(extensions, VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME))
+        append_feature(fragment_shading_rate);
+    vkGetPhysicalDeviceFeatures2(physical_device, &features);
+
+    VkPhysicalDeviceDriverProperties driver_properties{};
+    driver_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+    if (vulkan12_or_newer)
+    {
+        VkPhysicalDeviceProperties2 properties2{};
+        properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        properties2.pNext = &driver_properties;
+        vkGetPhysicalDeviceProperties2(physical_device, &properties2);
+    }
+
+    VkPhysicalDeviceMemoryProperties2 memory_properties{};
+    memory_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT memory_budget{};
+    memory_budget.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+    const bool has_memory_budget = has_extension(extensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    if (has_memory_budget)
+        memory_properties.pNext = &memory_budget;
+    vkGetPhysicalDeviceMemoryProperties2(physical_device, &memory_properties);
+
     render_capabilities capabilities{};
     capabilities.backend = render_backend_type::vulkan;
     capabilities.api_major = VK_VERSION_MAJOR(properties.apiVersion);
     capabilities.api_minor = VK_VERSION_MINOR(properties.apiVersion);
-    capabilities.synchronization2 = vulkan13.synchronization2 == VK_TRUE;
+    capabilities.adapter_name = properties.deviceName;
+    capabilities.driver_name = driver_properties.driverName;
+    capabilities.vendor_id = properties.vendorID;
+    capabilities.device_id = properties.deviceID;
+    capabilities.driver_version = properties.driverVersion;
+    capabilities.discrete_gpu = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+    capabilities.integrated_gpu = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+    capabilities.max_texture_dimension_2d = properties.limits.maxImageDimension2D;
+    capabilities.max_color_attachments = properties.limits.maxColorAttachments;
+    capabilities.max_compute_workgroup_invocations = properties.limits.maxComputeWorkGroupInvocations;
+    for (std::uint32_t heap = 0; heap < memory_properties.memoryProperties.memoryHeapCount; ++heap)
+    {
+        const auto bytes = memory_properties.memoryProperties.memoryHeaps[heap].size;
+        if ((memory_properties.memoryProperties.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
+        {
+            capabilities.dedicated_video_memory += bytes;
+            capabilities.memory_budget += has_memory_budget ? memory_budget.heapBudget[heap] : bytes;
+            capabilities.memory_usage += has_memory_budget ? memory_budget.heapUsage[heap] : 0;
+        }
+        else
+        {
+            capabilities.shared_system_memory += bytes;
+        }
+    }
+
+    std::uint32_t queue_count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_count, nullptr);
+    std::vector<VkQueueFamilyProperties> queues(queue_count);
+    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &queue_count, queues.data());
+    for (std::uint32_t index = 0; index < queue_count; ++index)
+    {
+        capabilities.graphics_queue |= (queues[index].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+        capabilities.compute_queue |= (queues[index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
+        capabilities.transfer_queue |= (queues[index].queueFlags & VK_QUEUE_TRANSFER_BIT) != 0;
+        capabilities.gpu_timestamps |= queues[index].timestampValidBits > 0;
+        if (surface != VK_NULL_HANDLE)
+        {
+            VkBool32 supported = VK_FALSE;
+            vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, index, surface, &supported);
+            capabilities.presentation |= supported == VK_TRUE;
+        }
+    }
+    if (surface == VK_NULL_HANDLE)
+        capabilities.presentation = true;
+
+    capabilities.draw_indirect = properties.limits.maxDrawIndirectCount > 0;
+    capabilities.draw_indirect_count = vulkan12_or_newer || has_extension(extensions, VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME);
+    capabilities.sampler_anisotropy = features.features.samplerAnisotropy == VK_TRUE;
+    capabilities.texture_compression_bc = features.features.textureCompressionBC == VK_TRUE;
+    capabilities.synchronization2 = synchronization2.synchronization2 == VK_TRUE;
     capabilities.timeline_semaphores = vulkan12.timelineSemaphore == VK_TRUE;
-    capabilities.dynamic_rendering = vulkan13.dynamicRendering == VK_TRUE;
+    capabilities.dynamic_rendering = dynamic_rendering.dynamicRendering == VK_TRUE;
     capabilities.descriptor_indexing = vulkan12.descriptorIndexing == VK_TRUE;
-    capabilities.descriptor_buffer = has_extension(extensions, VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
-    capabilities.mesh_shaders = has_extension(extensions, VK_EXT_MESH_SHADER_EXTENSION_NAME);
-    capabilities.ray_tracing = has_extension(extensions, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-    capabilities.variable_rate_shading = has_extension(extensions, VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME);
+    capabilities.descriptor_buffer = descriptor_buffer.descriptorBuffer == VK_TRUE;
+    capabilities.mesh_shaders = mesh_shader.meshShader == VK_TRUE;
+    capabilities.ray_tracing = ray_tracing.rayTracingPipeline == VK_TRUE;
+    capabilities.variable_rate_shading = fragment_shading_rate.pipelineFragmentShadingRate == VK_TRUE;
     capabilities.fill_mode_non_solid = features.features.fillModeNonSolid == VK_TRUE;
     return capabilities;
 }
 
-bool supports_required_features(const render_capabilities& capabilities)
+bool supports_required_attachment_formats(VkPhysicalDevice physical_device)
 {
-    return capabilities.api_major > 1 ||
-        (capabilities.api_major == 1 && capabilities.api_minor >= 3) &&
-            capabilities.synchronization2 &&
-            capabilities.timeline_semaphores &&
-            capabilities.dynamic_rendering;
+    const auto supports = [&](VkFormat format, VkFormatFeatureFlags features) {
+        VkFormatProperties properties{};
+        vkGetPhysicalDeviceFormatProperties(physical_device, format, &properties);
+        return (properties.optimalTilingFeatures & features) == features;
+    };
+    return supports(VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
+        supports(VK_FORMAT_R16G16_SFLOAT, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
+        supports(VK_FORMAT_R32_UINT, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
+        supports(VK_FORMAT_D32_SFLOAT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+}
+
+bool supports_required_features(const render_capabilities& capabilities, VkPhysicalDevice physical_device)
+{
+    const bool vulkan12 = capabilities.api_major > 1 ||
+        (capabilities.api_major == 1 && capabilities.api_minor >= 2);
+    return vulkan12 && capabilities.graphics_queue && capabilities.compute_queue &&
+        capabilities.presentation && capabilities.dynamic_rendering &&
+        capabilities.max_color_attachments >= 5 && supports_required_attachment_formats(physical_device);
+}
+
+std::uint64_t adapter_score(const render_capabilities& capabilities)
+{
+    std::uint64_t score = capabilities.discrete_gpu ? 1'000'000ull : capabilities.integrated_gpu ? 500'000ull : 100'000ull;
+    score += std::min<std::uint64_t>(capabilities.memory_budget / (1024ull * 1024ull), 250'000ull);
+    score += capabilities.timeline_semaphores ? 10'000ull : 0ull;
+    score += capabilities.synchronization2 ? 10'000ull : 0ull;
+    score += capabilities.descriptor_indexing ? 5'000ull : 0ull;
+    return score;
 }
 
 bool instance_extension_available(const char* name)
@@ -4518,7 +4946,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     app_info.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
     app_info.pEngineName = "ARC";
     app_info.engineVersion = VK_MAKE_VERSION(0, 1, 0);
-    app_info.apiVersion = VK_API_VERSION_1_3;
+    app_info.apiVersion = VK_API_VERSION_1_2;
 
     auto requested_instance_extensions = config.instance_extensions;
     if (instance_extension_available(VK_EXT_DEBUG_UTILS_EXTENSION_NAME) &&
@@ -4566,23 +4994,48 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     VkPhysicalDevice selected_device = VK_NULL_HANDLE;
     render_capabilities selected_capabilities{};
     std::uint32_t graphics_queue_family = UINT32_MAX;
+    std::uint64_t selected_score{};
+    std::vector<std::string> selected_device_extensions;
 
     auto required_device_extensions = config.device_extensions;
     if (surface != VK_NULL_HANDLE)
-        required_device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        append_unique_extension(required_device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
-    for (const auto physical_device : physical_devices)
+    for (std::uint32_t adapter_index = 0; adapter_index < physical_devices.size(); ++adapter_index)
     {
-        const auto capabilities = query_capabilities(physical_device);
+        if (config.adapter_index && *config.adapter_index != adapter_index)
+            continue;
+
+        const auto physical_device = physical_devices[adapter_index];
+        const auto capabilities = query_capabilities(physical_device, surface);
         const auto queue_family = find_graphics_queue_family(physical_device, surface);
-        if (queue_family != UINT32_MAX &&
-            supports_required_features(capabilities) &&
-            supports_device_extensions(physical_device, required_device_extensions))
+        auto candidate_extensions = required_device_extensions;
+        if (capabilities.api_major == 1 && capabilities.api_minor < 3)
+            append_unique_extension(candidate_extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+
+        std::string rejection;
+        if (queue_family == UINT32_MAX)
+            rejection = "no combined graphics/compute queue with required presentation support";
+        else if (!supports_required_features(capabilities, physical_device))
+            rejection = "missing Vulkan 1.2 baseline, dynamic rendering, limits, or required attachment formats";
+        else if (!supports_device_extensions(physical_device, candidate_extensions))
+            rejection = "missing required device extensions";
+
+        if (!rejection.empty())
+        {
+            arc::warn("render.vulkan", "Rejected adapter " + std::to_string(adapter_index) + " (" +
+                capabilities.adapter_name + "): " + rejection);
+            continue;
+        }
+
+        const auto score = adapter_score(capabilities);
+        if (selected_device == VK_NULL_HANDLE || score > selected_score)
         {
             selected_device = physical_device;
             selected_capabilities = capabilities;
             graphics_queue_family = queue_family;
-            break;
+            selected_score = score;
+            selected_device_extensions = std::move(candidate_extensions);
         }
     }
 
@@ -4591,7 +5044,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         if (surface != VK_NULL_HANDLE)
             vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
-        return { .message = "no Vulkan 1.3 graphics device with synchronization2, timeline semaphores, and dynamic rendering found" };
+        return { .message = "no Vulkan 1.2 graphics/compute device with required attachment formats and dynamic rendering found" };
     }
 
     float queue_priority = 1.0f;
@@ -4601,28 +5054,35 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     queue_info.queueCount = 1;
     queue_info.pQueuePriorities = &queue_priority;
 
+    VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering{};
+    dynamic_rendering.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+    dynamic_rendering.dynamicRendering = VK_TRUE;
+
+    const bool enable_optional_features = !config.force_disable_optional_features;
     VkPhysicalDeviceVulkan12Features vulkan12{};
     vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-    vulkan12.timelineSemaphore = VK_TRUE;
-    vulkan12.descriptorIndexing = selected_capabilities.descriptor_indexing ? VK_TRUE : VK_FALSE;
+    vulkan12.timelineSemaphore = enable_optional_features && selected_capabilities.timeline_semaphores ? VK_TRUE : VK_FALSE;
+    vulkan12.descriptorIndexing = enable_optional_features && selected_capabilities.descriptor_indexing ? VK_TRUE : VK_FALSE;
 
-    VkPhysicalDeviceVulkan13Features vulkan13{};
-    vulkan13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    vulkan13.pNext = &vulkan12;
-    vulkan13.synchronization2 = VK_TRUE;
-    vulkan13.dynamicRendering = VK_TRUE;
+    VkPhysicalDeviceSynchronization2Features synchronization2{};
+    synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+    synchronization2.synchronization2 = enable_optional_features && selected_capabilities.synchronization2 ? VK_TRUE : VK_FALSE;
+    dynamic_rendering.pNext = &vulkan12;
+    vulkan12.pNext = &synchronization2;
 
     VkPhysicalDeviceFeatures enabled_features{};
     enabled_features.fillModeNonSolid = selected_capabilities.fill_mode_non_solid ? VK_TRUE : VK_FALSE;
 
-    auto device_extensions = required_device_extensions;
-    if (selected_capabilities.descriptor_buffer)
-        device_extensions.push_back(VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME);
-    const auto device_extension_names = make_c_strings(device_extensions);
+    if (synchronization2.synchronization2 == VK_TRUE &&
+        selected_capabilities.api_major == 1 && selected_capabilities.api_minor < 3)
+    {
+        append_unique_extension(selected_device_extensions, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    }
+    const auto device_extension_names = make_c_strings(selected_device_extensions);
 
     VkDeviceCreateInfo device_info{};
     device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_info.pNext = &vulkan13;
+    device_info.pNext = &dynamic_rendering;
     device_info.pEnabledFeatures = &enabled_features;
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
@@ -4646,7 +5106,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     allocator_info.instance = instance;
     allocator_info.physicalDevice = selected_device;
     allocator_info.device = device;
-    allocator_info.vulkanApiVersion = VK_API_VERSION_1_3;
+    allocator_info.vulkanApiVersion = VK_API_VERSION_1_2;
 
     VmaAllocator allocator = VK_NULL_HANDLE;
     if (vmaCreateAllocator(&allocator_info, &allocator) != VK_SUCCESS)
@@ -4658,6 +5118,11 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         return { .message = "failed to create Vulkan memory allocator" };
     }
 
+    arc::info("render.vulkan", "Selected adapter " + selected_capabilities.adapter_name + " (Vulkan " +
+        std::to_string(selected_capabilities.api_major) + "." + std::to_string(selected_capabilities.api_minor) +
+        ", " + std::to_string(selected_capabilities.memory_budget / (1024ull * 1024ull)) + " MiB budget)");
+    if (config.force_disable_optional_features)
+        arc::info("render.vulkan", "Developer compatibility override left all non-required Vulkan features disabled");
     arc::info("render.vulkan", "Created Vulkan backend");
     return {
         .backend = std::make_unique<vulkan_render_backend>(

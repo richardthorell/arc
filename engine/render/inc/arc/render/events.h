@@ -173,7 +173,9 @@ struct draw_mesh_event
     mesh_handle mesh{};
     material_handle material{};
     math::matrix4f model{ math::identity<float, 4>() };
+    math::matrix4f previous_model{ math::identity<float, 4>() };
     math::matrix4f view_projection{ math::identity<float, 4>() };
+    math::matrix4f previous_view_projection{ math::identity<float, 4>() };
     render_mode mode{ render_mode::shaded };
     mesh_visualization_mode visualization{ mesh_visualization_mode::standard };
     render_object_id object_id{};
