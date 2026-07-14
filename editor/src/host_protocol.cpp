@@ -471,6 +471,7 @@ std::string command_type(const host_command_payload& payload)
         using type = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<type, host_open_project_command>) return "project.open";
         else if constexpr (std::is_same_v<type, host_close_project_command>) return "project.close";
+        else if constexpr (std::is_same_v<type, host_open_scene_command>) return "scene.open";
         else if constexpr (std::is_same_v<type, host_create_entity_command>) return "entity.create";
         else if constexpr (std::is_same_v<type, host_delete_entity_command>) return "entity.delete";
         else if constexpr (std::is_same_v<type, host_rename_entity_command>) return "entity.rename";
@@ -484,6 +485,7 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_viewport_resize_command>) return "viewport.resize";
         else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>) return "viewport.setCameraMode";
         else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>) return "viewport.setRenderOptions";
+        else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>) return "viewport.cameraInput";
         else return "unknown";
     }, payload);
 }
@@ -519,6 +521,8 @@ std::string to_json(const host_command_envelope& envelope)
         using type = std::decay_t<decltype(payload)>;
         if constexpr (std::is_same_v<type, host_open_project_command>)
             return "{\"name\":" + quote(payload.name) + ",\"root\":" + quote(payload.root.generic_string()) + '}';
+        else if constexpr (std::is_same_v<type, host_open_scene_command>)
+            return "{\"path\":" + quote(payload.path.generic_string()) + ",\"append\":" + bool_json(payload.append) + '}';
         else if constexpr (std::is_same_v<type, host_create_entity_command>)
             return "{\"kind\":" + quote(to_string(payload.kind)) + '}';
         else if constexpr (std::is_same_v<type, host_delete_entity_command> || std::is_same_v<type, host_select_entity_command>)
@@ -535,10 +539,15 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"projection\":" + quote(to_string(payload.projection)) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_attach_command>)
             return "{\"nativeHandle\":" + std::to_string(payload.native_handle) +
+                ",\"x\":" + std::to_string(payload.x) +
+                ",\"y\":" + std::to_string(payload.y) +
                 ",\"width\":" + std::to_string(payload.width) +
                 ",\"height\":" + std::to_string(payload.height) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_resize_command>)
-            return "{\"width\":" + std::to_string(payload.width) + ",\"height\":" + std::to_string(payload.height) + '}';
+            return "{\"x\":" + std::to_string(payload.x) +
+                ",\"y\":" + std::to_string(payload.y) +
+                ",\"width\":" + std::to_string(payload.width) +
+                ",\"height\":" + std::to_string(payload.height) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>)
             return "{\"projection\":" + quote(to_string(payload.projection)) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>)
@@ -547,6 +556,14 @@ std::string to_json(const host_command_envelope& envelope)
                 ",\"overlay\":" + quote(to_string(payload.overlay)) +
                 ",\"shadows\":" + bool_json(payload.shadows) +
                 ",\"environment\":" + environment_json(payload.environment) + '}';
+        else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>)
+            return "{\"orbitX\":" + std::to_string(payload.orbit_x) +
+                ",\"orbitY\":" + std::to_string(payload.orbit_y) +
+                ",\"panX\":" + std::to_string(payload.pan_x) +
+                ",\"panY\":" + std::to_string(payload.pan_y) +
+                ",\"forward\":" + std::to_string(payload.forward) +
+                ",\"zoom\":" + std::to_string(payload.zoom) +
+                ",\"focusSelected\":" + bool_json(payload.focus_selected) + '}';
         else
             return "{}";
     }, envelope.payload);
@@ -670,6 +687,19 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     {
         envelope.payload = host_close_project_command{};
     }
+    else if (type == "scene.open")
+    {
+        host_open_scene_command command;
+        std::string scene_path;
+        if (!string_value(payload, "path", scene_path) || scene_path.empty())
+        {
+            error = "Scene open command requires path";
+            return false;
+        }
+        command.path = scene_path;
+        bool_value(payload, "append", command.append);
+        envelope.payload = std::move(command);
+    }
     else if (type == "entity.create")
     {
         static constexpr std::pair<std::string_view, host_create_entity_kind> values[]{
@@ -765,6 +795,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     {
         host_viewport_attach_command command;
         number_value(payload, "nativeHandle", command.native_handle);
+        number_value(payload, "x", command.x);
+        number_value(payload, "y", command.y);
         number_value(payload, "width", command.width);
         number_value(payload, "height", command.height);
         envelope.payload = command;
@@ -772,6 +804,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     else if (type == "viewport.resize")
     {
         host_viewport_resize_command command;
+        number_value(payload, "x", command.x);
+        number_value(payload, "y", command.y);
         number_value(payload, "width", command.width);
         number_value(payload, "height", command.height);
         envelope.payload = command;
@@ -810,6 +844,18 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         parse_enum(payload, "overlay", overlays, std::size(overlays), command.overlay);
         bool_value(payload, "shadows", command.shadows);
         parse_environment(payload, command.environment);
+        envelope.payload = command;
+    }
+    else if (type == "viewport.cameraInput")
+    {
+        host_viewport_camera_input_command command;
+        number_value(payload, "orbitX", command.orbit_x);
+        number_value(payload, "orbitY", command.orbit_y);
+        number_value(payload, "panX", command.pan_x);
+        number_value(payload, "panY", command.pan_y);
+        number_value(payload, "forward", command.forward);
+        number_value(payload, "zoom", command.zoom);
+        bool_value(payload, "focusSelected", command.focus_selected);
         envelope.payload = command;
     }
     else

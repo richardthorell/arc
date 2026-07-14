@@ -21,8 +21,8 @@ Editor code should include engine APIs through the shared module layout:
 Build it from the repo root with:
 
 ```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DARC_BUILD_EDITOR=ON
-cmake --build build --config Release --target arc_editor --parallel
+cmake --preset editor-vulkan
+cmake --build --preset editor-vulkan --target arc_editor --parallel
 ```
 
 Or build it if needed and run it with:
@@ -32,6 +32,8 @@ python run_editor.py
 ```
 
 Use `python run_editor.py --no-vulkan-render` to force the fallback editor path.
+
+The root CMake presets place generated editor builds under `out/build/...`.
 
 Third-party dependencies are configured from the shared root `third_party/`
 folder so editor and engine dependencies can use the same dependency policy.

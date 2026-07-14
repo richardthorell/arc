@@ -40,6 +40,7 @@ struct editor_scene_state
     render::material_handle vegetation_material;
     std::vector<render::texture_handle> default_textures;
     scene::entity camera_entity;
+    scene::entity game_camera_entity;
     scene::entity sun_entity;
     scene::entity world_environment_entity;
     scene::entity mesh_entity;

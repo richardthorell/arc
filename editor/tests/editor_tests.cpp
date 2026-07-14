@@ -272,19 +272,21 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
 
     const arc::editor::host_command_envelope commands[]{
         { .request_id = 1, .payload = arc::editor::host_open_project_command{ .name = "Protocol", .root = "D:/Protocol" } },
-        { .request_id = 2, .payload = arc::editor::host_create_entity_command{ .kind = arc::editor::host_create_entity_kind::cube } },
-        { .request_id = 3, .payload = arc::editor::host_select_entity_command{ .entity = entity } },
-        { .request_id = 4, .payload = arc::editor::host_rename_entity_command{ .entity = entity, .name = "Renamed" } },
-        { .request_id = 5, .payload = arc::editor::host_delete_entity_command{ .entity = entity } },
-        { .request_id = 6, .payload = arc::editor::host_set_transform_command{ .entity = entity, .transform = transform } },
-        { .request_id = 7, .payload = arc::editor::host_viewport_attach_command{ .native_handle = 1234, .width = 1280, .height = 720 } },
-        { .request_id = 8, .payload = arc::editor::host_viewport_resize_command{ .width = 640, .height = 360 } },
-        { .request_id = 9, .payload = arc::editor::host_viewport_set_camera_mode_command{ .projection = arc::editor::host_camera_projection::orthographic } },
-        { .request_id = 10, .payload = arc::editor::host_viewport_set_render_options_command{
+        { .request_id = 2, .payload = arc::editor::host_open_scene_command{ .path = "D:/Protocol/assets/test.glb", .append = true } },
+        { .request_id = 3, .payload = arc::editor::host_create_entity_command{ .kind = arc::editor::host_create_entity_kind::cube } },
+        { .request_id = 4, .payload = arc::editor::host_select_entity_command{ .entity = entity } },
+        { .request_id = 5, .payload = arc::editor::host_rename_entity_command{ .entity = entity, .name = "Renamed" } },
+        { .request_id = 6, .payload = arc::editor::host_delete_entity_command{ .entity = entity } },
+        { .request_id = 7, .payload = arc::editor::host_set_transform_command{ .entity = entity, .transform = transform } },
+        { .request_id = 8, .payload = arc::editor::host_viewport_attach_command{ .native_handle = 1234, .x = 16, .y = 32, .width = 1280, .height = 720 } },
+        { .request_id = 9, .payload = arc::editor::host_viewport_resize_command{ .x = 24, .y = 48, .width = 640, .height = 360 } },
+        { .request_id = 10, .payload = arc::editor::host_viewport_set_camera_mode_command{ .projection = arc::editor::host_camera_projection::orthographic } },
+        { .request_id = 11, .payload = arc::editor::host_viewport_set_render_options_command{
             .render_mode = arc::editor::host_render_mode::wireframe,
             .visualization = arc::editor::host_visualization_mode::world_normal,
             .overlay = arc::editor::host_overlay_mode::all_wireframe,
-            .shadows = false } }
+            .shadows = false } },
+        { .request_id = 12, .payload = arc::editor::host_viewport_camera_input_command{ .orbit_x = 4.0f, .orbit_y = -2.0f, .zoom = 1.0f } }
     };
 
     for (const auto& command : commands)
@@ -298,10 +300,10 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
     }
 
     const arc::editor::host_query_envelope queries[]{
-        { .request_id = 11, .payload = arc::editor::host_scene_hierarchy_query{} },
-        { .request_id = 12, .payload = arc::editor::host_selected_entity_query{} },
-        { .request_id = 13, .payload = arc::editor::host_project_assets_query{} },
-        { .request_id = 14, .payload = arc::editor::host_viewport_state_query{} }
+        { .request_id = 13, .payload = arc::editor::host_scene_hierarchy_query{} },
+        { .request_id = 14, .payload = arc::editor::host_selected_entity_query{} },
+        { .request_id = 15, .payload = arc::editor::host_project_assets_query{} },
+        { .request_id = 16, .payload = arc::editor::host_viewport_state_query{} }
     };
 
     for (const auto& query : queries)

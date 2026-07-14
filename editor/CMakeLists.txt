@@ -2,6 +2,7 @@ add_library(arc-editor-core STATIC
     src/arc_host.cpp
     src/asset_drag_drop.cpp
     src/editor_console.cpp
+    src/editor_defaults.cpp
     src/editor_interaction.cpp
     src/editor_state.cpp
     src/editor_viewport.cpp
@@ -90,6 +91,17 @@ target_link_libraries(arc_host_process
     PRIVATE
         arc-editor-core
 )
+
+if(ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
+    target_link_libraries(arc_host_process
+        PRIVATE
+            arc-render-vulkan
+    )
+    target_compile_definitions(arc_host_process
+        PRIVATE
+            ARC_EDITOR_HOST_ENABLE_VULKAN_RENDER=1
+    )
+endif()
 
 if(BUILD_TESTING)
     add_subdirectory(tests)

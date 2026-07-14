@@ -7,6 +7,37 @@
 namespace arc::editor
 {
 
+namespace
+{
+
+const char* quality_label(render::render_quality_tier quality) noexcept
+{
+    switch (quality)
+    {
+    case render::render_quality_tier::low: return "Low";
+    case render::render_quality_tier::medium: return "Standard";
+    case render::render_quality_tier::high: return "High";
+    default: return "Auto";
+    }
+}
+
+const char* path_label(render::render_path path) noexcept
+{
+    switch (path)
+    {
+    case render::render_path::forward_plus: return "Forward+";
+    case render::render_path::deferred: return "Deferred";
+    default: return "Auto";
+    }
+}
+
+const char* enabled_label(bool enabled) noexcept
+{
+    return enabled ? "on" : "off";
+}
+
+} // namespace
+
 void draw_profiler_panel(const render::renderer& renderer)
 {
     if (!ui::begin_panel("Profiler"))
@@ -16,6 +47,33 @@ void draw_profiler_panel(const render::renderer& renderer)
     }
 
     const auto profile = renderer.last_frame_profile();
+    const auto* backend = renderer.backend();
+    if (backend && ui::section_header("Adapter & Render Path", true))
+    {
+        const auto& capabilities = backend->capabilities();
+        const auto& configuration = renderer.resolved_config();
+        ImGui::Text("%s", capabilities.adapter_name.empty() ? "Unknown adapter" : capabilities.adapter_name.c_str());
+        ImGui::Text("Vulkan %u.%u  |  %s / %s",
+            capabilities.api_major,
+            capabilities.api_minor,
+            quality_label(configuration.quality),
+            path_label(configuration.path));
+        ImGui::Text("Memory: %llu MiB budget, %llu MiB used",
+            static_cast<unsigned long long>(capabilities.memory_budget / (1024ull * 1024ull)),
+            static_cast<unsigned long long>(capabilities.memory_usage / (1024ull * 1024ull)));
+        ImGui::TextWrapped("Dynamic rendering %s | Sync2 %s | Timeline %s | Descriptor indexing %s",
+            enabled_label(configuration.features.dynamic_rendering),
+            enabled_label(configuration.features.synchronization2),
+            enabled_label(configuration.features.timeline_semaphores),
+            enabled_label(configuration.features.descriptor_indexing));
+        ImGui::Text("Render scale: %.0f%% (minimum %.0f%%)  |  target %.2f ms",
+            configuration.render_scale * 100.0f,
+            configuration.minimum_render_scale * 100.0f,
+            configuration.target_frame_time_ms);
+        for (const auto& reason : configuration.fallback_reasons)
+            ui::muted_text(reason.c_str());
+        ImGui::TreePop();
+    }
     if (profile.summary.empty())
     {
         ui::empty_state("No GPU capture yet", "Run a frame with GPU timing enabled to inspect pass timings.");

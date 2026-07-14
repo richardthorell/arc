@@ -222,6 +222,12 @@ struct host_close_project_command
 {
 };
 
+struct host_open_scene_command
+{
+    std::filesystem::path path;
+    bool append{};
+};
+
 struct host_create_entity_command
 {
     host_create_entity_kind kind{ host_create_entity_kind::cube };
@@ -273,12 +279,16 @@ struct host_set_camera_projection_command
 struct host_viewport_attach_command
 {
     std::uint64_t native_handle{};
+    std::int32_t x{};
+    std::int32_t y{};
     std::uint32_t width{};
     std::uint32_t height{};
 };
 
 struct host_viewport_resize_command
 {
+    std::int32_t x{};
+    std::int32_t y{};
     std::uint32_t width{};
     std::uint32_t height{};
 };
@@ -297,9 +307,21 @@ struct host_viewport_set_render_options_command
     host_environment_visibility environment{};
 };
 
+struct host_viewport_camera_input_command
+{
+    float orbit_x{};
+    float orbit_y{};
+    float pan_x{};
+    float pan_y{};
+    float forward{};
+    float zoom{};
+    bool focus_selected{};
+};
+
 using host_command_payload = std::variant<
     host_open_project_command,
     host_close_project_command,
+    host_open_scene_command,
     host_create_entity_command,
     host_delete_entity_command,
     host_rename_entity_command,
@@ -312,7 +334,8 @@ using host_command_payload = std::variant<
     host_viewport_attach_command,
     host_viewport_resize_command,
     host_viewport_set_camera_mode_command,
-    host_viewport_set_render_options_command>;
+    host_viewport_set_render_options_command,
+    host_viewport_camera_input_command>;
 
 struct host_command_envelope
 {

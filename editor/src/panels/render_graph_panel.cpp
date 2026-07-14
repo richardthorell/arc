@@ -106,24 +106,38 @@ void draw_render_graph_panel(const render::renderer& renderer)
     }
 
     ui::section_header("Resources");
-    if (ImGui::BeginTable("render-graph-resources", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
+    if (ImGui::BeginTable("render-graph-resources", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
     {
         ImGui::TableSetupColumn("Resource");
         ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed, 90.0f);
         ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 90.0f);
         ImGui::TableSetupColumn("Lifetime", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn("Physical", ImGuiTableColumnFlags_WidthFixed, 70.0f);
         ImGui::TableHeadersRow();
-        for (const auto& resource : profile.graph.resources)
+        for (std::size_t index = 0; index < profile.graph.resources.size(); ++index)
         {
+            const auto& resource = profile.graph.resources[index];
+            const auto* lifetime = index < profile.graph.lifetimes.size() ? &profile.graph.lifetimes[index] : nullptr;
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(resource.name.c_str());
             ImGui::TableNextColumn();
             ui::muted_text(resource_kind_label(resource.kind));
             ImGui::TableNextColumn();
-            ui::muted_text(resource.format.empty() ? "-" : resource.format.c_str());
+            const auto format = render::render_format_name(resource.format);
+            ui::muted_text(format.data());
             ImGui::TableNextColumn();
-            ui::muted_text(resource.persistent ? "Persistent" : "Transient");
+            if (resource.persistent)
+                ui::muted_text("Persistent");
+            else if (lifetime && lifetime->first_pass != render::render_graph_resource_handle::invalid_index)
+                ImGui::Text("%u-%u", lifetime->first_pass, lifetime->last_pass);
+            else
+                ui::muted_text("Unused");
+            ImGui::TableNextColumn();
+            if (lifetime)
+                ImGui::Text("#%u", lifetime->physical_resource);
+            else
+                ui::muted_text("-");
         }
         ImGui::EndTable();
     }

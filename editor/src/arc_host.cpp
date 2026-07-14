@@ -1,6 +1,7 @@
 #include <arc/editor/arc_host.h>
 
 #include <arc/diagnostics/diagnostics.h>
+#include <arc/editor/editor_defaults.h>
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/geometric/box.h>
@@ -8,6 +9,7 @@
 #include <arc/scene/scene.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -182,6 +184,8 @@ void forget_entity(editor_scene_state& scene, scene::entity entity)
 {
     if (scene.camera_entity == entity)
         scene.camera_entity = {};
+    if (scene.game_camera_entity == entity)
+        scene.game_camera_entity = {};
     if (scene.sun_entity == entity)
         scene.sun_entity = {};
     if (scene.world_environment_entity == entity)
@@ -241,9 +245,9 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     editor_scene_state state;
 
     math::vector3f center{};
-    math::vector3f local_min{ -0.5f, -0.5f, -0.5f };
-    math::vector3f local_max{ 0.5f, 0.5f, 0.5f };
-    float radius = 1.0f;
+    math::vector3f local_min = defaults::fallback_mesh_bounds_min;
+    math::vector3f local_max = defaults::fallback_mesh_bounds_max;
+    float radius = defaults::fallback_mesh_radius;
     if (assets.default_mesh_loaded && !assets.default_mesh.vertices.empty())
     {
         local_min = math::vector3f{
@@ -263,7 +267,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
 
         center = math::mul(math::add(local_min, local_max), 0.5f);
         const auto span = math::sub(local_max, local_min);
-        radius = std::max({ span[0], span[1], span[2], 1.0f }) * 0.5f;
+        radius = std::max({ span[0], span[1], span[2], defaults::fallback_mesh_radius }) * 0.5f;
     }
 
     if (assets.default_mesh_loaded)
@@ -301,32 +305,44 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     const auto camera = state.scene.create();
     state.camera_entity = camera;
     scene::transform_component camera_transform;
-    camera_transform.position = math::vector3f{ 0.0f, 0.0f, 4.0f };
+    camera_transform.position = defaults::default_camera_position;
     state.scene.emplace<scene::name_component>(camera, "Editor Camera");
     state.scene.emplace<scene::tag_component>(camera, "Editor");
     state.scene.emplace<scene::active_component>(camera);
     state.scene.emplace<scene::transform_component>(camera, camera_transform);
-    state.scene.emplace<scene::camera_component>(camera);
+    scene::camera_component editor_camera;
+    editor_camera.active = false;
+    state.scene.emplace<scene::camera_component>(camera, editor_camera);
     state.camera_created = true;
+
+    const auto game_camera = state.scene.create();
+    state.game_camera_entity = game_camera;
+    scene::transform_component game_camera_transform;
+    game_camera_transform.position = defaults::default_camera_position;
+    state.scene.emplace<scene::name_component>(game_camera, "Main Camera");
+    state.scene.emplace<scene::tag_component>(game_camera, "Camera");
+    state.scene.emplace<scene::active_component>(game_camera);
+    state.scene.emplace<scene::transform_component>(game_camera, game_camera_transform);
+    state.scene.emplace<scene::camera_component>(game_camera);
 
     const auto sun = state.scene.create();
     state.sun_entity = sun;
     scene::transform_component sun_transform;
-    sun_transform.rotation = quaternion_from_euler_degrees({ -50.0f, -35.0f, 0.0f });
+    sun_transform.rotation = quaternion_from_euler_degrees(defaults::default_sun_rotation_degrees);
     state.scene.emplace<scene::name_component>(sun, "Sun");
     state.scene.emplace<scene::tag_component>(sun, "Light");
     state.scene.emplace<scene::active_component>(sun);
     state.scene.emplace<scene::transform_component>(sun, sun_transform);
     state.scene.emplace<scene::directional_light_component>(
         sun,
-        math::vector3f{ 1.0f, 1.0f, 1.0f },
-        1.8f,
+        defaults::default_sun_color,
+        defaults::default_sun_intensity,
         true);
     auto& sun_light = state.scene.get<scene::directional_light_component>(sun);
-    sun_light.shadow.resolution = 4096;
-    sun_light.shadow.filter = render::shadow_filter::pcf_3x3;
-    sun_light.shadow.bias = 0.0008f;
-    sun_light.shadow.normal_bias = 0.003f;
+    sun_light.shadow.resolution = defaults::default_sun_shadow_resolution;
+    sun_light.shadow.filter = defaults::default_sun_shadow_filter;
+    sun_light.shadow.bias = defaults::default_sun_shadow_bias;
+    sun_light.shadow.normal_bias = defaults::default_sun_shadow_normal_bias;
 
     add_world_environment_to_scene(state);
     add_terrain_to_scene(state, renderer);
@@ -335,7 +351,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     {
         const auto mesh = state.scene.create();
         state.mesh_entity = mesh;
-        const float scale = 1.8f / radius;
+        const float scale = defaults::imported_mesh_fit_size / radius;
         scene::transform_component mesh_transform;
         mesh_transform.position = math::mul(center, -scale);
         mesh_transform.scale = math::vector3f{ scale, scale, scale };
@@ -373,7 +389,14 @@ struct arc_host::state
     editor_project_state project;
     editor_asset_state assets;
     editor_scene_state scene;
+    editor_camera_controller camera_controller;
     host_viewport_request viewport_options;
+    std::chrono::steady_clock::time_point last_viewport_frame_time{};
+    double viewport_fps{};
+    double viewport_frame_ms{};
+    std::uint32_t viewport_draw_calls{};
+    std::uint64_t viewport_frame_index{};
+    bool viewport_submitted{};
     std::vector<host_event> events;
     std::uint64_t event_sequence{};
     bool project_open{};
@@ -404,6 +427,9 @@ host_response arc_host::open_project(
     state_->project.name = command.name.empty() ? "Arc Project" : command.name;
     state_->project.root = command.root;
     state_->scene = create_default_scene(assets, *state_->renderer);
+    focus_selected_entity(state_->scene.scene, state_->scene.selected_entity, state_->camera_controller);
+    if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+        state_->camera_controller.apply_to(*camera_transform);
     state_->project_open = true;
 
     const std::string message = "Opened project '" + state_->project.name + "'";
@@ -453,6 +479,28 @@ host_response arc_host::execute(const host_command_envelope& command)
             arc::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::project_closed, message);
             return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_open_scene_command>)
+        {
+            if (!state_->project_open)
+                return fail("Cannot open a scene before a project is open");
+
+            const auto mode = payload.append ? editor_scene_open_mode::append : editor_scene_open_mode::replace;
+            const auto asset_root = payload.path.is_absolute() ? payload.path.parent_path() : state_->assets.root;
+            const auto result = open_scene_asset_in_editor(
+                state_->scene,
+                *state_->renderer,
+                asset_root,
+                payload.path,
+                mode);
+            if (!result.succeeded)
+                return fail(result.message.empty() ? "Failed to open scene asset" : result.message);
+
+            const std::string message =
+                std::string(payload.append ? "Imported scene asset: " : "Opened scene asset: ") +
+                payload.path.filename().string();
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, message, state_->scene.selected_entity);
+            return success("{\"entityCount\":" + std::to_string(result.entity_count) + '}');
         }
         else if constexpr (std::is_same_v<command_type, host_create_entity_command>)
         {
@@ -604,6 +652,31 @@ host_response arc_host::execute(const host_command_envelope& command)
             state_->viewport_options.environment = payload.environment;
             return success();
         }
+        else if constexpr (std::is_same_v<command_type, host_viewport_camera_input_command>)
+        {
+            if (payload.focus_selected)
+                focus_selected_entity(state_->scene.scene, state_->scene.selected_entity, state_->camera_controller);
+            if (payload.orbit_x != 0.0f || payload.orbit_y != 0.0f)
+                state_->camera_controller.orbit(payload.orbit_x, payload.orbit_y);
+            if (payload.pan_x != 0.0f || payload.pan_y != 0.0f)
+                state_->camera_controller.pan(payload.pan_x, payload.pan_y);
+            if (payload.forward != 0.0f)
+                state_->camera_controller.move_forward(payload.forward);
+            if (payload.zoom != 0.0f)
+                state_->camera_controller.zoom(payload.zoom);
+            if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+            {
+                state_->camera_controller.apply_to(*camera_transform);
+                push_event(
+                    state_->events,
+                    state_->event_sequence,
+                    host_event_type::component_changed,
+                    "Viewport camera changed",
+                    state_->scene.camera_entity);
+                return success("{\"entity\":" + to_json(to_host_entity(state_->scene.camera_entity)) + '}');
+            }
+            return fail("No editor camera is available", state_->scene.camera_entity);
+        }
 
         return fail("Unsupported host command");
     }, command.payload);
@@ -631,7 +704,12 @@ host_response arc_host::query(const host_query_envelope& query) const
                 .request_id = request_id,
                 .succeeded = true,
                 .payload_json = "{\"width\":" + std::to_string(state_->viewport_options.width) +
-                    ",\"height\":" + std::to_string(state_->viewport_options.height) + '}'
+                    ",\"height\":" + std::to_string(state_->viewport_options.height) +
+                    ",\"fps\":" + std::to_string(state_->viewport_fps) +
+                    ",\"frameTimeMs\":" + std::to_string(state_->viewport_frame_ms) +
+                    ",\"drawCalls\":" + std::to_string(state_->viewport_draw_calls) +
+                    ",\"frameIndex\":" + std::to_string(state_->viewport_frame_index) +
+                    ",\"submitted\":" + std::string(state_->viewport_submitted ? "true" : "false") + '}'
             };
         }
 
@@ -655,7 +733,7 @@ host_scene_snapshot arc_host::scene_snapshot() const
     };
 
     add(state_->scene.sun_entity, "Sun", host_entity_kind::light);
-    add(state_->scene.camera_entity, "Editor Camera", host_entity_kind::camera);
+    add(state_->scene.game_camera_entity, "Main Camera", host_entity_kind::camera);
     for (const auto entity : state_->scene.environment_entities)
         add(entity, "Environment", host_entity_kind::environment);
     add(state_->scene.mesh_entity, "Default Mesh", host_entity_kind::mesh);
@@ -745,12 +823,23 @@ std::vector<host_event> arc_host::poll_events()
 
 host_viewport_frame arc_host::request_viewport(const host_viewport_request& request)
 {
+    const auto frame_start = std::chrono::steady_clock::now();
     state_->viewport_options = request;
+    state_->viewport_frame_index = request.frame_index;
     if (!state_->renderer->backend())
     {
         const std::string message = "Viewport render skipped: no render backend attached";
+        state_->viewport_submitted = false;
         push_event(state_->events, state_->event_sequence, host_event_type::viewport_error, message);
         return { .message = message };
+    }
+
+    if (state_->scene.focus_imported_scene_requested)
+    {
+        focus_selected_entity(state_->scene.scene, state_->scene.selected_entity, state_->camera_controller);
+        if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+            state_->camera_controller.apply_to(*camera_transform);
+        state_->scene.focus_imported_scene_requested = false;
     }
 
     state_->scene.last_render = scene::render_scene(
@@ -766,7 +855,21 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
 
     const auto submit_result = state_->renderer->render_frame(
         request.frame_index,
-        render::make_scene_draw_graph("viewport"));
+        render::make_scene_draw_graph(
+            "viewport",
+            state_->renderer->resolved_config(),
+            true));
+    const auto frame_end = std::chrono::steady_clock::now();
+    state_->viewport_frame_ms = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
+    if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)
+    {
+        const double delta_seconds = std::chrono::duration<double>(frame_end - state_->last_viewport_frame_time).count();
+        if (delta_seconds > 0.0)
+            state_->viewport_fps = 1.0 / delta_seconds;
+    }
+    state_->last_viewport_frame_time = frame_end;
+    state_->viewport_draw_calls = state_->scene.last_render.submitted_draw_count;
+    state_->viewport_submitted = submit_result.submitted;
     if (!submit_result.submitted && !submit_result.message.empty())
     {
         arc::error("editor.host", submit_result.message);
