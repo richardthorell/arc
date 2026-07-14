@@ -381,6 +381,28 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
     }));
 }
 
+TEST_CASE("arc host resolves a project assets directory for protocol-opened projects")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-host-project-assets-test";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / "assets", ec);
+    REQUIRE_FALSE(ec);
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    const auto response = host->execute(arc::editor::host_command_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_open_project_command{
+            .name = "Asset Root Test",
+            .root = root } });
+
+    REQUIRE(response.succeeded);
+    REQUIRE(host->project_assets_snapshot().asset_root == root / "assets");
+    std::filesystem::remove_all(root, ec);
+}
+
 TEST_CASE("arc host process speaks newline delimited json over stdio")
 {
 #if defined(_WIN32) && defined(ARC_HOST_PROCESS_PATH)

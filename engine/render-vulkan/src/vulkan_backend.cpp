@@ -576,10 +576,16 @@ public:
         collect_timestamp_results();
         collect_object_pick_result();
         retire_completed_resources();
+
+        // Resource preparation may need to wait for every swapchain frame
+        // before replacing frame-count-dependent buffers or attachments. Keep
+        // the acquired frame fence signaled until that work has completed;
+        // resetting it first makes wait_for_in_flight_frames() wait forever on
+        // a fence that cannot be submitted until this function continues.
+        prepare_frame_gpu_resources();
+
         vkResetFences(device_, 1, &frame->Fence);
         vkResetCommandPool(device_, frame->CommandPool, 0);
-
-        prepare_frame_gpu_resources();
 
         VkCommandBufferBeginInfo begin_info{};
         begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -762,10 +768,14 @@ public:
         collect_timestamp_results();
         collect_object_pick_result();
         retire_completed_resources();
+
+        // See the ImGui presentation path above. Frame-dependent resource
+        // creation can wait on all swapchain fences and must happen before the
+        // current acquired fence is reset for this frame's submission.
+        prepare_frame_gpu_resources();
+
         vkResetFences(device_, 1, &frame->Fence);
         vkResetCommandPool(device_, frame->CommandPool, 0);
-
-        prepare_frame_gpu_resources();
 
         VkCommandBufferBeginInfo begin_info{};
         begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;

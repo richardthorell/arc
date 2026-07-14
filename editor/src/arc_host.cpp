@@ -505,7 +505,10 @@ host_response arc_host::execute(const host_command_envelope& command)
         if constexpr (std::is_same_v<command_type, host_open_project_command>)
         {
             editor_asset_state empty_assets;
-            empty_assets.root = payload.root;
+            const auto project_assets = payload.root / "assets";
+            empty_assets.root = std::filesystem::is_directory(project_assets)
+                ? project_assets
+                : payload.root;
             return open_project(payload, empty_assets, request_id);
         }
         else if constexpr (std::is_same_v<command_type, host_close_project_command>)
