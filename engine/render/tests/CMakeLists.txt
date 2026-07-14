@@ -32,6 +32,9 @@ target_compile_definitions(arc_render_tests
   PRIVATE
     "ARC_RENDER_TEST_ASSET_ROOT=\"${CMAKE_SOURCE_DIR}/assets\""
 )
+if(ARC_USE_SYSTEM_STB OR ARC_FETCH_STB)
+  target_compile_definitions(arc_render_tests PRIVATE ARC_RENDER_TEST_EXPECT_IMAGE_DECODER=1)
+endif()
 if(ARC_THIRD_PARTY_UFBX_AVAILABLE)
   FetchContent_GetProperties(ufbx SOURCE_DIR ufbx_SOURCE_DIR)
 endif()

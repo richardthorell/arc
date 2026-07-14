@@ -1,5 +1,6 @@
 #include <arc/editor/editor_state.h>
 
+#include <arc/editor/editor_defaults.h>
 #include <arc/editor/editor_interaction.h>
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/geometric/box.h>
@@ -244,25 +245,55 @@ scene::entity add_world_environment_to_scene(editor_scene_state& scene)
     const auto entity = scene.scene.create();
     scene.world_environment_entity = entity;
     add_selectable_common(scene, entity, "World Environment", "Environment");
-    scene.scene.emplace<scene::sky_atmosphere_component>(entity);
-    scene.scene.emplace<scene::height_fog_component>(entity);
+    scene::sky_atmosphere_component sky;
+    sky.rayleigh_strength = 1.18f;
+    sky.mie_strength = 0.24f;
+    sky.ozone_strength = 0.22f;
+    sky.tint = math::vector3f{ 0.48f, 0.68f, 1.0f };
+    sky.exposure = 1.08f;
+    sky.sun_disk_size = 0.012f;
+    sky.sun_disk_intensity = 2.4f;
+    scene.scene.emplace<scene::sky_atmosphere_component>(entity, sky);
+
+    scene::height_fog_component fog;
+    fog.color = math::vector3f{ 0.62f, 0.71f, 0.80f };
+    fog.density = 0.008f;
+    fog.height_falloff = 0.055f;
+    fog.start_distance = 34.0f;
+    fog.max_opacity = 0.42f;
+    fog.sun_scattering_strength = 0.32f;
+    scene.scene.emplace<scene::height_fog_component>(entity, fog);
     scene.environment_entities.push_back(entity);
     return entity;
 }
 
-scene::entity add_terrain_to_scene(editor_scene_state& scene, render::renderer& renderer)
+scene::entity add_terrain_to_scene(
+    editor_scene_state& scene,
+    render::renderer& renderer,
+    render::material_handle material)
 {
-    auto mesh = render::make_terrain_grid_mesh(32.0f, 64, 1.45f);
+    auto mesh = render::make_terrain_grid_mesh(
+        defaults::default_terrain_size,
+        defaults::default_terrain_subdivisions,
+        defaults::default_terrain_height_scale);
     const auto local_bounds = bounds_for_mesh(mesh);
     const auto mesh_handle = renderer.create_mesh(mesh);
     if (!mesh_handle.valid())
         return {};
 
-    const auto material = ensure_terrain_material(scene, renderer);
+    if (!material.valid())
+        material = ensure_terrain_material(scene, renderer);
+    else
+        scene.terrain_material = material;
     const auto entity = scene.scene.create();
     scene.terrain_entity = entity;
     add_selectable_common(scene, entity, "Terrain", "Environment");
-    scene.scene.emplace<scene::terrain_component>(entity);
+    scene::terrain_component terrain;
+    terrain.size = defaults::default_terrain_size;
+    terrain.subdivisions = defaults::default_terrain_subdivisions;
+    terrain.height_scale = defaults::default_terrain_height_scale;
+    terrain.material = material;
+    scene.scene.emplace<scene::terrain_component>(entity, terrain);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity);
     scene.scene.emplace<scene::mesh_renderer_component>(
@@ -277,7 +308,7 @@ scene::entity add_terrain_to_scene(editor_scene_state& scene, render::renderer& 
 
 scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer)
 {
-    auto mesh = render::make_plane_mesh(8.0f);
+    auto mesh = render::make_plane_mesh(defaults::default_water_size);
     const auto local_bounds = bounds_for_mesh(mesh);
     const auto mesh_handle = renderer.create_mesh(mesh);
     if (!mesh_handle.valid())
@@ -288,8 +319,14 @@ scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& re
     scene.water_entity = entity;
     add_selectable_common(scene, entity, "Water Plane", "Environment");
     scene::transform_component transform;
-    transform.position = math::vector3f{ 0.0f, 0.04f, 0.0f };
-    scene.scene.emplace<scene::water_component>(entity);
+    transform.position = defaults::default_water_position;
+    scene::water_component water;
+    water.size = defaults::default_water_size;
+    water.color = math::vector3f{ 0.08f, 0.30f, 0.42f };
+    water.roughness = 0.12f;
+    water.wave_scale = 0.14f;
+    water.transparency = 0.34f;
+    scene.scene.emplace<scene::water_component>(entity, water);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene.scene.emplace<scene::mesh_renderer_component>(
@@ -304,7 +341,7 @@ scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& re
 
 scene::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer& renderer)
 {
-    auto mesh = render::make_grass_patch_mesh(8.0f, 96, 0.65f);
+    auto mesh = render::make_grass_patch_mesh(20.0f, 320, 0.85f);
     const auto local_bounds = bounds_for_mesh(mesh);
     const auto mesh_handle = renderer.create_mesh(mesh);
     if (!mesh_handle.valid())
@@ -315,8 +352,18 @@ scene::entity add_grass_patch_to_scene(editor_scene_state& scene, render::render
     scene.vegetation_entity = entity;
     add_selectable_common(scene, entity, "Grass Patch", "Environment");
     scene::transform_component transform;
-    transform.position = math::vector3f{ 0.0f, 0.02f, 0.0f };
-    scene.scene.emplace<scene::vegetation_component>(entity);
+    transform.position = defaults::default_grass_position;
+    transform.position[1] = render::sample_terrain_height(
+        transform.position[0],
+        transform.position[2],
+        defaults::default_terrain_size,
+        defaults::default_terrain_height_scale) + 0.02f;
+    scene::vegetation_component vegetation;
+    vegetation.patch_size = 20.0f;
+    vegetation.density = 320;
+    vegetation.color = math::vector3f{ 0.20f, 0.48f, 0.16f };
+    vegetation.wind_strength = 0.28f;
+    scene.scene.emplace<scene::vegetation_component>(entity, vegetation);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, mesh_handle, material, true);

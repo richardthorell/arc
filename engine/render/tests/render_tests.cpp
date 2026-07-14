@@ -1214,6 +1214,25 @@ TEST_CASE("texture loader infers material texture color space from file names")
     std::filesystem::remove(normal_path);
 }
 
+TEST_CASE("texture loader prepares checked-in landscape maps for GPU upload")
+{
+    const auto path = std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT) /
+        "textures" / "terrain" / "aerial_grass_rock" / "aerial_grass_rock_diff_1k.jpg";
+    const auto result = arc::render::load_texture_asset(path);
+
+    INFO(result.message);
+    REQUIRE(result.succeeded());
+#if defined(ARC_RENDER_TEST_EXPECT_IMAGE_DECODER)
+    REQUIRE(result.texture.width == 1024);
+    REQUIRE(result.texture.height == 1024);
+    REQUIRE(result.texture.has_pixels());
+    REQUIRE(result.texture.mips.size() == 11);
+    REQUIRE(result.texture.encoded.empty());
+#else
+    REQUIRE_FALSE(result.texture.encoded.empty());
+#endif
+}
+
 TEST_CASE("DDS loader rejects invalid and truncated payloads")
 {
     std::vector<std::byte> invalid(8);
@@ -1351,6 +1370,9 @@ TEST_CASE("primitive mesh builders create renderable geometry")
     REQUIRE(has_height_variation);
     REQUIRE(has_tilted_normal);
     REQUIRE(has_color_variation);
+    const auto& center = terrain.vertices[4 * 9 + 4];
+    REQUIRE(center.position[1] == Catch::Approx(arc::render::sample_terrain_height(0.0f, 0.0f, 8.0f, 1.0f)));
+    REQUIRE(terrain.vertices.back().texcoord[0] - terrain.vertices.front().texcoord[0] > 1.0f);
 }
 
 TEST_CASE("virtual mesh builder handles empty input")

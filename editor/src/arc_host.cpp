@@ -311,7 +311,9 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     state.scene.emplace<scene::active_component>(camera);
     state.scene.emplace<scene::transform_component>(camera, camera_transform);
     scene::camera_component editor_camera;
-    editor_camera.active = false;
+    editor_camera.near_plane = 0.1f;
+    editor_camera.far_plane = 2000.0f;
+    editor_camera.clear_color = math::vector4f{ 0.055f, 0.12f, 0.22f, 1.0f };
     state.scene.emplace<scene::camera_component>(camera, editor_camera);
     state.camera_created = true;
 
@@ -323,7 +325,11 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     state.scene.emplace<scene::tag_component>(game_camera, "Camera");
     state.scene.emplace<scene::active_component>(game_camera);
     state.scene.emplace<scene::transform_component>(game_camera, game_camera_transform);
-    state.scene.emplace<scene::camera_component>(game_camera);
+    scene::camera_component main_camera;
+    main_camera.active = false;
+    main_camera.near_plane = 0.1f;
+    main_camera.far_plane = 2000.0f;
+    state.scene.emplace<scene::camera_component>(game_camera, main_camera);
 
     const auto sun = state.scene.create();
     state.sun_entity = sun;
@@ -345,7 +351,27 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     sun_light.shadow.normal_bias = defaults::default_sun_shadow_normal_bias;
 
     add_world_environment_to_scene(state);
-    add_terrain_to_scene(state, renderer);
+
+    render::environment_desc outdoor_environment;
+    outdoor_environment.name = "Default Mountain Daylight";
+    outdoor_environment.fallback_color = math::vector3f{ 0.16f, 0.22f, 0.30f };
+    outdoor_environment.intensity = 1.1f;
+    outdoor_environment.diffuse_irradiance = math::vector3f{ 0.18f, 0.23f, 0.29f };
+    outdoor_environment.diffuse_intensity = 1.0f;
+    state.outdoor_environment = renderer.create_environment(outdoor_environment);
+
+    render::material_handle terrain_material;
+    if (!assets.root.empty())
+    {
+        terrain_material = load_material_for_editor(
+            state.material_library,
+            renderer,
+            assets.root,
+            assets.root / "materials" / "mountain_landscape.arcmat");
+    }
+    const auto terrain = add_terrain_to_scene(state, renderer, terrain_material);
+    add_water_to_scene(state, renderer);
+    add_grass_patch_to_scene(state, renderer);
 
     if (state.default_mesh.valid())
     {
@@ -354,6 +380,16 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
         const float scale = defaults::imported_mesh_fit_size / radius;
         scene::transform_component mesh_transform;
         mesh_transform.position = math::mul(center, -scale);
+        constexpr float landmark_x = -3.0f;
+        constexpr float landmark_z = 4.0f;
+        const float landmark_height = render::sample_terrain_height(
+            landmark_x,
+            landmark_z,
+            defaults::default_terrain_size,
+            defaults::default_terrain_height_scale);
+        mesh_transform.position = math::add(
+            mesh_transform.position,
+            math::vector3f{ landmark_x, landmark_height + defaults::imported_mesh_fit_size, landmark_z });
         mesh_transform.scale = math::vector3f{ scale, scale, scale };
         state.scene.emplace<scene::name_component>(mesh, assets.default_mesh.name);
         state.scene.emplace<scene::tag_component>(mesh, "Mesh");
@@ -372,6 +408,9 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
             true);
         state.selected_entity = mesh;
     }
+
+    if (state.scene.alive(terrain))
+        select_entity(state.scene, terrain, state.selected_entity);
 
     return state;
 }
@@ -427,7 +466,9 @@ host_response arc_host::open_project(
     state_->project.name = command.name.empty() ? "Arc Project" : command.name;
     state_->project.root = command.root;
     state_->scene = create_default_scene(assets, *state_->renderer);
-    focus_selected_entity(state_->scene.scene, state_->scene.selected_entity, state_->camera_controller);
+    state_->camera_controller = {};
+    state_->camera_controller.focus(defaults::default_camera_focus, defaults::default_camera_focus_radius);
+    state_->camera_controller.orbit(defaults::default_camera_orbit_x, defaults::default_camera_orbit_y);
     if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
         state_->camera_controller.apply_to(*camera_transform);
     state_->project_open = true;

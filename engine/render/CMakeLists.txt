@@ -12,6 +12,10 @@ if(TARGET arc-third-party-ufbx)
     endif()
 endif()
 
+if(TARGET arc-third-party-stb)
+    target_link_libraries(arc-render PRIVATE arc-third-party-stb)
+endif()
+
 if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
     add_subdirectory(tests)
 endif()

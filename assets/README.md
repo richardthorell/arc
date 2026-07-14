@@ -11,8 +11,9 @@ Small default assets used by the editor and renderer bring-up live here.
   dragged from the Content Browser onto mesh renderer material slots or directly
   onto objects in the viewport.
 - Texture slots accept `.png`, `.jpg`, `.jpeg`, `.tga`, `.hdr`, and `.dds`.
-  DDS headers and mip/compression metadata are parsed; compressed Vulkan upload
-  falls back cleanly until the backend image path grows native BC uploads.
+  Common images are decoded to upload-ready RGBA pixels in graphics builds.
+  DDS headers, mip payloads, and BC compression metadata remain intact for
+  native GPU upload, with a visible fallback on unsupported devices.
 - Scene-like assets (`.glb`, `.gltf`, `.fbx`) can be opened from the editor File
   menu or Content Browser. GLB is imported through the current static mesh path.
   FBX is recognized and reports a clear unsupported diagnostic unless the

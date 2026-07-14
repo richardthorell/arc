@@ -25,13 +25,35 @@ float smoothstep(float edge0, float edge1, float value) noexcept
 
 float terrain_height_at(float x, float z, float size, float height_scale) noexcept
 {
-    const float broad = std::sin(x * 0.18f + std::cos(z * 0.09f) * 1.7f) * 0.62f;
-    const float ridge = (1.0f - std::abs(std::sin(x * 0.31f - z * 0.24f))) * 0.46f;
-    const float rolling = std::sin((x + z) * 0.42f) * std::cos((x - z) * 0.21f) * 0.24f;
-    const float detail = std::sin(x * 1.35f + z * 0.77f) * std::sin(z * 1.11f) * 0.075f;
-    const float distance = std::sqrt(x * x + z * z) / std::max(size * 0.5f, 0.001f);
-    const float edge_falloff = smoothstep(0.72f, 1.0f, distance) * 0.34f;
-    return (broad + ridge + rolling + detail - edge_falloff) * height_scale;
+    const float half = std::max(size * 0.5f, 0.001f);
+    const float nx = x / half;
+    const float nz = z / half;
+    const auto gaussian = [](float px, float pz, float cx, float cz, float sx, float sz) {
+        const float dx = (px - cx) / sx;
+        const float dz = (pz - cz) / sz;
+        return std::exp(-(dx * dx + dz * dz));
+    };
+
+    // Large authored forms establish a readable vista: a high rear range,
+    // asymmetric hero peaks, a traversable middle valley, and a lake basin.
+    const float rear_range = std::exp(-std::pow((nz + 0.62f) / 0.23f, 2.0f)) *
+        (0.46f + 0.15f * std::sin(nx * 10.0f) + 0.10f * std::sin(nx * 23.0f + 0.8f));
+    const float left_peak = gaussian(nx, nz, -0.48f, -0.30f, 0.26f, 0.34f) * 0.92f;
+    const float right_peak = gaussian(nx, nz, 0.48f, -0.43f, 0.22f, 0.30f) * 0.78f;
+    const float shoulder = gaussian(nx, nz, -0.72f, 0.02f, 0.34f, 0.48f) * 0.33f;
+    const float lake_basin = gaussian(nx, nz, 0.17f, 0.17f, 0.25f, 0.34f) * 0.24f;
+
+    // Several inexpensive octave-like bands remove the analytic smoothness
+    // without making the default scene nondeterministic.
+    const float rolling =
+        std::sin(nx * 7.5f + std::cos(nz * 4.0f) * 1.4f) * 0.075f +
+        std::sin((nx + nz) * 15.0f) * std::cos((nx - nz) * 9.0f) * 0.038f;
+    const float ridges = (1.0f - std::abs(std::sin(nx * 19.0f - nz * 15.0f))) * 0.045f;
+    const float detail = std::sin(nx * 48.0f + nz * 31.0f) * std::sin(nz * 42.0f) * 0.012f;
+    const float distance = std::sqrt(nx * nx + nz * nz);
+    const float edge_falloff = smoothstep(0.78f, 1.35f, distance) * 0.18f;
+
+    return (0.035f + rear_range + left_peak + right_peak + shoulder + rolling + ridges + detail - lake_basin - edge_falloff) * height_scale;
 }
 
 mesh_vertex vertex(
@@ -61,14 +83,14 @@ mesh_vertex terrain_vertex(
 {
     const float lowland = smoothstep(0.02f, 0.22f, height01);
     const float highland = smoothstep(0.58f, 0.90f, height01);
-    const float rock = clamp01(smoothstep(0.20f, 0.62f, slope) + highland * 0.35f);
+    const float rock = clamp01(smoothstep(0.08f, 0.38f, slope) + highland * 0.42f);
 
-    const float grass_r = 0.20f + 0.15f * lowland + 0.05f * std::sin((x + z) * 0.42f);
-    const float grass_g = 0.34f + 0.26f * lowland + 0.05f * std::sin(x * 0.71f);
-    const float grass_b = 0.16f + 0.08f * lowland;
-    const float rock_r = 0.43f + 0.11f * highland;
-    const float rock_g = 0.42f + 0.10f * highland;
-    const float rock_b = 0.38f + 0.08f * highland;
+    const float grass_r = 0.60f + 0.14f * lowland + 0.035f * std::sin((x + z) * 0.11f);
+    const float grass_g = 0.68f + 0.20f * lowland + 0.035f * std::sin(x * 0.17f);
+    const float grass_b = 0.48f + 0.10f * lowland;
+    const float rock_r = 0.64f + 0.12f * highland;
+    const float rock_g = 0.62f + 0.11f * highland;
+    const float rock_b = 0.58f + 0.10f * highland;
 
     return vertex(
         x,
@@ -121,6 +143,13 @@ void append_face(
 }
 
 } // namespace
+
+float sample_terrain_height(float x, float z, float size, float height_scale) noexcept
+{
+    size = std::max(1.0f, size);
+    height_scale = std::max(0.0f, height_scale);
+    return terrain_height_at(x, z, size, height_scale);
+}
 
 mesh_data make_plane_mesh(float size)
 {
@@ -333,8 +362,8 @@ mesh_data make_terrain_grid_mesh(float size, std::uint32_t subdivisions, float h
                 nx * inv_normal_length,
                 normal_y,
                 nz * inv_normal_length,
-                static_cast<float>(x) / static_cast<float>(subdivisions),
-                static_cast<float>(z) / static_cast<float>(subdivisions),
+                px / 5.0f,
+                pz / 5.0f,
                 height01,
                 slope));
         }

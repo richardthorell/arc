@@ -38,6 +38,7 @@ struct editor_scene_state
     render::material_handle terrain_material;
     render::material_handle water_material;
     render::material_handle vegetation_material;
+    render::environment_handle outdoor_environment;
     std::vector<render::texture_handle> default_textures;
     scene::entity camera_entity;
     scene::entity game_camera_entity;
@@ -153,7 +154,10 @@ scene::entity add_primitive_to_scene(
 
 scene::entity add_world_environment_to_scene(editor_scene_state& scene);
 
-scene::entity add_terrain_to_scene(editor_scene_state& scene, render::renderer& renderer);
+scene::entity add_terrain_to_scene(
+    editor_scene_state& scene,
+    render::renderer& renderer,
+    render::material_handle material = {});
 
 scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer);
 

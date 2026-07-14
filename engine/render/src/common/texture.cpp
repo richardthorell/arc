@@ -9,6 +9,11 @@
 #include <initializer_list>
 #include <string_view>
 
+#if defined(ARC_RENDER_HAS_STB)
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#endif
+
 namespace arc::render
 {
 namespace
@@ -128,6 +133,65 @@ std::vector<std::byte> read_binary_file(const std::filesystem::path& path)
     std::vector<std::byte> bytes(static_cast<std::size_t>(size));
     stream.read(reinterpret_cast<char*>(bytes.data()), size);
     return stream ? bytes : std::vector<std::byte>{};
+}
+
+void store_rgba8_mip_chain(
+    texture_data& texture,
+    const unsigned char* decoded,
+    std::uint32_t width,
+    std::uint32_t height)
+{
+    std::vector<std::byte> level(static_cast<std::size_t>(width) * height * 4u);
+    std::memcpy(level.data(), decoded, level.size());
+    texture.pixels.clear();
+    texture.mips.clear();
+
+    std::uint32_t mip_width = width;
+    std::uint32_t mip_height = height;
+    while (true)
+    {
+        const auto offset = texture.pixels.size();
+        texture.pixels.insert(texture.pixels.end(), level.begin(), level.end());
+        texture.mips.push_back({
+            .width = mip_width,
+            .height = mip_height,
+            .offset = offset,
+            .size = level.size()
+        });
+        if (mip_width == 1 && mip_height == 1)
+            break;
+
+        const std::uint32_t next_width = std::max(1u, mip_width / 2u);
+        const std::uint32_t next_height = std::max(1u, mip_height / 2u);
+        std::vector<std::byte> next(static_cast<std::size_t>(next_width) * next_height * 4u);
+        for (std::uint32_t y = 0; y < next_height; ++y)
+        {
+            for (std::uint32_t x = 0; x < next_width; ++x)
+            {
+                for (std::uint32_t channel = 0; channel < 4; ++channel)
+                {
+                    std::uint32_t total{};
+                    std::uint32_t samples{};
+                    for (std::uint32_t oy = 0; oy < 2; ++oy)
+                    {
+                        const auto source_y = std::min(mip_height - 1u, y * 2u + oy);
+                        for (std::uint32_t ox = 0; ox < 2; ++ox)
+                        {
+                            const auto source_x = std::min(mip_width - 1u, x * 2u + ox);
+                            const auto source_index = (static_cast<std::size_t>(source_y) * mip_width + source_x) * 4u + channel;
+                            total += std::to_integer<unsigned char>(level[source_index]);
+                            ++samples;
+                        }
+                    }
+                    const auto destination_index = (static_cast<std::size_t>(y) * next_width + x) * 4u + channel;
+                    next[destination_index] = static_cast<std::byte>(total / samples);
+                }
+            }
+        }
+        level = std::move(next);
+        mip_width = next_width;
+        mip_height = next_height;
+    }
 }
 
 bool format_block_info(texture_format format, std::uint32_t& block_width, std::uint32_t& block_bytes) noexcept
@@ -395,9 +459,65 @@ texture_load_result load_texture_asset(const std::filesystem::path& path)
     texture.format = lowercase(path.extension().string()) == ".hdr"
         ? texture_format::rgba32f
         : texture_format::rgba8_srgb;
+
+#if defined(ARC_RENDER_HAS_STB)
+    int width{};
+    int height{};
+    int channels{};
+    if (stbi_is_hdr_from_memory(
+            reinterpret_cast<const stbi_uc*>(bytes.data()),
+            static_cast<int>(bytes.size())) != 0)
+    {
+        float* decoded = stbi_loadf_from_memory(
+            reinterpret_cast<const stbi_uc*>(bytes.data()),
+            static_cast<int>(bytes.size()),
+            &width,
+            &height,
+            &channels,
+            STBI_rgb_alpha);
+        if (decoded)
+        {
+            const auto byte_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u * sizeof(float);
+            texture.width = static_cast<std::uint32_t>(width);
+            texture.height = static_cast<std::uint32_t>(height);
+            texture.format = texture_format::rgba32f;
+            texture.pixels.resize(byte_count);
+            std::memcpy(texture.pixels.data(), decoded, byte_count);
+            stbi_image_free(decoded);
+        }
+    }
+    else
+    {
+        stbi_uc* decoded = stbi_load_from_memory(
+            reinterpret_cast<const stbi_uc*>(bytes.data()),
+            static_cast<int>(bytes.size()),
+            &width,
+            &height,
+            &channels,
+            STBI_rgb_alpha);
+        if (decoded)
+        {
+            texture.width = static_cast<std::uint32_t>(width);
+            texture.height = static_cast<std::uint32_t>(height);
+            store_rgba8_mip_chain(texture, decoded, texture.width, texture.height);
+            stbi_image_free(decoded);
+        }
+    }
+
+    if (texture.pixels.empty())
+        return { .message = "image decoding failed: " + std::string(stbi_failure_reason() ? stbi_failure_reason() : "unknown image error") };
+#else
     texture.encoded = std::move(bytes);
+#endif
     apply_filename_color_space(texture, path);
-    return { .texture = std::move(texture), .message = "loaded encoded texture" };
+    return {
+        .texture = std::move(texture),
+#if defined(ARC_RENDER_HAS_STB)
+        .message = "loaded decoded texture"
+#else
+        .message = "loaded encoded texture"
+#endif
+    };
 }
 
 bool is_supported_texture_asset(const std::filesystem::path& path)

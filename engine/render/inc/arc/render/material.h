@@ -58,9 +58,10 @@ struct texture_mip_data
 /**
  * @brief Renderer texture payload.
  *
- * Pixels are expected to be tightly packed RGBA8 when present. Encoded bytes are
- * preserved for asset import paths that can parse material metadata before image
- * decoding is available.
+ * Pixels are expected to be tightly packed RGBA8 when present. When `mips` is
+ * populated, it describes packed offsets in `pixels` (decoded images) or
+ * `encoded` (native DDS payloads). Encoded bytes are otherwise preserved for
+ * asset import paths that can parse metadata before image decoding is available.
  */
 struct texture_data
 {

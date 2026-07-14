@@ -1616,8 +1616,9 @@ private:
         std::memcpy(mapped, upload_bytes.data(), upload_bytes.size());
         vmaUnmapMemory(allocator_, staging.allocation);
 
-        const std::uint32_t mip_count = encoded
-            ? static_cast<std::uint32_t>(std::max<std::size_t>(1, data.mips.size()))
+        const bool has_mip_payload = !data.mips.empty();
+        const std::uint32_t mip_count = has_mip_payload
+            ? static_cast<std::uint32_t>(data.mips.size())
             : 1u;
 
         VkImageCreateInfo image{};
@@ -1663,7 +1664,13 @@ private:
         sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         sampler.maxLod = static_cast<float>(mip_count);
-        sampler.anisotropyEnable = VK_FALSE;
+        if (resolved_config_.features.sampler_anisotropy)
+        {
+            VkPhysicalDeviceProperties properties{};
+            vkGetPhysicalDeviceProperties(physical_device_, &properties);
+            sampler.anisotropyEnable = VK_TRUE;
+            sampler.maxAnisotropy = std::min(8.0f, properties.limits.maxSamplerAnisotropy);
+        }
         if (vkCreateSampler(device_, &sampler, nullptr, &destination.sampler) != VK_SUCCESS)
         {
             destroy_texture(destination);
@@ -1720,7 +1727,7 @@ private:
             &to_copy);
 
         std::vector<VkBufferImageCopy> regions;
-        if (encoded)
+        if (has_mip_payload)
         {
             regions.reserve(data.mips.size());
             for (std::uint32_t mip = 0; mip < data.mips.size(); ++mip)
@@ -5072,6 +5079,8 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
 
     VkPhysicalDeviceFeatures enabled_features{};
     enabled_features.fillModeNonSolid = selected_capabilities.fill_mode_non_solid ? VK_TRUE : VK_FALSE;
+    enabled_features.samplerAnisotropy =
+        enable_optional_features && selected_capabilities.sampler_anisotropy ? VK_TRUE : VK_FALSE;
 
     if (synchronization2.synchronization2 == VK_TRUE &&
         selected_capabilities.api_major == 1 && selected_capabilities.api_minor < 3)

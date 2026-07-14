@@ -38,8 +38,8 @@ texture_load_result parse_dds_texture(
  *
  * DDS files are parsed for format and mip metadata. Common material map names
  * are used to infer sRGB versus linear upload formats for imported assets.
- * Other image formats are preserved as encoded bytes unless a decoder backend
- * is enabled.
+ * Other image formats are decoded to upload-ready pixels when stb is available;
+ * builds without a decoder preserve the encoded bytes for later processing.
  */
 texture_load_result load_texture_asset(const std::filesystem::path& path);
 
