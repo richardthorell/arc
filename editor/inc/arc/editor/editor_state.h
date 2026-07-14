@@ -39,6 +39,7 @@ struct editor_scene_state
     render::material_handle water_material;
     render::material_handle vegetation_material;
     render::environment_handle outdoor_environment;
+    std::filesystem::path world_environment_hdri_path;
     std::vector<render::texture_handle> default_textures;
     scene::entity camera_entity;
     scene::entity game_camera_entity;

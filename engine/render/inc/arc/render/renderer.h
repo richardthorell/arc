@@ -108,6 +108,11 @@ public:
     texture_handle create_texture(texture_data texture);
 
     /**
+     * @brief Replace an existing renderer texture without changing its handle.
+     */
+    bool update_texture(texture_handle handle, texture_data texture);
+
+    /**
      * @brief Create a renderer-owned material resource and enqueue its upload.
      */
     material_handle create_material(material_desc material);
@@ -121,6 +126,12 @@ public:
      * @brief Create a renderer-owned environment resource.
      */
     environment_handle create_environment(environment_desc environment);
+
+    /** @brief Replace an existing environment without changing its handle. */
+    bool update_environment(environment_handle handle, environment_desc environment);
+
+    /** @brief Retire an environment handle and enqueue backend cleanup. */
+    bool destroy_environment(environment_handle handle);
 
     /**
      * @brief Return whether a mesh handle still references a live renderer mesh.

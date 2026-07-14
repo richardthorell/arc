@@ -38,6 +38,18 @@ enum class render_pass_kind : std::uint8_t
     custom
 };
 
+/** @brief Stable engine pass identity implemented by every capable backend. */
+enum class builtin_render_pass : std::uint8_t
+{
+    none,
+    atmosphere_transmittance,
+    atmosphere_multi_scattering,
+    atmosphere_sky_view,
+    cloud_shadow,
+    sky_composite,
+    environment_prefilter
+};
+
 /**
  * @brief High-level graph resource category.
  */
@@ -181,6 +193,7 @@ struct render_graph_pass
     std::string name;
     render_queue_type queue{ render_queue_type::graphics };
     render_pass_kind kind{ render_pass_kind::custom };
+    builtin_render_pass builtin{ builtin_render_pass::none };
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
     render_pass_record_fn record{};
@@ -196,6 +209,7 @@ struct compiled_render_pass
     std::string name;
     render_queue_type queue{ render_queue_type::graphics };
     render_pass_kind kind{ render_pass_kind::custom };
+    builtin_render_pass builtin{ builtin_render_pass::none };
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
     render_pass_record_fn record{};

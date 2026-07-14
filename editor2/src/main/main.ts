@@ -197,8 +197,8 @@ class ArcHostClient {
     return this.send({ kind: 'command', type, payload });
   }
 
-  query(type: string): Promise<HostResponse> {
-    return this.send({ kind: 'query', type, payload: {} });
+  query(type: string, payload: Record<string, unknown> = {}): Promise<HostResponse> {
+    return this.send({ kind: 'query', type, payload });
   }
 
   private send(message: { kind: 'command' | 'query'; type: string; payload: Record<string, unknown> }): Promise<HostResponse> {
@@ -318,7 +318,7 @@ app.whenReady().then(() => {
     hostError: hostClient?.error ?? '',
   }));
 
-  ipcMain.handle('host:query', (_event, type: string) => hostClient?.query(type));
+  ipcMain.handle('host:query', (_event, type: string, payload: Record<string, unknown> = {}) => hostClient?.query(type, payload));
   ipcMain.handle('host:command', (_event, type: string, payload: Record<string, unknown>) => hostClient?.command(type, payload));
   ipcMain.handle('dialog:openScene', async (_event, options: OpenSceneDialogOptions = {}) => {
     const target = activeWindow();

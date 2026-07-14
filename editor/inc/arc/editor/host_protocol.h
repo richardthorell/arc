@@ -84,12 +84,30 @@ enum class host_component_kind : std::uint8_t
     directional_light,
     point_light,
     spot_light,
+    world_environment,
     sky_atmosphere,
+    celestial_sky,
+    cloud_layers,
+    environment_lighting,
     height_fog,
     terrain,
     water,
     vegetation,
     decal
+};
+
+enum class host_sky_source : std::uint8_t { physical_atmosphere, hdri, solid_color };
+enum class host_sun_position_mode : std::uint8_t { manual_light, geographic };
+enum class host_celestial_time_mode : std::uint8_t { fixed, simulated, system_clock };
+enum class host_environment_lighting_source : std::uint8_t { follow_sky, hdri, constant_color };
+enum class host_world_environment_preset : std::uint8_t
+{
+    clear_day,
+    alpine_late_morning,
+    golden_hour,
+    overcast,
+    night,
+    indoor_neutral
 };
 
 enum class host_create_entity_kind : std::uint8_t
@@ -184,6 +202,91 @@ struct host_selected_entity_snapshot
     std::vector<host_component_snapshot> components;
 };
 
+struct host_cloud_layer
+{
+    bool enabled{ true };
+    float coverage{};
+    float density{};
+    float altitude{};
+    float thickness{};
+    float scale{};
+    float detail{};
+    float softness{};
+    float wind_x{ 1.0f };
+    float wind_y{};
+    float wind_speed{};
+    float lighting_strength{ 1.0f };
+    float silver_lining{};
+};
+
+struct host_world_environment_snapshot
+{
+    host_entity_id entity{};
+    bool enabled{ true };
+    bool sky_visible{ true };
+    bool affect_lighting{ true };
+    host_sky_source sky_source{ host_sky_source::physical_atmosphere };
+    host_vec3 solid_color{ 0.08f, 0.13f, 0.22f };
+    std::string hdri_path;
+    float hdri_rotation_degrees{};
+    float radiance_intensity{ 1.0f };
+    float planet_radius{ 6360.0f };
+    float atmosphere_radius{ 6420.0f };
+    float rayleigh_strength{ 1.0f };
+    float mie_strength{ 0.35f };
+    float ozone_strength{ 0.15f };
+    host_vec3 atmosphere_tint{ 0.56f, 0.72f, 1.0f };
+    host_vec3 ground_albedo{ 0.18f, 0.18f, 0.18f };
+    float mie_anisotropy{ 0.8f };
+    float rayleigh_scale_height{ 8.0f };
+    float mie_scale_height{ 1.2f };
+    float multi_scattering_factor{ 1.0f };
+    float exposure{ 1.0f };
+    float sun_disk_size{ 0.025f };
+    float sun_disk_intensity{ 1.4f };
+    host_sun_position_mode sun_mode{ host_sun_position_mode::manual_light };
+    host_celestial_time_mode time_mode{ host_celestial_time_mode::fixed };
+    float latitude_degrees{ 46.8f };
+    float longitude_degrees{ 8.2f };
+    float north_offset_degrees{};
+    std::int32_t year{ 2026 };
+    std::int32_t month{ 7 };
+    std::int32_t day{ 14 };
+    float local_time_hours{ 10.5f };
+    float utc_offset_hours{ 2.0f };
+    bool playing{};
+    bool loop_day{ true };
+    float time_scale{ 60.0f };
+    bool automatic_sun_light{ true };
+    float sun_intensity_multiplier{ 1.0f };
+    float sun_temperature_multiplier{ 1.0f };
+    bool moon_enabled{ true };
+    bool automatic_moon_phase{ true };
+    float moon_phase{ 0.65f };
+    float moon_intensity{ 0.22f };
+    float moon_angular_radius_degrees{ 0.2725f };
+    bool stars_enabled{ true };
+    float star_density{ 0.42f };
+    float star_intensity{ 0.75f };
+    float star_twinkle{ 0.08f };
+    bool clouds_enabled{ true };
+    bool cloud_shadows{ true };
+    host_cloud_layer cumulus;
+    host_cloud_layer cirrus;
+    bool fog_enabled{ true };
+    host_vec3 fog_color{ 0.58f, 0.67f, 0.76f };
+    float fog_density{ 0.035f };
+    float fog_height_falloff{ 0.12f };
+    float fog_start_distance{ 8.0f };
+    float fog_max_opacity{ 0.55f };
+    float fog_sun_scattering{ 0.25f };
+    bool lighting_enabled{ true };
+    host_environment_lighting_source lighting_source{ host_environment_lighting_source::follow_sky };
+    host_vec3 lighting_color{ 0.18f, 0.23f, 0.29f };
+    float diffuse_intensity{ 1.0f };
+    float specular_intensity{ 1.0f };
+};
+
 struct host_asset_snapshot
 {
     std::string path;
@@ -271,6 +374,23 @@ struct host_set_transform_command
     host_transform transform;
 };
 
+struct host_set_world_environment_command
+{
+    host_world_environment_snapshot environment;
+};
+
+struct host_apply_world_environment_preset_command
+{
+    host_entity_id entity{};
+    host_world_environment_preset preset{ host_world_environment_preset::alpine_late_morning };
+};
+
+struct host_set_environment_hdri_command
+{
+    host_entity_id entity{};
+    std::filesystem::path path;
+};
+
 struct host_set_camera_projection_command
 {
     host_camera_projection projection{ host_camera_projection::perspective };
@@ -330,6 +450,9 @@ using host_command_payload = std::variant<
     host_set_active_command,
     host_set_tag_command,
     host_set_transform_command,
+    host_set_world_environment_command,
+    host_apply_world_environment_preset_command,
+    host_set_environment_hdri_command,
     host_set_camera_projection_command,
     host_viewport_attach_command,
     host_viewport_resize_command,
@@ -360,11 +483,17 @@ struct host_viewport_state_query
 {
 };
 
+struct host_world_environment_query
+{
+    host_entity_id entity{};
+};
+
 using host_query_payload = std::variant<
     host_scene_hierarchy_query,
     host_selected_entity_query,
     host_project_assets_query,
-    host_viewport_state_query>;
+    host_viewport_state_query,
+    host_world_environment_query>;
 
 struct host_query_envelope
 {
@@ -408,6 +537,11 @@ const char* to_string(host_camera_projection value) noexcept;
 const char* to_string(host_render_mode value) noexcept;
 const char* to_string(host_visualization_mode value) noexcept;
 const char* to_string(host_overlay_mode value) noexcept;
+const char* to_string(host_sky_source value) noexcept;
+const char* to_string(host_sun_position_mode value) noexcept;
+const char* to_string(host_celestial_time_mode value) noexcept;
+const char* to_string(host_environment_lighting_source value) noexcept;
+const char* to_string(host_world_environment_preset value) noexcept;
 
 std::string command_type(const host_command_payload& payload);
 std::string query_type(const host_query_payload& payload);
@@ -421,6 +555,7 @@ std::string to_json(const host_selected_entity_snapshot& snapshot);
 std::string to_json(const host_project_assets_snapshot& snapshot);
 std::string to_json(const host_entity_id& entity);
 std::string to_json(const host_transform& transform);
+std::string to_json(const host_world_environment_snapshot& environment);
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error);
 bool from_json(std::string_view json, host_query_envelope& envelope, std::string& error);

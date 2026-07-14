@@ -308,6 +308,87 @@ void draw_inspector_panel(
         draw_shadow_settings(light->shadow, false);
     }
 
+    if (auto* world = editor_scene.scene.try_get<scene::world_environment_component>(editor_scene.selected_entity))
+    {
+        if (ui::component_card_begin("World Environment"))
+        {
+            ui::checkbox_field("Enabled", &world->enabled);
+            ui::checkbox_field("Sky Visible", &world->sky_visible);
+            ui::checkbox_field("Affect Lighting", &world->affect_lighting);
+            int source = static_cast<int>(world->source);
+            const char* labels[]{ "Physical Atmosphere", "HDRI", "Solid Color" };
+            if (ImGui::Combo("Sky Source", &source, labels, 3))
+                world->source = static_cast<scene::sky_source>(source);
+            ui::float_field("Radiance", &world->radiance_intensity, 0.02f);
+            ui::float_field("HDRI Rotation", &world->hdri_rotation_degrees, 1.0f);
+            float solid[3]{ world->solid_color[0], world->solid_color[1], world->solid_color[2] };
+            if (ui::color_field3("Solid Color", solid))
+                world->solid_color = { solid[0], solid[1], solid[2] };
+
+            auto* atmosphere = editor_scene.scene.try_get<scene::sky_atmosphere_component>(editor_scene.selected_entity);
+            auto* celestial = editor_scene.scene.try_get<scene::celestial_sky_component>(editor_scene.selected_entity);
+            auto* clouds = editor_scene.scene.try_get<scene::cloud_layers_component>(editor_scene.selected_entity);
+            auto* fog = editor_scene.scene.try_get<scene::height_fog_component>(editor_scene.selected_entity);
+            auto* lighting = editor_scene.scene.try_get<scene::environment_lighting_component>(editor_scene.selected_entity);
+            if (atmosphere && celestial && clouds && fog && lighting)
+            {
+                const auto preset = [&](const char* label, scene::world_environment_preset value) {
+                    if (ImGui::SmallButton(label))
+                    {
+                        const auto sun = celestial->sun_light;
+                        const auto environment = lighting->environment;
+                        scene::apply_world_environment_preset(value, *world, *atmosphere, *celestial, *clouds, *fog, *lighting);
+                        celestial->sun_light = sun;
+                        lighting->environment = environment;
+                    }
+                };
+                preset("Clear", scene::world_environment_preset::clear_day); ImGui::SameLine();
+                preset("Alpine", scene::world_environment_preset::alpine_late_morning); ImGui::SameLine();
+                preset("Golden", scene::world_environment_preset::golden_hour);
+                preset("Overcast", scene::world_environment_preset::overcast); ImGui::SameLine();
+                preset("Night", scene::world_environment_preset::night); ImGui::SameLine();
+                preset("Indoor", scene::world_environment_preset::indoor_neutral);
+            }
+            ui::component_card_end();
+        }
+    }
+
+    if (auto* celestial = editor_scene.scene.try_get<scene::celestial_sky_component>(editor_scene.selected_entity))
+    {
+        if (ui::component_card_begin("Sun, Moon & Time"))
+        {
+            int sun_mode = static_cast<int>(celestial->sun_mode);
+            const char* sun_modes[]{ "Manual Light", "Geographic" };
+            if (ImGui::Combo("Sun Position", &sun_mode, sun_modes, 2))
+                celestial->sun_mode = static_cast<scene::sun_position_mode>(sun_mode);
+            int time_mode = static_cast<int>(celestial->time_mode);
+            const char* time_modes[]{ "Fixed", "Simulated", "System Clock" };
+            if (ImGui::Combo("Clock", &time_mode, time_modes, 3))
+                celestial->time_mode = static_cast<scene::celestial_time_mode>(time_mode);
+            ui::checkbox_field("Playing", &celestial->playing);
+            ui::float_field("Time of Day", &celestial->local_time_hours, 0.05f);
+            ui::float_field("Time Scale", &celestial->time_scale, 1.0f);
+            ui::float_field("Latitude", &celestial->latitude_degrees, 0.1f);
+            ui::float_field("Longitude", &celestial->longitude_degrees, 0.1f);
+            ui::float_field("UTC Offset", &celestial->utc_offset_hours, 0.25f);
+            ui::float_field("North Offset", &celestial->north_offset_degrees, 1.0f);
+            ui::checkbox_field("Loop Day", &celestial->loop_day);
+            ui::checkbox_field("Automatic Sun", &celestial->automatic_sun_light);
+            ui::float_field("Sun Intensity", &celestial->sun_intensity_multiplier, 0.05f);
+            ui::float_field("Sun Temperature", &celestial->sun_temperature_multiplier, 0.05f);
+            ui::checkbox_field("Moon", &celestial->moon_enabled);
+            ui::checkbox_field("Automatic Phase", &celestial->automatic_moon_phase);
+            ui::float_field("Moon Phase", &celestial->moon_phase, 0.01f);
+            ui::float_field("Moon Brightness", &celestial->moon_intensity, 0.01f);
+            ui::float_field("Moon Angular Radius", &celestial->moon_angular_radius_degrees, 0.01f);
+            ui::checkbox_field("Stars", &celestial->stars_enabled);
+            ui::float_field("Star Density", &celestial->star_density, 0.01f);
+            ui::float_field("Star Intensity", &celestial->star_intensity, 0.05f);
+            ui::float_field("Star Twinkle", &celestial->star_twinkle, 0.01f);
+            ui::component_card_end();
+        }
+    }
+
     if (auto* sky = editor_scene.scene.try_get<scene::sky_atmosphere_component>(editor_scene.selected_entity))
     {
         if (ui::component_card_begin("Sky Atmosphere"))
@@ -320,8 +401,50 @@ void draw_inspector_panel(
             ui::float_field("Rayleigh", &sky->rayleigh_strength, 0.01f);
             ui::float_field("Mie", &sky->mie_strength, 0.01f);
             ui::float_field("Ozone", &sky->ozone_strength, 0.01f);
+            ui::float_field("Mie Anisotropy", &sky->mie_anisotropy, 0.01f);
+            ui::float_field("Rayleigh Height", &sky->rayleigh_scale_height, 0.1f);
+            ui::float_field("Mie Height", &sky->mie_scale_height, 0.1f);
+            ui::float_field("Multi Scattering", &sky->multi_scattering_factor, 0.05f);
+            ui::float_field("Planet Radius", &sky->planet_radius, 1.0f);
+            ui::float_field("Atmosphere Radius", &sky->atmosphere_radius, 1.0f);
             ui::float_field("Sun Size", &sky->sun_disk_size, 0.001f);
             ui::float_field("Sun Power", &sky->sun_disk_intensity, 0.01f);
+            ui::component_card_end();
+        }
+    }
+
+    if (auto* clouds = editor_scene.scene.try_get<scene::cloud_layers_component>(editor_scene.selected_entity))
+    {
+        if (ui::component_card_begin("Cloud Layers"))
+        {
+            ui::checkbox_field("Enabled", &clouds->enabled);
+            ui::checkbox_field("Cloud Shadows", &clouds->cast_shadows);
+            ui::checkbox_field("Cumulus", &clouds->cumulus.enabled);
+            ui::float_field("Cumulus Coverage", &clouds->cumulus.coverage, 0.01f);
+            ui::float_field("Cumulus Density", &clouds->cumulus.density, 0.01f);
+            ui::float_field("Cumulus Wind", &clouds->cumulus.wind_speed, 0.1f);
+            ui::checkbox_field("Cirrus", &clouds->cirrus.enabled);
+            ui::float_field("Cirrus Coverage", &clouds->cirrus.coverage, 0.01f);
+            ui::float_field("Cirrus Density", &clouds->cirrus.density, 0.01f);
+            ui::float_field("Cirrus Wind", &clouds->cirrus.wind_speed, 0.1f);
+            ui::component_card_end();
+        }
+    }
+
+    if (auto* lighting = editor_scene.scene.try_get<scene::environment_lighting_component>(editor_scene.selected_entity))
+    {
+        if (ui::component_card_begin("Environment Lighting"))
+        {
+            ui::checkbox_field("Enabled", &lighting->enabled);
+            int source = static_cast<int>(lighting->source);
+            const char* labels[]{ "Follow Sky", "HDRI", "Constant Color" };
+            if (ImGui::Combo("Source", &source, labels, 3))
+                lighting->source = static_cast<scene::environment_lighting_source>(source);
+            float color[3]{ lighting->constant_color[0], lighting->constant_color[1], lighting->constant_color[2] };
+            if (ui::color_field3("Ambient", color))
+                lighting->constant_color = { color[0], color[1], color[2] };
+            ui::float_field("Diffuse", &lighting->diffuse_intensity, 0.02f);
+            ui::float_field("Specular", &lighting->specular_intensity, 0.02f);
             ui::component_card_end();
         }
     }

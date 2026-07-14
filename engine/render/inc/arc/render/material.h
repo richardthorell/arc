@@ -44,6 +44,14 @@ enum class texture_format : std::uint8_t
     bc7_rgba_srgb
 };
 
+/** @brief Backend-neutral texture dimensionality. */
+enum class texture_dimension : std::uint8_t
+{
+    texture_2d,
+    texture_3d,
+    cube
+};
+
 /**
  * @brief Byte range for one texture mip level in the encoded payload.
  */
@@ -69,12 +77,15 @@ struct texture_data
     std::filesystem::path source_path;
     std::uint32_t width{};
     std::uint32_t height{};
+    std::uint32_t depth{ 1 };
+    texture_dimension dimension{ texture_dimension::texture_2d };
     texture_format format{ texture_format::rgba8_srgb };
     std::vector<std::byte> pixels;
     std::vector<std::byte> encoded;
     std::vector<texture_mip_data> mips;
     std::string mime_type;
     std::uint32_t array_layers{ 1 };
+    std::uint32_t mip_levels{ 1 };
     bool compressed{};
     bool dds{};
 
@@ -103,6 +114,9 @@ struct texture_desc
     std::string name;
     std::uint32_t width{};
     std::uint32_t height{};
+    std::uint32_t depth{ 1 };
+    texture_dimension dimension{ texture_dimension::texture_2d };
+    std::uint32_t mip_levels{ 1 };
     texture_format format{ texture_format::rgba8_srgb };
 };
 

@@ -289,6 +289,7 @@ compiled_render_graph render_graph::compile() const
             .name = pass.name,
             .queue = pass.queue,
             .kind = pass.kind,
+            .builtin = pass.builtin,
             .reads = std::move(reads),
             .writes = std::move(writes),
             .record = pass.record,

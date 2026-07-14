@@ -17,6 +17,8 @@ render_event_type render_event::type() const noexcept
         return render_event_type::material_upload;
     if (std::holds_alternative<environment_upload_event>(payload))
         return render_event_type::environment_upload;
+    if (std::holds_alternative<environment_destroy_event>(payload))
+        return render_event_type::environment_destroy;
     if (std::holds_alternative<viewport_resize_event>(payload))
         return render_event_type::viewport_resize;
     if (std::holds_alternative<draw_mesh_event>(payload))
@@ -107,6 +109,13 @@ void render_event_writer::environment_upload(
 {
     render_event event{};
     event.payload = environment_upload_event{ .handle = handle, .environment = std::move(environment), .label = std::move(label) };
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::environment_destroy(environment_handle handle)
+{
+    render_event event{};
+    event.payload = environment_destroy_event{ .handle = handle };
     buffer_->push(std::move(event));
 }
 

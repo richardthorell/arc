@@ -281,6 +281,19 @@ texture_handle renderer::create_texture(texture_data texture)
     return handle;
 }
 
+bool renderer::update_texture(texture_handle handle, texture_data texture)
+{
+    if (!texture_handles_.alive(handle))
+        return false;
+
+    auto shared_texture = std::make_shared<texture_data>(std::move(texture));
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.texture_upload(handle, shared_texture, shared_texture->name);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
 material_handle renderer::create_material(material_desc material)
 {
     const material_handle handle = material_handles_.allocate();
@@ -320,6 +333,30 @@ environment_handle renderer::create_environment(environment_desc environment)
     writer.environment_upload(handle, shared_environment, shared_environment->name);
     frame_queue_.submit(std::move(buffer));
     return handle;
+}
+
+bool renderer::update_environment(environment_handle handle, environment_desc environment)
+{
+    if (!environment_handles_.alive(handle))
+        return false;
+    environment.handle = handle;
+    auto shared_environment = std::make_shared<environment_desc>(std::move(environment));
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.environment_upload(handle, shared_environment, shared_environment->name);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::destroy_environment(environment_handle handle)
+{
+    if (!environment_handles_.release(handle))
+        return false;
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.environment_destroy(handle);
+    frame_queue_.submit(std::move(buffer));
+    return true;
 }
 
 bool renderer::mesh_alive(mesh_handle handle) const

@@ -45,7 +45,7 @@ const arcApi = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getStartupState: (): Promise<ArcStartupState> => ipcRenderer.invoke('editor:getStartupState'),
   host: {
-    query: (type: string): Promise<unknown> => ipcRenderer.invoke('host:query', type),
+    query: (type: string, payload: Record<string, unknown> = {}): Promise<unknown> => ipcRenderer.invoke('host:query', type, payload),
     command: (type: string, payload: Record<string, unknown> = {}): Promise<unknown> => ipcRenderer.invoke('host:command', type, payload),
     onLog: (callback: (event: ArcHostLogEvent) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, logEvent: ArcHostLogEvent) => callback(logEvent);

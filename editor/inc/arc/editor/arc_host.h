@@ -35,6 +35,7 @@ public:
     host_scene_snapshot scene_snapshot() const;
     host_selected_entity_snapshot selected_entity_snapshot() const;
     host_project_assets_snapshot project_assets_snapshot() const;
+    std::optional<host_world_environment_snapshot> world_environment_snapshot(host_entity_id entity) const;
     std::vector<host_event> poll_events();
 
     host_viewport_frame request_viewport(const host_viewport_request& request);

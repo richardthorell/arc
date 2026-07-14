@@ -235,6 +235,25 @@ struct clustered_light_grid_profile
 };
 
 /**
+ * @brief Resolved world-environment state reported by the active backend.
+ *
+ * The graph can describe a higher-quality path before a backend implements it,
+ * so these fields intentionally report what the backend actually executed.
+ */
+struct render_environment_profile
+{
+    bool enabled{};
+    bool sky_visible{};
+    bool affects_lighting{};
+    std::string source;
+    std::string quality_path;
+    std::string atmosphere_lut_state;
+    std::string environment_lighting_state;
+    std::uint32_t cloud_shadow_resolution{};
+    std::string fallback_reason;
+};
+
+/**
  * @brief Backend frame profile data exposed to tools such as the editor profiler.
  */
 struct render_backend_frame_profile
@@ -244,6 +263,7 @@ struct render_backend_frame_profile
     std::string summary;
     compiled_render_graph graph;
     clustered_light_grid_profile clustered_lights;
+    render_environment_profile environment;
     resolved_render_config configuration;
 };
 

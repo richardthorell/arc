@@ -3,6 +3,7 @@
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
 #include <arc/render/virtual_mesh.h>
+#include <arc/scene/entity.h>
 #include <arc/geometric/box.h>
 #include <arc/math/math.h>
 
@@ -269,6 +270,41 @@ struct irradiance_probe_component
 };
 
 /**
+ * @brief Source used to draw the background sky.
+ */
+enum class sky_source : std::uint8_t
+{
+    physical_atmosphere,
+    hdri,
+    solid_color
+};
+
+/**
+ * @brief Source used for diffuse and specular environment lighting.
+ */
+enum class environment_lighting_source : std::uint8_t
+{
+    follow_sky,
+    hdri,
+    constant_color
+};
+
+/**
+ * @brief Scene-wide world environment selection and visibility policy.
+ */
+struct world_environment_component
+{
+    bool enabled{ true };
+    bool sky_visible{ true };
+    bool affect_lighting{ true };
+    sky_source source{ sky_source::physical_atmosphere };
+    math::vector3f solid_color{ 0.08f, 0.13f, 0.22f };
+    render::texture_handle hdri_texture{};
+    float hdri_rotation_degrees{};
+    float radiance_intensity{ 1.0f };
+};
+
+/**
  * @brief Procedural outdoor sky atmosphere settings.
  */
 struct sky_atmosphere_component
@@ -280,9 +316,118 @@ struct sky_atmosphere_component
     float mie_strength{ 0.35f };
     float ozone_strength{ 0.15f };
     math::vector3f tint{ 0.56f, 0.72f, 1.0f };
+    math::vector3f ground_albedo{ 0.18f, 0.18f, 0.18f };
+    float mie_anisotropy{ 0.8f };
+    float rayleigh_scale_height{ 8.0f };
+    float mie_scale_height{ 1.2f };
+    float multi_scattering_factor{ 1.0f };
     float exposure{ 1.0f };
     float sun_disk_size{ 0.025f };
     float sun_disk_intensity{ 1.4f };
+};
+
+enum class sun_position_mode : std::uint8_t
+{
+    manual_light,
+    geographic
+};
+
+enum class celestial_time_mode : std::uint8_t
+{
+    fixed,
+    simulated,
+    system_clock
+};
+
+/**
+ * @brief Geographic clock and celestial appearance for an outdoor sky.
+ */
+struct celestial_sky_component
+{
+    bool enabled{ true };
+    sun_position_mode sun_mode{ sun_position_mode::manual_light };
+    celestial_time_mode time_mode{ celestial_time_mode::fixed };
+    entity sun_light{};
+    float latitude_degrees{ 46.8f };
+    float longitude_degrees{ 8.2f };
+    float north_offset_degrees{};
+    std::int32_t year{ 2026 };
+    std::int32_t month{ 7 };
+    std::int32_t day{ 14 };
+    float local_time_hours{ 10.5f };
+    float utc_offset_hours{ 2.0f };
+    bool playing{};
+    bool loop_day{ true };
+    float time_scale{ 60.0f };
+    float animation_time_seconds{};
+    bool automatic_sun_light{ true };
+    float sun_intensity_multiplier{ 1.0f };
+    float sun_temperature_multiplier{ 1.0f };
+    bool moon_enabled{ true };
+    bool automatic_moon_phase{ true };
+    float moon_phase{ 0.65f };
+    float moon_intensity{ 0.22f };
+    float moon_angular_radius_degrees{ 0.2725f };
+    bool stars_enabled{ true };
+    float star_density{ 0.42f };
+    float star_intensity{ 0.75f };
+    float star_twinkle{ 0.08f };
+};
+
+/**
+ * @brief One artist-authored cloud deck.
+ */
+struct cloud_layer_settings
+{
+    bool enabled{ true };
+    float coverage{ 0.28f };
+    float density{ 0.58f };
+    float altitude{ 1800.0f };
+    float thickness{ 450.0f };
+    float scale{ 0.00045f };
+    float detail{ 0.55f };
+    float softness{ 0.18f };
+    math::vector2f wind_direction{ 0.8f, 0.35f };
+    float wind_speed{ 8.0f };
+    float lighting_strength{ 1.0f };
+    float silver_lining{ 0.35f };
+};
+
+/**
+ * @brief Scalable lower and upper procedural cloud decks.
+ */
+struct cloud_layers_component
+{
+    bool enabled{ true };
+    bool cast_shadows{ true };
+    cloud_layer_settings cumulus{};
+    cloud_layer_settings cirrus{
+        .coverage = 0.12f,
+        .density = 0.28f,
+        .altitude = 6200.0f,
+        .thickness = 180.0f,
+        .scale = 0.00018f,
+        .detail = 0.72f,
+        .softness = 0.32f,
+        .wind_direction = { -0.4f, 0.9f },
+        .wind_speed = 18.0f,
+        .lighting_strength = 0.75f,
+        .silver_lining = 0.12f
+    };
+};
+
+/**
+ * @brief Ambient environment lighting source independent of sky visibility.
+ */
+struct environment_lighting_component
+{
+    bool enabled{ true };
+    environment_lighting_source source{ environment_lighting_source::follow_sky };
+    render::environment_handle environment{};
+    render::texture_handle hdri_texture{};
+    math::vector3f constant_color{ 0.18f, 0.23f, 0.29f };
+    float diffuse_intensity{ 1.0f };
+    float specular_intensity{ 1.0f };
 };
 
 /**

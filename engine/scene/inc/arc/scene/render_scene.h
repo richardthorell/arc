@@ -19,6 +19,7 @@ struct render_scene_result
     std::size_t renderable_count{};
     std::size_t submitted_draw_count{};
     std::size_t sky_atmosphere_count{};
+    std::size_t world_environment_count{};
     std::size_t height_fog_count{};
     std::size_t terrain_count{};
     std::size_t water_count{};
@@ -38,6 +39,7 @@ struct render_scene_result
     std::size_t culled_virtual_cluster_count{};
     std::size_t instance_batch_count{};
     std::size_t indirect_draw_count{};
+    render::world_environment_data environment;
 };
 
 /**
@@ -65,6 +67,7 @@ render_scene_result render_scene(
     render::mesh_visualization_mode visualization = render::mesh_visualization_mode::standard,
     render::editor_overlay_mode overlay = render::editor_overlay_mode::selected_wireframe,
     bool shadows_enabled = true,
-    render_environment_visibility environment_visibility = {});
+    render_environment_visibility environment_visibility = {},
+    float delta_seconds = 0.0f);
 
 } // namespace arc::scene

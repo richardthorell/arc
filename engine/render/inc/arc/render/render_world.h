@@ -130,26 +130,96 @@ struct irradiance_probe_data
     std::string label;
 };
 
-/**
- * @brief Procedural sky atmosphere data extracted for one frame.
- */
+enum class sky_source_mode : std::uint8_t
+{
+    physical_atmosphere,
+    hdri,
+    solid_color
+};
+
+enum class environment_lighting_source_mode : std::uint8_t
+{
+    follow_sky,
+    hdri,
+    constant_color
+};
+
+/** @brief Procedural atmosphere parameters extracted for one frame. */
 struct sky_atmosphere_data
 {
-    bool enabled{};
+    bool enabled{ true };
     float planet_radius{ 6360.0f };
     float atmosphere_radius{ 6420.0f };
     float rayleigh_strength{ 1.0f };
     float mie_strength{ 0.35f };
     float ozone_strength{ 0.15f };
     math::vector3f tint{ 0.56f, 0.72f, 1.0f };
+    math::vector3f ground_albedo{ 0.18f, 0.18f, 0.18f };
+    float mie_anisotropy{ 0.8f };
+    float rayleigh_scale_height{ 8.0f };
+    float mie_scale_height{ 1.2f };
+    float multi_scattering_factor{ 1.0f };
     float exposure{ 1.0f };
     float sun_disk_size{ 0.025f };
     float sun_disk_intensity{ 1.4f };
     std::string label;
 };
 
+struct celestial_sky_data
+{
+    bool enabled{ true };
+    math::vector3f sun_direction{ 0.35f, -0.85f, -0.40f };
+    math::vector3f moon_direction{ -0.35f, 0.85f, 0.40f };
+    float sun_angular_radius_degrees{ 0.2666f };
+    float sun_intensity{ 1.0f };
+    bool moon_enabled{ true };
+    float moon_phase{ 0.65f };
+    float moon_intensity{ 0.22f };
+    float moon_angular_radius_degrees{ 0.2725f };
+    bool stars_enabled{ true };
+    float star_density{ 0.42f };
+    float star_intensity{ 0.75f };
+    float star_twinkle{ 0.08f };
+    float time_seconds{};
+};
+
+struct cloud_layer_data
+{
+    bool enabled{};
+    float coverage{};
+    float density{};
+    float altitude{};
+    float thickness{};
+    float scale{};
+    float detail{};
+    float softness{};
+    math::vector2f wind_direction{};
+    float wind_speed{};
+    float lighting_strength{};
+    float silver_lining{};
+};
+
+struct cloud_layers_data
+{
+    bool enabled{};
+    bool cast_shadows{};
+    cloud_layer_data cumulus;
+    cloud_layer_data cirrus;
+};
+
+struct environment_lighting_data
+{
+    bool enabled{};
+    environment_lighting_source_mode source{ environment_lighting_source_mode::follow_sky };
+    environment_handle environment{};
+    texture_handle hdri_texture{};
+    math::vector3f constant_color{ 0.12f, 0.12f, 0.12f };
+    float diffuse_intensity{ 1.0f };
+    float specular_intensity{ 1.0f };
+};
+
 /**
- * @brief Height fog data extracted for one frame.
+ * @brief Height fog resolved with the active world environment.
  */
 struct height_fog_data
 {
@@ -161,6 +231,26 @@ struct height_fog_data
     float max_opacity{ 0.55f };
     float sun_scattering_strength{ 0.25f };
     std::string label;
+};
+
+/** @brief Immutable resolved world-environment state for one frame. */
+struct world_environment_data
+{
+    bool enabled{};
+    bool sky_visible{};
+    bool affect_lighting{};
+    sky_source_mode source{ sky_source_mode::physical_atmosphere };
+    math::vector3f solid_color{ 0.08f, 0.13f, 0.22f };
+    texture_handle hdri_texture{};
+    float hdri_rotation_degrees{};
+    float radiance_intensity{ 1.0f };
+    sky_atmosphere_data atmosphere;
+    celestial_sky_data celestial;
+    cloud_layers_data clouds;
+    height_fog_data fog;
+    environment_lighting_data lighting;
+    std::string label;
+    std::string fallback_reason;
 };
 
 /**
@@ -279,8 +369,7 @@ struct render_world_packet
     std::vector<spot_light_event> spot_lights;
     std::vector<reflection_probe_data> reflection_probes;
     std::vector<irradiance_probe_data> irradiance_probes;
-    sky_atmosphere_data sky;
-    height_fog_data fog;
+    world_environment_data environment;
     std::vector<terrain_render_data> terrains;
     std::vector<water_render_data> waters;
     std::vector<vegetation_render_data> vegetation;
@@ -348,5 +437,11 @@ render_graph make_scene_draw_graph(
     std::string_view target_name,
     const resolved_render_config& config,
     bool editor_view = true);
+
+render_graph make_scene_draw_graph(
+    std::string_view target_name,
+    const resolved_render_config& config,
+    bool editor_view,
+    const world_environment_data& environment);
 
 } // namespace arc::render

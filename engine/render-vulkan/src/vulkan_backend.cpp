@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -62,6 +63,36 @@ std::uint64_t resource_key(resource_handle handle) noexcept
 VkDeviceSize buffer_size(std::size_t count, std::size_t stride) noexcept
 {
     return static_cast<VkDeviceSize>(count * stride);
+}
+
+std::uint32_t quantize_unsigned(float value, float maximum, std::uint32_t mask) noexcept
+{
+    return static_cast<std::uint32_t>(std::round(
+        std::clamp(value / maximum, 0.0f, 1.0f) * static_cast<float>(mask)));
+}
+
+float pack_sun_settings(float intensity, float angular_radius_degrees) noexcept
+{
+    const auto packed = quantize_unsigned(intensity, 32.0f, 0xffffu) |
+        (quantize_unsigned(angular_radius_degrees, 5.0f, 0xffffu) << 16u);
+    return std::bit_cast<float>(packed);
+}
+
+float pack_moon_settings(float phase, float intensity, float angular_radius_degrees, bool enabled) noexcept
+{
+    const auto packed = quantize_unsigned(phase, 1.0f, 0x3ffu) |
+        (quantize_unsigned(intensity, 8.0f, 0x3ffu) << 10u) |
+        (quantize_unsigned(angular_radius_degrees, 5.0f, 0x3ffu) << 20u) |
+        (enabled ? 1u << 30u : 0u);
+    return std::bit_cast<float>(packed);
+}
+
+float pack_sky_settings(sky_source_mode source, float star_density, float star_intensity) noexcept
+{
+    const auto packed = static_cast<std::uint32_t>(source) |
+        (quantize_unsigned(star_density, 1.0f, 0x3ffu) << 2u) |
+        (quantize_unsigned(star_intensity, 16.0f, 0xfffu) << 12u);
+    return std::bit_cast<float>(packed);
 }
 
 math::vector3f matrix_translation(const math::matrix4f& matrix) noexcept
@@ -191,9 +222,14 @@ struct mesh_push_constants
 
 struct sky_push_constants
 {
-    float sun_direction_exposure[4]{ 0.35f, -0.85f, -0.40f, 1.0f };
-    float sky_tint_rayleigh[4]{ 0.56f, 0.72f, 1.0f, 1.0f };
-    float sky_params[4]{ 0.35f, 0.15f, 0.025f, 1.4f };
+    float camera_forward_fov[4]{ 0.0f, 0.0f, -1.0f, 0.57735f };
+    float camera_up_aspect[4]{ 0.0f, 1.0f, 0.0f, 1.77778f };
+    float sun_direction_intensity[4]{ 0.35f, -0.85f, -0.40f, 1.4f };
+    float moon_direction_phase[4]{ -0.35f, 0.85f, 0.40f, 0.65f };
+    float sky_color_source[4]{ 0.56f, 0.72f, 1.0f, 0.042f };
+    float atmosphere[4]{ 1.0f, 0.35f, 0.15f, 1.0f };
+    float cumulus[4]{};
+    float cirrus[4]{};
 };
 
 struct deferred_push_constants
@@ -338,7 +374,7 @@ public:
         frame_directional_lights_.clear();
         frame_point_lights_.clear();
         frame_spot_lights_.clear();
-        frame_sky_ = {};
+        frame_environment_ = {};
         frame_fog_ = {};
         pending_debug_markers_.clear();
         for (const auto& event : packet.events)
@@ -353,6 +389,12 @@ public:
                 upload_material(*material);
             else if (const auto* environment = std::get_if<environment_upload_event>(&event.payload))
                 upload_environment(*environment);
+            else if (const auto* environment = std::get_if<environment_destroy_event>(&event.payload))
+            {
+                environments_.erase(resource_key(environment->handle));
+                if (active_environment_ == environment->handle)
+                    active_environment_ = {};
+            }
             else if (const auto* draw = std::get_if<draw_mesh_event>(&event.payload))
             {
                 frame_draws_.push_back(*draw);
@@ -379,13 +421,42 @@ public:
         last_profile_.summary += std::to_string(packet.events.size());
         last_profile_.summary += " render event(s)";
 
+        const environment_desc* lighting_environment = active_environment();
+        if (frame_environment_.lighting.environment.valid())
+        {
+            const auto found = environments_.find(resource_key(frame_environment_.lighting.environment));
+            if (found != environments_.end())
+                lighting_environment = &found->second.data;
+        }
         frame_lighting_ = pack_scene_lighting(
             frame_directional_lights_,
             frame_point_lights_,
             frame_spot_lights_,
-            active_environment(),
+            frame_environment_.affect_lighting && frame_environment_.lighting.enabled
+                ? lighting_environment
+                : nullptr,
             resolved_config_.max_point_lights,
             resolved_config_.max_spot_lights);
+        if (frame_environment_.affect_lighting && frame_environment_.lighting.enabled)
+        {
+            math::vector3f ambient = frame_environment_.lighting.constant_color;
+            if (frame_environment_.lighting.source == environment_lighting_source_mode::follow_sky)
+            {
+                ambient = frame_environment_.source == sky_source_mode::solid_color
+                    ? frame_environment_.solid_color
+                    : math::vector3f{
+                        frame_environment_.atmosphere.tint[0] * 0.28f,
+                        frame_environment_.atmosphere.tint[1] * 0.28f,
+                        frame_environment_.atmosphere.tint[2] * 0.28f };
+            }
+            if (frame_environment_.lighting.source != environment_lighting_source_mode::hdri || !lighting_environment)
+            {
+                frame_lighting_.ambient_color_intensity = {
+                    ambient[0], ambient[1], ambient[2], frame_environment_.lighting.diffuse_intensity
+                };
+            }
+        }
+        update_environment_profile(lighting_environment);
         last_profile_.clustered_lights = make_clustered_light_profile();
         update_light_buffer();
         warn_about_skipped_lights(frame_lighting_);
@@ -1172,8 +1243,8 @@ private:
         }
 
         frame_camera_ = packet.camera;
-        frame_sky_ = packet.sky;
-        frame_fog_ = packet.fog;
+        frame_environment_ = packet.environment;
+        frame_fog_ = packet.environment.fog;
         frame_shadows_enabled_ = packet.shadows_enabled;
     }
 
@@ -1633,11 +1704,17 @@ private:
 
         VkImageCreateInfo image{};
         image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        image.imageType = VK_IMAGE_TYPE_2D;
+        image.imageType = data.dimension == texture_dimension::texture_3d
+            ? VK_IMAGE_TYPE_3D
+            : VK_IMAGE_TYPE_2D;
+        if (data.dimension == texture_dimension::cube)
+            image.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
         image.format = *format;
-        image.extent = { data.width, data.height, 1 };
+        image.extent = { data.width, data.height, data.dimension == texture_dimension::texture_3d ? data.depth : 1u };
         image.mipLevels = mip_count;
-        image.arrayLayers = 1;
+        image.arrayLayers = data.dimension == texture_dimension::texture_3d
+            ? 1u
+            : std::max(1u, data.dimension == texture_dimension::cube ? 6u : data.array_layers);
         image.samples = VK_SAMPLE_COUNT_1_BIT;
         image.tiling = VK_IMAGE_TILING_OPTIMAL;
         image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -1653,11 +1730,15 @@ private:
         VkImageViewCreateInfo view{};
         view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         view.image = destination.image;
-        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view.viewType = data.dimension == texture_dimension::cube
+            ? VK_IMAGE_VIEW_TYPE_CUBE
+            : data.dimension == texture_dimension::texture_3d
+                ? VK_IMAGE_VIEW_TYPE_3D
+                : data.array_layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
         view.format = *format;
         view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         view.subresourceRange.levelCount = mip_count;
-        view.subresourceRange.layerCount = 1;
+        view.subresourceRange.layerCount = image.arrayLayers;
         if (vkCreateImageView(device_, &view, nullptr, &destination.view) != VK_SUCCESS)
         {
             destroy_texture(destination);
@@ -1723,7 +1804,7 @@ private:
         to_copy.image = destination.image;
         to_copy.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         to_copy.subresourceRange.levelCount = mip_count;
-        to_copy.subresourceRange.layerCount = 1;
+        to_copy.subresourceRange.layerCount = image.arrayLayers;
         vkCmdPipelineBarrier(
             command_buffer,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -1747,8 +1828,9 @@ private:
                 copy.bufferOffset = static_cast<VkDeviceSize>(source_mip.offset);
                 copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
                 copy.imageSubresource.mipLevel = mip;
-                copy.imageSubresource.layerCount = 1;
-                copy.imageExtent = { source_mip.width, source_mip.height, 1 };
+                copy.imageSubresource.layerCount = image.arrayLayers;
+                copy.imageExtent = { source_mip.width, source_mip.height,
+                    data.dimension == texture_dimension::texture_3d ? std::max(1u, data.depth >> mip) : 1u };
                 regions.push_back(copy);
             }
         }
@@ -1756,8 +1838,9 @@ private:
         {
             VkBufferImageCopy copy{};
             copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            copy.imageSubresource.layerCount = 1;
-            copy.imageExtent = { data.width, data.height, 1 };
+            copy.imageSubresource.layerCount = image.arrayLayers;
+            copy.imageExtent = { data.width, data.height,
+                data.dimension == texture_dimension::texture_3d ? data.depth : 1u };
             regions.push_back(copy);
         }
 
@@ -1909,6 +1992,64 @@ private:
     {
         const auto found = environments_.find(resource_key(active_environment_));
         return found == environments_.end() ? nullptr : &found->second.data;
+    }
+
+    void update_environment_profile(const environment_desc* lighting_environment)
+    {
+        auto& profile = last_profile_.environment;
+        profile = {};
+        profile.enabled = frame_environment_.enabled;
+        profile.sky_visible = frame_environment_.enabled && frame_environment_.sky_visible;
+        profile.affects_lighting = frame_environment_.affect_lighting && frame_environment_.lighting.enabled;
+        switch (frame_environment_.source)
+        {
+        case sky_source_mode::physical_atmosphere: profile.source = "Physical atmosphere"; break;
+        case sky_source_mode::hdri: profile.source = "HDRI"; break;
+        case sky_source_mode::solid_color: profile.source = "Solid color"; break;
+        }
+
+        if (!profile.enabled)
+        {
+            profile.quality_path = "Disabled";
+            profile.atmosphere_lut_state = "Not required";
+        }
+        else if (frame_environment_.source == sky_source_mode::physical_atmosphere)
+        {
+            profile.quality_path = resolved_config_.quality == render_quality_tier::low
+                ? "Analytic low-tier"
+                : "Analytic compatibility fallback";
+            profile.atmosphere_lut_state = resolved_config_.quality == render_quality_tier::low
+                ? "Not required by low tier"
+                : "Graph scheduled; Vulkan execution pending";
+        }
+        else
+        {
+            profile.quality_path = "Texture/constant composite";
+            profile.atmosphere_lut_state = "Not required";
+        }
+
+        if (!profile.affects_lighting)
+            profile.environment_lighting_state = "Disabled";
+        else if (lighting_environment && lighting_environment->prefiltered)
+            profile.environment_lighting_state = "Prefiltered environment";
+        else
+            profile.environment_lighting_state = "Diffuse fallback";
+
+        // The graph owns the future standard-tier cloud shadow pass, but the
+        // current Vulkan executor does not allocate or sample that texture yet.
+        profile.cloud_shadow_resolution = 0;
+        profile.fallback_reason = frame_environment_.fallback_reason;
+        if (frame_environment_.source == sky_source_mode::hdri &&
+            (!frame_environment_.hdri_texture.valid() ||
+                textures_.find(resource_key(frame_environment_.hdri_texture)) == textures_.end()))
+        {
+            profile.fallback_reason = "HDRI texture is unavailable; using the visible fallback color";
+        }
+        else if (frame_environment_.source == sky_source_mode::physical_atmosphere &&
+            resolved_config_.quality != render_quality_tier::low && profile.fallback_reason.empty())
+        {
+            profile.fallback_reason = "Atmosphere LUT execution is not available in Vulkan yet; using the analytic sky";
+        }
     }
 
     void update_light_buffer()
@@ -2065,7 +2206,9 @@ private:
         constants.camera_position[0] = frame_camera_.position[0];
         constants.camera_position[1] = frame_camera_.position[1];
         constants.camera_position[2] = frame_camera_.position[2];
-        constants.camera_position[3] = frame_sky_.enabled ? std::max(frame_sky_.exposure, 0.001f) : 1.0f;
+        constants.camera_position[3] = frame_environment_.enabled
+            ? std::max(frame_environment_.atmosphere.exposure, 0.001f)
+            : 1.0f;
         constants.fog_params[3] = draw.object_id.valid()
             ? static_cast<float>(draw.object_id.index + 1u)
             : 0.0f;
@@ -2207,6 +2350,7 @@ private:
             vkDestroyDescriptorPool(device_, white_descriptor_pool_, nullptr);
             white_descriptor_pool_ = VK_NULL_HANDLE;
             white_descriptor_sets_.clear();
+            sky_descriptor_sets_.clear();
             for (auto& [_, material] : materials_)
                 material.descriptor_sets.clear();
         }
@@ -2439,6 +2583,63 @@ private:
                 return false;
         }
         return true;
+    }
+
+    bool ensure_sky_descriptor_sets()
+    {
+        if (!ensure_white_texture())
+            return false;
+        const auto count = frame_resource_count();
+        if (sky_descriptor_sets_.size() != count)
+            sky_descriptor_sets_.assign(count, VK_NULL_HANDLE);
+        for (auto& set : sky_descriptor_sets_)
+        {
+            if (set == VK_NULL_HANDLE)
+                set = allocate_material_descriptor_set();
+            if (set == VK_NULL_HANDLE)
+                return false;
+        }
+        return true;
+    }
+
+    VkDescriptorSet update_current_sky_descriptor_set()
+    {
+        if (!ensure_sky_descriptor_sets())
+            return VK_NULL_HANDLE;
+        const auto slot = current_frame_slot();
+        if (slot >= sky_descriptor_sets_.size())
+            return VK_NULL_HANDLE;
+        const auto set = sky_descriptor_sets_[slot];
+        update_material_descriptor_set(set, nullptr, slot);
+
+        VkSampler sampler = white_sampler_;
+        VkImageView view = white_view_;
+        if (frame_environment_.source == sky_source_mode::hdri && frame_environment_.hdri_texture.valid())
+        {
+            const auto found = textures_.find(resource_key(frame_environment_.hdri_texture));
+            if (found != textures_.end() && found->second.view != VK_NULL_HANDLE && found->second.sampler != VK_NULL_HANDLE)
+            {
+                sampler = found->second.sampler;
+                view = found->second.view;
+            }
+            else
+            {
+                frame_environment_.fallback_reason = "HDRI texture is unavailable; using the visible fallback color";
+            }
+        }
+        VkDescriptorImageInfo image{};
+        image.sampler = sampler;
+        image.imageView = view;
+        image.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = set;
+        write.dstBinding = 0;
+        write.descriptorCount = 1;
+        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        write.pImageInfo = &image;
+        vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
+        return set;
     }
 
     void update_material_descriptor_set(VkDescriptorSet descriptor_set, const material_desc* material, std::uint32_t frame_slot)
@@ -3184,6 +3385,8 @@ private:
     {
         if (sky_pipeline_ != VK_NULL_HANDLE)
             return true;
+        if (!ensure_white_texture())
+            return false;
 
         VkShaderModule vert = create_shader_module(
             builtin::sky_atmosphere_vert_spv,
@@ -3201,6 +3404,8 @@ private:
 
         VkPipelineLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout.setLayoutCount = 1;
+        layout.pSetLayouts = &white_descriptor_set_layout_;
         layout.pushConstantRangeCount = 1;
         layout.pPushConstantRanges = &push;
         if (vkCreatePipelineLayout(device_, &layout, nullptr, &sky_pipeline_layout_) != VK_SUCCESS)
@@ -4255,7 +4460,9 @@ private:
                 constants.light_color_exposure[1] = light.color[1];
                 constants.light_color_exposure[2] = light.color[2];
             }
-            constants.light_color_exposure[3] = frame_sky_.enabled ? std::max(frame_sky_.exposure, 0.001f) : 1.0f;
+            constants.light_color_exposure[3] = frame_environment_.enabled
+                ? std::max(frame_environment_.atmosphere.exposure, 0.001f)
+                : 1.0f;
             constants.ambient_visualization[0] = frame_lighting_.ambient_color_intensity[0] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[1] = frame_lighting_.ambient_color_intensity[1] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[2] = frame_lighting_.ambient_color_intensity[2] * frame_lighting_.ambient_color_intensity[3];
@@ -4362,10 +4569,8 @@ private:
         color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        color_attachment.clearValue.color.float32[0] = 0.118f;
-        color_attachment.clearValue.color.float32[1] = 0.118f;
-        color_attachment.clearValue.color.float32[2] = 0.118f;
-        color_attachment.clearValue.color.float32[3] = 1.0f;
+        for (std::uint32_t channel = 0; channel < 4; ++channel)
+            color_attachment.clearValue.color.float32[channel] = frame_camera_.clear_color[channel];
 
         VkRenderingAttachmentInfo depth_attachment{};
         depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -4384,7 +4589,7 @@ private:
         rendering.pDepthAttachment = &depth_attachment;
         cmd_begin_rendering(command_buffer, &rendering);
 
-        if (frame_sky_.enabled && ensure_sky_pipeline())
+        if (frame_environment_.enabled && frame_environment_.sky_visible && ensure_sky_pipeline())
         {
             VkViewport viewport{};
             viewport.y = static_cast<float>(viewport_height_);
@@ -4397,28 +4602,86 @@ private:
             vkCmdSetViewport(command_buffer, 0, 1, &viewport);
             vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-            auto sun_direction = math::vector3f{ 0.35f, -0.85f, -0.40f };
-            if (!frame_directional_lights_.empty())
+            auto sun_direction = frame_environment_.celestial.sun_direction;
+            if (!frame_environment_.celestial.enabled && !frame_directional_lights_.empty())
                 sun_direction = frame_directional_lights_.front().direction;
             if (math::length_squared(sun_direction) < 0.0001f)
                 sun_direction = { 0.35f, -0.85f, -0.40f };
             sun_direction = math::normalize(sun_direction);
 
             sky_push_constants constants{};
-            constants.sun_direction_exposure[0] = sun_direction[0];
-            constants.sun_direction_exposure[1] = sun_direction[1];
-            constants.sun_direction_exposure[2] = sun_direction[2];
-            constants.sun_direction_exposure[3] = frame_sky_.exposure;
-            constants.sky_tint_rayleigh[0] = frame_sky_.tint[0];
-            constants.sky_tint_rayleigh[1] = frame_sky_.tint[1];
-            constants.sky_tint_rayleigh[2] = frame_sky_.tint[2];
-            constants.sky_tint_rayleigh[3] = frame_sky_.rayleigh_strength;
-            constants.sky_params[0] = frame_sky_.mie_strength;
-            constants.sky_params[1] = frame_sky_.ozone_strength;
-            constants.sky_params[2] = frame_sky_.sun_disk_size;
-            constants.sky_params[3] = frame_sky_.sun_disk_intensity;
+            for (std::uint32_t channel = 0; channel < 3; ++channel)
+            {
+                constants.camera_forward_fov[channel] = frame_camera_.forward[channel];
+                constants.camera_up_aspect[channel] = frame_camera_.up[channel];
+                constants.sun_direction_intensity[channel] = sun_direction[channel];
+                constants.moon_direction_phase[channel] = frame_environment_.celestial.moon_direction[channel];
+            }
+            constants.camera_forward_fov[3] = std::abs(frame_camera_.projection(1, 1)) > 0.0001f
+                ? 1.0f / std::abs(frame_camera_.projection(1, 1))
+                : 0.57735f;
+            constants.camera_up_aspect[3] = viewport_height_ == 0
+                ? 1.0f
+                : static_cast<float>(viewport_width_) / static_cast<float>(viewport_height_);
+            constants.sun_direction_intensity[3] = pack_sun_settings(
+                frame_environment_.atmosphere.sun_disk_intensity * frame_environment_.celestial.sun_intensity,
+                std::max(0.01f, frame_environment_.celestial.sun_angular_radius_degrees));
+            constants.moon_direction_phase[3] = pack_moon_settings(
+                frame_environment_.celestial.moon_phase,
+                frame_environment_.celestial.moon_intensity,
+                frame_environment_.celestial.moon_angular_radius_degrees,
+                frame_environment_.celestial.moon_enabled);
+            const auto sky_color = frame_environment_.source == sky_source_mode::solid_color
+                ? frame_environment_.solid_color
+                : frame_environment_.atmosphere.tint;
+            constants.sky_color_source[0] = sky_color[0];
+            constants.sky_color_source[1] = sky_color[1];
+            constants.sky_color_source[2] = sky_color[2];
+            const float star_density = frame_environment_.celestial.stars_enabled
+                ? std::clamp(frame_environment_.celestial.star_density, 0.0f, 0.99f)
+                : 0.0f;
+            const float star_twinkle = 1.0f + frame_environment_.celestial.star_twinkle * 0.15f *
+                std::sin(frame_environment_.celestial.time_seconds * 2.17f);
+            constants.sky_color_source[3] = pack_sky_settings(
+                frame_environment_.source,
+                star_density,
+                frame_environment_.celestial.star_intensity * star_twinkle);
+            constants.atmosphere[0] = frame_environment_.source == sky_source_mode::hdri
+                ? frame_environment_.hdri_rotation_degrees * 0.01745329251994329577f
+                : frame_environment_.atmosphere.rayleigh_strength;
+            constants.atmosphere[1] = frame_environment_.atmosphere.mie_strength;
+            constants.atmosphere[2] = frame_environment_.atmosphere.ozone_strength;
+            constants.atmosphere[3] = frame_environment_.radiance_intensity *
+                std::max(frame_environment_.atmosphere.exposure, 0.001f);
+
+            const auto pack_cloud = [&](const cloud_layer_data& layer, float* destination) {
+                if (!frame_environment_.clouds.enabled || !layer.enabled)
+                    return;
+                destination[0] = std::clamp(layer.coverage, 0.0f, 1.0f);
+                destination[1] = std::clamp(layer.density, 0.0f, 1.0f);
+                auto wind = layer.wind_direction;
+                if (math::length_squared(wind) > 0.0001f)
+                    wind = math::normalize(wind);
+                const float phase = frame_environment_.celestial.time_seconds * layer.wind_speed * layer.scale;
+                destination[2] = wind[0] * phase;
+                destination[3] = wind[1] * phase;
+            };
+            pack_cloud(frame_environment_.clouds.cumulus, constants.cumulus);
+            if (resolved_config_.quality != render_quality_tier::low)
+                pack_cloud(frame_environment_.clouds.cirrus, constants.cirrus);
 
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sky_pipeline_);
+            const auto sky_descriptor = update_current_sky_descriptor_set();
+            if (sky_descriptor != VK_NULL_HANDLE)
+                vkCmdBindDescriptorSets(
+                    command_buffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    sky_pipeline_layout_,
+                    0,
+                    1,
+                    &sky_descriptor,
+                    0,
+                    nullptr);
             vkCmdPushConstants(
                 command_buffer,
                 sky_pipeline_layout_,
@@ -4632,7 +4895,7 @@ private:
     std::vector<point_light_event> frame_point_lights_;
     std::vector<spot_light_event> frame_spot_lights_;
     scene_lighting_data frame_lighting_;
-    sky_atmosphere_data frame_sky_;
+    world_environment_data frame_environment_;
     height_fog_data frame_fog_;
     render_camera frame_camera_;
     bool frame_shadows_enabled_{ true };
@@ -4646,6 +4909,7 @@ private:
     VkDescriptorSetLayout white_descriptor_set_layout_{};
     VkDescriptorPool white_descriptor_pool_{};
     std::vector<VkDescriptorSet> white_descriptor_sets_;
+    std::vector<VkDescriptorSet> sky_descriptor_sets_;
     VkImage white_image_{};
     VmaAllocation white_allocation_{};
     VkImageView white_view_{};

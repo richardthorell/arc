@@ -191,6 +191,9 @@ render_graph make_scene_draw_graph(std::string_view target_name, render_path pat
 {
     resolved_render_config config{};
     config.path = path;
+    config.quality = path == render_path::forward_plus
+        ? render_quality_tier::low
+        : render_quality_tier::medium;
     return make_scene_draw_graph(target_name, config, editor_view);
 }
 
@@ -198,6 +201,19 @@ render_graph make_scene_draw_graph(
     std::string_view target_name,
     const resolved_render_config& config,
     bool editor_view)
+{
+    world_environment_data environment;
+    environment.enabled = true;
+    environment.sky_visible = true;
+    environment.atmosphere.enabled = true;
+    return make_scene_draw_graph(target_name, config, editor_view, environment);
+}
+
+render_graph make_scene_draw_graph(
+    std::string_view target_name,
+    const resolved_render_config& config,
+    bool editor_view,
+    const world_environment_data& environment)
 {
     std::string target(target_name);
     if (target.empty())
@@ -232,15 +248,98 @@ render_graph make_scene_draw_graph(
         .array_layers = config.directional_shadow_cascades,
         .persistent = true });
 
+    render_graph_resource_handle sky_view{};
+    if (environment.enabled && environment.sky_visible && environment.atmosphere.enabled &&
+        environment.source == sky_source_mode::physical_atmosphere &&
+        (config.quality == render_quality_tier::medium || config.quality == render_quality_tier::high))
+    {
+        const auto transmittance = graph.add_resource({
+            .name = "atmosphere_transmittance",
+            .kind = render_resource_kind::color_texture,
+            .extent = { 256, 64, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::rgba16_float,
+            .persistent = true });
+        const auto multi_scattering = graph.add_resource({
+            .name = "atmosphere_multi_scattering",
+            .kind = render_resource_kind::color_texture,
+            .extent = { 32, 32, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::rgba16_float,
+            .persistent = true });
+        sky_view = graph.add_resource({
+            .name = "atmosphere_sky_view",
+            .kind = render_resource_kind::color_texture,
+            .extent = { 192, 108, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::rgba16_float,
+            .persistent = true });
+        graph.add_pass({
+            .name = "atmosphere transmittance",
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::atmosphere_transmittance,
+            .writes = { { .handle = transmittance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+        graph.add_pass({
+            .name = "atmosphere multi scattering",
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::atmosphere_multi_scattering,
+            .reads = { { .handle = transmittance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled } },
+            .writes = { { .handle = multi_scattering, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+        graph.add_pass({
+            .name = "atmosphere sky view",
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::atmosphere_sky_view,
+            .reads = {
+                { .handle = transmittance, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+                { .handle = multi_scattering, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled }
+            },
+            .writes = { { .handle = sky_view, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+    }
+
+    render_graph_resource_handle cloud_shadow{};
+    if (environment.enabled && environment.clouds.enabled && environment.clouds.cast_shadows &&
+        (config.quality == render_quality_tier::medium || config.quality == render_quality_tier::high))
+    {
+        cloud_shadow = graph.add_resource({
+            .name = "cloud_shadow",
+            .kind = render_resource_kind::color_texture,
+            .extent = { 512, 512, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::r8_unorm,
+            .persistent = true });
+        graph.add_pass({
+            .name = "cloud shadow",
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::cloud_shadow,
+            .writes = { { .handle = cloud_shadow, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+    }
+
     graph.add_pass({
         .name = "directional shadow cascades",
         .kind = render_pass_kind::custom,
         .writes = { { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture,
             .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::clear } }
     });
+    std::vector<render_resource_access> sky_reads;
+    if (sky_view.valid())
+        sky_reads.push_back({ .handle = sky_view, .kind = render_resource_kind::color_texture,
+            .usage = render_resource_usage::sampled });
     graph.add_pass({
-        .name = "sky atmosphere",
+        .name = environment.enabled && environment.sky_visible ? "sky composite" : "clear scene color",
         .kind = render_pass_kind::clear,
+        .builtin = environment.enabled && environment.sky_visible
+            ? builtin_render_pass::sky_composite
+            : builtin_render_pass::none,
+        .reads = std::move(sky_reads),
         .writes = { { .handle = scene_color, .kind = render_resource_kind::color_texture,
             .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear } }
     });
@@ -254,13 +353,17 @@ render_graph make_scene_draw_graph(
 
     if (config.path == render_path::forward_plus)
     {
+        std::vector<render_resource_access> forward_reads{
+            { .handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
+            { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+        };
+        if (cloud_shadow.valid())
+            forward_reads.push_back({ .handle = cloud_shadow, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
         graph.add_pass({
             .name = "forward opaque",
             .kind = render_pass_kind::lighting,
-            .reads = {
-                { .handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
-                { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
-            },
+            .reads = std::move(forward_reads),
             .writes = { { .handle = scene_color, .kind = render_resource_kind::color_texture,
                 .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
         });
@@ -320,6 +423,9 @@ render_graph make_scene_draw_graph(
         if (object_id.valid())
             lighting_reads.push_back({ .handle = object_id, .kind = render_resource_kind::color_texture,
                 .usage = render_resource_usage::sampled });
+        if (cloud_shadow.valid())
+            lighting_reads.push_back({ .handle = cloud_shadow, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
         graph.add_pass({
             .name = "deferred lighting",
             .kind = render_pass_kind::lighting,
@@ -329,13 +435,17 @@ render_graph make_scene_draw_graph(
         });
     }
 
+    std::vector<render_resource_access> transparent_reads{
+        { .handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
+        { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+    };
+    if (cloud_shadow.valid())
+        transparent_reads.push_back({ .handle = cloud_shadow, .kind = render_resource_kind::color_texture,
+            .usage = render_resource_usage::sampled });
     graph.add_pass({
         .name = "forward transparent",
         .kind = render_pass_kind::custom,
-        .reads = {
-            { .handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
-            { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
-        },
+        .reads = std::move(transparent_reads),
         .writes = { { .handle = scene_color, .kind = render_resource_kind::color_texture,
             .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
     });

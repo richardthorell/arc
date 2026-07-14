@@ -86,6 +86,26 @@ void draw_profiler_panel(const render::renderer& renderer)
             ImGui::TextWrapped("%s", profile.summary.c_str());
             ImGui::TreePop();
         }
+        if (ui::section_header("World Environment", true))
+        {
+            const auto& environment = profile.environment;
+            ImGui::Text("Source: %s", environment.source.empty() ? "None" : environment.source.c_str());
+            ImGui::Text("Path: %s", environment.quality_path.empty() ? "Unavailable" : environment.quality_path.c_str());
+            ImGui::Text("Visible: %s  |  Lighting: %s",
+                enabled_label(environment.sky_visible),
+                enabled_label(environment.affects_lighting));
+            ImGui::TextWrapped("Atmosphere LUTs: %s",
+                environment.atmosphere_lut_state.empty() ? "Unavailable" : environment.atmosphere_lut_state.c_str());
+            ImGui::TextWrapped("Environment lighting: %s",
+                environment.environment_lighting_state.empty() ? "Unavailable" : environment.environment_lighting_state.c_str());
+            if (environment.cloud_shadow_resolution > 0)
+                ImGui::Text("Cloud shadow: %ux%u", environment.cloud_shadow_resolution, environment.cloud_shadow_resolution);
+            else
+                ui::muted_text("Cloud shadow: inactive");
+            if (!environment.fallback_reason.empty())
+                ImGui::TextWrapped("Fallback: %s", environment.fallback_reason.c_str());
+            ImGui::TreePop();
+        }
         if (ui::section_header("Pass Timings", true))
         {
             if (profile.pass_timings.empty())

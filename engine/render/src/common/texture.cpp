@@ -192,6 +192,7 @@ void store_rgba8_mip_chain(
         mip_width = next_width;
         mip_height = next_height;
     }
+    texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
 }
 
 bool format_block_info(texture_format format, std::uint32_t& block_width, std::uint32_t& block_bytes) noexcept
@@ -431,6 +432,7 @@ texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::
     }
 
     texture.encoded.assign(bytes.begin() + static_cast<std::ptrdiff_t>(payload_offset), bytes.begin() + static_cast<std::ptrdiff_t>(cursor));
+    texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
     return { .texture = std::move(texture), .message = "loaded DDS texture" };
 }
 

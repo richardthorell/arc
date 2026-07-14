@@ -32,6 +32,7 @@ enum class render_event_type : std::uint8_t
     texture_upload,
     material_upload,
     environment_upload,
+    environment_destroy,
     viewport_resize,
     draw,
     directional_light,
@@ -156,6 +157,12 @@ struct environment_upload_event
     std::string label;
 };
 
+/** @brief Retire a renderer-owned environment description. */
+struct environment_destroy_event
+{
+    environment_handle handle{};
+};
+
 /**
  * @brief Resize the backend-owned viewport render target.
  */
@@ -267,6 +274,7 @@ using render_event_payload = std::variant<
     texture_upload_event,
     material_upload_event,
     environment_upload_event,
+    environment_destroy_event,
     viewport_resize_event,
     draw_mesh_event,
     directional_light_event,
@@ -363,6 +371,9 @@ public:
      * @brief Append an environment upload request.
      */
     void environment_upload(environment_handle handle, std::shared_ptr<const environment_desc> environment, std::string label = {});
+
+    /** @brief Append an environment retirement request. */
+    void environment_destroy(environment_handle handle);
 
     /**
      * @brief Append a static mesh draw request.

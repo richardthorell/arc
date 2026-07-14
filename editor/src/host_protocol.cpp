@@ -328,6 +328,9 @@ std::string environment_json(const host_environment_visibility& value)
         ",\"decals\":" + bool_json(value.decals) + '}';
 }
 
+template <class Enum>
+bool parse_enum(std::string_view payload, std::string_view key, const std::pair<std::string_view, Enum>* values, std::size_t count, Enum& out);
+
 bool parse_environment(std::string_view payload, host_environment_visibility& out)
 {
     std::string_view object;
@@ -340,6 +343,134 @@ bool parse_environment(std::string_view payload, host_environment_visibility& ou
     bool_value(object, "vegetation", out.vegetation);
     bool_value(object, "decals", out.decals);
     return true;
+}
+
+std::string cloud_layer_json(const host_cloud_layer& value)
+{
+    std::ostringstream stream;
+    stream << "{\"enabled\":" << bool_json(value.enabled)
+        << ",\"coverage\":" << value.coverage
+        << ",\"density\":" << value.density
+        << ",\"altitude\":" << value.altitude
+        << ",\"thickness\":" << value.thickness
+        << ",\"scale\":" << value.scale
+        << ",\"detail\":" << value.detail
+        << ",\"softness\":" << value.softness
+        << ",\"windX\":" << value.wind_x
+        << ",\"windY\":" << value.wind_y
+        << ",\"windSpeed\":" << value.wind_speed
+        << ",\"lightingStrength\":" << value.lighting_strength
+        << ",\"silverLining\":" << value.silver_lining << '}';
+    return stream.str();
+}
+
+void parse_cloud_layer(std::string_view json, host_cloud_layer& value)
+{
+    bool_value(json, "enabled", value.enabled);
+    number_value(json, "coverage", value.coverage);
+    number_value(json, "density", value.density);
+    number_value(json, "altitude", value.altitude);
+    number_value(json, "thickness", value.thickness);
+    number_value(json, "scale", value.scale);
+    number_value(json, "detail", value.detail);
+    number_value(json, "softness", value.softness);
+    number_value(json, "windX", value.wind_x);
+    number_value(json, "windY", value.wind_y);
+    number_value(json, "windSpeed", value.wind_speed);
+    number_value(json, "lightingStrength", value.lighting_strength);
+    number_value(json, "silverLining", value.silver_lining);
+}
+
+bool parse_world_environment(std::string_view payload, host_world_environment_snapshot& value)
+{
+    std::string_view json;
+    if (!object_value(payload, "environment", json))
+        return false;
+    entity_field_value(json, "entity", value.entity);
+    bool_value(json, "enabled", value.enabled);
+    bool_value(json, "skyVisible", value.sky_visible);
+    bool_value(json, "affectLighting", value.affect_lighting);
+    static constexpr std::pair<std::string_view, host_sky_source> sky_sources[]{
+        { "physicalAtmosphere", host_sky_source::physical_atmosphere },
+        { "hdri", host_sky_source::hdri },
+        { "solidColor", host_sky_source::solid_color }
+    };
+    parse_enum(json, "skySource", sky_sources, std::size(sky_sources), value.sky_source);
+    array3_value(json, "solidColor", value.solid_color);
+    string_value(json, "hdriPath", value.hdri_path);
+    number_value(json, "hdriRotationDegrees", value.hdri_rotation_degrees);
+    number_value(json, "radianceIntensity", value.radiance_intensity);
+    number_value(json, "planetRadius", value.planet_radius);
+    number_value(json, "atmosphereRadius", value.atmosphere_radius);
+    number_value(json, "rayleighStrength", value.rayleigh_strength);
+    number_value(json, "mieStrength", value.mie_strength);
+    number_value(json, "ozoneStrength", value.ozone_strength);
+    array3_value(json, "atmosphereTint", value.atmosphere_tint);
+    array3_value(json, "groundAlbedo", value.ground_albedo);
+    number_value(json, "mieAnisotropy", value.mie_anisotropy);
+    number_value(json, "rayleighScaleHeight", value.rayleigh_scale_height);
+    number_value(json, "mieScaleHeight", value.mie_scale_height);
+    number_value(json, "multiScatteringFactor", value.multi_scattering_factor);
+    number_value(json, "exposure", value.exposure);
+    number_value(json, "sunDiskSize", value.sun_disk_size);
+    number_value(json, "sunDiskIntensity", value.sun_disk_intensity);
+    static constexpr std::pair<std::string_view, host_sun_position_mode> sun_modes[]{
+        { "manualLight", host_sun_position_mode::manual_light },
+        { "geographic", host_sun_position_mode::geographic }
+    };
+    static constexpr std::pair<std::string_view, host_celestial_time_mode> time_modes[]{
+        { "fixed", host_celestial_time_mode::fixed },
+        { "simulated", host_celestial_time_mode::simulated },
+        { "systemClock", host_celestial_time_mode::system_clock }
+    };
+    parse_enum(json, "sunMode", sun_modes, std::size(sun_modes), value.sun_mode);
+    parse_enum(json, "timeMode", time_modes, std::size(time_modes), value.time_mode);
+    number_value(json, "latitudeDegrees", value.latitude_degrees);
+    number_value(json, "longitudeDegrees", value.longitude_degrees);
+    number_value(json, "northOffsetDegrees", value.north_offset_degrees);
+    number_value(json, "year", value.year);
+    number_value(json, "month", value.month);
+    number_value(json, "day", value.day);
+    number_value(json, "localTimeHours", value.local_time_hours);
+    number_value(json, "utcOffsetHours", value.utc_offset_hours);
+    bool_value(json, "playing", value.playing);
+    bool_value(json, "loopDay", value.loop_day);
+    number_value(json, "timeScale", value.time_scale);
+    bool_value(json, "automaticSunLight", value.automatic_sun_light);
+    number_value(json, "sunIntensityMultiplier", value.sun_intensity_multiplier);
+    number_value(json, "sunTemperatureMultiplier", value.sun_temperature_multiplier);
+    bool_value(json, "moonEnabled", value.moon_enabled);
+    bool_value(json, "automaticMoonPhase", value.automatic_moon_phase);
+    number_value(json, "moonPhase", value.moon_phase);
+    number_value(json, "moonIntensity", value.moon_intensity);
+    number_value(json, "moonAngularRadiusDegrees", value.moon_angular_radius_degrees);
+    bool_value(json, "starsEnabled", value.stars_enabled);
+    number_value(json, "starDensity", value.star_density);
+    number_value(json, "starIntensity", value.star_intensity);
+    number_value(json, "starTwinkle", value.star_twinkle);
+    bool_value(json, "cloudsEnabled", value.clouds_enabled);
+    bool_value(json, "cloudShadows", value.cloud_shadows);
+    std::string_view layer;
+    if (object_value(json, "cumulus", layer)) parse_cloud_layer(layer, value.cumulus);
+    if (object_value(json, "cirrus", layer)) parse_cloud_layer(layer, value.cirrus);
+    bool_value(json, "fogEnabled", value.fog_enabled);
+    array3_value(json, "fogColor", value.fog_color);
+    number_value(json, "fogDensity", value.fog_density);
+    number_value(json, "fogHeightFalloff", value.fog_height_falloff);
+    number_value(json, "fogStartDistance", value.fog_start_distance);
+    number_value(json, "fogMaxOpacity", value.fog_max_opacity);
+    number_value(json, "fogSunScattering", value.fog_sun_scattering);
+    bool_value(json, "lightingEnabled", value.lighting_enabled);
+    static constexpr std::pair<std::string_view, host_environment_lighting_source> lighting_sources[]{
+        { "followSky", host_environment_lighting_source::follow_sky },
+        { "hdri", host_environment_lighting_source::hdri },
+        { "constantColor", host_environment_lighting_source::constant_color }
+    };
+    parse_enum(json, "lightingSource", lighting_sources, std::size(lighting_sources), value.lighting_source);
+    array3_value(json, "lightingColor", value.lighting_color);
+    number_value(json, "diffuseIntensity", value.diffuse_intensity);
+    number_value(json, "specularIntensity", value.specular_intensity);
+    return value.entity.valid();
 }
 
 template <class Enum>
@@ -394,7 +525,11 @@ const char* to_string(host_component_kind value) noexcept
     case host_component_kind::directional_light: return "directionalLight";
     case host_component_kind::point_light: return "pointLight";
     case host_component_kind::spot_light: return "spotLight";
+    case host_component_kind::world_environment: return "worldEnvironment";
     case host_component_kind::sky_atmosphere: return "skyAtmosphere";
+    case host_component_kind::celestial_sky: return "celestialSky";
+    case host_component_kind::cloud_layers: return "cloudLayers";
+    case host_component_kind::environment_lighting: return "environmentLighting";
     case host_component_kind::height_fog: return "heightFog";
     case host_component_kind::terrain: return "terrain";
     case host_component_kind::water: return "water";
@@ -465,6 +600,58 @@ const char* to_string(host_overlay_mode value) noexcept
     return "selectedWireframe";
 }
 
+const char* to_string(host_sky_source value) noexcept
+{
+    switch (value)
+    {
+    case host_sky_source::physical_atmosphere: return "physicalAtmosphere";
+    case host_sky_source::hdri: return "hdri";
+    case host_sky_source::solid_color: return "solidColor";
+    }
+    return "physicalAtmosphere";
+}
+
+const char* to_string(host_sun_position_mode value) noexcept
+{
+    return value == host_sun_position_mode::geographic ? "geographic" : "manualLight";
+}
+
+const char* to_string(host_celestial_time_mode value) noexcept
+{
+    switch (value)
+    {
+    case host_celestial_time_mode::fixed: return "fixed";
+    case host_celestial_time_mode::simulated: return "simulated";
+    case host_celestial_time_mode::system_clock: return "systemClock";
+    }
+    return "fixed";
+}
+
+const char* to_string(host_environment_lighting_source value) noexcept
+{
+    switch (value)
+    {
+    case host_environment_lighting_source::follow_sky: return "followSky";
+    case host_environment_lighting_source::hdri: return "hdri";
+    case host_environment_lighting_source::constant_color: return "constantColor";
+    }
+    return "followSky";
+}
+
+const char* to_string(host_world_environment_preset value) noexcept
+{
+    switch (value)
+    {
+    case host_world_environment_preset::clear_day: return "clearDay";
+    case host_world_environment_preset::alpine_late_morning: return "alpineLateMorning";
+    case host_world_environment_preset::golden_hour: return "goldenHour";
+    case host_world_environment_preset::overcast: return "overcast";
+    case host_world_environment_preset::night: return "night";
+    case host_world_environment_preset::indoor_neutral: return "indoorNeutral";
+    }
+    return "alpineLateMorning";
+}
+
 std::string command_type(const host_command_payload& payload)
 {
     return std::visit([](const auto& value) -> std::string {
@@ -480,6 +667,9 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_set_active_command>) return "entity.setActive";
         else if constexpr (std::is_same_v<type, host_set_tag_command>) return "entity.setTag";
         else if constexpr (std::is_same_v<type, host_set_transform_command>) return "entity.setTransform";
+        else if constexpr (std::is_same_v<type, host_set_world_environment_command>) return "environment.update";
+        else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>) return "environment.applyPreset";
+        else if constexpr (std::is_same_v<type, host_set_environment_hdri_command>) return "environment.setHdri";
         else if constexpr (std::is_same_v<type, host_set_camera_projection_command>) return "camera.setProjection";
         else if constexpr (std::is_same_v<type, host_viewport_attach_command>) return "viewport.attach";
         else if constexpr (std::is_same_v<type, host_viewport_resize_command>) return "viewport.resize";
@@ -498,6 +688,7 @@ std::string query_type(const host_query_payload& payload)
         else if constexpr (std::is_same_v<type, host_selected_entity_query>) return "entity.selected";
         else if constexpr (std::is_same_v<type, host_project_assets_query>) return "project.assets";
         else if constexpr (std::is_same_v<type, host_viewport_state_query>) return "viewport.state";
+        else if constexpr (std::is_same_v<type, host_world_environment_query>) return "environment.state";
         else return "unknown";
     }, payload);
 }
@@ -512,6 +703,74 @@ std::string to_json(const host_transform& transform)
     return "{\"position\":" + vec3_json(transform.position) +
         ",\"rotation\":" + quat_json(transform.rotation) +
         ",\"scale\":" + vec3_json(transform.scale) + '}';
+}
+
+std::string to_json(const host_world_environment_snapshot& value)
+{
+    std::ostringstream stream;
+    stream << "{\"entity\":" << to_json(value.entity)
+        << ",\"enabled\":" << bool_json(value.enabled)
+        << ",\"skyVisible\":" << bool_json(value.sky_visible)
+        << ",\"affectLighting\":" << bool_json(value.affect_lighting)
+        << ",\"skySource\":" << quote(to_string(value.sky_source))
+        << ",\"solidColor\":" << vec3_json(value.solid_color)
+        << ",\"hdriPath\":" << quote(value.hdri_path)
+        << ",\"hdriRotationDegrees\":" << value.hdri_rotation_degrees
+        << ",\"radianceIntensity\":" << value.radiance_intensity
+        << ",\"planetRadius\":" << value.planet_radius
+        << ",\"atmosphereRadius\":" << value.atmosphere_radius
+        << ",\"rayleighStrength\":" << value.rayleigh_strength
+        << ",\"mieStrength\":" << value.mie_strength
+        << ",\"ozoneStrength\":" << value.ozone_strength
+        << ",\"atmosphereTint\":" << vec3_json(value.atmosphere_tint)
+        << ",\"groundAlbedo\":" << vec3_json(value.ground_albedo)
+        << ",\"mieAnisotropy\":" << value.mie_anisotropy
+        << ",\"rayleighScaleHeight\":" << value.rayleigh_scale_height
+        << ",\"mieScaleHeight\":" << value.mie_scale_height
+        << ",\"multiScatteringFactor\":" << value.multi_scattering_factor
+        << ",\"exposure\":" << value.exposure
+        << ",\"sunDiskSize\":" << value.sun_disk_size
+        << ",\"sunDiskIntensity\":" << value.sun_disk_intensity
+        << ",\"sunMode\":" << quote(to_string(value.sun_mode))
+        << ",\"timeMode\":" << quote(to_string(value.time_mode))
+        << ",\"latitudeDegrees\":" << value.latitude_degrees
+        << ",\"longitudeDegrees\":" << value.longitude_degrees
+        << ",\"northOffsetDegrees\":" << value.north_offset_degrees
+        << ",\"year\":" << value.year << ",\"month\":" << value.month << ",\"day\":" << value.day
+        << ",\"localTimeHours\":" << value.local_time_hours
+        << ",\"utcOffsetHours\":" << value.utc_offset_hours
+        << ",\"playing\":" << bool_json(value.playing)
+        << ",\"loopDay\":" << bool_json(value.loop_day)
+        << ",\"timeScale\":" << value.time_scale
+        << ",\"automaticSunLight\":" << bool_json(value.automatic_sun_light)
+        << ",\"sunIntensityMultiplier\":" << value.sun_intensity_multiplier
+        << ",\"sunTemperatureMultiplier\":" << value.sun_temperature_multiplier
+        << ",\"moonEnabled\":" << bool_json(value.moon_enabled)
+        << ",\"automaticMoonPhase\":" << bool_json(value.automatic_moon_phase)
+        << ",\"moonPhase\":" << value.moon_phase
+        << ",\"moonIntensity\":" << value.moon_intensity
+        << ",\"moonAngularRadiusDegrees\":" << value.moon_angular_radius_degrees
+        << ",\"starsEnabled\":" << bool_json(value.stars_enabled)
+        << ",\"starDensity\":" << value.star_density
+        << ",\"starIntensity\":" << value.star_intensity
+        << ",\"starTwinkle\":" << value.star_twinkle
+        << ",\"cloudsEnabled\":" << bool_json(value.clouds_enabled)
+        << ",\"cloudShadows\":" << bool_json(value.cloud_shadows)
+        << ",\"cumulus\":" << cloud_layer_json(value.cumulus)
+        << ",\"cirrus\":" << cloud_layer_json(value.cirrus)
+        << ",\"fogEnabled\":" << bool_json(value.fog_enabled)
+        << ",\"fogColor\":" << vec3_json(value.fog_color)
+        << ",\"fogDensity\":" << value.fog_density
+        << ",\"fogHeightFalloff\":" << value.fog_height_falloff
+        << ",\"fogStartDistance\":" << value.fog_start_distance
+        << ",\"fogMaxOpacity\":" << value.fog_max_opacity
+        << ",\"fogSunScattering\":" << value.fog_sun_scattering
+        << ",\"lightingEnabled\":" << bool_json(value.lighting_enabled)
+        << ",\"lightingSource\":" << quote(to_string(value.lighting_source))
+        << ",\"lightingColor\":" << vec3_json(value.lighting_color)
+        << ",\"diffuseIntensity\":" << value.diffuse_intensity
+        << ",\"specularIntensity\":" << value.specular_intensity << '}';
+    return stream.str();
 }
 
 std::string to_json(const host_command_envelope& envelope)
@@ -535,6 +794,12 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"entity\":" + to_json(payload.entity) + ",\"tag\":" + quote(payload.tag) + '}';
         else if constexpr (std::is_same_v<type, host_set_transform_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"transform\":" + to_json(payload.transform) + '}';
+        else if constexpr (std::is_same_v<type, host_set_world_environment_command>)
+            return "{\"environment\":" + to_json(payload.environment) + '}';
+        else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"preset\":" + quote(to_string(payload.preset)) + '}';
+        else if constexpr (std::is_same_v<type, host_set_environment_hdri_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) + '}';
         else if constexpr (std::is_same_v<type, host_set_camera_projection_command>)
             return "{\"projection\":" + quote(to_string(payload.projection)) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_attach_command>)
@@ -575,8 +840,14 @@ std::string to_json(const host_command_envelope& envelope)
 std::string to_json(const host_query_envelope& envelope)
 {
     const std::string type = envelope.query_type.empty() ? query_type(envelope.payload) : envelope.query_type;
+    const std::string payload = std::visit([](const auto& value) -> std::string {
+        using query = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<query, host_world_environment_query>)
+            return "{\"entity\":" + to_json(value.entity) + '}';
+        return "{}";
+    }, envelope.payload);
     return "{\"kind\":\"query\",\"requestId\":" + std::to_string(envelope.request_id) +
-        ",\"type\":" + quote(type) + ",\"payload\":{}}";
+        ",\"type\":" + quote(type) + ",\"payload\":" + payload + '}';
 }
 
 std::string to_json(const host_response& response)
@@ -778,6 +1049,47 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         }
         envelope.payload = command;
     }
+    else if (type == "environment.update")
+    {
+        host_set_world_environment_command command;
+        if (!parse_world_environment(payload, command.environment))
+        {
+            error = "Environment update requires a typed environment snapshot";
+            return false;
+        }
+        envelope.payload = std::move(command);
+    }
+    else if (type == "environment.applyPreset")
+    {
+        static constexpr std::pair<std::string_view, host_world_environment_preset> presets[]{
+            { "clearDay", host_world_environment_preset::clear_day },
+            { "alpineLateMorning", host_world_environment_preset::alpine_late_morning },
+            { "goldenHour", host_world_environment_preset::golden_hour },
+            { "overcast", host_world_environment_preset::overcast },
+            { "night", host_world_environment_preset::night },
+            { "indoorNeutral", host_world_environment_preset::indoor_neutral }
+        };
+        host_apply_world_environment_preset_command command;
+        if (!entity_field_value(payload, "entity", command.entity))
+        {
+            error = "Environment preset requires entity";
+            return false;
+        }
+        parse_enum(payload, "preset", presets, std::size(presets), command.preset);
+        envelope.payload = command;
+    }
+    else if (type == "environment.setHdri")
+    {
+        host_set_environment_hdri_command command;
+        std::string path;
+        if (!entity_field_value(payload, "entity", command.entity) || !string_value(payload, "path", path))
+        {
+            error = "Environment HDRI assignment requires entity and path";
+            return false;
+        }
+        command.path = path;
+        envelope.payload = std::move(command);
+    }
     else if (type == "camera.setProjection" || type == "viewport.setCameraMode")
     {
         static constexpr std::pair<std::string_view, host_camera_projection> values[]{
@@ -885,6 +1197,16 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
         envelope.payload = host_project_assets_query{};
     else if (type == "viewport.state")
         envelope.payload = host_viewport_state_query{};
+    else if (type == "environment.state")
+    {
+        host_entity_id entity;
+        if (!entity_field_value(json, "entity", entity))
+        {
+            error = "Environment query requires entity";
+            return false;
+        }
+        envelope.payload = host_world_environment_query{ .entity = entity };
+    }
     else
     {
         error = "Unsupported host query type: " + type;

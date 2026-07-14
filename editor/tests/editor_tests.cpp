@@ -286,7 +286,13 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
             .visualization = arc::editor::host_visualization_mode::world_normal,
             .overlay = arc::editor::host_overlay_mode::all_wireframe,
             .shadows = false } },
-        { .request_id = 12, .payload = arc::editor::host_viewport_camera_input_command{ .orbit_x = 4.0f, .orbit_y = -2.0f, .zoom = 1.0f } }
+        { .request_id = 12, .payload = arc::editor::host_viewport_camera_input_command{ .orbit_x = 4.0f, .orbit_y = -2.0f, .zoom = 1.0f } },
+        { .request_id = 13, .payload = arc::editor::host_set_world_environment_command{
+            .environment = { .entity = entity, .sky_source = arc::editor::host_sky_source::solid_color } } },
+        { .request_id = 14, .payload = arc::editor::host_apply_world_environment_preset_command{
+            .entity = entity, .preset = arc::editor::host_world_environment_preset::night } },
+        { .request_id = 15, .payload = arc::editor::host_set_environment_hdri_command{
+            .entity = entity, .path = "assets/environment/studio.hdr" } }
     };
 
     for (const auto& command : commands)
@@ -300,10 +306,11 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
     }
 
     const arc::editor::host_query_envelope queries[]{
-        { .request_id = 13, .payload = arc::editor::host_scene_hierarchy_query{} },
-        { .request_id = 14, .payload = arc::editor::host_selected_entity_query{} },
-        { .request_id = 15, .payload = arc::editor::host_project_assets_query{} },
-        { .request_id = 16, .payload = arc::editor::host_viewport_state_query{} }
+        { .request_id = 16, .payload = arc::editor::host_scene_hierarchy_query{} },
+        { .request_id = 17, .payload = arc::editor::host_selected_entity_query{} },
+        { .request_id = 18, .payload = arc::editor::host_project_assets_query{} },
+        { .request_id = 19, .payload = arc::editor::host_viewport_state_query{} },
+        { .request_id = 20, .payload = arc::editor::host_world_environment_query{ .entity = entity } }
     };
 
     for (const auto& query : queries)
@@ -401,6 +408,58 @@ TEST_CASE("arc host resolves a project assets directory for protocol-opened proj
     REQUIRE(response.succeeded);
     REQUIRE(host->project_assets_snapshot().asset_root == root / "assets");
     std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("arc host validates and applies world environment commands")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    REQUIRE(host->open_project({ .name = "Environment Host Test", .root = {} }, assets).succeeded);
+
+    const auto hierarchy = host->scene_snapshot();
+    const auto found = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity) {
+        return entity.kind == arc::editor::host_entity_kind::environment;
+    });
+    REQUIRE(found != hierarchy.entities.end());
+    const auto initial = host->world_environment_snapshot(found->entity);
+    REQUIRE(initial.has_value());
+    REQUIRE(initial->enabled);
+    REQUIRE(initial->sky_source == arc::editor::host_sky_source::physical_atmosphere);
+
+    auto edited = *initial;
+    edited.sky_visible = false;
+    edited.affect_lighting = true;
+    edited.local_time_hours = 19.25f;
+    edited.sun_temperature_multiplier = 0.85f;
+    edited.moon_angular_radius_degrees = 0.31f;
+    const auto updated = host->execute(arc::editor::host_command_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_set_world_environment_command{ .environment = edited } });
+    REQUIRE(updated.succeeded);
+    const auto current = host->world_environment_snapshot(found->entity);
+    REQUIRE(current.has_value());
+    REQUIRE_FALSE(current->sky_visible);
+    REQUIRE(current->affect_lighting);
+    REQUIRE(current->local_time_hours == Catch::Approx(19.25f));
+    REQUIRE(current->sun_temperature_multiplier == Catch::Approx(0.85f));
+    REQUIRE(current->moon_angular_radius_degrees == Catch::Approx(0.31f));
+
+    edited.local_time_hours = 25.0f;
+    REQUIRE_FALSE(host->execute(arc::editor::host_command_envelope{
+        .request_id = 2,
+        .payload = arc::editor::host_set_world_environment_command{ .environment = edited } }).succeeded);
+    REQUIRE(host->world_environment_snapshot(found->entity)->local_time_hours == Catch::Approx(19.25f));
+
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+        .request_id = 3,
+        .payload = arc::editor::host_apply_world_environment_preset_command{
+            .entity = found->entity,
+            .preset = arc::editor::host_world_environment_preset::night } }).succeeded);
+    REQUIRE(host->world_environment_snapshot(found->entity)->local_time_hours == Catch::Approx(23.0f));
+    REQUIRE(host->query({ .request_id = 4, .payload = arc::editor::host_world_environment_query{
+        .entity = found->entity } }).succeeded);
 }
 
 TEST_CASE("arc host process speaks newline delimited json over stdio")

@@ -1,10 +1,13 @@
 #include <arc/scene/render_scene.h>
+#include <arc/scene/environment.h>
 
 #include <arc/diagnostics/log.h>
 #include <arc/render/lighting.h>
 #include <arc/render/render_world.h>
 #include <arc/scene/transforms.h>
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 
 namespace arc::scene
@@ -228,9 +231,11 @@ render_scene_result render_scene(
     render::mesh_visualization_mode visualization,
     render::editor_overlay_mode overlay,
     bool shadows_enabled,
-    render_environment_visibility environment_visibility)
+    render_environment_visibility environment_visibility,
+    float delta_seconds)
 {
     render_scene_result result{};
+    update_world_environments(scene, delta_seconds);
 
     const transform_component* camera_transform{};
     const camera_component* camera{};
@@ -284,31 +289,175 @@ render_scene_result render_scene(
     world_packet.viewport_width = viewport_width;
     world_packet.viewport_height = viewport_height;
 
+    scene.view<world_environment_component>().each(
+        [&](entity value, const world_environment_component& world) {
+            if (!entity_is_active(scene, value))
+                return;
+            ++result.world_environment_count;
+            if (result.world_environment_count > 1)
+            {
+                if (world_packet.environment.fallback_reason.empty())
+                    world_packet.environment.fallback_reason =
+                        "Multiple active world environments found; using the first active entity";
+                return;
+            }
+            auto& output = world_packet.environment;
+            output.enabled = world.enabled;
+            output.sky_visible = world.enabled && world.sky_visible && environment_visibility.sky;
+            output.affect_lighting = world.enabled && world.affect_lighting;
+            output.source = static_cast<render::sky_source_mode>(world.source);
+            output.solid_color = world.solid_color;
+            output.hdri_texture = world.hdri_texture;
+            output.hdri_rotation_degrees = world.hdri_rotation_degrees;
+            output.radiance_intensity = world.radiance_intensity;
+            output.label = entity_label(scene, value);
+
+            if (const auto* sky = scene.try_get<sky_atmosphere_component>(value))
+            {
+                output.atmosphere = {
+                    .enabled = sky->enabled,
+                    .planet_radius = sky->planet_radius,
+                    .atmosphere_radius = sky->atmosphere_radius,
+                    .rayleigh_strength = sky->rayleigh_strength,
+                    .mie_strength = sky->mie_strength,
+                    .ozone_strength = sky->ozone_strength,
+                    .tint = sky->tint,
+                    .ground_albedo = sky->ground_albedo,
+                    .mie_anisotropy = sky->mie_anisotropy,
+                    .rayleigh_scale_height = sky->rayleigh_scale_height,
+                    .mie_scale_height = sky->mie_scale_height,
+                    .multi_scattering_factor = sky->multi_scattering_factor,
+                    .exposure = sky->exposure,
+                    .sun_disk_size = sky->sun_disk_size,
+                    .sun_disk_intensity = sky->sun_disk_intensity,
+                    .label = output.label
+                };
+                ++result.sky_atmosphere_count;
+            }
+
+            if (const auto* celestial = scene.try_get<celestial_sky_component>(value))
+            {
+                auto sun_direction = math::vector3f{ 0.35f, -0.85f, -0.4f };
+                if (scene.alive(celestial->sun_light))
+                {
+                    if (const auto* transform = scene.try_get<transform_component>(celestial->sun_light))
+                        sun_direction = forward_direction(*transform);
+                }
+                const float phase = celestial->automatic_moon_phase
+                    ? calculate_moon_phase(celestial->year, celestial->month, celestial->day,
+                        celestial->local_time_hours, celestial->utc_offset_hours)
+                    : std::clamp(celestial->moon_phase, 0.0f, 1.0f);
+                auto moon_direction = math::normalize(math::vector3f{
+                    -sun_direction[0] + 0.18f * std::sin(phase * 6.28318530718f),
+                    -sun_direction[1],
+                    -sun_direction[2] + 0.12f * std::cos(phase * 6.28318530718f) });
+                const auto* authored_atmosphere = scene.try_get<sky_atmosphere_component>(value);
+                const float sun_angular_radius = authored_atmosphere
+                    ? std::max(0.01f, authored_atmosphere->sun_disk_size * 10.664f)
+                    : 0.2666f;
+                output.celestial = {
+                    .enabled = celestial->enabled,
+                    .sun_direction = sun_direction,
+                    .moon_direction = moon_direction,
+                    .sun_angular_radius_degrees = sun_angular_radius,
+                    .sun_intensity = celestial->sun_intensity_multiplier,
+                    .moon_enabled = celestial->moon_enabled,
+                    .moon_phase = phase,
+                    .moon_intensity = celestial->moon_intensity,
+                    .moon_angular_radius_degrees = celestial->moon_angular_radius_degrees,
+                    .stars_enabled = celestial->stars_enabled,
+                    .star_density = celestial->star_density,
+                    .star_intensity = celestial->star_intensity,
+                    .star_twinkle = celestial->star_twinkle,
+                    .time_seconds = celestial->animation_time_seconds
+                };
+            }
+
+            const auto cloud_data = [](const cloud_layer_settings& layer) {
+                return render::cloud_layer_data{
+                    .enabled = layer.enabled,
+                    .coverage = layer.coverage,
+                    .density = layer.density,
+                    .altitude = layer.altitude,
+                    .thickness = layer.thickness,
+                    .scale = layer.scale,
+                    .detail = layer.detail,
+                    .softness = layer.softness,
+                    .wind_direction = layer.wind_direction,
+                    .wind_speed = layer.wind_speed,
+                    .lighting_strength = layer.lighting_strength,
+                    .silver_lining = layer.silver_lining
+                };
+            };
+            if (const auto* clouds = scene.try_get<cloud_layers_component>(value))
+            {
+                output.clouds = {
+                    .enabled = clouds->enabled,
+                    .cast_shadows = clouds->cast_shadows,
+                    .cumulus = cloud_data(clouds->cumulus),
+                    .cirrus = cloud_data(clouds->cirrus)
+                };
+            }
+            if (const auto* lighting = scene.try_get<environment_lighting_component>(value))
+            {
+                output.lighting = {
+                    .enabled = lighting->enabled,
+                    .source = static_cast<render::environment_lighting_source_mode>(lighting->source),
+                    .environment = lighting->environment,
+                    .hdri_texture = lighting->hdri_texture,
+                    .constant_color = lighting->constant_color,
+                    .diffuse_intensity = lighting->diffuse_intensity,
+                    .specular_intensity = lighting->specular_intensity
+                };
+            }
+            if (const auto* fog = scene.try_get<height_fog_component>(value);
+                fog && world.enabled && environment_visibility.fog && fog->enabled)
+            {
+                output.fog = {
+                    .enabled = true,
+                    .color = fog->color,
+                    .density = fog->density,
+                    .height_falloff = fog->height_falloff,
+                    .start_distance = fog->start_distance,
+                    .max_opacity = fog->max_opacity,
+                    .sun_scattering_strength = fog->sun_scattering_strength,
+                    .label = output.label
+                };
+                ++result.height_fog_count;
+            }
+        });
+
+    // Compatibility for scenes authored before world_environment_component.
     scene.view<sky_atmosphere_component>().each(
         [&](entity value, const sky_atmosphere_component& sky) {
-            if (world_packet.sky.enabled || !environment_visibility.sky || !entity_is_active(scene, value) || !sky.enabled)
+            if (result.world_environment_count != 0 || !environment_visibility.sky ||
+                !entity_is_active(scene, value) || !sky.enabled)
                 return;
-            world_packet.sky = {
-                .enabled = true,
-                .planet_radius = sky.planet_radius,
-                .atmosphere_radius = sky.atmosphere_radius,
-                .rayleigh_strength = sky.rayleigh_strength,
-                .mie_strength = sky.mie_strength,
-                .ozone_strength = sky.ozone_strength,
-                .tint = sky.tint,
-                .exposure = sky.exposure,
-                .sun_disk_size = sky.sun_disk_size,
-                .sun_disk_intensity = sky.sun_disk_intensity,
-                .label = entity_label(scene, value)
-            };
+            world_packet.environment.enabled = true;
+            world_packet.environment.sky_visible = true;
+            world_packet.environment.affect_lighting = true;
+            world_packet.environment.atmosphere.enabled = true;
+            world_packet.environment.atmosphere.planet_radius = sky.planet_radius;
+            world_packet.environment.atmosphere.atmosphere_radius = sky.atmosphere_radius;
+            world_packet.environment.atmosphere.rayleigh_strength = sky.rayleigh_strength;
+            world_packet.environment.atmosphere.mie_strength = sky.mie_strength;
+            world_packet.environment.atmosphere.ozone_strength = sky.ozone_strength;
+            world_packet.environment.atmosphere.tint = sky.tint;
+            world_packet.environment.atmosphere.ground_albedo = sky.ground_albedo;
+            world_packet.environment.atmosphere.mie_anisotropy = sky.mie_anisotropy;
+            world_packet.environment.atmosphere.exposure = sky.exposure;
+            world_packet.environment.atmosphere.sun_disk_size = sky.sun_disk_size;
+            world_packet.environment.atmosphere.sun_disk_intensity = sky.sun_disk_intensity;
+            world_packet.environment.label = entity_label(scene, value);
             ++result.sky_atmosphere_count;
         });
 
     scene.view<height_fog_component>().each(
         [&](entity value, const height_fog_component& fog) {
-            if (world_packet.fog.enabled || !environment_visibility.fog || !entity_is_active(scene, value) || !fog.enabled)
+            if (result.world_environment_count != 0 || world_packet.environment.fog.enabled ||
+                !environment_visibility.fog || !entity_is_active(scene, value) || !fog.enabled)
                 return;
-            world_packet.fog = {
+            world_packet.environment.fog = {
                 .enabled = true,
                 .color = fog.color,
                 .density = fog.density,
@@ -538,6 +687,7 @@ render_scene_result render_scene(
     result.skipped_point_light_count = lighting.skipped_point_count;
     result.skipped_spot_light_count = lighting.skipped_spot_count;
 
+    result.environment = world_packet.environment;
     render::prepare_render_world(world_packet);
     result.submitted_draw_count = world_packet.visible_items.size() + world_packet.visible_virtual_items.size();
     result.culled_count = world_packet.culled_item_count;

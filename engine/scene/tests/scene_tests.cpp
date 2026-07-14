@@ -3,6 +3,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+
 TEST_CASE("registry creates destroys and rejects stale entities")
 {
     arc::scene::registry scene;
@@ -145,6 +147,115 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     REQUIRE(item.selected);
     REQUIRE(item.base_color_tint[2] == Catch::Approx(0.6f));
     REQUIRE(world_event.packet->shadows_enabled);
+}
+
+TEST_CASE("world environment solar clock and validation are deterministic")
+{
+    REQUIRE(arc::scene::is_valid_gregorian_date(2024, 2, 29));
+    REQUIRE_FALSE(arc::scene::is_valid_gregorian_date(2023, 2, 29));
+
+    const auto noon = arc::scene::calculate_solar_position(0.0f, 0.0f, 0.0f, 2026, 3, 20, 12.0f, 0.0f);
+    REQUIRE(noon.elevation_degrees > 85.0f);
+    REQUIRE(std::isfinite(noon.light_direction[0]));
+    REQUIRE(arc::math::length(noon.light_direction) == Catch::Approx(1.0f).margin(0.001f));
+
+    const auto phase_a = arc::scene::calculate_moon_phase(2026, 7, 14, 12.0f, 0.0f);
+    const auto phase_b = arc::scene::calculate_moon_phase(2026, 7, 14, 12.0f, 0.0f);
+    REQUIRE(phase_a == Catch::Approx(phase_b));
+    REQUIRE(phase_a >= 0.0f);
+    REQUIRE(phase_a < 1.0f);
+
+    arc::scene::world_environment_component world;
+    arc::scene::sky_atmosphere_component atmosphere;
+    arc::scene::celestial_sky_component celestial;
+    arc::scene::cloud_layers_component clouds;
+    arc::scene::height_fog_component fog;
+    arc::scene::environment_lighting_component lighting;
+    arc::scene::apply_world_environment_preset(
+        arc::scene::world_environment_preset::indoor_neutral,
+        world, atmosphere, celestial, clouds, fog, lighting);
+    REQUIRE_FALSE(world.sky_visible);
+    REQUIRE(world.affect_lighting);
+    REQUIRE(lighting.source == arc::scene::environment_lighting_source::constant_color);
+
+    atmosphere.atmosphere_radius = atmosphere.planet_radius;
+    const auto invalid = arc::scene::validate_world_environment(world, atmosphere, celestial, clouds, fog, lighting);
+    REQUIRE_FALSE(invalid.valid);
+    REQUIRE_FALSE(invalid.errors.empty());
+}
+
+TEST_CASE("simulated geographic environment advances time and drives its linked sun")
+{
+    arc::scene::registry registry;
+    const auto sun = registry.create();
+    registry.emplace<arc::scene::transform_component>(sun);
+    registry.emplace<arc::scene::directional_light_component>(sun);
+
+    const auto environment = registry.create();
+    registry.emplace<arc::scene::world_environment_component>(environment);
+    arc::scene::celestial_sky_component celestial;
+    celestial.sun_light = sun;
+    celestial.sun_mode = arc::scene::sun_position_mode::geographic;
+    celestial.time_mode = arc::scene::celestial_time_mode::simulated;
+    celestial.playing = true;
+    celestial.loop_day = false;
+    celestial.year = 2024;
+    celestial.month = 2;
+    celestial.day = 28;
+    celestial.local_time_hours = 23.5f;
+    celestial.time_scale = 3600.0f;
+    registry.emplace<arc::scene::celestial_sky_component>(environment, celestial);
+
+    const auto original_rotation = registry.get<arc::scene::transform_component>(sun).rotation;
+    arc::scene::update_world_environments(registry, 1.0f);
+    const auto& advanced = registry.get<arc::scene::celestial_sky_component>(environment);
+    REQUIRE(advanced.year == 2024);
+    REQUIRE(advanced.month == 2);
+    REQUIRE(advanced.day == 29);
+    REQUIRE(advanced.local_time_hours == Catch::Approx(0.5f));
+    const auto& updated_rotation = registry.get<arc::scene::transform_component>(sun).rotation;
+    REQUIRE((updated_rotation[0] != original_rotation[0] ||
+        updated_rotation[1] != original_rotation[1] ||
+        updated_rotation[2] != original_rotation[2] ||
+        updated_rotation[3] != original_rotation[3]));
+    const auto& updated_light = registry.get<arc::scene::directional_light_component>(sun);
+    REQUIRE(updated_light.use_color_temperature);
+    REQUIRE(updated_light.temperature_kelvin >= 1000.0f);
+    REQUIRE(updated_light.temperature_kelvin <= 40000.0f);
+}
+
+TEST_CASE("render scene extracts one authoritative world environment snapshot")
+{
+    arc::scene::registry registry;
+    arc::render::renderer renderer;
+    const auto camera = registry.create();
+    registry.emplace<arc::scene::transform_component>(camera);
+    registry.emplace<arc::scene::camera_component>(camera);
+
+    const auto environment = registry.create();
+    auto& world = registry.emplace<arc::scene::world_environment_component>(environment);
+    world.sky_visible = false;
+    world.affect_lighting = true;
+    registry.emplace<arc::scene::sky_atmosphere_component>(environment);
+    registry.emplace<arc::scene::celestial_sky_component>(environment);
+    registry.emplace<arc::scene::cloud_layers_component>(environment);
+    registry.emplace<arc::scene::height_fog_component>(environment);
+    registry.emplace<arc::scene::environment_lighting_component>(environment);
+
+    REQUIRE(arc::scene::render_scene(registry, renderer, 640, 360).camera_found);
+    auto packet = renderer.frame_queue().commit(1);
+    const auto& first = *std::get<arc::render::render_world_event>(packet.events[0].payload).packet;
+    REQUIRE(first.environment.enabled);
+    REQUIRE_FALSE(first.environment.sky_visible);
+    REQUIRE(first.environment.affect_lighting);
+    REQUIRE(first.environment.fog.enabled);
+
+    world.enabled = false;
+    REQUIRE(arc::scene::render_scene(registry, renderer, 640, 360).camera_found);
+    packet = renderer.frame_queue().commit(2);
+    const auto& second = *std::get<arc::render::render_world_event>(packet.events[0].payload).packet;
+    REQUIRE_FALSE(second.environment.enabled);
+    REQUIRE_FALSE(second.environment.fog.enabled);
 }
 
 TEST_CASE("render scene culling uses transformed dirty local bounds")

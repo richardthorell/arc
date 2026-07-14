@@ -10,8 +10,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -171,6 +173,146 @@ scene::render_environment_visibility to_scene_visibility(host_environment_visibi
         .vegetation = visibility.vegetation,
         .decals = visibility.decals
     };
+}
+
+host_sky_source to_host_sky_source(scene::sky_source source) noexcept
+{
+    switch (source)
+    {
+    case scene::sky_source::hdri: return host_sky_source::hdri;
+    case scene::sky_source::solid_color: return host_sky_source::solid_color;
+    case scene::sky_source::physical_atmosphere: break;
+    }
+    return host_sky_source::physical_atmosphere;
+}
+
+scene::sky_source to_scene_sky_source(host_sky_source source) noexcept
+{
+    switch (source)
+    {
+    case host_sky_source::hdri: return scene::sky_source::hdri;
+    case host_sky_source::solid_color: return scene::sky_source::solid_color;
+    case host_sky_source::physical_atmosphere: break;
+    }
+    return scene::sky_source::physical_atmosphere;
+}
+
+host_sun_position_mode to_host_sun_mode(scene::sun_position_mode mode) noexcept
+{
+    return mode == scene::sun_position_mode::geographic
+        ? host_sun_position_mode::geographic
+        : host_sun_position_mode::manual_light;
+}
+
+scene::sun_position_mode to_scene_sun_mode(host_sun_position_mode mode) noexcept
+{
+    return mode == host_sun_position_mode::geographic
+        ? scene::sun_position_mode::geographic
+        : scene::sun_position_mode::manual_light;
+}
+
+host_celestial_time_mode to_host_time_mode(scene::celestial_time_mode mode) noexcept
+{
+    switch (mode)
+    {
+    case scene::celestial_time_mode::simulated: return host_celestial_time_mode::simulated;
+    case scene::celestial_time_mode::system_clock: return host_celestial_time_mode::system_clock;
+    case scene::celestial_time_mode::fixed: break;
+    }
+    return host_celestial_time_mode::fixed;
+}
+
+scene::celestial_time_mode to_scene_time_mode(host_celestial_time_mode mode) noexcept
+{
+    switch (mode)
+    {
+    case host_celestial_time_mode::simulated: return scene::celestial_time_mode::simulated;
+    case host_celestial_time_mode::system_clock: return scene::celestial_time_mode::system_clock;
+    case host_celestial_time_mode::fixed: break;
+    }
+    return scene::celestial_time_mode::fixed;
+}
+
+host_environment_lighting_source to_host_lighting_source(scene::environment_lighting_source source) noexcept
+{
+    switch (source)
+    {
+    case scene::environment_lighting_source::hdri: return host_environment_lighting_source::hdri;
+    case scene::environment_lighting_source::constant_color: return host_environment_lighting_source::constant_color;
+    case scene::environment_lighting_source::follow_sky: break;
+    }
+    return host_environment_lighting_source::follow_sky;
+}
+
+scene::environment_lighting_source to_scene_lighting_source(host_environment_lighting_source source) noexcept
+{
+    switch (source)
+    {
+    case host_environment_lighting_source::hdri: return scene::environment_lighting_source::hdri;
+    case host_environment_lighting_source::constant_color: return scene::environment_lighting_source::constant_color;
+    case host_environment_lighting_source::follow_sky: break;
+    }
+    return scene::environment_lighting_source::follow_sky;
+}
+
+host_cloud_layer to_host_cloud_layer(const scene::cloud_layer_settings& layer) noexcept
+{
+    return {
+        .enabled = layer.enabled,
+        .coverage = layer.coverage,
+        .density = layer.density,
+        .altitude = layer.altitude,
+        .thickness = layer.thickness,
+        .scale = layer.scale,
+        .detail = layer.detail,
+        .softness = layer.softness,
+        .wind_x = layer.wind_direction[0],
+        .wind_y = layer.wind_direction[1],
+        .wind_speed = layer.wind_speed,
+        .lighting_strength = layer.lighting_strength,
+        .silver_lining = layer.silver_lining
+    };
+}
+
+scene::cloud_layer_settings to_scene_cloud_layer(const host_cloud_layer& layer) noexcept
+{
+    return {
+        .enabled = layer.enabled,
+        .coverage = layer.coverage,
+        .density = layer.density,
+        .altitude = layer.altitude,
+        .thickness = layer.thickness,
+        .scale = layer.scale,
+        .detail = layer.detail,
+        .softness = layer.softness,
+        .wind_direction = { layer.wind_x, layer.wind_y },
+        .wind_speed = layer.wind_speed,
+        .lighting_strength = layer.lighting_strength,
+        .silver_lining = layer.silver_lining
+    };
+}
+
+scene::world_environment_preset to_scene_preset(host_world_environment_preset preset) noexcept
+{
+    switch (preset)
+    {
+    case host_world_environment_preset::clear_day: return scene::world_environment_preset::clear_day;
+    case host_world_environment_preset::golden_hour: return scene::world_environment_preset::golden_hour;
+    case host_world_environment_preset::overcast: return scene::world_environment_preset::overcast;
+    case host_world_environment_preset::night: return scene::world_environment_preset::night;
+    case host_world_environment_preset::indoor_neutral: return scene::world_environment_preset::indoor_neutral;
+    case host_world_environment_preset::alpine_late_morning: break;
+    }
+    return scene::world_environment_preset::alpine_late_morning;
+}
+
+std::string validation_message(const scene::environment_validation_result& validation)
+{
+    std::ostringstream message;
+    message << "Invalid world environment";
+    for (const auto& error : validation.errors)
+        message << "; " << error;
+    return message.str();
 }
 
 void remove_entity_ref(std::vector<scene::entity>& entities, scene::entity entity)
@@ -359,6 +501,8 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     outdoor_environment.diffuse_irradiance = math::vector3f{ 0.18f, 0.23f, 0.29f };
     outdoor_environment.diffuse_intensity = 1.0f;
     state.outdoor_environment = renderer.create_environment(outdoor_environment);
+    if (auto* lighting = state.scene.try_get<scene::environment_lighting_component>(state.world_environment_entity))
+        lighting->environment = state.outdoor_environment;
 
     render::material_handle terrain_material;
     if (!assets.root.empty())
@@ -658,6 +802,176 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity transform changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_set_world_environment_command>)
+        {
+            const auto entity = to_scene_entity(payload.environment.entity);
+            auto* world = state_->scene.scene.try_get<scene::world_environment_component>(entity);
+            auto* atmosphere = state_->scene.scene.try_get<scene::sky_atmosphere_component>(entity);
+            auto* celestial = state_->scene.scene.try_get<scene::celestial_sky_component>(entity);
+            auto* clouds = state_->scene.scene.try_get<scene::cloud_layers_component>(entity);
+            auto* fog = state_->scene.scene.try_get<scene::height_fog_component>(entity);
+            auto* lighting = state_->scene.scene.try_get<scene::environment_lighting_component>(entity);
+            if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting)
+                return fail("Cannot edit a missing or incomplete world environment", entity);
+
+            auto next_world = *world;
+            next_world.enabled = payload.environment.enabled;
+            next_world.sky_visible = payload.environment.sky_visible;
+            next_world.affect_lighting = payload.environment.affect_lighting;
+            next_world.source = to_scene_sky_source(payload.environment.sky_source);
+            next_world.solid_color = to_math_vec3(payload.environment.solid_color);
+            next_world.hdri_rotation_degrees = payload.environment.hdri_rotation_degrees;
+            next_world.radiance_intensity = payload.environment.radiance_intensity;
+
+            auto next_atmosphere = *atmosphere;
+            next_atmosphere.planet_radius = payload.environment.planet_radius;
+            next_atmosphere.atmosphere_radius = payload.environment.atmosphere_radius;
+            next_atmosphere.rayleigh_strength = payload.environment.rayleigh_strength;
+            next_atmosphere.mie_strength = payload.environment.mie_strength;
+            next_atmosphere.ozone_strength = payload.environment.ozone_strength;
+            next_atmosphere.tint = to_math_vec3(payload.environment.atmosphere_tint);
+            next_atmosphere.ground_albedo = to_math_vec3(payload.environment.ground_albedo);
+            next_atmosphere.mie_anisotropy = payload.environment.mie_anisotropy;
+            next_atmosphere.rayleigh_scale_height = payload.environment.rayleigh_scale_height;
+            next_atmosphere.mie_scale_height = payload.environment.mie_scale_height;
+            next_atmosphere.multi_scattering_factor = payload.environment.multi_scattering_factor;
+            next_atmosphere.exposure = payload.environment.exposure;
+            next_atmosphere.sun_disk_size = payload.environment.sun_disk_size;
+            next_atmosphere.sun_disk_intensity = payload.environment.sun_disk_intensity;
+
+            auto next_celestial = *celestial;
+            next_celestial.sun_mode = to_scene_sun_mode(payload.environment.sun_mode);
+            next_celestial.time_mode = to_scene_time_mode(payload.environment.time_mode);
+            next_celestial.latitude_degrees = payload.environment.latitude_degrees;
+            next_celestial.longitude_degrees = payload.environment.longitude_degrees;
+            next_celestial.north_offset_degrees = payload.environment.north_offset_degrees;
+            next_celestial.year = payload.environment.year;
+            next_celestial.month = payload.environment.month;
+            next_celestial.day = payload.environment.day;
+            next_celestial.local_time_hours = payload.environment.local_time_hours;
+            next_celestial.utc_offset_hours = payload.environment.utc_offset_hours;
+            next_celestial.playing = payload.environment.playing;
+            next_celestial.loop_day = payload.environment.loop_day;
+            next_celestial.time_scale = payload.environment.time_scale;
+            next_celestial.automatic_sun_light = payload.environment.automatic_sun_light;
+            next_celestial.sun_intensity_multiplier = payload.environment.sun_intensity_multiplier;
+            next_celestial.sun_temperature_multiplier = payload.environment.sun_temperature_multiplier;
+            next_celestial.moon_enabled = payload.environment.moon_enabled;
+            next_celestial.automatic_moon_phase = payload.environment.automatic_moon_phase;
+            next_celestial.moon_phase = payload.environment.moon_phase;
+            next_celestial.moon_intensity = payload.environment.moon_intensity;
+            next_celestial.moon_angular_radius_degrees = payload.environment.moon_angular_radius_degrees;
+            next_celestial.stars_enabled = payload.environment.stars_enabled;
+            next_celestial.star_density = payload.environment.star_density;
+            next_celestial.star_intensity = payload.environment.star_intensity;
+            next_celestial.star_twinkle = payload.environment.star_twinkle;
+
+            auto next_clouds = *clouds;
+            next_clouds.enabled = payload.environment.clouds_enabled;
+            next_clouds.cast_shadows = payload.environment.cloud_shadows;
+            next_clouds.cumulus = to_scene_cloud_layer(payload.environment.cumulus);
+            next_clouds.cirrus = to_scene_cloud_layer(payload.environment.cirrus);
+
+            auto next_lighting = *lighting;
+            next_lighting.enabled = payload.environment.lighting_enabled;
+            next_lighting.source = to_scene_lighting_source(payload.environment.lighting_source);
+            next_lighting.constant_color = to_math_vec3(payload.environment.lighting_color);
+            next_lighting.diffuse_intensity = payload.environment.diffuse_intensity;
+            next_lighting.specular_intensity = payload.environment.specular_intensity;
+
+            auto next_fog = *fog;
+            next_fog.enabled = payload.environment.fog_enabled;
+            next_fog.color = to_math_vec3(payload.environment.fog_color);
+            next_fog.density = payload.environment.fog_density;
+            next_fog.height_falloff = payload.environment.fog_height_falloff;
+            next_fog.start_distance = payload.environment.fog_start_distance;
+            next_fog.max_opacity = payload.environment.fog_max_opacity;
+            next_fog.sun_scattering_strength = payload.environment.fog_sun_scattering;
+
+            const auto validation = scene::validate_world_environment(
+                next_world, next_atmosphere, next_celestial, next_clouds, next_fog, next_lighting);
+            if (!validation.valid)
+                return fail(validation_message(validation), entity);
+
+            *world = next_world;
+            *atmosphere = next_atmosphere;
+            *celestial = next_celestial;
+            *clouds = next_clouds;
+            *fog = next_fog;
+            *lighting = next_lighting;
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                "World environment changed", entity);
+            return success("{\"entity\":" + to_json(payload.environment.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_apply_world_environment_preset_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            auto* world = state_->scene.scene.try_get<scene::world_environment_component>(entity);
+            auto* atmosphere = state_->scene.scene.try_get<scene::sky_atmosphere_component>(entity);
+            auto* celestial = state_->scene.scene.try_get<scene::celestial_sky_component>(entity);
+            auto* clouds = state_->scene.scene.try_get<scene::cloud_layers_component>(entity);
+            auto* fog = state_->scene.scene.try_get<scene::height_fog_component>(entity);
+            auto* lighting = state_->scene.scene.try_get<scene::environment_lighting_component>(entity);
+            if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting)
+                return fail("Cannot apply a preset to a missing world environment", entity);
+
+            const auto sun_light = celestial->sun_light;
+            const auto animation_time = celestial->animation_time_seconds;
+            const auto environment = lighting->environment;
+            const auto hdri_texture = world->hdri_texture;
+            scene::apply_world_environment_preset(
+                to_scene_preset(payload.preset), *world, *atmosphere, *celestial, *clouds, *fog, *lighting);
+            celestial->sun_light = sun_light;
+            celestial->animation_time_seconds = animation_time;
+            lighting->environment = environment;
+            world->hdri_texture = hdri_texture;
+            lighting->hdri_texture = hdri_texture;
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                "World environment preset applied", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_set_environment_hdri_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            auto* world = state_->scene.scene.try_get<scene::world_environment_component>(entity);
+            auto* lighting = state_->scene.scene.try_get<scene::environment_lighting_component>(entity);
+            if (!world || !lighting)
+                return fail("Cannot assign an HDRI to a missing world environment", entity);
+
+            auto path = payload.path;
+            if (path.is_relative())
+                path = state_->assets.root / path;
+            if (!render::is_supported_texture_asset(path))
+                return fail("Unsupported environment texture: " + path.extension().string(), entity);
+            const auto loaded = render::load_texture_asset(path);
+            if (!loaded.succeeded())
+                return fail(loaded.message.empty() ? "Failed to load environment texture" : loaded.message, entity);
+
+            auto texture = loaded.texture;
+            texture.name = path.filename().string();
+            if (world->hdri_texture.valid())
+                state_->renderer->update_texture(world->hdri_texture, std::move(texture));
+            else
+                world->hdri_texture = state_->renderer->create_texture(std::move(texture));
+            lighting->hdri_texture = world->hdri_texture;
+            world->source = scene::sky_source::hdri;
+            state_->scene.world_environment_hdri_path = path;
+
+            if (lighting->environment.valid())
+            {
+                render::environment_desc environment;
+                environment.name = "World Environment HDRI";
+                environment.equirectangular_texture = world->hdri_texture;
+                environment.fallback_color = world->solid_color;
+                environment.intensity = world->radiance_intensity;
+                environment.diffuse_irradiance = lighting->constant_color;
+                environment.diffuse_intensity = lighting->diffuse_intensity;
+                state_->renderer->update_environment(lighting->environment, std::move(environment));
+            }
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                "World environment HDRI changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
         else if constexpr (std::is_same_v<command_type, host_set_camera_projection_command>)
         {
             if (auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity))
@@ -756,6 +1070,13 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"submitted\":" + std::string(state_->viewport_submitted ? "true" : "false") + '}'
             };
         }
+        else if constexpr (std::is_same_v<query_type, host_world_environment_query>)
+        {
+            const auto snapshot = world_environment_snapshot(payload.entity);
+            if (!snapshot)
+                return { .request_id = request_id, .succeeded = false, .error = "World environment is missing" };
+            return { .request_id = request_id, .succeeded = true, .payload_json = to_json(*snapshot) };
+        }
 
         return { .request_id = request_id, .succeeded = false, .error = "Unsupported host query" };
     }, query.payload);
@@ -815,6 +1136,14 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
         add_component_snapshot(snapshot.components, host_component_kind::spot_light, "Spot Light");
     if (state_->scene.scene.has<scene::sky_atmosphere_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::sky_atmosphere, "Sky Atmosphere");
+    if (state_->scene.scene.has<scene::world_environment_component>(selected))
+        add_component_snapshot(snapshot.components, host_component_kind::world_environment, "World Environment");
+    if (state_->scene.scene.has<scene::celestial_sky_component>(selected))
+        add_component_snapshot(snapshot.components, host_component_kind::celestial_sky, "Sun, Moon & Time");
+    if (state_->scene.scene.has<scene::cloud_layers_component>(selected))
+        add_component_snapshot(snapshot.components, host_component_kind::cloud_layers, "Cloud Layers");
+    if (state_->scene.scene.has<scene::environment_lighting_component>(selected))
+        add_component_snapshot(snapshot.components, host_component_kind::environment_lighting, "Environment Lighting");
     if (state_->scene.scene.has<scene::height_fog_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::height_fog, "Height Fog");
     if (state_->scene.scene.has<scene::terrain_component>(selected))
@@ -826,6 +1155,86 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
     if (state_->scene.scene.has<scene::decal_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::decal, "Decal");
     return snapshot;
+}
+
+std::optional<host_world_environment_snapshot> arc_host::world_environment_snapshot(host_entity_id host_entity) const
+{
+    const auto entity = to_scene_entity(host_entity);
+    const auto* world = state_->scene.scene.try_get<scene::world_environment_component>(entity);
+    const auto* atmosphere = state_->scene.scene.try_get<scene::sky_atmosphere_component>(entity);
+    const auto* celestial = state_->scene.scene.try_get<scene::celestial_sky_component>(entity);
+    const auto* clouds = state_->scene.scene.try_get<scene::cloud_layers_component>(entity);
+    const auto* fog = state_->scene.scene.try_get<scene::height_fog_component>(entity);
+    const auto* lighting = state_->scene.scene.try_get<scene::environment_lighting_component>(entity);
+    if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting)
+        return std::nullopt;
+
+    host_world_environment_snapshot result;
+    result.entity = host_entity;
+    result.enabled = world->enabled;
+    result.sky_visible = world->sky_visible;
+    result.affect_lighting = world->affect_lighting;
+    result.sky_source = to_host_sky_source(world->source);
+    result.solid_color = to_host_vec3(world->solid_color);
+    result.hdri_path = state_->scene.world_environment_hdri_path.generic_string();
+    result.hdri_rotation_degrees = world->hdri_rotation_degrees;
+    result.radiance_intensity = world->radiance_intensity;
+    result.planet_radius = atmosphere->planet_radius;
+    result.atmosphere_radius = atmosphere->atmosphere_radius;
+    result.rayleigh_strength = atmosphere->rayleigh_strength;
+    result.mie_strength = atmosphere->mie_strength;
+    result.ozone_strength = atmosphere->ozone_strength;
+    result.atmosphere_tint = to_host_vec3(atmosphere->tint);
+    result.ground_albedo = to_host_vec3(atmosphere->ground_albedo);
+    result.mie_anisotropy = atmosphere->mie_anisotropy;
+    result.rayleigh_scale_height = atmosphere->rayleigh_scale_height;
+    result.mie_scale_height = atmosphere->mie_scale_height;
+    result.multi_scattering_factor = atmosphere->multi_scattering_factor;
+    result.exposure = atmosphere->exposure;
+    result.sun_disk_size = atmosphere->sun_disk_size;
+    result.sun_disk_intensity = atmosphere->sun_disk_intensity;
+    result.sun_mode = to_host_sun_mode(celestial->sun_mode);
+    result.time_mode = to_host_time_mode(celestial->time_mode);
+    result.latitude_degrees = celestial->latitude_degrees;
+    result.longitude_degrees = celestial->longitude_degrees;
+    result.north_offset_degrees = celestial->north_offset_degrees;
+    result.year = celestial->year;
+    result.month = celestial->month;
+    result.day = celestial->day;
+    result.local_time_hours = celestial->local_time_hours;
+    result.utc_offset_hours = celestial->utc_offset_hours;
+    result.playing = celestial->playing;
+    result.loop_day = celestial->loop_day;
+    result.time_scale = celestial->time_scale;
+    result.automatic_sun_light = celestial->automatic_sun_light;
+    result.sun_intensity_multiplier = celestial->sun_intensity_multiplier;
+    result.sun_temperature_multiplier = celestial->sun_temperature_multiplier;
+    result.moon_enabled = celestial->moon_enabled;
+    result.automatic_moon_phase = celestial->automatic_moon_phase;
+    result.moon_phase = celestial->moon_phase;
+    result.moon_intensity = celestial->moon_intensity;
+    result.moon_angular_radius_degrees = celestial->moon_angular_radius_degrees;
+    result.stars_enabled = celestial->stars_enabled;
+    result.star_density = celestial->star_density;
+    result.star_intensity = celestial->star_intensity;
+    result.star_twinkle = celestial->star_twinkle;
+    result.clouds_enabled = clouds->enabled;
+    result.cloud_shadows = clouds->cast_shadows;
+    result.cumulus = to_host_cloud_layer(clouds->cumulus);
+    result.cirrus = to_host_cloud_layer(clouds->cirrus);
+    result.fog_enabled = fog->enabled;
+    result.fog_color = to_host_vec3(fog->color);
+    result.fog_density = fog->density;
+    result.fog_height_falloff = fog->height_falloff;
+    result.fog_start_distance = fog->start_distance;
+    result.fog_max_opacity = fog->max_opacity;
+    result.fog_sun_scattering = fog->sun_scattering_strength;
+    result.lighting_enabled = lighting->enabled;
+    result.lighting_source = to_host_lighting_source(lighting->source);
+    result.lighting_color = to_host_vec3(lighting->constant_color);
+    result.diffuse_intensity = lighting->diffuse_intensity;
+    result.specular_intensity = lighting->specular_intensity;
+    return result;
 }
 
 host_project_assets_snapshot arc_host::project_assets_snapshot() const
@@ -855,6 +1264,32 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             .import_running = false
         });
     }
+    if (!state_->assets.root.empty())
+    {
+        std::error_code error;
+        for (std::filesystem::recursive_directory_iterator iterator(
+                 state_->assets.root,
+                 std::filesystem::directory_options::skip_permission_denied,
+                 error), end;
+             iterator != end && !error;
+             iterator.increment(error))
+        {
+            if (!iterator->is_regular_file(error))
+                continue;
+            auto extension = iterator->path().extension().string();
+            std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char value) {
+                return static_cast<char>(std::tolower(value));
+            });
+            if (extension != ".hdr")
+                continue;
+            snapshot.assets.push_back({
+                .path = std::filesystem::relative(iterator->path(), state_->assets.root, error).generic_string(),
+                .kind = "environment",
+                .imported = true,
+                .import_running = false
+            });
+        }
+    }
     return snapshot;
 }
 
@@ -868,6 +1303,9 @@ std::vector<host_event> arc_host::poll_events()
 host_viewport_frame arc_host::request_viewport(const host_viewport_request& request)
 {
     const auto frame_start = std::chrono::steady_clock::now();
+    float delta_seconds = 0.0f;
+    if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)
+        delta_seconds = std::chrono::duration<float>(frame_start - state_->last_viewport_frame_time).count();
     state_->viewport_options = request;
     state_->viewport_frame_index = request.frame_index;
     if (!state_->renderer->backend())
@@ -895,14 +1333,16 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         to_visualization(request.visualization),
         to_overlay(request.overlay),
         request.shadows,
-        to_scene_visibility(request.environment));
+        to_scene_visibility(request.environment),
+        delta_seconds);
 
     const auto submit_result = state_->renderer->render_frame(
         request.frame_index,
         render::make_scene_draw_graph(
             "viewport",
             state_->renderer->resolved_config(),
-            true));
+            true,
+            state_->scene.last_render.environment));
     const auto frame_end = std::chrono::steady_clock::now();
     state_->viewport_frame_ms = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)

@@ -245,24 +245,27 @@ scene::entity add_world_environment_to_scene(editor_scene_state& scene)
     const auto entity = scene.scene.create();
     scene.world_environment_entity = entity;
     add_selectable_common(scene, entity, "World Environment", "Environment");
+    scene::world_environment_component world;
     scene::sky_atmosphere_component sky;
-    sky.rayleigh_strength = 1.18f;
-    sky.mie_strength = 0.24f;
-    sky.ozone_strength = 0.22f;
-    sky.tint = math::vector3f{ 0.48f, 0.68f, 1.0f };
-    sky.exposure = 1.08f;
-    sky.sun_disk_size = 0.012f;
-    sky.sun_disk_intensity = 2.4f;
-    scene.scene.emplace<scene::sky_atmosphere_component>(entity, sky);
-
+    scene::celestial_sky_component celestial;
+    scene::cloud_layers_component clouds;
     scene::height_fog_component fog;
-    fog.color = math::vector3f{ 0.62f, 0.71f, 0.80f };
-    fog.density = 0.008f;
-    fog.height_falloff = 0.055f;
-    fog.start_distance = 34.0f;
-    fog.max_opacity = 0.42f;
-    fog.sun_scattering_strength = 0.32f;
+    scene::environment_lighting_component lighting;
+    scene::apply_world_environment_preset(
+        scene::world_environment_preset::alpine_late_morning,
+        world,
+        sky,
+        celestial,
+        clouds,
+        fog,
+        lighting);
+    celestial.sun_light = scene.sun_entity;
+    scene.scene.emplace<scene::world_environment_component>(entity, world);
+    scene.scene.emplace<scene::sky_atmosphere_component>(entity, sky);
+    scene.scene.emplace<scene::celestial_sky_component>(entity, celestial);
+    scene.scene.emplace<scene::cloud_layers_component>(entity, clouds);
     scene.scene.emplace<scene::height_fog_component>(entity, fog);
+    scene.scene.emplace<scene::environment_lighting_component>(entity, lighting);
     scene.environment_entities.push_back(entity);
     return entity;
 }

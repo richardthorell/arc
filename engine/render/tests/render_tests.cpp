@@ -551,7 +551,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     const auto graph = arc::render::make_scene_draw_graph("viewport", arc::render::render_path::deferred);
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 7);
+    REQUIRE(compiled.passes.size() == 10);
     const auto pass_index = [&](std::string_view name) {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
@@ -562,7 +562,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     };
 
     const std::size_t shadow_index = pass_index("directional shadow cascades");
-    const std::size_t sky_index = pass_index("sky atmosphere");
+    const std::size_t sky_index = pass_index("sky composite");
     const std::size_t depth_index = pass_index("depth prepass");
     const std::size_t gbuffer_index = pass_index("gbuffer pass");
     const std::size_t deferred_index = pass_index("deferred lighting");
@@ -576,8 +576,10 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     REQUIRE(sky_index < deferred_index);
     REQUIRE(deferred_index < transparent_index);
     REQUIRE(compiled.passes.back().name == "present viewport");
-    REQUIRE(compiled.resources.size() == 9);
-    REQUIRE(compiled.resources[4].format == arc::render::render_format::rgba8_srgb);
+    REQUIRE(compiled.resources.size() == 12);
+    REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource) {
+        return resource.name == "gbuffer_albedo" && resource.format == arc::render::render_format::rgba8_srgb;
+    }));
     REQUIRE(compiled.lifetimes.size() == compiled.resources.size());
     REQUIRE_FALSE(compiled.transitions.empty());
 }
@@ -592,6 +594,42 @@ TEST_CASE("scene draw graph provides a compact forward plus fallback")
     REQUIRE(compiled.passes[3].name == "forward opaque");
     for (const auto& pass : compiled.passes)
         REQUIRE(pass.name != "gbuffer pass");
+}
+
+TEST_CASE("world environment graph selects scalable atmosphere and cloud passes")
+{
+    arc::render::resolved_render_config standard;
+    standard.quality = arc::render::render_quality_tier::medium;
+    standard.path = arc::render::render_path::deferred;
+    arc::render::world_environment_data environment;
+    environment.enabled = true;
+    environment.sky_visible = true;
+    environment.source = arc::render::sky_source_mode::physical_atmosphere;
+    environment.atmosphere.enabled = true;
+    environment.clouds.enabled = true;
+    environment.clouds.cast_shadows = true;
+
+    const auto compiled = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile();
+    const auto contains = [&](arc::render::builtin_render_pass expected) {
+        return std::any_of(compiled.passes.begin(), compiled.passes.end(),
+            [expected](const auto& pass) { return pass.builtin == expected; });
+    };
+    REQUIRE(contains(arc::render::builtin_render_pass::atmosphere_transmittance));
+    REQUIRE(contains(arc::render::builtin_render_pass::atmosphere_multi_scattering));
+    REQUIRE(contains(arc::render::builtin_render_pass::atmosphere_sky_view));
+    REQUIRE(contains(arc::render::builtin_render_pass::cloud_shadow));
+    REQUIRE(contains(arc::render::builtin_render_pass::sky_composite));
+
+    standard.quality = arc::render::render_quality_tier::low;
+    standard.path = arc::render::render_path::forward_plus;
+    const auto low = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile();
+    REQUIRE(std::none_of(low.passes.begin(), low.passes.end(), [](const auto& pass) {
+        return pass.builtin == arc::render::builtin_render_pass::atmosphere_transmittance ||
+            pass.builtin == arc::render::builtin_render_pass::cloud_shadow;
+    }));
+    REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass) {
+        return pass.builtin == arc::render::builtin_render_pass::sky_composite;
+    }));
 }
 
 TEST_CASE("directional shadow cascade splits are deterministic and ordered")
@@ -883,7 +921,20 @@ TEST_CASE("renderer creates texture and material resources")
     REQUIRE(material_update.material->roughness == Catch::Approx(0.35f));
     REQUIRE(material_update.material->base_color[2] == Catch::Approx(0.75f));
 
+    arc::render::texture_data replacement;
+    replacement.name = "environment replacement";
+    replacement.width = 2;
+    replacement.height = 1;
+    replacement.pixels.resize(8);
+    REQUIRE(renderer.update_texture(texture_handle, replacement));
+    const auto texture_update_packet = renderer.frame_queue().commit(3);
+    REQUIRE(texture_update_packet.events.size() == 1);
+    const auto& texture_update = std::get<arc::render::texture_upload_event>(texture_update_packet.events[0].payload);
+    REQUIRE(texture_update.handle == texture_handle);
+    REQUIRE(texture_update.texture->width == 2);
+
     REQUIRE_FALSE(renderer.update_material({ .index = 999, .generation = 1 }, updated));
+    REQUIRE_FALSE(renderer.update_texture({ .index = 999, .generation = 1 }, replacement));
 }
 
 TEST_CASE("renderer creates environment resources")
@@ -906,6 +957,15 @@ TEST_CASE("renderer creates environment resources")
     REQUIRE(upload.environment);
     REQUIRE(upload.environment->handle == handle);
     REQUIRE(upload.environment->intensity == Catch::Approx(1.5f));
+
+    environment.intensity = 0.75f;
+    REQUIRE(renderer.update_environment(handle, environment));
+    REQUIRE(renderer.destroy_environment(handle));
+    REQUIRE_FALSE(renderer.environment_alive(handle));
+    const auto lifecycle = renderer.frame_queue().commit(13);
+    REQUIRE(lifecycle.events.size() == 2);
+    REQUIRE(lifecycle.events[0].type() == arc::render::render_event_type::environment_upload);
+    REQUIRE(lifecycle.events[1].type() == arc::render::render_event_type::environment_destroy);
 }
 
 TEST_CASE("scene lighting data packs sorted capped light arrays")
