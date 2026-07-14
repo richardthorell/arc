@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import {
   AlertTriangle,
   Box,
@@ -10,10 +10,13 @@ import {
   FileCode2,
   FileText,
   Folder,
+  FolderTree,
+  Link,
+  MoreVertical,
   Lightbulb,
-  Package,
   Search,
   Settings,
+  X,
 } from 'lucide-react';
 
 import { executeWorkbenchCommand } from './commandRegistry';
@@ -26,10 +29,47 @@ import { MainToolbar } from '../layout/MainToolbar';
 import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
 import { flattenScene, mockHost } from '../services/mockHost';
-import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/mockHost';
+import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity, Transform, Vec3 } from '../services/mockHost';
+import { UiButton, UiIconButton, UiPanel, UiTab, UiTabs, UiTextInput, UiTreeRow } from '../ui';
 import { ViewportPanel } from '../viewport/ViewportPanel';
 
 import './workbench.css';
+
+type HostResponse<TPayload = unknown> = {
+  succeeded: boolean;
+  error?: string;
+  payload?: TPayload;
+};
+
+type HostEntityId = {
+  index: number;
+  generation: number;
+};
+
+type HostSceneEntity = {
+  entity: HostEntityId;
+  name: string;
+  kind: 'camera' | 'light' | 'environment' | 'mesh' | 'primitive' | 'imported' | 'unknown';
+  active: boolean;
+  selected: boolean;
+};
+
+type HostSceneSnapshot = {
+  entities: HostSceneEntity[];
+};
+
+type HostAssetSnapshot = {
+  path: string;
+  kind: AssetItem['kind'] | 'environment' | 'unknown';
+  imported: boolean;
+  importRunning: boolean;
+};
+
+type HostProjectAssetsSnapshot = {
+  projectName: string;
+  projectRoot: string;
+  assets: HostAssetSnapshot[];
+};
 
 const fallbackStartupState: StartupState = {
   appVersion: 'dev',
@@ -37,18 +77,165 @@ const fallbackStartupState: StartupState = {
   viewportMode: 'placeholder',
 };
 
+const defaultTransform = {
+  position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
+};
+
+const hostEntityKey = (entity: HostEntityId) => `${entity.index}:${entity.generation}`;
+
+const sceneKindFromHost = (kind: HostSceneEntity['kind']): SceneEntity['kind'] => {
+  if (kind === 'camera' || kind === 'light' || kind === 'environment' || kind === 'mesh') {
+    return kind;
+  }
+  return 'mesh';
+};
+
+const componentsForHostEntity = (kind: HostSceneEntity['kind']): string[] => {
+  if (kind === 'camera') return ['Transform', 'Camera'];
+  if (kind === 'light') return ['Transform', 'Light'];
+  if (kind === 'environment') return ['Environment'];
+  return ['Transform', 'Mesh Renderer'];
+};
+
+const assetKindFromHost = (kind: HostAssetSnapshot['kind']): AssetItem['kind'] => {
+  if (kind === 'material' || kind === 'texture' || kind === 'shader' || kind === 'mesh' || kind === 'folder') {
+    return kind;
+  }
+  return 'scene';
+};
+
+const assetNameFromPath = (value: string) => value.split(/[\\/]/).pop() || value;
+
+const timestamp = () => new Date().toLocaleTimeString([], { hour12: false });
+
+const sceneRootId = 'scene-root';
+
+const isEditorOnlyHostEntity = (entity: HostSceneEntity) =>
+  entity.name.toLocaleLowerCase() === 'editor camera';
+
+const sceneRootEntity = (children: SceneEntity[]): SceneEntity => ({
+  id: sceneRootId,
+  name: 'Scene',
+  kind: 'folder',
+  active: true,
+  children,
+  components: [],
+  transform: defaultTransform,
+});
+
+const resizeLimits = {
+  left: { min: 220, max: 520 },
+  right: { min: 260, max: 560 },
+  bottom: { min: 112, max: 420 },
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+type InspectorVectorField = {
+  id: keyof SceneEntity['transform'];
+  label: string;
+  mode: 'position' | 'rotationDegrees' | 'scale';
+  lockable?: boolean;
+};
+
+type VectorAxis = keyof Vec3;
+
+type InspectorComponentSchema = {
+  id: string;
+  title: string;
+  fields: InspectorVectorField[];
+};
+
+const inspectorComponentSchemas: InspectorComponentSchema[] = [
+  {
+    id: 'transform',
+    title: 'Transform',
+    fields: [
+      { id: 'position', label: 'Location', mode: 'position' },
+      { id: 'rotation', label: 'Rotation', mode: 'rotationDegrees' },
+      { id: 'scale', label: 'Scale', mode: 'scale', lockable: true },
+    ],
+  },
+];
+
+const updateEntityTransform = (
+  entities: SceneEntity[],
+  entityId: string,
+  transform: Transform,
+): SceneEntity[] => entities.map((entity) => ({
+  ...entity,
+  transform: entity.id === entityId ? transform : entity.transform,
+  children: entity.children ? updateEntityTransform(entity.children, entityId, transform) : entity.children,
+}));
+
+const parseHostEntityId = (id: string): HostEntityId | null => {
+  const [index, generation] = id.split(':').map((part) => Number.parseInt(part, 10));
+  if (!Number.isInteger(index) || !Number.isInteger(generation)) {
+    return null;
+  }
+  return { index, generation };
+};
+
+const degreesToRadians = (degrees: number) => degrees * Math.PI / 180;
+
+const eulerDegreesToQuaternion = (rotation: Vec3) => {
+  const halfX = degreesToRadians(rotation.x) * 0.5;
+  const halfY = degreesToRadians(rotation.y) * 0.5;
+  const halfZ = degreesToRadians(rotation.z) * 0.5;
+  const cx = Math.cos(halfX);
+  const sx = Math.sin(halfX);
+  const cy = Math.cos(halfY);
+  const sy = Math.sin(halfY);
+  const cz = Math.cos(halfZ);
+  const sz = Math.sin(halfZ);
+
+  return {
+    x: sx * cy * cz + cx * sy * sz,
+    y: cx * sy * cz - sx * cy * sz,
+    z: cx * cy * sz + sx * sy * cz,
+    w: cx * cy * cz - sx * sy * sz,
+  };
+};
+
+const transformToHostPayload = (transform: Transform) => ({
+  position: transform.position,
+  rotation: eulerDegreesToQuaternion(transform.rotation),
+  scale: transform.scale,
+});
+
 export function Workbench() {
   const { layout, setLayout, resetLayout } = useWorkbenchLayout();
   const [startupState, setStartupState] = useState<StartupState | null>(null);
   const [project, setProject] = useState<ProjectSnapshot | null>(null);
+  const [hostConsoleEvents, setHostConsoleEvents] = useState<ConsoleEvent[]>([]);
   const [selectedEntityId, setSelectedEntityId] = useState('camera-main');
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>('asset-scene-demo');
   const [lastCommand, setLastCommand] = useState('Workbench ready');
 
   useEffect(() => {
-    const startup = window.arc?.getStartupState?.() ?? Promise.resolve(fallbackStartupState);
-    void startup.then(setStartupState).catch(() => setStartupState(fallbackStartupState));
-    void mockHost.getProjectSnapshot().then(setProject);
+    if (!activityRegistry.some((activity) => activity.id === layout.activeActivity)) {
+      setLayout((current) => ({
+        ...current,
+        activeActivity: 'scene',
+        leftVisible: true,
+      }));
+    }
+  }, [layout.activeActivity, setLayout]);
+
+  useEffect(() => {
+    return window.arc?.host?.onLog?.((event) => {
+      const entry: ConsoleEvent = {
+        id: `host-log-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        level: event.level,
+        source: event.source,
+        message: event.message,
+        timestamp: event.timestamp || timestamp(),
+      };
+      setHostConsoleEvents((current) => [...current, entry].slice(-1000));
+      setLastCommand(event.message);
+    });
   }, []);
 
   const selectedEntity = useMemo(() => {
@@ -70,9 +257,128 @@ export function Workbench() {
       return;
     }
 
+    if (command === 'file.open' || command === 'file.importScene') {
+      const append = command === 'file.importScene';
+      try {
+        const result = await window.arc?.dialog?.openScene?.({ append });
+        if (!result || result.canceled) {
+          setLastCommand(append ? 'Scene import canceled' : 'Open scene canceled');
+          return;
+        }
+
+        const response = result.response as HostResponse<{ entityCount?: number }> | undefined;
+        if (!response?.succeeded) {
+          setLastCommand(response?.error || 'Scene import failed');
+          return;
+        }
+
+        await refreshProjectFromHost(result.filePath);
+        const count = response.payload?.entityCount ?? 0;
+        setLastCommand(`${append ? 'Imported' : 'Opened'} ${assetNameFromPath(result.filePath ?? 'scene')} (${count} entities)`);
+      } catch (error) {
+        setLastCommand(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
     const result = await executeWorkbenchCommand(command);
     setLastCommand(result.message);
   };
+
+  const refreshProjectFromHost = async (activeScene?: string) => {
+    if (!window.arc?.host) {
+      return;
+    }
+
+    const [sceneResponse, assetsResponse] = await Promise.all([
+      window.arc.host.query('scene.hierarchy') as Promise<HostResponse<HostSceneSnapshot>>,
+      window.arc.host.query('project.assets') as Promise<HostResponse<HostProjectAssetsSnapshot>>,
+    ]);
+
+    if (!sceneResponse.succeeded || !sceneResponse.payload) {
+      return;
+    }
+
+    const hostEntities = sceneResponse.payload.entities.filter((entity) => !isEditorOnlyHostEntity(entity));
+    const scene = hostEntities.map((entity): SceneEntity => ({
+      id: hostEntityKey(entity.entity),
+      name: entity.name,
+      kind: sceneKindFromHost(entity.kind),
+      active: entity.active,
+      components: componentsForHostEntity(entity.kind),
+      transform: defaultTransform,
+    }));
+
+    const hostAssets = assetsResponse.succeeded && assetsResponse.payload ? assetsResponse.payload : null;
+    const assets = hostAssets?.assets.map((asset): AssetItem => ({
+      id: asset.path,
+      name: assetNameFromPath(asset.path),
+      path: asset.path,
+      kind: assetKindFromHost(asset.kind),
+      status: asset.importRunning ? 'importing' : asset.imported ? 'ready' : 'missing',
+    })) ?? project?.assets ?? [];
+
+    const selected = hostEntities.find((entity) => entity.selected) ?? hostEntities[0];
+    if (selected) {
+      setSelectedEntityId(hostEntityKey(selected.entity));
+    }
+    if (activeScene) {
+      setSelectedAssetId(activeScene);
+    }
+
+    setProject((current) => ({
+      ...(current ?? {
+        name: hostAssets?.projectName || 'Arc Sandbox',
+        root: hostAssets?.projectRoot || '',
+        activeScene: activeScene ?? '',
+        scene: [],
+        assets: [],
+        console: [],
+        renderStats: {
+          fps: 0,
+          frameTimeMs: 0,
+          drawCalls: 0,
+          triangles: 0,
+          visibleEntities: 0,
+          lights: 0,
+          gpuMemoryMb: 0,
+        },
+      }),
+      name: hostAssets?.projectName || current?.name || 'Arc Sandbox',
+      root: hostAssets?.projectRoot || current?.root || '',
+      activeScene: activeScene ?? current?.activeScene ?? '',
+      scene,
+      assets,
+      console: [
+        ...(current?.console ?? []),
+        {
+          id: `host-scene-${Date.now()}`,
+          level: 'info',
+          source: 'host',
+          message: activeScene ? `Loaded scene asset ${assetNameFromPath(activeScene)}.` : 'Host scene snapshot refreshed.',
+          timestamp: timestamp(),
+        },
+      ],
+    }));
+  };
+
+  useEffect(() => {
+    const startup = window.arc?.getStartupState?.() ?? Promise.resolve(fallbackStartupState);
+    void startup
+      .then(async (state) => {
+        setStartupState(state);
+        if (state.engineHostConnected) {
+          await refreshProjectFromHost();
+          return;
+        }
+
+        setProject(await mockHost.getProjectSnapshot());
+      })
+      .catch(async () => {
+        setStartupState(fallbackStartupState);
+        setProject(await mockHost.getProjectSnapshot());
+      });
+  }, []);
 
   const selectEntity = async (entityId: string) => {
     const result = await mockHost.selectEntity(entityId);
@@ -96,6 +402,77 @@ export function Workbench() {
   const setActiveCenterPanel = (panel: WorkbenchPanelId) => setLayout((current) => ({ ...current, activeCenterPanel: panel }));
   const setActiveRightPanel = (panel: WorkbenchPanelId) => setLayout((current) => ({ ...current, activeRightPanel: panel }));
   const setActiveBottomPanel = (panel: WorkbenchPanelId) => setLayout((current) => ({ ...current, activeBottomPanel: panel }));
+  const setActivityExpanded = (expanded: boolean) => setLayout((current) => ({ ...current, activityExpanded: expanded }));
+
+  const beginPanelResize = (panel: 'left' | 'right' | 'bottom', event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = layout.leftPanelWidth;
+    const startRight = layout.rightPanelWidth;
+    const startBottom = layout.bottomPanelHeight;
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      setLayout((current) => {
+        if (panel === 'left') {
+          return {
+            ...current,
+            leftPanelWidth: clamp(startLeft + moveEvent.clientX - startX, resizeLimits.left.min, resizeLimits.left.max),
+          };
+        }
+
+        if (panel === 'right') {
+          return {
+            ...current,
+            rightPanelWidth: clamp(startRight - (moveEvent.clientX - startX), resizeLimits.right.min, resizeLimits.right.max),
+          };
+        }
+
+        return {
+          ...current,
+          bottomPanelHeight: clamp(startBottom - (moveEvent.clientY - startY), resizeLimits.bottom.min, resizeLimits.bottom.max),
+        };
+      });
+    };
+
+    const onPointerUp = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const updateSelectedTransformField = (field: keyof Transform, axis: VectorAxis, value: number) => {
+    if (!selectedEntity) {
+      return;
+    }
+
+    const nextTransform: Transform = {
+      ...selectedEntity.transform,
+      [field]: {
+        ...selectedEntity.transform[field],
+        [axis]: value,
+      },
+    };
+
+    setProject((current) => current ? {
+      ...current,
+      scene: updateEntityTransform(current.scene, selectedEntity.id, nextTransform),
+    } : current);
+
+    const hostEntity = parseHostEntityId(selectedEntity.id);
+    if (startupState?.engineHostConnected && hostEntity) {
+      void window.arc.host.command('entity.setTransform', {
+        entity: hostEntity,
+        transform: transformToHostPayload(nextTransform),
+      }).catch((error) => {
+        setLastCommand(error instanceof Error ? error.message : String(error));
+      });
+    }
+  };
 
   const renderLeftPanel = () => {
     if (!project) {
@@ -103,7 +480,7 @@ export function Workbench() {
     }
 
     if (layout.activeActivity === 'scene') {
-      return <ExplorerPanel project={project} selectedEntityId={selectedEntityId} selectedAssetId={selectedAssetId} onSelectEntity={selectEntity} onSelectAsset={setSelectedAssetId} />;
+      return <ExplorerPanel project={project} selectedEntityId={selectedEntityId} onSelectEntity={selectEntity} />;
     }
 
     if (layout.activeActivity === 'assets') {
@@ -125,26 +502,18 @@ export function Workbench() {
 
   const renderCenterPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'viewport') {
-      return <ViewportPanel project={project} onCommand={runCommand} />;
+      return <ViewportPanel project={project} startupState={startupState} onCommand={runCommand} />;
     }
 
-    if (panel === 'renderGraph') {
-      return <RenderGraphPanel />;
-    }
-
-    return <ShaderEditorPanel />;
+    return <ViewportPanel project={project} startupState={startupState} onCommand={runCommand} />;
   };
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
-      return <InspectorPanel entity={selectedEntity} asset={selectedAsset} />;
+      return <InspectorPanel entity={selectedEntity} asset={selectedAsset} onTransformFieldChange={updateSelectedTransformField} />;
     }
 
-    if (panel === 'lighting') {
-      return <LightingPanel project={project} />;
-    }
-
-    return <WorldSettingsPanel project={project} />;
+    return <InspectorPanel entity={selectedEntity} asset={selectedAsset} onTransformFieldChange={updateSelectedTransformField} />;
   };
 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
@@ -153,29 +522,44 @@ export function Workbench() {
     }
 
     if (panel === 'console') {
-      return <ConsolePanel events={project?.console ?? []} lastCommand={lastCommand} />;
+      return <ConsolePanel events={[...(project?.console ?? []), ...hostConsoleEvents]} lastCommand={lastCommand} />;
     }
 
-    if (panel === 'versionControl') {
-      return <VersionControlPanel onCommand={runCommand} />;
-    }
-
-    if (panel === 'aiAssistant') {
-      return <AiAssistantPanel selectedEntity={selectedEntity} selectedAsset={selectedAsset} onCommand={runCommand} />;
-    }
-
-    return <ProfilerPanel project={project} />;
+    return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId} onCommand={runCommand} />;
   };
+
+  const workbenchBodyStyle = {
+    '--arc-left-panel-width': `${layout.leftPanelWidth}px`,
+    '--arc-right-panel-width': `${layout.rightPanelWidth}px`,
+    '--arc-bottom-panel-height': `${layout.bottomPanelHeight}px`,
+  } as CSSProperties;
 
   return (
     <main className="workbench-shell">
       <MenuBar projectTitle={`${project?.name ?? 'arc editor2'}${project ? '.arcscene*' : ''}`} onCommand={runCommand} />
       <MainToolbar onCommand={runCommand} />
 
-      <section className="workbench-body workbench-body-foundation">
-        <ActivityBar activeActivity={layout.activeActivity} onSelectActivity={selectActivity} />
+      <section className={[
+        'workbench-body',
+        'workbench-body-foundation',
+        layout.activityExpanded ? 'activity-expanded' : '',
+        layout.bottomVisible ? '' : 'bottom-hidden',
+      ].filter(Boolean).join(' ')} style={workbenchBodyStyle}>
+        <ActivityBar
+          activeActivity={layout.activeActivity}
+          expanded={layout.activityExpanded}
+          onExpandedChange={setActivityExpanded}
+          onSelectActivity={selectActivity}
+        />
 
         {layout.leftVisible && <aside className="side-bar">{renderLeftPanel()}</aside>}
+        {layout.leftVisible && (
+          <ResizeHandle
+            className="resize-handle-left"
+            label="Resize left panel"
+            onPointerDown={(event) => beginPanelResize('left', event)}
+          />
+        )}
 
         <section className="editor-region foundation-editor-region">
           <DockHost
@@ -185,8 +569,15 @@ export function Workbench() {
             onActivePanelChange={setActiveCenterPanel}
             renderPanel={renderCenterPanel}
           />
+        </section>
 
-          {layout.bottomVisible && (
+        {layout.bottomVisible && (
+          <>
+            <ResizeHandle
+              className="resize-handle-bottom"
+              label="Resize bottom panel"
+              onPointerDown={(event) => beginPanelResize('bottom', event)}
+            />
             <DockHost
               region="bottom"
               panelIds={dockPanelIds.bottom}
@@ -194,8 +585,8 @@ export function Workbench() {
               onActivePanelChange={setActiveBottomPanel}
               renderPanel={renderBottomPanel}
             />
-          )}
-        </section>
+          </>
+        )}
 
         {layout.rightVisible && (
           <aside className="inspector-bar">
@@ -208,6 +599,13 @@ export function Workbench() {
             />
           </aside>
         )}
+        {layout.rightVisible && (
+          <ResizeHandle
+            className="resize-handle-right"
+            label="Resize right panel"
+            onPointerDown={(event) => beginPanelResize('right', event)}
+          />
+        )}
       </section>
 
       <StatusBar startupState={startupState} activeScene={project?.activeScene} lastCommand={lastCommand} />
@@ -215,30 +613,80 @@ export function Workbench() {
   );
 }
 
-function ExplorerPanel({ project, selectedEntityId, selectedAssetId, onSelectEntity, onSelectAsset }: {
+function ExplorerPanel({ project, selectedEntityId, onSelectEntity }: {
   project: ProjectSnapshot;
   selectedEntityId: string;
-  selectedAssetId: string | null;
   onSelectEntity: (entityId: string) => void;
-  onSelectAsset: (assetId: string) => void;
 }) {
+  const [filter, setFilter] = useState('');
+  const sceneTree = useMemo(() => [sceneRootEntity(project.scene)], [project.scene]);
+  const filteredScene = useMemo(() => filterSceneTree(sceneTree, filter), [sceneTree, filter]);
+  const allEntities = useMemo(() => flattenScene(project.scene), [project.scene]);
+  const actorCount = allEntities.length;
+  const selectedCount = allEntities.some((entity) => entity.id === selectedEntityId) ? 1 : 0;
+
   return (
     <div className="explorer-view">
-      <Panel title={project.name.toUpperCase()}>
-        <TreeSection title="Scene Hierarchy">
-          {project.scene.map((entity) => (
+      <Panel icon={<FolderTree size={14} />} title="Hierarchy">
+        <label className="hierarchy-search">
+          <Search size={15} />
+          <input aria-label="Search hierarchy" placeholder="Search..." value={filter} onChange={(event) => setFilter(event.target.value)} />
+        </label>
+        <div className="hierarchy-tree">
+          {filteredScene.map((entity) => (
             <SceneTreeItem key={entity.id} entity={entity} depth={0} selectedEntityId={selectedEntityId} onSelectEntity={onSelectEntity} />
           ))}
-        </TreeSection>
-        <TreeSection title="Assets">
-          {project.assets.slice(0, 7).map((asset) => (
-            <AssetRow key={asset.id} asset={asset} selected={asset.id === selectedAssetId} onSelect={() => onSelectAsset(asset.id)} />
-          ))}
-        </TreeSection>
+          {filteredScene.length === 0 && <div className="hierarchy-empty">No matching entities</div>}
+        </div>
+        <footer className="hierarchy-footer">{actorCount.toLocaleString()} actors ({selectedCount} selected)</footer>
       </Panel>
     </div>
   );
 }
+
+const normalizeFilterText = (value: string) => value.toLocaleLowerCase().replace(/[_./\\-]+/g, ' ').trim();
+
+const fuzzyIncludes = (value: string, query: string) => {
+  if (!query) {
+    return true;
+  }
+
+  let index = 0;
+  for (const character of value) {
+    if (character === query[index]) {
+      index += 1;
+      if (index === query.length) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const entityMatchesFilter = (entity: SceneEntity, filter: string) => {
+  const words = normalizeFilterText(filter).split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return true;
+  }
+
+  const haystack = normalizeFilterText(`${entity.name} ${entity.kind} ${entity.components.join(' ')}`);
+  return words.every((word) => haystack.includes(word) || fuzzyIncludes(haystack, word));
+};
+
+const filterSceneTree = (entities: SceneEntity[], filter: string): SceneEntity[] => {
+  const normalized = normalizeFilterText(filter);
+  if (!normalized) {
+    return entities;
+  }
+
+  return entities.flatMap((entity) => {
+    const children = filterSceneTree(entity.children ?? [], normalized);
+    if (entityMatchesFilter(entity, normalized) || children.length > 0) {
+      return [{ ...entity, children }];
+    }
+    return [];
+  });
+};
 
 function AssetExplorerPanel({ project, selectedAssetId, onSelectAsset }: {
   project: ProjectSnapshot;
@@ -246,7 +694,7 @@ function AssetExplorerPanel({ project, selectedAssetId, onSelectAsset }: {
   onSelectAsset: (assetId: string) => void;
 }) {
   return (
-    <Panel title="Assets">
+    <Panel icon={<Database size={14} />} title="Assets">
       <TreeSection title="Project Assets">
         {project.assets.map((asset) => <AssetRow key={asset.id} asset={asset} selected={asset.id === selectedAssetId} onSelect={() => onSelectAsset(asset.id)} />)}
       </TreeSection>
@@ -254,21 +702,83 @@ function AssetExplorerPanel({ project, selectedAssetId, onSelectAsset }: {
   );
 }
 
-function InspectorPanel({ entity, asset }: { entity: SceneEntity | null; asset: AssetItem | null }) {
+function InspectorPanel({ entity, asset, onTransformFieldChange }: {
+  entity: SceneEntity | null;
+  asset: AssetItem | null;
+  onTransformFieldChange: (field: keyof Transform, axis: VectorAxis, value: number) => void;
+}) {
   return (
     <section className="inspector foundation-inspector">
       {entity ? (
         <>
-          <h2>{entity.name}</h2>
-          <PropertyRow label="Kind" value={entity.kind} />
-          <PropertyRow label="Active" value={entity.active ? 'true' : 'false'} />
-          <VectorEditor title="Position" value={entity.transform.position} />
-          <VectorEditor title="Rotation" value={entity.transform.rotation} />
-          <VectorEditor title="Scale" value={entity.transform.scale} />
-          <section className="component-list"><h3>Components</h3>{entity.components.length ? entity.components.map((component) => <button key={component}>{component}</button>) : <span>No components</span>}</section>
+          <InspectorEntityHeader entity={entity} />
+          <label className="inspector-search">
+            <Search size={15} />
+            <input aria-label="Search components" placeholder="Search components..." />
+          </label>
+          <div className="inspector-components">
+            {inspectorComponentSchemas.map((component) => (
+              <InspectorComponent
+                key={component.id}
+                component={component}
+                entity={entity}
+                onTransformFieldChange={onTransformFieldChange}
+              />
+            ))}
+          </div>
+          <section className="component-list">
+            <h3>Components</h3>
+            {entity.components.length ? entity.components.map((component) => <UiButton key={component} variant="toolbar">{component}</UiButton>) : <span>No components</span>}
+          </section>
         </>
       ) : <PlaceholderPanel icon={<Settings />} title="Nothing selected" text="Select an entity or asset." />}
       {asset && <section className="asset-inspector"><h3>Selected Asset</h3><PropertyRow label="Name" value={asset.name} /><PropertyRow label="Path" value={asset.path} /><PropertyRow label="Status" value={asset.status} /></section>}
+    </section>
+  );
+}
+
+function InspectorEntityHeader({ entity }: { entity: SceneEntity }) {
+  return (
+    <header className="inspector-entity-header">
+      <label className="inspector-active-toggle">
+        <input aria-label={`${entity.name} active`} checked={entity.active} readOnly type="checkbox" />
+      </label>
+      <h2>{entity.name}</h2>
+      <label className="inspector-static-toggle">
+        <input aria-label={`${entity.name} static`} readOnly type="checkbox" />
+        <span>Static</span>
+      </label>
+      <UiIconButton className="inspector-header-action" label="Entity actions">
+        <MoreVertical size={14} />
+      </UiIconButton>
+      <PropertyRow label="Kind" value={entity.kind} />
+      <PropertyRow label="Active" value={entity.active ? 'true' : 'false'} />
+    </header>
+  );
+}
+
+function InspectorComponent({ component, entity, onTransformFieldChange }: {
+  component: InspectorComponentSchema;
+  entity: SceneEntity;
+  onTransformFieldChange: (field: keyof Transform, axis: VectorAxis, value: number) => void;
+}) {
+  return (
+    <section className="inspector-component">
+      <header className="inspector-component-header">
+        <ChevronDown size={14} />
+        <span>{component.title}</span>
+        <ChevronDown className="inspector-component-menu" size={14} />
+      </header>
+      <div className="inspector-component-body">
+        {component.fields.map((field) => (
+          <InspectorVectorField
+            key={field.id}
+            field={field}
+            onAxisChange={(axis, value) => onTransformFieldChange(field.id, axis, value)}
+            value={entity.transform[field.id]}
+          />
+        ))}
+      </div>
     </section>
   );
 }
@@ -282,9 +792,9 @@ function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onComman
   return (
     <section className="content-browser-foundation">
       <div className="content-browser-toolbar">
-        <button onClick={() => onCommand('assets.import')}>+ Add</button>
-        <button onClick={() => onCommand('assets.import')}>Import</button>
-        <button onClick={() => onCommand('assets.saveAll')}>Save All</button>
+        <UiButton onClick={() => onCommand('assets.import')} variant="toolbar">+ Add</UiButton>
+        <UiButton onClick={() => onCommand('assets.import')} variant="toolbar">Import</UiButton>
+        <UiButton onClick={() => onCommand('assets.saveAll')} variant="toolbar">Save All</UiButton>
         <span>Assets / Environment / Props</span>
       </div>
       <div className="asset-grid-foundation">
@@ -298,57 +808,36 @@ function ConsolePanel({ events, lastCommand }: { events: ConsoleEvent[]; lastCom
   return <div className="bottom-content">{events.map((event) => <LogLine key={event.id} level={event.level} text={`[${event.timestamp}] [${event.source}] ${event.message}`} />)}<LogLine level="debug" text={`last command: ${lastCommand}`} /></div>;
 }
 
-function VersionControlPanel({ onCommand }: { onCommand: (command: CommandId) => void }) {
-  return (
-    <section className="vcs-panel-foundation">
-      <div className="property-row"><span>Branch</span><strong>main · ahead 3</strong></div>
-      <TreeSection title="Changes">
-        {['Assets/Environment/Props/Lantern.fbx', 'Scenes/MountainVillage.arcscene', 'Shaders/Water/WaterCommon.glsl'].map((file) => <button className="tree-row" key={file}><FileText size={14} /><span>{file}</span><small>M</small></button>)}
-      </TreeSection>
-      <textarea className="commit-message" defaultValue="Add cabin props and materials" />
-      <div className="vcs-actions"><button onClick={() => onCommand('vcs.commit')}>Commit</button><button onClick={() => onCommand('vcs.pull')}>Pull</button><button onClick={() => onCommand('vcs.push')}>Push</button></div>
-    </section>
-  );
-}
-
-function AiAssistantPanel({ selectedEntity, selectedAsset, onCommand }: { selectedEntity: SceneEntity | null; selectedAsset: AssetItem | null; onCommand: (command: CommandId) => void }) {
-  return (
-    <section className="ai-panel-foundation">
-      <header><strong>AI Assistant</strong><button onClick={() => onCommand('ai.newChat')}>+ New Chat</button></header>
-      <p>You are in <strong>MountainVillage.arcscene</strong>.</p>
-      <p>Selection: {selectedEntity?.name ?? selectedAsset?.name ?? 'none'}</p>
-      <div className="ai-suggestion-grid"><button>Create material</button><button>Add point light</button><button>Find shader errors</button><button>Generate test scene</button></div>
-      <label className="ai-input"><input placeholder="Ask arc anything..." /></label>
-    </section>
-  );
-}
-
-function ProfilerPanel({ project }: { project: ProjectSnapshot | null }) {
-  return <div className="bottom-content profiler-grid"><Stat label="FPS" value={project?.renderStats.fps ?? 0} /><Stat label="Frame" value={`${project?.renderStats.frameTimeMs ?? 0} ms`} /><Stat label="Draw Calls" value={project?.renderStats.drawCalls ?? 0} /><Stat label="GPU MB" value={project?.renderStats.gpuMemoryMb ?? 0} /></div>;
-}
-
-function RenderGraphPanel() {
-  return <PlaceholderPanel icon={<Package />} title="Render Graph" text="Depth Prepass → GBuffer → Lighting → Transparency → Post Process → UI Composite" />;
-}
-
-function ShaderEditorPanel() {
-  return <PlaceholderPanel icon={<FileCode2 />} title="Shader Editor" text="Shader/source editing panel placeholder." />;
-}
-
-function LightingPanel({ project }: { project: ProjectSnapshot | null }) {
-  return <PlaceholderPanel icon={<Lightbulb />} title="Lighting" text={`${project?.renderStats.lights ?? 0} lights in the current mock scene.`} />;
-}
-
-function WorldSettingsPanel({ project }: { project: ProjectSnapshot | null }) {
-  return <PlaceholderPanel icon={<Settings />} title="World Settings" text={project?.activeScene ?? 'No active scene'} />;
-}
-
 function SettingsPanel({ onResetLayout }: { onResetLayout: () => void }) {
-  return <Panel title="Settings"><button className="settings-action" onClick={onResetLayout}>Reset Layout</button><PropertyRow label="Theme" value="Arc Dark" /><PropertyRow label="Host" value="Mock" /></Panel>;
+  return <Panel icon={<Settings size={14} />} title="Settings"><UiButton className="settings-action" onClick={onResetLayout} variant="toolbar">Reset Layout</UiButton><PropertyRow label="Theme" value="Arc Dark" /><PropertyRow label="Host" value="Mock" /></Panel>;
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="workbench-panel"><header>{title}</header><div>{children}</div></section>;
+function Panel({ children, icon, title }: { children: ReactNode; icon: ReactNode; title: string }) {
+  return (
+    <UiPanel className="workbench-panel">
+      <UiTabs className="dock-tabs panel-tabs">
+        <div className="dock-tab-strip">
+          <UiTab active className="dock-tab panel-tab" title={title}>
+            {icon}
+            <span>{title}</span>
+            <X className="dock-tab-close" size={12} />
+          </UiTab>
+        </div>
+        <UiIconButton className="dock-header-action" label={`${title} panel actions`}>
+          <MoreVertical size={14} />
+        </UiIconButton>
+      </UiTabs>
+      <div>{children}</div>
+    </UiPanel>
+  );
+}
+
+function ResizeHandle({ className, label, onPointerDown }: {
+  className: string;
+  label: string;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+}) {
+  return <button aria-label={label} className={`resize-handle ${className}`} onPointerDown={onPointerDown} type="button" />;
 }
 
 function TreeSection({ title, children }: { title: string; children: ReactNode }) {
@@ -362,32 +851,38 @@ function SceneTreeItem({ entity, depth, selectedEntityId, onSelectEntity }: {
   onSelectEntity: (entityId: string) => void;
 }) {
   const hasChildren = Boolean(entity.children?.length);
+  const selectable = entity.id !== sceneRootId;
   return (
     <div>
-      <button className={entity.id === selectedEntityId ? 'tree-row selected' : 'tree-row'} style={{ paddingLeft: 10 + depth * 14 }} onClick={() => onSelectEntity(entity.id)}>
+      <UiTreeRow
+        className={`tree-row entity-row entity-${entity.kind}`}
+        depth={depth}
+        selected={selectable && entity.id === selectedEntityId}
+        meta={!entity.active && <small>off</small>}
+        onClick={() => selectable && onSelectEntity(entity.id)}
+      >
         {hasChildren ? <ChevronDown size={13} /> : <ChevronRight size={13} className="ghost" />}
         <EntityIcon kind={entity.kind} />
         <span>{entity.name}</span>
-        {!entity.active && <small>off</small>}
-      </button>
+      </UiTreeRow>
       {entity.children?.map((child) => <SceneTreeItem key={child.id} entity={child} depth={depth + 1} selectedEntityId={selectedEntityId} onSelectEntity={onSelectEntity} />)}
     </div>
   );
 }
 
 function EntityIcon({ kind }: { kind: SceneEntity['kind'] }) {
-  if (kind === 'camera') return <Code2 size={14} />;
-  if (kind === 'light') return <Lightbulb size={14} />;
-  if (kind === 'folder') return <Folder size={14} />;
-  return <Box size={14} />;
+  if (kind === 'camera') return <Code2 className="entity-icon entity-icon-camera" size={14} />;
+  if (kind === 'light') return <Lightbulb className="entity-icon entity-icon-light" size={14} />;
+  if (kind === 'folder') return <Folder className="entity-icon entity-icon-folder" size={14} />;
+  return <Box className="entity-icon entity-icon-mesh" size={14} />;
 }
 
 function AssetRow({ asset, selected, onSelect }: { asset: AssetItem; selected: boolean; onSelect: () => void }) {
-  return <button className={selected ? 'tree-row selected' : 'tree-row'} onClick={onSelect}><AssetIcon kind={asset.kind} /><span>{asset.name}</span><small>{asset.status}</small></button>;
+  return <UiTreeRow className="tree-row" selected={selected} meta={<small>{asset.status}</small>} onClick={onSelect}><AssetIcon kind={asset.kind} /><span>{asset.name}</span></UiTreeRow>;
 }
 
 function AssetCard({ asset, selected, onSelect }: { asset: AssetItem; selected: boolean; onSelect: () => void }) {
-  return <button className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} onClick={onSelect}><AssetIcon kind={asset.kind} /><strong>{asset.name}</strong><span>{asset.kind}</span></button>;
+  return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} onClick={onSelect} variant="default"><AssetIcon kind={asset.kind} /><strong>{asset.name}</strong><span>{asset.kind}</span></UiButton>;
 }
 
 function AssetIcon({ kind }: { kind: AssetItem['kind'] }) {
@@ -397,24 +892,63 @@ function AssetIcon({ kind }: { kind: AssetItem['kind'] }) {
   return <Database size={14} />;
 }
 
-function VectorEditor({ title, value }: { title: string; value: { x: number; y: number; z: number } }) {
-  return <section className="vector-editor"><h3>{title}</h3><NumberField label="X" value={value.x} /><NumberField label="Y" value={value.y} /><NumberField label="Z" value={value.z} /></section>;
+function InspectorVectorField({ field, onAxisChange, value }: {
+  field: InspectorVectorField;
+  onAxisChange: (axis: VectorAxis, value: number) => void;
+  value: Vec3;
+}) {
+  return (
+    <div className={`inspector-vector-field inspector-vector-${field.id}`}>
+      <div className="inspector-vector-label">
+        <span>{field.label}</span>
+        {field.lockable && (
+          <UiIconButton className="inspector-vector-lock" label={`Lock ${field.label.toLocaleLowerCase()} axes`}>
+            <Link size={14} />
+          </UiIconButton>
+        )}
+      </div>
+      <div className="inspector-axis-group">
+        <AxisField axis="x" mode={field.mode} onChange={onAxisChange} value={value.x} />
+        <AxisField axis="y" mode={field.mode} onChange={onAxisChange} value={value.y} />
+        <AxisField axis="z" mode={field.mode} onChange={onAxisChange} value={value.z} />
+      </div>
+    </div>
+  );
 }
 
-function NumberField({ label, value }: { label: string; value: number }) {
-  return <label className="number-field"><span>{label}</span><input value={Number(value).toFixed(2)} readOnly /></label>;
+function AxisField({ axis, mode, onChange, value }: {
+  axis: VectorAxis;
+  mode: InspectorVectorField['mode'];
+  onChange: (axis: VectorAxis, value: number) => void;
+  value: number;
+}) {
+  const formattedValue = mode === 'rotationDegrees' ? `${formatNumber(value, 1)}°` : formatNumber(value, mode === 'scale' ? 1 : 2);
+  return (
+    <label className={`inspector-axis-field axis-${axis}`}>
+      <span>{axis.toUpperCase()}</span>
+      <input
+        onChange={(event) => {
+          const parsed = Number.parseFloat(event.target.value.replace('°', ''));
+          if (Number.isFinite(parsed)) {
+            onChange(axis, parsed);
+          }
+        }}
+        value={formattedValue}
+      />
+    </label>
+  );
+}
+
+function formatNumber(value: number, digits: number) {
+  return Number(value).toFixed(digits);
 }
 
 function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
-  return <div className="property-row"><span>{label}</span><strong>{value}</strong></div>;
+  return <div className="ui-property-row property-row"><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function LogLine({ level, text }: { level: ConsoleEvent['level'] | 'warning' | 'debug'; text: string }) {
   return <code className={`log-line ${level}`}>{level === 'warning' && <AlertTriangle size={13} />} {text}</code>;
-}
-
-function Stat({ label, value }: { label: string; value: ReactNode }) {
-  return <div className="stat"><span>{label}</span><strong>{value}</strong></div>;
 }
 
 function PlaceholderPanel({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {

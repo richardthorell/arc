@@ -1,0 +1,53 @@
+:root {
+  --arc-font-ui: WindowsSystemFont, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+  --arc-font-mono: "Cascadia Code", "Fira Code", Consolas, monospace;
+
+  --arc-text-xxs: 10px;
+  --arc-text-xs: 11px;
+  --arc-text-sm: 12px;
+  --arc-text-md: 13px;
+  --arc-text-lg: 14px;
+  --arc-text-xl: 16px;
+
+  --arc-line-tight: 1;
+  --arc-line-default: 1.35;
+
+  --arc-space-1: 2px;
+  --arc-space-2: 4px;
+  --arc-space-3: 6px;
+  --arc-space-4: 8px;
+  --arc-space-5: 10px;
+  --arc-space-6: 12px;
+  --arc-space-8: 16px;
+  --arc-space-10: 20px;
+  --arc-space-12: 24px;
+
+  --arc-radius-1: 3px;
+  --arc-radius-2: 4px;
+  --arc-radius-3: 6px;
+  --arc-radius-panel: 0;
+
+  --arc-border-width: 1px;
+  --arc-shadow-menu: 0 14px 38px var(--arc-color-shadow);
+  --arc-shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+
+  --arc-titlebar-height: 34px;
+  --arc-toolbar-height: 36px;
+  --arc-statusbar-height: 24px;
+  --arc-dock-tab-height: 32px;
+  --arc-control-height: 26px;
+  --arc-control-height-sm: 24px;
+  --arc-icon-button-size: 28px;
+  --arc-activity-collapsed-width: 48px;
+  --arc-activity-expanded-width: 142px;
+  --arc-left-panel-width: 300px;
+  --arc-right-panel-width: 320px;
+  --arc-bottom-panel-height: 148px;
+
+  --arc-icon-sm: 14px;
+  --arc-icon-md: 16px;
+  --arc-icon-lg: 20px;
+
+  --arc-z-dropdown: 10000;
+  --arc-z-overlay: 11000;
+}

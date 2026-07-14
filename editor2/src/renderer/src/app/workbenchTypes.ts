@@ -4,6 +4,7 @@ export type StartupState = {
   appVersion: string;
   engineHostConnected: boolean;
   viewportMode: 'placeholder' | 'native' | 'streamed';
+  hostError?: string;
 };
 
 export type ActivityId = 'scene' | 'assets' | 'search' | 'versionControl' | 'aiAssistant' | 'profiler' | 'renderGraph' | 'settings';
@@ -18,8 +19,6 @@ export type WorkbenchPanelId =
   | 'renderGraph'
   | 'shaderEditor'
   | 'inspector'
-  | 'lighting'
-  | 'worldSettings'
   | 'contentBrowser'
   | 'console'
   | 'versionControl'
@@ -28,6 +27,8 @@ export type WorkbenchPanelId =
   | 'settings';
 
 export type CommandId =
+  | 'file.open'
+  | 'file.importScene'
   | 'scene.play'
   | 'scene.pause'
   | 'scene.stop'
@@ -67,6 +68,10 @@ export type WorkbenchLayoutState = {
   activeCenterPanel: WorkbenchPanelId;
   activeRightPanel: WorkbenchPanelId;
   activeBottomPanel: WorkbenchPanelId;
+  activityExpanded: boolean;
+  leftPanelWidth: number;
+  rightPanelWidth: number;
+  bottomPanelHeight: number;
   leftVisible: boolean;
   rightVisible: boolean;
   bottomVisible: boolean;

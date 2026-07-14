@@ -1,0 +1,36 @@
+:root,
+:root[data-theme='arc-dark'] {
+  --arc-color-bg-app: #0f151b;
+  --arc-color-bg-chrome: #151d24;
+  --arc-color-bg-chrome-raised: #1b242d;
+  --arc-color-bg-panel: #182028;
+  --arc-color-bg-panel-muted: #121920;
+  --arc-color-bg-panel-raised: #202a34;
+  --arc-color-bg-field: #111820;
+  --arc-color-bg-hover: #273340;
+  --arc-color-bg-active: #202b36;
+  --arc-color-bg-selected: #243f6d;
+  --arc-color-bg-selected-strong: #0f5fc7;
+
+  --arc-color-border-subtle: #26313c;
+  --arc-color-border: #2d3946;
+  --arc-color-border-strong: #405060;
+  --arc-color-border-accent: #36516f;
+
+  --arc-color-text: #cbd4df;
+  --arc-color-text-strong: #f4f8fc;
+  --arc-color-text-muted: #9aa6b4;
+  --arc-color-text-dim: #6f7a86;
+  --arc-color-text-inverse: #ffffff;
+
+  --arc-color-accent: #2f81f7;
+  --arc-color-accent-hover: #4690ff;
+  --arc-color-accent-soft: rgba(47, 129, 247, 0.24);
+  --arc-color-success: #3fb950;
+  --arc-color-warning: #d29922;
+  --arc-color-danger: #f85149;
+  --arc-color-danger-hover: #da3633;
+
+  --arc-color-shadow: rgba(0, 0, 0, 0.45);
+  --arc-color-focus-ring: rgba(47, 129, 247, 0.42);
+}

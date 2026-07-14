@@ -1,4 +1,7 @@
+import { useEffect, useRef, useState } from 'react';
+
 import type { CommandId } from '../app/workbenchTypes';
+import { UiButton } from '../ui';
 import { WindowControls } from './WindowControls';
 
 type MenuBarProps = {
@@ -7,8 +10,38 @@ type MenuBarProps = {
 };
 
 const menuItems = ['File', 'Edit', 'View', 'Scene', 'Render', 'Tools', 'Window', 'Help'] as const;
+type MenuItem = typeof menuItems[number];
+
+const menuCommands: Partial<Record<MenuItem, { label: string; command: CommandId }[]>> = {
+  File: [
+    { label: 'Open Scene...', command: 'file.open' },
+    { label: 'Import Scene Into Current...', command: 'file.importScene' },
+  ],
+  Window: [
+    { label: 'Reset Layout', command: 'layout.reset' },
+  ],
+};
 
 export function MenuBar({ projectTitle, onCommand }: MenuBarProps) {
+  const [openMenu, setOpenMenu] = useState<MenuItem | null>(null);
+  const menuRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const close = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpenMenu(null);
+      }
+    };
+
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, []);
+
+  const runMenuCommand = (command: CommandId) => {
+    setOpenMenu(null);
+    onCommand(command);
+  };
+
   return (
     <header className="workbench-titlebar">
       <div className="titlebar-left">
@@ -21,12 +54,32 @@ export function MenuBar({ projectTitle, onCommand }: MenuBarProps) {
           <strong>arc</strong>
         </div>
 
-        <nav className="menu-bar" aria-label="Main menu">
-          {menuItems.map((item) => (
-            <button key={item} onClick={item === 'Window' ? () => onCommand('layout.reset') : undefined}>
-              {item}
-            </button>
-          ))}
+        <nav ref={menuRef} className="menu-bar" aria-label="Main menu">
+          {menuItems.map((item) => {
+            const commands = menuCommands[item];
+            const expanded = openMenu === item;
+            return (
+              <div key={item} className="menu-bar-item">
+                <UiButton
+                  aria-expanded={expanded}
+                  aria-haspopup={commands ? 'menu' : undefined}
+                  onClick={() => commands ? setOpenMenu(expanded ? null : item) : setOpenMenu(null)}
+                  variant="ghost"
+                >
+                  {item}
+                </UiButton>
+                {commands && expanded && (
+                  <div className="menu-dropdown" role="menu">
+                    {commands.map((entry) => (
+                      <UiButton key={entry.command} role="menuitem" onClick={() => runMenuCommand(entry.command)} variant="ghost">
+                        {entry.label}
+                      </UiButton>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
       </div>
 

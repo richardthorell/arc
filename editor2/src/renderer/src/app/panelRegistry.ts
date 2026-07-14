@@ -9,7 +9,6 @@ import {
   Gauge,
   GitBranch,
   Layers3,
-  Lightbulb,
   Package,
   Search,
   Settings,
@@ -26,8 +25,6 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   renderGraph: { id: 'renderGraph', title: 'Render Graph', icon: Layers3, defaultRegion: 'center', activityId: 'renderGraph' },
   shaderEditor: { id: 'shaderEditor', title: 'pbr_lit.hlsl', icon: FileCode2, defaultRegion: 'center' },
   inspector: { id: 'inspector', title: 'Inspector', icon: SlidersHorizontal, defaultRegion: 'right' },
-  lighting: { id: 'lighting', title: 'Lighting', icon: Lightbulb, defaultRegion: 'right' },
-  worldSettings: { id: 'worldSettings', title: 'World Settings', icon: Settings, defaultRegion: 'right' },
   contentBrowser: { id: 'contentBrowser', title: 'Content Browser', icon: Database, defaultRegion: 'bottom', activityId: 'assets' },
   console: { id: 'console', title: 'Console', icon: FileText, defaultRegion: 'bottom' },
   versionControl: { id: 'versionControl', title: 'Version Control', icon: GitBranch, defaultRegion: 'bottom', activityId: 'versionControl' },
@@ -40,17 +37,13 @@ export const activityRegistry: ActivityRegistration[] = [
   { id: 'scene', title: 'Scene', icon: FolderTree, panelId: 'hierarchy' },
   { id: 'assets', title: 'Assets', icon: Database, panelId: 'assetExplorer' },
   { id: 'search', title: 'Search', icon: Search, panelId: 'search' },
-  { id: 'versionControl', title: 'Version Control', icon: GitBranch, panelId: 'versionControl' },
-  { id: 'aiAssistant', title: 'AI Assistant', icon: Bot, panelId: 'aiAssistant' },
-  { id: 'profiler', title: 'Profiler', icon: Gauge, panelId: 'profiler' },
-  { id: 'renderGraph', title: 'Render Graph', icon: Layers3, panelId: 'renderGraph' },
   { id: 'settings', title: 'Settings', icon: Settings, panelId: 'settings' },
 ];
 
 export const dockPanelIds = {
-  center: ['viewport', 'renderGraph', 'shaderEditor'] satisfies WorkbenchPanelId[],
-  right: ['inspector', 'lighting', 'worldSettings'] satisfies WorkbenchPanelId[],
-  bottom: ['contentBrowser', 'console', 'versionControl', 'aiAssistant', 'profiler'] satisfies WorkbenchPanelId[],
+  center: ['viewport'] satisfies WorkbenchPanelId[],
+  right: ['inspector'] satisfies WorkbenchPanelId[],
+  bottom: ['contentBrowser', 'console'] satisfies WorkbenchPanelId[],
 };
 
 export const getPanel = (id: WorkbenchPanelId) => panelRegistry[id];

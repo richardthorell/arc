@@ -7,6 +7,8 @@ export type CommandRegistration = {
 };
 
 export const commandRegistry: Record<CommandId, CommandRegistration> = {
+  'file.open': { id: 'file.open', label: 'Open Scene', description: 'Open a scene asset and replace imported scene content.' },
+  'file.importScene': { id: 'file.importScene', label: 'Import Scene Into Current', description: 'Append a scene asset to the current scene.' },
   'scene.play': { id: 'scene.play', label: 'Play', description: 'Start scene play mode.' },
   'scene.pause': { id: 'scene.pause', label: 'Pause', description: 'Pause scene play mode.' },
   'scene.stop': { id: 'scene.stop', label: 'Stop', description: 'Stop scene play mode.' },
