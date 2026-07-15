@@ -1,5 +1,6 @@
 #include <arc/editor/host_protocol.h>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <iterator>
@@ -727,6 +728,7 @@ std::string query_type(const host_query_payload& payload)
         if constexpr (std::is_same_v<type, host_scene_hierarchy_query>) return "scene.hierarchy";
         else if constexpr (std::is_same_v<type, host_selected_entity_query>) return "entity.selected";
         else if constexpr (std::is_same_v<type, host_project_assets_query>) return "project.assets";
+        else if constexpr (std::is_same_v<type, host_asset_thumbnail_query>) return "asset.thumbnail";
         else if constexpr (std::is_same_v<type, host_viewport_state_query>) return "viewport.state";
         else if constexpr (std::is_same_v<type, host_world_environment_query>) return "environment.state";
         else return "unknown";
@@ -902,6 +904,8 @@ std::string to_json(const host_query_envelope& envelope)
         using query = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<query, host_world_environment_query>)
             return "{\"entity\":" + to_json(value.entity) + '}';
+        else if constexpr (std::is_same_v<query, host_asset_thumbnail_query>)
+            return "{\"path\":" + quote(value.path) + ",\"maxSize\":" + std::to_string(value.max_size) + '}';
         return "{}";
     }, envelope.payload);
     return "{\"kind\":\"query\",\"requestId\":" + std::to_string(envelope.request_id) +
@@ -991,6 +995,14 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
     }
     json += "]}";
     return json;
+}
+
+std::string to_json(const host_asset_thumbnail_snapshot& snapshot)
+{
+    return "{\"path\":" + quote(snapshot.path) +
+        ",\"width\":" + std::to_string(snapshot.width) +
+        ",\"height\":" + std::to_string(snapshot.height) +
+        ",\"dataUrl\":" + quote(snapshot.data_url) + '}';
 }
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error)
@@ -1278,6 +1290,18 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
         envelope.payload = host_selected_entity_query{};
     else if (type == "project.assets")
         envelope.payload = host_project_assets_query{};
+    else if (type == "asset.thumbnail")
+    {
+        host_asset_thumbnail_query thumbnail;
+        if (!string_value(json, "path", thumbnail.path) || thumbnail.path.empty())
+        {
+            error = "Asset thumbnail query requires a path";
+            return false;
+        }
+        number_value(json, "maxSize", thumbnail.max_size);
+        thumbnail.max_size = std::clamp(thumbnail.max_size, 32u, 256u);
+        envelope.payload = std::move(thumbnail);
+    }
     else if (type == "viewport.state")
         envelope.payload = host_viewport_state_query{};
     else if (type == "environment.state")

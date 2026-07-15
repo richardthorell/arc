@@ -312,8 +312,9 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         { .request_id = 16, .payload = arc::editor::host_scene_hierarchy_query{} },
         { .request_id = 17, .payload = arc::editor::host_selected_entity_query{} },
         { .request_id = 18, .payload = arc::editor::host_project_assets_query{} },
-        { .request_id = 19, .payload = arc::editor::host_viewport_state_query{} },
-        { .request_id = 20, .payload = arc::editor::host_world_environment_query{ .entity = entity } }
+        { .request_id = 19, .payload = arc::editor::host_asset_thumbnail_query{ .path = "textures/checker.png", .max_size = 128 } },
+        { .request_id = 20, .payload = arc::editor::host_viewport_state_query{} },
+        { .request_id = 21, .payload = arc::editor::host_world_environment_query{ .entity = entity } }
     };
 
     for (const auto& query : queries)
@@ -325,6 +326,72 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         REQUIRE(parsed.request_id == query.request_id);
         REQUIRE(parsed.query_type == arc::editor::query_type(query.payload));
     }
+}
+
+TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-thumbnail-test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "textures");
+    const auto texture_path = root / "textures" / "preview.tga";
+    std::array<unsigned char, 34> tga{};
+    tga[2] = 2;
+    tga[12] = 2;
+    tga[14] = 2;
+    tga[16] = 32;
+    tga[17] = 0x20;
+    const std::array<unsigned char, 16> pixels{
+        0, 0, 255, 255, 0, 255, 0, 255,
+        255, 0, 0, 255, 255, 255, 255, 255
+    };
+    std::copy(pixels.begin(), pixels.end(), tga.begin() + 18);
+    {
+        std::ofstream output(texture_path, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(tga.data()), static_cast<std::streamsize>(tga.size()));
+    }
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root;
+    REQUIRE(host->open_project({ .name = "Thumbnail Test", .root = root }, assets).succeeded);
+
+    const auto catalog = host->project_assets_snapshot();
+    REQUIRE(std::any_of(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset) {
+        return asset.path == "textures/preview.tga" && asset.kind == "texture";
+    }));
+
+    const auto thumbnail = host->asset_thumbnail("textures/preview.tga", 64);
+    REQUIRE(thumbnail.has_value());
+    REQUIRE(thumbnail->width == 2);
+    REQUIRE(thumbnail->height == 2);
+    REQUIRE(thumbnail->data_url.starts_with("data:image/bmp;base64,Qk"));
+    REQUIRE_FALSE(host->asset_thumbnail("../outside.tga", 64).has_value());
+
+    const auto response = host->query({
+        .request_id = 91,
+        .payload = arc::editor::host_asset_thumbnail_query{ .path = "textures/preview.tga", .max_size = 64 } });
+    REQUIRE(response.succeeded);
+    REQUIRE(response.payload_json.find("data:image/bmp;base64,") != std::string::npos);
+
+    const auto hierarchy = host->scene_snapshot();
+    const auto environment = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity) {
+        return entity.kind == arc::editor::host_entity_kind::environment;
+    });
+    REQUIRE(environment != hierarchy.entities.end());
+    REQUIRE(host->execute({ .request_id = 92, .payload = arc::editor::host_set_environment_hdri_command{
+        .entity = environment->entity, .path = "textures/preview.tga" } }).succeeded);
+    const auto assigned_environment = host->world_environment_snapshot(environment->entity);
+    REQUIRE(assigned_environment.has_value());
+    REQUIRE(assigned_environment->hdri_path == "textures/preview.tga");
+    REQUIRE(assigned_environment->sky_source == arc::editor::host_sky_source::physical_atmosphere);
+    REQUIRE_FALSE(host->execute({ .request_id = 93, .payload = arc::editor::host_set_environment_hdri_command{
+        .entity = environment->entity, .path = "../outside.tga" } }).succeeded);
+    REQUIRE(host->execute({ .request_id = 94, .payload = arc::editor::host_set_environment_hdri_command{
+        .entity = environment->entity, .path = {} } }).succeeded);
+    REQUIRE(host->world_environment_snapshot(environment->entity)->hdri_path.empty());
+    std::filesystem::remove_all(root);
 }
 
 TEST_CASE("world environment JSON round trips every field and enum")

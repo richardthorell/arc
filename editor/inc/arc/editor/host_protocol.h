@@ -343,6 +343,14 @@ struct host_project_assets_snapshot
     std::vector<host_asset_snapshot> assets;
 };
 
+struct host_asset_thumbnail_snapshot
+{
+    std::string path;
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::string data_url;
+};
+
 struct host_event
 {
     std::uint64_t sequence{};
@@ -530,6 +538,12 @@ struct host_project_assets_query
 {
 };
 
+struct host_asset_thumbnail_query
+{
+    std::string path;
+    std::uint32_t max_size{ 96 };
+};
+
 struct host_viewport_state_query
 {
 };
@@ -543,6 +557,7 @@ using host_query_payload = std::variant<
     host_scene_hierarchy_query,
     host_selected_entity_query,
     host_project_assets_query,
+    host_asset_thumbnail_query,
     host_viewport_state_query,
     host_world_environment_query>;
 
@@ -604,6 +619,7 @@ std::string to_json(const host_event& event);
 std::string to_json(const host_scene_snapshot& snapshot);
 std::string to_json(const host_selected_entity_snapshot& snapshot);
 std::string to_json(const host_project_assets_snapshot& snapshot);
+std::string to_json(const host_asset_thumbnail_snapshot& snapshot);
 std::string to_json(const host_entity_id& entity);
 std::string to_json(const host_transform& transform);
 std::string to_json(const host_camera_snapshot& camera);

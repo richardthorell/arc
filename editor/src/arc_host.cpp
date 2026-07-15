@@ -10,20 +10,155 @@
 #include <arc/scene/scene.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace arc::editor
 {
 namespace
 {
+
+constexpr std::string_view base64_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+std::string base64_encode(const std::vector<std::byte>& bytes)
+{
+    std::string encoded;
+    encoded.reserve(((bytes.size() + 2u) / 3u) * 4u);
+    for (std::size_t offset = 0; offset < bytes.size(); offset += 3u)
+    {
+        const auto first = std::to_integer<std::uint32_t>(bytes[offset]);
+        const auto second = offset + 1u < bytes.size() ? std::to_integer<std::uint32_t>(bytes[offset + 1u]) : 0u;
+        const auto third = offset + 2u < bytes.size() ? std::to_integer<std::uint32_t>(bytes[offset + 2u]) : 0u;
+        const auto packed = (first << 16u) | (second << 8u) | third;
+        encoded.push_back(base64_alphabet[(packed >> 18u) & 0x3fu]);
+        encoded.push_back(base64_alphabet[(packed >> 12u) & 0x3fu]);
+        encoded.push_back(offset + 1u < bytes.size() ? base64_alphabet[(packed >> 6u) & 0x3fu] : '=');
+        encoded.push_back(offset + 2u < bytes.size() ? base64_alphabet[packed & 0x3fu] : '=');
+    }
+    return encoded;
+}
+
+void write_u16(std::vector<std::byte>& bytes, std::size_t offset, std::uint16_t value)
+{
+    bytes[offset] = static_cast<std::byte>(value & 0xffu);
+    bytes[offset + 1u] = static_cast<std::byte>((value >> 8u) & 0xffu);
+}
+
+void write_u32(std::vector<std::byte>& bytes, std::size_t offset, std::uint32_t value)
+{
+    for (std::size_t index = 0; index < 4u; ++index)
+        bytes[offset + index] = static_cast<std::byte>((value >> (index * 8u)) & 0xffu);
+}
+
+std::uint8_t preview_channel(float linear_value)
+{
+    const float mapped = std::max(0.0f, linear_value) / (1.0f + std::max(0.0f, linear_value));
+    const float srgb = mapped <= 0.0031308f
+        ? mapped * 12.92f
+        : 1.055f * std::pow(mapped, 1.0f / 2.4f) - 0.055f;
+    return static_cast<std::uint8_t>(std::clamp(std::lround(srgb * 255.0f), 0l, 255l));
+}
+
+std::vector<std::byte> texture_preview_bmp(const render::texture_data& texture, std::uint32_t max_size)
+{
+    if (!texture.has_pixels() || texture.width == 0u || texture.height == 0u)
+        return {};
+    const bool float_pixels = texture.format == render::texture_format::rgba32f;
+    const bool byte_pixels = texture.format == render::texture_format::rgba8_unorm ||
+        texture.format == render::texture_format::rgba8_srgb;
+    const std::size_t bytes_per_pixel = float_pixels ? sizeof(float) * 4u : 4u;
+    const std::size_t base_level_size = static_cast<std::size_t>(texture.width) * texture.height * bytes_per_pixel;
+    if ((!float_pixels && !byte_pixels) || texture.pixels.size() < base_level_size)
+        return {};
+
+    const float scale = std::min(
+        1.0f,
+        static_cast<float>(max_size) / static_cast<float>(std::max(texture.width, texture.height)));
+    const auto width = std::max(1u, static_cast<std::uint32_t>(std::lround(texture.width * scale)));
+    const auto height = std::max(1u, static_cast<std::uint32_t>(std::lround(texture.height * scale)));
+    constexpr std::size_t header_size = 54u;
+    std::vector<std::byte> bmp(header_size + static_cast<std::size_t>(width) * height * 4u);
+    bmp[0] = std::byte{ 'B' };
+    bmp[1] = std::byte{ 'M' };
+    write_u32(bmp, 2u, static_cast<std::uint32_t>(bmp.size()));
+    write_u32(bmp, 10u, static_cast<std::uint32_t>(header_size));
+    write_u32(bmp, 14u, 40u);
+    write_u32(bmp, 18u, width);
+    write_u32(bmp, 22u, static_cast<std::uint32_t>(-static_cast<std::int32_t>(height)));
+    write_u16(bmp, 26u, 1u);
+    write_u16(bmp, 28u, 32u);
+    write_u32(bmp, 34u, width * height * 4u);
+
+    for (std::uint32_t y = 0; y < height; ++y)
+    {
+        const auto source_y = std::min(texture.height - 1u, y * texture.height / height);
+        for (std::uint32_t x = 0; x < width; ++x)
+        {
+            const auto source_x = std::min(texture.width - 1u, x * texture.width / width);
+            const auto source_pixel = static_cast<std::size_t>(source_y * texture.width + source_x);
+            std::array<std::uint8_t, 4> rgba{};
+            if (float_pixels)
+            {
+                std::array<float, 4> linear{};
+                std::memcpy(linear.data(), texture.pixels.data() + source_pixel * sizeof(float) * 4u, sizeof(linear));
+                rgba = { preview_channel(linear[0]), preview_channel(linear[1]), preview_channel(linear[2]), 255u };
+            }
+            else
+            {
+                const auto offset = source_pixel * 4u;
+                rgba = {
+                    std::to_integer<std::uint8_t>(texture.pixels[offset]),
+                    std::to_integer<std::uint8_t>(texture.pixels[offset + 1u]),
+                    std::to_integer<std::uint8_t>(texture.pixels[offset + 2u]),
+                    std::to_integer<std::uint8_t>(texture.pixels[offset + 3u])
+                };
+            }
+            const auto target = header_size + static_cast<std::size_t>(y * width + x) * 4u;
+            bmp[target] = static_cast<std::byte>(rgba[2]);
+            bmp[target + 1u] = static_cast<std::byte>(rgba[1]);
+            bmp[target + 2u] = static_cast<std::byte>(rgba[0]);
+            bmp[target + 3u] = static_cast<std::byte>(rgba[3]);
+        }
+    }
+    return bmp;
+}
+
+std::optional<std::filesystem::path> resolve_project_asset(
+    const std::filesystem::path& asset_root,
+    const std::filesystem::path& relative_path)
+{
+    if (asset_root.empty() || relative_path.empty())
+        return std::nullopt;
+    std::error_code error;
+    const auto root = std::filesystem::weakly_canonical(asset_root, error);
+    if (error)
+        return std::nullopt;
+    auto candidate = std::filesystem::path(relative_path);
+    if (candidate.is_relative())
+        candidate = root / candidate;
+    candidate = std::filesystem::weakly_canonical(candidate, error);
+    if (error || !std::filesystem::is_regular_file(candidate, error))
+        return std::nullopt;
+    const auto relative = std::filesystem::relative(candidate, root, error);
+    if (error || relative.empty())
+        return std::nullopt;
+    for (const auto& part : relative)
+    {
+        if (part == "..")
+            return std::nullopt;
+    }
+    return candidate;
+}
 
 scene::entity to_scene_entity(host_entity_id entity) noexcept
 {
@@ -807,27 +942,9 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (!world || !lighting)
                 return fail("Cannot assign an HDRI to a missing world environment", entity);
 
-            auto path = payload.path;
-            if (path.is_relative())
-                path = state_->assets.root / path;
-            if (!render::is_supported_texture_asset(path))
-                return fail("Unsupported environment texture: " + path.extension().string(), entity);
-            const auto loaded = render::load_texture_asset(path);
-            if (!loaded.succeeded())
-                return fail(loaded.message.empty() ? "Failed to load environment texture" : loaded.message, entity);
-
-            auto texture = loaded.texture;
-            texture.name = path.filename().string();
-            if (world->hdri_texture.valid())
-                state_->renderer->update_texture(world->hdri_texture, std::move(texture));
-            else
-                world->hdri_texture = state_->renderer->create_texture(std::move(texture));
-            lighting->hdri_texture = world->hdri_texture;
-            world->source = scene::sky_source::hdri;
-            state_->scene.world_environment_hdri_path = path;
-
-            if (lighting->environment.valid())
-            {
+            const auto update_environment_resource = [&] {
+                if (!lighting->environment.valid())
+                    return;
                 render::environment_desc environment;
                 environment.name = "World Environment HDRI";
                 environment.equirectangular_texture = world->hdri_texture;
@@ -836,7 +953,37 @@ host_response arc_host::execute(const host_command_envelope& command)
                 environment.diffuse_irradiance = lighting->constant_color;
                 environment.diffuse_intensity = lighting->diffuse_intensity;
                 state_->renderer->update_environment(lighting->environment, std::move(environment));
+            };
+            if (payload.path.empty())
+            {
+                world->hdri_texture = {};
+                lighting->hdri_texture = {};
+                state_->scene.world_environment_hdri_path.clear();
+                update_environment_resource();
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                    "World environment HDRI cleared", entity);
+                return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
+
+            const auto path = resolve_project_asset(state_->assets.root, payload.path);
+            if (!path || !render::is_supported_texture_asset(*path))
+                return fail("Environment texture must be a supported project asset", entity);
+            const auto loaded = render::load_texture_asset(*path);
+            if (!loaded.succeeded())
+                return fail(loaded.message.empty() ? "Failed to load environment texture" : loaded.message, entity);
+
+            auto texture = loaded.texture;
+            texture.name = path->filename().string();
+            if (world->hdri_texture.valid())
+                state_->renderer->update_texture(world->hdri_texture, std::move(texture));
+            else
+                world->hdri_texture = state_->renderer->create_texture(std::move(texture));
+            lighting->hdri_texture = world->hdri_texture;
+            std::error_code relative_error;
+            state_->scene.world_environment_hdri_path = std::filesystem::relative(*path, state_->assets.root, relative_error);
+            if (relative_error)
+                state_->scene.world_environment_hdri_path = path->filename();
+            update_environment_resource();
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                 "World environment HDRI changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -924,6 +1071,13 @@ host_response arc_host::query(const host_query_envelope& query) const
         else if constexpr (std::is_same_v<query_type, host_project_assets_query>)
         {
             return { .request_id = request_id, .succeeded = true, .payload_json = to_json(project_assets_snapshot()) };
+        }
+        else if constexpr (std::is_same_v<query_type, host_asset_thumbnail_query>)
+        {
+            const auto thumbnail = asset_thumbnail(payload.path, payload.max_size);
+            if (!thumbnail)
+                return { .request_id = request_id, .succeeded = false, .error = "Texture thumbnail could not be generated" };
+            return { .request_id = request_id, .succeeded = true, .payload_json = to_json(*thumbnail) };
         }
         else if constexpr (std::is_same_v<query_type, host_viewport_state_query>)
         {
@@ -1089,17 +1243,40 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char value) {
                 return static_cast<char>(std::tolower(value));
             });
-            if (extension != ".hdr")
+            if (!render::is_supported_texture_asset(iterator->path()))
                 continue;
             snapshot.assets.push_back({
                 .path = std::filesystem::relative(iterator->path(), state_->assets.root, error).generic_string(),
-                .kind = "environment",
+                .kind = extension == ".hdr" ? "environment" : "texture",
                 .imported = true,
                 .import_running = false
             });
         }
     }
     return snapshot;
+}
+
+std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::string_view path, std::uint32_t max_size) const
+{
+    const auto resolved = resolve_project_asset(state_->assets.root, std::filesystem::path{ path });
+    if (!resolved || !render::is_supported_texture_asset(*resolved))
+        return std::nullopt;
+    const auto loaded = render::load_texture_asset(*resolved);
+    if (!loaded.succeeded())
+        return std::nullopt;
+    const auto bmp = texture_preview_bmp(loaded.texture, std::clamp(max_size, 32u, 256u));
+    if (bmp.empty())
+        return std::nullopt;
+    const float scale = std::min(
+        1.0f,
+        static_cast<float>(std::clamp(max_size, 32u, 256u)) /
+            static_cast<float>(std::max(loaded.texture.width, loaded.texture.height)));
+    return host_asset_thumbnail_snapshot{
+        .path = std::string(path),
+        .width = std::max(1u, static_cast<std::uint32_t>(std::lround(loaded.texture.width * scale))),
+        .height = std::max(1u, static_cast<std::uint32_t>(std::lround(loaded.texture.height * scale))),
+        .data_url = "data:image/bmp;base64," + base64_encode(bmp)
+    };
 }
 
 std::vector<host_event> arc_host::poll_events()
