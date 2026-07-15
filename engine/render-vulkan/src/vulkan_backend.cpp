@@ -6,6 +6,7 @@
 #include <arc/render/resources.h>
 
 #include "builtin_shaders.h"
+#include "vulkan_sky_constants.h"
 
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
 #include <imgui.h>
@@ -17,7 +18,6 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -63,36 +63,6 @@ std::uint64_t resource_key(resource_handle handle) noexcept
 VkDeviceSize buffer_size(std::size_t count, std::size_t stride) noexcept
 {
     return static_cast<VkDeviceSize>(count * stride);
-}
-
-std::uint32_t quantize_unsigned(float value, float maximum, std::uint32_t mask) noexcept
-{
-    return static_cast<std::uint32_t>(std::round(
-        std::clamp(value / maximum, 0.0f, 1.0f) * static_cast<float>(mask)));
-}
-
-float pack_sun_settings(float intensity, float angular_radius_degrees) noexcept
-{
-    const auto packed = quantize_unsigned(intensity, 32.0f, 0xffffu) |
-        (quantize_unsigned(angular_radius_degrees, 5.0f, 0xffffu) << 16u);
-    return std::bit_cast<float>(packed);
-}
-
-float pack_moon_settings(float phase, float intensity, float angular_radius_degrees, bool enabled) noexcept
-{
-    const auto packed = quantize_unsigned(phase, 1.0f, 0x3ffu) |
-        (quantize_unsigned(intensity, 8.0f, 0x3ffu) << 10u) |
-        (quantize_unsigned(angular_radius_degrees, 5.0f, 0x3ffu) << 20u) |
-        (enabled ? 1u << 30u : 0u);
-    return std::bit_cast<float>(packed);
-}
-
-float pack_sky_settings(sky_source_mode source, float star_density, float star_intensity) noexcept
-{
-    const auto packed = static_cast<std::uint32_t>(source) |
-        (quantize_unsigned(star_density, 1.0f, 0x3ffu) << 2u) |
-        (quantize_unsigned(star_intensity, 16.0f, 0xfffu) << 12u);
-    return std::bit_cast<float>(packed);
 }
 
 math::vector3f matrix_translation(const math::matrix4f& matrix) noexcept
@@ -218,18 +188,6 @@ struct mesh_push_constants
     float fog_color_density[4]{};
     float fog_params[4]{};
     float material_params[4]{ 1.0f, 1.0f, 1.0f, 0.0f };
-};
-
-struct sky_push_constants
-{
-    float camera_forward_fov[4]{ 0.0f, 0.0f, -1.0f, 0.57735f };
-    float camera_up_aspect[4]{ 0.0f, 1.0f, 0.0f, 1.77778f };
-    float sun_direction_intensity[4]{ 0.35f, -0.85f, -0.40f, 1.4f };
-    float moon_direction_phase[4]{ -0.35f, 0.85f, 0.40f, 0.65f };
-    float sky_color_source[4]{ 0.56f, 0.72f, 1.0f, 0.042f };
-    float atmosphere[4]{ 1.0f, 0.35f, 0.15f, 1.0f };
-    float cumulus[4]{};
-    float cirrus[4]{};
 };
 
 struct deferred_push_constants
@@ -375,7 +333,6 @@ public:
         frame_point_lights_.clear();
         frame_spot_lights_.clear();
         frame_environment_ = {};
-        frame_fog_ = {};
         pending_debug_markers_.clear();
         for (const auto& event : packet.events)
         {
@@ -1244,7 +1201,6 @@ private:
 
         frame_camera_ = packet.camera;
         frame_environment_ = packet.environment;
-        frame_fog_ = packet.environment.fog;
         frame_shadows_enabled_ = packet.shadows_enabled;
     }
 
@@ -2213,15 +2169,15 @@ private:
             ? static_cast<float>(draw.object_id.index + 1u)
             : 0.0f;
 
-        if (frame_fog_.enabled)
+        if (frame_environment_.fog.enabled)
         {
-            constants.fog_color_density[0] = frame_fog_.color[0];
-            constants.fog_color_density[1] = frame_fog_.color[1];
-            constants.fog_color_density[2] = frame_fog_.color[2];
-            constants.fog_color_density[3] = std::max(0.0f, frame_fog_.density);
-            constants.fog_params[0] = std::max(0.0f, frame_fog_.start_distance);
-            constants.fog_params[1] = std::max(0.0f, frame_fog_.height_falloff);
-            constants.fog_params[2] = std::clamp(frame_fog_.max_opacity, 0.0f, 1.0f);
+            constants.fog_color_density[0] = frame_environment_.fog.color[0];
+            constants.fog_color_density[1] = frame_environment_.fog.color[1];
+            constants.fog_color_density[2] = frame_environment_.fog.color[2];
+            constants.fog_color_density[3] = std::max(0.0f, frame_environment_.fog.density);
+            constants.fog_params[0] = std::max(0.0f, frame_environment_.fog.start_distance);
+            constants.fog_params[1] = std::max(0.0f, frame_environment_.fog.height_falloff);
+            constants.fog_params[2] = std::clamp(frame_environment_.fog.max_opacity, 0.0f, 1.0f);
         }
 
         if (const auto material = materials_.find(resource_key(draw.material)); material != materials_.end())
@@ -3400,7 +3356,7 @@ private:
         VkPushConstantRange push{};
         push.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
         push.offset = 0;
-        push.size = sizeof(sky_push_constants);
+        push.size = sizeof(detail::sky_push_constants);
 
         VkPipelineLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -4602,73 +4558,16 @@ private:
             vkCmdSetViewport(command_buffer, 0, 1, &viewport);
             vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-            auto sun_direction = frame_environment_.celestial.sun_direction;
+            math::vector3f sun_direction_override{};
             if (!frame_environment_.celestial.enabled && !frame_directional_lights_.empty())
-                sun_direction = frame_directional_lights_.front().direction;
-            if (math::length_squared(sun_direction) < 0.0001f)
-                sun_direction = { 0.35f, -0.85f, -0.40f };
-            sun_direction = math::normalize(sun_direction);
-
-            sky_push_constants constants{};
-            for (std::uint32_t channel = 0; channel < 3; ++channel)
-            {
-                constants.camera_forward_fov[channel] = frame_camera_.forward[channel];
-                constants.camera_up_aspect[channel] = frame_camera_.up[channel];
-                constants.sun_direction_intensity[channel] = sun_direction[channel];
-                constants.moon_direction_phase[channel] = frame_environment_.celestial.moon_direction[channel];
-            }
-            constants.camera_forward_fov[3] = std::abs(frame_camera_.projection(1, 1)) > 0.0001f
-                ? 1.0f / std::abs(frame_camera_.projection(1, 1))
-                : 0.57735f;
-            constants.camera_up_aspect[3] = viewport_height_ == 0
-                ? 1.0f
-                : static_cast<float>(viewport_width_) / static_cast<float>(viewport_height_);
-            constants.sun_direction_intensity[3] = pack_sun_settings(
-                frame_environment_.atmosphere.sun_disk_intensity * frame_environment_.celestial.sun_intensity,
-                std::max(0.01f, frame_environment_.celestial.sun_angular_radius_degrees));
-            constants.moon_direction_phase[3] = pack_moon_settings(
-                frame_environment_.celestial.moon_phase,
-                frame_environment_.celestial.moon_intensity,
-                frame_environment_.celestial.moon_angular_radius_degrees,
-                frame_environment_.celestial.moon_enabled);
-            const auto sky_color = frame_environment_.source == sky_source_mode::solid_color
-                ? frame_environment_.solid_color
-                : frame_environment_.atmosphere.tint;
-            constants.sky_color_source[0] = sky_color[0];
-            constants.sky_color_source[1] = sky_color[1];
-            constants.sky_color_source[2] = sky_color[2];
-            const float star_density = frame_environment_.celestial.stars_enabled
-                ? std::clamp(frame_environment_.celestial.star_density, 0.0f, 0.99f)
-                : 0.0f;
-            const float star_twinkle = 1.0f + frame_environment_.celestial.star_twinkle * 0.15f *
-                std::sin(frame_environment_.celestial.time_seconds * 2.17f);
-            constants.sky_color_source[3] = pack_sky_settings(
-                frame_environment_.source,
-                star_density,
-                frame_environment_.celestial.star_intensity * star_twinkle);
-            constants.atmosphere[0] = frame_environment_.source == sky_source_mode::hdri
-                ? frame_environment_.hdri_rotation_degrees * 0.01745329251994329577f
-                : frame_environment_.atmosphere.rayleigh_strength;
-            constants.atmosphere[1] = frame_environment_.atmosphere.mie_strength;
-            constants.atmosphere[2] = frame_environment_.atmosphere.ozone_strength;
-            constants.atmosphere[3] = frame_environment_.radiance_intensity *
-                std::max(frame_environment_.atmosphere.exposure, 0.001f);
-
-            const auto pack_cloud = [&](const cloud_layer_data& layer, float* destination) {
-                if (!frame_environment_.clouds.enabled || !layer.enabled)
-                    return;
-                destination[0] = std::clamp(layer.coverage, 0.0f, 1.0f);
-                destination[1] = std::clamp(layer.density, 0.0f, 1.0f);
-                auto wind = layer.wind_direction;
-                if (math::length_squared(wind) > 0.0001f)
-                    wind = math::normalize(wind);
-                const float phase = frame_environment_.celestial.time_seconds * layer.wind_speed * layer.scale;
-                destination[2] = wind[0] * phase;
-                destination[3] = wind[1] * phase;
-            };
-            pack_cloud(frame_environment_.clouds.cumulus, constants.cumulus);
-            if (resolved_config_.quality != render_quality_tier::low)
-                pack_cloud(frame_environment_.clouds.cirrus, constants.cirrus);
+                sun_direction_override = frame_directional_lights_.front().direction;
+            const auto constants = detail::build_sky_push_constants(
+                frame_environment_,
+                frame_camera_,
+                viewport_width_,
+                viewport_height_,
+                resolved_config_.quality != render_quality_tier::low,
+                sun_direction_override);
 
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sky_pipeline_);
             const auto sky_descriptor = update_current_sky_descriptor_set();
@@ -4896,7 +4795,6 @@ private:
     std::vector<spot_light_event> frame_spot_lights_;
     scene_lighting_data frame_lighting_;
     world_environment_data frame_environment_;
-    height_fog_data frame_fog_;
     render_camera frame_camera_;
     bool frame_shadows_enabled_{ true };
     gpu_buffer light_buffer_;

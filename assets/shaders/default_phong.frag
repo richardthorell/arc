@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "include/arc_math.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_world_position;
@@ -37,8 +40,6 @@ layout(set = 0, binding = 6) uniform shadow_data
     vec4 params;
     vec4 cascade_texel_size;
 } shadows;
-
-const float PI = 3.14159265359;
 
 bool has_texture(float flag)
 {
@@ -149,7 +150,7 @@ float distribution_ggx(float n_dot_h, float roughness)
     float a = roughness * roughness;
     float a2 = a * a;
     float denom = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
-    return a2 / max(PI * denom * denom, 0.00001);
+    return a2 / max(ARC_PI * denom * denom, 0.00001);
 }
 
 float geometry_schlick_ggx(float n_dot_v, float roughness)
@@ -197,7 +198,7 @@ void main()
     float d = distribution_ggx(n_dot_h, roughness);
     float g = geometry_schlick_ggx(n_dot_l, roughness) * geometry_schlick_ggx(n_dot_v, roughness);
     vec3 specular = (d * g * f) / max(4.0 * n_dot_v * n_dot_l, 0.0001);
-    vec3 diffuse = (1.0 - f) * (1.0 - metallic) * material_color.rgb / PI;
+    vec3 diffuse = (1.0 - f) * (1.0 - metallic) * material_color.rgb / ARC_PI;
     vec3 radiance = constants.light_color.rgb * constants.light_direction_intensity.w;
     float shadow = sample_shadow(in_world_position);
     vec3 direct = (diffuse + specular) * radiance * n_dot_l * shadow;

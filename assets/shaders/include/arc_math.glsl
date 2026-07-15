@@ -1,0 +1,7 @@
+#ifndef ARC_MATH_GLSL
+#define ARC_MATH_GLSL
+
+const float ARC_PI = 3.14159265358979323846;
+const float ARC_TAU = 6.28318530717958647692;
+
+#endif

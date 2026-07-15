@@ -23,6 +23,7 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.
 
 add_executable(arc_render_vulkan_tests ${TEST_SOURCES})
 target_link_libraries(arc_render_vulkan_tests PRIVATE arc-render-vulkan Catch2::Catch2WithMain)
+target_include_directories(arc_render_vulkan_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
 include(Catch)
 catch_discover_tests(arc_render_vulkan_tests)

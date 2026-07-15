@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "include/arc_math.glsl"
 
 layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
@@ -16,8 +19,6 @@ layout(push_constant) uniform sky_constants
     vec4 cumulus;
     vec4 cirrus;
 } constants;
-
-const float PI = 3.14159265359;
 
 float hash13(vec3 value)
 {
@@ -84,7 +85,7 @@ vec3 physical_sky(vec3 ray, vec3 toward_sun)
     float rayleigh_phase = 0.0596831 * (1.0 + mu * mu);
     float g = clamp(0.72 + mie_strength * 0.12, 0.0, 0.92);
     float mie_phase = (1.0 - g * g) /
-        max(4.0 * PI * pow(1.0 + g * g - 2.0 * g * mu, 1.5), 0.001);
+        max(4.0 * ARC_PI * pow(1.0 + g * g - 2.0 * g * mu, 1.5), 0.001);
     vec3 scatter = vec3(0.36, 0.58, 1.0) * rayleigh_phase * rayleigh_strength +
         vec3(1.0, 0.62, 0.31) * mie_phase * mie_strength;
     sky += scatter * (0.18 + 0.82 * twilight);
@@ -97,7 +98,7 @@ vec2 equirectangular_uv(vec3 ray, float rotation)
 {
     float longitude = atan(ray.z, ray.x) + rotation;
     float latitude = asin(clamp(ray.y, -1.0, 1.0));
-    return vec2(fract(longitude / (2.0 * PI) + 0.5), 0.5 - latitude / PI);
+    return vec2(fract(longitude / ARC_TAU + 0.5), 0.5 - latitude / ARC_PI);
 }
 
 void main()

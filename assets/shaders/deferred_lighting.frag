@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "include/arc_math.glsl"
 
 layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
@@ -16,8 +19,6 @@ layout(push_constant) uniform deferred_constants
     vec4 ambient_visualization;
     vec4 debug_counts;
 } constants;
-
-const float PI = 3.14159265359;
 
 float saturate(float value)
 {
@@ -60,7 +61,7 @@ void main()
     float h_dot_v = saturate(dot(half_dir, view_dir));
     vec3 f0 = mix(vec3(0.04), albedo.rgb, metallic);
     vec3 f = fresnel_schlick(h_dot_v, f0);
-    vec3 diffuse = (1.0 - f) * (1.0 - metallic) * albedo.rgb / PI;
+    vec3 diffuse = (1.0 - f) * (1.0 - metallic) * albedo.rgb / ARC_PI;
     vec3 specular = f * (1.0 - roughness);
     vec3 radiance = constants.light_color_exposure.rgb * constants.light_direction_intensity.w;
     vec3 ambient = albedo.rgb * constants.ambient_visualization.rgb * ao;

@@ -32,8 +32,16 @@ $builder = [System.Text.StringBuilder]::new()
 
 foreach ($source in $sources) {
     $inputPath = Join-Path $SourceRoot $source
+    foreach ($line in [System.IO.File]::ReadLines($inputPath)) {
+        if ($line -match '^\s*#include\s+["<]([^">]+)[">]') {
+            $includePath = Join-Path $SourceRoot $Matches[1]
+            if (-not (Test-Path -LiteralPath $includePath -PathType Leaf)) {
+                throw "Missing shader include '$($Matches[1])' referenced by $source"
+            }
+        }
+    }
     $spvPath = Join-Path $temporary ($source + ".spv")
-    & $Glslc "--target-env=vulkan1.2" $inputPath "-o" $spvPath
+    & $Glslc "--target-env=vulkan1.2" "-I$SourceRoot" $inputPath "-o" $spvPath
     if ($LASTEXITCODE -ne 0) { throw "glslc failed for $source" }
     $bytes = [System.IO.File]::ReadAllBytes($spvPath)
     if (($bytes.Length % 4) -ne 0) { throw "SPIR-V byte count is not word-aligned for $source" }
