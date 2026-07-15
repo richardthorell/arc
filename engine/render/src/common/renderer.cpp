@@ -30,7 +30,7 @@ resolved_render_config resolve_render_config(
     result.requested_path = config.path;
     result.target_frame_time_ms = config.target_frame_time_ms > 0.0f
         ? config.target_frame_time_ms
-        : 16.6667f;
+        : default_target_frame_time_ms;
 
     if (config.quality == render_quality_tier::auto_select)
     {
@@ -52,25 +52,17 @@ resolved_render_config resolve_render_config(
         result.quality = config.quality;
     }
 
+    const auto& profile = quality_profile(result.quality);
     if (config.path == render_path::auto_select)
-        result.path = result.quality == render_quality_tier::low ? render_path::forward_plus : render_path::deferred;
+        result.path = profile.default_path;
     else
         result.path = config.path;
-
-    if (result.quality == render_quality_tier::low)
-    {
-        result.minimum_render_scale = config.enable_dynamic_resolution ? 0.5f : 1.0f;
-        result.max_point_lights = 32;
-        result.max_spot_lights = 32;
-        result.directional_shadow_cascades = 2;
-        result.directional_shadow_resolution = 1024;
-    }
-    else
-    {
-        result.minimum_render_scale = config.enable_dynamic_resolution ? 0.67f : 1.0f;
-    }
-
-    result.maximum_render_scale = 1.0f;
+    result.minimum_render_scale = config.enable_dynamic_resolution ? profile.minimum_render_scale : 1.0f;
+    result.maximum_render_scale = profile.maximum_render_scale;
+    result.max_point_lights = profile.max_point_lights;
+    result.max_spot_lights = profile.max_spot_lights;
+    result.directional_shadow_cascades = profile.directional_shadow_cascades;
+    result.directional_shadow_resolution = profile.directional_shadow_resolution;
     const bool optional_features = !config.force_disable_optional_features;
     result.features = {
         .dynamic_rendering = optional_features && capabilities.dynamic_rendering,
@@ -120,24 +112,24 @@ float dynamic_resolution_controller::update(float gpu_frame_time_ms) noexcept
     if (!(gpu_frame_time_ms > 0.0f) || !std::isfinite(gpu_frame_time_ms))
         return scale_;
 
-    smoothed_frame_time_ms_ += (gpu_frame_time_ms - smoothed_frame_time_ms_) * 0.2f;
-    if (smoothed_frame_time_ms_ > target_frame_time_ms_ * 1.04f)
+    smoothed_frame_time_ms_ += (gpu_frame_time_ms - smoothed_frame_time_ms_) * dynamic_resolution_smoothing;
+    if (smoothed_frame_time_ms_ > target_frame_time_ms_ * dynamic_resolution_over_budget_ratio)
     {
         ++over_budget_frames_;
         under_budget_frames_ = 0;
-        if (over_budget_frames_ >= 3)
+        if (over_budget_frames_ >= dynamic_resolution_over_budget_frames)
         {
-            scale_ = std::max(minimum_scale_, scale_ - 1.0f / 16.0f);
+            scale_ = std::max(minimum_scale_, scale_ - dynamic_resolution_scale_step);
             over_budget_frames_ = 0;
         }
     }
-    else if (smoothed_frame_time_ms_ < target_frame_time_ms_ * 0.82f)
+    else if (smoothed_frame_time_ms_ < target_frame_time_ms_ * dynamic_resolution_under_budget_ratio)
     {
         ++under_budget_frames_;
         over_budget_frames_ = 0;
-        if (under_budget_frames_ >= 8)
+        if (under_budget_frames_ >= dynamic_resolution_under_budget_frames)
         {
-            scale_ = std::min(maximum_scale_, scale_ + 1.0f / 16.0f);
+            scale_ = std::min(maximum_scale_, scale_ + dynamic_resolution_scale_step);
             under_budget_frames_ = 0;
         }
     }

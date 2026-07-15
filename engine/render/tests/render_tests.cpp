@@ -632,6 +632,38 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
     }));
 }
 
+TEST_CASE("world environment graph selects off solid and HDRI sky paths without atmosphere LUTs")
+{
+    arc::render::resolved_render_config config;
+    config.quality = arc::render::render_quality_tier::medium;
+    config.path = arc::render::render_path::deferred;
+    const auto contains = [](const auto& graph, arc::render::builtin_render_pass expected) {
+        return std::any_of(graph.passes.begin(), graph.passes.end(),
+            [expected](const auto& pass) { return pass.builtin == expected; });
+    };
+
+    arc::render::world_environment_data environment;
+    environment.enabled = false;
+    environment.sky_visible = false;
+    environment.clouds.enabled = false;
+    auto compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::sky_composite));
+    REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::atmosphere_transmittance));
+
+    environment.enabled = true;
+    environment.sky_visible = true;
+    environment.source = arc::render::sky_source_mode::solid_color;
+    compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    REQUIRE(contains(compiled, arc::render::builtin_render_pass::sky_composite));
+    REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::atmosphere_transmittance));
+
+    environment.source = arc::render::sky_source_mode::hdri;
+    compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    REQUIRE(contains(compiled, arc::render::builtin_render_pass::sky_composite));
+    REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::atmosphere_transmittance));
+    REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::environment_prefilter));
+}
+
 TEST_CASE("directional shadow cascade splits are deterministic and ordered")
 {
     const auto splits = arc::render::cascade_splits(0.1f, 100.0f, 0.65f);
@@ -733,6 +765,27 @@ TEST_CASE("renderer resolves low quality policy and optional feature overrides")
     REQUIRE_FALSE(resolved.fallback_reasons.empty());
 }
 
+TEST_CASE("render quality profiles expose immutable implemented tier policy")
+{
+    using namespace arc::render;
+
+    STATIC_REQUIRE(default_target_frame_time_ms > 16.0f);
+    STATIC_REQUIRE(default_target_frame_time_ms < 17.0f);
+    STATIC_REQUIRE(dynamic_resolution_scale_step == 1.0f / 16.0f);
+    STATIC_REQUIRE(low_render_quality_profile.default_path == render_path::forward_plus);
+    STATIC_REQUIRE(standard_render_quality_profile.default_path == render_path::deferred);
+
+    const auto& low = quality_profile(render_quality_tier::low);
+    REQUIRE(low.minimum_render_scale == Catch::Approx(0.5f));
+    REQUIRE(low.max_point_lights == 32);
+    REQUIRE(low.directional_shadow_cascades == 2);
+
+    const auto& high = quality_profile(render_quality_tier::high);
+    REQUIRE(&high == &standard_render_quality_profile);
+    REQUIRE(high.minimum_render_scale == Catch::Approx(0.67f));
+    REQUIRE(high.directional_shadow_resolution == 2048);
+}
+
 TEST_CASE("renderer applies resolved configuration when attaching a backend")
 {
     auto backend = std::make_unique<recording_backend>();
@@ -754,14 +807,18 @@ TEST_CASE("renderer applies resolved configuration when attaching a backend")
 TEST_CASE("dynamic resolution uses smoothed hysteresis and sixteenth steps")
 {
     arc::render::dynamic_resolution_controller controller;
-    controller.reset(16.6667f, 0.5f, 1.0f);
+    controller.reset(
+        arc::render::default_target_frame_time_ms,
+        arc::render::low_render_quality_profile.minimum_render_scale,
+        arc::render::low_render_quality_profile.maximum_render_scale);
 
     for (std::uint32_t index = 0; index < 12; ++index)
         controller.update(30.0f);
     const float reduced = controller.scale();
     REQUIRE(reduced < 1.0f);
     REQUIRE(reduced >= 0.5f);
-    REQUIRE(std::round(reduced * 16.0f) == Catch::Approx(reduced * 16.0f));
+    REQUIRE(std::round(reduced / arc::render::dynamic_resolution_scale_step) ==
+        Catch::Approx(reduced / arc::render::dynamic_resolution_scale_step));
 
     for (std::uint32_t index = 0; index < 48; ++index)
         controller.update(5.0f);

@@ -3,6 +3,7 @@
 #include <arc/scene/components.h>
 #include <arc/scene/registry.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,17 @@ enum class world_environment_preset : std::uint8_t
     indoor_neutral
 };
 
+/** @brief Complete, atomically validated settings for one scene-wide environment. */
+struct world_environment_settings
+{
+    world_environment_component world;
+    sky_atmosphere_component atmosphere;
+    celestial_sky_component celestial;
+    cloud_layers_component clouds;
+    height_fog_component fog;
+    environment_lighting_component lighting;
+};
+
 bool is_valid_gregorian_date(std::int32_t year, std::int32_t month, std::int32_t day) noexcept;
 
 solar_position calculate_solar_position(
@@ -53,21 +65,22 @@ float calculate_moon_phase(
     float utc_offset_hours) noexcept;
 
 environment_validation_result validate_world_environment(
-    const world_environment_component& world,
-    const sky_atmosphere_component& atmosphere,
-    const celestial_sky_component& celestial,
-    const cloud_layers_component& clouds,
-    const height_fog_component& fog,
-    const environment_lighting_component& lighting);
+    const world_environment_settings& settings);
+
+/** @brief Read a complete environment, or nullopt when any required component is missing. */
+std::optional<world_environment_settings> read_world_environment_settings(
+    const registry& scene,
+    entity environment);
+
+/** @brief Validate first, then replace all six environment components as one logical update. */
+bool set_world_environment_settings(
+    registry& scene,
+    entity environment,
+    const world_environment_settings& settings);
 
 void apply_world_environment_preset(
     world_environment_preset preset,
-    world_environment_component& world,
-    sky_atmosphere_component& atmosphere,
-    celestial_sky_component& celestial,
-    cloud_layers_component& clouds,
-    height_fog_component& fog,
-    environment_lighting_component& lighting) noexcept;
+    world_environment_settings& settings) noexcept;
 
 /**
  * @brief Advance simulated clocks and drive linked geographic sun lights.

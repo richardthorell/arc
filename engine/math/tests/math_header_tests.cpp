@@ -22,8 +22,22 @@ constexpr bool constexpr_vector_expression_works()
 }
 
 static_assert(constexpr_vector_expression_works());
+static_assert(arc::math::to_radians(180.0) == arc::math::pi<double>);
+static_assert(arc::math::to_degrees(arc::math::pi<double>) == 180.0);
+static_assert(arc::math::tau<double> == 2.0 * arc::math::pi<double>);
 
 } // namespace
+
+TEST_CASE("shared angle constants and conversions are typed and reversible")
+{
+    using namespace arc::math;
+
+    STATIC_REQUIRE(std::is_same_v<decltype(pi<float>), const float>);
+    STATIC_REQUIRE(std::is_same_v<decltype(pi<double>), const double>);
+    REQUIRE(to_radians(90.0f) == Catch::Approx(pi<float> * 0.5f));
+    REQUIRE(to_degrees(pi<double> * 1.5) == Catch::Approx(270.0));
+    REQUIRE(to_degrees(to_radians(-37.25)) == Catch::Approx(-37.25));
+}
 
 TEST_CASE("vector supports construction indexing and lazy arithmetic")
 {
@@ -212,7 +226,7 @@ TEST_CASE("matrix exposes aliases and game helpers")
     const auto scaled = scaling(2.0f, 3.0f, 4.0f);
     REQUIRE(transform_vector(scaled, vector3f{ 1.0f, 1.0f, 1.0f })[2] == Catch::Approx(4.0f));
 
-    const auto rotated = rotation_z<float>(3.1415926535f / 2.0f);
+    const auto rotated = rotation_z<float>(pi<float> / 2.0f);
     const vector3f rotated_x = transform_vector(rotated, vector3f{ 1.0f, 0.0f, 0.0f });
     REQUIRE(rotated_x[0] == Catch::Approx(0.0f).margin(0.00001f));
     REQUIRE(rotated_x[1] == Catch::Approx(1.0f).margin(0.00001f));
@@ -271,7 +285,7 @@ TEST_CASE("quaternion exposes aliases and game helpers")
     const quatf inv = inverse(quatf{ 0.0f, 0.0f, 0.0f, 2.0f });
     REQUIRE(inv.w() == Catch::Approx(0.5f));
 
-    const quatf z_turn = from_axis_angle(vector3f{ 0.0f, 0.0f, 1.0f }, 3.1415926535f / 2.0f);
+    const quatf z_turn = from_axis_angle(vector3f{ 0.0f, 0.0f, 1.0f }, pi<float> / 2.0f);
     const vector3f rotated = rotate(z_turn, vector3f{ 1.0f, 0.0f, 0.0f });
     REQUIRE(rotated[0] == Catch::Approx(0.0f).margin(0.00001f));
     REQUIRE(rotated[1] == Catch::Approx(1.0f).margin(0.00001f));

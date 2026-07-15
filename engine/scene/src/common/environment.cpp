@@ -13,9 +13,11 @@ namespace arc::scene
 namespace
 {
 
-constexpr float pi = 3.14159265358979323846f;
-constexpr float radians(float degrees) noexcept { return degrees * pi / 180.0f; }
-constexpr float degrees(float radians_value) noexcept { return radians_value * 180.0f / pi; }
+constexpr float hours_per_day = 24.0f;
+constexpr float minutes_per_hour = 60.0f;
+constexpr float seconds_per_hour = 3600.0f;
+constexpr float seconds_per_day = hours_per_day * seconds_per_hour;
+constexpr float degrees_per_solar_minute = 4.0f;
 
 bool leap_year(std::int32_t year) noexcept
 {
@@ -114,7 +116,8 @@ void use_system_time(celestial_sky_component& celestial)
     celestial.month = utc.tm_mon + 1;
     celestial.day = utc.tm_mday;
     celestial.local_time_hours = static_cast<float>(utc.tm_hour) +
-        static_cast<float>(utc.tm_min) / 60.0f + static_cast<float>(utc.tm_sec) / 3600.0f;
+        static_cast<float>(utc.tm_min) / minutes_per_hour +
+        static_cast<float>(utc.tm_sec) / seconds_per_hour;
 }
 
 bool finite(float value) noexcept { return std::isfinite(value); }
@@ -165,8 +168,8 @@ solar_position calculate_solar_position(
     latitude_degrees = std::clamp(latitude_degrees, -90.0f, 90.0f);
     longitude_degrees = std::clamp(longitude_degrees, -180.0f, 180.0f);
     const float year_days = leap_year(year) ? 366.0f : 365.0f;
-    const float gamma = 2.0f * pi / year_days *
-        (static_cast<float>(day_of_year(year, month, day) - 1) + (local_time_hours - 12.0f) / 24.0f);
+    const float gamma = math::tau<float> / year_days *
+        (static_cast<float>(day_of_year(year, month, day) - 1) + (local_time_hours - 12.0f) / hours_per_day);
     const float equation_of_time = 229.18f *
         (0.000075f + 0.001868f * std::cos(gamma) - 0.032077f * std::sin(gamma) -
          0.014615f * std::cos(2.0f * gamma) - 0.040849f * std::sin(2.0f * gamma));
@@ -174,26 +177,26 @@ solar_position calculate_solar_position(
         0.006918f - 0.399912f * std::cos(gamma) + 0.070257f * std::sin(gamma) -
         0.006758f * std::cos(2.0f * gamma) + 0.000907f * std::sin(2.0f * gamma) -
         0.002697f * std::cos(3.0f * gamma) + 0.00148f * std::sin(3.0f * gamma);
-    const float true_solar_minutes = local_time_hours * 60.0f + equation_of_time +
-        4.0f * longitude_degrees - 60.0f * utc_offset_hours;
-    float hour_angle_degrees = true_solar_minutes / 4.0f - 180.0f;
+    const float true_solar_minutes = local_time_hours * minutes_per_hour + equation_of_time +
+        degrees_per_solar_minute * longitude_degrees - minutes_per_hour * utc_offset_hours;
+    float hour_angle_degrees = true_solar_minutes / degrees_per_solar_minute - 180.0f;
     while (hour_angle_degrees < -180.0f)
         hour_angle_degrees += 360.0f;
     while (hour_angle_degrees > 180.0f)
         hour_angle_degrees -= 360.0f;
-    const float hour_angle = radians(hour_angle_degrees);
-    const float latitude = radians(latitude_degrees);
+    const float hour_angle = math::to_radians(hour_angle_degrees);
+    const float latitude = math::to_radians(latitude_degrees);
     const float cos_zenith = std::clamp(
         std::sin(latitude) * std::sin(declination) +
         std::cos(latitude) * std::cos(declination) * std::cos(hour_angle),
         -1.0f,
         1.0f);
     const float zenith = std::acos(cos_zenith);
-    const float elevation = pi * 0.5f - zenith;
+    const float elevation = math::pi<float> * 0.5f - zenith;
     const float azimuth = std::atan2(
         std::sin(hour_angle),
-        std::cos(hour_angle) * std::sin(latitude) - std::tan(declination) * std::cos(latitude)) + pi;
-    const float world_azimuth = azimuth + radians(north_offset_degrees);
+        std::cos(hour_angle) * std::sin(latitude) - std::tan(declination) * std::cos(latitude)) + math::pi<float>;
+    const float world_azimuth = azimuth + math::to_radians(north_offset_degrees);
     const float cos_elevation = std::cos(elevation);
     const math::vector3f toward_sun{
         std::sin(world_azimuth) * cos_elevation,
@@ -201,8 +204,8 @@ solar_position calculate_solar_position(
         -std::cos(world_azimuth) * cos_elevation
     };
     return {
-        .azimuth_degrees = std::fmod(degrees(azimuth) + 360.0f, 360.0f),
-        .elevation_degrees = degrees(elevation),
+        .azimuth_degrees = std::fmod(math::to_degrees(azimuth) + 360.0f, 360.0f),
+        .elevation_degrees = math::to_degrees(elevation),
         .light_direction = math::normalize(toward_sun * -1.0f)
     };
 }
@@ -223,13 +226,14 @@ float calculate_moon_phase(
 }
 
 environment_validation_result validate_world_environment(
-    const world_environment_component& world,
-    const sky_atmosphere_component& atmosphere,
-    const celestial_sky_component& celestial,
-    const cloud_layers_component& clouds,
-    const height_fog_component& fog,
-    const environment_lighting_component& lighting)
+    const world_environment_settings& settings)
 {
+    const auto& world = settings.world;
+    const auto& atmosphere = settings.atmosphere;
+    const auto& celestial = settings.celestial;
+    const auto& clouds = settings.clouds;
+    const auto& fog = settings.fog;
+    const auto& lighting = settings.lighting;
     environment_validation_result result;
     if (!finite(world.radiance_intensity) || world.radiance_intensity < 0.0f)
         result.errors.emplace_back("sky radiance intensity must be non-negative");
@@ -287,21 +291,54 @@ environment_validation_result validate_world_environment(
     return result;
 }
 
+std::optional<world_environment_settings> read_world_environment_settings(
+    const registry& scene,
+    entity environment)
+{
+    const auto* world = scene.try_get<world_environment_component>(environment);
+    const auto* atmosphere = scene.try_get<sky_atmosphere_component>(environment);
+    const auto* celestial = scene.try_get<celestial_sky_component>(environment);
+    const auto* clouds = scene.try_get<cloud_layers_component>(environment);
+    const auto* fog = scene.try_get<height_fog_component>(environment);
+    const auto* lighting = scene.try_get<environment_lighting_component>(environment);
+    if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting)
+        return std::nullopt;
+    return world_environment_settings{ *world, *atmosphere, *celestial, *clouds, *fog, *lighting };
+}
+
+bool set_world_environment_settings(
+    registry& scene,
+    entity environment,
+    const world_environment_settings& settings)
+{
+    if (!scene.alive(environment) || !validate_world_environment(settings).valid)
+        return false;
+
+    scene.emplace<world_environment_component>(environment, settings.world);
+    scene.emplace<sky_atmosphere_component>(environment, settings.atmosphere);
+    scene.emplace<celestial_sky_component>(environment, settings.celestial);
+    scene.emplace<cloud_layers_component>(environment, settings.clouds);
+    scene.emplace<height_fog_component>(environment, settings.fog);
+    scene.emplace<environment_lighting_component>(environment, settings.lighting);
+    return true;
+}
+
 void apply_world_environment_preset(
     world_environment_preset preset,
-    world_environment_component& world,
-    sky_atmosphere_component& atmosphere,
-    celestial_sky_component& celestial,
-    cloud_layers_component& clouds,
-    height_fog_component& fog,
-    environment_lighting_component& lighting) noexcept
+    world_environment_settings& settings) noexcept
 {
-    world = {};
-    atmosphere = {};
-    celestial = {};
-    clouds = {};
-    fog = {};
-    lighting = {};
+    const auto hdri_texture = settings.world.hdri_texture;
+    const auto linked_sun = settings.celestial.sun_light;
+    const auto animation_time_seconds = settings.celestial.animation_time_seconds;
+    const auto lighting_environment = settings.lighting.environment;
+    const auto lighting_hdri_texture = settings.lighting.hdri_texture;
+    settings = {};
+    auto& world = settings.world;
+    auto& atmosphere = settings.atmosphere;
+    auto& celestial = settings.celestial;
+    auto& clouds = settings.clouds;
+    auto& fog = settings.fog;
+    auto& lighting = settings.lighting;
     celestial.sun_mode = sun_position_mode::geographic;
     switch (preset)
     {
@@ -359,6 +396,11 @@ void apply_world_environment_preset(
         lighting.constant_color = { 0.18f, 0.18f, 0.18f };
         break;
     }
+    world.hdri_texture = hdri_texture;
+    celestial.sun_light = linked_sun;
+    celestial.animation_time_seconds = animation_time_seconds;
+    lighting.environment = lighting_environment;
+    lighting.hdri_texture = lighting_hdri_texture;
 }
 
 void update_world_environments(registry& scene, float delta_seconds)
@@ -376,18 +418,18 @@ void update_world_environments(registry& scene, float delta_seconds)
             if (std::isfinite(delta_seconds) && delta_seconds > 0.0f)
                 celestial.animation_time_seconds = std::fmod(
                     celestial.animation_time_seconds + delta_seconds,
-                    86400.0f);
+                    seconds_per_day);
             if (celestial.time_mode == celestial_time_mode::system_clock)
                 use_system_time(celestial);
             else if (celestial.time_mode == celestial_time_mode::simulated && celestial.playing && std::isfinite(delta_seconds))
             {
-                celestial.local_time_hours += delta_seconds * celestial.time_scale / 3600.0f;
-                const auto whole_days = static_cast<std::int32_t>(std::floor(celestial.local_time_hours / 24.0f));
-                celestial.local_time_hours -= static_cast<float>(whole_days) * 24.0f;
+                celestial.local_time_hours += delta_seconds * celestial.time_scale / seconds_per_hour;
+                const auto whole_days = static_cast<std::int32_t>(std::floor(celestial.local_time_hours / hours_per_day));
+                celestial.local_time_hours -= static_cast<float>(whole_days) * hours_per_day;
                 if (celestial.local_time_hours < 0.0f)
-                    celestial.local_time_hours += 24.0f;
+                    celestial.local_time_hours += hours_per_day;
                 if (celestial.loop_day)
-                    celestial.local_time_hours = std::fmod(celestial.local_time_hours + 24.0f, 24.0f);
+                    celestial.local_time_hours = std::fmod(celestial.local_time_hours + hours_per_day, hours_per_day);
                 else
                     advance_date(celestial, whole_days);
             }

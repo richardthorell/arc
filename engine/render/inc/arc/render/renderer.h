@@ -26,7 +26,7 @@ struct renderer_config
     render_quality_tier quality{ render_quality_tier::auto_select };
     render_path path{ render_path::auto_select };
     std::uint32_t adapter_index{ resource_handle::invalid_index };
-    float target_frame_time_ms{ 16.6667f };
+    float target_frame_time_ms{ default_target_frame_time_ms };
     bool enable_dynamic_resolution{ true };
     bool force_disable_optional_features{};
 };
@@ -49,11 +49,11 @@ public:
     float scale() const noexcept;
 
 private:
-    float target_frame_time_ms_{ 16.6667f };
-    float minimum_scale_{ 0.5f };
+    float target_frame_time_ms_{ default_target_frame_time_ms };
+    float minimum_scale_{ low_render_quality_profile.minimum_render_scale };
     float maximum_scale_{ 1.0f };
     float scale_{ 1.0f };
-    float smoothed_frame_time_ms_{ 16.6667f };
+    float smoothed_frame_time_ms_{ default_target_frame_time_ms };
     std::uint32_t over_budget_frames_{};
     std::uint32_t under_budget_frames_{};
 };

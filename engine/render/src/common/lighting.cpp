@@ -1,5 +1,7 @@
 #include <arc/render/lighting.h>
 
+#include <arc/math/constants.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -64,7 +66,7 @@ float light_intensity_scale(light_intensity_unit unit, float intensity, float ra
     case light_intensity_unit::unitless:
         return intensity;
     case light_intensity_unit::lumen:
-        return intensity / (4.0f * 3.1415926535f * safe_range * safe_range);
+        return intensity / (4.0f * math::pi<float> * safe_range * safe_range);
     case light_intensity_unit::candela:
         return intensity;
     case light_intensity_unit::lux:

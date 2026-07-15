@@ -1,5 +1,7 @@
 #include <arc/render/primitives.h>
 
+#include <arc/math/constants.h>
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -9,8 +11,6 @@ namespace arc::render
 {
 namespace
 {
-
-constexpr float pi = 3.14159265358979323846f;
 
 float clamp01(float value) noexcept
 {
@@ -223,13 +223,13 @@ mesh_data make_uv_sphere_mesh(float radius, std::uint32_t slices, std::uint32_t 
     for (std::uint32_t stack = 0; stack <= stacks; ++stack)
     {
         const float v = static_cast<float>(stack) / static_cast<float>(stacks);
-        const float phi = v * pi;
+        const float phi = v * math::pi<float>;
         const float y = std::cos(phi);
         const float ring = std::sin(phi);
         for (std::uint32_t slice = 0; slice <= slices; ++slice)
         {
             const float u = static_cast<float>(slice) / static_cast<float>(slices);
-            const float theta = u * pi * 2.0f;
+            const float theta = u * math::tau<float>;
             const float x = std::cos(theta) * ring;
             const float z = std::sin(theta) * ring;
             mesh.vertices.push_back(vertex(x * radius, y * radius, z * radius, x, y, z, u, v));
@@ -264,7 +264,7 @@ mesh_data make_cylinder_mesh(float radius, float height, std::uint32_t segments)
     for (std::uint32_t segment = 0; segment <= segments; ++segment)
     {
         const float u = static_cast<float>(segment) / static_cast<float>(segments);
-        const float theta = u * pi * 2.0f;
+        const float theta = u * math::tau<float>;
         const float x = std::cos(theta);
         const float z = std::sin(theta);
         mesh.vertices.push_back(vertex(x * radius, -half_height, z * radius, x, 0.0f, z, u, 0.0f));

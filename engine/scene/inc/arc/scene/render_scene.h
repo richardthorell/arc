@@ -18,9 +18,9 @@ struct render_scene_result
     bool camera_found{};
     std::size_t renderable_count{};
     std::size_t submitted_draw_count{};
-    std::size_t sky_atmosphere_count{};
+    std::size_t atmosphere_count{};
     std::size_t world_environment_count{};
-    std::size_t height_fog_count{};
+    std::size_t fog_count{};
     std::size_t terrain_count{};
     std::size_t water_count{};
     std::size_t vegetation_count{};
@@ -45,7 +45,7 @@ struct render_scene_result
 /**
  * @brief Editor/runtime visibility filters for optional environment systems.
  */
-struct render_environment_visibility
+struct scene_render_visibility
 {
     bool sky{ true };
     bool fog{ true };
@@ -67,7 +67,7 @@ render_scene_result render_scene(
     render::mesh_visualization_mode visualization = render::mesh_visualization_mode::standard,
     render::editor_overlay_mode overlay = render::editor_overlay_mode::selected_wireframe,
     bool shadows_enabled = true,
-    render_environment_visibility environment_visibility = {},
+    scene_render_visibility environment_visibility = {},
     float delta_seconds = 0.0f);
 
 } // namespace arc::scene

@@ -43,6 +43,47 @@ enum class render_path : std::uint8_t
     deferred
 };
 
+inline constexpr float default_target_frame_time_ms = 1000.0f / 60.0f;
+inline constexpr float dynamic_resolution_scale_step = 1.0f / 16.0f;
+inline constexpr float dynamic_resolution_over_budget_ratio = 1.04f;
+inline constexpr float dynamic_resolution_under_budget_ratio = 0.82f;
+inline constexpr float dynamic_resolution_smoothing = 0.2f;
+inline constexpr std::uint32_t dynamic_resolution_over_budget_frames = 3;
+inline constexpr std::uint32_t dynamic_resolution_under_budget_frames = 8;
+
+/** @brief Immutable renderer limits associated with one implemented quality tier. */
+struct render_quality_profile
+{
+    render_quality_tier quality{ render_quality_tier::medium };
+    render_path default_path{ render_path::deferred };
+    float minimum_render_scale{ 0.67f };
+    float maximum_render_scale{ 1.0f };
+    std::uint32_t max_point_lights{ 64 };
+    std::uint32_t max_spot_lights{ 64 };
+    std::uint32_t directional_shadow_cascades{ 4 };
+    std::uint32_t directional_shadow_resolution{ 2048 };
+};
+
+inline constexpr render_quality_profile low_render_quality_profile{
+    .quality = render_quality_tier::low,
+    .default_path = render_path::forward_plus,
+    .minimum_render_scale = 0.5f,
+    .maximum_render_scale = 1.0f,
+    .max_point_lights = 32,
+    .max_spot_lights = 32,
+    .directional_shadow_cascades = 2,
+    .directional_shadow_resolution = 1024
+};
+
+inline constexpr render_quality_profile standard_render_quality_profile{};
+
+[[nodiscard]] constexpr const render_quality_profile& quality_profile(render_quality_tier quality) noexcept
+{
+    return quality == render_quality_tier::low
+        ? low_render_quality_profile
+        : standard_render_quality_profile;
+}
+
 /**
  * @brief Optional backend features exposed through capability queries.
  */
@@ -117,14 +158,14 @@ struct resolved_render_config
     render_path requested_path{ render_path::auto_select };
     render_path path{ render_path::deferred };
     render_feature_set features{};
-    float target_frame_time_ms{ 16.6667f };
-    float minimum_render_scale{ 0.67f };
-    float maximum_render_scale{ 1.0f };
+    float target_frame_time_ms{ default_target_frame_time_ms };
+    float minimum_render_scale{ standard_render_quality_profile.minimum_render_scale };
+    float maximum_render_scale{ standard_render_quality_profile.maximum_render_scale };
     float render_scale{ 1.0f };
-    std::uint32_t max_point_lights{ 64 };
-    std::uint32_t max_spot_lights{ 64 };
-    std::uint32_t directional_shadow_cascades{ 4 };
-    std::uint32_t directional_shadow_resolution{ 2048 };
+    std::uint32_t max_point_lights{ standard_render_quality_profile.max_point_lights };
+    std::uint32_t max_spot_lights{ standard_render_quality_profile.max_spot_lights };
+    std::uint32_t directional_shadow_cascades{ standard_render_quality_profile.directional_shadow_cascades };
+    std::uint32_t directional_shadow_resolution{ standard_render_quality_profile.directional_shadow_resolution };
     std::vector<std::string> fallback_reasons;
 };
 

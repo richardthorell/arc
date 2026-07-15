@@ -4,6 +4,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <functional>
+#include <limits>
+#include <vector>
 
 TEST_CASE("registry creates destroys and rejects stale entities")
 {
@@ -165,23 +168,98 @@ TEST_CASE("world environment solar clock and validation are deterministic")
     REQUIRE(phase_a >= 0.0f);
     REQUIRE(phase_a < 1.0f);
 
-    arc::scene::world_environment_component world;
-    arc::scene::sky_atmosphere_component atmosphere;
-    arc::scene::celestial_sky_component celestial;
-    arc::scene::cloud_layers_component clouds;
-    arc::scene::height_fog_component fog;
-    arc::scene::environment_lighting_component lighting;
+    arc::scene::world_environment_settings settings;
     arc::scene::apply_world_environment_preset(
         arc::scene::world_environment_preset::indoor_neutral,
-        world, atmosphere, celestial, clouds, fog, lighting);
-    REQUIRE_FALSE(world.sky_visible);
-    REQUIRE(world.affect_lighting);
-    REQUIRE(lighting.source == arc::scene::environment_lighting_source::constant_color);
+        settings);
+    REQUIRE_FALSE(settings.world.sky_visible);
+    REQUIRE(settings.world.affect_lighting);
+    REQUIRE(settings.lighting.source == arc::scene::environment_lighting_source::constant_color);
 
-    atmosphere.atmosphere_radius = atmosphere.planet_radius;
-    const auto invalid = arc::scene::validate_world_environment(world, atmosphere, celestial, clouds, fog, lighting);
+    settings.atmosphere.atmosphere_radius = settings.atmosphere.planet_radius;
+    const auto invalid = arc::scene::validate_world_environment(settings);
     REQUIRE_FALSE(invalid.valid);
     REQUIRE_FALSE(invalid.errors.empty());
+}
+
+TEST_CASE("world environment validation rejects every authored range family")
+{
+    using settings = arc::scene::world_environment_settings;
+    using mutation = std::function<void(settings&)>;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const std::vector<mutation> invalid_mutations{
+        [=](settings& value) { value.world.radiance_intensity = nan; },
+        [](settings& value) { value.atmosphere.planet_radius = 0.0f; },
+        [](settings& value) { value.atmosphere.atmosphere_radius = value.atmosphere.planet_radius; },
+        [](settings& value) { value.atmosphere.mie_anisotropy = 1.0f; },
+        [](settings& value) { value.atmosphere.rayleigh_strength = -0.1f; },
+        [](settings& value) { value.atmosphere.rayleigh_scale_height = 0.0f; },
+        [](settings& value) { value.celestial.year = 2023; value.celestial.month = 2; value.celestial.day = 29; },
+        [](settings& value) { value.celestial.latitude_degrees = 90.1f; },
+        [](settings& value) { value.celestial.longitude_degrees = -180.1f; },
+        [](settings& value) { value.celestial.utc_offset_hours = 14.1f; },
+        [](settings& value) { value.celestial.local_time_hours = 24.0f; },
+        [](settings& value) { value.celestial.moon_phase = -0.01f; },
+        [](settings& value) { value.celestial.star_density = 1.01f; },
+        [](settings& value) { value.clouds.cumulus.coverage = 1.01f; },
+        [](settings& value) { value.clouds.cirrus.density = -0.01f; },
+        [](settings& value) { value.clouds.cumulus.scale = 0.0f; },
+        [](settings& value) { value.clouds.cirrus.wind_speed = -1.0f; },
+        [](settings& value) { value.fog.max_opacity = 1.01f; },
+        [](settings& value) { value.fog.density = -0.01f; },
+        [](settings& value) { value.lighting.diffuse_intensity = -0.01f; }
+    };
+
+    for (const auto& mutate : invalid_mutations)
+    {
+        settings value;
+        mutate(value);
+        INFO("invalid mutation index " << (&mutate - invalid_mutations.data()));
+        REQUIRE_FALSE(arc::scene::validate_world_environment(value).valid);
+    }
+}
+
+TEST_CASE("world environment presets preserve runtime identity and aggregate writes are atomic")
+{
+    arc::scene::world_environment_settings settings;
+    settings.world.hdri_texture = { .index = 7, .generation = 2 };
+    settings.celestial.sun_light = { .index = 9, .generation = 3 };
+    settings.celestial.animation_time_seconds = 123.0f;
+    settings.lighting.environment = { .index = 11, .generation = 4 };
+    settings.lighting.hdri_texture = { .index = 13, .generation = 5 };
+
+    for (const auto preset : {
+        arc::scene::world_environment_preset::clear_day,
+        arc::scene::world_environment_preset::alpine_late_morning,
+        arc::scene::world_environment_preset::golden_hour,
+        arc::scene::world_environment_preset::overcast,
+        arc::scene::world_environment_preset::night,
+        arc::scene::world_environment_preset::indoor_neutral })
+    {
+        arc::scene::apply_world_environment_preset(preset, settings);
+        REQUIRE(settings.world.hdri_texture.index == 7);
+        REQUIRE(settings.celestial.sun_light.index == 9);
+        REQUIRE(settings.celestial.animation_time_seconds == Catch::Approx(123.0f));
+        REQUIRE(settings.lighting.environment.index == 11);
+        REQUIRE(settings.lighting.hdri_texture.index == 13);
+        REQUIRE(arc::scene::validate_world_environment(settings).valid);
+    }
+
+    arc::scene::registry registry;
+    const auto entity = registry.create();
+    REQUIRE(arc::scene::set_world_environment_settings(registry, entity, settings));
+    const auto stored = arc::scene::read_world_environment_settings(registry, entity);
+    REQUIRE(stored.has_value());
+    REQUIRE(stored->celestial.sun_light.index == 9);
+
+    auto invalid = settings;
+    invalid.atmosphere.atmosphere_radius = invalid.atmosphere.planet_radius;
+    REQUIRE_FALSE(arc::scene::set_world_environment_settings(registry, entity, invalid));
+    REQUIRE(registry.get<arc::scene::sky_atmosphere_component>(entity).atmosphere_radius >
+        registry.get<arc::scene::sky_atmosphere_component>(entity).planet_radius);
+
+    registry.remove<arc::scene::height_fog_component>(entity);
+    REQUIRE_FALSE(arc::scene::read_world_environment_settings(registry, entity).has_value());
 }
 
 TEST_CASE("simulated geographic environment advances time and drives its linked sun")
@@ -224,6 +302,46 @@ TEST_CASE("simulated geographic environment advances time and drives its linked 
     REQUIRE(updated_light.temperature_kelvin <= 40000.0f);
 }
 
+TEST_CASE("world environment clocks handle reverse midnight leap years and fixed time")
+{
+    arc::scene::registry registry;
+    const auto environment = registry.create();
+    registry.emplace<arc::scene::world_environment_component>(environment);
+    arc::scene::celestial_sky_component celestial;
+    celestial.time_mode = arc::scene::celestial_time_mode::simulated;
+    celestial.playing = true;
+    celestial.loop_day = false;
+    celestial.year = 2024;
+    celestial.month = 3;
+    celestial.day = 1;
+    celestial.local_time_hours = 0.25f;
+    celestial.time_scale = 3600.0f;
+    registry.emplace<arc::scene::celestial_sky_component>(environment, celestial);
+
+    arc::scene::update_world_environments(registry, -1.0f);
+    auto& reversed = registry.get<arc::scene::celestial_sky_component>(environment);
+    REQUIRE(reversed.year == 2024);
+    REQUIRE(reversed.month == 2);
+    REQUIRE(reversed.day == 29);
+    REQUIRE(reversed.local_time_hours == Catch::Approx(23.25f));
+
+    reversed.time_mode = arc::scene::celestial_time_mode::fixed;
+    reversed.local_time_hours = 7.5f;
+    arc::scene::update_world_environments(registry, 100.0f);
+    REQUIRE(reversed.local_time_hours == Catch::Approx(7.5f));
+
+    reversed.time_mode = arc::scene::celestial_time_mode::system_clock;
+    reversed.utc_offset_hours = -8.0f;
+    arc::scene::update_world_environments(registry, 0.0f);
+    REQUIRE(arc::scene::is_valid_gregorian_date(reversed.year, reversed.month, reversed.day));
+    REQUIRE(reversed.local_time_hours >= 0.0f);
+    REQUIRE(reversed.local_time_hours < 24.0f);
+
+    const auto north = arc::scene::calculate_solar_position(45.0f, 0.0f, 90.0f, 2026, 6, 21, 12.0f, 0.0f);
+    const auto south = arc::scene::calculate_solar_position(45.0f, 0.0f, 0.0f, 2026, 6, 21, 12.0f, 0.0f);
+    REQUIRE(std::abs(arc::math::dot(north.light_direction, south.light_direction)) < 0.9f);
+}
+
 TEST_CASE("render scene extracts one authoritative world environment snapshot")
 {
     arc::scene::registry registry;
@@ -256,6 +374,59 @@ TEST_CASE("render scene extracts one authoritative world environment snapshot")
     const auto& second = *std::get<arc::render::render_world_event>(packet.events[0].payload).packet;
     REQUIRE_FALSE(second.environment.enabled);
     REQUIRE_FALSE(second.environment.fog.enabled);
+}
+
+TEST_CASE("render scene rejects legacy and incomplete environments and selects duplicates deterministically")
+{
+    arc::scene::registry registry;
+    arc::render::renderer renderer;
+    const auto camera = registry.create();
+    registry.emplace<arc::scene::transform_component>(camera);
+    registry.emplace<arc::scene::camera_component>(camera);
+
+    const auto legacy_sky = registry.create();
+    registry.emplace<arc::scene::sky_atmosphere_component>(legacy_sky);
+    auto result = arc::scene::render_scene(registry, renderer, 320, 180);
+    REQUIRE(result.world_environment_count == 0);
+    REQUIRE_FALSE(result.environment.enabled);
+    renderer.frame_queue().commit(1);
+
+    const auto incomplete = registry.create();
+    registry.emplace<arc::scene::world_environment_component>(incomplete);
+    result = arc::scene::render_scene(registry, renderer, 320, 180);
+    REQUIRE(result.world_environment_count == 1);
+    REQUIRE_FALSE(result.environment.fallback_reason.empty());
+    renderer.frame_queue().commit(2);
+    registry.emplace<arc::scene::active_component>(incomplete, false);
+
+    arc::scene::world_environment_settings first;
+    first.world.source = arc::scene::sky_source::solid_color;
+    first.world.solid_color = { 0.2f, 0.3f, 0.4f };
+    const auto first_entity = registry.create();
+    REQUIRE(arc::scene::set_world_environment_settings(registry, first_entity, first));
+    arc::scene::world_environment_settings second;
+    second.world.source = arc::scene::sky_source::hdri;
+    const auto second_entity = registry.create();
+    REQUIRE(arc::scene::set_world_environment_settings(registry, second_entity, second));
+
+    arc::scene::scene_render_visibility visibility;
+    visibility.sky = false;
+    visibility.fog = false;
+    result = arc::scene::render_scene(
+        registry,
+        renderer,
+        320,
+        180,
+        arc::render::render_mode::shaded,
+        arc::render::mesh_visualization_mode::standard,
+        arc::render::editor_overlay_mode::selected_wireframe,
+        true,
+        visibility);
+    REQUIRE(result.world_environment_count == 2);
+    REQUIRE(result.environment.source == arc::render::sky_source_mode::solid_color);
+    REQUIRE_FALSE(result.environment.sky_visible);
+    REQUIRE_FALSE(result.environment.fog.enabled);
+    REQUIRE_FALSE(result.environment.fallback_reason.empty());
 }
 
 TEST_CASE("render scene culling uses transformed dirty local bounds")

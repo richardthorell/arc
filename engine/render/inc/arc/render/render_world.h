@@ -145,7 +145,7 @@ enum class environment_lighting_source_mode : std::uint8_t
 };
 
 /** @brief Procedural atmosphere parameters extracted for one frame. */
-struct sky_atmosphere_data
+struct atmosphere_render_data
 {
     bool enabled{ true };
     float planet_radius{ 6360.0f };
@@ -244,7 +244,7 @@ struct world_environment_data
     texture_handle hdri_texture{};
     float hdri_rotation_degrees{};
     float radiance_intensity{ 1.0f };
-    sky_atmosphere_data atmosphere;
+    atmosphere_render_data atmosphere;
     celestial_sky_data celestial;
     cloud_layers_data clouds;
     height_fog_data fog;
