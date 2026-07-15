@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <memory>
 #include <sstream>
@@ -54,6 +55,16 @@ math::quatf to_math_quat(host_quat value) noexcept
     return { value.x, value.y, value.z, value.w };
 }
 
+host_vec4 to_host_vec4(const math::vector4f& value) noexcept
+{
+    return { value[0], value[1], value[2], value[3] };
+}
+
+math::vector4f to_math_vec4(host_vec4 value) noexcept
+{
+    return { value.x, value.y, value.z, value.w };
+}
+
 host_transform to_host_transform(const scene::transform_component& transform) noexcept
 {
     return {
@@ -71,6 +82,54 @@ scene::transform_component to_scene_transform(const host_transform& transform) n
     result.scale = to_math_vec3(transform.scale);
     result.mark_dirty();
     return result;
+}
+
+host_camera_projection to_host_projection(scene::camera_projection projection) noexcept
+{
+    return projection == scene::camera_projection::orthographic
+        ? host_camera_projection::orthographic
+        : host_camera_projection::perspective;
+}
+
+host_camera_snapshot to_host_camera(const scene::camera_component& camera) noexcept
+{
+    return {
+        .projection = to_host_projection(camera.projection),
+        .fov_y_degrees = math::to_degrees(camera.fov_y_radians),
+        .orthographic_height = camera.orthographic_height,
+        .near_plane = camera.near_plane,
+        .far_plane = camera.far_plane,
+        .active = camera.active,
+        .clear_color = to_host_vec4(camera.clear_color)
+    };
+}
+
+bool valid_camera(const host_camera_snapshot& camera) noexcept
+{
+    const auto finite = [](float value) { return std::isfinite(value); };
+    return finite(camera.fov_y_degrees) && camera.fov_y_degrees > 1.0f && camera.fov_y_degrees < 179.0f &&
+        finite(camera.orthographic_height) && camera.orthographic_height > 0.0f &&
+        finite(camera.near_plane) && camera.near_plane > 0.0f &&
+        finite(camera.far_plane) && camera.far_plane > camera.near_plane &&
+        finite(camera.clear_color.x) && camera.clear_color.x >= 0.0f && camera.clear_color.x <= 1.0f &&
+        finite(camera.clear_color.y) && camera.clear_color.y >= 0.0f && camera.clear_color.y <= 1.0f &&
+        finite(camera.clear_color.z) && camera.clear_color.z >= 0.0f && camera.clear_color.z <= 1.0f &&
+        finite(camera.clear_color.w) && camera.clear_color.w >= 0.0f && camera.clear_color.w <= 1.0f;
+}
+
+scene::camera_component to_scene_camera(const host_camera_snapshot& camera) noexcept
+{
+    return {
+        .projection = camera.projection == host_camera_projection::orthographic
+            ? scene::camera_projection::orthographic
+            : scene::camera_projection::perspective,
+        .fov_y_radians = math::to_radians(camera.fov_y_degrees),
+        .near_plane = camera.near_plane,
+        .far_plane = camera.far_plane,
+        .orthographic_height = camera.orthographic_height,
+        .active = camera.active,
+        .clear_color = to_math_vec4(camera.clear_color)
+    };
 }
 
 editor_primitive_type primitive_type_for(host_create_entity_kind kind) noexcept
@@ -685,6 +744,31 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity transform changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_set_render_layer_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(entity))
+                return fail("Cannot edit a missing entity", entity);
+            if (payload.render_layer_mask == 0u)
+                return fail("Render layer mask must contain at least one layer", entity);
+
+            state_->scene.scene.emplace<scene::render_layer_component>(entity, payload.render_layer_mask);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity render layer changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_set_camera_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            auto* camera = state_->scene.scene.try_get<scene::camera_component>(entity);
+            if (!camera)
+                return fail("Entity does not have an editable camera component", entity);
+            if (!valid_camera(payload.camera))
+                return fail("Camera values are outside their valid authored ranges", entity);
+
+            *camera = to_scene_camera(payload.camera);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity camera changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
         else if constexpr (std::is_same_v<command_type, host_set_world_environment_command>)
         {
             const auto entity = to_scene_entity(payload.environment.entity);
@@ -906,10 +990,17 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
     if (const auto* tag = state_->scene.scene.try_get<scene::tag_component>(selected))
         snapshot.tag = tag->value;
     snapshot.active = entity_active(state_->scene, selected);
+    if (const auto* layer = state_->scene.scene.try_get<scene::render_layer_component>(selected))
+        snapshot.render_layer_mask = layer->mask;
     if (const auto* transform = state_->scene.scene.try_get<scene::transform_component>(selected))
     {
         snapshot.transform = to_host_transform(*transform);
         add_component_snapshot(snapshot.components, host_component_kind::transform, "Transform");
+    }
+    if (const auto* camera = state_->scene.scene.try_get<scene::camera_component>(selected))
+    {
+        snapshot.camera = to_host_camera(*camera);
+        add_component_snapshot(snapshot.components, host_component_kind::camera, "Camera");
     }
     if (state_->scene.scene.has<scene::mesh_renderer_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::mesh_renderer, "Mesh Renderer");

@@ -283,6 +283,15 @@ bool quat_value(std::string_view json, std::string_view key, host_quat& out)
     return true;
 }
 
+bool array4_value(std::string_view json, std::string_view key, host_vec4& out)
+{
+    host_quat value;
+    if (!quat_value(json, key, value))
+        return false;
+    out = { value.x, value.y, value.z, value.w };
+    return true;
+}
+
 bool entity_value(std::string_view json, host_entity_id& out)
 {
     return number_value(json, "index", out.index) && number_value(json, "generation", out.generation);
@@ -304,6 +313,27 @@ bool transform_value(std::string_view json, std::string_view key, host_transform
         array3_value(object, "scale", out.scale);
 }
 
+bool camera_value(std::string_view json, std::string_view key, host_camera_snapshot& out)
+{
+    std::string_view object;
+    if (!object_value(json, key, object))
+        return false;
+    std::string projection;
+    if (!string_value(object, "projection", projection) ||
+        (projection != "perspective" && projection != "orthographic"))
+        return false;
+    out.projection = projection == "orthographic"
+        ? host_camera_projection::orthographic
+        : host_camera_projection::perspective;
+    return
+        number_value(object, "fovYDegrees", out.fov_y_degrees) &&
+        number_value(object, "orthographicHeight", out.orthographic_height) &&
+        number_value(object, "nearPlane", out.near_plane) &&
+        number_value(object, "farPlane", out.far_plane) &&
+        bool_value(object, "active", out.active) &&
+        array4_value(object, "clearColor", out.clear_color);
+}
+
 std::string vec3_json(const host_vec3& value)
 {
     std::ostringstream stream;
@@ -312,6 +342,13 @@ std::string vec3_json(const host_vec3& value)
 }
 
 std::string quat_json(const host_quat& value)
+{
+    std::ostringstream stream;
+    stream << '[' << value.x << ',' << value.y << ',' << value.z << ',' << value.w << ']';
+    return stream.str();
+}
+
+std::string vec4_json(const host_vec4& value)
 {
     std::ostringstream stream;
     stream << '[' << value.x << ',' << value.y << ',' << value.z << ',' << value.w << ']';
@@ -521,6 +558,7 @@ const char* to_string(host_component_kind value) noexcept
     switch (value)
     {
     case host_component_kind::transform: return "transform";
+    case host_component_kind::camera: return "camera";
     case host_component_kind::mesh_renderer: return "meshRenderer";
     case host_component_kind::directional_light: return "directionalLight";
     case host_component_kind::point_light: return "pointLight";
@@ -667,6 +705,8 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_set_active_command>) return "entity.setActive";
         else if constexpr (std::is_same_v<type, host_set_tag_command>) return "entity.setTag";
         else if constexpr (std::is_same_v<type, host_set_transform_command>) return "entity.setTransform";
+        else if constexpr (std::is_same_v<type, host_set_render_layer_command>) return "entity.setRenderLayer";
+        else if constexpr (std::is_same_v<type, host_set_camera_command>) return "entity.setCamera";
         else if constexpr (std::is_same_v<type, host_set_world_environment_command>) return "environment.update";
         else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>) return "environment.applyPreset";
         else if constexpr (std::is_same_v<type, host_set_environment_hdri_command>) return "environment.setHdri";
@@ -703,6 +743,19 @@ std::string to_json(const host_transform& transform)
     return "{\"position\":" + vec3_json(transform.position) +
         ",\"rotation\":" + quat_json(transform.rotation) +
         ",\"scale\":" + vec3_json(transform.scale) + '}';
+}
+
+std::string to_json(const host_camera_snapshot& camera)
+{
+    std::ostringstream stream;
+    stream << "{\"projection\":" << quote(to_string(camera.projection))
+        << ",\"fovYDegrees\":" << camera.fov_y_degrees
+        << ",\"orthographicHeight\":" << camera.orthographic_height
+        << ",\"nearPlane\":" << camera.near_plane
+        << ",\"farPlane\":" << camera.far_plane
+        << ",\"active\":" << bool_json(camera.active)
+        << ",\"clearColor\":" << vec4_json(camera.clear_color) << '}';
+    return stream.str();
 }
 
 std::string to_json(const host_world_environment_snapshot& value)
@@ -794,6 +847,11 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"entity\":" + to_json(payload.entity) + ",\"tag\":" + quote(payload.tag) + '}';
         else if constexpr (std::is_same_v<type, host_set_transform_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"transform\":" + to_json(payload.transform) + '}';
+        else if constexpr (std::is_same_v<type, host_set_render_layer_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"renderLayerMask\":" +
+                std::to_string(payload.render_layer_mask) + '}';
+        else if constexpr (std::is_same_v<type, host_set_camera_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"camera\":" + to_json(payload.camera) + '}';
         else if constexpr (std::is_same_v<type, host_set_world_environment_command>)
             return "{\"environment\":" + to_json(payload.environment) + '}';
         else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>)
@@ -893,8 +951,11 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
         ",\"name\":" + quote(snapshot.name) +
         ",\"tag\":" + quote(snapshot.tag) +
         ",\"active\":" + bool_json(snapshot.active) +
+        ",\"renderLayerMask\":" + std::to_string(snapshot.render_layer_mask) +
         ",\"transform\":";
     json += snapshot.transform ? to_json(*snapshot.transform) : "null";
+    json += ",\"camera\":";
+    json += snapshot.camera ? to_json(*snapshot.camera) : "null";
     json += ",\"components\":[";
     for (std::size_t index = 0; index < snapshot.components.size(); ++index)
     {
@@ -1045,6 +1106,28 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             !transform_value(payload, "transform", command.transform))
         {
             error = "Transform command requires entity and transform";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "entity.setRenderLayer")
+    {
+        host_set_render_layer_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !number_value(payload, "renderLayerMask", command.render_layer_mask))
+        {
+            error = "Render layer command requires entity and renderLayerMask";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "entity.setCamera")
+    {
+        host_set_camera_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !camera_value(payload, "camera", command.camera))
+        {
+            error = "Camera command requires entity and a typed camera snapshot";
             return false;
         }
         envelope.payload = command;

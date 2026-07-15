@@ -38,6 +38,16 @@ struct host_vec3
     friend constexpr bool operator==(const host_vec3&, const host_vec3&) noexcept = default;
 };
 
+struct host_vec4
+{
+    float x{};
+    float y{};
+    float z{};
+    float w{};
+
+    friend constexpr bool operator==(const host_vec4&, const host_vec4&) noexcept = default;
+};
+
 struct host_quat
 {
     float x{};
@@ -82,6 +92,7 @@ enum class host_entity_kind : std::uint8_t
 enum class host_component_kind : std::uint8_t
 {
     transform,
+    camera,
     mesh_renderer,
     directional_light,
     point_light,
@@ -97,6 +108,9 @@ enum class host_component_kind : std::uint8_t
     vegetation,
     decal
 };
+
+inline constexpr std::uint32_t host_default_render_layer = 1u << 0u;
+inline constexpr std::uint32_t host_environment_render_layer = 1u << 1u;
 
 enum class host_sky_source : std::uint8_t { physical_atmosphere, hdri, solid_color };
 enum class host_sun_position_mode : std::uint8_t { manual_light, geographic };
@@ -180,6 +194,19 @@ struct host_component_snapshot
     bool editable{ true };
 };
 
+struct host_camera_snapshot
+{
+    host_camera_projection projection{ host_camera_projection::perspective };
+    float fov_y_degrees{ 60.0f };
+    float orthographic_height{ 10.0f };
+    float near_plane{ 0.01f };
+    float far_plane{ 1000.0f };
+    bool active{ true };
+    host_vec4 clear_color{ 0.10f, 0.22f, 0.34f, 1.0f };
+
+    friend constexpr bool operator==(const host_camera_snapshot&, const host_camera_snapshot&) noexcept = default;
+};
+
 struct host_scene_entity_snapshot
 {
     host_entity_id entity{};
@@ -200,7 +227,9 @@ struct host_selected_entity_snapshot
     std::string name;
     std::string tag;
     bool active{ true };
+    std::uint32_t render_layer_mask{ host_default_render_layer };
     std::optional<host_transform> transform;
+    std::optional<host_camera_snapshot> camera;
     std::vector<host_component_snapshot> components;
 };
 
@@ -382,6 +411,18 @@ struct host_set_transform_command
     host_transform transform;
 };
 
+struct host_set_render_layer_command
+{
+    host_entity_id entity{};
+    std::uint32_t render_layer_mask{ host_default_render_layer };
+};
+
+struct host_set_camera_command
+{
+    host_entity_id entity{};
+    host_camera_snapshot camera;
+};
+
 struct host_set_world_environment_command
 {
     host_world_environment_snapshot environment;
@@ -458,6 +499,8 @@ using host_command_payload = std::variant<
     host_set_active_command,
     host_set_tag_command,
     host_set_transform_command,
+    host_set_render_layer_command,
+    host_set_camera_command,
     host_set_world_environment_command,
     host_apply_world_environment_preset_command,
     host_set_environment_hdri_command,
@@ -563,6 +606,7 @@ std::string to_json(const host_selected_entity_snapshot& snapshot);
 std::string to_json(const host_project_assets_snapshot& snapshot);
 std::string to_json(const host_entity_id& entity);
 std::string to_json(const host_transform& transform);
+std::string to_json(const host_camera_snapshot& camera);
 std::string to_json(const host_world_environment_snapshot& environment);
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error);

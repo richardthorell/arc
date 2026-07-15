@@ -13,11 +13,13 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <thread>
 #include <variant>
@@ -469,6 +471,108 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
     REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
         return event.event_type == arc::editor::host_event_type::entity_deleted;
     }));
+}
+
+TEST_CASE("selected camera snapshots and entity-specific edits round trip atomically")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    REQUIRE(host->open_project(
+        { .name = "Inspector Camera Test", .root = std::filesystem::temp_directory_path() },
+        assets).succeeded);
+    const auto game_camera = host->scene_state().game_camera_entity;
+    const auto editor_camera = host->scene_state().camera_entity;
+    const arc::editor::host_entity_id game_camera_id{ game_camera.index, game_camera.generation };
+
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_select_entity_command{ .entity = game_camera_id } }).succeeded);
+
+    const auto selected = host->selected_entity_snapshot();
+    REQUIRE(selected.entity == game_camera_id);
+    REQUIRE(selected.camera.has_value());
+    REQUIRE(selected.render_layer_mask == arc::editor::host_default_render_layer);
+    REQUIRE(std::any_of(selected.components.begin(), selected.components.end(), [](const auto& component) {
+        return component.kind == arc::editor::host_component_kind::camera && component.editable;
+    }));
+
+    const auto editor_before = host->scene_state().scene.get<arc::scene::camera_component>(editor_camera);
+    auto updated = *selected.camera;
+    updated.projection = arc::editor::host_camera_projection::orthographic;
+    updated.fov_y_degrees = 72.0f;
+    updated.orthographic_height = 24.0f;
+    updated.near_plane = 0.25f;
+    updated.far_plane = 4096.0f;
+    updated.active = true;
+    updated.clear_color = { 0.1f, 0.2f, 0.3f, 0.8f };
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+        .request_id = 2,
+        .payload = arc::editor::host_set_camera_command{
+            .entity = game_camera_id,
+            .camera = updated } }).succeeded);
+
+    const auto round_trip = host->selected_entity_snapshot();
+    REQUIRE(round_trip.camera.has_value());
+    REQUIRE(*round_trip.camera == updated);
+    const auto& editor_after = host->scene_state().scene.get<arc::scene::camera_component>(editor_camera);
+    REQUIRE(editor_after.projection == editor_before.projection);
+    REQUIRE(editor_after.fov_y_radians == Catch::Approx(editor_before.fov_y_radians));
+    REQUIRE(editor_after.near_plane == Catch::Approx(editor_before.near_plane));
+
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+        .request_id = 3,
+        .payload = arc::editor::host_set_render_layer_command{
+            .entity = game_camera_id,
+            .render_layer_mask = arc::editor::host_environment_render_layer } }).succeeded);
+    REQUIRE(host->selected_entity_snapshot().render_layer_mask == arc::editor::host_environment_render_layer);
+
+    const auto confirmed = *host->selected_entity_snapshot().camera;
+    for (const auto invalid : {
+        arc::editor::host_camera_snapshot{ confirmed.projection, 1.0f, confirmed.orthographic_height, confirmed.near_plane, confirmed.far_plane, confirmed.active, confirmed.clear_color },
+        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, 0.0f, confirmed.near_plane, confirmed.far_plane, confirmed.active, confirmed.clear_color },
+        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, confirmed.orthographic_height, 0.0f, confirmed.far_plane, confirmed.active, confirmed.clear_color },
+        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, confirmed.orthographic_height, confirmed.near_plane, confirmed.near_plane, confirmed.active, confirmed.clear_color },
+        arc::editor::host_camera_snapshot{ confirmed.projection, std::numeric_limits<float>::infinity(), confirmed.orthographic_height, confirmed.near_plane, confirmed.far_plane, confirmed.active, confirmed.clear_color },
+        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, confirmed.orthographic_height, confirmed.near_plane, confirmed.far_plane, confirmed.active, { -0.1f, 0.2f, 0.3f, 1.0f } }
+    })
+    {
+        REQUIRE_FALSE(host->execute(arc::editor::host_command_envelope{
+            .request_id = 4,
+            .payload = arc::editor::host_set_camera_command{
+                .entity = game_camera_id,
+                .camera = invalid } }).succeeded);
+        REQUIRE(*host->selected_entity_snapshot().camera == confirmed);
+    }
+
+    const auto json = arc::editor::to_json(host->selected_entity_snapshot());
+    REQUIRE(json.find("\"camera\":{") != std::string::npos);
+    REQUIRE(json.find("\"renderLayerMask\":2") != std::string::npos);
+}
+
+TEST_CASE("camera and render layer JSON commands preserve their typed payloads")
+{
+    const arc::editor::host_entity_id entity{ 12, 4 };
+    arc::editor::host_camera_snapshot camera;
+    camera.fov_y_degrees = 80.0f;
+    camera.near_plane = 0.5f;
+    camera.far_plane = 5000.0f;
+    camera.clear_color = { 0.2f, 0.3f, 0.4f, 1.0f };
+
+    const std::array<arc::editor::host_command_payload, 2> payloads{
+        arc::editor::host_command_payload{ arc::editor::host_set_camera_command{ .entity = entity, .camera = camera } },
+        arc::editor::host_command_payload{ arc::editor::host_set_render_layer_command{ .entity = entity, .render_layer_mask = 2u } }
+    };
+    for (const auto& payload : payloads)
+    {
+        const arc::editor::host_command_envelope source{ .request_id = 91, .payload = payload };
+        arc::editor::host_command_envelope parsed;
+        std::string error;
+        REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, error));
+        REQUIRE(parsed.request_id == 91);
+        REQUIRE(arc::editor::command_type(parsed.payload) == arc::editor::command_type(payload));
+    }
 }
 
 TEST_CASE("arc host resolves a project assets directory for protocol-opened projects")
