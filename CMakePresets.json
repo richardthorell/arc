@@ -42,6 +42,18 @@
         "CMAKE_BUILD_TYPE": "Release",
         "ARC_BUILD_RENDER_VULKAN": "ON"
       }
+    },
+    {
+      "name": "coverage-clang",
+      "displayName": "Clang LLVM coverage",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/coverage-clang",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "ARC_ENABLE_COVERAGE": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -64,6 +76,10 @@
       "name": "render-vulkan",
       "configurePreset": "render-vulkan",
       "configuration": "Release"
+    },
+    {
+      "name": "coverage-clang",
+      "configurePreset": "coverage-clang"
     }
   ],
   "testPresets": [
@@ -79,6 +95,13 @@
       "name": "editor-vulkan",
       "configurePreset": "editor-vulkan",
       "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "coverage-clang",
+      "configurePreset": "coverage-clang",
       "output": {
         "outputOnFailure": true
       }

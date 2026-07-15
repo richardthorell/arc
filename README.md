@@ -108,6 +108,16 @@ python run_editor.py --no-vulkan-render
 
 CMake presets write generated files under `out/build/...` so the repository root stays clear of configuration-specific build folders.
 
+Generate an optional Clang/LLVM coverage report (requires Ninja, Clang, and LLVM coverage tools):
+
+```bash
+cmake --preset coverage-clang
+cmake --build --preset coverage-clang --parallel
+python3 tools/generate_coverage.py
+```
+
+Reports are written under `out/coverage`; coverage CI publishes them as an artifact without enforcing a percentage threshold.
+
 ## CI
 
 arc is built continuously across multiple compiler toolchains:

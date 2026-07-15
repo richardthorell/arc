@@ -48,6 +48,7 @@ out/
 # Node / Electron editor
 editor2/node_modules/
 editor2/.vite/
+editor2/**/.vite/
 editor2/out/
 editor2/dist/
 
