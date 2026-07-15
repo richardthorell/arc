@@ -1,0 +1,321 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Filter, MoreVertical, Search } from 'lucide-react';
+
+import {
+  getPathValue,
+  schemaForSnapshot,
+  setPathValue,
+} from './componentSchemas';
+import type { InspectorComponentId, InspectorComponentSchema, InspectorFieldSchema, VectorAxis } from './componentSchemas';
+import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
+import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
+import { cameraHostPayload, transformHostPayload } from './inspectorTypes';
+
+import './inspector.css';
+
+export type InspectorCommand = (type: string, payload: Record<string, unknown>) => Promise<HostResponse>;
+
+export type InspectorPanelProps = {
+  snapshot: InspectorEntitySnapshot | null;
+  loading?: boolean;
+  command: InspectorCommand;
+  refresh: () => Promise<void>;
+  onStatus?: (message: string) => void;
+};
+
+const knownTags = ['Untagged', 'Camera', 'Light', 'Mesh', 'Environment'];
+const defaultLayerMask = 1;
+const environmentLayerMask = 2;
+
+function entityPayload(snapshot: InspectorEntitySnapshot) {
+  return { entity: snapshot.entity };
+}
+
+function TextCommitInput({ ariaLabel, value, onCommit, list }: {
+  ariaLabel: string;
+  value: string;
+  onCommit: (value: string) => void;
+  list?: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const cancelBlur = useRef(false);
+  useEffect(() => setDraft(value), [value]);
+  const commit = () => {
+    if (cancelBlur.current) {
+      cancelBlur.current = false;
+      return;
+    }
+    const next = draft.trim();
+    if (next && next !== value) onCommit(next);
+    else setDraft(value);
+  };
+  return (
+    <input
+      aria-label={ariaLabel}
+      className="inspector-text-commit"
+      list={list}
+      onBlur={commit}
+      onChange={(event) => setDraft(event.target.value)}
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+        if (event.key === 'Escape') {
+          cancelBlur.current = true;
+          setDraft(value);
+          event.currentTarget.blur();
+        }
+      }}
+      value={draft}
+    />
+  );
+}
+
+export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }: InspectorPanelProps) {
+  const [draft, setDraft] = useState(snapshot);
+  const [filter, setFilter] = useState('');
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [scaleLinked, setScaleLinked] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const confirmed = useRef(snapshot);
+  const revision = useRef(0);
+
+  useEffect(() => {
+    confirmed.current = snapshot;
+    setDraft(snapshot);
+    setError(null);
+  }, [snapshot]);
+
+  const runMutation = async (
+    next: InspectorEntitySnapshot,
+    type: string,
+    payload: Record<string, unknown>,
+    settled = true,
+  ) => {
+    const requestRevision = ++revision.current;
+    setDraft(next);
+    setError(null);
+    try {
+      const response = await command(type, payload);
+      if (requestRevision !== revision.current) return;
+      if (!response.succeeded) {
+        setDraft(confirmed.current);
+        const message = response.error || 'Inspector update failed';
+        setError(message);
+        onStatus?.(message);
+        return;
+      }
+      confirmed.current = next;
+      onStatus?.('Inspector value updated');
+      if (settled) await refresh();
+    } catch (reason) {
+      if (requestRevision !== revision.current) return;
+      setDraft(confirmed.current);
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      onStatus?.(message);
+    }
+  };
+
+  const updateHeader = (next: InspectorEntitySnapshot, type: string, extra: Record<string, unknown>) => {
+    void runMutation(next, type, { ...entityPayload(next), ...extra });
+  };
+
+  const updateComponent = (component: InspectorComponentId, next: InspectorEntitySnapshot, settled: boolean) => {
+    if (component === 'transform' && next.transform) {
+      void runMutation(next, 'entity.setTransform', {
+        ...entityPayload(next), transform: transformHostPayload(next.transform),
+      }, settled);
+    } else if (component === 'camera' && next.camera) {
+      void runMutation(next, 'entity.setCamera', {
+        ...entityPayload(next), camera: cameraHostPayload(next.camera),
+      }, settled);
+    }
+  };
+
+  const schemas = useMemo(() => {
+    if (!draft) return [];
+    const needle = filter.trim().toLocaleLowerCase();
+    return schemaForSnapshot(draft).filter((schema) => !needle ||
+      schema.title.toLocaleLowerCase().includes(needle) ||
+      schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle)));
+  }, [draft, filter]);
+
+  if (loading) return <div className="inspector-state">Loading selection…</div>;
+  if (!draft) return <div className="inspector-state">Select an entity to inspect its components.</div>;
+
+  const layerValue = draft.renderLayerMask === defaultLayerMask
+    ? String(defaultLayerMask)
+    : draft.renderLayerMask === environmentLayerMask ? String(environmentLayerMask) : `custom:${draft.renderLayerMask}`;
+  const tagOptions = knownTags.includes(draft.tag || 'Untagged')
+    ? knownTags
+    : [...knownTags, draft.tag];
+
+  return (
+    <section className="data-inspector">
+      <header className="inspector-entity-card">
+        <div className="inspector-entity-title-row">
+          <input
+            aria-label="Entity active"
+            checked={draft.active}
+            onChange={(event) => updateHeader({ ...draft, active: event.target.checked }, 'entity.setActive', { active: event.target.checked })}
+            type="checkbox"
+          />
+          <TextCommitInput
+            ariaLabel="Entity name"
+            value={draft.name}
+            onCommit={(name) => updateHeader({ ...draft, name }, 'entity.rename', { name })}
+          />
+          <label className="inspector-static" title="Static mobility will be available when ARC adds an ECS mobility contract.">
+            <input aria-label="Static" disabled type="checkbox" />
+            <span>Static</span>
+          </label>
+          <button aria-label="Entity actions" className="inspector-menu-button" type="button"><MoreVertical size={15} /></button>
+        </div>
+        <div className="inspector-entity-meta-row">
+          <label><span>Tag</span>
+            <TextCommitInput
+              ariaLabel="Tag"
+              list="arc-inspector-tags"
+              value={draft.tag || 'Untagged'}
+              onCommit={(value) => {
+                const tag = value === 'Untagged' ? '' : value;
+                updateHeader({ ...draft, tag }, 'entity.setTag', { tag });
+              }}
+            />
+            <datalist id="arc-inspector-tags">
+              {tagOptions.map((tag) => <option key={tag} value={tag} />)}
+            </datalist>
+          </label>
+          <label><span>Layer</span>
+            <select
+              aria-label="Layer"
+              value={layerValue}
+              onChange={(event) => {
+                if (event.target.value.startsWith('custom:')) return;
+                const renderLayerMask = Number(event.target.value);
+                updateHeader({ ...draft, renderLayerMask }, 'entity.setRenderLayer', { renderLayerMask });
+              }}
+            >
+              <option value={String(defaultLayerMask)}>Default</option>
+              <option value={String(environmentLayerMask)}>Environment</option>
+              {layerValue.startsWith('custom:') && <option value={layerValue}>{`Custom (0x${draft.renderLayerMask.toString(16).toUpperCase()})`}</option>}
+            </select>
+          </label>
+        </div>
+      </header>
+
+      <div className="inspector-search-row">
+        <label>
+          <Search size={17} />
+          <input
+            aria-label="Search components"
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Search components…"
+            value={filter}
+          />
+        </label>
+        <button aria-label="Component filter options" type="button"><Filter size={17} /></button>
+      </div>
+
+      {error && <div className="inspector-error" role="alert">{error}</div>}
+      <div className="inspector-component-list">
+        {schemas.map((schema) => (
+          <ComponentCard
+            key={schema.id}
+            collapsed={collapsed[schema.id] ?? false}
+            draft={draft}
+            linked={scaleLinked}
+            schema={schema}
+            onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
+            onToggleLinked={() => setScaleLinked((value) => !value)}
+            onValue={(path, value, settled) => {
+              let next = setPathValue(draft, path, value);
+              if (path === 'transform.rotationDegrees' && next.transform) {
+                next = { ...next, transform: { ...next.transform, rotationDegrees: value as Vec3 } };
+              }
+              updateComponent(schema.id, next, settled);
+            }}
+          />
+        ))}
+        {!schemas.length && <div className="inspector-state compact">No components match “{filter}”.</div>}
+      </div>
+    </section>
+  );
+}
+
+function ComponentCard({ schema, draft, collapsed, linked, onToggle, onToggleLinked, onValue }: {
+  schema: InspectorComponentSchema;
+  draft: InspectorEntitySnapshot;
+  collapsed: boolean;
+  linked: boolean;
+  onToggle: () => void;
+  onToggleLinked: () => void;
+  onValue: (path: string, value: unknown, settled: boolean) => void;
+}) {
+  return (
+    <section className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
+      <header>
+        <button aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${schema.title}`} onClick={onToggle} type="button">
+          {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
+          <span>{schema.title}</span>
+        </button>
+        <button aria-label={`${schema.title} component actions`} type="button"><ChevronDown size={15} /></button>
+      </header>
+      {!collapsed && (
+        <div className="inspector-component-content">
+          {schema.fields.filter((field) => !field.visible || field.visible(draft)).map((field) => (
+            <FieldRenderer
+              key={field.id}
+              draft={draft}
+              field={field}
+              linked={linked}
+              onToggleLinked={onToggleLinked}
+              onValue={(value, settled) => onValue(field.path, value, settled)}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FieldRenderer({ field, draft, linked, onToggleLinked, onValue }: {
+  field: InspectorFieldSchema;
+  draft: InspectorEntitySnapshot;
+  linked: boolean;
+  onToggleLinked: () => void;
+  onValue: (value: unknown, settled: boolean) => void;
+}) {
+  const value = getPathValue(draft, field.path);
+  if (field.type === 'vector3') {
+    const vector = value as Vec3;
+    const updateAxis = (axis: VectorAxis, nextValue: number) => {
+      if (!linked || !field.linked) return { ...vector, [axis]: nextValue };
+      const source = vector[axis];
+      if (Math.abs(source) < 1e-6) return { x: nextValue, y: nextValue, z: nextValue };
+      const ratio = nextValue / source;
+      return { x: vector.x * ratio, y: vector.y * ratio, z: vector.z * ratio };
+    };
+    return <Vector3Control field={field} linked={linked} value={vector} onToggleLinked={onToggleLinked}
+      onCommit={(axis, next) => onValue(updateAxis(axis, next), true)}
+      onPreview={(axis, next) => onValue(updateAxis(axis, next), false)} />;
+  }
+  if (field.type === 'number') {
+    return <NumberControl field={field} value={value as number}
+      onCommit={(next) => onValue(next, true)} onPreview={(next) => onValue(next, false)} />;
+  }
+  if (field.type === 'boolean') {
+    return <label className="inspector-property inspector-checkbox-property"><span className="inspector-property-label">{field.label}</span>
+      <input aria-label={field.label} checked={value as boolean} onChange={(event) => onValue(event.target.checked, true)} type="checkbox" />
+    </label>;
+  }
+  if (field.type === 'enum') {
+    return <label className="inspector-property"><span className="inspector-property-label">{field.label}</span>
+      <select aria-label={field.label} value={value as string} onChange={(event) => onValue(event.target.value, true)}>
+        {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>;
+  }
+  return <ColorControl label={field.label} value={value as never}
+    onCommit={(next) => onValue(next, true)} onPreview={(next) => onValue(next, false)} />;
+}

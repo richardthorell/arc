@@ -16,8 +16,8 @@ export type SceneEntity = {
   kind: 'camera' | 'light' | 'environment' | 'mesh' | 'volume' | 'folder';
   active: boolean;
   children?: SceneEntity[];
-  components: string[];
-  transform: Transform;
+  components?: string[];
+  transform?: Transform;
 };
 
 export type AssetItem = {

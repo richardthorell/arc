@@ -9,10 +9,12 @@ import {
   Gauge,
   GitBranch,
   Layers3,
+  Lightbulb,
   Package,
   Search,
   Settings,
   SlidersHorizontal,
+  Globe2,
 } from 'lucide-react';
 
 import type { ActivityRegistration, PanelRegistration, WorkbenchPanelId } from './workbenchTypes';
@@ -25,6 +27,8 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   renderGraph: { id: 'renderGraph', title: 'Render Graph', icon: Layers3, defaultRegion: 'center', activityId: 'renderGraph' },
   shaderEditor: { id: 'shaderEditor', title: 'pbr_lit.hlsl', icon: FileCode2, defaultRegion: 'center' },
   inspector: { id: 'inspector', title: 'Inspector', icon: SlidersHorizontal, defaultRegion: 'right' },
+  lighting: { id: 'lighting', title: 'Lighting', icon: Lightbulb, defaultRegion: 'right' },
+  worldSettings: { id: 'worldSettings', title: 'World Settings', icon: Globe2, defaultRegion: 'right' },
   contentBrowser: { id: 'contentBrowser', title: 'Content Browser', icon: Database, defaultRegion: 'bottom', activityId: 'assets' },
   console: { id: 'console', title: 'Console', icon: FileText, defaultRegion: 'bottom' },
   versionControl: { id: 'versionControl', title: 'Version Control', icon: GitBranch, defaultRegion: 'bottom', activityId: 'versionControl' },
@@ -42,7 +46,7 @@ export const activityRegistry: ActivityRegistration[] = [
 
 export const dockPanelIds = {
   center: ['viewport'] satisfies WorkbenchPanelId[],
-  right: ['inspector'] satisfies WorkbenchPanelId[],
+  right: ['inspector', 'lighting', 'worldSettings'] satisfies WorkbenchPanelId[],
   bottom: ['contentBrowser', 'console'] satisfies WorkbenchPanelId[],
 };
 

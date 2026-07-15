@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  eulerDegreesToQuaternion,
+  parseSelectedEntitySnapshot,
+  quaternionToEulerDegrees,
+  transformHostPayload,
+} from './inspectorTypes';
+
+describe('inspector host bindings', () => {
+  it('parses the typed selected entity snapshot', () => {
+    const snapshot = parseSelectedEntitySnapshot({
+      entity: { index: 4, generation: 2 },
+      name: 'Main Camera',
+      tag: 'Camera',
+      active: true,
+      renderLayerMask: 2,
+      transform: { position: [1, 2, 3], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+      camera: {
+        projection: 'perspective', fovYDegrees: 60, orthographicHeight: 10,
+        nearPlane: 0.1, farPlane: 2000, active: true, clearColor: [0.1, 0.2, 0.3, 1],
+      },
+      components: [
+        { kind: 'transform', label: 'Transform', editable: true },
+        { kind: 'camera', label: 'Camera', editable: true },
+      ],
+    });
+
+    expect(snapshot.entity).toEqual({ index: 4, generation: 2 });
+    expect(snapshot.transform?.position).toEqual({ x: 1, y: 2, z: 3 });
+    expect(snapshot.transform?.rotationDegrees.x).toBeCloseTo(0);
+    expect(snapshot.camera?.clearColor).toEqual({ x: 0.1, y: 0.2, z: 0.3, w: 1 });
+  });
+
+  it('round trips ARC XYZ Euler rotations through a quaternion', () => {
+    const expected = { x: 21, y: -34, z: 67 };
+    const quaternion = eulerDegreesToQuaternion(expected);
+    const actual = quaternionToEulerDegrees(quaternion);
+    expect(actual.x).toBeCloseTo(expected.x, 5);
+    expect(actual.y).toBeCloseTo(expected.y, 5);
+    expect(actual.z).toBeCloseTo(expected.z, 5);
+
+    const payload = transformHostPayload({
+      position: { x: 1, y: 2, z: 3 },
+      rotationDegrees: expected,
+      rotationQuaternion: quaternion,
+      scale: { x: 2, y: 3, z: 4 },
+    });
+    expect(payload.position).toEqual([1, 2, 3]);
+    expect(payload.scale).toEqual([2, 3, 4]);
+    expect(payload.rotation).toHaveLength(4);
+  });
+});
+

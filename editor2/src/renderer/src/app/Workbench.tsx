@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import {
   AlertTriangle,
@@ -11,7 +11,6 @@ import {
   FileText,
   Folder,
   FolderTree,
-  Link,
   MoreVertical,
   Lightbulb,
   Search,
@@ -29,24 +28,16 @@ import { MainToolbar } from '../layout/MainToolbar';
 import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
 import { flattenScene, mockHost } from '../services/mockHost';
-import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity, Transform, Vec3 } from '../services/mockHost';
+import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/mockHost';
 import { UiButton, UiIconButton, UiPanel, UiTab, UiTabs, UiTextInput, UiTreeRow } from '../ui';
 import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
 import type { HostWorldEnvironment } from '../environment/environmentTypes';
+import { InspectorPanel as DataDrivenInspector } from '../inspector/InspectorPanel';
+import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
+import { eulerDegreesToQuaternion, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
 
 import './workbench.css';
-
-type HostResponse<TPayload = unknown> = {
-  succeeded: boolean;
-  error?: string;
-  payload?: TPayload;
-};
-
-type HostEntityId = {
-  index: number;
-  generation: number;
-};
 
 type HostSceneEntity = {
   entity: HostEntityId;
@@ -79,26 +70,11 @@ const fallbackStartupState: StartupState = {
   viewportMode: 'placeholder',
 };
 
-const defaultTransform = {
-  position: { x: 0, y: 0, z: 0 },
-  rotation: { x: 0, y: 0, z: 0 },
-  scale: { x: 1, y: 1, z: 1 },
-};
-
-const hostEntityKey = (entity: HostEntityId) => `${entity.index}:${entity.generation}`;
-
 const sceneKindFromHost = (kind: HostSceneEntity['kind']): SceneEntity['kind'] => {
   if (kind === 'camera' || kind === 'light' || kind === 'environment' || kind === 'mesh') {
     return kind;
   }
   return 'mesh';
-};
-
-const componentsForHostEntity = (kind: HostSceneEntity['kind']): string[] => {
-  if (kind === 'camera') return ['Transform', 'Camera'];
-  if (kind === 'light') return ['Transform', 'Light'];
-  if (kind === 'environment') return ['Environment'];
-  return ['Transform', 'Mesh Renderer'];
 };
 
 const assetKindFromHost = (kind: HostAssetSnapshot['kind']): AssetItem['kind'] => {
@@ -124,54 +100,15 @@ const sceneRootEntity = (children: SceneEntity[]): SceneEntity => ({
   kind: 'folder',
   active: true,
   children,
-  components: [],
-  transform: defaultTransform,
 });
 
 const resizeLimits = {
   left: { min: 220, max: 520 },
-  right: { min: 260, max: 560 },
+  right: { min: 300, max: 640 },
   bottom: { min: 112, max: 420 },
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-
-type InspectorVectorField = {
-  id: keyof SceneEntity['transform'];
-  label: string;
-  mode: 'position' | 'rotationDegrees' | 'scale';
-  lockable?: boolean;
-};
-
-type VectorAxis = keyof Vec3;
-
-type InspectorComponentSchema = {
-  id: string;
-  title: string;
-  fields: InspectorVectorField[];
-};
-
-const inspectorComponentSchemas: InspectorComponentSchema[] = [
-  {
-    id: 'transform',
-    title: 'Transform',
-    fields: [
-      { id: 'position', label: 'Location', mode: 'position' },
-      { id: 'rotation', label: 'Rotation', mode: 'rotationDegrees' },
-      { id: 'scale', label: 'Scale', mode: 'scale', lockable: true },
-    ],
-  },
-];
-
-const updateEntityTransform = (
-  entities: SceneEntity[],
-  entityId: string,
-  transform: Transform,
-): SceneEntity[] => entities.map((entity) => ({
-  ...entity,
-  transform: entity.id === entityId ? transform : entity.transform,
-  children: entity.children ? updateEntityTransform(entity.children, entityId, transform) : entity.children,
-}));
 
 const parseHostEntityId = (id: string): HostEntityId | null => {
   const [index, generation] = id.split(':').map((part) => Number.parseInt(part, 10));
@@ -181,32 +118,37 @@ const parseHostEntityId = (id: string): HostEntityId | null => {
   return { index, generation };
 };
 
-const degreesToRadians = (degrees: number) => degrees * Math.PI / 180;
-
-const eulerDegreesToQuaternion = (rotation: Vec3) => {
-  const halfX = degreesToRadians(rotation.x) * 0.5;
-  const halfY = degreesToRadians(rotation.y) * 0.5;
-  const halfZ = degreesToRadians(rotation.z) * 0.5;
-  const cx = Math.cos(halfX);
-  const sx = Math.sin(halfX);
-  const cy = Math.cos(halfY);
-  const sy = Math.sin(halfY);
-  const cz = Math.cos(halfZ);
-  const sz = Math.sin(halfZ);
-
+const snapshotFromMockEntity = (entity: SceneEntity | null): InspectorEntitySnapshot | null => {
+  if (!entity || !entity.transform) return null;
+  const hostEntity = parseHostEntityId(entity.id) ?? { index: 0, generation: 0 };
+  const rotationQuaternion = eulerDegreesToQuaternion(entity.transform.rotation);
   return {
-    x: sx * cy * cz + cx * sy * sz,
-    y: cx * sy * cz - sx * cy * sz,
-    z: cx * cy * sz + sx * sy * cz,
-    w: cx * cy * cz - sx * sy * sz,
+    entity: hostEntity,
+    name: entity.name,
+    tag: entity.kind === 'camera' ? 'Camera' : 'Untagged',
+    active: entity.active,
+    renderLayerMask: 1,
+    transform: {
+      position: entity.transform.position,
+      rotationDegrees: entity.transform.rotation,
+      scale: entity.transform.scale,
+      rotationQuaternion,
+    },
+    camera: entity.kind === 'camera' ? {
+      projection: 'perspective',
+      fovYDegrees: 60,
+      orthographicHeight: 10,
+      nearPlane: 0.1,
+      farPlane: 2000,
+      active: true,
+      clearColor: { x: 0.055, y: 0.12, z: 0.22, w: 1 },
+    } : null,
+    components: [
+      { kind: 'transform', label: 'Transform', editable: true },
+      ...(entity.kind === 'camera' ? [{ kind: 'camera', label: 'Camera', editable: true }] : []),
+    ],
   };
 };
-
-const transformToHostPayload = (transform: Transform) => ({
-  position: transform.position,
-  rotation: eulerDegreesToQuaternion(transform.rotation),
-  scale: transform.scale,
-});
 
 export function Workbench() {
   const { layout, setLayout, resetLayout } = useWorkbenchLayout();
@@ -215,6 +157,9 @@ export function Workbench() {
   const [hostConsoleEvents, setHostConsoleEvents] = useState<ConsoleEvent[]>([]);
   const [selectedEntityId, setSelectedEntityId] = useState('camera-main');
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>('asset-scene-demo');
+  const [selectedSnapshot, setSelectedSnapshot] = useState<InspectorEntitySnapshot | null>(null);
+  const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
+  const selectedSnapshotRevision = useRef(0);
   const [worldEnvironment, setWorldEnvironment] = useState<HostWorldEnvironment | null>(null);
   const [lastCommand, setLastCommand] = useState('Workbench ready');
 
@@ -242,17 +187,35 @@ export function Workbench() {
     });
   }, []);
 
-  const selectedEntity = useMemo(() => {
-    if (!project) {
-      return null;
+  const refreshSelectedEntity = async (entityId = selectedEntityId, connected = startupState?.engineHostConnected ?? false) => {
+    const requestRevision = ++selectedSnapshotRevision.current;
+    if (!connected || !window.arc?.host) {
+      const mockEntity = project ? flattenScene(project.scene).find((entity) => entity.id === entityId) ?? null : null;
+      if (requestRevision === selectedSnapshotRevision.current) {
+        setSelectedSnapshot(snapshotFromMockEntity(mockEntity));
+      }
+      return;
     }
-    return flattenScene(project.scene).find((entity) => entity.id === selectedEntityId) ?? null;
-  }, [project, selectedEntityId]);
-
-  const selectedAsset = useMemo(
-    () => project?.assets.find((asset) => asset.id === selectedAssetId) ?? null,
-    [project, selectedAssetId],
-  );
+    setSelectedSnapshotLoading(true);
+    try {
+      const response = await window.arc.host.query('entity.selected') as HostResponse<unknown>;
+      if (requestRevision !== selectedSnapshotRevision.current) return;
+      if (!response.succeeded || !response.payload) {
+        setSelectedSnapshot(null);
+        setLastCommand(response.error || 'Could not read selected entity');
+        return;
+      }
+      setSelectedSnapshot(parseSelectedEntitySnapshot(response.payload));
+    } catch (error) {
+      if (requestRevision !== selectedSnapshotRevision.current) return;
+      setSelectedSnapshot(null);
+      setLastCommand(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (requestRevision === selectedSnapshotRevision.current) {
+        setSelectedSnapshotLoading(false);
+      }
+    }
+  };
 
   const refreshWorldEnvironment = async (entityId: string) => {
     const entity = parseHostEntityId(entityId);
@@ -323,8 +286,6 @@ export function Workbench() {
       name: entity.name,
       kind: sceneKindFromHost(entity.kind),
       active: entity.active,
-      components: componentsForHostEntity(entity.kind),
-      transform: defaultTransform,
     }));
 
     const hostAssets = assetsResponse.succeeded && assetsResponse.payload ? assetsResponse.payload : null;
@@ -338,8 +299,12 @@ export function Workbench() {
 
     const selected = hostEntities.find((entity) => entity.selected) ?? hostEntities[0];
     if (selected) {
-      setSelectedEntityId(hostEntityKey(selected.entity));
+      const selectedKey = hostEntityKey(selected.entity);
+      setSelectedEntityId(selectedKey);
+      await refreshSelectedEntity(selectedKey, true);
     }
+    const environmentEntity = hostEntities.find((entity) => entity.kind === 'environment');
+    if (environmentEntity) await refreshWorldEnvironment(hostEntityKey(environmentEntity.entity));
     if (activeScene) {
       setSelectedAssetId(activeScene);
     }
@@ -390,7 +355,10 @@ export function Workbench() {
           return;
         }
 
-        setProject(await mockHost.getProjectSnapshot());
+        const snapshot = await mockHost.getProjectSnapshot();
+        setProject(snapshot);
+        const selected = flattenScene(snapshot.scene).find((entity) => entity.id === selectedEntityId) ?? null;
+        setSelectedSnapshot(snapshotFromMockEntity(selected));
       })
       .catch(async () => {
         setStartupState(fallbackStartupState);
@@ -404,9 +372,10 @@ export function Workbench() {
     const hostEntity = parseHostEntityId(entityId);
     if (startupState?.engineHostConnected && hostEntity) {
       await window.arc.host.command('entity.select', { entity: hostEntity });
-      await refreshWorldEnvironment(entityId);
+      await refreshSelectedEntity(entityId, true);
     } else {
-      setWorldEnvironment(null);
+      const mockEntity = project ? flattenScene(project.scene).find((entity) => entity.id === entityId) ?? null : null;
+      setSelectedSnapshot(snapshotFromMockEntity(mockEntity));
     }
   };
 
@@ -499,35 +468,6 @@ export function Workbench() {
     window.addEventListener('pointerup', onPointerUp);
   };
 
-  const updateSelectedTransformField = (field: keyof Transform, axis: VectorAxis, value: number) => {
-    if (!selectedEntity) {
-      return;
-    }
-
-    const nextTransform: Transform = {
-      ...selectedEntity.transform,
-      [field]: {
-        ...selectedEntity.transform[field],
-        [axis]: value,
-      },
-    };
-
-    setProject((current) => current ? {
-      ...current,
-      scene: updateEntityTransform(current.scene, selectedEntity.id, nextTransform),
-    } : current);
-
-    const hostEntity = parseHostEntityId(selectedEntity.id);
-    if (startupState?.engineHostConnected && hostEntity) {
-      void window.arc.host.command('entity.setTransform', {
-        entity: hostEntity,
-        transform: transformToHostPayload(nextTransform),
-      }).catch((error) => {
-        setLastCommand(error instanceof Error ? error.message : String(error));
-      });
-    }
-  };
-
   const renderLeftPanel = () => {
     if (!project) {
       return <div className="side-loading">Loading workbench data...</div>;
@@ -564,10 +504,24 @@ export function Workbench() {
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
-      return <InspectorPanel entity={selectedEntity} asset={selectedAsset} environment={worldEnvironment} onEnvironmentChange={updateWorldEnvironment} onEnvironmentPreset={applyWorldEnvironmentPreset} onEnvironmentHdri={applyWorldEnvironmentHdri} onTransformFieldChange={updateSelectedTransformField} />;
+      return <DataDrivenInspector
+        command={async (type, payload) => {
+          if (!startupState?.engineHostConnected) return { succeeded: true };
+          return window.arc.host.command(type, payload) as Promise<HostResponse>;
+        }}
+        loading={selectedSnapshotLoading}
+        snapshot={selectedSnapshot}
+        onStatus={setLastCommand}
+        refresh={async () => {
+          if (startupState?.engineHostConnected) await refreshSelectedEntity(selectedEntityId, true);
+        }}
+      />;
     }
-
-    return <InspectorPanel entity={selectedEntity} asset={selectedAsset} environment={worldEnvironment} onEnvironmentChange={updateWorldEnvironment} onEnvironmentPreset={applyWorldEnvironmentPreset} onEnvironmentHdri={applyWorldEnvironmentHdri} onTransformFieldChange={updateSelectedTransformField} />;
+    if (panel === 'worldSettings') {
+      return <WorldSettingsPanel environment={worldEnvironment} onEnvironmentChange={updateWorldEnvironment}
+        onEnvironmentPreset={applyWorldEnvironmentPreset} onEnvironmentHdri={applyWorldEnvironmentHdri} />;
+    }
+    return <LightingPanel />;
   };
 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
@@ -723,7 +677,7 @@ const entityMatchesFilter = (entity: SceneEntity, filter: string) => {
     return true;
   }
 
-  const haystack = normalizeFilterText(`${entity.name} ${entity.kind} ${entity.components.join(' ')}`);
+  const haystack = normalizeFilterText(`${entity.name} ${entity.kind} ${(entity.components ?? []).join(' ')}`);
   return words.every((word) => haystack.includes(word) || fuzzyIncludes(haystack, word));
 };
 
@@ -756,89 +710,27 @@ function AssetExplorerPanel({ project, selectedAssetId, onSelectAsset }: {
   );
 }
 
-function InspectorPanel({ entity, asset, environment, onEnvironmentChange, onEnvironmentPreset, onEnvironmentHdri, onTransformFieldChange }: {
-  entity: SceneEntity | null;
-  asset: AssetItem | null;
+function WorldSettingsPanel({ environment, onEnvironmentChange, onEnvironmentPreset, onEnvironmentHdri }: {
   environment: HostWorldEnvironment | null;
   onEnvironmentChange: (environment: HostWorldEnvironment) => void;
   onEnvironmentPreset: (preset: string) => void;
   onEnvironmentHdri: (path: string) => void;
-  onTransformFieldChange: (field: keyof Transform, axis: VectorAxis, value: number) => void;
 }) {
   return (
-    <section className="inspector foundation-inspector">
-      {entity ? (
-        <>
-          <InspectorEntityHeader entity={entity} />
-          <label className="inspector-search">
-            <Search size={15} />
-            <input aria-label="Search components" placeholder="Search components..." />
-          </label>
-          <div className="inspector-components">
-            {environment ? (
-              <WorldEnvironmentInspector environment={environment} onChange={onEnvironmentChange} onPreset={onEnvironmentPreset} onHdri={onEnvironmentHdri} />
-            ) : inspectorComponentSchemas.map((component) => (
-              <InspectorComponent
-                key={component.id}
-                component={component}
-                entity={entity}
-                onTransformFieldChange={onTransformFieldChange}
-              />
-            ))}
-          </div>
-          <section className="component-list">
-            <h3>Components</h3>
-            {entity.components.length ? entity.components.map((component) => <UiButton key={component} variant="toolbar">{component}</UiButton>) : <span>No components</span>}
-          </section>
-        </>
-      ) : <PlaceholderPanel icon={<Settings />} title="Nothing selected" text="Select an entity or asset." />}
-      {asset && <section className="asset-inspector"><h3>Selected Asset</h3><PropertyRow label="Name" value={asset.name} /><PropertyRow label="Path" value={asset.path} /><PropertyRow label="Status" value={asset.status} /></section>}
+    <section className="world-settings-panel">
+      {environment
+        ? <WorldEnvironmentInspector environment={environment} onChange={onEnvironmentChange} onPreset={onEnvironmentPreset} onHdri={onEnvironmentHdri} />
+        : <PlaceholderPanel icon={<Settings />} title="World Settings" text="No world environment is available in this scene." />}
     </section>
   );
 }
 
-function InspectorEntityHeader({ entity }: { entity: SceneEntity }) {
+function LightingPanel() {
   return (
-    <header className="inspector-entity-header">
-      <label className="inspector-active-toggle">
-        <input aria-label={`${entity.name} active`} checked={entity.active} readOnly type="checkbox" />
-      </label>
-      <h2>{entity.name}</h2>
-      <label className="inspector-static-toggle">
-        <input aria-label={`${entity.name} static`} readOnly type="checkbox" />
-        <span>Static</span>
-      </label>
-      <UiIconButton className="inspector-header-action" label="Entity actions">
-        <MoreVertical size={14} />
-      </UiIconButton>
-      <PropertyRow label="Kind" value={entity.kind} />
-      <PropertyRow label="Active" value={entity.active ? 'true' : 'false'} />
-    </header>
-  );
-}
-
-function InspectorComponent({ component, entity, onTransformFieldChange }: {
-  component: InspectorComponentSchema;
-  entity: SceneEntity;
-  onTransformFieldChange: (field: keyof Transform, axis: VectorAxis, value: number) => void;
-}) {
-  return (
-    <section className="inspector-component">
-      <header className="inspector-component-header">
-        <ChevronDown size={14} />
-        <span>{component.title}</span>
-        <ChevronDown className="inspector-component-menu" size={14} />
-      </header>
-      <div className="inspector-component-body">
-        {component.fields.map((field) => (
-          <InspectorVectorField
-            key={field.id}
-            field={field}
-            onAxisChange={(axis, value) => onTransformFieldChange(field.id, axis, value)}
-            value={entity.transform[field.id]}
-          />
-        ))}
-      </div>
+    <section className="lighting-panel-placeholder">
+      <Lightbulb size={25} />
+      <h3>Lighting</h3>
+      <p>Lighting component editing will use the same schema-driven controls in a later milestone.</p>
     </section>
   );
 }
@@ -950,57 +842,6 @@ function AssetIcon({ kind }: { kind: AssetItem['kind'] }) {
   if (kind === 'shader') return <FileCode2 size={14} />;
   if (kind === 'folder') return <Folder size={14} />;
   return <Database size={14} />;
-}
-
-function InspectorVectorField({ field, onAxisChange, value }: {
-  field: InspectorVectorField;
-  onAxisChange: (axis: VectorAxis, value: number) => void;
-  value: Vec3;
-}) {
-  return (
-    <div className={`inspector-vector-field inspector-vector-${field.id}`}>
-      <div className="inspector-vector-label">
-        <span>{field.label}</span>
-        {field.lockable && (
-          <UiIconButton className="inspector-vector-lock" label={`Lock ${field.label.toLocaleLowerCase()} axes`}>
-            <Link size={14} />
-          </UiIconButton>
-        )}
-      </div>
-      <div className="inspector-axis-group">
-        <AxisField axis="x" mode={field.mode} onChange={onAxisChange} value={value.x} />
-        <AxisField axis="y" mode={field.mode} onChange={onAxisChange} value={value.y} />
-        <AxisField axis="z" mode={field.mode} onChange={onAxisChange} value={value.z} />
-      </div>
-    </div>
-  );
-}
-
-function AxisField({ axis, mode, onChange, value }: {
-  axis: VectorAxis;
-  mode: InspectorVectorField['mode'];
-  onChange: (axis: VectorAxis, value: number) => void;
-  value: number;
-}) {
-  const formattedValue = mode === 'rotationDegrees' ? `${formatNumber(value, 1)}°` : formatNumber(value, mode === 'scale' ? 1 : 2);
-  return (
-    <label className={`inspector-axis-field axis-${axis}`}>
-      <span>{axis.toUpperCase()}</span>
-      <input
-        onChange={(event) => {
-          const parsed = Number.parseFloat(event.target.value.replace('°', ''));
-          if (Number.isFinite(parsed)) {
-            onChange(axis, parsed);
-          }
-        }}
-        value={formattedValue}
-      />
-    </label>
-  );
-}
-
-function formatNumber(value: number, digits: number) {
-  return Number(value).toFixed(digits);
 }
 
 function PropertyRow({ label, value }: { label: string; value: ReactNode }) {

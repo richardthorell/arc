@@ -1,8 +1,6 @@
 # arc editor2
 
-`editor2` is the Electron-based editor shell for arc.
-
-The current shell is a VS Code-inspired 3D engine workbench with mock/no-op host data. It is structured so the renderer can later swap from the mock service to the real `arc_host_process` protocol without rewriting the UI.
+`editor2` is ARC's Electron-based editor shell. It uses the native `arc_host_process` when available and retains a typed mock snapshot for disconnected development.
 
 ## Development
 
@@ -22,6 +20,12 @@ Type-check the Electron app:
 
 ```bash
 npm run typecheck
+```
+
+Run renderer component tests:
+
+```bash
+npm test
 ```
 
 Package locally:
@@ -53,14 +57,14 @@ The workbench is now split into reusable foundation pieces:
 - Basic layout persistence
 - Scene hierarchy panel backed by mock host data
 - Asset browser backed by mock host data
-- Inspector for selected entities and assets
+- Schema-driven Transform and Camera inspector backed by typed host snapshots
 - Viewport placeholder with render stats
 - Bottom dock panels for content browser, console, version control, AI assistant, and profiler
 - Mock/no-op host service for commands and data loading
 
 ## Mock host
 
-Phase 3 keeps the native engine host disconnected on purpose. The renderer uses `src/renderer/src/services/mockHost.ts` to simulate:
+When the native engine host is unavailable, the renderer uses `src/renderer/src/services/mockHost.ts` to simulate:
 
 - Project snapshot
 - Scene hierarchy
@@ -70,13 +74,9 @@ Phase 3 keeps the native engine host disconnected on purpose. The renderer uses 
 - Entity selection
 - No-op command execution
 
-When `arc_host_process` is ready, the same UI can be pointed at a real host client with the same high-level shape.
-
 ## Next phases
 
 - Expand each registered panel into its final production UI
-- Launch and manage `arc_host_process`
-- Replace `mockHost` with a typed host client
 - Back panels with real scene/project data
 - Connect viewport resize/render option commands
 - Add offscreen rendered viewport prototype

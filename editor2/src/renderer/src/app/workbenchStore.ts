@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import type { WorkbenchLayoutState } from './workbenchTypes';
 
-const layoutStorageKey = 'arc.editor2.workbench.layout.v1';
+const layoutStorageKey = 'arc.editor2.workbench.layout.v2';
 
 export const defaultWorkbenchLayout: WorkbenchLayoutState = {
   activeActivity: 'scene',
@@ -11,7 +11,7 @@ export const defaultWorkbenchLayout: WorkbenchLayoutState = {
   activeBottomPanel: 'console',
   activityExpanded: false,
   leftPanelWidth: 300,
-  rightPanelWidth: 320,
+  rightPanelWidth: 410,
   bottomPanelHeight: 148,
   leftVisible: true,
   rightVisible: true,
