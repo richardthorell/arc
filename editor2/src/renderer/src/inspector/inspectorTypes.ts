@@ -22,6 +22,15 @@ export type InspectorCamera = {
   clearColor: Vec4;
 };
 
+export type InspectorMeshRenderer = {
+  visible: boolean;
+  baseColorTint: Vec4;
+  hasMaterial: boolean;
+  assetBackedMaterial: boolean;
+  materialName: string;
+  materialPath: string;
+};
+
 export type HostComponentSnapshot = {
   kind: string;
   label: string;
@@ -36,6 +45,7 @@ export type InspectorEntitySnapshot = {
   renderLayerMask: number;
   transform: InspectorTransform | null;
   camera: InspectorCamera | null;
+  meshRenderer: InspectorMeshRenderer | null;
   components: HostComponentSnapshot[];
 };
 
@@ -73,6 +83,14 @@ const hostSelectedEntitySchema = z.object({
     farPlane: finiteNumber,
     active: z.boolean(),
     clearColor: vec4Tuple,
+  }).nullable(),
+  meshRenderer: z.object({
+    visible: z.boolean(),
+    baseColorTint: vec4Tuple,
+    hasMaterial: z.boolean(),
+    assetBackedMaterial: z.boolean(),
+    materialName: z.string(),
+    materialPath: z.string(),
   }).nullable(),
   components: z.array(z.object({
     kind: z.string(),
@@ -133,6 +151,10 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
     camera: parsed.camera ? {
       ...parsed.camera,
       clearColor: tupleToVec4(parsed.camera.clearColor),
+    } : null,
+    meshRenderer: parsed.meshRenderer ? {
+      ...parsed.meshRenderer,
+      baseColorTint: tupleToVec4(parsed.meshRenderer.baseColorTint),
     } : null,
   };
 }

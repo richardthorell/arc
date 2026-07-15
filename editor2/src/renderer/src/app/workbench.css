@@ -554,16 +554,20 @@
 
 .asset-card-foundation {
   display: grid;
-  grid-template-rows: 44px auto auto;
+  grid-template-rows: 72px auto auto;
   place-items: center;
   gap: 4px;
-  min-height: 104px;
+  min-height: 132px;
   padding: 10px;
   border: 1px solid #2d3946;
   border-radius: var(--arc-radius-2);
   color: var(--arc-color-text);
   background: rgba(17, 24, 32, 0.78);
   text-align: center;
+}
+
+.asset-card-foundation .asset-thumbnail {
+  width: 72px;
 }
 
 .asset-card-foundation:hover,

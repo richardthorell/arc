@@ -2,7 +2,7 @@ import type { InspectorEntitySnapshot } from './inspectorTypes';
 import type { PropertyComponentSchema, PropertyFieldSchema } from './propertySchema';
 export { getPathValue, setPathValue } from './propertySchema';
 
-export type InspectorComponentId = 'transform' | 'camera';
+export type InspectorComponentId = 'transform' | 'camera' | 'meshRenderer';
 export type InspectorFieldSchema = PropertyFieldSchema<InspectorEntitySnapshot>;
 export type InspectorComponentSchema = PropertyComponentSchema<InspectorEntitySnapshot, InspectorComponentId>;
 
@@ -40,8 +40,20 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       { id: 'clearColor', label: 'Clear Color', path: 'camera.clearColor', type: 'color', precision: 2, min: 0, max: 1 },
     ],
   },
+  {
+    id: 'meshRenderer',
+    title: 'Mesh Renderer',
+    fields: [
+      { id: 'preview', label: 'Material Preview', path: 'meshRenderer.materialPath', namePath: 'meshRenderer.materialName', type: 'assetPreview', assetKind: 'material' },
+      { id: 'material', label: 'Material', path: 'meshRenderer.materialPath', type: 'asset', assetKind: 'material', allowedExtensions: ['.arcmat'], allowEmpty: false },
+      { id: 'visible', label: 'Visible', path: 'meshRenderer.visible', type: 'boolean' },
+      { id: 'tint', label: 'Color Tint', path: 'meshRenderer.baseColorTint', type: 'color', precision: 2, min: 0, max: 1 },
+    ],
+  },
 ];
 
 export const schemaForSnapshot = (snapshot: InspectorEntitySnapshot) => inspectorComponentSchemas.filter((schema) => (
-  schema.id === 'transform' ? snapshot.transform !== null : snapshot.camera !== null
+  schema.id === 'transform' ? snapshot.transform !== null
+    : schema.id === 'camera' ? snapshot.camera !== null
+      : snapshot.meshRenderer !== null
 ));

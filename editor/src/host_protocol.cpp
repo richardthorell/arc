@@ -708,6 +708,8 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_set_transform_command>) return "entity.setTransform";
         else if constexpr (std::is_same_v<type, host_set_render_layer_command>) return "entity.setRenderLayer";
         else if constexpr (std::is_same_v<type, host_set_camera_command>) return "entity.setCamera";
+        else if constexpr (std::is_same_v<type, host_set_mesh_renderer_command>) return "entity.setMeshRenderer";
+        else if constexpr (std::is_same_v<type, host_set_entity_material_command>) return "entity.setMaterial";
         else if constexpr (std::is_same_v<type, host_set_world_environment_command>) return "environment.update";
         else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>) return "environment.applyPreset";
         else if constexpr (std::is_same_v<type, host_set_environment_hdri_command>) return "environment.setHdri";
@@ -758,6 +760,16 @@ std::string to_json(const host_camera_snapshot& camera)
         << ",\"active\":" << bool_json(camera.active)
         << ",\"clearColor\":" << vec4_json(camera.clear_color) << '}';
     return stream.str();
+}
+
+std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer)
+{
+    return std::string("{\"visible\":") + bool_json(mesh_renderer.visible) +
+        ",\"baseColorTint\":" + vec4_json(mesh_renderer.base_color_tint) +
+        ",\"hasMaterial\":" + bool_json(mesh_renderer.has_material) +
+        ",\"assetBackedMaterial\":" + bool_json(mesh_renderer.asset_backed_material) +
+        ",\"materialName\":" + quote(mesh_renderer.material_name) +
+        ",\"materialPath\":" + quote(mesh_renderer.material_path) + '}';
 }
 
 std::string to_json(const host_world_environment_snapshot& value)
@@ -854,6 +866,13 @@ std::string to_json(const host_command_envelope& envelope)
                 std::to_string(payload.render_layer_mask) + '}';
         else if constexpr (std::is_same_v<type, host_set_camera_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"camera\":" + to_json(payload.camera) + '}';
+        else if constexpr (std::is_same_v<type, host_set_mesh_renderer_command>)
+            return "{\"entity\":" + to_json(payload.entity) +
+                ",\"visible\":" + bool_json(payload.visible) +
+                ",\"baseColorTint\":" + vec4_json(payload.base_color_tint) + '}';
+        else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
+            return "{\"entity\":" + to_json(payload.entity) +
+                ",\"path\":" + quote(payload.path.generic_string()) + '}';
         else if constexpr (std::is_same_v<type, host_set_world_environment_command>)
             return "{\"environment\":" + to_json(payload.environment) + '}';
         else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>)
@@ -960,6 +979,8 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
     json += snapshot.transform ? to_json(*snapshot.transform) : "null";
     json += ",\"camera\":";
     json += snapshot.camera ? to_json(*snapshot.camera) : "null";
+    json += ",\"meshRenderer\":";
+    json += snapshot.mesh_renderer ? to_json(*snapshot.mesh_renderer) : "null";
     json += ",\"components\":[";
     for (std::size_t index = 0; index < snapshot.components.size(); ++index)
     {
@@ -1143,6 +1164,31 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         envelope.payload = command;
+    }
+    else if (type == "entity.setMeshRenderer")
+    {
+        host_set_mesh_renderer_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !bool_value(payload, "visible", command.visible) ||
+            !array4_value(payload, "baseColorTint", command.base_color_tint))
+        {
+            error = "Mesh renderer command requires entity, visible, and baseColorTint";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "entity.setMaterial")
+    {
+        host_set_entity_material_command command;
+        std::string path;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !string_value(payload, "path", path) || path.empty())
+        {
+            error = "Material assignment requires entity and material path";
+            return false;
+        }
+        command.path = std::move(path);
+        envelope.payload = std::move(command);
     }
     else if (type == "environment.update")
     {

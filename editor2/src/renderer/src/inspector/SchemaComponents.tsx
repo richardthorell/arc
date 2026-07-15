@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
-import { TexturePicker } from './AssetPicker';
+import { AssetPreview, MaterialPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
 import type { Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
@@ -82,9 +82,14 @@ function SchemaField<TContext extends object>({ field, context, linked, assets, 
     </label>;
   }
   if (field.type === 'asset') {
-    return <TexturePicker allowedExtensions={field.allowedExtensions} allowEmpty={field.allowEmpty} assets={assets}
+    const Picker = field.assetKind === 'material' ? MaterialPicker : TexturePicker;
+    return <Picker allowedExtensions={field.allowedExtensions} allowEmpty={field.allowEmpty} assets={assets}
       label={field.label} thumbnailProvider={thumbnailProvider} value={(value as string) || ''}
       onChange={(next) => onValue(next, true)} />;
+  }
+  if (field.type === 'assetPreview') {
+    const name = field.namePath ? getPathValue(context, field.namePath) as string : '';
+    return <AssetPreview label={field.label} name={name} path={(value as string) || ''} provider={thumbnailProvider} />;
   }
   const source = value as Vec3 | Vec4;
   const hasAlpha = field.alpha !== false && 'w' in source;

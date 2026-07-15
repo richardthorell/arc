@@ -34,6 +34,8 @@ import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
 import type { HostWorldEnvironment } from '../environment/environmentTypes';
 import { InspectorPanel as DataDrivenInspector } from '../inspector/InspectorPanel';
+import { AssetThumbnail } from '../inspector/AssetPicker';
+import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
 import { eulerDegreesToQuaternion, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
 
@@ -151,9 +153,18 @@ const snapshotFromMockEntity = (entity: SceneEntity | null): InspectorEntitySnap
       active: true,
       clearColor: { x: 0.055, y: 0.12, z: 0.22, w: 1 },
     } : null,
+    meshRenderer: entity.kind === 'mesh' ? {
+      visible: true,
+      baseColorTint: { x: 1, y: 1, z: 1, w: 1 },
+      hasMaterial: true,
+      assetBackedMaterial: true,
+      materialName: 'Default Material',
+      materialPath: 'materials/default.arcmat',
+    } : null,
     components: [
       { kind: 'transform', label: 'Transform', editable: true },
       ...(entity.kind === 'camera' ? [{ kind: 'camera', label: 'Camera', editable: true }] : []),
+      ...(entity.kind === 'mesh' ? [{ kind: 'meshRenderer', label: 'Mesh Renderer', editable: true }] : []),
     ],
   };
 };
@@ -530,6 +541,8 @@ export function Workbench() {
         }}
         loading={selectedSnapshotLoading}
         snapshot={selectedSnapshot}
+        assets={project?.assets ?? []}
+        thumbnailProvider={loadAssetThumbnail}
         onStatus={setLastCommand}
         refresh={async () => {
           if (startupState?.engineHostConnected) await refreshSelectedEntity(selectedEntityId, true);
@@ -546,14 +559,16 @@ export function Workbench() {
 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'contentBrowser') {
-      return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId} onCommand={runCommand} />;
+      return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
+        onCommand={runCommand} thumbnailProvider={loadAssetThumbnail} />;
     }
 
     if (panel === 'console') {
       return <ConsolePanel events={[...(project?.console ?? []), ...hostConsoleEvents]} lastCommand={lastCommand} />;
     }
 
-    return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId} onCommand={runCommand} />;
+    return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
+      onCommand={runCommand} thumbnailProvider={loadAssetThumbnail} />;
   };
 
   const workbenchBodyStyle = {
@@ -758,11 +773,12 @@ function LightingPanel() {
   );
 }
 
-function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onCommand }: {
+function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onCommand, thumbnailProvider }: {
   project: ProjectSnapshot | null;
   selectedAssetId: string | null;
   onSelectAsset: (assetId: string) => void;
   onCommand: (command: CommandId) => void;
+  thumbnailProvider: AssetThumbnailProvider;
 }) {
   return (
     <section className="content-browser-foundation">
@@ -773,7 +789,8 @@ function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onComman
         <span>Assets / Environment / Props</span>
       </div>
       <div className="asset-grid-foundation">
-        {(project?.assets ?? []).map((asset) => <AssetCard key={asset.id} asset={asset} selected={asset.id === selectedAssetId} onSelect={() => onSelectAsset(asset.id)} />)}
+        {(project?.assets ?? []).map((asset) => <AssetCard key={asset.id} asset={asset} selected={asset.id === selectedAssetId}
+          thumbnailProvider={thumbnailProvider} onSelect={() => onSelectAsset(asset.id)} />)}
       </div>
     </section>
   );
@@ -856,12 +873,21 @@ function AssetRow({ asset, selected, onSelect }: { asset: AssetItem; selected: b
   return <UiTreeRow className="tree-row" selected={selected} meta={<small>{asset.status}</small>} onClick={onSelect}><AssetIcon kind={asset.kind} /><span>{asset.name}</span></UiTreeRow>;
 }
 
-function AssetCard({ asset, selected, onSelect }: { asset: AssetItem; selected: boolean; onSelect: () => void }) {
-  return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} draggable={asset.kind === 'texture'} onDragStart={(event) => {
-    if (asset.kind !== 'texture') return;
+function AssetCard({ asset, selected, thumbnailProvider, onSelect }: {
+  asset: AssetItem;
+  selected: boolean;
+  thumbnailProvider: AssetThumbnailProvider;
+  onSelect: () => void;
+}) {
+  const draggable = asset.kind === 'texture' || asset.kind === 'material';
+  return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} draggable={draggable} onDragStart={(event) => {
+    if (!draggable) return;
     event.dataTransfer.setData('application/x-arc-asset', asset.path);
-    event.dataTransfer.setData('application/x-arc-environment', asset.path);
-  }} onClick={onSelect} variant="default"><AssetIcon kind={asset.kind} /><strong>{asset.name}</strong><span>{asset.kind}</span></UiButton>;
+    if (asset.kind === 'texture') event.dataTransfer.setData('application/x-arc-environment', asset.path);
+  }} onClick={onSelect} variant="default">
+    {draggable ? <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} /> : <AssetIcon kind={asset.kind} />}
+    <strong>{asset.name}</strong><span>{asset.kind}</span>
+  </UiButton>;
 }
 
 function AssetIcon({ kind }: { kind: AssetItem['kind'] }) {

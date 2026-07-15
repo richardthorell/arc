@@ -6,6 +6,7 @@
 #include <arc/editor/editor_viewport.h>
 #include <arc/editor/material_asset.h>
 #include <arc/editor/material_library.h>
+#include <arc/editor/material_preview.h>
 #include <arc/editor/sdl_events.h>
 #include <arc/editor/world_environment_host.h>
 
@@ -295,7 +296,11 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         { .request_id = 14, .payload = arc::editor::host_apply_world_environment_preset_command{
             .entity = entity, .preset = arc::editor::host_world_environment_preset::night } },
         { .request_id = 15, .payload = arc::editor::host_set_environment_hdri_command{
-            .entity = entity, .path = "assets/environment/studio.hdr" } }
+            .entity = entity, .path = "assets/environment/studio.hdr" } },
+        { .request_id = 16, .payload = arc::editor::host_set_mesh_renderer_command{
+            .entity = entity, .visible = false, .base_color_tint = { 0.8f, 0.7f, 0.6f, 1.0f } } },
+        { .request_id = 17, .payload = arc::editor::host_set_entity_material_command{
+            .entity = entity, .path = "materials/stone.arcmat" } }
     };
 
     for (const auto& command : commands)
@@ -391,6 +396,78 @@ TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
     REQUIRE(host->execute({ .request_id = 94, .payload = arc::editor::host_set_environment_hdri_command{
         .entity = environment->entity, .path = {} } }).succeeded);
     REQUIRE(host->world_environment_snapshot(environment->entity)->hdri_path.empty());
+    std::filesystem::remove_all(root);
+}
+
+TEST_CASE("material preview renderer produces a deterministic PBR sphere")
+{
+    auto material = arc::editor::make_default_material_asset("Preview Bronze");
+    material.material.base_color = { 0.72f, 0.24f, 0.07f, 1.0f };
+    material.material.metallic = 0.85f;
+    material.material.roughness = 0.28f;
+    material.material.emissive_factor = { 0.01f, 0.0f, 0.0f };
+    const auto first = arc::editor::render_material_preview(material, {}, 64);
+    const auto second = arc::editor::render_material_preview(material, {}, 64);
+    REQUIRE(first.succeeded());
+    REQUIRE(first.texture.width == 64);
+    REQUIRE(first.texture.height == 64);
+    REQUIRE(first.texture.format == arc::render::texture_format::rgba8_srgb);
+    REQUIRE(first.texture.pixels == second.texture.pixels);
+    const auto center = (32u * 64u + 32u) * 4u;
+    REQUIRE(first.texture.pixels[center] != first.texture.pixels[0]);
+}
+
+TEST_CASE("mesh renderer host snapshot edits and material assignment round trip")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-mesh-material-host";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "materials");
+    auto material = arc::editor::make_default_material_asset("Inspector Stone");
+    material.path = root / "materials" / "inspector_stone.arcmat";
+    material.material.base_color = { 0.3f, 0.34f, 0.38f, 1.0f };
+    std::string message;
+    REQUIRE(arc::editor::save_material_asset(material, root, message));
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root;
+    REQUIRE(host->open_project({ .name = "Mesh Material Host", .root = root }, assets).succeeded);
+    REQUIRE(host->execute({ .request_id = 1, .payload = arc::editor::host_create_entity_command{
+        .kind = arc::editor::host_create_entity_kind::sphere } }).succeeded);
+    const auto entity = host->selected_entity_snapshot().entity;
+    const auto initial = host->selected_entity_snapshot();
+    REQUIRE(initial.mesh_renderer.has_value());
+    REQUIRE(initial.mesh_renderer->visible);
+    REQUIRE(initial.mesh_renderer->has_material);
+
+    REQUIRE(host->execute({ .request_id = 2, .payload = arc::editor::host_set_mesh_renderer_command{
+        .entity = entity, .visible = false, .base_color_tint = { 0.5f, 0.6f, 0.7f, 0.8f } } }).succeeded);
+    REQUIRE_FALSE(host->selected_entity_snapshot().mesh_renderer->visible);
+    REQUIRE(host->selected_entity_snapshot().mesh_renderer->base_color_tint.z == Catch::Approx(0.7f));
+    REQUIRE_FALSE(host->execute({ .request_id = 3, .payload = arc::editor::host_set_mesh_renderer_command{
+        .entity = entity, .visible = true,
+        .base_color_tint = { std::numeric_limits<float>::infinity(), 1.0f, 1.0f, 1.0f } } }).succeeded);
+
+    REQUIRE(host->execute({ .request_id = 4, .payload = arc::editor::host_set_entity_material_command{
+        .entity = entity, .path = "materials/inspector_stone.arcmat" } }).succeeded);
+    const auto assigned = host->selected_entity_snapshot();
+    REQUIRE(assigned.mesh_renderer->asset_backed_material);
+    REQUIRE(assigned.mesh_renderer->material_name == "Inspector Stone");
+    REQUIRE(assigned.mesh_renderer->material_path == "materials/inspector_stone.arcmat");
+    REQUIRE_FALSE(host->execute({ .request_id = 5, .payload = arc::editor::host_set_entity_material_command{
+        .entity = entity, .path = "../outside.arcmat" } }).succeeded);
+
+    const auto catalog = host->project_assets_snapshot();
+    REQUIRE(std::any_of(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset) {
+        return asset.path == "materials/inspector_stone.arcmat" && asset.kind == "material";
+    }));
+    const auto preview = host->asset_thumbnail("materials/inspector_stone.arcmat", 96);
+    REQUIRE(preview.has_value());
+    REQUIRE(preview->width == 96);
+    REQUIRE(preview->height == 96);
+    REQUIRE(preview->data_url.starts_with("data:image/bmp;base64,Qk"));
     std::filesystem::remove_all(root);
 }
 

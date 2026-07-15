@@ -45,9 +45,14 @@ export type ColorFieldSchema<TContext = object> = FieldBase<TContext> & {
 };
 export type AssetReferenceFieldSchema<TContext = object> = FieldBase<TContext> & {
   type: 'asset';
-  assetKind: 'texture';
+  assetKind: 'texture' | 'material';
   allowedExtensions?: ReadonlyArray<string>;
   allowEmpty?: boolean;
+};
+export type AssetPreviewFieldSchema<TContext = object> = FieldBase<TContext> & {
+  type: 'assetPreview';
+  assetKind: 'material';
+  namePath?: string;
 };
 
 export type PropertyFieldSchema<TContext = object> =
@@ -56,7 +61,8 @@ export type PropertyFieldSchema<TContext = object> =
   | BooleanFieldSchema<TContext>
   | EnumFieldSchema<TContext>
   | ColorFieldSchema<TContext>
-  | AssetReferenceFieldSchema<TContext>;
+  | AssetReferenceFieldSchema<TContext>
+  | AssetPreviewFieldSchema<TContext>;
 
 export type PropertyComponentSchema<TContext = object, TId extends string = string> = {
   id: TId;

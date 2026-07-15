@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Filter, MoreVertical, Search } from 'lucide-react';
 
+import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
+
 import {
   schemaForSnapshot,
   setPathValue,
@@ -20,6 +22,8 @@ export type InspectorPanelProps = {
   command: InspectorCommand;
   refresh: () => Promise<void>;
   onStatus?: (message: string) => void;
+  assets?: ReadonlyArray<AssetPickerItem>;
+  thumbnailProvider?: AssetThumbnailProvider;
 };
 
 const knownTags = ['Untagged', 'Camera', 'Light', 'Mesh', 'Environment'];
@@ -69,7 +73,7 @@ function TextCommitInput({ ariaLabel, value, onCommit, list }: {
   );
 }
 
-export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }: InspectorPanelProps) {
+export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, assets = [], thumbnailProvider }: InspectorPanelProps) {
   const [draft, setDraft] = useState(snapshot);
   const [filter, setFilter] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -118,7 +122,7 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }
     void runMutation(next, type, { ...entityPayload(next), ...extra });
   };
 
-  const updateComponent = (component: InspectorComponentId, next: InspectorEntitySnapshot, settled: boolean) => {
+  const updateComponent = (component: InspectorComponentId, path: string, next: InspectorEntitySnapshot, settled: boolean) => {
     if (component === 'transform' && next.transform) {
       void runMutation(next, 'entity.setTransform', {
         ...entityPayload(next), transform: transformHostPayload(next.transform),
@@ -127,6 +131,19 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }
       void runMutation(next, 'entity.setCamera', {
         ...entityPayload(next), camera: cameraHostPayload(next.camera),
       }, settled);
+    } else if (component === 'meshRenderer' && next.meshRenderer) {
+      if (path === 'meshRenderer.materialPath') {
+        void runMutation(next, 'entity.setMaterial', {
+          ...entityPayload(next), path: next.meshRenderer.materialPath,
+        }, true);
+      } else {
+        const tint = next.meshRenderer.baseColorTint;
+        void runMutation(next, 'entity.setMeshRenderer', {
+          ...entityPayload(next),
+          visible: next.meshRenderer.visible,
+          baseColorTint: [tint.x, tint.y, tint.z, tint.w],
+        }, settled);
+      }
     }
   };
 
@@ -223,13 +240,15 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }
             collapsed={collapsed[schema.id] ?? false}
             context={draft}
             schema={schema}
+            assets={assets}
+            thumbnailProvider={thumbnailProvider}
             onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
             onValue={(path, value, settled) => {
               let next = setPathValue(draft, path, value);
               if (path === 'transform.rotationDegrees' && next.transform) {
                 next = { ...next, transform: { ...next.transform, rotationDegrees: value as Vec3 } };
               }
-              updateComponent(schema.id, next, settled);
+              updateComponent(schema.id, path, next, settled);
             }}
           />
         ))}

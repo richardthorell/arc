@@ -207,6 +207,18 @@ struct host_camera_snapshot
     friend constexpr bool operator==(const host_camera_snapshot&, const host_camera_snapshot&) noexcept = default;
 };
 
+struct host_mesh_renderer_snapshot
+{
+    bool visible{ true };
+    host_vec4 base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    bool has_material{};
+    bool asset_backed_material{};
+    std::string material_name;
+    std::string material_path;
+
+    friend constexpr bool operator==(const host_mesh_renderer_snapshot&, const host_mesh_renderer_snapshot&) noexcept = default;
+};
+
 struct host_scene_entity_snapshot
 {
     host_entity_id entity{};
@@ -230,6 +242,7 @@ struct host_selected_entity_snapshot
     std::uint32_t render_layer_mask{ host_default_render_layer };
     std::optional<host_transform> transform;
     std::optional<host_camera_snapshot> camera;
+    std::optional<host_mesh_renderer_snapshot> mesh_renderer;
     std::vector<host_component_snapshot> components;
 };
 
@@ -431,6 +444,19 @@ struct host_set_camera_command
     host_camera_snapshot camera;
 };
 
+struct host_set_mesh_renderer_command
+{
+    host_entity_id entity{};
+    bool visible{ true };
+    host_vec4 base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+};
+
+struct host_set_entity_material_command
+{
+    host_entity_id entity{};
+    std::filesystem::path path;
+};
+
 struct host_set_world_environment_command
 {
     host_world_environment_snapshot environment;
@@ -509,6 +535,8 @@ using host_command_payload = std::variant<
     host_set_transform_command,
     host_set_render_layer_command,
     host_set_camera_command,
+    host_set_mesh_renderer_command,
+    host_set_entity_material_command,
     host_set_world_environment_command,
     host_apply_world_environment_preset_command,
     host_set_environment_hdri_command,
@@ -623,6 +651,7 @@ std::string to_json(const host_asset_thumbnail_snapshot& snapshot);
 std::string to_json(const host_entity_id& entity);
 std::string to_json(const host_transform& transform);
 std::string to_json(const host_camera_snapshot& camera);
+std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer);
 std::string to_json(const host_world_environment_snapshot& environment);
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error);

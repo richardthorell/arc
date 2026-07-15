@@ -17,6 +17,7 @@ export type AssetPickerProps = {
   value: string;
   label: string;
   assetKinds: ReadonlyArray<string>;
+  assetTypeLabel?: string;
   allowedExtensions?: ReadonlyArray<string>;
   allowEmpty?: boolean;
   thumbnailProvider?: AssetThumbnailProvider;
@@ -41,7 +42,7 @@ function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promi
 }
 
 export function AssetPicker({
-  assets, value, label, assetKinds, allowedExtensions, allowEmpty = true, thumbnailProvider, onChange,
+  assets, value, label, assetKinds, assetTypeLabel = 'Asset', allowedExtensions, allowEmpty = true, thumbnailProvider, onChange,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -74,14 +75,14 @@ export function AssetPicker({
           <AssetThumbnail asset={selected} path={value} provider={thumbnailProvider} />
           <span className="asset-reference-copy">
             <strong>{selected?.name || (value ? value.split(/[\\/]/).pop() : 'None')}</strong>
-            <small>{value || 'No texture assigned'}</small>
+            <small>{value || `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}</small>
           </span>
           <ChevronDown size={13} />
         </button>
         {allowEmpty && value && <button aria-label={`Clear ${label}`} className="asset-reference-clear" onClick={() => onChange('')}
           title="Clear asset reference" type="button"><X size={13} /></button>}
       </div>
-      {open && <AssetPickerPopover anchorRef={anchorRef} assets={candidates} filter={filter} label={label}
+      {open && <AssetPickerPopover anchorRef={anchorRef} assets={candidates} assetTypeLabel={assetTypeLabel} filter={filter} label={label}
         selectedPath={value} thumbnailProvider={thumbnailProvider} onClose={() => setOpen(false)} onFilter={setFilter}
         onSelect={(path) => { onChange(path); setOpen(false); }} />}
     </div>
@@ -89,12 +90,31 @@ export function AssetPicker({
 }
 
 export function TexturePicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
-  return <AssetPicker {...props} assetKinds={['texture', 'environment']} />;
+  return <AssetPicker {...props} assetKinds={['texture', 'environment']} assetTypeLabel="Texture" />;
 }
 
-function AssetPickerPopover({ anchorRef, assets, filter, label, selectedPath, thumbnailProvider, onClose, onFilter, onSelect }: {
+export function MaterialPicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
+  return <AssetPicker {...props} assetKinds={['material']} assetTypeLabel="Material" />;
+}
+
+export function AssetPreview({ path, name, label, provider }: {
+  path: string;
+  name: string;
+  label: string;
+  provider?: AssetThumbnailProvider;
+}) {
+  return <div className="asset-preview-property">
+    <div aria-label={label} className="asset-preview-stage">
+      <AssetThumbnail path={path} provider={provider} />
+      <span><strong>{name || 'No Material'}</strong><small>{path || 'Embedded runtime material'}</small></span>
+    </div>
+  </div>;
+}
+
+function AssetPickerPopover({ anchorRef, assets, assetTypeLabel, filter, label, selectedPath, thumbnailProvider, onClose, onFilter, onSelect }: {
   anchorRef: React.RefObject<HTMLElement | null>;
   assets: ReadonlyArray<AssetPickerItem>;
+  assetTypeLabel: string;
   filter: string;
   label: string;
   selectedPath: string;
@@ -133,23 +153,23 @@ function AssetPickerPopover({ anchorRef, assets, filter, label, selectedPath, th
   return createPortal(
     <section aria-label={`${label} asset picker`} className="asset-picker-popover" ref={popoverRef} role="dialog"
       style={{ left: position.left, top: position.top }}>
-      <header><strong>Select Texture</strong><span>{shown.length} assets</span><button aria-label="Close asset picker" onClick={onClose} type="button"><X size={14} /></button></header>
-      <label className="asset-picker-search"><Search size={14} /><input aria-label="Search texture assets" autoFocus onChange={(event) => onFilter(event.target.value)}
-        placeholder="Search textures…" value={filter} /></label>
+      <header><strong>{`Select ${assetTypeLabel}`}</strong><span>{shown.length} assets</span><button aria-label="Close asset picker" onClick={onClose} type="button"><X size={14} /></button></header>
+      <label className="asset-picker-search"><Search size={14} /><input aria-label={`Search ${assetTypeLabel.toLocaleLowerCase()} assets`} autoFocus onChange={(event) => onFilter(event.target.value)}
+        placeholder={`Search ${assetTypeLabel.toLocaleLowerCase()}s…`} value={filter} /></label>
       <div className="asset-picker-grid">
         {shown.map((asset) => <button aria-label={`Select ${asset.name}`} className={asset.path === selectedPath ? 'is-selected' : ''}
           key={asset.id} onClick={() => onSelect(asset.path)} type="button">
           <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
           <strong>{asset.name}</strong><small>{extensionOf(asset.path).slice(1).toUpperCase()} · {asset.status}</small>
         </button>)}
-        {!shown.length && <div className="asset-picker-empty"><Image size={22} /><span>No matching textures</span></div>}
+        {!shown.length && <div className="asset-picker-empty"><Image size={22} /><span>{`No matching ${assetTypeLabel.toLocaleLowerCase()}s`}</span></div>}
       </div>
     </section>,
     document.body,
   );
 }
 
-function AssetThumbnail({ asset, path, provider }: { asset?: AssetPickerItem; path: string; provider?: AssetThumbnailProvider }) {
+export function AssetThumbnail({ asset, path, provider }: { asset?: AssetPickerItem; path: string; provider?: AssetThumbnailProvider }) {
   const elementRef = useRef<HTMLSpanElement>(null);
   const [source, setSource] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);

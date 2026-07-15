@@ -29,9 +29,29 @@ const cameraSnapshot = (): InspectorEntitySnapshot => ({
     active: true,
     clearColor: { x: 0.055, y: 0.12, z: 0.22, w: 1 },
   },
+  meshRenderer: null,
   components: [
     { kind: 'transform', label: 'Transform', editable: true },
     { kind: 'camera', label: 'Camera', editable: true },
+  ],
+});
+
+const meshSnapshot = (): InspectorEntitySnapshot => ({
+  ...cameraSnapshot(),
+  name: 'Mountain',
+  tag: 'Mesh',
+  camera: null,
+  meshRenderer: {
+    visible: true,
+    baseColorTint: { x: 1, y: 1, z: 1, w: 1 },
+    hasMaterial: true,
+    assetBackedMaterial: true,
+    materialName: 'Mountain Landscape',
+    materialPath: 'materials/mountain_landscape.arcmat',
+  },
+  components: [
+    { kind: 'transform', label: 'Transform', editable: true },
+    { kind: 'meshRenderer', label: 'Mesh Renderer', editable: true },
   ],
 });
 
@@ -188,5 +208,32 @@ describe('data-driven InspectorPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'HSV' }));
     expect(screen.getByLabelText('Color H')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Linear' })).toBeDisabled();
+  });
+
+  it('renders the Mesh Renderer material preview and assigns a material asset', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    const thumbnailProvider = vi.fn().mockResolvedValue('data:image/bmp;base64,Qkpreview');
+    render(<InspectorPanel snapshot={meshSnapshot()} command={command} refresh={async () => undefined}
+      assets={[
+        { id: 'mountain', name: 'Mountain Landscape', path: 'materials/mountain_landscape.arcmat', kind: 'material', status: 'ready' },
+        { id: 'bronze', name: 'Bronze', path: 'materials/bronze.arcmat', kind: 'material', status: 'ready' },
+        { id: 'rock', name: 'Rock Albedo', path: 'textures/rock.png', kind: 'texture', status: 'ready' },
+      ]}
+      thumbnailProvider={thumbnailProvider} />);
+
+    expect(screen.getByLabelText('Material Preview')).toBeInTheDocument();
+    expect(screen.getAllByText('Mountain Landscape')).toHaveLength(2);
+    await userEvent.click(screen.getByLabelText('Choose Material asset'));
+    expect(screen.getByRole('dialog', { name: 'Material asset picker' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Select Rock Albedo')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Select Bronze'));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setMaterial', {
+      entity: { index: 3, generation: 1 }, path: 'materials/bronze.arcmat',
+    }));
+
+    await userEvent.click(screen.getByLabelText('Visible'));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setMeshRenderer', expect.objectContaining({
+      visible: false, baseColorTint: [1, 1, 1, 1],
+    })));
   });
 });

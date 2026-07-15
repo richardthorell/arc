@@ -4,6 +4,7 @@
 #include <arc/editor/editor_defaults.h>
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
+#include <arc/editor/material_preview.h>
 #include <arc/editor/world_environment_host.h>
 #include <arc/geometric/box.h>
 #include <arc/render/render.h>
@@ -252,6 +253,12 @@ bool valid_camera(const host_camera_snapshot& camera) noexcept
         finite(camera.clear_color.w) && camera.clear_color.w >= 0.0f && camera.clear_color.w <= 1.0f;
 }
 
+bool valid_base_color_tint(host_vec4 tint) noexcept
+{
+    const auto valid_channel = [](float value) { return std::isfinite(value) && value >= 0.0f && value <= 1.0f; };
+    return valid_channel(tint.x) && valid_channel(tint.y) && valid_channel(tint.z) && valid_channel(tint.w);
+}
+
 scene::camera_component to_scene_camera(const host_camera_snapshot& camera) noexcept
 {
     return {
@@ -458,6 +465,42 @@ void push_event(
 void add_component_snapshot(std::vector<host_component_snapshot>& components, host_component_kind kind, const char* label)
 {
     components.push_back({ .kind = kind, .label = label, .editable = true });
+}
+
+std::string asset_relative_path(const std::filesystem::path& root, const std::filesystem::path& path)
+{
+    if (path.empty())
+        return {};
+    std::error_code error;
+    const auto relative = std::filesystem::relative(path, root, error);
+    return (error ? path.lexically_normal() : relative.lexically_normal()).generic_string();
+}
+
+host_mesh_renderer_snapshot mesh_renderer_snapshot(
+    const editor_scene_state& state,
+    const editor_asset_state& assets,
+    const scene::mesh_renderer_component& mesh_renderer)
+{
+    host_mesh_renderer_snapshot snapshot;
+    snapshot.visible = mesh_renderer.visible;
+    snapshot.base_color_tint = to_host_vec4(mesh_renderer.base_color_tint);
+    snapshot.has_material = mesh_renderer.material.valid();
+    for (const auto& record : state.material_library.materials)
+    {
+        if (record.material != mesh_renderer.material)
+            continue;
+        snapshot.asset_backed_material = true;
+        snapshot.material_name = record.asset.name;
+        snapshot.material_path = asset_relative_path(assets.root, record.path);
+        return snapshot;
+    }
+    if (mesh_renderer.material == state.default_material) snapshot.material_name = "Default Mesh Material";
+    else if (mesh_renderer.material == state.primitive_material) snapshot.material_name = "Primitive Material";
+    else if (mesh_renderer.material == state.terrain_material) snapshot.material_name = "Terrain Material";
+    else if (mesh_renderer.material == state.water_material) snapshot.material_name = "Water Material";
+    else if (mesh_renderer.material == state.vegetation_material) snapshot.material_name = "Vegetation Material";
+    else if (mesh_renderer.material.valid()) snapshot.material_name = "Embedded Material";
+    return snapshot;
 }
 
 editor_scene_state create_default_scene(const editor_asset_state& assets, render::renderer& renderer)
@@ -904,6 +947,40 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity camera changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_set_mesh_renderer_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            auto* mesh_renderer = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity);
+            if (!mesh_renderer)
+                return fail("Entity does not have an editable mesh renderer component", entity);
+            if (!valid_base_color_tint(payload.base_color_tint))
+                return fail("Mesh renderer tint channels must be finite and between 0 and 1", entity);
+            mesh_renderer->visible = payload.visible;
+            mesh_renderer->base_color_tint = to_math_vec4(payload.base_color_tint);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity mesh renderer changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_set_entity_material_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.has<scene::mesh_renderer_component>(entity))
+                return fail("Entity does not have an editable mesh renderer component", entity);
+            const auto path = resolve_project_asset(state_->assets.root, payload.path);
+            if (!path || !is_material_asset_path(*path))
+                return fail("Material must be an .arcmat project asset", entity);
+            std::string message;
+            if (!apply_material_asset_to_entity(
+                    state_->scene.material_library,
+                    *state_->renderer,
+                    state_->assets.root,
+                    *path,
+                    state_->scene.scene,
+                    entity,
+                    &message))
+                return fail(message.empty() ? "Material assignment failed" : message, entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, message, entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
         else if constexpr (std::is_same_v<command_type, host_set_world_environment_command>)
         {
             const auto entity = to_scene_entity(payload.environment.entity);
@@ -1156,8 +1233,11 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
         snapshot.camera = to_host_camera(*camera);
         add_component_snapshot(snapshot.components, host_component_kind::camera, "Camera");
     }
-    if (state_->scene.scene.has<scene::mesh_renderer_component>(selected))
+    if (const auto* mesh_renderer = state_->scene.scene.try_get<scene::mesh_renderer_component>(selected))
+    {
+        snapshot.mesh_renderer = mesh_renderer_snapshot(state_->scene, state_->assets, *mesh_renderer);
         add_component_snapshot(snapshot.components, host_component_kind::mesh_renderer, "Mesh Renderer");
+    }
     if (state_->scene.scene.has<scene::directional_light_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::directional_light, "Directional Light");
     if (state_->scene.scene.has<scene::point_light_component>(selected))
@@ -1221,7 +1301,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
     for (const auto& material : state_->scene.material_library.materials)
     {
         snapshot.assets.push_back({
-            .path = material.asset.path.generic_string(),
+            .path = asset_relative_path(state_->assets.root, material.path),
             .kind = "material",
             .imported = true,
             .import_running = false
@@ -1243,11 +1323,18 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char value) {
                 return static_cast<char>(std::tolower(value));
             });
-            if (!render::is_supported_texture_asset(iterator->path()))
+            const bool texture_asset = render::is_supported_texture_asset(iterator->path());
+            const bool material_asset_path = is_material_asset_path(iterator->path());
+            if (!texture_asset && !material_asset_path)
+                continue;
+            const auto relative_path = std::filesystem::relative(iterator->path(), state_->assets.root, error).generic_string();
+            if (std::any_of(snapshot.assets.begin(), snapshot.assets.end(), [&](const auto& asset) {
+                    return asset.path == relative_path;
+                }))
                 continue;
             snapshot.assets.push_back({
-                .path = std::filesystem::relative(iterator->path(), state_->assets.root, error).generic_string(),
-                .kind = extension == ".hdr" ? "environment" : "texture",
+                .path = relative_path,
+                .kind = material_asset_path ? "material" : extension == ".hdr" ? "environment" : "texture",
                 .imported = true,
                 .import_running = false
             });
@@ -1259,22 +1346,40 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
 std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::string_view path, std::uint32_t max_size) const
 {
     const auto resolved = resolve_project_asset(state_->assets.root, std::filesystem::path{ path });
-    if (!resolved || !render::is_supported_texture_asset(*resolved))
+    if (!resolved)
         return std::nullopt;
-    const auto loaded = render::load_texture_asset(*resolved);
-    if (!loaded.succeeded())
-        return std::nullopt;
-    const auto bmp = texture_preview_bmp(loaded.texture, std::clamp(max_size, 32u, 256u));
+    render::texture_data preview;
+    if (is_material_asset_path(*resolved))
+    {
+        material_asset material;
+        std::string message;
+        if (!load_material_asset(*resolved, state_->assets.root, material, message))
+            return std::nullopt;
+        auto rendered = render_material_preview(material, state_->assets.root, std::clamp(max_size, 32u, 256u));
+        if (!rendered.succeeded())
+            return std::nullopt;
+        preview = std::move(rendered.texture);
+    }
+    else
+    {
+        if (!render::is_supported_texture_asset(*resolved))
+            return std::nullopt;
+        const auto loaded = render::load_texture_asset(*resolved);
+        if (!loaded.succeeded())
+            return std::nullopt;
+        preview = loaded.texture;
+    }
+    const auto bmp = texture_preview_bmp(preview, std::clamp(max_size, 32u, 256u));
     if (bmp.empty())
         return std::nullopt;
     const float scale = std::min(
         1.0f,
         static_cast<float>(std::clamp(max_size, 32u, 256u)) /
-            static_cast<float>(std::max(loaded.texture.width, loaded.texture.height)));
+            static_cast<float>(std::max(preview.width, preview.height)));
     return host_asset_thumbnail_snapshot{
         .path = std::string(path),
-        .width = std::max(1u, static_cast<std::uint32_t>(std::lround(loaded.texture.width * scale))),
-        .height = std::max(1u, static_cast<std::uint32_t>(std::lround(loaded.texture.height * scale))),
+        .width = std::max(1u, static_cast<std::uint32_t>(std::lround(preview.width * scale))),
+        .height = std::max(1u, static_cast<std::uint32_t>(std::lround(preview.height * scale))),
         .data_url = "data:image/bmp;base64," + base64_encode(bmp)
     };
 }

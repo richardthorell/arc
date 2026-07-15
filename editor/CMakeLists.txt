@@ -9,6 +9,7 @@ add_library(arc-editor-core STATIC
     src/host_protocol.cpp
     src/material_asset.cpp
     src/material_library.cpp
+    src/material_preview.cpp
     src/panels/console_panel.cpp
     src/panels/content_browser_panel.cpp
     src/panels/inspector_panel.cpp
