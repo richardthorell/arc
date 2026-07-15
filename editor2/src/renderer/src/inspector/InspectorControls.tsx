@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { Link2 } from 'lucide-react';
 
-import type { ColorChannel, NumberFieldSchema, VectorAxis, Vector3FieldSchema } from './componentSchemas';
 import { colorToCss, ColorPicker } from './ColorPicker';
 import type { Vec3, Vec4 } from './inspectorTypes';
+import type { ColorChannel, NumberFieldSchema, VectorAxis, Vector3FieldSchema } from './propertySchema';
 
 type NumericInputProps = {
   ariaLabel: string;
@@ -34,7 +34,7 @@ export function NumericInput({
   const latestScrub = useRef(value);
   const frame = useRef<number | null>(null);
 
-  useEffect(() => setDraft(formatNumber(value, precision)), [precision, value]);
+  useLayoutEffect(() => setDraft(formatNumber(value, precision)), [precision, value]);
 
   const commitDraft = () => {
     if (cancelBlur.current) {
@@ -133,7 +133,7 @@ export function NumericInput({
 export function Vector3Control({
   field, value, linked, onToggleLinked, onPreview, onCommit,
 }: {
-  field: Vector3FieldSchema;
+  field: Pick<Vector3FieldSchema, 'label' | 'precision' | 'step' | 'scrubSensitivity' | 'unit' | 'linked'>;
   value: Vec3;
   linked: boolean;
   onToggleLinked?: () => void;
@@ -178,7 +178,7 @@ export function Vector3Control({
 }
 
 export function NumberControl({ field, value, onPreview, onCommit }: {
-  field: NumberFieldSchema;
+  field: Pick<NumberFieldSchema, 'label' | 'precision' | 'step' | 'scrubSensitivity' | 'unit' | 'min' | 'max'>;
   value: number;
   onPreview: (value: number) => void;
   onCommit: (value: number) => void;
@@ -203,9 +203,10 @@ export function NumberControl({ field, value, onPreview, onCommit }: {
   );
 }
 
-export function ColorControl({ label, value, onPreview, onCommit }: {
+export function ColorControl({ label, value, showAlpha = true, onPreview, onCommit }: {
   label: string;
   value: Vec4;
+  showAlpha?: boolean;
   onPreview: (value: Vec4) => void;
   onCommit: (value: Vec4) => void;
 }) {
@@ -215,7 +216,7 @@ export function ColorControl({ label, value, onPreview, onCommit }: {
   return (
     <div className="inspector-property inspector-color-property">
       <span className="inspector-property-label">{label}</span>
-      <div className="inspector-color-control">
+      <div className="inspector-color-control" style={{ gridTemplateColumns: `32px repeat(${showAlpha ? 4 : 3}, minmax(0, 1fr))` }}>
         <button
           aria-expanded={pickerOpen}
           aria-label={`Open ${label} color picker`}
@@ -225,7 +226,7 @@ export function ColorControl({ label, value, onPreview, onCommit }: {
           title="Open the advanced linear color picker"
           type="button"
         ><span style={{ background: colorToCss(value) }} /></button>
-        {(['x', 'y', 'z', 'w'] as const).map((channel, index) => (
+        {(showAlpha ? ['x', 'y', 'z', 'w'] as const : ['x', 'y', 'z'] as const).map((channel, index) => (
           <NumericInput
             key={channel}
             ariaLabel={`${label} ${'RGBA'[index]}`}
@@ -239,7 +240,7 @@ export function ColorControl({ label, value, onPreview, onCommit }: {
           />
         ))}
       </div>
-      {pickerOpen && <ColorPicker anchorRef={swatchRef} label={label} value={value}
+      {pickerOpen && <ColorPicker anchorRef={swatchRef} label={label} showAlpha={showAlpha} value={value}
         onClose={() => setPickerOpen(false)} onCommit={onCommit} onPreview={onPreview} />}
     </div>
   );

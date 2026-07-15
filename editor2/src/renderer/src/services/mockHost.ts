@@ -49,6 +49,7 @@ export type RenderStats = {
 export type ProjectSnapshot = {
   name: string;
   root: string;
+  assetRoot: string;
   activeScene: string;
   scene: SceneEntity[];
   assets: AssetItem[];
@@ -65,6 +66,7 @@ const transform = (position: Vec3): Transform => ({
 const project: ProjectSnapshot = {
   name: 'Arc Sandbox',
   root: '~/Projects/arc/sandbox',
+  assetRoot: '~/Projects/arc/sandbox/assets',
   activeScene: 'scenes/demo.arcscene',
   scene: [
     {

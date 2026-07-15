@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Filter, MoreVertical, Search } from 'lucide-react';
+import { Filter, MoreVertical, Search } from 'lucide-react';
 
 import {
-  getPathValue,
   schemaForSnapshot,
   setPathValue,
 } from './componentSchemas';
-import type { InspectorComponentId, InspectorComponentSchema, InspectorFieldSchema, VectorAxis } from './componentSchemas';
-import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
+import type { InspectorComponentId } from './componentSchemas';
 import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
 import { cameraHostPayload, transformHostPayload } from './inspectorTypes';
+import { SchemaComponentCard } from './SchemaComponents';
 
 import './inspector.css';
 
@@ -74,7 +73,6 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }
   const [draft, setDraft] = useState(snapshot);
   const [filter, setFilter] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [scaleLinked, setScaleLinked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirmed = useRef(snapshot);
   const revision = useRef(0);
@@ -220,14 +218,12 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }
       {error && <div className="inspector-error" role="alert">{error}</div>}
       <div className="inspector-component-list">
         {schemas.map((schema) => (
-          <ComponentCard
+          <SchemaComponentCard
             key={schema.id}
             collapsed={collapsed[schema.id] ?? false}
-            draft={draft}
-            linked={scaleLinked}
+            context={draft}
             schema={schema}
             onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
-            onToggleLinked={() => setScaleLinked((value) => !value)}
             onValue={(path, value, settled) => {
               let next = setPathValue(draft, path, value);
               if (path === 'transform.rotationDegrees' && next.transform) {
@@ -241,81 +237,4 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus }
       </div>
     </section>
   );
-}
-
-function ComponentCard({ schema, draft, collapsed, linked, onToggle, onToggleLinked, onValue }: {
-  schema: InspectorComponentSchema;
-  draft: InspectorEntitySnapshot;
-  collapsed: boolean;
-  linked: boolean;
-  onToggle: () => void;
-  onToggleLinked: () => void;
-  onValue: (path: string, value: unknown, settled: boolean) => void;
-}) {
-  return (
-    <section className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
-      <header>
-        <button aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${schema.title}`} onClick={onToggle} type="button">
-          {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-          <span>{schema.title}</span>
-        </button>
-        <button aria-label={`${schema.title} component actions`} type="button"><ChevronDown size={15} /></button>
-      </header>
-      {!collapsed && (
-        <div className="inspector-component-content">
-          {schema.fields.filter((field) => !field.visible || field.visible(draft)).map((field) => (
-            <FieldRenderer
-              key={field.id}
-              draft={draft}
-              field={field}
-              linked={linked}
-              onToggleLinked={onToggleLinked}
-              onValue={(value, settled) => onValue(field.path, value, settled)}
-            />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function FieldRenderer({ field, draft, linked, onToggleLinked, onValue }: {
-  field: InspectorFieldSchema;
-  draft: InspectorEntitySnapshot;
-  linked: boolean;
-  onToggleLinked: () => void;
-  onValue: (value: unknown, settled: boolean) => void;
-}) {
-  const value = getPathValue(draft, field.path);
-  if (field.type === 'vector3') {
-    const vector = value as Vec3;
-    const updateAxis = (axis: VectorAxis, nextValue: number) => {
-      if (!linked || !field.linked) return { ...vector, [axis]: nextValue };
-      const source = vector[axis];
-      if (Math.abs(source) < 1e-6) return { x: nextValue, y: nextValue, z: nextValue };
-      const ratio = nextValue / source;
-      return { x: vector.x * ratio, y: vector.y * ratio, z: vector.z * ratio };
-    };
-    return <Vector3Control field={field} linked={linked} value={vector} onToggleLinked={onToggleLinked}
-      onCommit={(axis, next) => onValue(updateAxis(axis, next), true)}
-      onPreview={(axis, next) => onValue(updateAxis(axis, next), false)} />;
-  }
-  if (field.type === 'number') {
-    return <NumberControl field={field} value={value as number}
-      onCommit={(next) => onValue(next, true)} onPreview={(next) => onValue(next, false)} />;
-  }
-  if (field.type === 'boolean') {
-    return <label className="inspector-property inspector-checkbox-property"><span className="inspector-property-label">{field.label}</span>
-      <input aria-label={field.label} checked={value as boolean} onChange={(event) => onValue(event.target.checked, true)} type="checkbox" />
-    </label>;
-  }
-  if (field.type === 'enum') {
-    return <label className="inspector-property"><span className="inspector-property-label">{field.label}</span>
-      <select aria-label={field.label} value={value as string} onChange={(event) => onValue(event.target.value, true)}>
-        {field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
-    </label>;
-  }
-  return <ColorControl label={field.label} value={value as never}
-    onCommit={(next) => onValue(next, true)} onPreview={(next) => onValue(next, false)} />;
 }

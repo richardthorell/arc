@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import {
   AlertTriangle,
@@ -61,7 +61,15 @@ type HostAssetSnapshot = {
 type HostProjectAssetsSnapshot = {
   projectName: string;
   projectRoot: string;
+  assetRoot: string;
   assets: HostAssetSnapshot[];
+};
+
+type HostAssetThumbnailSnapshot = {
+  path: string;
+  width: number;
+  height: number;
+  dataUrl: string;
 };
 
 const fallbackStartupState: StartupState = {
@@ -162,6 +170,12 @@ export function Workbench() {
   const selectedSnapshotRevision = useRef(0);
   const [worldEnvironment, setWorldEnvironment] = useState<HostWorldEnvironment | null>(null);
   const [lastCommand, setLastCommand] = useState('Workbench ready');
+
+  const loadAssetThumbnail = useCallback(async (path: string): Promise<string | null> => {
+    if (!startupState?.engineHostConnected || !window.arc?.host) return null;
+    const response = await window.arc.host.query('asset.thumbnail', { path, maxSize: 128 }) as HostResponse<HostAssetThumbnailSnapshot>;
+    return response.succeeded && response.payload?.dataUrl ? response.payload.dataUrl : null;
+  }, [project?.assetRoot, startupState?.engineHostConnected]);
 
   useEffect(() => {
     if (!activityRegistry.some((activity) => activity.id === layout.activeActivity)) {
@@ -313,6 +327,7 @@ export function Workbench() {
       ...(current ?? {
         name: hostAssets?.projectName || 'Arc Sandbox',
         root: hostAssets?.projectRoot || '',
+        assetRoot: hostAssets?.assetRoot || '',
         activeScene: activeScene ?? '',
         scene: [],
         assets: [],
@@ -329,6 +344,7 @@ export function Workbench() {
       }),
       name: hostAssets?.projectName || current?.name || 'Arc Sandbox',
       root: hostAssets?.projectRoot || current?.root || '',
+      assetRoot: hostAssets?.assetRoot || current?.assetRoot || '',
       activeScene: activeScene ?? current?.activeScene ?? '',
       scene,
       assets,
@@ -398,14 +414,17 @@ export function Workbench() {
     if (response.succeeded) await refreshWorldEnvironment(hostEntityKey(worldEnvironment.entity));
   };
 
-  const applyWorldEnvironmentHdri = async (path: string) => {
-    if (!worldEnvironment || !startupState?.engineHostConnected) return;
+  const applyWorldEnvironmentHdri = async (path: string): Promise<boolean> => {
+    if (!worldEnvironment) return false;
+    setWorldEnvironment({ ...worldEnvironment, hdriPath: path });
+    if (!startupState?.engineHostConnected) return true;
     const response = await window.arc.host.command('environment.setHdri', {
       entity: worldEnvironment.entity,
       path,
     }) as HostResponse;
     setLastCommand(response.succeeded ? 'Environment HDRI loaded' : response.error || 'HDRI load failed');
-    if (response.succeeded) await refreshWorldEnvironment(hostEntityKey(worldEnvironment.entity));
+    await refreshWorldEnvironment(hostEntityKey(worldEnvironment.entity));
+    return response.succeeded;
   };
 
   const selectActivity = (activityId: ActivityId) => {
@@ -519,6 +538,7 @@ export function Workbench() {
     }
     if (panel === 'worldSettings') {
       return <WorldSettingsPanel environment={worldEnvironment} onEnvironmentChange={updateWorldEnvironment}
+        assets={project?.assets ?? []} thumbnailProvider={loadAssetThumbnail}
         onEnvironmentPreset={applyWorldEnvironmentPreset} onEnvironmentHdri={applyWorldEnvironmentHdri} />;
     }
     return <LightingPanel />;
@@ -710,16 +730,19 @@ function AssetExplorerPanel({ project, selectedAssetId, onSelectAsset }: {
   );
 }
 
-function WorldSettingsPanel({ environment, onEnvironmentChange, onEnvironmentPreset, onEnvironmentHdri }: {
+function WorldSettingsPanel({ environment, assets, thumbnailProvider, onEnvironmentChange, onEnvironmentPreset, onEnvironmentHdri }: {
   environment: HostWorldEnvironment | null;
+  assets: ReadonlyArray<AssetItem>;
+  thumbnailProvider: (path: string) => Promise<string | null>;
   onEnvironmentChange: (environment: HostWorldEnvironment) => void;
   onEnvironmentPreset: (preset: string) => void;
-  onEnvironmentHdri: (path: string) => void;
+  onEnvironmentHdri: (path: string) => Promise<boolean> | boolean | void;
 }) {
   return (
     <section className="world-settings-panel">
       {environment
-        ? <WorldEnvironmentInspector environment={environment} onChange={onEnvironmentChange} onPreset={onEnvironmentPreset} onHdri={onEnvironmentHdri} />
+        ? <WorldEnvironmentInspector environment={environment} assets={assets} thumbnailProvider={thumbnailProvider}
+          onChange={onEnvironmentChange} onPreset={onEnvironmentPreset} onHdri={onEnvironmentHdri} />
         : <PlaceholderPanel icon={<Settings />} title="World Settings" text="No world environment is available in this scene." />}
     </section>
   );
@@ -834,7 +857,11 @@ function AssetRow({ asset, selected, onSelect }: { asset: AssetItem; selected: b
 }
 
 function AssetCard({ asset, selected, onSelect }: { asset: AssetItem; selected: boolean; onSelect: () => void }) {
-  return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} draggable={asset.kind === 'texture'} onDragStart={(event) => { if (asset.kind === 'texture') event.dataTransfer.setData('application/x-arc-environment', asset.path); }} onClick={onSelect} variant="default"><AssetIcon kind={asset.kind} /><strong>{asset.name}</strong><span>{asset.kind}</span></UiButton>;
+  return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} draggable={asset.kind === 'texture'} onDragStart={(event) => {
+    if (asset.kind !== 'texture') return;
+    event.dataTransfer.setData('application/x-arc-asset', asset.path);
+    event.dataTransfer.setData('application/x-arc-environment', asset.path);
+  }} onClick={onSelect} variant="default"><AssetIcon kind={asset.kind} /><strong>{asset.name}</strong><span>{asset.kind}</span></UiButton>;
 }
 
 function AssetIcon({ kind }: { kind: AssetItem['kind'] }) {

@@ -16,6 +16,7 @@ type EyeDropperConstructor = new () => EyeDropperInstance;
 export type ColorPickerProps = {
   anchorRef: RefObject<HTMLElement | null>;
   label: string;
+  showAlpha?: boolean;
   value: Vec4;
   onClose: () => void;
   onCommit: (value: Vec4) => void;
@@ -97,7 +98,7 @@ export const hsvToLinearColor = (hsv: HsvColor, alpha: number): Vec4 => {
 export const colorToCss = (value: Vec4) =>
   `rgba(${Math.round(linearToSrgb(value.x) * 255)}, ${Math.round(linearToSrgb(value.y) * 255)}, ${Math.round(linearToSrgb(value.z) * 255)}, ${clamp(value.w)})`;
 
-export function ColorPicker({ anchorRef, label, value, onClose, onCommit, onPreview }: ColorPickerProps) {
+export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose, onCommit, onPreview }: ColorPickerProps) {
   const [draft, setDraft] = useState(value);
   const [mode, setMode] = useState<ColorMode>('rgb');
   const [space, setSpace] = useState<ColorSpace>('srgb');
@@ -185,26 +186,27 @@ export function ColorPicker({ anchorRef, label, value, onClose, onCommit, onPrev
   const swatchStyle = (color: string) => ({ '--arc-picker-color': color } as CSSProperties);
 
   const commitChannels = (channels: number[]) => {
+    const alpha = showAlpha ? channels[3] : draft.w;
     if (mode === 'hsv') {
-      emit(hsvToLinearColor({ h: channels[0], s: channels[1] / 100, v: channels[2] / 100 }, channels[3]), true);
+      emit(hsvToLinearColor({ h: channels[0], s: channels[1] / 100, v: channels[2] / 100 }, alpha), true);
       return;
     }
     if (space === 'linear') {
-      emit({ x: channels[0], y: channels[1], z: channels[2], w: channels[3] }, true);
+      emit({ x: channels[0], y: channels[1], z: channels[2], w: alpha }, true);
       return;
     }
     emit({
       x: srgbToLinear(channels[0] / 255), y: srgbToLinear(channels[1] / 255),
-      z: srgbToLinear(channels[2] / 255), w: channels[3],
+      z: srgbToLinear(channels[2] / 255), w: alpha,
     }, true);
   };
 
   const channels = mode === 'hsv'
-    ? [hsv.h, hsv.s * 100, hsv.v * 100, draft.w]
+    ? [hsv.h, hsv.s * 100, hsv.v * 100, ...(showAlpha ? [draft.w] : [])]
     : space === 'linear'
-      ? [draft.x, draft.y, draft.z, draft.w]
-      : [linearToSrgb(draft.x) * 255, linearToSrgb(draft.y) * 255, linearToSrgb(draft.z) * 255, draft.w];
-  const channelLabels = mode === 'hsv' ? ['H', 'S', 'V', 'A'] : ['R', 'G', 'B', 'A'];
+      ? [draft.x, draft.y, draft.z, ...(showAlpha ? [draft.w] : [])]
+      : [linearToSrgb(draft.x) * 255, linearToSrgb(draft.y) * 255, linearToSrgb(draft.z) * 255, ...(showAlpha ? [draft.w] : [])];
+  const channelLabels = mode === 'hsv' ? ['H', 'S', 'V', ...(showAlpha ? ['A'] : [])] : ['R', 'G', 'B', ...(showAlpha ? ['A'] : [])];
 
   return createPortal(
     <div
@@ -217,7 +219,7 @@ export function ColorPicker({ anchorRef, label, value, onClose, onCommit, onPrev
     >
       <header className="arc-color-picker-header">
         <strong>{label}</strong>
-        <span>Linear RGBA</span>
+        <span>{showAlpha ? 'Linear RGBA' : 'Linear RGB'}</span>
         <button aria-label="Close color picker" onClick={onClose} type="button"><X size={14} /></button>
       </header>
 
@@ -228,7 +230,7 @@ export function ColorPicker({ anchorRef, label, value, onClose, onCommit, onPrev
         <button
           aria-label="Copy color hex"
           className="arc-color-tool"
-          onClick={() => void navigator.clipboard?.writeText(colorToHex(draft))}
+          onClick={() => void navigator.clipboard?.writeText(colorToHex(draft, showAlpha))}
           title="Copy sRGB hexadecimal value"
           type="button"
         ><Copy size={14} /></button>
@@ -261,9 +263,9 @@ export function ColorPicker({ anchorRef, label, value, onClose, onCommit, onPrev
 
       <PickerRange label="Hue" className="arc-color-hue" min={0} max={360} step={0.1} value={hsv.h}
         onChange={(next) => setHue(next, false)} onFinal={() => setHue(linearColorToHsv(latest.current).h, true)} />
-      <PickerRange label="Alpha" className="arc-color-alpha" min={0} max={1} step={0.001} value={draft.w}
+      {showAlpha && <PickerRange label="Alpha" className="arc-color-alpha" min={0} max={1} step={0.001} value={draft.w}
         style={{ '--arc-picker-color': colorToCss({ ...draft, w: 1 }) } as CSSProperties}
-        onChange={(next) => setAlpha(next, false)} onFinal={() => setAlpha(latest.current.w, true)} />
+        onChange={(next) => setAlpha(next, false)} onFinal={() => setAlpha(latest.current.w, true)} />}
 
       <div className="arc-color-picker-options">
         <div className="arc-color-segments" aria-label="Color model">
@@ -276,7 +278,7 @@ export function ColorPicker({ anchorRef, label, value, onClose, onCommit, onPrev
         </div>
       </div>
 
-      <div className="arc-color-channel-grid">
+      <div className="arc-color-channel-grid" style={{ gridTemplateColumns: `repeat(${channels.length}, minmax(0, 1fr))` }}>
         {channels.map((channel, index) => (
           <PickerNumberField
             key={`${mode}-${space}-${channelLabels[index]}`}
@@ -296,7 +298,7 @@ export function ColorPicker({ anchorRef, label, value, onClose, onCommit, onPrev
 
       <div className="arc-color-hex-row">
         <label htmlFor="arc-color-hex">Hex sRGB</label>
-        <PickerTextField id="arc-color-hex" value={colorToHex(draft)} onCommit={(hex) => {
+        <PickerTextField id="arc-color-hex" value={colorToHex(draft, showAlpha)} onCommit={(hex) => {
           const parsed = hexToLinearColor(hex, draft.w);
           if (parsed) emit(parsed, true);
         }} />
