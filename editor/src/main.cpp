@@ -817,7 +817,7 @@ void draw_command_palette(
         };
 
         command("Focus Selected", [&] {
-            auto& scene = host.scene_for_legacy_panels();
+            auto& scene = host.scene_state();
             if (!arc::editor::focus_selected_entity(scene.scene, scene.selected_entity, camera))
                 arc::info("editor.commands", "No selected entity to focus");
         });
@@ -1127,7 +1127,7 @@ void draw_transform_gizmo(
     const arc::editor::editor_viewport& viewport,
     arc::editor::editor_tool tool)
 {
-    auto& editor_scene = host.scene_for_legacy_panels();
+    auto& editor_scene = host.scene_state();
     if (!viewport.valid() || !editor_scene.scene.alive(editor_scene.selected_entity))
         return;
 
@@ -1223,7 +1223,7 @@ void handle_viewport_selection(
     const arc::input::input_manager& input,
     const editor_mouse_state& mouse)
 {
-    auto& editor_scene = host.scene_for_legacy_panels();
+    auto& editor_scene = host.scene_state();
     if (!input.released("viewport.select") || mouse.select_drag_distance > 4.0f || !viewport.contains_screen_point(mouse.x, mouse.y))
         return;
     if (ImGuizmo::IsUsing() || ImGuizmo::IsOver())
@@ -1236,7 +1236,7 @@ void handle_viewport_selection(
 
     const auto local_x = static_cast<std::uint32_t>(std::max(0.0f, viewport.local_x(mouse.x)));
     const auto local_y = static_cast<std::uint32_t>(std::max(0.0f, viewport.local_y(mouse.y)));
-    auto& renderer = host.renderer_for_legacy_clients();
+    auto& renderer = host.renderer_service();
     renderer.request_object_pick(local_x, local_y);
     const auto gpu_pick = renderer.last_object_pick();
     if (gpu_pick.available && gpu_pick.x == local_x && gpu_pick.y == local_y)
@@ -1510,8 +1510,8 @@ void draw_stats_panel(
         editor_scene.last_render.irradiance_probe_count);
     ImGui::Text(
         "Environment: %zu sky / %zu fog",
-        editor_scene.last_render.sky_atmosphere_count,
-        editor_scene.last_render.height_fog_count);
+        editor_scene.last_render.atmosphere_count,
+        editor_scene.last_render.fog_count);
     ImGui::Text(
         "Terrain/Water: %zu / %zu",
         editor_scene.last_render.terrain_count,
@@ -1666,7 +1666,7 @@ int main(int, char**)
     arc::editor::arc_host_manager host_manager;
     auto host_ref = host_manager.acquire(std::move(editor_renderer_owner));
     arc::editor::arc_host& host = *host_ref;
-    auto* editor_renderer_for_ui = &host.renderer_for_legacy_clients();
+    auto* editor_renderer_for_ui = &host.renderer_service();
     host.open_project(
         arc::editor::host_open_project_command{
             .name = project_state.name,
@@ -1715,7 +1715,7 @@ int main(int, char**)
     arc::editor::editor_scene_import_state scene_import;
     arc::editor::editor_camera_controller editor_camera;
     {
-        auto& editor_scene = host.scene_for_legacy_panels();
+        auto& editor_scene = host.scene_state();
         arc::editor::focus_selected_entity(editor_scene.scene, editor_scene.selected_entity, editor_camera);
     }
     arc::input::input_manager input;
@@ -1795,7 +1795,7 @@ int main(int, char**)
                 ui_state.command_palette_open = true;
         }
 
-        auto& editor_scene = host.scene_for_legacy_panels();
+        auto& editor_scene = host.scene_state();
         const editor_metrics_state metrics = make_metrics_state(last_time, editor_scene);
 
         if (scene_dialog.pending)
@@ -1819,8 +1819,8 @@ int main(int, char**)
                 const auto mode = scene_import.mode;
                 auto imported = std::move(scene_import.result);
                 const auto result = arc::editor::apply_scene_import_result_to_editor(
-                    host.scene_for_legacy_panels(),
-                    host.renderer_for_legacy_clients(),
+                    host.scene_state(),
+                    host.renderer_service(),
                     source_path,
                     std::move(imported),
                     mode);
@@ -1891,9 +1891,9 @@ int main(int, char**)
             arc::editor::draw_content_browser_panel(editor_assets, editor_scene, editor_renderer_for_ui, &scene_import);
             arc::editor::draw_console_panel(*console_sink, ui_state);
 #if defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
-            arc::editor::draw_profiler_panel(host.renderer_for_legacy_clients());
+            arc::editor::draw_profiler_panel(host.renderer_service());
 #else
-            arc::editor::draw_profiler_panel(host.renderer_for_legacy_clients());
+            arc::editor::draw_profiler_panel(host.renderer_service());
 #endif
             arc::editor::draw_render_graph_panel(*editor_renderer_for_ui);
             arc::editor::draw_shader_graph_panel();
@@ -1971,7 +1971,7 @@ int main(int, char**)
 #if !defined(ARC_EDITOR_ENABLE_VULKAN_RENDER)
     SDL_DestroyRenderer(renderer);
 #else
-    host.renderer_for_legacy_clients().set_backend(nullptr);
+    host.renderer_service().set_backend(nullptr);
 #endif
     host.execute(arc::editor::host_close_project_command{});
     host_ref.reset();

@@ -212,8 +212,8 @@ private:
         }
 
         std::lock_guard lock(host_mutex_);
-        host_->renderer_for_legacy_clients().set_backend(std::move(result.backend));
-        backend_ = arc::render::vulkan::as_vulkan_backend(host_->renderer_for_legacy_clients().backend());
+        host_->renderer_service().set_backend(std::move(result.backend));
+        backend_ = arc::render::vulkan::as_vulkan_backend(host_->renderer_service().backend());
         return backend_ != nullptr;
     }
 
@@ -359,7 +359,7 @@ private:
 
         {
             std::lock_guard lock(host_mutex_);
-            host_->renderer_for_legacy_clients().set_backend(nullptr);
+            host_->renderer_service().set_backend(nullptr);
         }
         if (window_)
         {

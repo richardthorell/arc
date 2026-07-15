@@ -41,10 +41,10 @@ public:
     host_viewport_frame request_viewport(const host_viewport_request& request);
 
     // Transitional escape hatches for panels that have not moved to protocol snapshots yet.
-    render::renderer& renderer_for_legacy_clients() noexcept;
-    const render::renderer& renderer_for_legacy_clients() const noexcept;
-    editor_scene_state& scene_for_legacy_panels() noexcept;
-    const editor_scene_state& scene_for_legacy_panels() const noexcept;
+    render::renderer& renderer_service() noexcept;
+    const render::renderer& renderer_service() const noexcept;
+    editor_scene_state& scene_state() noexcept;
+    const editor_scene_state& scene_state() const noexcept;
 
 private:
     struct state;

@@ -38,7 +38,7 @@ struct editor_scene_state
     render::material_handle terrain_material;
     render::material_handle water_material;
     render::material_handle vegetation_material;
-    render::environment_handle outdoor_environment;
+    render::environment_handle environment_lighting_resource;
     std::filesystem::path world_environment_hdri_path;
     std::vector<render::texture_handle> default_textures;
     scene::entity camera_entity;
@@ -52,13 +52,12 @@ struct editor_scene_state
     scene::entity selected_entity;
     std::vector<scene::entity> primitive_entities;
     std::vector<scene::entity> imported_scene_entities;
-    std::vector<scene::entity> environment_entities;
+    std::vector<scene::entity> world_feature_entities;
     editor_material_library material_library;
     material_editor_state material_editor;
     scene::render_scene_result last_render;
     std::uint32_t primitive_serial{};
     bool mesh_uploaded{};
-    bool camera_created{};
     bool focus_imported_scene_requested{};
 };
 

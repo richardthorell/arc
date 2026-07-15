@@ -245,28 +245,13 @@ scene::entity add_world_environment_to_scene(editor_scene_state& scene)
     const auto entity = scene.scene.create();
     scene.world_environment_entity = entity;
     add_selectable_common(scene, entity, "World Environment", "Environment");
-    scene::world_environment_component world;
-    scene::sky_atmosphere_component sky;
-    scene::celestial_sky_component celestial;
-    scene::cloud_layers_component clouds;
-    scene::height_fog_component fog;
-    scene::environment_lighting_component lighting;
+    scene::world_environment_settings settings;
     scene::apply_world_environment_preset(
         scene::world_environment_preset::alpine_late_morning,
-        world,
-        sky,
-        celestial,
-        clouds,
-        fog,
-        lighting);
-    celestial.sun_light = scene.sun_entity;
-    scene.scene.emplace<scene::world_environment_component>(entity, world);
-    scene.scene.emplace<scene::sky_atmosphere_component>(entity, sky);
-    scene.scene.emplace<scene::celestial_sky_component>(entity, celestial);
-    scene.scene.emplace<scene::cloud_layers_component>(entity, clouds);
-    scene.scene.emplace<scene::height_fog_component>(entity, fog);
-    scene.scene.emplace<scene::environment_lighting_component>(entity, lighting);
-    scene.environment_entities.push_back(entity);
+        settings);
+    settings.celestial.sun_light = scene.sun_entity;
+    scene::set_world_environment_settings(scene.scene, entity, settings);
+    scene.world_feature_entities.push_back(entity);
     return entity;
 }
 
@@ -305,7 +290,7 @@ scene::entity add_terrain_to_scene(
         material,
         true,
         math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f });
-    scene.environment_entities.push_back(entity);
+    scene.world_feature_entities.push_back(entity);
     return entity;
 }
 
@@ -338,7 +323,7 @@ scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& re
         material,
         true,
         math::vector4f{ 0.7f, 0.9f, 1.0f, 0.55f });
-    scene.environment_entities.push_back(entity);
+    scene.world_feature_entities.push_back(entity);
     return entity;
 }
 
@@ -370,7 +355,7 @@ scene::entity add_grass_patch_to_scene(editor_scene_state& scene, render::render
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, mesh_handle, material, true);
-    scene.environment_entities.push_back(entity);
+    scene.world_feature_entities.push_back(entity);
     return entity;
 }
 
@@ -388,7 +373,7 @@ scene::entity add_decal_to_scene(editor_scene_state& scene)
     scene.scene.emplace<scene::decal_component>(entity);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
-    scene.environment_entities.push_back(entity);
+    scene.world_feature_entities.push_back(entity);
     return entity;
 }
 

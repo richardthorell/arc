@@ -34,6 +34,8 @@ struct host_vec3
     float x{};
     float y{};
     float z{};
+
+    friend constexpr bool operator==(const host_vec3&, const host_vec3&) noexcept = default;
 };
 
 struct host_quat
@@ -217,6 +219,8 @@ struct host_cloud_layer
     float wind_speed{};
     float lighting_strength{ 1.0f };
     float silver_lining{};
+
+    friend constexpr bool operator==(const host_cloud_layer&, const host_cloud_layer&) noexcept = default;
 };
 
 struct host_world_environment_snapshot
@@ -285,6 +289,10 @@ struct host_world_environment_snapshot
     host_vec3 lighting_color{ 0.18f, 0.23f, 0.29f };
     float diffuse_intensity{ 1.0f };
     float specular_intensity{ 1.0f };
+
+    friend bool operator==(
+        const host_world_environment_snapshot&,
+        const host_world_environment_snapshot&) noexcept = default;
 };
 
 struct host_asset_snapshot

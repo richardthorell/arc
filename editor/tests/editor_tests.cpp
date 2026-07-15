@@ -7,6 +7,7 @@
 #include <arc/editor/material_asset.h>
 #include <arc/editor/material_library.h>
 #include <arc/editor/sdl_events.h>
+#include <arc/editor/world_environment_host.h>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -324,6 +325,88 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
     }
 }
 
+TEST_CASE("world environment JSON round trips every field and enum")
+{
+    arc::editor::host_world_environment_snapshot environment;
+    environment.entity = { 17, 4 };
+    environment.enabled = false;
+    environment.sky_visible = false;
+    environment.affect_lighting = false;
+    environment.sky_source = arc::editor::host_sky_source::hdri;
+    environment.solid_color = { 0.11f, 0.22f, 0.33f };
+    environment.hdri_path = "environments/night.hdr";
+    environment.hdri_rotation_degrees = 37.0f;
+    environment.radiance_intensity = 1.25f;
+    environment.planet_radius = 6001.0f;
+    environment.atmosphere_radius = 6102.0f;
+    environment.rayleigh_strength = 1.1f;
+    environment.mie_strength = 0.2f;
+    environment.ozone_strength = 0.3f;
+    environment.atmosphere_tint = { 0.44f, 0.55f, 0.66f };
+    environment.ground_albedo = { 0.12f, 0.13f, 0.14f };
+    environment.mie_anisotropy = 0.7f;
+    environment.rayleigh_scale_height = 7.0f;
+    environment.mie_scale_height = 2.0f;
+    environment.multi_scattering_factor = 0.8f;
+    environment.exposure = 1.4f;
+    environment.sun_disk_size = 0.03f;
+    environment.sun_disk_intensity = 2.0f;
+    environment.sun_mode = arc::editor::host_sun_position_mode::geographic;
+    environment.time_mode = arc::editor::host_celestial_time_mode::system_clock;
+    environment.latitude_degrees = -12.5f;
+    environment.longitude_degrees = 130.25f;
+    environment.north_offset_degrees = 15.0f;
+    environment.year = 2032;
+    environment.month = 2;
+    environment.day = 29;
+    environment.local_time_hours = 21.25f;
+    environment.utc_offset_hours = -7.0f;
+    environment.playing = true;
+    environment.loop_day = false;
+    environment.time_scale = 120.0f;
+    environment.automatic_sun_light = false;
+    environment.sun_intensity_multiplier = 0.75f;
+    environment.sun_temperature_multiplier = 1.2f;
+    environment.moon_enabled = false;
+    environment.automatic_moon_phase = false;
+    environment.moon_phase = 0.45f;
+    environment.moon_intensity = 0.4f;
+    environment.moon_angular_radius_degrees = 0.31f;
+    environment.stars_enabled = false;
+    environment.star_density = 0.5f;
+    environment.star_intensity = 1.5f;
+    environment.star_twinkle = 0.2f;
+    environment.clouds_enabled = false;
+    environment.cloud_shadows = false;
+    environment.cumulus = { false, 0.1f, 0.2f, 1000.0f, 200.0f, 0.3f, 0.4f, 0.5f,
+        -1.0f, 0.25f, 3.0f, 0.6f, 0.7f };
+    environment.cirrus = { true, 0.8f, 0.7f, 7000.0f, 300.0f, 0.6f, 0.5f, 0.4f,
+        0.5f, -0.5f, 9.0f, 0.3f, 0.2f };
+    environment.fog_enabled = false;
+    environment.fog_color = { 0.15f, 0.25f, 0.35f };
+    environment.fog_density = 0.02f;
+    environment.fog_height_falloff = 0.3f;
+    environment.fog_start_distance = 12.0f;
+    environment.fog_max_opacity = 0.6f;
+    environment.fog_sun_scattering = 0.4f;
+    environment.lighting_enabled = false;
+    environment.lighting_source = arc::editor::host_environment_lighting_source::constant_color;
+    environment.lighting_color = { 0.2f, 0.3f, 0.4f };
+    environment.diffuse_intensity = 0.9f;
+    environment.specular_intensity = 0.8f;
+
+    const arc::editor::host_command_envelope command{
+        .request_id = 42,
+        .payload = arc::editor::host_set_world_environment_command{ environment }
+    };
+    const auto json = arc::editor::to_json(command);
+    arc::editor::host_command_envelope parsed;
+    std::string error;
+    REQUIRE(arc::editor::from_json(json, parsed, error));
+    const auto& round_trip = std::get<arc::editor::host_set_world_environment_command>(parsed.payload);
+    REQUIRE(round_trip.environment == environment);
+}
+
 TEST_CASE("arc host executes scene commands and exposes snapshots")
 {
     auto renderer = std::make_unique<arc::render::renderer>();
@@ -408,6 +491,63 @@ TEST_CASE("arc host resolves a project assets directory for protocol-opened proj
     REQUIRE(response.succeeded);
     REQUIRE(host->project_assets_snapshot().asset_root == root / "assets");
     std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("world environment host snapshots round trip every settings group and preserve runtime handles")
+{
+    arc::scene::world_environment_settings settings;
+    settings.world.hdri_texture = { .index = 1, .generation = 2 };
+    settings.celestial.sun_light = { .index = 3, .generation = 4 };
+    settings.celestial.animation_time_seconds = 91.0f;
+    settings.lighting.environment = { .index = 5, .generation = 6 };
+    settings.lighting.hdri_texture = { .index = 7, .generation = 8 };
+    const arc::editor::host_entity_id entity{ 12, 2 };
+    auto snapshot = arc::editor::to_host_world_environment_snapshot(
+        entity, settings, "environments/studio.hdr");
+
+    snapshot.enabled = false;
+    snapshot.sky_visible = false;
+    snapshot.sky_source = arc::editor::host_sky_source::solid_color;
+    snapshot.solid_color = { 0.1f, 0.2f, 0.3f };
+    snapshot.hdri_rotation_degrees = 42.0f;
+    snapshot.radiance_intensity = 1.7f;
+    snapshot.rayleigh_strength = 1.2f;
+    snapshot.mie_strength = 0.22f;
+    snapshot.sun_mode = arc::editor::host_sun_position_mode::manual_light;
+    snapshot.time_mode = arc::editor::host_celestial_time_mode::simulated;
+    snapshot.local_time_hours = 18.5f;
+    snapshot.star_density = 0.33f;
+    snapshot.clouds_enabled = false;
+    snapshot.cumulus.coverage = 0.41f;
+    snapshot.fog_density = 0.012f;
+    snapshot.lighting_source = arc::editor::host_environment_lighting_source::constant_color;
+    snapshot.diffuse_intensity = 0.75f;
+
+    const auto converted = arc::editor::apply_host_world_environment_snapshot(snapshot, settings);
+    REQUIRE_FALSE(converted.world.enabled);
+    REQUIRE(converted.world.source == arc::scene::sky_source::solid_color);
+    REQUIRE(converted.world.solid_color[1] == Catch::Approx(0.2f));
+    REQUIRE(converted.atmosphere.rayleigh_strength == Catch::Approx(1.2f));
+    REQUIRE(converted.celestial.time_mode == arc::scene::celestial_time_mode::simulated);
+    REQUIRE(converted.celestial.local_time_hours == Catch::Approx(18.5f));
+    REQUIRE_FALSE(converted.clouds.enabled);
+    REQUIRE(converted.clouds.cumulus.coverage == Catch::Approx(0.41f));
+    REQUIRE(converted.fog.density == Catch::Approx(0.012f));
+    REQUIRE(converted.lighting.source == arc::scene::environment_lighting_source::constant_color);
+    REQUIRE(converted.lighting.diffuse_intensity == Catch::Approx(0.75f));
+    REQUIRE(converted.world.hdri_texture.index == 1);
+    REQUIRE(converted.celestial.sun_light.index == 3);
+    REQUIRE(converted.celestial.animation_time_seconds == Catch::Approx(91.0f));
+    REQUIRE(converted.lighting.environment.index == 5);
+    REQUIRE(converted.lighting.hdri_texture.index == 7);
+
+    const auto round_trip = arc::editor::to_host_world_environment_snapshot(
+        entity, converted, snapshot.hdri_path);
+    REQUIRE(round_trip.entity == entity);
+    REQUIRE(round_trip.sky_source == snapshot.sky_source);
+    REQUIRE(round_trip.hdri_path == "environments/studio.hdr");
+    REQUIRE(round_trip.local_time_hours == Catch::Approx(snapshot.local_time_hours));
+    REQUIRE(round_trip.cumulus.coverage == Catch::Approx(snapshot.cumulus.coverage));
 }
 
 TEST_CASE("arc host validates and applies world environment commands")

@@ -22,6 +22,7 @@ add_library(arc-editor-core STATIC
     src/sdl_events.cpp
     src/ui/theme.cpp
     src/ui/widgets.cpp
+    src/world_environment_host.cpp
 )
 
 target_compile_features(arc-editor-core

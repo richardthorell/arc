@@ -4,6 +4,7 @@
 #include <arc/editor/editor_defaults.h>
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
+#include <arc/editor/world_environment_host.h>
 #include <arc/geometric/box.h>
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
@@ -163,7 +164,7 @@ render::editor_overlay_mode to_overlay(host_overlay_mode mode) noexcept
     return render::editor_overlay_mode::selected_wireframe;
 }
 
-scene::render_environment_visibility to_scene_visibility(host_environment_visibility visibility) noexcept
+scene::scene_render_visibility to_scene_visibility(host_environment_visibility visibility) noexcept
 {
     return {
         .sky = visibility.sky,
@@ -172,123 +173,6 @@ scene::render_environment_visibility to_scene_visibility(host_environment_visibi
         .water = visibility.water,
         .vegetation = visibility.vegetation,
         .decals = visibility.decals
-    };
-}
-
-host_sky_source to_host_sky_source(scene::sky_source source) noexcept
-{
-    switch (source)
-    {
-    case scene::sky_source::hdri: return host_sky_source::hdri;
-    case scene::sky_source::solid_color: return host_sky_source::solid_color;
-    case scene::sky_source::physical_atmosphere: break;
-    }
-    return host_sky_source::physical_atmosphere;
-}
-
-scene::sky_source to_scene_sky_source(host_sky_source source) noexcept
-{
-    switch (source)
-    {
-    case host_sky_source::hdri: return scene::sky_source::hdri;
-    case host_sky_source::solid_color: return scene::sky_source::solid_color;
-    case host_sky_source::physical_atmosphere: break;
-    }
-    return scene::sky_source::physical_atmosphere;
-}
-
-host_sun_position_mode to_host_sun_mode(scene::sun_position_mode mode) noexcept
-{
-    return mode == scene::sun_position_mode::geographic
-        ? host_sun_position_mode::geographic
-        : host_sun_position_mode::manual_light;
-}
-
-scene::sun_position_mode to_scene_sun_mode(host_sun_position_mode mode) noexcept
-{
-    return mode == host_sun_position_mode::geographic
-        ? scene::sun_position_mode::geographic
-        : scene::sun_position_mode::manual_light;
-}
-
-host_celestial_time_mode to_host_time_mode(scene::celestial_time_mode mode) noexcept
-{
-    switch (mode)
-    {
-    case scene::celestial_time_mode::simulated: return host_celestial_time_mode::simulated;
-    case scene::celestial_time_mode::system_clock: return host_celestial_time_mode::system_clock;
-    case scene::celestial_time_mode::fixed: break;
-    }
-    return host_celestial_time_mode::fixed;
-}
-
-scene::celestial_time_mode to_scene_time_mode(host_celestial_time_mode mode) noexcept
-{
-    switch (mode)
-    {
-    case host_celestial_time_mode::simulated: return scene::celestial_time_mode::simulated;
-    case host_celestial_time_mode::system_clock: return scene::celestial_time_mode::system_clock;
-    case host_celestial_time_mode::fixed: break;
-    }
-    return scene::celestial_time_mode::fixed;
-}
-
-host_environment_lighting_source to_host_lighting_source(scene::environment_lighting_source source) noexcept
-{
-    switch (source)
-    {
-    case scene::environment_lighting_source::hdri: return host_environment_lighting_source::hdri;
-    case scene::environment_lighting_source::constant_color: return host_environment_lighting_source::constant_color;
-    case scene::environment_lighting_source::follow_sky: break;
-    }
-    return host_environment_lighting_source::follow_sky;
-}
-
-scene::environment_lighting_source to_scene_lighting_source(host_environment_lighting_source source) noexcept
-{
-    switch (source)
-    {
-    case host_environment_lighting_source::hdri: return scene::environment_lighting_source::hdri;
-    case host_environment_lighting_source::constant_color: return scene::environment_lighting_source::constant_color;
-    case host_environment_lighting_source::follow_sky: break;
-    }
-    return scene::environment_lighting_source::follow_sky;
-}
-
-host_cloud_layer to_host_cloud_layer(const scene::cloud_layer_settings& layer) noexcept
-{
-    return {
-        .enabled = layer.enabled,
-        .coverage = layer.coverage,
-        .density = layer.density,
-        .altitude = layer.altitude,
-        .thickness = layer.thickness,
-        .scale = layer.scale,
-        .detail = layer.detail,
-        .softness = layer.softness,
-        .wind_x = layer.wind_direction[0],
-        .wind_y = layer.wind_direction[1],
-        .wind_speed = layer.wind_speed,
-        .lighting_strength = layer.lighting_strength,
-        .silver_lining = layer.silver_lining
-    };
-}
-
-scene::cloud_layer_settings to_scene_cloud_layer(const host_cloud_layer& layer) noexcept
-{
-    return {
-        .enabled = layer.enabled,
-        .coverage = layer.coverage,
-        .density = layer.density,
-        .altitude = layer.altitude,
-        .thickness = layer.thickness,
-        .scale = layer.scale,
-        .detail = layer.detail,
-        .softness = layer.softness,
-        .wind_direction = { layer.wind_x, layer.wind_y },
-        .wind_speed = layer.wind_speed,
-        .lighting_strength = layer.lighting_strength,
-        .silver_lining = layer.silver_lining
     };
 }
 
@@ -344,7 +228,7 @@ void forget_entity(editor_scene_state& scene, scene::entity entity)
         scene.selected_entity = {};
     remove_entity_ref(scene.primitive_entities, entity);
     remove_entity_ref(scene.imported_scene_entities, entity);
-    remove_entity_ref(scene.environment_entities, entity);
+    remove_entity_ref(scene.world_feature_entities, entity);
 }
 
 std::string entity_name(const editor_scene_state& state, scene::entity entity, const char* fallback)
@@ -457,7 +341,6 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     editor_camera.far_plane = 2000.0f;
     editor_camera.clear_color = math::vector4f{ 0.055f, 0.12f, 0.22f, 1.0f };
     state.scene.emplace<scene::camera_component>(camera, editor_camera);
-    state.camera_created = true;
 
     const auto game_camera = state.scene.create();
     state.game_camera_entity = game_camera;
@@ -494,15 +377,15 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
 
     add_world_environment_to_scene(state);
 
-    render::environment_desc outdoor_environment;
-    outdoor_environment.name = "Default Mountain Daylight";
-    outdoor_environment.fallback_color = math::vector3f{ 0.16f, 0.22f, 0.30f };
-    outdoor_environment.intensity = 1.1f;
-    outdoor_environment.diffuse_irradiance = math::vector3f{ 0.18f, 0.23f, 0.29f };
-    outdoor_environment.diffuse_intensity = 1.0f;
-    state.outdoor_environment = renderer.create_environment(outdoor_environment);
+    render::environment_desc environment_lighting;
+    environment_lighting.name = "Default Mountain Daylight";
+    environment_lighting.fallback_color = math::vector3f{ 0.16f, 0.22f, 0.30f };
+    environment_lighting.intensity = 1.1f;
+    environment_lighting.diffuse_irradiance = math::vector3f{ 0.18f, 0.23f, 0.29f };
+    environment_lighting.diffuse_intensity = 1.0f;
+    state.environment_lighting_resource = renderer.create_environment(environment_lighting);
     if (auto* lighting = state.scene.try_get<scene::environment_lighting_component>(state.world_environment_entity))
-        lighting->environment = state.outdoor_environment;
+        lighting->environment = state.environment_lighting_resource;
 
     render::material_handle terrain_material;
     if (!assets.root.empty())
@@ -805,100 +688,16 @@ host_response arc_host::execute(const host_command_envelope& command)
         else if constexpr (std::is_same_v<command_type, host_set_world_environment_command>)
         {
             const auto entity = to_scene_entity(payload.environment.entity);
-            auto* world = state_->scene.scene.try_get<scene::world_environment_component>(entity);
-            auto* atmosphere = state_->scene.scene.try_get<scene::sky_atmosphere_component>(entity);
-            auto* celestial = state_->scene.scene.try_get<scene::celestial_sky_component>(entity);
-            auto* clouds = state_->scene.scene.try_get<scene::cloud_layers_component>(entity);
-            auto* fog = state_->scene.scene.try_get<scene::height_fog_component>(entity);
-            auto* lighting = state_->scene.scene.try_get<scene::environment_lighting_component>(entity);
-            if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting)
+            auto settings = scene::read_world_environment_settings(state_->scene.scene, entity);
+            if (!settings)
                 return fail("Cannot edit a missing or incomplete world environment", entity);
 
-            auto next_world = *world;
-            next_world.enabled = payload.environment.enabled;
-            next_world.sky_visible = payload.environment.sky_visible;
-            next_world.affect_lighting = payload.environment.affect_lighting;
-            next_world.source = to_scene_sky_source(payload.environment.sky_source);
-            next_world.solid_color = to_math_vec3(payload.environment.solid_color);
-            next_world.hdri_rotation_degrees = payload.environment.hdri_rotation_degrees;
-            next_world.radiance_intensity = payload.environment.radiance_intensity;
-
-            auto next_atmosphere = *atmosphere;
-            next_atmosphere.planet_radius = payload.environment.planet_radius;
-            next_atmosphere.atmosphere_radius = payload.environment.atmosphere_radius;
-            next_atmosphere.rayleigh_strength = payload.environment.rayleigh_strength;
-            next_atmosphere.mie_strength = payload.environment.mie_strength;
-            next_atmosphere.ozone_strength = payload.environment.ozone_strength;
-            next_atmosphere.tint = to_math_vec3(payload.environment.atmosphere_tint);
-            next_atmosphere.ground_albedo = to_math_vec3(payload.environment.ground_albedo);
-            next_atmosphere.mie_anisotropy = payload.environment.mie_anisotropy;
-            next_atmosphere.rayleigh_scale_height = payload.environment.rayleigh_scale_height;
-            next_atmosphere.mie_scale_height = payload.environment.mie_scale_height;
-            next_atmosphere.multi_scattering_factor = payload.environment.multi_scattering_factor;
-            next_atmosphere.exposure = payload.environment.exposure;
-            next_atmosphere.sun_disk_size = payload.environment.sun_disk_size;
-            next_atmosphere.sun_disk_intensity = payload.environment.sun_disk_intensity;
-
-            auto next_celestial = *celestial;
-            next_celestial.sun_mode = to_scene_sun_mode(payload.environment.sun_mode);
-            next_celestial.time_mode = to_scene_time_mode(payload.environment.time_mode);
-            next_celestial.latitude_degrees = payload.environment.latitude_degrees;
-            next_celestial.longitude_degrees = payload.environment.longitude_degrees;
-            next_celestial.north_offset_degrees = payload.environment.north_offset_degrees;
-            next_celestial.year = payload.environment.year;
-            next_celestial.month = payload.environment.month;
-            next_celestial.day = payload.environment.day;
-            next_celestial.local_time_hours = payload.environment.local_time_hours;
-            next_celestial.utc_offset_hours = payload.environment.utc_offset_hours;
-            next_celestial.playing = payload.environment.playing;
-            next_celestial.loop_day = payload.environment.loop_day;
-            next_celestial.time_scale = payload.environment.time_scale;
-            next_celestial.automatic_sun_light = payload.environment.automatic_sun_light;
-            next_celestial.sun_intensity_multiplier = payload.environment.sun_intensity_multiplier;
-            next_celestial.sun_temperature_multiplier = payload.environment.sun_temperature_multiplier;
-            next_celestial.moon_enabled = payload.environment.moon_enabled;
-            next_celestial.automatic_moon_phase = payload.environment.automatic_moon_phase;
-            next_celestial.moon_phase = payload.environment.moon_phase;
-            next_celestial.moon_intensity = payload.environment.moon_intensity;
-            next_celestial.moon_angular_radius_degrees = payload.environment.moon_angular_radius_degrees;
-            next_celestial.stars_enabled = payload.environment.stars_enabled;
-            next_celestial.star_density = payload.environment.star_density;
-            next_celestial.star_intensity = payload.environment.star_intensity;
-            next_celestial.star_twinkle = payload.environment.star_twinkle;
-
-            auto next_clouds = *clouds;
-            next_clouds.enabled = payload.environment.clouds_enabled;
-            next_clouds.cast_shadows = payload.environment.cloud_shadows;
-            next_clouds.cumulus = to_scene_cloud_layer(payload.environment.cumulus);
-            next_clouds.cirrus = to_scene_cloud_layer(payload.environment.cirrus);
-
-            auto next_lighting = *lighting;
-            next_lighting.enabled = payload.environment.lighting_enabled;
-            next_lighting.source = to_scene_lighting_source(payload.environment.lighting_source);
-            next_lighting.constant_color = to_math_vec3(payload.environment.lighting_color);
-            next_lighting.diffuse_intensity = payload.environment.diffuse_intensity;
-            next_lighting.specular_intensity = payload.environment.specular_intensity;
-
-            auto next_fog = *fog;
-            next_fog.enabled = payload.environment.fog_enabled;
-            next_fog.color = to_math_vec3(payload.environment.fog_color);
-            next_fog.density = payload.environment.fog_density;
-            next_fog.height_falloff = payload.environment.fog_height_falloff;
-            next_fog.start_distance = payload.environment.fog_start_distance;
-            next_fog.max_opacity = payload.environment.fog_max_opacity;
-            next_fog.sun_scattering_strength = payload.environment.fog_sun_scattering;
-
-            const auto validation = scene::validate_world_environment(
-                next_world, next_atmosphere, next_celestial, next_clouds, next_fog, next_lighting);
+            const auto next_settings = apply_host_world_environment_snapshot(payload.environment, *settings);
+            const auto validation = scene::validate_world_environment(next_settings);
             if (!validation.valid)
                 return fail(validation_message(validation), entity);
-
-            *world = next_world;
-            *atmosphere = next_atmosphere;
-            *celestial = next_celestial;
-            *clouds = next_clouds;
-            *fog = next_fog;
-            *lighting = next_lighting;
+            if (!scene::set_world_environment_settings(state_->scene.scene, entity, next_settings))
+                return fail("World environment update could not be applied", entity);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                 "World environment changed", entity);
             return success("{\"entity\":" + to_json(payload.environment.entity) + '}');
@@ -906,26 +705,12 @@ host_response arc_host::execute(const host_command_envelope& command)
         else if constexpr (std::is_same_v<command_type, host_apply_world_environment_preset_command>)
         {
             const auto entity = to_scene_entity(payload.entity);
-            auto* world = state_->scene.scene.try_get<scene::world_environment_component>(entity);
-            auto* atmosphere = state_->scene.scene.try_get<scene::sky_atmosphere_component>(entity);
-            auto* celestial = state_->scene.scene.try_get<scene::celestial_sky_component>(entity);
-            auto* clouds = state_->scene.scene.try_get<scene::cloud_layers_component>(entity);
-            auto* fog = state_->scene.scene.try_get<scene::height_fog_component>(entity);
-            auto* lighting = state_->scene.scene.try_get<scene::environment_lighting_component>(entity);
-            if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting)
+            auto settings = scene::read_world_environment_settings(state_->scene.scene, entity);
+            if (!settings)
                 return fail("Cannot apply a preset to a missing world environment", entity);
 
-            const auto sun_light = celestial->sun_light;
-            const auto animation_time = celestial->animation_time_seconds;
-            const auto environment = lighting->environment;
-            const auto hdri_texture = world->hdri_texture;
-            scene::apply_world_environment_preset(
-                to_scene_preset(payload.preset), *world, *atmosphere, *celestial, *clouds, *fog, *lighting);
-            celestial->sun_light = sun_light;
-            celestial->animation_time_seconds = animation_time;
-            lighting->environment = environment;
-            world->hdri_texture = hdri_texture;
-            lighting->hdri_texture = hdri_texture;
+            scene::apply_world_environment_preset(to_scene_preset(payload.preset), *settings);
+            scene::set_world_environment_settings(state_->scene.scene, entity, *settings);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                 "World environment preset applied", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -1099,7 +884,7 @@ host_scene_snapshot arc_host::scene_snapshot() const
 
     add(state_->scene.sun_entity, "Sun", host_entity_kind::light);
     add(state_->scene.game_camera_entity, "Main Camera", host_entity_kind::camera);
-    for (const auto entity : state_->scene.environment_entities)
+    for (const auto entity : state_->scene.world_feature_entities)
         add(entity, "Environment", host_entity_kind::environment);
     add(state_->scene.mesh_entity, "Default Mesh", host_entity_kind::mesh);
     for (const auto entity : state_->scene.imported_scene_entities)
@@ -1159,82 +944,15 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
 
 std::optional<host_world_environment_snapshot> arc_host::world_environment_snapshot(host_entity_id host_entity) const
 {
-    const auto entity = to_scene_entity(host_entity);
-    const auto* world = state_->scene.scene.try_get<scene::world_environment_component>(entity);
-    const auto* atmosphere = state_->scene.scene.try_get<scene::sky_atmosphere_component>(entity);
-    const auto* celestial = state_->scene.scene.try_get<scene::celestial_sky_component>(entity);
-    const auto* clouds = state_->scene.scene.try_get<scene::cloud_layers_component>(entity);
-    const auto* fog = state_->scene.scene.try_get<scene::height_fog_component>(entity);
-    const auto* lighting = state_->scene.scene.try_get<scene::environment_lighting_component>(entity);
-    if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting)
+    const auto settings = scene::read_world_environment_settings(
+        state_->scene.scene,
+        to_scene_entity(host_entity));
+    if (!settings)
         return std::nullopt;
-
-    host_world_environment_snapshot result;
-    result.entity = host_entity;
-    result.enabled = world->enabled;
-    result.sky_visible = world->sky_visible;
-    result.affect_lighting = world->affect_lighting;
-    result.sky_source = to_host_sky_source(world->source);
-    result.solid_color = to_host_vec3(world->solid_color);
-    result.hdri_path = state_->scene.world_environment_hdri_path.generic_string();
-    result.hdri_rotation_degrees = world->hdri_rotation_degrees;
-    result.radiance_intensity = world->radiance_intensity;
-    result.planet_radius = atmosphere->planet_radius;
-    result.atmosphere_radius = atmosphere->atmosphere_radius;
-    result.rayleigh_strength = atmosphere->rayleigh_strength;
-    result.mie_strength = atmosphere->mie_strength;
-    result.ozone_strength = atmosphere->ozone_strength;
-    result.atmosphere_tint = to_host_vec3(atmosphere->tint);
-    result.ground_albedo = to_host_vec3(atmosphere->ground_albedo);
-    result.mie_anisotropy = atmosphere->mie_anisotropy;
-    result.rayleigh_scale_height = atmosphere->rayleigh_scale_height;
-    result.mie_scale_height = atmosphere->mie_scale_height;
-    result.multi_scattering_factor = atmosphere->multi_scattering_factor;
-    result.exposure = atmosphere->exposure;
-    result.sun_disk_size = atmosphere->sun_disk_size;
-    result.sun_disk_intensity = atmosphere->sun_disk_intensity;
-    result.sun_mode = to_host_sun_mode(celestial->sun_mode);
-    result.time_mode = to_host_time_mode(celestial->time_mode);
-    result.latitude_degrees = celestial->latitude_degrees;
-    result.longitude_degrees = celestial->longitude_degrees;
-    result.north_offset_degrees = celestial->north_offset_degrees;
-    result.year = celestial->year;
-    result.month = celestial->month;
-    result.day = celestial->day;
-    result.local_time_hours = celestial->local_time_hours;
-    result.utc_offset_hours = celestial->utc_offset_hours;
-    result.playing = celestial->playing;
-    result.loop_day = celestial->loop_day;
-    result.time_scale = celestial->time_scale;
-    result.automatic_sun_light = celestial->automatic_sun_light;
-    result.sun_intensity_multiplier = celestial->sun_intensity_multiplier;
-    result.sun_temperature_multiplier = celestial->sun_temperature_multiplier;
-    result.moon_enabled = celestial->moon_enabled;
-    result.automatic_moon_phase = celestial->automatic_moon_phase;
-    result.moon_phase = celestial->moon_phase;
-    result.moon_intensity = celestial->moon_intensity;
-    result.moon_angular_radius_degrees = celestial->moon_angular_radius_degrees;
-    result.stars_enabled = celestial->stars_enabled;
-    result.star_density = celestial->star_density;
-    result.star_intensity = celestial->star_intensity;
-    result.star_twinkle = celestial->star_twinkle;
-    result.clouds_enabled = clouds->enabled;
-    result.cloud_shadows = clouds->cast_shadows;
-    result.cumulus = to_host_cloud_layer(clouds->cumulus);
-    result.cirrus = to_host_cloud_layer(clouds->cirrus);
-    result.fog_enabled = fog->enabled;
-    result.fog_color = to_host_vec3(fog->color);
-    result.fog_density = fog->density;
-    result.fog_height_falloff = fog->height_falloff;
-    result.fog_start_distance = fog->start_distance;
-    result.fog_max_opacity = fog->max_opacity;
-    result.fog_sun_scattering = fog->sun_scattering_strength;
-    result.lighting_enabled = lighting->enabled;
-    result.lighting_source = to_host_lighting_source(lighting->source);
-    result.lighting_color = to_host_vec3(lighting->constant_color);
-    result.diffuse_intensity = lighting->diffuse_intensity;
-    result.specular_intensity = lighting->specular_intensity;
-    return result;
+    return to_host_world_environment_snapshot(
+        host_entity,
+        *settings,
+        state_->scene.world_environment_hdri_path);
 }
 
 host_project_assets_snapshot arc_host::project_assets_snapshot() const
@@ -1367,22 +1085,22 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     };
 }
 
-render::renderer& arc_host::renderer_for_legacy_clients() noexcept
+render::renderer& arc_host::renderer_service() noexcept
 {
     return *state_->renderer;
 }
 
-const render::renderer& arc_host::renderer_for_legacy_clients() const noexcept
+const render::renderer& arc_host::renderer_service() const noexcept
 {
     return *state_->renderer;
 }
 
-editor_scene_state& arc_host::scene_for_legacy_panels() noexcept
+editor_scene_state& arc_host::scene_state() noexcept
 {
     return state_->scene;
 }
 
-const editor_scene_state& arc_host::scene_for_legacy_panels() const noexcept
+const editor_scene_state& arc_host::scene_state() const noexcept
 {
     return state_->scene;
 }

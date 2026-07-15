@@ -11,10 +11,6 @@ namespace arc::editor
 namespace
 {
 
-constexpr float pi = 3.14159265358979323846f;
-constexpr float degrees_to_radians = pi / 180.0f;
-constexpr float radians_to_degrees = 180.0f / pi;
-
 math::quatf quaternion_from_yaw_pitch(float yaw, float pitch) noexcept
 {
     const float half_yaw = yaw * 0.5f;
@@ -314,9 +310,9 @@ bool focus_selected_entity(
 
 math::quatf quaternion_from_euler_degrees(const math::vector3f& degrees) noexcept
 {
-    const float x = degrees[0] * degrees_to_radians;
-    const float y = degrees[1] * degrees_to_radians;
-    const float z = degrees[2] * degrees_to_radians;
+    const float x = math::to_radians(degrees[0]);
+    const float y = math::to_radians(degrees[1]);
+    const float z = math::to_radians(degrees[2]);
     const auto qx = math::from_axis_angle(math::vector3f{ 1.0f, 0.0f, 0.0f }, x);
     const auto qy = math::from_axis_angle(math::vector3f{ 0.0f, 1.0f, 0.0f }, y);
     const auto qz = math::from_axis_angle(math::vector3f{ 0.0f, 0.0f, 1.0f }, z);
@@ -354,9 +350,9 @@ math::vector3f euler_degrees_from_quaternion(const math::quatf& rotation) noexce
     }
 
     return math::vector3f{
-        x_angle * radians_to_degrees,
-        y_angle * radians_to_degrees,
-        z_angle * radians_to_degrees
+        math::to_degrees(x_angle),
+        math::to_degrees(y_angle),
+        math::to_degrees(z_angle)
     };
 }
 
