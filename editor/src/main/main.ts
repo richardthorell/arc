@@ -426,6 +426,39 @@ app.whenReady().then(() => {
     const response = await hostClient?.command('scene.saveAs', { path: result.filePath });
     return { canceled: false, filePath: result.filePath, response };
   });
+  ipcMain.handle('dialog:createPrefab', async (
+    _event,
+    entity: { index: number; generation: number },
+  ) => {
+    const target = activeWindow();
+    if (!target) throw new Error('No active editor window');
+    const result = await dialog.showSaveDialog(target, {
+      title: 'Create ARC Prefab', buttonLabel: 'Create Prefab', defaultPath: 'NewPrefab.arcprefab',
+      filters: [{ name: 'ARC Prefab', extensions: ['arcprefab'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const response = await hostClient?.command('prefab.create', { entity, path: result.filePath });
+    return { canceled: false, filePath: result.filePath, response };
+  });
+  ipcMain.handle('dialog:instantiatePrefab', async (
+    _event,
+    parent?: { index: number; generation: number },
+  ) => {
+    const target = activeWindow();
+    if (!target) throw new Error('No active editor window');
+    const result = await dialog.showOpenDialog(target, {
+      title: 'Instantiate ARC Prefab', buttonLabel: 'Instantiate',
+      properties: ['openFile'],
+      filters: [{ name: 'ARC Prefab', extensions: ['arcprefab'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+    const filePath = result.filePaths[0];
+    const response = await hostClient?.command('prefab.instantiate', {
+      path: filePath,
+      ...(parent ? { parent } : {}),
+    });
+    return { canceled: false, filePath, response };
+  });
   ipcMain.handle('viewport:attach', (_event, bounds: NativeViewportBounds) => {
     const target = activeWindow();
     if (!target) {

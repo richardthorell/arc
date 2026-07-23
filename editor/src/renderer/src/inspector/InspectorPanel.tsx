@@ -192,6 +192,34 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
       schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle)));
   }, [draft, filter]);
 
+  const runComponentAction = (component: InspectorComponentId, action: string) => {
+    if (!draft || component !== 'prefab')
+      return;
+    const commandType = action === 'apply' ? 'prefab.apply' :
+      action === 'revert' ? 'prefab.revert' :
+        action === 'unpack' ? 'prefab.unpack' : '';
+    if (!commandType)
+      return;
+    void (async () => {
+      setError(null);
+      try {
+        const response = await command(commandType, entityPayload(draft));
+        if (!response.succeeded) {
+          const message = response.error || `Prefab ${action} failed`;
+          setError(message);
+          onStatus?.(message);
+          return;
+        }
+        onStatus?.(`Prefab ${action} completed`);
+        await refresh();
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(message);
+        onStatus?.(message);
+      }
+    })();
+  };
+
   if (loading) return <div className="inspector-state">Loading selection…</div>;
   if (!draft) return <div className="inspector-state">Select an entity to inspect its components.</div>;
 
@@ -280,6 +308,7 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
             assets={assets}
             thumbnailProvider={thumbnailProvider}
             onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
+            onAction={(action) => runComponentAction(schema.id, action)}
             onValue={(path, value, settled) => {
               if (path === 'terrain.activeLayer') value = Number(value);
               let next = setPathValue(draft, path, value);

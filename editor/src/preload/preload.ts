@@ -35,6 +35,7 @@ export type OpenSceneDialogResult = {
 };
 
 export type SaveSceneDialogResult = OpenSceneDialogResult;
+export type PrefabDialogResult = OpenSceneDialogResult;
 
 export type HostEditTransaction = {
   id: number;
@@ -79,6 +80,10 @@ const arcApi = {
   dialog: {
     openScene: (options: OpenSceneDialogOptions = {}): Promise<OpenSceneDialogResult> => ipcRenderer.invoke('dialog:openScene', options),
     saveScene: (): Promise<SaveSceneDialogResult> => ipcRenderer.invoke('dialog:saveScene'),
+    createPrefab: (entity: { index: number; generation: number }): Promise<PrefabDialogResult> =>
+      ipcRenderer.invoke('dialog:createPrefab', entity),
+    instantiatePrefab: (parent?: { index: number; generation: number }): Promise<PrefabDialogResult> =>
+      ipcRenderer.invoke('dialog:instantiatePrefab', parent),
   },
   viewport: {
     attach: (bounds: NativeViewportBounds): Promise<unknown> => ipcRenderer.invoke('viewport:attach', bounds),

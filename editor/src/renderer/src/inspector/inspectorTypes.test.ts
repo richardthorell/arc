@@ -47,6 +47,22 @@ describe('inspector host bindings', () => {
     expect(snapshot.meshRenderer?.baseColorTint).toEqual({ x: 0.8, y: 0.9, z: 1, w: 1 });
   });
 
+  it('parses prefab instance source and override state', () => {
+    const snapshot = parseSelectedEntitySnapshot({
+      entity: { index: 9, generation: 4 }, name: 'Cabin', tag: 'Mesh', active: true, renderLayerMask: 1,
+      transform: null, camera: null, meshRenderer: null, terrain: null,
+      prefab: {
+        prefabGuid: '1020304050607080a0b0c0d0e0f00102',
+        prefabPath: 'assets/prefabs/cabin.arcprefab',
+        overrideCount: 3,
+        sourceMissing: false,
+      },
+      components: [{ kind: 'prefabInstance', label: 'Prefab Instance', editable: true }],
+    });
+    expect(snapshot.prefab?.prefabPath).toBe('assets/prefabs/cabin.arcprefab');
+    expect(snapshot.prefab?.overrideCount).toBe(3);
+  });
+
   it('round trips ARC XYZ Euler rotations through a quaternion', () => {
     const expected = { x: 21, y: -34, z: 67 };
     const quaternion = eulerDegreesToQuaternion(expected);

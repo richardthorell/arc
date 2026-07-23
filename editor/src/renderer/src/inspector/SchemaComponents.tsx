@@ -2,14 +2,14 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
-import { AssetPreview, MaterialPicker, TexturePicker } from './AssetPicker';
+import { AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
 import type { Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
 import type { PropertyComponentSchema, PropertyFieldSchema, VectorAxis } from './propertySchema';
 
 export function SchemaComponentCard<TContext extends object>({
-  schema, context, collapsed, assets = [], thumbnailProvider, onToggle, onValue,
+  schema, context, collapsed, assets = [], thumbnailProvider, onToggle, onValue, onAction,
 }: {
   schema: PropertyComponentSchema<TContext>;
   context: TContext;
@@ -18,6 +18,7 @@ export function SchemaComponentCard<TContext extends object>({
   thumbnailProvider?: AssetThumbnailProvider;
   onToggle: () => void;
   onValue: (path: string, value: unknown, settled: boolean) => void;
+  onAction?: (action: string) => void;
 }) {
   const [linked, setLinked] = useState(false);
   const visibleFields = schema.fields.filter((field) => !field.visible || field.visible(context));
@@ -34,14 +35,15 @@ export function SchemaComponentCard<TContext extends object>({
       {!collapsed && <div className="inspector-component-content">
         {visibleFields.map((field) => <SchemaField key={field.id} assets={assets} context={context} field={field}
           linked={linked} thumbnailProvider={thumbnailProvider} onToggleLinked={() => setLinked((value) => !value)}
-          onValue={(value, settled) => onValue(field.path, value, settled)} />)}
+          onValue={(value, settled) => onValue(field.path, value, settled)}
+          onAction={(action) => onAction?.(action)} />)}
         {!visibleFields.length && <div className="inspector-component-empty">No settings are active for this mode.</div>}
       </div>}
     </section>
   );
 }
 
-function SchemaField<TContext extends object>({ field, context, linked, assets, thumbnailProvider, onToggleLinked, onValue }: {
+function SchemaField<TContext extends object>({ field, context, linked, assets, thumbnailProvider, onToggleLinked, onValue, onAction }: {
   field: PropertyFieldSchema<TContext>;
   context: TContext;
   linked: boolean;
@@ -49,6 +51,7 @@ function SchemaField<TContext extends object>({ field, context, linked, assets, 
   thumbnailProvider?: AssetThumbnailProvider;
   onToggleLinked: () => void;
   onValue: (value: unknown, settled: boolean) => void;
+  onAction: (action: string) => void;
 }) {
   const value = getPathValue(context, field.path);
   if (field.type === 'vector3') {
@@ -82,7 +85,8 @@ function SchemaField<TContext extends object>({ field, context, linked, assets, 
     </label>;
   }
   if (field.type === 'asset') {
-    const Picker = field.assetKind === 'material' ? MaterialPicker : TexturePicker;
+    const Picker = field.assetKind === 'material' ? MaterialPicker :
+      field.assetKind === 'prefab' ? PrefabPicker : TexturePicker;
     return <Picker allowedExtensions={field.allowedExtensions} allowEmpty={field.allowEmpty} assets={assets}
       label={field.label} thumbnailProvider={thumbnailProvider} value={(value as string) || ''}
       onChange={(next) => onValue(next, true)} />;
@@ -90,6 +94,29 @@ function SchemaField<TContext extends object>({ field, context, linked, assets, 
   if (field.type === 'assetPreview') {
     const name = field.namePath ? getPathValue(context, field.namePath) as string : '';
     return <AssetPreview label={field.label} name={name} path={(value as string) || ''} provider={thumbnailProvider} />;
+  }
+  if (field.type === 'readonly') {
+    const display = field.format ? field.format(value, context) : String(value ?? '');
+    return <div className="inspector-property inspector-readonly-property" title={field.tooltip}>
+      <span className="inspector-property-label">{field.label}</span>
+      <output aria-label={field.ariaLabel ?? field.label}>{display}</output>
+    </div>;
+  }
+  if (field.type === 'actions') {
+    return <div className="inspector-property inspector-action-property">
+      <span className="inspector-property-label">{field.label}</span>
+      <div className="inspector-action-buttons">
+        {field.actions.map((action) => <button
+          aria-label={action.label}
+          className={action.danger ? 'is-danger' : ''}
+          disabled={action.disabled?.(context)}
+          key={action.id}
+          onClick={() => onAction(action.id)}
+          title={action.tooltip}
+          type="button"
+        >{action.label}</button>)}
+      </div>
+    </div>;
   }
   const source = value as Vec3 | Vec4;
   const hasAlpha = field.alpha !== false && 'w' in source;

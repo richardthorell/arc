@@ -109,7 +109,8 @@ const sceneKindFromHost = (kind: HostSceneEntity['kind']): SceneEntity['kind'] =
 
 const assetKindFromHost = (kind: HostAssetSnapshot['kind']): AssetItem['kind'] => {
   if (kind === 'environment') return 'texture';
-  if (kind === 'material' || kind === 'texture' || kind === 'shader' || kind === 'mesh' || kind === 'folder') {
+  if (kind === 'material' || kind === 'texture' || kind === 'shader' || kind === 'mesh' ||
+      kind === 'prefab' || kind === 'folder') {
     return kind;
   }
   return 'scene';
@@ -242,6 +243,7 @@ const snapshotFromMockEntity = (entity: SceneEntity | null): InspectorEntitySnap
       materialPath: 'materials/default.arcmat',
     } : null,
     terrain: null,
+    prefab: null,
     components: [
       { kind: 'transform', label: 'Transform', editable: true },
       ...(entity.kind === 'camera' ? [{ kind: 'camera', label: 'Camera', editable: true }] : []),
@@ -657,6 +659,40 @@ export function Workbench() {
     void mutateHierarchyEntity('entity.create', { kind: 'empty', ...(parent ? { parent } : {}) });
   };
 
+  const createPrefabFromSelection = async () => {
+    if (!selectedSnapshot || !window.arc?.dialog?.createPrefab) {
+      setLastCommand('Select an entity before creating a prefab');
+      return;
+    }
+    try {
+      const result = await window.arc.dialog.createPrefab(selectedSnapshot.entity);
+      if (result.canceled) return setLastCommand('Prefab creation canceled');
+      const response = result.response as HostResponse | undefined;
+      setLastCommand(response?.succeeded ? 'Prefab created' : response?.error || 'Prefab creation failed');
+      if (response?.succeeded) await refreshProjectFromHost(undefined, true);
+    } catch (error) {
+      setLastCommand(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const instantiatePrefab = async (prefabPath?: string) => {
+    if (!window.arc?.host) return;
+    try {
+      let response: HostResponse | undefined;
+      if (prefabPath) {
+        response = await window.arc.host.command('prefab.instantiate', { path: prefabPath }) as HostResponse;
+      } else if (window.arc.dialog?.instantiatePrefab) {
+        const result = await window.arc.dialog.instantiatePrefab();
+        if (result.canceled) return setLastCommand('Prefab instantiation canceled');
+        response = result.response as HostResponse | undefined;
+      }
+      setLastCommand(response?.succeeded ? 'Prefab instantiated' : response?.error || 'Prefab instantiation failed');
+      if (response?.succeeded) await refreshProjectFromHost(undefined, true);
+    } catch (error) {
+      setLastCommand(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const moveHierarchyEntity = (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => {
     const entity = parseHostEntityId(entityId);
     if (!entity || entityId === target.id) return;
@@ -803,6 +839,7 @@ export function Workbench() {
       return <ExplorerPanel project={project} selectedEntityId={selectedEntityId} onSelectEntity={selectEntity}
         onRenameEntity={renameHierarchyEntity} onSetEntityActive={setHierarchyEntityActive} onMoveEntity={moveHierarchyEntity}
         onCreateChild={createHierarchyChild} onDuplicate={() => void runCommand('entity.duplicate')}
+        onCreatePrefab={() => void createPrefabFromSelection()} onInstantiatePrefab={() => void instantiatePrefab()}
         onDelete={() => void runCommand('entity.delete')} />;
     }
 
@@ -859,7 +896,8 @@ export function Workbench() {
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'contentBrowser') {
       return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
-        onCommand={runCommand} thumbnailProvider={loadAssetThumbnail} />;
+        onCommand={runCommand} onInstantiatePrefab={(path) => void instantiatePrefab(path)}
+        thumbnailProvider={loadAssetThumbnail} />;
     }
 
     if (panel === 'console') {
@@ -871,7 +909,8 @@ export function Workbench() {
     }
 
     return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
-      onCommand={runCommand} thumbnailProvider={loadAssetThumbnail} />;
+      onCommand={runCommand} onInstantiatePrefab={(path) => void instantiatePrefab(path)}
+      thumbnailProvider={loadAssetThumbnail} />;
   };
 
   const workbenchBodyStyle = {
@@ -971,7 +1010,8 @@ export function Workbench() {
   );
 }
 
-function ExplorerPanel({ project, selectedEntityId, onSelectEntity, onRenameEntity, onSetEntityActive, onMoveEntity, onCreateChild, onDuplicate, onDelete }: {
+function ExplorerPanel({ project, selectedEntityId, onSelectEntity, onRenameEntity, onSetEntityActive, onMoveEntity,
+  onCreateChild, onDuplicate, onCreatePrefab, onInstantiatePrefab, onDelete }: {
   project: ProjectSnapshot;
   selectedEntityId: string;
   onSelectEntity: (entityId: string) => void;
@@ -980,6 +1020,8 @@ function ExplorerPanel({ project, selectedEntityId, onSelectEntity, onRenameEnti
   onMoveEntity: (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => void;
   onCreateChild: () => void;
   onDuplicate: () => void;
+  onCreatePrefab: () => void;
+  onInstantiatePrefab: () => void;
   onDelete: () => void;
 }) {
   const [filter, setFilter] = useState('');
@@ -995,6 +1037,8 @@ function ExplorerPanel({ project, selectedEntityId, onSelectEntity, onRenameEnti
         <div className="hierarchy-actions">
           <UiIconButton label="Create child entity" onClick={onCreateChild}><Plus size={13} /></UiIconButton>
           <UiIconButton label="Duplicate selected entity" onClick={onDuplicate}><Copy size={13} /></UiIconButton>
+          <UiIconButton label="Create prefab from selection" onClick={onCreatePrefab}><Box size={13} /></UiIconButton>
+          <UiIconButton label="Instantiate prefab" onClick={onInstantiatePrefab}><Database size={13} /></UiIconButton>
           <UiIconButton label="Delete selected entity" onClick={onDelete}><Trash2 size={13} /></UiIconButton>
         </div>
         <label className="hierarchy-search">
@@ -1101,11 +1145,12 @@ function LightingPanel() {
   );
 }
 
-function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onCommand, thumbnailProvider }: {
+function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onCommand, onInstantiatePrefab, thumbnailProvider }: {
   project: ProjectSnapshot | null;
   selectedAssetId: string | null;
   onSelectAsset: (assetId: string) => void;
   onCommand: (command: CommandId) => void;
+  onInstantiatePrefab: (path: string) => void;
   thumbnailProvider: AssetThumbnailProvider;
 }) {
   return (
@@ -1118,7 +1163,8 @@ function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onComman
       </div>
       <div className="asset-grid-foundation">
         {(project?.assets ?? []).map((asset) => <AssetCard key={asset.id} asset={asset} selected={asset.id === selectedAssetId}
-          thumbnailProvider={thumbnailProvider} onSelect={() => onSelectAsset(asset.id)} />)}
+          thumbnailProvider={thumbnailProvider} onSelect={() => onSelectAsset(asset.id)}
+          onActivate={() => asset.kind === 'prefab' && onInstantiatePrefab(asset.path)} />)}
       </div>
     </section>
   );
@@ -1244,14 +1290,16 @@ function AssetRow({ asset, selected, onSelect }: { asset: AssetItem; selected: b
   return <UiTreeRow className="tree-row" selected={selected} meta={<small>{asset.status}</small>} onClick={onSelect}><AssetIcon kind={asset.kind} /><span>{asset.name}</span></UiTreeRow>;
 }
 
-function AssetCard({ asset, selected, thumbnailProvider, onSelect }: {
+function AssetCard({ asset, selected, thumbnailProvider, onSelect, onActivate }: {
   asset: AssetItem;
   selected: boolean;
   thumbnailProvider: AssetThumbnailProvider;
   onSelect: () => void;
+  onActivate?: () => void;
 }) {
-  const draggable = asset.kind === 'texture' || asset.kind === 'material';
-  return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} draggable={draggable} onDragStart={(event) => {
+  const draggable = asset.kind === 'texture' || asset.kind === 'material' || asset.kind === 'prefab';
+  return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} draggable={draggable}
+    onDoubleClick={onActivate} onDragStart={(event) => {
     if (!draggable) return;
     event.dataTransfer.setData('application/x-arc-asset', asset.path);
     if (asset.kind === 'texture') event.dataTransfer.setData('application/x-arc-environment', asset.path);

@@ -46,6 +46,13 @@ export type InspectorTerrain = {
   layers: Array<{ name: string; baseColorPath: string }>;
 };
 
+export type InspectorPrefab = {
+  prefabGuid: string;
+  prefabPath: string;
+  overrideCount: number;
+  sourceMissing: boolean;
+};
+
 export type HostComponentSnapshot = {
   kind: string;
   label: string;
@@ -62,6 +69,7 @@ export type InspectorEntitySnapshot = {
   camera: InspectorCamera | null;
   meshRenderer: InspectorMeshRenderer | null;
   terrain: InspectorTerrain | null;
+  prefab: InspectorPrefab | null;
   components: HostComponentSnapshot[];
 };
 
@@ -121,6 +129,12 @@ const hostSelectedEntitySchema = z.object({
     brushFalloff: finiteNumber.min(0).max(1),
     activeLayer: z.number().int().min(0).max(3),
     layers: z.array(z.object({ name: z.string(), baseColorPath: z.string() })).length(4),
+  }).nullable().default(null),
+  prefab: z.object({
+    prefabGuid: z.string(),
+    prefabPath: z.string(),
+    overrideCount: z.number().int().nonnegative(),
+    sourceMissing: z.boolean(),
   }).nullable().default(null),
   components: z.array(z.object({
     kind: z.string(),

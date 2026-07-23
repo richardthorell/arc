@@ -45,7 +45,7 @@ export type ColorFieldSchema<TContext = object> = FieldBase<TContext> & {
 };
 export type AssetReferenceFieldSchema<TContext = object> = FieldBase<TContext> & {
   type: 'asset';
-  assetKind: 'texture' | 'material';
+  assetKind: 'texture' | 'material' | 'prefab';
   allowedExtensions?: ReadonlyArray<string>;
   allowEmpty?: boolean;
 };
@@ -53,6 +53,20 @@ export type AssetPreviewFieldSchema<TContext = object> = FieldBase<TContext> & {
   type: 'assetPreview';
   assetKind: 'material';
   namePath?: string;
+};
+export type ReadonlyFieldSchema<TContext = object> = FieldBase<TContext> & {
+  type: 'readonly';
+  format?: (value: unknown, context: TContext) => string;
+};
+export type ActionFieldSchema<TContext = object> = FieldBase<TContext> & {
+  type: 'actions';
+  actions: ReadonlyArray<{
+    id: string;
+    label: string;
+    danger?: boolean;
+    disabled?: (context: TContext) => boolean;
+    tooltip?: string;
+  }>;
 };
 
 export type PropertyFieldSchema<TContext = object> =
@@ -62,7 +76,9 @@ export type PropertyFieldSchema<TContext = object> =
   | EnumFieldSchema<TContext>
   | ColorFieldSchema<TContext>
   | AssetReferenceFieldSchema<TContext>
-  | AssetPreviewFieldSchema<TContext>;
+  | AssetPreviewFieldSchema<TContext>
+  | ReadonlyFieldSchema<TContext>
+  | ActionFieldSchema<TContext>;
 
 export type PropertyComponentSchema<TContext = object, TId extends string = string> = {
   id: TId;

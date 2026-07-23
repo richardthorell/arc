@@ -97,6 +97,10 @@ export function MaterialPicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
   return <AssetPicker {...props} assetKinds={['material']} assetTypeLabel="Material" />;
 }
 
+export function PrefabPicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
+  return <AssetPicker {...props} assetKinds={['prefab']} assetTypeLabel="Prefab" />;
+}
+
 export function AssetPreview({ path, name, label, provider }: {
   path: string;
   name: string;

@@ -31,6 +31,7 @@ const cameraSnapshot = (): InspectorEntitySnapshot => ({
   },
   meshRenderer: null,
   terrain: null,
+  prefab: null,
   components: [
     { kind: 'transform', label: 'Transform', editable: true },
     { kind: 'camera', label: 'Camera', editable: true },
@@ -80,9 +81,25 @@ const terrainSnapshot = (): InspectorEntitySnapshot => ({
       { name: 'Sand', baseColorPath: '' },
     ],
   },
+  prefab: null,
   components: [
     { kind: 'transform', label: 'Transform', editable: true },
     { kind: 'terrain', label: 'Terrain', editable: true },
+  ],
+});
+
+const prefabSnapshot = (): InspectorEntitySnapshot => ({
+  ...meshSnapshot(),
+  prefab: {
+    prefabGuid: '1020304050607080a0b0c0d0e0f00102',
+    prefabPath: 'assets/prefabs/mountain.arcprefab',
+    overrideCount: 2,
+    sourceMissing: false,
+  },
+  components: [
+    { kind: 'transform', label: 'Transform', editable: true },
+    { kind: 'meshRenderer', label: 'Mesh Renderer', editable: true },
+    { kind: 'prefabInstance', label: 'Prefab Instance', editable: true },
   ],
 });
 
@@ -283,5 +300,23 @@ describe('data-driven InspectorPanel', () => {
     await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setMeshRenderer', expect.objectContaining({
       visible: false, baseColorTint: [1, 1, 1, 1],
     })));
+  });
+
+  it('renders prefab override state and invokes instance actions', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    render(<InspectorPanel snapshot={prefabSnapshot()} command={command} refresh={refresh} />);
+    expect(screen.getByText('2 authored overrides')).toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('prefab.apply', {
+      entity: { index: 3, generation: 1 },
+    }));
+    await userEvent.click(screen.getByRole('button', { name: 'Unpack' }));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('prefab.unpack', {
+      entity: { index: 3, generation: 1 },
+    }));
+    expect(refresh).toHaveBeenCalled();
   });
 });

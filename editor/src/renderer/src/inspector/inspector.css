@@ -1200,6 +1200,54 @@ button.arc-color-preview:hover {
   white-space: nowrap;
 }
 
+.inspector-readonly-property output {
+  min-width: 0;
+  min-height: var(--inspector-control-height);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: 0 9px;
+  border: 1px solid #2d3942;
+  border-radius: 3px;
+  color: #aeb8bf;
+  background: #12191f;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-action-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.inspector-action-buttons button {
+  min-width: 0;
+  height: var(--inspector-control-height);
+  border: 1px solid #3a4852;
+  border-radius: 3px;
+  color: #d1d7dc;
+  background: linear-gradient(#29343c, #202930);
+  cursor: pointer;
+  font: inherit;
+}
+
+.inspector-action-buttons button:hover:not(:disabled) {
+  border-color: #587287;
+  background: linear-gradient(#33434e, #27343d);
+}
+
+.inspector-action-buttons button.is-danger:hover:not(:disabled) {
+  border-color: #9d5555;
+  color: #ffd5d5;
+}
+
+.inspector-action-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 @media (max-width: 359px) {
   :root { --inspector-row-label: 88px; }
   .inspector-entity-meta-row { grid-template-columns: 1fr; gap: 6px; }

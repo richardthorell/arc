@@ -26,7 +26,7 @@ export type AssetItem = {
   id: string;
   name: string;
   path: string;
-  kind: 'scene' | 'mesh' | 'material' | 'texture' | 'shader' | 'folder';
+  kind: 'scene' | 'mesh' | 'material' | 'texture' | 'shader' | 'prefab' | 'folder';
   status: 'ready' | 'dirty' | 'importing' | 'missing';
 };
 
