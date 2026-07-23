@@ -388,6 +388,53 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
     }
 }
 
+TEST_CASE("profiler snapshots serialize scheduler and allocation telemetry")
+{
+    arc::editor::host_profiler_snapshot snapshot;
+    snapshot.timestamp_nanoseconds = 42;
+    snapshot.memory_bytes = 1024;
+    snapshot.memory_soft_limit = 2048;
+    snapshot.memory_hard_limit = 4096;
+    snapshot.memory_pressure_events = 1;
+    snapshot.jobs_submitted = 3;
+    snapshot.jobs_completed = 2;
+    snapshot.jobs_stolen = 1;
+    snapshot.jobs_queued = 1;
+    snapshot.memory_domains.push_back({
+        .domain = "components",
+        .bytes_outstanding = 512,
+        .peak_bytes = 1024,
+        .soft_limit = 2048,
+        .hard_limit = 4096
+    });
+    snapshot.allocation_groups.push_back({
+        .domain = "components",
+        .tag = "world.components",
+        .world_id = 7,
+        .thread_id = 9,
+        .stack_id = 11,
+        .allocation_count = 4,
+        .bytes_outstanding = 512
+    });
+    snapshot.jobs.push_back({
+        .sequence = 8,
+        .name = "render.frame",
+        .priority = "critical",
+        .affinity = "render",
+        .status = "succeeded",
+        .thread_id = 9,
+        .queued_nanoseconds = 10,
+        .started_nanoseconds = 20,
+        .completed_nanoseconds = 30
+    });
+
+    const auto json = arc::editor::to_json(snapshot);
+    REQUIRE(json.find("\"timestampNanoseconds\":42") != std::string::npos);
+    REQUIRE(json.find("\"world.components\"") != std::string::npos);
+    REQUIRE(json.find("\"render.frame\"") != std::string::npos);
+    REQUIRE(std::string(arc::editor::to_string(arc::editor::host_event_type::profiler_snapshot)) == "profiler.snapshot");
+}
+
 TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-editor-thumbnail-test";

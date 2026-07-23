@@ -33,6 +33,110 @@
 namespace
 {
 
+const char* job_priority_name(arc::job_priority value) noexcept
+{
+    switch (value)
+    {
+    case arc::job_priority::critical: return "critical";
+    case arc::job_priority::high: return "high";
+    case arc::job_priority::normal: return "normal";
+    case arc::job_priority::low: return "low";
+    case arc::job_priority::background: return "background";
+    case arc::job_priority::count: break;
+    }
+    return "unknown";
+}
+
+const char* job_affinity_name(arc::job_affinity value) noexcept
+{
+    switch (value)
+    {
+    case arc::job_affinity::any_worker: return "worker";
+    case arc::job_affinity::main_thread: return "main";
+    case arc::job_affinity::render_thread: return "render";
+    case arc::job_affinity::io_thread: return "io";
+    }
+    return "unknown";
+}
+
+const char* job_status_name(arc::job_status value) noexcept
+{
+    switch (value)
+    {
+    case arc::job_status::invalid: return "invalid";
+    case arc::job_status::waiting_dependencies: return "dependencies";
+    case arc::job_status::queued: return "queued";
+    case arc::job_status::running: return "running";
+    case arc::job_status::waiting_children: return "children";
+    case arc::job_status::succeeded: return "succeeded";
+    case arc::job_status::failed: return "failed";
+    case arc::job_status::cancelled: return "cancelled";
+    }
+    return "unknown";
+}
+
+arc::editor::host_profiler_snapshot make_profiler_snapshot(
+    const arc::job_system_snapshot& jobs,
+    const arc::memory_snapshot& memory)
+{
+    arc::editor::host_profiler_snapshot result;
+    result.timestamp_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    result.memory_bytes = memory.global_bytes_outstanding;
+    result.memory_soft_limit = memory.global_budget.soft_limit;
+    result.memory_hard_limit = memory.global_budget.hard_limit;
+    result.memory_pressure_events = memory.pressure_event_count;
+    result.jobs_submitted = jobs.submitted;
+    result.jobs_completed = jobs.completed;
+    result.jobs_stolen = jobs.stolen;
+    result.jobs_cancelled = jobs.cancelled;
+    result.jobs_failed = jobs.failed;
+    result.jobs_queued = jobs.queued_general + jobs.queued_main + jobs.queued_render + jobs.queued_io;
+    result.dropped_profile_events = jobs.dropped_profile_events;
+    result.memory_domains.reserve(memory.domains.size());
+    for (const auto& domain : memory.domains)
+    {
+        result.memory_domains.push_back({
+            .domain = std::string(arc::to_string(domain.domain)),
+            .bytes_outstanding = domain.stats.bytes_outstanding,
+            .peak_bytes = domain.stats.peak_bytes_outstanding,
+            .soft_limit = domain.budget.soft_limit,
+            .hard_limit = domain.budget.hard_limit,
+            .pressure = domain.soft_limit_exceeded
+        });
+    }
+    result.allocation_groups.reserve(memory.allocation_groups.size());
+    for (const auto& group : memory.allocation_groups)
+    {
+        result.allocation_groups.push_back({
+            .domain = std::string(arc::to_string(group.domain)),
+            .tag = std::string(group.tag.name),
+            .world_id = group.world_id,
+            .thread_id = group.thread_id,
+            .stack_id = group.stack_id,
+            .allocation_count = group.allocation_count,
+            .bytes_outstanding = group.bytes_outstanding
+        });
+    }
+    result.jobs.reserve(jobs.recent_events.size());
+    for (const auto& job : jobs.recent_events)
+    {
+        result.jobs.push_back({
+            .sequence = job.sequence,
+            .name = job.name,
+            .priority = job_priority_name(job.priority),
+            .affinity = job_affinity_name(job.affinity),
+            .status = job_status_name(job.status),
+            .thread_id = job.thread_id,
+            .queued_nanoseconds = job.queued_nanoseconds,
+            .started_nanoseconds = job.started_nanoseconds,
+            .completed_nanoseconds = job.completed_nanoseconds
+        });
+    }
+    return result;
+}
+
 #if defined(_WIN32) && defined(ARC_EDITOR_HOST_ENABLE_VULKAN_RENDER)
 
 class native_viewport_controller;
@@ -848,7 +952,7 @@ public:
 
 int main()
 {
-    arc::memory_system memory;
+    auto& memory = arc::default_memory_system();
     arc::job_system jobs({ .memory = &memory });
     jobs.register_main_thread();
     auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
@@ -861,6 +965,8 @@ int main()
         std::cout.flush();
     };
     std::jthread event_pump([&](std::stop_token stop) {
+        auto next_profiler_sample = std::chrono::steady_clock::now();
+        std::uint64_t profiler_sequence = std::uint64_t{ 1 } << 63u;
         while (!stop.stop_requested())
         {
             std::vector<arc::editor::host_event> events;
@@ -874,6 +980,21 @@ int main()
                 for (const auto& event : events)
                     std::cout << arc::editor::to_json(event) << '\n';
                 std::cout.flush();
+            }
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= next_profiler_sample)
+            {
+                const auto snapshot = make_profiler_snapshot(jobs.snapshot(true), memory.snapshot());
+                const arc::editor::host_event event{
+                    .sequence = profiler_sequence++,
+                    .event_type = arc::editor::host_event_type::profiler_snapshot,
+                    .message = "Profiler snapshot",
+                    .payload_json = arc::editor::to_json(snapshot)
+                };
+                std::lock_guard output_lock(output_mutex);
+                std::cout << arc::editor::to_json(event) << '\n';
+                std::cout.flush();
+                next_profiler_sample = now + std::chrono::milliseconds(100);
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }

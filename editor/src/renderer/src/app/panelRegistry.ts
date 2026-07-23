@@ -47,7 +47,7 @@ export const activityRegistry: ActivityRegistration[] = [
 export const dockPanelIds = {
   center: ['viewport'] satisfies WorkbenchPanelId[],
   right: ['inspector', 'lighting', 'worldSettings'] satisfies WorkbenchPanelId[],
-  bottom: ['contentBrowser', 'console'] satisfies WorkbenchPanelId[],
+  bottom: ['contentBrowser', 'console', 'profiler'] satisfies WorkbenchPanelId[],
 };
 
 export const getPanel = (id: WorkbenchPanelId) => panelRegistry[id];

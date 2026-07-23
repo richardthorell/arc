@@ -43,6 +43,8 @@ import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
 import { eulerDegreesToQuaternion, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
+import { ProfilerPanel } from '../profiler/ProfilerPanel';
+import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
 
 import './workbench.css';
 
@@ -273,6 +275,7 @@ export function Workbench() {
   const [rotationSnap, setRotationSnap] = useState(15);
   const [scaleSnap, setScaleSnap] = useState(0.1);
   const [lastCommand, setLastCommand] = useState('Workbench ready');
+  const [profilerSamples, setProfilerSamples] = useState<ProfilerSnapshot[]>([]);
 
   const loadAssetThumbnail = useCallback(async (path: string): Promise<string | null> => {
     if (!startupState?.engineHostConnected || !window.arc?.host) return null;
@@ -305,6 +308,11 @@ export function Workbench() {
   }, []);
 
   useEffect(() => window.arc?.host?.onEvent?.((event) => {
+    if (event.type === 'profiler.snapshot' && event.payload && typeof event.payload === 'object') {
+      const sample = event.payload as ProfilerSnapshot;
+      setProfilerSamples((current) => [...current, sample].slice(-3000));
+      return;
+    }
     setLastCommand(event.message || event.type);
     if (event.payload && typeof event.payload === 'object' && 'tool' in event.payload) {
       const payload = event.payload as { tool?: unknown; coordinateSpace?: unknown; snapping?: unknown;
@@ -856,6 +864,10 @@ export function Workbench() {
 
     if (panel === 'console') {
       return <ConsolePanel events={[...(project?.console ?? []), ...hostConsoleEvents]} lastCommand={lastCommand} />;
+    }
+
+    if (panel === 'profiler') {
+      return <ProfilerPanel samples={profilerSamples} />;
     }
 
     return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}

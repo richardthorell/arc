@@ -6,6 +6,7 @@
 #include <bit>
 #include <chrono>
 #include <limits>
+#include <map>
 #include <mutex>
 #include <new>
 #include <thread>
@@ -424,6 +425,8 @@ memory_snapshot memory_system::snapshot() const
         std::size_t bytes{};
     };
     std::unordered_map<std::uint64_t, aggregate> aggregates;
+    using group_key = std::tuple<memory_domain, std::uint32_t, std::uint64_t, std::uint64_t, std::uint64_t>;
+    std::map<group_key, memory_allocation_group_snapshot> groups;
     {
         std::lock_guard lock(implementation_->mutex);
         result.tracked_allocation_count = implementation_->allocations.size();
@@ -439,6 +442,22 @@ memory_snapshot memory_system::snapshot() const
             value.bytes += allocation.bytes;
             if (allocation.stack_id != 0)
                 ++result.sampled_stack_count;
+
+            const group_key group{
+                allocation.domain,
+                allocation.tag.id,
+                allocation.world_id,
+                allocation.thread_id,
+                allocation.stack_id
+            };
+            auto& allocation_group = groups[group];
+            allocation_group.domain = allocation.domain;
+            allocation_group.tag = allocation.tag;
+            allocation_group.world_id = allocation.world_id;
+            allocation_group.thread_id = allocation.thread_id;
+            allocation_group.stack_id = allocation.stack_id;
+            ++allocation_group.allocation_count;
+            allocation_group.bytes_outstanding += allocation.bytes;
         }
     }
     result.tags.reserve(aggregates.size());
@@ -452,6 +471,15 @@ memory_snapshot memory_system::snapshot() const
     std::sort(result.tags.begin(), result.tags.end(), [](const auto& lhs, const auto& rhs) {
         return lhs.bytes_outstanding > rhs.bytes_outstanding;
     });
+    result.allocation_groups.reserve(groups.size());
+    for (const auto& [_, group] : groups)
+        result.allocation_groups.push_back(group);
+    std::sort(result.allocation_groups.begin(), result.allocation_groups.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.bytes_outstanding > rhs.bytes_outstanding;
+    });
+    constexpr std::size_t maximum_snapshot_groups = 256;
+    if (result.allocation_groups.size() > maximum_snapshot_groups)
+        result.allocation_groups.resize(maximum_snapshot_groups);
     return result;
 }
 

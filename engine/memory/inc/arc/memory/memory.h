@@ -107,6 +107,17 @@ struct memory_tag_snapshot
     std::size_t bytes_outstanding{};
 };
 
+struct memory_allocation_group_snapshot
+{
+    memory_domain domain{ memory_domain::general };
+    memory_tag tag{};
+    std::uint64_t world_id{};
+    std::uint64_t thread_id{};
+    std::uint64_t stack_id{};
+    std::size_t allocation_count{};
+    std::size_t bytes_outstanding{};
+};
+
 struct memory_leak_record
 {
     std::uintptr_t address{};
@@ -127,6 +138,7 @@ struct memory_snapshot
     memory_budget global_budget{};
     std::vector<memory_domain_snapshot> domains;
     std::vector<memory_tag_snapshot> tags;
+    std::vector<memory_allocation_group_snapshot> allocation_groups;
     std::size_t tracked_allocation_count{};
     std::size_t sampled_stack_count{};
     std::size_t pressure_event_count{};

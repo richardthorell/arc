@@ -535,6 +535,7 @@ const char* to_string(host_event_type value) noexcept
     case host_event_type::component_changed: return "component.changed";
     case host_event_type::command_failed: return "command.failed";
     case host_event_type::viewport_error: return "viewport.error";
+    case host_event_type::profiler_snapshot: return "profiler.snapshot";
     }
     return "unknown";
 }
@@ -1054,6 +1055,68 @@ std::string to_json(const host_event& event)
         ",\"entity\":" + to_json(event.entity) +
         ",\"message\":" + quote(event.message) +
         ",\"payload\":" + payload + '}';
+}
+
+std::string to_json(const host_profiler_snapshot& snapshot)
+{
+    std::string json =
+        "{\"timestampNanoseconds\":" + std::to_string(snapshot.timestamp_nanoseconds) +
+        ",\"memory\":{\"bytes\":" + std::to_string(snapshot.memory_bytes) +
+        ",\"softLimit\":" + std::to_string(snapshot.memory_soft_limit) +
+        ",\"hardLimit\":" + std::to_string(snapshot.memory_hard_limit) +
+        ",\"pressureEvents\":" + std::to_string(snapshot.memory_pressure_events) +
+        ",\"domains\":[";
+    for (std::size_t index = 0; index < snapshot.memory_domains.size(); ++index)
+    {
+        if (index != 0)
+            json += ',';
+        const auto& domain = snapshot.memory_domains[index];
+        json += "{\"domain\":" + quote(domain.domain) +
+            ",\"bytes\":" + std::to_string(domain.bytes_outstanding) +
+            ",\"peakBytes\":" + std::to_string(domain.peak_bytes) +
+            ",\"softLimit\":" + std::to_string(domain.soft_limit) +
+            ",\"hardLimit\":" + std::to_string(domain.hard_limit) +
+            ",\"pressure\":" + bool_json(domain.pressure) + '}';
+    }
+    json += "],\"groups\":[";
+    for (std::size_t index = 0; index < snapshot.allocation_groups.size(); ++index)
+    {
+        if (index != 0)
+            json += ',';
+        const auto& group = snapshot.allocation_groups[index];
+        json += "{\"domain\":" + quote(group.domain) +
+            ",\"tag\":" + quote(group.tag) +
+            ",\"worldId\":" + std::to_string(group.world_id) +
+            ",\"threadId\":" + std::to_string(group.thread_id) +
+            ",\"stackId\":" + std::to_string(group.stack_id) +
+            ",\"allocationCount\":" + std::to_string(group.allocation_count) +
+            ",\"bytes\":" + std::to_string(group.bytes_outstanding) + '}';
+    }
+    json += "]},\"scheduler\":{\"submitted\":" + std::to_string(snapshot.jobs_submitted) +
+        ",\"completed\":" + std::to_string(snapshot.jobs_completed) +
+        ",\"stolen\":" + std::to_string(snapshot.jobs_stolen) +
+        ",\"cancelled\":" + std::to_string(snapshot.jobs_cancelled) +
+        ",\"failed\":" + std::to_string(snapshot.jobs_failed) +
+        ",\"queued\":" + std::to_string(snapshot.jobs_queued) +
+        ",\"droppedEvents\":" + std::to_string(snapshot.dropped_profile_events) +
+        ",\"jobs\":[";
+    for (std::size_t index = 0; index < snapshot.jobs.size(); ++index)
+    {
+        if (index != 0)
+            json += ',';
+        const auto& job = snapshot.jobs[index];
+        json += "{\"sequence\":" + std::to_string(job.sequence) +
+            ",\"name\":" + quote(job.name) +
+            ",\"priority\":" + quote(job.priority) +
+            ",\"affinity\":" + quote(job.affinity) +
+            ",\"status\":" + quote(job.status) +
+            ",\"threadId\":" + std::to_string(job.thread_id) +
+            ",\"queuedNanoseconds\":" + std::to_string(job.queued_nanoseconds) +
+            ",\"startedNanoseconds\":" + std::to_string(job.started_nanoseconds) +
+            ",\"completedNanoseconds\":" + std::to_string(job.completed_nanoseconds) + '}';
+    }
+    json += "]}}";
+    return json;
 }
 
 std::string to_json(const host_scene_snapshot& snapshot)

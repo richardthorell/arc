@@ -76,7 +76,8 @@ enum class host_event_type : std::uint8_t
     entity_selected,
     component_changed,
     command_failed,
-    viewport_error
+    viewport_error,
+    profiler_snapshot
 };
 
 enum class host_entity_kind : std::uint8_t
@@ -407,6 +408,59 @@ struct host_event
     host_entity_id entity{};
     std::string message;
     std::string payload_json;
+};
+
+struct host_job_profile_sample
+{
+    std::uint64_t sequence{};
+    std::string name;
+    std::string priority;
+    std::string affinity;
+    std::string status;
+    std::uint64_t thread_id{};
+    std::uint64_t queued_nanoseconds{};
+    std::uint64_t started_nanoseconds{};
+    std::uint64_t completed_nanoseconds{};
+};
+
+struct host_memory_domain_sample
+{
+    std::string domain;
+    std::uint64_t bytes_outstanding{};
+    std::uint64_t peak_bytes{};
+    std::uint64_t soft_limit{};
+    std::uint64_t hard_limit{};
+    bool pressure{};
+};
+
+struct host_memory_allocation_group
+{
+    std::string domain;
+    std::string tag;
+    std::uint64_t world_id{};
+    std::uint64_t thread_id{};
+    std::uint64_t stack_id{};
+    std::uint64_t allocation_count{};
+    std::uint64_t bytes_outstanding{};
+};
+
+struct host_profiler_snapshot
+{
+    std::uint64_t timestamp_nanoseconds{};
+    std::uint64_t memory_bytes{};
+    std::uint64_t memory_soft_limit{};
+    std::uint64_t memory_hard_limit{};
+    std::uint64_t memory_pressure_events{};
+    std::uint64_t jobs_submitted{};
+    std::uint64_t jobs_completed{};
+    std::uint64_t jobs_stolen{};
+    std::uint64_t jobs_cancelled{};
+    std::uint64_t jobs_failed{};
+    std::uint64_t jobs_queued{};
+    std::uint64_t dropped_profile_events{};
+    std::vector<host_memory_domain_sample> memory_domains;
+    std::vector<host_memory_allocation_group> allocation_groups;
+    std::vector<host_job_profile_sample> jobs;
 };
 
 struct host_open_project_command
@@ -774,6 +828,7 @@ std::string to_json(const host_transform& transform);
 std::string to_json(const host_camera_snapshot& camera);
 std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer);
 std::string to_json(const host_world_environment_snapshot& environment);
+std::string to_json(const host_profiler_snapshot& snapshot);
 std::string to_json_string(std::string_view value);
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error);
