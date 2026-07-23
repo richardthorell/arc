@@ -40,9 +40,10 @@ runtime::runtime(application& app)
 runtime::runtime(application& app, application_config config)
     : app_(&app)
     , config_(normalize_config(std::move(config)))
-    , jobs_()
+    , jobs_({ .memory = &memory_ })
     , module_context_(jobs_, default_logger(), memory_, default_tracked_memory_resource())
 {
+    jobs_.register_main_thread();
 }
 
 application_config runtime::normalize_config(application_config config)
@@ -89,6 +90,7 @@ frame_time runtime::tick()
 
     modules_.update(module_context_, current_time_);
     app_->on_update(current_time_);
+    jobs_.pump_main_thread();
     tick_arena_.reset();
     frame_arena_.reset();
     ++current_time_.frame_index;
