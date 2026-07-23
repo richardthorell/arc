@@ -16,7 +16,7 @@ The engine is built around modular runtime systems, scene and rendering architec
 arc is organized as a modular engine and editor stack:
 
 - **Engine core** — application framework, diagnostics, jobs, memory tracking, input, and platform-neutral runtime services.
-- **Scene system** — scene representation, entities, components, transforms, lights, cameras, and scene extraction for rendering.
+- **ECS and scene system** — stable entities, paged component storage, cached queries, deterministic structural commands, parallel system scheduling, reflection, hierarchy, prefabs, transforms, lights, cameras, and render extraction.
 - **Renderer** — backend-neutral rendering interfaces, render graph concepts, resource handles, scene draw packets, and Vulkan-oriented rendering architecture.
 - **Asset pipeline** — foundation for loading, managing, and preparing engine resources such as meshes, materials, textures, and shaders.
 - **Editor** — Electron/React authoring environment backed by a native C++ scene and rendering host.

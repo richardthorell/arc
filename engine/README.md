@@ -10,11 +10,12 @@ Current modules:
 - `diagnostics/` provides logging through the `arc-diagnostics` target and `arc::diagnostics` alias.
 - `jobs/` provides dependency-aware task scheduling, priorities, cancellation, work stealing, main/render/IO affinity, profiling, futures, and optional C++20 coroutine integration through the `arc-jobs` target and `arc::jobs` alias. It depends on `arc-memory` and `arc-diagnostics`.
 - `memory/` provides domain/tag tracking, adaptive budgets, pressure recovery, leak snapshots, PMR adapters, arenas, world/component storage, packet pools, and streaming heaps through the `arc-memory` target and `arc::memory` alias. It depends on `arc-diagnostics`.
+- `ecs/` provides stable entity identities, paged component storage, prepared queries, structural command buffers, system scheduling, reflection, hierarchy, templates, prefabs, replication visitors, and world-region contracts through the `arc-ecs` target and `arc::ecs` alias. It depends on `arc-jobs` and `arc-memory`.
 - `io/` provides backend-neutral asynchronous file reads, ranged reads, writes, atomic writes, metadata queries, and cancellation through the `arc-io` target and `arc::io` alias. Its portable implementation runs chunked blocking operations on scheduler-owned IO workers.
 - `framework/` provides the platform-neutral application lifecycle and runtime module manager through the `arc-framework` target and `arc::framework` alias. It depends on `arc-geometric`, `arc-jobs`, and `arc-memory`.
 - `input/` provides runtime input bindings through the `arc-input` target and `arc::input` alias. It depends on `arc-framework`.
 - `render/` provides the backend-neutral renderer foundation through the `arc-render` target and `arc::render` alias. It depends on `arc-framework`. It currently includes render events, render graph resources, renderer handles, material/resource scaffolding, scene draw packets, CPU culling/sorting/batching, and Vulkan backend bring-up.
-- `scene/` provides ECS scene primitives and render extraction through the `arc-scene` target and `arc::scene` alias. It depends on `arc-render`. It currently includes transform/camera/mesh/light/editor components and extraction into renderer scene packets.
+- `scene/` provides game/render components and render extraction through the `arc-scene` target and `arc::scene` alias. It depends on `arc-ecs` and `arc-render`; existing scene registry/entity APIs remain compatibility aliases over the generic ECS.
 - `platform/windows/` provides the optional raw Win32 entry host through the `arc-platform-windows` target and `arc::platform-windows` alias. It depends on `arc`.
 - `arc` remains the aggregate target for consumers that want the whole engine foundation.
 
@@ -81,9 +82,10 @@ The render public include path is:
 #include <arc/render/render.h>
 ```
 
-The input and scene public include paths are:
+The ECS, input, and scene public include paths are:
 
 ```cpp
+#include <arc/ecs/ecs.h>
 #include <arc/input/input.h>
 #include <arc/scene/scene.h>
 ```

@@ -55,6 +55,9 @@ struct scene_render_visibility
     bool decals{ true };
 };
 
+/** Prewarm all extraction queries so subsequent frames perform no query allocation. */
+void prepare_render_scene_queries(registry& scene);
+
 /**
  * @brief Extract visible scene renderers into renderer frame events.
  */

@@ -1,25 +1,14 @@
 #pragma once
 
-#include <cstdint>
-#include <optional>
-#include <string>
-#include <string_view>
+#include <arc/ecs/identity.h>
 
 namespace arc::scene
 {
 
-/** Stable identity used by scene documents and cross-entity references. */
-struct entity_guid
-{
-    std::uint64_t high{};
-    std::uint64_t low{};
-
-    constexpr bool valid() const noexcept { return high != 0 || low != 0; }
-    friend constexpr bool operator==(entity_guid, entity_guid) noexcept = default;
-};
-
-entity_guid generate_entity_guid() noexcept;
-std::string to_string(entity_guid value);
-std::optional<entity_guid> parse_entity_guid(std::string_view value) noexcept;
+using entity_guid = ecs::entity_guid;
+using entity_guid_hash = ecs::entity_guid_hash;
+using ecs::generate_entity_guid;
+using ecs::parse_entity_guid;
+using ecs::to_string;
 
 } // namespace arc::scene

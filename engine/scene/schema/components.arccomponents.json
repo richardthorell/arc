@@ -1,0 +1,112 @@
+{
+  "namespace": "arc::scene",
+  "components": [
+    {
+      "type": "name_component",
+      "id": "a7c00000000000010000000000000001",
+      "display": "Name",
+      "fields": [
+        { "name": "value", "id": "0000000000000001", "kind": "string" }
+      ]
+    },
+    {
+      "type": "transform_component",
+      "id": "a7c00000000000010000000000000002",
+      "display": "Transform",
+      "fields": [
+        { "name": "position", "id": "0000000000000001", "kind": "vector3", "display": "Location" },
+        { "name": "rotation", "id": "0000000000000002", "kind": "quaternion" },
+        { "name": "scale", "id": "0000000000000003", "kind": "vector3" },
+        { "name": "world", "id": "0000000000000004", "kind": "matrix", "flags": ["transient"] },
+        { "name": "dirty", "id": "0000000000000005", "kind": "bool", "flags": ["transient"] }
+      ]
+    },
+    {
+      "type": "tag_component",
+      "id": "a7c00000000000010000000000000003",
+      "display": "Tag",
+      "fields": [
+        { "name": "value", "id": "0000000000000001", "kind": "string" }
+      ]
+    },
+    {
+      "type": "active_component",
+      "id": "a7c00000000000010000000000000004",
+      "display": "Active",
+      "fields": [
+        { "name": "active", "id": "0000000000000001", "kind": "bool" }
+      ]
+    },
+    {
+      "type": "selection_component",
+      "id": "a7c00000000000010000000000000005",
+      "display": "Selection",
+      "fields": [
+        { "name": "selected", "id": "0000000000000001", "kind": "bool", "flags": ["transient", "editable"] }
+      ]
+    },
+    {
+      "type": "bounds_component",
+      "id": "a7c00000000000010000000000000006",
+      "display": "Bounds",
+      "customSerialization": true,
+      "fields": [
+        { "name": "local_bounds", "id": "0000000000000001", "kind": "struct" },
+        { "name": "world_bounds", "id": "0000000000000002", "kind": "struct", "flags": ["transient"] },
+        { "name": "dirty", "id": "0000000000000003", "kind": "bool", "flags": ["transient"] }
+      ]
+    },
+    {
+      "type": "camera_component",
+      "id": "a7c00000000000010000000000000007",
+      "display": "Camera",
+      "fields": [
+        { "name": "projection", "id": "0000000000000001", "kind": "enum" },
+        { "name": "fov_y_radians", "id": "0000000000000002", "kind": "float", "display": "Field of View" },
+        { "name": "near_plane", "id": "0000000000000003", "kind": "float", "display": "Near Clip" },
+        { "name": "far_plane", "id": "0000000000000004", "kind": "float", "display": "Far Clip" },
+        { "name": "orthographic_height", "id": "0000000000000005", "kind": "float", "display": "Orthographic Size" },
+        { "name": "active", "id": "0000000000000006", "kind": "bool", "display": "Active Camera" },
+        { "name": "clear_color", "id": "0000000000000007", "kind": "vector4", "display": "Clear Color" }
+      ]
+    },
+    {
+      "type": "mesh_renderer_component",
+      "id": "a7c00000000000010000000000000008",
+      "display": "Mesh Renderer",
+      "fields": [
+        { "name": "mesh", "id": "0000000000000001", "kind": "asset" },
+        { "name": "material", "id": "0000000000000002", "kind": "asset" },
+        { "name": "visible", "id": "0000000000000003", "kind": "bool" },
+        { "name": "base_color_tint", "id": "0000000000000004", "kind": "vector4" }
+      ]
+    },
+    { "type": "virtual_mesh_renderer_component", "id": "a7c00000000000010000000000000009", "display": "Virtual Mesh Renderer", "customSerialization": true },
+    { "type": "skinned_mesh_renderer_component", "id": "a7c0000000000001000000000000000a", "display": "Skinned Mesh Renderer", "customSerialization": true },
+    { "type": "lod_component", "id": "a7c0000000000001000000000000000b", "display": "LOD", "customSerialization": true },
+    { "type": "instance_group_component", "id": "a7c0000000000001000000000000000c", "display": "Instance Group", "customSerialization": true },
+    {
+      "type": "render_layer_component",
+      "id": "a7c0000000000001000000000000000d",
+      "display": "Render Layer",
+      "fields": [
+        { "name": "mask", "id": "0000000000000001", "kind": "uint" }
+      ]
+    },
+    { "type": "directional_light_component", "id": "a7c0000000000001000000000000000e", "display": "Directional Light", "customSerialization": true },
+    { "type": "point_light_component", "id": "a7c0000000000001000000000000000f", "display": "Point Light", "customSerialization": true },
+    { "type": "spot_light_component", "id": "a7c00000000000010000000000000010", "display": "Spot Light", "customSerialization": true },
+    { "type": "reflection_probe_component", "id": "a7c00000000000010000000000000011", "display": "Reflection Probe" },
+    { "type": "irradiance_probe_component", "id": "a7c00000000000010000000000000012", "display": "Irradiance Probe" },
+    { "type": "world_environment_component", "id": "a7c00000000000010000000000000013", "display": "World Environment", "customSerialization": true },
+    { "type": "sky_atmosphere_component", "id": "a7c00000000000010000000000000014", "display": "Sky Atmosphere", "customSerialization": true },
+    { "type": "celestial_sky_component", "id": "a7c00000000000010000000000000015", "display": "Celestial Sky", "customSerialization": true },
+    { "type": "cloud_layers_component", "id": "a7c00000000000010000000000000016", "display": "Cloud Layers", "customSerialization": true },
+    { "type": "environment_lighting_component", "id": "a7c00000000000010000000000000017", "display": "Environment Lighting", "customSerialization": true },
+    { "type": "height_fog_component", "id": "a7c00000000000010000000000000018", "display": "Height Fog", "customSerialization": true },
+    { "type": "terrain_component", "id": "a7c00000000000010000000000000019", "display": "Terrain", "version": 2, "customSerialization": true },
+    { "type": "water_component", "id": "a7c0000000000001000000000000001a", "display": "Water", "customSerialization": true },
+    { "type": "vegetation_component", "id": "a7c0000000000001000000000000001b", "display": "Vegetation", "customSerialization": true },
+    { "type": "decal_component", "id": "a7c0000000000001000000000000001c", "display": "Decal", "customSerialization": true }
+  ]
+}

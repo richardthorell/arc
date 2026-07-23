@@ -30,6 +30,7 @@ add_subdirectory(memory)
 add_subdirectory(io)
 add_subdirectory(framework)
 add_subdirectory(input)
+add_subdirectory(ecs)
 add_subdirectory(render)
 
 if(ARC_BUILD_RENDER_VULKAN)

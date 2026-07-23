@@ -351,6 +351,26 @@ render::world_environment_data to_render_environment(
 
 } // namespace
 
+void prepare_render_scene_queries(registry& scene)
+{
+    scene.prepare_query<world_environment_component, celestial_sky_component>();
+    scene.prepare_query<transform_component, camera_component>();
+    scene.prepare_query<world_environment_component>();
+    scene.prepare_query<transform_component, mesh_renderer_component>();
+    scene.prepare_query<transform_component, virtual_mesh_renderer_component>();
+    scene.prepare_query<transform_component, terrain_component>();
+    scene.prepare_query<transform_component, water_component>();
+    scene.prepare_query<transform_component, vegetation_component>();
+    scene.prepare_query<transform_component, decal_component>();
+    scene.prepare_query<transform_component, skinned_mesh_renderer_component>();
+    scene.prepare_query<transform_component, instance_group_component>();
+    scene.prepare_query<transform_component, directional_light_component>();
+    scene.prepare_query<transform_component, point_light_component>();
+    scene.prepare_query<transform_component, spot_light_component>();
+    scene.prepare_query<transform_component, reflection_probe_component>();
+    scene.prepare_query<transform_component, irradiance_probe_component>();
+}
+
 render_scene_result render_scene(
     registry& scene,
     render::renderer& renderer,
@@ -365,6 +385,7 @@ render_scene_result render_scene(
     render::debug_overlay_stream debug_overlay)
 {
     render_scene_result result{};
+    prepare_render_scene_queries(scene);
     update_world_transforms(scene);
     update_world_environments(scene, delta_seconds);
 

@@ -2,6 +2,7 @@
 #include <arc/scene/transforms.h>
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace arc::scene
 {
@@ -26,8 +27,14 @@ void rebuild_root_links(registry& scene, const std::vector<entity>& order)
     }
 }
 
-void update_subtree(registry& scene, entity value, const math::matrix4f* parent_world) noexcept
+void update_subtree(
+    registry& scene,
+    entity value,
+    const math::matrix4f* parent_world,
+    std::unordered_set<entity, ecs::entity_hash>& visited) noexcept
 {
+    if (!scene.alive(value) || !visited.insert(value).second)
+        return;
     auto* transform = scene.try_get<transform_component>(value);
     if (transform)
     {
@@ -40,10 +47,12 @@ void update_subtree(registry& scene, entity value, const math::matrix4f* parent_
     }
     const auto* hierarchy = scene.try_get<hierarchy_component>(value);
     entity child = hierarchy ? hierarchy->first_child : entity{};
-    while (scene.alive(child))
+    std::unordered_set<entity, ecs::entity_hash> visited_siblings;
+    while (scene.alive(child) && visited_siblings.insert(child).second)
     {
-        const entity next = scene.get<hierarchy_component>(child).next_sibling;
-        update_subtree(scene, child, parent_world);
+        const auto* child_links = scene.try_get<hierarchy_component>(child);
+        const entity next = child_links ? child_links->next_sibling : entity{};
+        update_subtree(scene, child, parent_world, visited);
         child = next;
     }
 }
@@ -55,7 +64,8 @@ bool is_descendant(const registry& scene, entity candidate, entity ancestor) noe
     if (!scene.alive(candidate) || !scene.alive(ancestor))
         return false;
     entity current = candidate;
-    while (scene.alive(current))
+    std::unordered_set<entity, ecs::entity_hash> visited;
+    while (scene.alive(current) && visited.insert(current).second)
     {
         if (current == ancestor)
             return candidate != ancestor;
@@ -120,10 +130,12 @@ std::vector<entity> children(const registry& scene, entity parent)
     std::vector<entity> result;
     const auto* hierarchy = scene.try_get<hierarchy_component>(parent);
     entity child = hierarchy ? hierarchy->first_child : entity{};
-    while (scene.alive(child))
+    std::unordered_set<entity, ecs::entity_hash> visited;
+    while (scene.alive(child) && visited.insert(child).second)
     {
         result.push_back(child);
-        child = scene.get<hierarchy_component>(child).next_sibling;
+        const auto* links = scene.try_get<hierarchy_component>(child);
+        child = links ? links->next_sibling : entity{};
     }
     return result;
 }
@@ -153,7 +165,8 @@ void detach(registry& scene, entity child) noexcept
 
 bool reparent(registry& scene, entity child, entity parent, entity before_sibling, reparent_transform_policy policy) noexcept
 {
-    if (!scene.alive(child) || child == parent || (parent.valid() && !scene.alive(parent)) || is_descendant(scene, parent, child))
+    if (!scene.alive(child) || child == parent || (parent.valid() && !scene.alive(parent)) ||
+        arc::scene::is_descendant(scene, parent, child))
         return false;
     if (before_sibling.valid())
     {
@@ -187,7 +200,7 @@ bool reparent(registry& scene, entity child, entity parent, entity before_siblin
         has_preserved_transform = true;
     }
 
-    detach(scene, child);
+    arc::scene::detach(scene, child);
     auto& child_links = links(scene, child);
     child_links.parent = parent;
     if (scene.alive(parent))
@@ -257,8 +270,9 @@ void mark_transform_subtree_dirty(registry& scene, entity root) noexcept
 
 void update_world_transforms(registry& scene) noexcept
 {
+    std::unordered_set<entity, ecs::entity_hash> visited;
     for (const entity value : roots(scene))
-        update_subtree(scene, value, nullptr);
+        update_subtree(scene, value, nullptr, visited);
 }
 
 std::vector<entity> subtree(const registry& scene, entity root)
@@ -267,10 +281,13 @@ std::vector<entity> subtree(const registry& scene, entity root)
     if (!scene.alive(root))
         return result;
     result.push_back(root);
+    std::unordered_set<entity, ecs::entity_hash> visited{ root };
     for (std::size_t index = 0; index < result.size(); ++index)
     {
-        const auto nested = children(scene, result[index]);
-        result.insert(result.end(), nested.begin(), nested.end());
+        const auto nested = arc::scene::children(scene, result[index]);
+        for (const entity value : nested)
+            if (visited.insert(value).second)
+                result.push_back(value);
     }
     return result;
 }
@@ -280,7 +297,7 @@ bool destroy_subtree(registry& scene, entity root) noexcept
     auto values = subtree(scene, root);
     if (values.empty())
         return false;
-    detach(scene, root);
+    arc::scene::detach(scene, root);
     for (auto it = values.rbegin(); it != values.rend(); ++it)
         scene.destroy(*it);
     return true;

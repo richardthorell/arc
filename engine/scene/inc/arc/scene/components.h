@@ -5,6 +5,9 @@
 #include <arc/render/virtual_mesh.h>
 #include <arc/scene/entity.h>
 #include <arc/scene/entity_guid.h>
+#include <arc/ecs/hierarchy.h>
+#include <arc/ecs/partition.h>
+#include <arc/ecs/prefab.h>
 #include <arc/geometric/box.h>
 #include <arc/math/math.h>
 
@@ -23,21 +26,10 @@ struct name_component
     std::string value;
 };
 
-/** Stable identity for persistence and editor references. */
-struct persistent_id_component
-{
-    entity_guid value{};
-};
-
-/** Intrusive, allocation-free scene hierarchy links. */
-struct hierarchy_component
-{
-    entity parent{};
-    entity first_child{};
-    entity previous_sibling{};
-    entity next_sibling{};
-    std::uint32_t child_count{};
-};
+using persistent_id_component = ecs::persistent_id_component;
+using hierarchy_component = ecs::hierarchy_component;
+using prefab_instance_component = ecs::prefab_instance_component;
+using world_region_component = ecs::world_region_component;
 
 /**
  * @brief Local/world transform for a scene entity.
@@ -524,3 +516,5 @@ struct decal_component
 };
 
 } // namespace arc::scene
+
+#include <arc/scene/generated_component_metadata.h>

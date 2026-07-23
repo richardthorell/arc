@@ -10,11 +10,12 @@
 TEST_CASE("tracked memory resource records allocations")
 {
     arc::tracked_memory_resource resource("test");
-    std::pmr::vector<int> values(&resource);
-
-    values.resize(16);
-    values.clear();
-    values.shrink_to_fit();
+    {
+        std::pmr::vector<int> values(&resource);
+        values.resize(16);
+        values.clear();
+        values.shrink_to_fit();
+    }
 
     const auto stats = resource.stats();
     REQUIRE(resource.category() == "test");
