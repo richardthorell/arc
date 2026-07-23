@@ -275,6 +275,7 @@ struct job_descriptor
     job_priority priority{ job_priority::normal };
     job_affinity affinity{ job_affinity::any_worker };
     std::vector<job_handle> dependencies;
+    std::span<const job_handle> dependency_view;
     job_handle parent;
     cancellation_token cancellation;
     job_dependency_policy dependency_policy{ job_dependency_policy::cancel_on_failure };

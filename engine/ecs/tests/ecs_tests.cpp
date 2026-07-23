@@ -296,6 +296,45 @@ TEST_CASE("System scheduler honors forward dependencies and validates declared a
     REQUIRE(result.errors.front().system == "undeclared");
 }
 
+TEST_CASE("System schedules freeze after validation and reject impossible phase dependencies")
+{
+    system_scheduler valid;
+    REQUIRE(valid.add({
+        .name = "input",
+        .phase = system_phase::input,
+        .execute = [](system_context&) {}
+    }));
+    REQUIRE(valid.add({
+        .name = "movement",
+        .phase = system_phase::movement,
+        .after = { "input" },
+        .execute = [](system_context&) {}
+    }));
+    REQUIRE(valid.freeze().empty());
+    REQUIRE(valid.frozen());
+    REQUIRE_FALSE(valid.add({
+        .name = "late",
+        .execute = [](system_context&) {}
+    }));
+    REQUIRE_FALSE(valid.remove("input"));
+
+    system_scheduler invalid;
+    REQUIRE(invalid.add({
+        .name = "future",
+        .phase = system_phase::physics,
+        .execute = [](system_context&) {}
+    }));
+    REQUIRE(invalid.add({
+        .name = "past",
+        .phase = system_phase::movement,
+        .after = { "future" },
+        .execute = [](system_context&) {}
+    }));
+    const auto errors = invalid.freeze();
+    REQUIRE(errors.size() == 1);
+    REQUIRE_FALSE(invalid.frozen());
+}
+
 TEST_CASE("Intrusive hierarchy traverses without snapshots")
 {
     world owner;

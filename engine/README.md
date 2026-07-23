@@ -12,7 +12,7 @@ Current modules:
 - `memory/` provides domain/tag tracking, adaptive budgets, pressure recovery, leak snapshots, PMR adapters, arenas, world/component storage, packet pools, and streaming heaps through the `arc-memory` target and `arc::memory` alias. It depends on `arc-diagnostics`.
 - `ecs/` provides stable entity identities, paged component storage, prepared queries, structural command buffers, system scheduling, reflection, hierarchy, templates, prefabs, replication visitors, and world-region contracts through the `arc-ecs` target and `arc::ecs` alias. It depends on `arc-jobs` and `arc-memory`.
 - `io/` provides backend-neutral asynchronous file reads, ranged reads, writes, atomic writes, metadata queries, and cancellation through the `arc-io` target and `arc::io` alias. Its portable implementation runs chunked blocking operations on scheduler-owned IO workers.
-- `framework/` provides the platform-neutral application lifecycle and runtime module manager through the `arc-framework` target and `arc::framework` alias. It depends on `arc-geometric`, `arc-jobs`, and `arc-memory`.
+- `framework/` provides the platform-neutral application lifecycle, fixed-step multi-world simulation, deterministic random streams and checkpoints, runtime services, and renderer-free headless loop through the `arc-framework` target and `arc::framework` alias. It depends on `arc-ecs`, `arc-jobs`, `arc-memory`, and `arc-diagnostics`.
 - `input/` provides runtime input bindings through the `arc-input` target and `arc::input` alias. It depends on `arc-framework`.
 - `render/` provides the backend-neutral renderer foundation through the `arc-render` target and `arc::render` alias. It depends on `arc-framework`. It currently includes render events, render graph resources, renderer handles, material/resource scaffolding, scene draw packets, CPU culling/sorting/batching, and Vulkan backend bring-up.
 - `scene/` provides game/render components and render extraction through the `arc-scene` target and `arc::scene` alias. It depends on `arc-ecs` and `arc-render`; existing scene registry/entity APIs remain compatibility aliases over the generic ECS.
@@ -61,6 +61,13 @@ The framework public include path is:
 ```cpp
 #include <arc/framework/framework.h>
 ```
+
+The runtime advances simulation worlds at a configurable fixed rate (60 Hz by
+default), runs server worlds before client and editor-preview worlds, and runs
+presentation extraction once per outer frame. Gameplay systems should register
+against the explicit ECS phases rather than using the once-per-frame
+`application::on_update()` compatibility callback. Manual checkpoints are
+memory-budgeted and restore ECS/partition state atomically at phase boundaries.
 
 The diagnostics, jobs, memory, and IO public include paths are:
 

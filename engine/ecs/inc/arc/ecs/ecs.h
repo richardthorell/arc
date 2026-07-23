@@ -9,6 +9,7 @@
 #include <arc/ecs/prefab.h>
 #include <arc/ecs/reflection.h>
 #include <arc/ecs/replication.h>
+#include <arc/ecs/simulation.h>
 #include <arc/ecs/system.h>
 #include <arc/ecs/template.h>
 #include <arc/ecs/world.h>

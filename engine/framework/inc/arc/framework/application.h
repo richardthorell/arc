@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/framework/event.h>
+#include <arc/framework/simulation.h>
 
 #include <cstdint>
 #include <memory>
@@ -10,6 +11,8 @@ namespace arc
 {
 
 class module_registry;
+class runtime_service_registry;
+class runtime_world_manager;
 
 /**
  * @brief Startup configuration requested by an application.
@@ -23,6 +26,7 @@ struct application_config
     bool visible{ true };
     bool start_focused{ true };
     bool maximized{ false };
+    simulation_config simulation{};
 };
 
 /**
@@ -33,6 +37,10 @@ struct frame_time
     double delta_seconds{};
     double total_seconds{};
     std::uint64_t frame_index{};
+    simulation_tick_id last_completed_tick{};
+    std::uint32_t completed_ticks{};
+    double interpolation_alpha{};
+    std::uint64_t discarded_ticks{};
 };
 
 /**
@@ -57,6 +65,16 @@ public:
      * @brief Register runtime modules before startup.
      */
     virtual void register_modules(module_registry& registry);
+
+    /**
+     * @brief Register lifecycle services before modules and worlds start.
+     */
+    virtual void register_services(runtime_service_registry& services);
+
+    /**
+     * @brief Describe simulation worlds before module startup.
+     */
+    virtual void register_worlds(runtime_world_manager& worlds);
 
     /**
      * @brief Called once per frame while the runtime is running.

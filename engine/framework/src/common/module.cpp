@@ -1,6 +1,8 @@
 #include <arc/framework/module.h>
 
 #include <arc/framework/application.h>
+#include <arc/framework/runtime_world.h>
+#include <arc/framework/service.h>
 
 #include <stdexcept>
 #include <unordered_map>
@@ -20,12 +22,26 @@ module_context::module_context(
     job_system& jobs,
     logger& diagnostics,
     memory_system& memory,
-    tracked_memory_resource& compatibility_memory) noexcept
+    tracked_memory_resource& compatibility_memory,
+    runtime_service_registry* services,
+    runtime_world_manager* worlds) noexcept
     : jobs_(&jobs)
     , diagnostics_(&diagnostics)
     , memory_(&compatibility_memory)
     , memory_service_(&memory)
+    , services_(services)
+    , worlds_(worlds)
 {
+}
+
+runtime_service_registry* module_context::services() const noexcept
+{
+    return services_;
+}
+
+runtime_world_manager* module_context::worlds() const noexcept
+{
+    return worlds_;
 }
 
 job_system& module_context::jobs() const noexcept
@@ -112,9 +128,25 @@ void module_manager::start(module_context& context)
         return;
 
     resolve_order();
-    for (const auto index : order_)
-        registry_.modules()[index]->on_start(context);
-    started_ = true;
+    std::size_t started_count{};
+    try
+    {
+        for (const auto index : order_)
+        {
+            registry_.modules()[index]->on_start(context);
+            ++started_count;
+        }
+        started_ = true;
+    }
+    catch (...)
+    {
+        while (started_count > 0)
+        {
+            --started_count;
+            registry_.modules()[order_[started_count]]->on_shutdown(context);
+        }
+        throw;
+    }
 }
 
 void module_manager::update(module_context& context, const frame_time& time)

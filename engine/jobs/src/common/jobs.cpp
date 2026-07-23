@@ -8,7 +8,6 @@
 #include <limits>
 #include <random>
 #include <thread>
-#include <unordered_set>
 
 namespace arc
 {
@@ -728,18 +727,24 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
     state->sequence = implementation_->next_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
     implementation_->submitted.fetch_add(1, std::memory_order_relaxed);
 
+    const auto for_each_dependency = [&descriptor](auto&& operation) {
+        for (const job_handle& dependency : descriptor.dependencies)
+            operation(dependency);
+        for (const job_handle& dependency : descriptor.dependency_view)
+            operation(dependency);
+    };
+
     if (descriptor.parent.valid())
     {
-        for (const auto& dependency : descriptor.dependencies)
-        {
+        for_each_dependency([&descriptor](const job_handle& dependency) {
             if (!dependency.valid())
-                continue;
+                return;
             for (auto ancestor = descriptor.parent.state_; ancestor; ancestor = ancestor->parent.lock())
             {
                 if (ancestor.get() == dependency.state_.get())
                     throw std::invalid_argument("a child job cannot depend on an ancestor that waits for it");
             }
-        }
+        });
     }
 
     if (descriptor.parent.valid())
@@ -755,13 +760,9 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
         state->parent = parent;
     }
 
-    std::unordered_set<detail::job_state*> unique_dependencies;
-    for (const auto& dependency : descriptor.dependencies)
-    {
+    const auto register_dependency = [&](const job_handle& dependency) {
         if (!dependency.valid() || dependency.state_.get() == state.get())
-            continue;
-        if (!unique_dependencies.insert(dependency.state_.get()).second)
-            continue;
+            return;
 
         bool completed{};
         job_status dependency_status{};
@@ -777,6 +778,37 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
         }
         if (completed && (dependency_status == job_status::failed || dependency_status == job_status::cancelled))
             state->dependency_failed.store(true, std::memory_order_release);
+    };
+
+    for (std::size_t index = 0; index < descriptor.dependencies.size(); ++index)
+    {
+        const job_handle& dependency = descriptor.dependencies[index];
+        const bool duplicate = std::any_of(
+            descriptor.dependencies.begin(),
+            descriptor.dependencies.begin() + static_cast<std::ptrdiff_t>(index),
+            [&dependency](const job_handle& prior) {
+                return prior.state_.get() == dependency.state_.get();
+            });
+        if (!duplicate)
+            register_dependency(dependency);
+    }
+    for (std::size_t index = 0; index < descriptor.dependency_view.size(); ++index)
+    {
+        const job_handle& dependency = descriptor.dependency_view[index];
+        const bool duplicate_owned = std::any_of(
+            descriptor.dependencies.begin(),
+            descriptor.dependencies.end(),
+            [&dependency](const job_handle& prior) {
+                return prior.state_.get() == dependency.state_.get();
+            });
+        const bool duplicate_view = std::any_of(
+            descriptor.dependency_view.begin(),
+            descriptor.dependency_view.begin() + static_cast<std::ptrdiff_t>(index),
+            [&dependency](const job_handle& prior) {
+                return prior.state_.get() == dependency.state_.get();
+            });
+        if (!duplicate_owned && !duplicate_view)
+            register_dependency(dependency);
     }
 
     if (state->pending_dependencies.load(std::memory_order_acquire) == 0)

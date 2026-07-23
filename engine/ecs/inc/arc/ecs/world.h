@@ -431,6 +431,8 @@ public:
     {
         for (const auto& [key, values] : other.pools_)
             pools_.emplace(key, values->clone(memory_->component_resource()));
+        for (const auto& query : other.query_cache_)
+            prepare_query(query->signature);
     }
 
     world& operator=(const world& other)

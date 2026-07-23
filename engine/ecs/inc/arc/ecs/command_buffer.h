@@ -154,6 +154,11 @@ public:
     std::size_t size() const noexcept { return commands_.size(); }
     sort_key key() const noexcept { return key_; }
     std::uint64_t id() const noexcept { return id_; }
+    void clear() noexcept
+    {
+        commands_.clear();
+        created_ = 0;
+    }
 
     command_flush_result flush(world& owner)
     {
@@ -163,6 +168,11 @@ public:
 
     static command_flush_result flush_ordered(world& owner, std::span<entity_command_buffer*> buffers)
     {
+        if (std::none_of(buffers.begin(), buffers.end(), [](const entity_command_buffer* buffer) {
+            return buffer && !buffer->empty();
+        }))
+            return {};
+
         std::vector<entity_command_buffer*> ordered(buffers.begin(), buffers.end());
         std::stable_sort(ordered.begin(), ordered.end(), [](const auto* lhs, const auto* rhs) {
             return lhs->key_ < rhs->key_;

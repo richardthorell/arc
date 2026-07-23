@@ -15,6 +15,8 @@ namespace arc
 {
 
 struct frame_time;
+class runtime_service_registry;
+class runtime_world_manager;
 
 /**
  * @brief Services exposed to engine modules during lifecycle callbacks.
@@ -27,7 +29,9 @@ public:
         job_system& jobs,
         logger& diagnostics,
         memory_system& memory,
-        tracked_memory_resource& compatibility_memory) noexcept;
+        tracked_memory_resource& compatibility_memory,
+        runtime_service_registry* services = nullptr,
+        runtime_world_manager* worlds = nullptr) noexcept;
 
     /**
      * @brief Return the shared engine job system.
@@ -48,12 +52,16 @@ public:
      * @brief Return the engine memory service used for budgets, tags, and arenas.
      */
     memory_system& memory_service() const noexcept;
+    runtime_service_registry* services() const noexcept;
+    runtime_world_manager* worlds() const noexcept;
 
 private:
     job_system* jobs_{};
     logger* diagnostics_{};
     tracked_memory_resource* memory_{};
     memory_system* memory_service_{};
+    runtime_service_registry* services_{};
+    runtime_world_manager* worlds_{};
 };
 
 /**
