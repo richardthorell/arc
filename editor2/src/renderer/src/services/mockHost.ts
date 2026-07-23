@@ -12,6 +12,8 @@ export type Transform = {
 
 export type SceneEntity = {
   id: string;
+  guid?: string;
+  parentId?: string;
   name: string;
   kind: 'camera' | 'light' | 'environment' | 'mesh' | 'volume' | 'folder';
   active: boolean;

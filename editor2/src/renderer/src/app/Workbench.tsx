@@ -11,10 +11,15 @@ import {
   FileText,
   Folder,
   FolderTree,
+  Copy,
+  Eye,
+  EyeOff,
   MoreVertical,
+  Plus,
   Lightbulb,
   Search,
   Settings,
+  Trash2,
   X,
 } from 'lucide-react';
 
@@ -41,8 +46,11 @@ import { eulerDegreesToQuaternion, hostEntityKey, parseSelectedEntitySnapshot } 
 
 import './workbench.css';
 
-type HostSceneEntity = {
+export type HostSceneEntity = {
   entity: HostEntityId;
+  guid: string;
+  parentGuid: string;
+  siblingOrder: number;
   name: string;
   kind: 'camera' | 'light' | 'environment' | 'mesh' | 'primitive' | 'imported' | 'unknown';
   active: boolean;
@@ -50,8 +58,18 @@ type HostSceneEntity = {
 };
 
 type HostSceneSnapshot = {
+  sceneGuid: string;
+  sceneName: string;
+  activeScenePath: string;
+  dirty: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string;
+  redoLabel: string;
   entities: HostSceneEntity[];
 };
+
+type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
 
 type HostAssetSnapshot = {
   path: string;
@@ -112,11 +130,71 @@ const sceneRootEntity = (children: SceneEntity[]): SceneEntity => ({
   children,
 });
 
+export const buildSceneTree = (entities: HostSceneEntity[]): SceneEntity[] => {
+  const byGuid = new Map<string, SceneEntity>();
+  for (const entity of entities) {
+    byGuid.set(entity.guid, {
+      id: hostEntityKey(entity.entity),
+      guid: entity.guid,
+      name: entity.name,
+      kind: sceneKindFromHost(entity.kind),
+      active: entity.active,
+      children: [],
+    });
+  }
+  const roots: Array<{ order: number; entity: SceneEntity }> = [];
+  const childrenByParent = new Map<string, Array<{ order: number; entity: SceneEntity }>>();
+  for (const source of entities) {
+    const entity = byGuid.get(source.guid)!;
+    if (!source.parentGuid || !byGuid.has(source.parentGuid)) {
+      roots.push({ order: source.siblingOrder, entity });
+      continue;
+    }
+    entity.parentId = byGuid.get(source.parentGuid)?.id;
+    const siblings = childrenByParent.get(source.parentGuid) ?? [];
+    siblings.push({ order: source.siblingOrder, entity });
+    childrenByParent.set(source.parentGuid, siblings);
+  }
+  for (const [parentGuid, entries] of childrenByParent) {
+    const parent = byGuid.get(parentGuid);
+    if (parent) parent.children = entries.sort((a, b) => a.order - b.order).map((entry) => entry.entity);
+  }
+  return roots.sort((a, b) => a.order - b.order).map((entry) => entry.entity);
+};
+
+type HostEventLike = {
+  type: string;
+  entity?: HostEntityId;
+};
+
+export type HostEventRefreshAction = 'none' | 'selection' | 'selected' | 'hierarchy' | 'all';
+
+const validHostEntity = (entity: HostEntityId | undefined): entity is HostEntityId =>
+  Boolean(entity && entity.index !== 0xffffffff);
+
+export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId: string): HostEventRefreshAction => {
+  if (event.type === 'entity.selected') {
+    const nextSelection = validHostEntity(event.entity) ? hostEntityKey(event.entity) : '';
+    return nextSelection === selectedEntityId ? 'none' : 'selection';
+  }
+  if (event.type === 'component.changed') {
+    if (!validHostEntity(event.entity)) return 'none';
+    return hostEntityKey(event.entity) === selectedEntityId ? 'selected' : 'hierarchy';
+  }
+  if (event.type === 'scene.changed' || event.type === 'entity.created' || event.type === 'entity.deleted' ||
+      event.type === 'project.opened' || event.type === 'project.closed') return 'all';
+  return 'none';
+};
+
 const resizeLimits = {
   left: { min: 220, max: 520 },
   right: { min: 300, max: 640 },
   bottom: { min: 112, max: 420 },
 };
+const translationSnapOptions = [0.05, 0.1, 0.25, 0.5, 1] as const;
+const rotationSnapOptions = [5, 10, 15, 30, 45, 90] as const;
+const scaleSnapOptions = [0.05, 0.1, 0.25, 0.5] as const;
+const nextSnapOption = (options: readonly number[], current: number) => options[(options.indexOf(current) + 1) % options.length];
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
@@ -161,6 +239,7 @@ const snapshotFromMockEntity = (entity: SceneEntity | null): InspectorEntitySnap
       materialName: 'Default Material',
       materialPath: 'materials/default.arcmat',
     } : null,
+    terrain: null,
     components: [
       { kind: 'transform', label: 'Transform', editable: true },
       ...(entity.kind === 'camera' ? [{ kind: 'camera', label: 'Camera', editable: true }] : []),
@@ -175,11 +254,24 @@ export function Workbench() {
   const [project, setProject] = useState<ProjectSnapshot | null>(null);
   const [hostConsoleEvents, setHostConsoleEvents] = useState<ConsoleEvent[]>([]);
   const [selectedEntityId, setSelectedEntityId] = useState('camera-main');
+  const selectedEntityIdRef = useRef(selectedEntityId);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>('asset-scene-demo');
   const [selectedSnapshot, setSelectedSnapshot] = useState<InspectorEntitySnapshot | null>(null);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
   const selectedSnapshotRevision = useRef(0);
+  const hostEventRefreshTimer = useRef<number | null>(null);
+  const hostEventRefreshMode = useRef<'none' | 'selected' | 'hierarchy' | 'all'>('none');
   const [worldEnvironment, setWorldEnvironment] = useState<HostWorldEnvironment | null>(null);
+  const [documentState, setDocumentState] = useState<SceneDocumentState>({
+    sceneGuid: '', sceneName: 'Untitled', activeScenePath: '', dirty: true,
+    canUndo: false, canRedo: false, undoLabel: '', redoLabel: '',
+  });
+  const [activeTool, setActiveTool] = useState<'select' | 'translate' | 'rotate' | 'scale' | 'terrain'>('translate');
+  const [coordinateSpace, setCoordinateSpace] = useState<'world' | 'local'>('world');
+  const [snapping, setSnapping] = useState(false);
+  const [translationSnap, setTranslationSnap] = useState(0.25);
+  const [rotationSnap, setRotationSnap] = useState(15);
+  const [scaleSnap, setScaleSnap] = useState(0.1);
   const [lastCommand, setLastCommand] = useState('Workbench ready');
 
   const loadAssetThumbnail = useCallback(async (path: string): Promise<string | null> => {
@@ -211,6 +303,76 @@ export function Workbench() {
       setLastCommand(event.message);
     });
   }, []);
+
+  useEffect(() => window.arc?.host?.onEvent?.((event) => {
+    setLastCommand(event.message || event.type);
+    if (event.payload && typeof event.payload === 'object' && 'tool' in event.payload) {
+      const payload = event.payload as { tool?: unknown; coordinateSpace?: unknown; snapping?: unknown;
+        translationSnap?: unknown; rotationSnapDegrees?: unknown; scaleSnap?: unknown };
+      const tool = String(payload.tool);
+      if (tool === 'select' || tool === 'translate' || tool === 'rotate' || tool === 'scale') setActiveTool(tool);
+      if (payload.coordinateSpace === 'world' || payload.coordinateSpace === 'local') setCoordinateSpace(payload.coordinateSpace);
+      if (typeof payload.snapping === 'boolean') setSnapping(payload.snapping);
+      if (typeof payload.translationSnap === 'number') setTranslationSnap(payload.translationSnap);
+      if (typeof payload.rotationSnapDegrees === 'number') setRotationSnap(payload.rotationSnapDegrees);
+      if (typeof payload.scaleSnap === 'number') setScaleSnap(payload.scaleSnap);
+    }
+
+    const action = classifyHostEventRefresh(event, selectedEntityIdRef.current);
+    if (action === 'none') return;
+    if (action === 'selection') {
+      const nextSelection = validHostEntity(event.entity) ? hostEntityKey(event.entity) : '';
+      selectedEntityIdRef.current = nextSelection;
+      setSelectedEntityId(nextSelection);
+      if (!nextSelection) {
+        ++selectedSnapshotRevision.current;
+        setSelectedSnapshot(null);
+        return;
+      }
+      if (hostEventRefreshMode.current === 'hierarchy') hostEventRefreshMode.current = 'all';
+      else if (hostEventRefreshMode.current !== 'all') hostEventRefreshMode.current = 'selected';
+    } else if (action === 'all') {
+      hostEventRefreshMode.current = 'all';
+    } else if (action === 'hierarchy' && hostEventRefreshMode.current !== 'all') {
+      hostEventRefreshMode.current = 'hierarchy';
+    } else if (action === 'selected' && hostEventRefreshMode.current === 'none') {
+      hostEventRefreshMode.current = 'selected';
+    }
+
+    if (hostEventRefreshTimer.current !== null) return;
+    hostEventRefreshTimer.current = window.setTimeout(() => {
+      hostEventRefreshTimer.current = null;
+      const mode = hostEventRefreshMode.current;
+      hostEventRefreshMode.current = 'none';
+      if (mode === 'all') void refreshProjectFromHost();
+      else if (mode === 'hierarchy') void refreshProjectFromHost(undefined, false);
+      else if (mode === 'selected' && selectedEntityIdRef.current)
+        void refreshSelectedEntity(selectedEntityIdRef.current, true);
+    }, 24);
+  }), []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      const command = event.ctrlKey && event.shiftKey && event.key.toLocaleLowerCase() === 's' ? 'file.saveAs'
+        : event.ctrlKey && event.key.toLocaleLowerCase() === 's' ? 'file.save'
+          : event.ctrlKey && event.key.toLocaleLowerCase() === 'z' ? 'edit.undo'
+            : event.ctrlKey && (event.key.toLocaleLowerCase() === 'y') ? 'edit.redo'
+              : event.ctrlKey && event.key.toLocaleLowerCase() === 'd' ? 'entity.duplicate'
+                : event.key === 'Delete' ? 'entity.delete'
+                  : event.key.toLocaleLowerCase() === 'q' ? 'viewport.select'
+                    : event.key.toLocaleLowerCase() === 'w' ? 'viewport.translate'
+                      : event.key.toLocaleLowerCase() === 'e' ? 'viewport.rotate'
+                        : event.key.toLocaleLowerCase() === 'r' ? 'viewport.scale'
+                          : event.key.toLocaleLowerCase() === 'f' ? 'viewport.frameSelected' : null;
+      if (!command) return;
+      event.preventDefault();
+      void runCommand(command);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   const refreshSelectedEntity = async (entityId = selectedEntityId, connected = startupState?.engineHostConnected ?? false) => {
     const requestRevision = ++selectedSnapshotRevision.current;
@@ -287,11 +449,63 @@ export function Workbench() {
       return;
     }
 
+    if (startupState?.engineHostConnected && window.arc?.host) {
+      try {
+        let response: HostResponse | undefined;
+        if (command === 'file.new') {
+          response = await window.arc.host.command('scene.new', { name: 'Untitled' }) as HostResponse;
+        } else if (command === 'file.save' || command === 'assets.saveAll') {
+          if (!documentState.activeScenePath) {
+            const result = await window.arc.dialog.saveScene();
+            if (result.canceled) return setLastCommand('Save canceled');
+            response = result.response as HostResponse;
+          } else {
+            response = await window.arc.host.command('scene.save') as HostResponse;
+          }
+        } else if (command === 'file.saveAs') {
+          const result = await window.arc.dialog.saveScene();
+          if (result.canceled) return setLastCommand('Save canceled');
+          response = result.response as HostResponse;
+        } else if (command === 'edit.undo') {
+          response = await window.arc.host.command('history.undo') as HostResponse;
+        } else if (command === 'edit.redo') {
+          response = await window.arc.host.command('history.redo') as HostResponse;
+        } else if (command === 'entity.duplicate' && selectedSnapshot) {
+          response = await window.arc.host.command('entity.duplicate', { entity: selectedSnapshot.entity }) as HostResponse;
+        } else if (command === 'entity.delete' && selectedSnapshot) {
+          response = await window.arc.host.command('entity.delete', { entity: selectedSnapshot.entity }) as HostResponse;
+        } else if (command.startsWith('viewport.')) {
+          if (command === 'viewport.frameSelected') {
+            await window.arc.viewport.cameraInput({ focusSelected: true });
+            return setLastCommand('Framed selected entity');
+          }
+          const tool = command.slice('viewport.'.length) as typeof activeTool;
+          if (tool === 'select' || tool === 'translate' || tool === 'rotate' || tool === 'scale' || tool === 'terrain') {
+            response = await window.arc.host.command('viewport.setTool', {
+              tool, coordinateSpace, snapping,
+              translationSnap, rotationSnapDegrees: rotationSnap, scaleSnap,
+            }) as HostResponse;
+            if (response?.succeeded) setActiveTool(tool);
+          }
+        }
+        if (response) {
+          setLastCommand(response.succeeded ? `${command} completed` : response.error || `${command} failed`);
+          const responsePath = response.payload && typeof response.payload === 'object' && 'path' in response.payload
+            ? String((response.payload as { path?: unknown }).path ?? '') : undefined;
+          if (response.succeeded) await refreshProjectFromHost(responsePath);
+          return;
+        }
+      } catch (error) {
+        setLastCommand(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+
     const result = await executeWorkbenchCommand(command);
     setLastCommand(result.message);
   };
 
-  const refreshProjectFromHost = async (activeScene?: string) => {
+  const refreshProjectFromHost = async (activeScene?: string, refreshSelection = true) => {
     if (!window.arc?.host) {
       return;
     }
@@ -305,13 +519,11 @@ export function Workbench() {
       return;
     }
 
-    const hostEntities = sceneResponse.payload.entities.filter((entity) => !isEditorOnlyHostEntity(entity));
-    const scene = hostEntities.map((entity): SceneEntity => ({
-      id: hostEntityKey(entity.entity),
-      name: entity.name,
-      kind: sceneKindFromHost(entity.kind),
-      active: entity.active,
-    }));
+    const scenePayload = sceneResponse.payload;
+    const hostEntities = scenePayload.entities.filter((entity) => !isEditorOnlyHostEntity(entity));
+    const scene = buildSceneTree(hostEntities);
+    const { entities: _entities, ...nextDocumentState } = scenePayload;
+    setDocumentState(nextDocumentState);
 
     const hostAssets = assetsResponse.succeeded && assetsResponse.payload ? assetsResponse.payload : null;
     const assets = hostAssets?.assets.map((asset): AssetItem => ({
@@ -322,11 +534,17 @@ export function Workbench() {
       status: asset.importRunning ? 'importing' : asset.imported ? 'ready' : 'missing',
     })) ?? project?.assets ?? [];
 
-    const selected = hostEntities.find((entity) => entity.selected) ?? hostEntities[0];
-    if (selected) {
+    const selected = hostEntities.find((entity) => entity.selected);
+    if (selected && refreshSelection) {
       const selectedKey = hostEntityKey(selected.entity);
+      selectedEntityIdRef.current = selectedKey;
       setSelectedEntityId(selectedKey);
       await refreshSelectedEntity(selectedKey, true);
+    } else if (refreshSelection) {
+      selectedEntityIdRef.current = '';
+      setSelectedEntityId('');
+      ++selectedSnapshotRevision.current;
+      setSelectedSnapshot(null);
     }
     const environmentEntity = hostEntities.find((entity) => entity.kind === 'environment');
     if (environmentEntity) await refreshWorldEnvironment(hostEntityKey(environmentEntity.entity));
@@ -356,7 +574,7 @@ export function Workbench() {
       name: hostAssets?.projectName || current?.name || 'Arc Sandbox',
       root: hostAssets?.projectRoot || current?.root || '',
       assetRoot: hostAssets?.assetRoot || current?.assetRoot || '',
-      activeScene: activeScene ?? current?.activeScene ?? '',
+      activeScene: activeScene ?? scenePayload.activeScenePath ?? current?.activeScene ?? '',
       scene,
       assets,
       console: [
@@ -395,6 +613,8 @@ export function Workbench() {
 
   const selectEntity = async (entityId: string) => {
     const result = await mockHost.selectEntity(entityId);
+    if (result.selectedEntityId === selectedEntityIdRef.current) return;
+    selectedEntityIdRef.current = result.selectedEntityId;
     setSelectedEntityId(result.selectedEntityId);
     const hostEntity = parseHostEntityId(entityId);
     if (startupState?.engineHostConnected && hostEntity) {
@@ -404,6 +624,59 @@ export function Workbench() {
       const mockEntity = project ? flattenScene(project.scene).find((entity) => entity.id === entityId) ?? null : null;
       setSelectedSnapshot(snapshotFromMockEntity(mockEntity));
     }
+  };
+
+  const mutateHierarchyEntity = async (type: string, payload: Record<string, unknown>) => {
+    if (!startupState?.engineHostConnected) return false;
+    const response = await window.arc.host.command(type, payload) as HostResponse;
+    setLastCommand(response.succeeded ? `${type} completed` : response.error || `${type} failed`);
+    if (response.succeeded) await refreshProjectFromHost();
+    return response.succeeded;
+  };
+
+  const renameHierarchyEntity = (entityId: string, name: string) => {
+    const entity = parseHostEntityId(entityId);
+    if (entity && name.trim()) void mutateHierarchyEntity('entity.rename', { entity, name: name.trim() });
+  };
+
+  const setHierarchyEntityActive = (entityId: string, active: boolean) => {
+    const entity = parseHostEntityId(entityId);
+    if (entity) void mutateHierarchyEntity('entity.setActive', { entity, active });
+  };
+
+  const createHierarchyChild = () => {
+    const parent = selectedSnapshot?.entity;
+    void mutateHierarchyEntity('entity.create', { kind: 'empty', ...(parent ? { parent } : {}) });
+  };
+
+  const moveHierarchyEntity = (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => {
+    const entity = parseHostEntityId(entityId);
+    if (!entity || entityId === target.id) return;
+    if (target.id === sceneRootId) {
+      void mutateHierarchyEntity('entity.reparent', { entity, preserveWorld: true });
+      return;
+    }
+    if (mode === 'inside') {
+      const parent = parseHostEntityId(target.id);
+      if (parent) void mutateHierarchyEntity('entity.reparent', { entity, parent, preserveWorld: true });
+      return;
+    }
+    const allEntities = project ? flattenScene(project.scene) : [];
+    const source = allEntities.find((value) => value.id === entityId);
+    const siblings = target.parentId
+      ? allEntities.find((value) => value.id === target.parentId)?.children ?? []
+      : project?.scene ?? [];
+    const targetIndex = siblings.findIndex((value) => value.id === target.id);
+    const beforeTarget = mode === 'before' ? target : siblings[targetIndex + 1];
+    const beforeSibling = beforeTarget ? parseHostEntityId(beforeTarget.id) : null;
+    if (source?.parentId === target.parentId) {
+      void mutateHierarchyEntity('entity.reorder', { entity, ...(beforeSibling ? { beforeSibling } : {}) });
+      return;
+    }
+    const parent = target.parentId ? parseHostEntityId(target.parentId) : null;
+    void mutateHierarchyEntity('entity.reparent', {
+      entity, ...(parent ? { parent } : {}), ...(beforeSibling ? { beforeSibling } : {}), preserveWorld: true,
+    });
   };
 
   const updateWorldEnvironment = (next: HostWorldEnvironment) => {
@@ -456,6 +729,21 @@ export function Workbench() {
   const setActiveRightPanel = (panel: WorkbenchPanelId) => setLayout((current) => ({ ...current, activeRightPanel: panel }));
   const setActiveBottomPanel = (panel: WorkbenchPanelId) => setLayout((current) => ({ ...current, activeBottomPanel: panel }));
   const setActivityExpanded = (expanded: boolean) => setLayout((current) => ({ ...current, activityExpanded: expanded }));
+  const updateViewportToolOptions = async (nextSpace: 'world' | 'local', nextSnapping: boolean,
+    nextTranslationSnap = translationSnap, nextRotationSnap = rotationSnap, nextScaleSnap = scaleSnap) => {
+    if (startupState?.engineHostConnected) {
+      const response = await window.arc.host.command('viewport.setTool', {
+        tool: activeTool, coordinateSpace: nextSpace, snapping: nextSnapping,
+        translationSnap: nextTranslationSnap, rotationSnapDegrees: nextRotationSnap, scaleSnap: nextScaleSnap,
+      }) as HostResponse;
+      if (!response.succeeded) return setLastCommand(response.error || 'Viewport tool update failed');
+    }
+    setCoordinateSpace(nextSpace);
+    setSnapping(nextSnapping);
+    setTranslationSnap(nextTranslationSnap);
+    setRotationSnap(nextRotationSnap);
+    setScaleSnap(nextScaleSnap);
+  };
 
   const beginPanelResize = (panel: 'left' | 'right' | 'bottom', event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -504,7 +792,10 @@ export function Workbench() {
     }
 
     if (layout.activeActivity === 'scene') {
-      return <ExplorerPanel project={project} selectedEntityId={selectedEntityId} onSelectEntity={selectEntity} />;
+      return <ExplorerPanel project={project} selectedEntityId={selectedEntityId} onSelectEntity={selectEntity}
+        onRenameEntity={renameHierarchyEntity} onSetEntityActive={setHierarchyEntityActive} onMoveEntity={moveHierarchyEntity}
+        onCreateChild={createHierarchyChild} onDuplicate={() => void runCommand('entity.duplicate')}
+        onDelete={() => void runCommand('entity.delete')} />;
     }
 
     if (layout.activeActivity === 'assets') {
@@ -535,9 +826,9 @@ export function Workbench() {
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
       return <DataDrivenInspector
-        command={async (type, payload) => {
+        command={async (type, payload, edit) => {
           if (!startupState?.engineHostConnected) return { succeeded: true };
-          return window.arc.host.command(type, payload) as Promise<HostResponse>;
+          return window.arc.host.command(type, payload, edit) as Promise<HostResponse>;
         }}
         loading={selectedSnapshotLoading}
         snapshot={selectedSnapshot}
@@ -579,8 +870,20 @@ export function Workbench() {
 
   return (
     <main className="workbench-shell">
-      <MenuBar projectTitle={`${project?.name ?? 'arc editor2'}${project ? '.arcscene*' : ''}`} onCommand={runCommand} />
-      <MainToolbar onCommand={runCommand} />
+      <MenuBar projectTitle={`${documentState.sceneName || 'Untitled'}${documentState.dirty ? '*' : ''}`}
+        canUndo={documentState.canUndo} canRedo={documentState.canRedo} undoLabel={documentState.undoLabel}
+        redoLabel={documentState.redoLabel} onCommand={runCommand} />
+      <MainToolbar activeTool={activeTool} coordinateSpace={coordinateSpace} snapping={snapping}
+        terrainEnabled={selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined}
+        translationSnap={translationSnap} rotationSnap={rotationSnap} scaleSnap={scaleSnap} onCommand={runCommand}
+        onToggleCoordinateSpace={() => void updateViewportToolOptions(coordinateSpace === 'world' ? 'local' : 'world', snapping)}
+        onToggleSnapping={() => void updateViewportToolOptions(coordinateSpace, !snapping)}
+        onCycleTranslationSnap={() => void updateViewportToolOptions(coordinateSpace, snapping,
+          nextSnapOption(translationSnapOptions, translationSnap))}
+        onCycleRotationSnap={() => void updateViewportToolOptions(coordinateSpace, snapping, translationSnap,
+          nextSnapOption(rotationSnapOptions, rotationSnap))}
+        onCycleScaleSnap={() => void updateViewportToolOptions(coordinateSpace, snapping, translationSnap, rotationSnap,
+          nextSnapOption(scaleSnapOptions, scaleSnap))} />
 
       <section className={[
         'workbench-body',
@@ -656,10 +959,16 @@ export function Workbench() {
   );
 }
 
-function ExplorerPanel({ project, selectedEntityId, onSelectEntity }: {
+function ExplorerPanel({ project, selectedEntityId, onSelectEntity, onRenameEntity, onSetEntityActive, onMoveEntity, onCreateChild, onDuplicate, onDelete }: {
   project: ProjectSnapshot;
   selectedEntityId: string;
   onSelectEntity: (entityId: string) => void;
+  onRenameEntity: (entityId: string, name: string) => void;
+  onSetEntityActive: (entityId: string, active: boolean) => void;
+  onMoveEntity: (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => void;
+  onCreateChild: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
 }) {
   const [filter, setFilter] = useState('');
   const sceneTree = useMemo(() => [sceneRootEntity(project.scene)], [project.scene]);
@@ -671,13 +980,20 @@ function ExplorerPanel({ project, selectedEntityId, onSelectEntity }: {
   return (
     <div className="explorer-view">
       <Panel icon={<FolderTree size={14} />} title="Hierarchy">
+        <div className="hierarchy-actions">
+          <UiIconButton label="Create child entity" onClick={onCreateChild}><Plus size={13} /></UiIconButton>
+          <UiIconButton label="Duplicate selected entity" onClick={onDuplicate}><Copy size={13} /></UiIconButton>
+          <UiIconButton label="Delete selected entity" onClick={onDelete}><Trash2 size={13} /></UiIconButton>
+        </div>
         <label className="hierarchy-search">
           <Search size={15} />
           <input aria-label="Search hierarchy" placeholder="Search..." value={filter} onChange={(event) => setFilter(event.target.value)} />
         </label>
         <div className="hierarchy-tree">
           {filteredScene.map((entity) => (
-            <SceneTreeItem key={entity.id} entity={entity} depth={0} selectedEntityId={selectedEntityId} onSelectEntity={onSelectEntity} />
+            <SceneTreeItem key={entity.guid ?? entity.id} entity={entity} depth={0} selectedEntityId={selectedEntityId}
+              onSelectEntity={onSelectEntity} onRenameEntity={onRenameEntity} onSetEntityActive={onSetEntityActive}
+              onMoveEntity={onMoveEntity} forceExpanded={Boolean(filter)} />
           ))}
           {filteredScene.length === 0 && <div className="hierarchy-empty">No matching entities</div>}
         </div>
@@ -716,7 +1032,7 @@ const entityMatchesFilter = (entity: SceneEntity, filter: string) => {
   return words.every((word) => haystack.includes(word) || fuzzyIncludes(haystack, word));
 };
 
-const filterSceneTree = (entities: SceneEntity[], filter: string): SceneEntity[] => {
+export const filterSceneTree = (entities: SceneEntity[], filter: string): SceneEntity[] => {
   const normalized = normalizeFilterText(filter);
   if (!normalized) {
     return entities;
@@ -836,28 +1152,71 @@ function TreeSection({ title, children }: { title: string; children: ReactNode }
   return <section className="tree-section"><h3><ChevronDown size={14} /> {title}</h3>{children}</section>;
 }
 
-function SceneTreeItem({ entity, depth, selectedEntityId, onSelectEntity }: {
+function SceneTreeItem({ entity, depth, selectedEntityId, onSelectEntity, onRenameEntity, onSetEntityActive, onMoveEntity, forceExpanded }: {
   entity: SceneEntity;
   depth: number;
   selectedEntityId: string;
   onSelectEntity: (entityId: string) => void;
+  onRenameEntity: (entityId: string, name: string) => void;
+  onSetEntityActive: (entityId: string, active: boolean) => void;
+  onMoveEntity: (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => void;
+  forceExpanded?: boolean;
 }) {
   const hasChildren = Boolean(entity.children?.length);
   const selectable = entity.id !== sceneRootId;
+  const [expanded, setExpanded] = useState(true);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(entity.name);
+  useEffect(() => setNameDraft(entity.name), [entity.name]);
+  const showChildren = hasChildren && (expanded || forceExpanded);
   return (
     <div>
       <UiTreeRow
+        as="div"
+        role="treeitem"
+        tabIndex={0}
         className={`tree-row entity-row entity-${entity.kind}`}
         depth={depth}
+        draggable={selectable}
         selected={selectable && entity.id === selectedEntityId}
-        meta={!entity.active && <small>off</small>}
+        meta={selectable && <button aria-label={entity.active ? 'Disable entity' : 'Enable entity'} className="hierarchy-active-toggle" type="button"
+          aria-pressed={entity.active} onClick={(event) => { event.stopPropagation(); onSetEntityActive(entity.id, !entity.active); }}>
+          {entity.active ? <Eye size={12} /> : <EyeOff size={12} />}
+        </button>}
         onClick={() => selectable && onSelectEntity(entity.id)}
+        onKeyDown={(event) => {
+          if (selectable && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            onSelectEntity(entity.id);
+          }
+        }}
+        onDoubleClick={() => selectable && setRenaming(true)}
+        onDragStart={(event) => event.dataTransfer.setData('application/x-arc-entity', entity.id)}
+        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const dragged = event.dataTransfer.getData('application/x-arc-entity');
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const ratio = (event.clientY - bounds.top) / Math.max(1, bounds.height);
+          onMoveEntity(dragged, entity, ratio < 0.3 ? 'before' : ratio > 0.7 ? 'after' : 'inside');
+        }}
       >
-        {hasChildren ? <ChevronDown size={13} /> : <ChevronRight size={13} className="ghost" />}
+        <span className="hierarchy-expand" onClick={(event) => { event.stopPropagation(); if (hasChildren) setExpanded((value) => !value); }}>
+          {hasChildren && showChildren ? <ChevronDown size={13} /> : <ChevronRight size={13} className={hasChildren ? '' : 'ghost'} />}
+        </span>
         <EntityIcon kind={entity.kind} />
-        <span>{entity.name}</span>
+        {renaming ? <input autoFocus className="hierarchy-inline-rename" value={nameDraft}
+          onClick={(event) => event.stopPropagation()} onChange={(event) => setNameDraft(event.target.value)}
+          onBlur={() => { setRenaming(false); if (nameDraft.trim() !== entity.name) onRenameEntity(entity.id, nameDraft); }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') { setNameDraft(entity.name); setRenaming(false); }
+          }} /> : <span>{entity.name}</span>}
       </UiTreeRow>
-      {entity.children?.map((child) => <SceneTreeItem key={child.id} entity={child} depth={depth + 1} selectedEntityId={selectedEntityId} onSelectEntity={onSelectEntity} />)}
+      {showChildren && entity.children?.map((child) => <SceneTreeItem key={child.guid ?? child.id} entity={child} depth={depth + 1}
+        selectedEntityId={selectedEntityId} onSelectEntity={onSelectEntity} onRenameEntity={onRenameEntity}
+        onSetEntityActive={onSetEntityActive} onMoveEntity={onMoveEntity} forceExpanded={forceExpanded} />)}
     </div>
   );
 }

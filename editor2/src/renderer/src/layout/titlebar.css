@@ -115,6 +115,10 @@
   border-radius: 3px;
 }
 
+.menu-dropdown button span { flex: 1; }
+.menu-dropdown button small { margin-left: 24px; color: var(--arc-color-text-subtle); }
+.menu-dropdown button:disabled { opacity: 0.42; }
+
 .menu-dropdown button:hover {
   background: var(--arc-color-bg-selected-strong);
 }

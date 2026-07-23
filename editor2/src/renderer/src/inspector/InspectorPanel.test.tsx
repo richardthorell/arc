@@ -30,6 +30,7 @@ const cameraSnapshot = (): InspectorEntitySnapshot => ({
     clearColor: { x: 0.055, y: 0.12, z: 0.22, w: 1 },
   },
   meshRenderer: null,
+  terrain: null,
   components: [
     { kind: 'transform', label: 'Transform', editable: true },
     { kind: 'camera', label: 'Camera', editable: true },
@@ -52,6 +53,36 @@ const meshSnapshot = (): InspectorEntitySnapshot => ({
   components: [
     { kind: 'transform', label: 'Transform', editable: true },
     { kind: 'meshRenderer', label: 'Mesh Renderer', editable: true },
+  ],
+});
+
+const terrainSnapshot = (): InspectorEntitySnapshot => ({
+  ...cameraSnapshot(),
+  name: 'Terrain',
+  tag: 'Environment',
+  camera: null,
+  terrain: {
+    enabled: true,
+    size: 180,
+    resolution: 257,
+    chunkQuads: 128,
+    receiveShadows: true,
+    contentRevision: 3,
+    brushTool: 'sculpt',
+    brushRadius: 6,
+    brushStrength: 0.25,
+    brushFalloff: 1,
+    activeLayer: 0,
+    layers: [
+      { name: 'Grass', baseColorPath: 'textures/grass.jpg' },
+      { name: 'Dirt', baseColorPath: '' },
+      { name: 'Rock', baseColorPath: '' },
+      { name: 'Sand', baseColorPath: '' },
+    ],
+  },
+  components: [
+    { kind: 'transform', label: 'Transform', editable: true },
+    { kind: 'terrain', label: 'Terrain', editable: true },
   ],
 });
 
@@ -82,6 +113,23 @@ describe('data-driven InspectorPanel', () => {
       entity: { index: 3, generation: 1 },
       camera: expect.objectContaining({ projection: 'orthographic' }),
     }));
+  });
+
+  it('renders terrain and virtual brush schemas and sends typed brush and layer commands', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    const assets = [{ id: 'sand', name: 'Sand', path: 'textures/sand.jpg', kind: 'texture', status: 'ready' as const }];
+    render(<InspectorPanel snapshot={terrainSnapshot()} command={command} refresh={async () => undefined} assets={assets} />);
+
+    expect(screen.getByLabelText('Collapse Terrain')).toBeInTheDocument();
+    expect(screen.getByLabelText('Collapse Terrain Brush')).toBeInTheDocument();
+    expect(screen.getByLabelText('Choose Grass Layer asset')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Tool'), 'paint');
+    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.setBrush', expect.objectContaining({ tool: 'paint' })));
+    expect(screen.getByLabelText('Paint Layer')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Choose Sand Layer asset'));
+    await userEvent.click(screen.getByLabelText('Select Sand'));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.assignLayer', expect.objectContaining({ layer: 3, path: 'textures/sand.jpg' })));
   });
 
   it('filters, collapses, and restores component content', async () => {
@@ -165,7 +213,7 @@ describe('data-driven InspectorPanel', () => {
     expect(command).toHaveBeenCalledTimes(2);
     expect(command).toHaveBeenLastCalledWith('entity.setTransform', expect.objectContaining({
       transform: expect.objectContaining({ position: [1.4, 2, 3] }),
-    }));
+    }), expect.objectContaining({ phase: 'commit', label: 'Transform Entity' }));
     vi.useRealTimers();
   });
 

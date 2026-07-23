@@ -409,6 +409,41 @@
   padding-bottom: 28px;
 }
 
+.hierarchy-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 27px;
+  padding: 2px 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.hierarchy-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hierarchy-active-toggle {
+  display: inline-flex;
+  padding: 3px;
+  color: #8794a3;
+  border-radius: 3px;
+}
+
+.hierarchy-active-toggle:hover { color: #e2eaf3; background: rgba(255, 255, 255, 0.08); }
+
+.hierarchy-inline-rename {
+  min-width: 0;
+  height: 21px;
+  padding: 0 5px;
+  color: #eef4fb;
+  border: 1px solid #4779aa;
+  border-radius: 2px;
+  outline: 0;
+  background: #101820;
+}
+
 .hierarchy-search {
   position: relative;
   display: flex;

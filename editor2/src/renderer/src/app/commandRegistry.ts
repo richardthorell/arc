@@ -7,8 +7,15 @@ export type CommandRegistration = {
 };
 
 export const commandRegistry: Record<CommandId, CommandRegistration> = {
+  'file.new': { id: 'file.new', label: 'New Scene', description: 'Create a new untitled mountain scene.' },
   'file.open': { id: 'file.open', label: 'Open Scene', description: 'Open a scene asset and replace imported scene content.' },
+  'file.save': { id: 'file.save', label: 'Save Scene', description: 'Save the active scene.' },
+  'file.saveAs': { id: 'file.saveAs', label: 'Save Scene As', description: 'Save the active scene to a new path.' },
   'file.importScene': { id: 'file.importScene', label: 'Import Scene Into Current', description: 'Append a scene asset to the current scene.' },
+  'edit.undo': { id: 'edit.undo', label: 'Undo', description: 'Undo the last scene edit.' },
+  'edit.redo': { id: 'edit.redo', label: 'Redo', description: 'Redo the last undone scene edit.' },
+  'entity.duplicate': { id: 'entity.duplicate', label: 'Duplicate Entity', description: 'Duplicate the selected entity subtree.' },
+  'entity.delete': { id: 'entity.delete', label: 'Delete Entity', description: 'Delete the selected entity subtree.' },
   'scene.play': { id: 'scene.play', label: 'Play', description: 'Start scene play mode.' },
   'scene.pause': { id: 'scene.pause', label: 'Pause', description: 'Pause scene play mode.' },
   'scene.stop': { id: 'scene.stop', label: 'Stop', description: 'Stop scene play mode.' },
@@ -18,6 +25,7 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
   'viewport.translate': { id: 'viewport.translate', label: 'Translate Tool', description: 'Activate translate gizmo.' },
   'viewport.rotate': { id: 'viewport.rotate', label: 'Rotate Tool', description: 'Activate rotate gizmo.' },
   'viewport.scale': { id: 'viewport.scale', label: 'Scale Tool', description: 'Activate scale gizmo.' },
+  'viewport.terrain': { id: 'viewport.terrain', label: 'Terrain Tool', description: 'Sculpt or paint the selected terrain.' },
   'viewport.frameSelected': { id: 'viewport.frameSelected', label: 'Frame Selected', description: 'Frame the selected object in the viewport.' },
   'layout.reset': { id: 'layout.reset', label: 'Reset Layout', description: 'Reset the workbench layout.' },
   'assets.import': { id: 'assets.import', label: 'Import Asset', description: 'Import assets into the project.' },

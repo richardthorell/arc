@@ -31,6 +31,21 @@ export type InspectorMeshRenderer = {
   materialPath: string;
 };
 
+export type InspectorTerrain = {
+  enabled: boolean;
+  size: number;
+  resolution: number;
+  chunkQuads: number;
+  receiveShadows: boolean;
+  contentRevision: number;
+  brushTool: 'sculpt' | 'smooth' | 'flatten' | 'paint';
+  brushRadius: number;
+  brushStrength: number;
+  brushFalloff: number;
+  activeLayer: number;
+  layers: Array<{ name: string; baseColorPath: string }>;
+};
+
 export type HostComponentSnapshot = {
   kind: string;
   label: string;
@@ -46,6 +61,7 @@ export type InspectorEntitySnapshot = {
   transform: InspectorTransform | null;
   camera: InspectorCamera | null;
   meshRenderer: InspectorMeshRenderer | null;
+  terrain: InspectorTerrain | null;
   components: HostComponentSnapshot[];
 };
 
@@ -92,6 +108,20 @@ const hostSelectedEntitySchema = z.object({
     materialName: z.string(),
     materialPath: z.string(),
   }).nullable(),
+  terrain: z.object({
+    enabled: z.boolean(),
+    size: finiteNumber.positive(),
+    resolution: z.number().int().min(3),
+    chunkQuads: z.number().int().positive(),
+    receiveShadows: z.boolean(),
+    contentRevision: z.number().int().nonnegative(),
+    brushTool: z.enum(['sculpt', 'smooth', 'flatten', 'paint']),
+    brushRadius: finiteNumber.min(0.25).max(128),
+    brushStrength: finiteNumber.positive().max(1),
+    brushFalloff: finiteNumber.min(0).max(1),
+    activeLayer: z.number().int().min(0).max(3),
+    layers: z.array(z.object({ name: z.string(), baseColorPath: z.string() })).length(4),
+  }).nullable().default(null),
   components: z.array(z.object({
     kind: z.string(),
     label: z.string(),

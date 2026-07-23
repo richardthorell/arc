@@ -29,8 +29,15 @@ export type WorkbenchPanelId =
   | 'settings';
 
 export type CommandId =
+  | 'file.new'
   | 'file.open'
+  | 'file.save'
+  | 'file.saveAs'
   | 'file.importScene'
+  | 'edit.undo'
+  | 'edit.redo'
+  | 'entity.duplicate'
+  | 'entity.delete'
   | 'scene.play'
   | 'scene.pause'
   | 'scene.stop'
@@ -40,6 +47,7 @@ export type CommandId =
   | 'viewport.translate'
   | 'viewport.rotate'
   | 'viewport.scale'
+  | 'viewport.terrain'
   | 'viewport.frameSelected'
   | 'layout.reset'
   | 'assets.import'

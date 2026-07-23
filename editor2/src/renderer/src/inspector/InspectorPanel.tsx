@@ -14,7 +14,8 @@ import { SchemaComponentCard } from './SchemaComponents';
 
 import './inspector.css';
 
-export type InspectorCommand = (type: string, payload: Record<string, unknown>) => Promise<HostResponse>;
+export type InspectorEditTransaction = { id: number; phase: 'begin' | 'update' | 'commit' | 'cancel'; label?: string };
+export type InspectorCommand = (type: string, payload: Record<string, unknown>, edit?: InspectorEditTransaction) => Promise<HostResponse>;
 
 export type InspectorPanelProps = {
   snapshot: InspectorEntitySnapshot | null;
@@ -80,6 +81,8 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
   const [error, setError] = useState<string | null>(null);
   const confirmed = useRef(snapshot);
   const revision = useRef(0);
+  const nextTransactionId = useRef(1);
+  const activeTransaction = useRef<{ id: number; key: string } | null>(null);
 
   useEffect(() => {
     confirmed.current = snapshot;
@@ -92,12 +95,26 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
     type: string,
     payload: Record<string, unknown>,
     settled = true,
+    transactionKey?: string,
+    transactionLabel?: string,
   ) => {
     const requestRevision = ++revision.current;
     setDraft(next);
     setError(null);
     try {
-      const response = await command(type, payload);
+      let edit: InspectorEditTransaction | undefined;
+      if (transactionKey && !settled) {
+        if (!activeTransaction.current) {
+          activeTransaction.current = { id: nextTransactionId.current++, key: transactionKey };
+          edit = { id: activeTransaction.current.id, phase: 'begin', label: transactionLabel };
+        } else {
+          edit = { id: activeTransaction.current.id, phase: 'update', label: transactionLabel };
+        }
+      } else if (transactionKey && settled && activeTransaction.current?.key === transactionKey) {
+        edit = { id: activeTransaction.current.id, phase: 'commit', label: transactionLabel };
+        activeTransaction.current = null;
+      }
+      const response = edit ? await command(type, payload, edit) : await command(type, payload);
       if (requestRevision !== revision.current) return;
       if (!response.succeeded) {
         setDraft(confirmed.current);
@@ -106,7 +123,7 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
         onStatus?.(message);
         return;
       }
-      confirmed.current = next;
+      if (settled) confirmed.current = next;
       onStatus?.('Inspector value updated');
       if (settled) await refresh();
     } catch (reason) {
@@ -123,14 +140,17 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
   };
 
   const updateComponent = (component: InspectorComponentId, path: string, next: InspectorEntitySnapshot, settled: boolean) => {
+    const transactionKey = `${component}:${path}`;
+    const transactionLabel = component === 'transform' ? 'Transform Entity' : component === 'camera' ? 'Edit Camera' :
+      component === 'meshRenderer' ? 'Edit Mesh Renderer' : 'Edit Terrain';
     if (component === 'transform' && next.transform) {
       void runMutation(next, 'entity.setTransform', {
         ...entityPayload(next), transform: transformHostPayload(next.transform),
-      }, settled);
+      }, settled, transactionKey, transactionLabel);
     } else if (component === 'camera' && next.camera) {
       void runMutation(next, 'entity.setCamera', {
         ...entityPayload(next), camera: cameraHostPayload(next.camera),
-      }, settled);
+      }, settled, transactionKey, transactionLabel);
     } else if (component === 'meshRenderer' && next.meshRenderer) {
       if (path === 'meshRenderer.materialPath') {
         void runMutation(next, 'entity.setMaterial', {
@@ -142,8 +162,25 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
           ...entityPayload(next),
           visible: next.meshRenderer.visible,
           baseColorTint: [tint.x, tint.y, tint.z, tint.w],
-        }, settled);
+        }, settled, transactionKey, transactionLabel);
       }
+    } else if (component === 'terrain' && next.terrain) {
+      const layerMatch = /^terrain\.layers\.(\d)\.baseColorPath$/.exec(path);
+      if (layerMatch) {
+        void runMutation(next, 'terrain.assignLayer', {
+          ...entityPayload(next), layer: Number(layerMatch[1]), path: next.terrain.layers[Number(layerMatch[1])].baseColorPath,
+        }, true);
+      } else {
+        void runMutation(next, 'terrain.update', {
+          ...entityPayload(next), enabled: next.terrain.enabled, receiveShadows: next.terrain.receiveShadows,
+        }, settled, transactionKey, transactionLabel);
+      }
+    } else if (component === 'terrainBrush' && next.terrain) {
+      void runMutation(next, 'terrain.setBrush', {
+        ...entityPayload(next), tool: next.terrain.brushTool, radius: next.terrain.brushRadius,
+        strength: next.terrain.brushStrength, falloff: next.terrain.brushFalloff,
+        activeLayer: Number(next.terrain.activeLayer),
+      }, true);
     }
   };
 
@@ -244,6 +281,7 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
             thumbnailProvider={thumbnailProvider}
             onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
             onValue={(path, value, settled) => {
+              if (path === 'terrain.activeLayer') value = Number(value);
               let next = setPathValue(draft, path, value);
               if (path === 'transform.rotationDegrees' && next.transform) {
                 next = { ...next, transform: { ...next.transform, rotationDegrees: value as Vec3 } };

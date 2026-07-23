@@ -7,22 +7,32 @@ import { WindowControls } from './WindowControls';
 type MenuBarProps = {
   projectTitle: string;
   onCommand: (command: CommandId) => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  undoLabel?: string;
+  redoLabel?: string;
 };
 
 const menuItems = ['File', 'Edit', 'View', 'Scene', 'Render', 'Tools', 'Window', 'Help'] as const;
 type MenuItem = typeof menuItems[number];
 
-const menuCommands: Partial<Record<MenuItem, { label: string; command: CommandId }[]>> = {
+type MenuCommand = { label: string; command: CommandId; shortcut?: string; disabled?: boolean };
+
+const baseMenuCommands: Partial<Record<MenuItem, MenuCommand[]>> = {
   File: [
+    { label: 'New Scene', command: 'file.new', shortcut: 'Ctrl+N' },
     { label: 'Open Scene...', command: 'file.open' },
+    { label: 'Save Scene', command: 'file.save', shortcut: 'Ctrl+S' },
+    { label: 'Save Scene As...', command: 'file.saveAs', shortcut: 'Ctrl+Shift+S' },
     { label: 'Import Scene Into Current...', command: 'file.importScene' },
   ],
+  Edit: [],
   Window: [
     { label: 'Reset Layout', command: 'layout.reset' },
   ],
 };
 
-export function MenuBar({ projectTitle, onCommand }: MenuBarProps) {
+export function MenuBar({ projectTitle, onCommand, canUndo = false, canRedo = false, undoLabel, redoLabel }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuItem | null>(null);
   const menuRef = useRef<HTMLElement | null>(null);
 
@@ -41,6 +51,15 @@ export function MenuBar({ projectTitle, onCommand }: MenuBarProps) {
     setOpenMenu(null);
     onCommand(command);
   };
+  const menuCommands = {
+    ...baseMenuCommands,
+    Edit: [
+      { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', command: 'edit.undo', shortcut: 'Ctrl+Z', disabled: !canUndo },
+      { label: redoLabel ? `Redo ${redoLabel}` : 'Redo', command: 'edit.redo', shortcut: 'Ctrl+Y', disabled: !canRedo },
+      { label: 'Duplicate', command: 'entity.duplicate', shortcut: 'Ctrl+D' },
+      { label: 'Delete', command: 'entity.delete', shortcut: 'Delete' },
+    ],
+  } satisfies Partial<Record<MenuItem, MenuCommand[]>>;
 
   return (
     <header className="workbench-titlebar">
@@ -71,8 +90,8 @@ export function MenuBar({ projectTitle, onCommand }: MenuBarProps) {
                 {commands && expanded && (
                   <div className="menu-dropdown" role="menu">
                     {commands.map((entry) => (
-                      <UiButton key={entry.command} role="menuitem" onClick={() => runMenuCommand(entry.command)} variant="ghost">
-                        {entry.label}
+                      <UiButton disabled={entry.disabled} key={entry.command} role="menuitem" onClick={() => runMenuCommand(entry.command)} variant="ghost">
+                        <span>{entry.label}</span>{entry.shortcut && <small>{entry.shortcut}</small>}
                       </UiButton>
                     ))}
                   </div>

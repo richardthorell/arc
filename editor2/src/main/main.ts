@@ -12,6 +12,8 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | null = null;
 let hostClient: ArcHostClient | null = null;
+let allowWindowClose = false;
+let closeConfirmationPending = false;
 
 const activeWindow = (): BrowserWindow | null => mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 
@@ -20,6 +22,15 @@ type HostResponse = {
   requestId: number;
   succeeded: boolean;
   error: string;
+  payload: unknown;
+};
+
+type HostEvent = {
+  kind: 'event';
+  sequence: number;
+  type: string;
+  entity: { index: number; generation: number };
+  message: string;
   payload: unknown;
 };
 
@@ -193,15 +204,15 @@ class ArcHostClient {
     this.process = null;
   }
 
-  command(type: string, payload: Record<string, unknown> = {}): Promise<HostResponse> {
-    return this.send({ kind: 'command', type, payload });
+  command(type: string, payload: Record<string, unknown> = {}, edit?: Record<string, unknown>): Promise<HostResponse> {
+    return this.send({ kind: 'command', type, payload, edit });
   }
 
   query(type: string, payload: Record<string, unknown> = {}): Promise<HostResponse> {
     return this.send({ kind: 'query', type, payload });
   }
 
-  private send(message: { kind: 'command' | 'query'; type: string; payload: Record<string, unknown> }): Promise<HostResponse> {
+  private send(message: { kind: 'command' | 'query'; type: string; payload: Record<string, unknown>; edit?: Record<string, unknown> }): Promise<HostResponse> {
     this.start();
     const child = this.process;
     if (!child?.stdin.writable) {
@@ -235,6 +246,10 @@ class ArcHostClient {
     }
 
     const maybeResponse = parsed as Partial<HostResponse>;
+    if ((parsed as Partial<HostEvent>).kind === 'event') {
+      activeWindow()?.webContents.send('host:event', parsed as HostEvent);
+      return;
+    }
     if (maybeResponse.kind !== 'response' || typeof maybeResponse.requestId !== 'number') {
       sendHostLog({
         level: 'debug',
@@ -269,6 +284,57 @@ const nativeWindowHandleNumber = (window: BrowserWindow): number => {
   return Number(handle.readBigUInt64LE(0));
 };
 
+type SceneDocumentState = { dirty?: boolean; sceneName?: string; activeScenePath?: string };
+
+const saveSceneWithDialog = async (target: BrowserWindow, activeScenePath = ''): Promise<HostResponse | null> => {
+  if (activeScenePath) {
+    return hostClient?.command('scene.save') ?? null;
+  }
+  const result = await dialog.showSaveDialog(target, {
+    title: 'Save ARC Scene',
+    buttonLabel: 'Save',
+    defaultPath: 'Untitled.arcscene',
+    filters: [{ name: 'ARC Scene', extensions: ['arcscene'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  return hostClient?.command('scene.saveAs', { path: result.filePath }) ?? null;
+};
+
+const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
+  if (closeConfirmationPending) return;
+  closeConfirmationPending = true;
+  try {
+    const state = await hostClient?.query('scene.hierarchy');
+    const document = state?.payload as SceneDocumentState | undefined;
+    if (state?.succeeded && document?.dirty) {
+      const choice = await dialog.showMessageBox(target, {
+        type: 'warning',
+        title: 'Unsaved ARC Scene',
+        message: `Save changes to ${document.sceneName || 'Untitled'}?`,
+        detail: 'Unsaved scene authoring changes will be lost.',
+        buttons: ['Save', "Don't Save", 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+      if (choice.response === 2) return;
+      if (choice.response === 0) {
+        const saved = await saveSceneWithDialog(target, document.activeScenePath);
+        if (!saved?.succeeded) {
+          if (saved) dialog.showErrorBox('Scene Save Failed', saved.error || 'The scene could not be saved.');
+          return;
+        }
+      }
+    }
+    allowWindowClose = true;
+    target.close();
+  } catch (error) {
+    dialog.showErrorBox('Unable to Close Scene', error instanceof Error ? error.message : String(error));
+  } finally {
+    closeConfirmationPending = false;
+  }
+};
+
 const createMainWindow = (): void => {
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -294,6 +360,11 @@ const createMainWindow = (): void => {
 
   mainWindow.on('maximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', false));
+  mainWindow.on('close', (event) => {
+    if (allowWindowClose) return;
+    event.preventDefault();
+    if (mainWindow) void confirmWindowClose(mainWindow);
+  });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -319,7 +390,8 @@ app.whenReady().then(() => {
   }));
 
   ipcMain.handle('host:query', (_event, type: string, payload: Record<string, unknown> = {}) => hostClient?.query(type, payload));
-  ipcMain.handle('host:command', (_event, type: string, payload: Record<string, unknown>) => hostClient?.command(type, payload));
+  ipcMain.handle('host:command', (_event, type: string, payload: Record<string, unknown>, edit?: Record<string, unknown>) =>
+    hostClient?.command(type, payload, edit));
   ipcMain.handle('dialog:openScene', async (_event, options: OpenSceneDialogOptions = {}) => {
     const target = activeWindow();
     if (!target) {
@@ -330,7 +402,7 @@ app.whenReady().then(() => {
       buttonLabel: options.append ? 'Import' : 'Open',
       properties: ['openFile'],
       filters: [
-        { name: 'Scene Assets', extensions: ['glb', 'gltf', 'fbx', 'scene'] },
+        { name: 'Scene Assets', extensions: ['arcscene', 'glb', 'gltf', 'fbx', 'scene'] },
         { name: 'All Files', extensions: ['*'] },
       ],
     });
@@ -348,6 +420,17 @@ app.whenReady().then(() => {
       filePath,
       response,
     };
+  });
+  ipcMain.handle('dialog:saveScene', async () => {
+    const target = activeWindow();
+    if (!target) throw new Error('No active editor window');
+    const result = await dialog.showSaveDialog(target, {
+      title: 'Save ARC Scene', buttonLabel: 'Save', defaultPath: 'Untitled.arcscene',
+      filters: [{ name: 'ARC Scene', extensions: ['arcscene'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const response = await hostClient?.command('scene.saveAs', { path: result.filePath });
+    return { canceled: false, filePath: result.filePath, response };
   });
   ipcMain.handle('viewport:attach', (_event, bounds: NativeViewportBounds) => {
     const target = activeWindow();
