@@ -23,6 +23,11 @@ class module_context
 {
 public:
     module_context(job_system& jobs, logger& diagnostics, tracked_memory_resource& memory) noexcept;
+    module_context(
+        job_system& jobs,
+        logger& diagnostics,
+        memory_system& memory,
+        tracked_memory_resource& compatibility_memory) noexcept;
 
     /**
      * @brief Return the shared engine job system.
@@ -39,10 +44,16 @@ public:
      */
     tracked_memory_resource& memory() const noexcept;
 
+    /**
+     * @brief Return the engine memory service used for budgets, tags, and arenas.
+     */
+    memory_system& memory_service() const noexcept;
+
 private:
     job_system* jobs_{};
     logger* diagnostics_{};
     tracked_memory_resource* memory_{};
+    memory_system* memory_service_{};
 };
 
 /**

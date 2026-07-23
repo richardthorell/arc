@@ -41,7 +41,7 @@ runtime::runtime(application& app, application_config config)
     : app_(&app)
     , config_(normalize_config(std::move(config)))
     , jobs_()
-    , module_context_(jobs_, default_logger(), default_tracked_memory_resource())
+    , module_context_(jobs_, default_logger(), memory_, default_tracked_memory_resource())
 {
 }
 
@@ -89,6 +89,8 @@ frame_time runtime::tick()
 
     modules_.update(module_context_, current_time_);
     app_->on_update(current_time_);
+    tick_arena_.reset();
+    frame_arena_.reset();
     ++current_time_.frame_index;
     return current_time_;
 }
@@ -138,6 +140,21 @@ const application_config& runtime::config() const noexcept
 job_system& runtime::jobs() noexcept
 {
     return jobs_;
+}
+
+memory_system& runtime::memory() noexcept
+{
+    return memory_;
+}
+
+frame_arena& runtime::frame_memory() noexcept
+{
+    return frame_arena_;
+}
+
+tick_arena& runtime::tick_memory() noexcept
+{
+    return tick_arena_;
 }
 
 module_manager& runtime::modules() noexcept

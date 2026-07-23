@@ -90,38 +90,28 @@ std::size_t deferred_resource_releaser::pending_count() const noexcept
 }
 
 frame_allocator::frame_allocator(std::size_t capacity)
-    : storage_(capacity)
+    : arena_(capacity)
 {
 }
 
 void* frame_allocator::allocate(std::size_t size, std::size_t alignment)
 {
-    if (alignment == 0 || (alignment & (alignment - 1)) != 0)
-        throw std::invalid_argument("frame allocator alignment must be a power of two");
-
-    const auto aligned_offset = (offset_ + alignment - 1) & ~(alignment - 1);
-    const auto required = aligned_offset + size;
-    if (required > storage_.size())
-        storage_.resize(std::max(required, storage_.size() * 2 + 1024));
-
-    void* result = storage_.data() + aligned_offset;
-    offset_ = required;
-    return result;
+    return arena_.allocate(size, alignment);
 }
 
 void frame_allocator::reset() noexcept
 {
-    offset_ = 0;
+    arena_.reset();
 }
 
 std::size_t frame_allocator::used() const noexcept
 {
-    return offset_;
+    return arena_.used();
 }
 
 std::size_t frame_allocator::capacity() const noexcept
 {
-    return storage_.size();
+    return arena_.capacity();
 }
 
 bool operator==(const graphics_pipeline_key& lhs, const graphics_pipeline_key& rhs) noexcept

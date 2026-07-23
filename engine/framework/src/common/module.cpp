@@ -12,6 +12,19 @@ module_context::module_context(job_system& jobs, logger& diagnostics, tracked_me
     : jobs_(&jobs)
     , diagnostics_(&diagnostics)
     , memory_(&memory)
+    , memory_service_(&default_memory_system())
+{
+}
+
+module_context::module_context(
+    job_system& jobs,
+    logger& diagnostics,
+    memory_system& memory,
+    tracked_memory_resource& compatibility_memory) noexcept
+    : jobs_(&jobs)
+    , diagnostics_(&diagnostics)
+    , memory_(&compatibility_memory)
+    , memory_service_(&memory)
 {
 }
 
@@ -28,6 +41,11 @@ logger& module_context::diagnostics() const noexcept
 tracked_memory_resource& module_context::memory() const noexcept
 {
     return *memory_;
+}
+
+memory_system& module_context::memory_service() const noexcept
+{
+    return *memory_service_;
 }
 
 module::~module() = default;

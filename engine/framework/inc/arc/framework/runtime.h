@@ -72,6 +72,17 @@ public:
     job_system& jobs() noexcept;
 
     /**
+     * @brief Return the runtime-owned memory service.
+     */
+    memory_system& memory() noexcept;
+
+    /**
+     * @brief Return transient CPU arenas with frame and tick lifetimes.
+     */
+    frame_arena& frame_memory() noexcept;
+    tick_arena& tick_memory() noexcept;
+
+    /**
      * @brief Return the shared runtime module manager.
      */
     module_manager& modules() noexcept;
@@ -81,6 +92,11 @@ private:
 
     application* app_{};
     application_config config_{};
+    memory_system memory_{};
+    system_memory_resource frame_memory_resource_{ memory_, memory_domain::frame, make_memory_tag("runtime.frame") };
+    system_memory_resource tick_memory_resource_{ memory_, memory_domain::tick, make_memory_tag("runtime.tick") };
+    frame_arena frame_arena_{ 256u * 1024u, &frame_memory_resource_ };
+    tick_arena tick_arena_{ 128u * 1024u, &tick_memory_resource_ };
     job_system jobs_{};
     module_context module_context_;
     module_manager modules_;

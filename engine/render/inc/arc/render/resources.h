@@ -2,6 +2,7 @@
 
 #include <arc/render/handles.h>
 #include <arc/render/material.h>
+#include <arc/memory/memory.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -144,8 +145,7 @@ public:
     std::size_t capacity() const noexcept;
 
 private:
-    std::vector<std::byte> storage_;
-    std::size_t offset_{};
+    arc::linear_arena arena_;
 };
 
 /**
