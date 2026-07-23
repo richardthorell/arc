@@ -1,39 +1,30 @@
 # ARC Editor
 
-This folder contains the first ARC editor shell. It is a cross-platform C++
-application that links the engine in-process, uses SDL for window/input hosting,
-and uses Dear ImGui docking for editor panels.
+`editor/` contains ARC's Electron-based authoring environment. The React
+workbench communicates with the authoritative C++ host in `native/`; when the
+host is unavailable, the UI can use the same typed contracts through its mock
+adapter.
 
-The editor currently exercises the engine renderer and scene stack directly. It
-creates a default scene, loads the startup GLB from `assets/`, drives the Vulkan
-viewport when `ARC_BUILD_RENDER_VULKAN=ON`, and keeps the temporary SDL-renderer
-path available for fallback runs.
-
-Editor code should include engine APIs through the shared module layout:
-
-```cpp
-#include <arc/framework/framework.h>
-#include <arc/input/input.h>
-#include <arc/render/render.h>
-#include <arc/scene/scene.h>
-```
-
-Build it from the repo root with:
-
-```bash
-cmake --preset editor-vulkan
-cmake --build --preset editor-vulkan --target arc_editor --parallel
-```
-
-Or build it if needed and run it with:
+From the repository root, prepare or run the complete editor with:
 
 ```bash
 python run_editor.py
 ```
 
-Use `python run_editor.py --no-vulkan-render` to force the fallback editor path.
+Use `python run_editor.py --build-only` to build the native host and type-check
+the Electron application without launching it. Pass `--no-vulkan-render` to
+build the host without the Vulkan viewport backend.
 
-The root CMake presets place generated editor builds under `out/build/...`.
+Electron-only workflows can be run from this directory:
 
-Third-party dependencies are configured from the shared root `third_party/`
-folder so editor and engine dependencies can use the same dependency policy.
+```bash
+npm install
+npm run dev
+npm run typecheck
+npm test
+npm run package
+```
+
+The native host owns scene state, history, persistence, asset/material
+integration, viewport input, and renderer submission. Electron owns workbench
+layout, panels, inspectors, asset pickers, and user interaction.

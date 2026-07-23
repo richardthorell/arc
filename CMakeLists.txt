@@ -31,7 +31,7 @@ if(ARC_BUILD_EDITOR)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
         add_subdirectory(editor)
     else()
-        message(FATAL_ERROR "ARC_BUILD_EDITOR is ON, but editor/CMakeLists.txt does not exist yet")
+        message(FATAL_ERROR "ARC_BUILD_EDITOR is ON, but editor/CMakeLists.txt does not exist")
     endif()
 endif()
 

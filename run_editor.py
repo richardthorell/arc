@@ -1,9 +1,5 @@
 #!/usr/bin/env python
-"""Build and run the arc editor.
-
-By default this launches the Electron-based editor2 shell. Use --native to run
-legacy ImGui/SDL editor targets.
-"""
+"""Build the native host and run the ARC Electron editor."""
 
 from __future__ import print_function
 
@@ -15,8 +11,9 @@ import platform
 import subprocess
 import sys
 
-DEFAULT_NATIVE_BUILD_DIR = "out/build/editor-vulkan"
-DEFAULT_NATIVE_NO_VULKAN_BUILD_DIR = "out/build/editor-no-vulkan"
+
+DEFAULT_BUILD_DIR = "out/build/editor-vulkan"
+DEFAULT_NO_VULKAN_BUILD_DIR = "out/build/editor-no-vulkan"
 
 
 def find_executable(name):
@@ -38,54 +35,43 @@ def find_executable(name):
 
 def cpu_count():
     try:
-        return multiprocessing.cpu_count()
+        # Unbounded MSBuild node creation is counterproductive on high-core
+        # workstations and can exhaust Windows process resources.
+        return min(multiprocessing.cpu_count(), 16)
     except NotImplementedError:
         return 1
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Build and run the arc editor.")
-    parser.add_argument(
-        "--native",
-        action="store_true",
-        help="Run the legacy native ImGui/SDL editor instead of the Electron editor2 shell.",
-    )
-    parser.add_argument("--editor2-dir", default="editor2", help="Electron editor2 directory to use.")
-    parser.add_argument("--npm", default="npm", help="npm executable to invoke for editor2.")
-    parser.add_argument(
-        "--editor2-script",
-        default="dev",
-        help="npm script to run when launching editor2. Defaults to dev.",
-    )
+    parser = argparse.ArgumentParser(description="Build and run the ARC editor.")
+    parser.add_argument("--editor-dir", default="editor", help="Electron editor directory.")
+    parser.add_argument("--npm", default="npm", help="npm executable to invoke.")
+    parser.add_argument("--npm-script", default="dev", help="npm script used to launch the editor.")
     parser.add_argument(
         "--skip-npm-install",
         action="store_true",
-        help="Do not automatically run npm install when editor2 dependencies are missing.",
+        help="Do not install Electron dependencies when node_modules is missing.",
     )
-    parser.add_argument(
-        "--build-dir",
-        default=DEFAULT_NATIVE_BUILD_DIR,
-        help="CMake build directory to use for the native editor.",
-    )
-    parser.add_argument("--config", default="Release", help="CMake configuration to build and run for the native editor.")
-    parser.add_argument("--cmake", default="cmake", help="CMake executable to invoke for the native editor.")
-    parser.add_argument("--parallel", default=None, help="Parallel native build job count. Defaults to the host CPU count.")
+    parser.add_argument("--build-dir", default=DEFAULT_BUILD_DIR, help="CMake build directory for the native host.")
+    parser.add_argument("--config", default="Release", help="Native host build configuration.")
+    parser.add_argument("--cmake", default="cmake", help="CMake executable to invoke.")
+    parser.add_argument("--parallel", default=None, help="Native build job count. Defaults to the host CPU count.")
     parser.add_argument(
         "--no-vulkan-render",
         action="store_false",
         dest="vulkan_render",
         default=True,
-        help="Run the native editor without building the Vulkan render backend.",
+        help="Build the native host without the Vulkan viewport backend.",
     )
-    parser.add_argument("--force-build", action="store_true", help="Force dependency install/build work before launching.")
-    parser.add_argument("--build-only", action="store_true", help="Prepare the editor without launching it.")
+    parser.add_argument("--force-build", action="store_true", help="Force native and npm preparation work.")
+    parser.add_argument("--build-only", action="store_true", help="Prepare and validate the editor without launching it.")
     return parser.parse_args()
 
 
-def run(command, cwd):
+def run(command, cwd, env=None):
     print("+ " + " ".join(command))
     sys.stdout.flush()
-    subprocess.check_call(command, cwd=cwd)
+    subprocess.check_call(command, cwd=cwd, env=env)
 
 
 def cmake_cache_matches(build_dir, vulkan_render):
@@ -101,110 +87,114 @@ def cmake_cache_matches(build_dir, vulkan_render):
 
     expected_vulkan = "ON" if vulkan_render else "OFF"
     return (
-        "ARC_BUILD_EDITOR:BOOL=ON" in text and
-        "ARC_BUILD_RENDER_VULKAN:BOOL={}".format(expected_vulkan) in text
+        "ARC_BUILD_EDITOR:BOOL=ON" in text
+        and "ARC_BUILD_RENDER_VULKAN:BOOL={}".format(expected_vulkan) in text
     )
 
 
-def native_editor_executable_candidates(build_dir, config):
-    executable = "arc_editor.exe" if platform.system() == "Windows" else "arc_editor"
+def host_executable_candidates(build_dir, config):
+    executable = "arc_host_process.exe" if platform.system() == "Windows" else "arc_host_process"
     return [
-        os.path.join(build_dir, "editor", config, executable),
-        os.path.join(build_dir, "editor", executable),
+        os.path.join(build_dir, "editor", "native", config, executable),
+        os.path.join(build_dir, "editor", "native", executable),
     ]
 
 
-def find_native_editor_executable(build_dir, config):
-    for candidate in native_editor_executable_candidates(build_dir, config):
+def find_host_executable(build_dir, config):
+    for candidate in host_executable_candidates(build_dir, config):
         if os.path.exists(candidate):
             return candidate
     return None
 
 
-def run_native_editor(args, repo_root):
+def prepare_native_host(args, repo_root):
     build_dir_name = args.build_dir
-    if build_dir_name == DEFAULT_NATIVE_BUILD_DIR and not args.vulkan_render:
-        build_dir_name = DEFAULT_NATIVE_NO_VULKAN_BUILD_DIR
+    if build_dir_name == DEFAULT_BUILD_DIR and not args.vulkan_render:
+        build_dir_name = DEFAULT_NO_VULKAN_BUILD_DIR
     build_dir = os.path.abspath(os.path.join(repo_root, build_dir_name))
     cmake = find_executable(args.cmake)
-
     if cmake is None:
-        print("error: could not find CMake executable '{}'".format(args.cmake), file=sys.stderr)
-        return 1
+        raise RuntimeError("could not find CMake executable '{}'".format(args.cmake))
 
-    executable = find_native_editor_executable(build_dir, args.config)
+    host = find_host_executable(build_dir, args.config)
     cache_matches = cmake_cache_matches(build_dir, args.vulkan_render)
-    needs_build = args.force_build or executable is None or not cache_matches
-
-    if needs_build:
-        configure_command = [
-            cmake,
-            "-B",
-            build_dir,
-            "-S",
-            repo_root,
-            "-DCMAKE_BUILD_TYPE={}".format(args.config),
-            "-DARC_BUILD_EDITOR=ON",
-            "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
-        ]
+    if args.force_build or host is None or not cache_matches:
         if not cache_matches:
-            run(configure_command, repo_root)
+            run(
+                [
+                    cmake,
+                    "-B",
+                    build_dir,
+                    "-S",
+                    repo_root,
+                    "-DCMAKE_BUILD_TYPE={}".format(args.config),
+                    "-DARC_BUILD_EDITOR=ON",
+                    "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
+                ],
+                repo_root,
+            )
+        run(
+            [
+                cmake,
+                "--build",
+                build_dir,
+                "--config",
+                args.config,
+                "--target",
+                "arc_host_process",
+                "--parallel",
+                args.parallel or str(cpu_count()),
+            ],
+            repo_root,
+        )
+        host = find_host_executable(build_dir, args.config)
 
-        jobs = args.parallel or str(cpu_count())
-        run([cmake, "--build", build_dir, "--config", args.config, "--target", "arc_editor", "--parallel", jobs], repo_root)
-        executable = find_native_editor_executable(build_dir, args.config)
-
-    if executable is None:
-        print("error: native editor executable was not found after build", file=sys.stderr)
-        return 1
-
-    if args.build_only:
-        print("native editor is ready: {}".format(executable))
-        return 0
-
-    print("+ {}".format(executable))
-    sys.stdout.flush()
-    return subprocess.call([executable], cwd=repo_root, env=os.environ.copy())
+    if host is None:
+        raise RuntimeError("arc_host_process was not found after the native build")
+    return host
 
 
-def editor2_dependencies_ready(editor2_dir):
-    return os.path.isdir(os.path.join(editor2_dir, "node_modules"))
-
-
-def run_editor2(args, repo_root):
-    editor2_dir = os.path.abspath(os.path.join(repo_root, args.editor2_dir))
-    npm = find_executable(args.npm)
-
-    if not os.path.isdir(editor2_dir):
-        print("error: editor2 directory was not found: {}".format(editor2_dir), file=sys.stderr)
-        return 1
-
-    if npm is None:
-        print("error: could not find npm executable '{}'".format(args.npm), file=sys.stderr)
-        return 1
-
-    if not args.skip_npm_install and (args.force_build or not editor2_dependencies_ready(editor2_dir)):
-        run([npm, "install"], editor2_dir)
-
-    if args.build_only:
-        run([npm, "run", "typecheck"], editor2_dir)
-        print("editor2 is ready: {}".format(editor2_dir))
-        return 0
-
-    command = [npm, "run", args.editor2_script]
-    print("+ " + " ".join(command))
-    sys.stdout.flush()
-    return subprocess.call(command, cwd=editor2_dir, env=os.environ.copy())
+def dependencies_ready(editor_dir):
+    return os.path.isdir(os.path.join(editor_dir, "node_modules"))
 
 
 def main():
     args = parse_args()
     repo_root = os.path.dirname(os.path.abspath(__file__))
+    editor_dir = os.path.abspath(os.path.join(repo_root, args.editor_dir))
+    if not os.path.isdir(editor_dir):
+        print("error: editor directory was not found: {}".format(editor_dir), file=sys.stderr)
+        return 1
 
-    if args.native:
-        return run_native_editor(args, repo_root)
+    try:
+        host = prepare_native_host(args, repo_root)
+    except (RuntimeError, subprocess.CalledProcessError) as error:
+        print("error: {}".format(error), file=sys.stderr)
+        return 1
 
-    return run_editor2(args, repo_root)
+    npm = find_executable(args.npm)
+    if npm is None:
+        print("error: could not find npm executable '{}'".format(args.npm), file=sys.stderr)
+        return 1
+
+    try:
+        if not args.skip_npm_install and (args.force_build or not dependencies_ready(editor_dir)):
+            run([npm, "install"], editor_dir)
+
+        editor_env = os.environ.copy()
+        editor_env["ARC_HOST_PROCESS_PATH"] = host
+        if args.build_only:
+            run([npm, "run", "typecheck"], editor_dir, editor_env)
+            print("ARC Editor is ready: {}".format(editor_dir))
+            print("Native host: {}".format(host))
+            return 0
+
+        command = [npm, "run", args.npm_script]
+        print("+ " + " ".join(command))
+        sys.stdout.flush()
+        return subprocess.call(command, cwd=editor_dir, env=editor_env)
+    except subprocess.CalledProcessError as error:
+        return error.returncode
 
 
 if __name__ == "__main__":

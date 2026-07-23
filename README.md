@@ -19,7 +19,7 @@ arc is organized as a modular engine and editor stack:
 - **Scene system** — scene representation, entities, components, transforms, lights, cameras, and scene extraction for rendering.
 - **Renderer** — backend-neutral rendering interfaces, render graph concepts, resource handles, scene draw packets, and Vulkan-oriented rendering architecture.
 - **Asset pipeline** — foundation for loading, managing, and preparing engine resources such as meshes, materials, textures, and shaders.
-- **Editor** — cross-platform editor shell built around ImGui/SDL, with the engine rendering into an editor viewport.
+- **Editor** — Electron/React authoring environment backed by a native C++ scene and rendering host.
 - **Tooling** — generated API documentation, automated CI builds, and source-driven documentation data for the website.
 
 ## Rendering
@@ -45,16 +45,12 @@ The renderer is intended to support both runtime rendering and editor viewport r
 
 arc includes an editor shell intended to become the main workflow surface for building and inspecting scenes.
 
-The editor direction is:
+The editor combines a reusable Electron/React workbench with a native C++ host:
 
-- Cross-platform desktop editor
-- ImGui-based interface
-- SDL host/windowing layer
-- Engine-rendered viewport panel
-- Scene hierarchy and inspector panels
-- Asset and resource browsing
-- Runtime and debug visualization
-- Future integration with render graph, scene editing, and profiling tools
+- Electron owns the docked workbench, hierarchy, inspectors, asset tools, and document UX.
+- The native host owns authoritative scene state, history, persistence, viewport input, and rendering.
+- The viewport is an engine-rendered native surface embedded in the Electron workbench.
+- Host protocol contracts keep editor UI concerns separate from engine and renderer internals.
 
 The editor is part of the engine workflow rather than a separate application layer bolted on afterward.
 
@@ -91,7 +87,7 @@ Build the editor:
 
 ```bash
 cmake --preset editor-vulkan
-cmake --build --preset editor-vulkan --target arc_editor --parallel
+cmake --build --preset editor-vulkan --target arc_host_process --parallel
 ```
 
 Build and run the editor using the helper script:
@@ -100,7 +96,8 @@ Build and run the editor using the helper script:
 python run_editor.py
 ```
 
-The editor runner enables the Vulkan renderer by default. To use the temporary SDL renderer path instead:
+The editor runner builds the native Vulkan host and launches the Electron
+workbench. To build without the Vulkan viewport backend:
 
 ```bash
 python run_editor.py --no-vulkan-render

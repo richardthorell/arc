@@ -24,7 +24,7 @@ The codebase is organized around a reusable engine library, a cross-platform edi
 - `engine/render/` contains backend-neutral rendering code, the Vulkan backend, render graph code, renderer handles, and scene draw packet preparation.
 - `engine/scene/` contains ECS scene primitives, render components, lights, and extraction into renderer scene packets.
 - `engine/platform/windows/` contains the optional raw Win32 entry host.
-- `editor/` contains the first cross-platform editor shell.
+- `editor/` contains the Electron/React editor and its native C++ host under `editor/native/`.
 - `third_party/` centralizes external dependency setup.
 - `samples/` is reserved for examples and experiments.
 - `tests/` is reserved for future high-level integration scenarios.
@@ -43,7 +43,7 @@ To build the editor shell:
 
 ```bash
 cmake --preset editor-vulkan
-cmake --build --preset editor-vulkan --target arc_editor --parallel
+cmake --build --preset editor-vulkan --target arc_host_process --parallel
 ```
 
 To build and run the editor through the helper script:
@@ -52,7 +52,7 @@ To build and run the editor through the helper script:
 python run_editor.py
 ```
 
-Use this to run the temporary SDL-renderer editor path instead of the Vulkan renderer:
+Use this to build the native host without the Vulkan viewport renderer:
 
 ```bash
 python run_editor.py --no-vulkan-render
@@ -116,7 +116,8 @@ When changing rendering code:
 
 ## Editor Direction
 
-The editor uses an ImGui/SDL-style shell with the engine rendering into a viewport panel. When changing editor code:
+The editor uses an Electron/React workbench with a native C++ host rendering
+into an embedded viewport. When changing editor code:
 
 - Keep editor UI code separate from engine runtime systems where practical.
 - Do not make engine modules depend on editor-only concepts.
@@ -134,7 +135,7 @@ The editor uses an ImGui/SDL-style shell with the engine rendering into a viewpo
 
 - Run the standard CMake build and `ctest` after meaningful code changes when possible.
 - Add or update tests for math, SIMD, geometry, memory, jobs, and other deterministic systems.
-- Rendering/editor changes may need smoke testing through `arc_editor` or `run_editor.py` until more automated coverage exists.
+- Rendering/editor changes may need smoke testing through `run_editor.py` until more automated coverage exists.
 - Keep tests deterministic and avoid requiring a specific GPU unless the test is explicitly a graphics smoke test.
 
 ## Change Management
