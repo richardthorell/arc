@@ -310,6 +310,23 @@ public:
     {
         const float previous_scale = resolved_config_.render_scale;
         resolved_config_ = config;
+        if (config.features.timeline_semaphores && upload_timeline_ == VK_NULL_HANDLE)
+        {
+            VkSemaphoreTypeCreateInfo timeline_type{};
+            timeline_type.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+            timeline_type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+            timeline_type.initialValue = 0;
+            VkSemaphoreCreateInfo semaphore{};
+            semaphore.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+            semaphore.pNext = &timeline_type;
+            if (vkCreateSemaphore(device_, &semaphore, nullptr, &upload_timeline_) != VK_SUCCESS)
+            {
+                upload_timeline_ = VK_NULL_HANDLE;
+                arc::warn("render.vulkan", "timeline upload completion is unavailable; using the fence fallback");
+            }
+        }
+        upload_timeline_enabled_ =
+            config.features.timeline_semaphores && upload_timeline_ != VK_NULL_HANDLE;
         last_profile_.configuration = config;
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
         if (imgui_initialized_ && previous_scale != config.render_scale &&
@@ -1572,6 +1589,13 @@ private:
             vkDestroyFence(device_, upload_fence_, nullptr);
             upload_fence_ = VK_NULL_HANDLE;
         }
+        if (upload_timeline_ != VK_NULL_HANDLE)
+        {
+            vkDestroySemaphore(device_, upload_timeline_, nullptr);
+            upload_timeline_ = VK_NULL_HANDLE;
+            upload_timeline_value_ = 0;
+        }
+        upload_timeline_enabled_ = false;
         if (upload_command_pool_ != VK_NULL_HANDLE)
         {
             vkDestroyCommandPool(device_, upload_command_pool_, nullptr);
@@ -1640,15 +1664,46 @@ private:
         if (!upload_batch_has_work_)
             return true;
 
-        vkResetFences(device_, 1, &upload_fence_);
         VkSubmitInfo submit{};
         submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submit.commandBufferCount = 1;
         submit.pCommandBuffers = &upload_command_buffer_;
-        const VkResult submit_result = vkQueueSubmit(queue_, 1, &submit, upload_fence_);
+        VkTimelineSemaphoreSubmitInfo timeline_submit{};
+        std::uint64_t signal_value{};
+        VkFence completion_fence = upload_fence_;
+        if (upload_timeline_enabled_)
+        {
+            signal_value = ++upload_timeline_value_;
+            timeline_submit.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+            timeline_submit.signalSemaphoreValueCount = 1;
+            timeline_submit.pSignalSemaphoreValues = &signal_value;
+            submit.pNext = &timeline_submit;
+            submit.signalSemaphoreCount = 1;
+            submit.pSignalSemaphores = &upload_timeline_;
+            completion_fence = VK_NULL_HANDLE;
+        }
+        else
+        {
+            vkResetFences(device_, 1, &upload_fence_);
+        }
+
+        const VkResult submit_result = vkQueueSubmit(queue_, 1, &submit, completion_fence);
         if (submit_result != VK_SUCCESS)
             return false;
-        const VkResult wait_result = vkWaitForFences(device_, 1, &upload_fence_, VK_TRUE, UINT64_MAX);
+        VkResult wait_result{};
+        if (upload_timeline_enabled_)
+        {
+            VkSemaphoreWaitInfo wait{};
+            wait.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+            wait.semaphoreCount = 1;
+            wait.pSemaphores = &upload_timeline_;
+            wait.pValues = &signal_value;
+            wait_result = vkWaitSemaphores(device_, &wait, UINT64_MAX);
+        }
+        else
+        {
+            wait_result = vkWaitForFences(device_, 1, &upload_fence_, VK_TRUE, UINT64_MAX);
+        }
         if (wait_result == VK_SUCCESS)
             upload_arena_->retire_completed(upload_frame_);
         upload_batch_has_work_ = false;
@@ -5342,6 +5397,9 @@ private:
     VkCommandPool upload_command_pool_{};
     VkCommandBuffer upload_command_buffer_{};
     VkFence upload_fence_{};
+    VkSemaphore upload_timeline_{};
+    std::uint64_t upload_timeline_value_{};
+    bool upload_timeline_enabled_{};
     std::uint64_t upload_frame_{};
     bool upload_batch_active_{};
     bool upload_batch_has_work_{};
