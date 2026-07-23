@@ -28,6 +28,7 @@ struct render_world_packet;
 enum class render_event_type : std::uint8_t
 {
     mesh_upload,
+    mesh_destroy,
     virtual_mesh_upload,
     texture_upload,
     material_upload,
@@ -115,6 +116,12 @@ struct mesh_upload_event
     mesh_handle handle{};
     std::shared_ptr<const mesh_data> mesh;
     std::string label;
+};
+
+/** @brief Retire a renderer-owned static or dynamic mesh. */
+struct mesh_destroy_event
+{
+    mesh_handle handle{};
 };
 
 /**
@@ -270,6 +277,7 @@ struct render_world_event
 
 using render_event_payload = std::variant<
     mesh_upload_event,
+    mesh_destroy_event,
     virtual_mesh_upload_event,
     texture_upload_event,
     material_upload_event,
@@ -348,6 +356,9 @@ public:
      * @brief Append a static mesh upload request.
      */
     void mesh_upload(mesh_handle handle, std::shared_ptr<const mesh_data> mesh, std::string label = {});
+
+    /** @brief Append a mesh retirement request. */
+    void mesh_destroy(mesh_handle handle);
 
     /**
      * @brief Append a virtual mesh upload request.

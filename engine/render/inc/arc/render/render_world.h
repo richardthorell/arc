@@ -354,6 +354,27 @@ struct view_frustum
     frustum_plane planes[6]{};
 };
 
+enum class debug_overlay_depth_mode : std::uint8_t
+{
+    tested,
+    always
+};
+
+/** One colored world-space line consumed by backend debug-overlay passes. */
+struct debug_overlay_line
+{
+    math::vector3f start{};
+    math::vector3f end{};
+    math::vector4f color{ 1.0f, 1.0f, 1.0f, 1.0f };
+    debug_overlay_depth_mode depth{ debug_overlay_depth_mode::tested };
+};
+
+/** Backend-neutral transient stream for gizmos, bounds, grids, and diagnostics. */
+struct debug_overlay_stream
+{
+    std::vector<debug_overlay_line> lines;
+};
+
 /**
  * @brief Render world packet consumed by backends for one scene frame.
  */
@@ -380,6 +401,7 @@ struct render_world_packet
     std::vector<std::uint32_t> visible_virtual_items;
     std::vector<render_instance_batch> instance_batches;
     std::vector<indirect_draw_command> indirect_draws;
+    debug_overlay_stream debug_overlay;
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
     std::size_t culled_item_count{};

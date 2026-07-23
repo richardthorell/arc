@@ -3,6 +3,7 @@
 #include <arc/render/handles.h>
 #include <arc/math/vector.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -11,6 +12,19 @@
 
 namespace arc::render
 {
+
+enum class material_domain : std::uint8_t { surface, terrain };
+
+struct terrain_layer_desc
+{
+    std::string name;
+    texture_handle base_color_texture{};
+    texture_handle normal_texture{};
+    texture_handle packed_surface_texture{};
+    math::vector4f tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    float world_scale{ 4.0f };
+    float roughness{ 0.8f };
+};
 
 /**
  * @brief Alpha/material queue mode used for sorting and pass selection.
@@ -137,6 +151,7 @@ struct material_desc
 {
     material_handle handle{};
     std::string name;
+    material_domain domain{ material_domain::surface };
 
     math::vector4f base_color{ 1.0f, 1.0f, 1.0f, 1.0f };
     float metallic{};
@@ -168,6 +183,7 @@ struct material_desc
     material_displacement_mode displacement_mode{ material_displacement_mode::none };
 
     resource_handle material_graph{};
+    std::array<terrain_layer_desc, 4> terrain_layers{};
 };
 
 /**

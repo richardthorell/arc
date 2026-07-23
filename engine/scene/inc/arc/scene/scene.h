@@ -7,7 +7,10 @@
 
 #include <arc/scene/components.h>
 #include <arc/scene/entity.h>
+#include <arc/scene/entity_guid.h>
 #include <arc/scene/environment.h>
+#include <arc/scene/hierarchy.h>
 #include <arc/scene/registry.h>
 #include <arc/scene/render_scene.h>
+#include <arc/scene/terrain.h>
 #include <arc/scene/transforms.h>

@@ -1,5 +1,6 @@
 #include <arc/scene/render_scene.h>
 #include <arc/scene/environment.h>
+#include <arc/scene/hierarchy.h>
 
 #include <arc/diagnostics/log.h>
 #include <arc/render/lighting.h>
@@ -360,9 +361,11 @@ render_scene_result render_scene(
     render::editor_overlay_mode overlay,
     bool shadows_enabled,
     scene_render_visibility environment_visibility,
-    float delta_seconds)
+    float delta_seconds,
+    render::debug_overlay_stream debug_overlay)
 {
     render_scene_result result{};
+    update_world_transforms(scene);
     update_world_environments(scene, delta_seconds);
 
     const transform_component* camera_transform{};
@@ -389,7 +392,7 @@ render_scene_result render_scene(
 
     result.camera_found = true;
     const float aspect = viewport_height == 0 ? 1.0f : static_cast<float>(viewport_width) / static_cast<float>(viewport_height);
-    const math::matrix4f view = view_matrix(*camera_transform);
+    const math::matrix4f view = world_view_matrix(*camera_transform);
     const math::matrix4f projection = camera->projection == camera_projection::orthographic
         ? orthographic_rh_zo(camera->orthographic_height, aspect, camera->near_plane, camera->far_plane)
         : perspective_rh_zo(camera->fov_y_radians, aspect, camera->near_plane, camera->far_plane);
@@ -400,9 +403,9 @@ render_scene_result render_scene(
     world_packet.camera.projection = projection;
     world_packet.camera.view_projection = vp;
     world_packet.camera.previous_view_projection = vp;
-    world_packet.camera.position = camera_transform->position;
-    world_packet.camera.forward = forward_direction(*camera_transform);
-    world_packet.camera.up = up_direction(*camera_transform);
+    world_packet.camera.position = world_position(*camera_transform);
+    world_packet.camera.forward = world_forward_direction(*camera_transform);
+    world_packet.camera.up = world_up_direction(*camera_transform);
     world_packet.camera.clear_color = camera->clear_color;
     world_packet.camera.near_plane = camera->near_plane;
     world_packet.camera.far_plane = camera->far_plane;
@@ -416,6 +419,7 @@ render_scene_result render_scene(
     world_packet.shadows_enabled = shadows_enabled;
     world_packet.viewport_width = viewport_width;
     world_packet.viewport_height = viewport_height;
+    world_packet.debug_overlay = std::move(debug_overlay);
 
     scene.view<world_environment_component>().each(
         [&](entity value, const world_environment_component&) {
@@ -478,6 +482,11 @@ render_scene_result render_scene(
                 .receive_shadows = terrain.receive_shadows,
                 .label = entity_label(scene, value)
             });
+            for (const auto mesh : terrain.chunk_meshes)
+            {
+                if (renderer.mesh_alive(mesh))
+                    append_mesh_item(scene, world_packet, result, value, transform, mesh, terrain.material, true);
+            }
             ++result.terrain_count;
         });
 

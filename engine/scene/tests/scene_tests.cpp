@@ -65,6 +65,86 @@ TEST_CASE("registry view returns entities with all requested components")
     REQUIRE(count == 1);
 }
 
+TEST_CASE("registry copies component pools without sharing storage")
+{
+    arc::scene::registry original;
+    const auto value = original.create();
+    original.emplace<arc::scene::name_component>(value, "Original");
+    arc::scene::registry copy = original;
+    copy.get<arc::scene::name_component>(value).value = "Copy";
+    REQUIRE(original.get<arc::scene::name_component>(value).value == "Original");
+    REQUIRE(copy.get<arc::scene::name_component>(value).value == "Copy");
+}
+
+TEST_CASE("entity GUIDs round trip and reject malformed values")
+{
+    const auto guid = arc::scene::generate_entity_guid();
+    REQUIRE(guid.valid());
+    const auto text = arc::scene::to_string(guid);
+    REQUIRE(text.size() == 36);
+    REQUIRE(arc::scene::parse_entity_guid(text) == guid);
+    REQUIRE_FALSE(arc::scene::parse_entity_guid("not-a-guid").has_value());
+    REQUIRE_FALSE(arc::scene::parse_entity_guid("01234567-89ab-cdef-0123-456789abcdeg").has_value());
+    REQUIRE_FALSE(arc::scene::parse_entity_guid("00000000-0000-0000-0000-000000000000").has_value());
+}
+
+TEST_CASE("scene hierarchy reparents orders and preserves world transforms")
+{
+    arc::scene::registry scene;
+    const auto parent = scene.create();
+    const auto first = scene.create();
+    const auto second = scene.create();
+    scene.emplace<arc::scene::transform_component>(parent).position = { 10.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(first).position = { 2.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(second).position = { 4.0f, 0.0f, 0.0f };
+
+    REQUIRE(arc::scene::reparent(scene, first, parent));
+    REQUIRE(arc::scene::reparent(scene, second, parent, first));
+    const auto ordered = arc::scene::children(scene, parent);
+    REQUIRE(ordered == std::vector<arc::scene::entity>{ second, first });
+    REQUIRE(scene.get<arc::scene::hierarchy_component>(parent).child_count == 2);
+    arc::scene::update_world_transforms(scene);
+    REQUIRE(arc::scene::world_position(scene.get<arc::scene::transform_component>(first))[0] == Catch::Approx(2.0f));
+    REQUIRE(scene.get<arc::scene::transform_component>(first).position[0] == Catch::Approx(-8.0f));
+
+    REQUIRE_FALSE(arc::scene::reparent(scene, parent, first));
+    REQUIRE(arc::scene::reorder(scene, first, second));
+    REQUIRE(arc::scene::children(scene, parent).front() == first);
+
+    const auto root_a = scene.create();
+    const auto root_b = scene.create();
+    scene.emplace<arc::scene::hierarchy_component>(root_a);
+    scene.emplace<arc::scene::hierarchy_component>(root_b);
+    REQUIRE(arc::scene::reorder(scene, root_b, root_a));
+    const auto roots = arc::scene::roots(scene);
+    const auto root_a_position = std::find(roots.begin(), roots.end(), root_a);
+    const auto root_b_position = std::find(roots.begin(), roots.end(), root_b);
+    REQUIRE(root_b_position < root_a_position);
+    REQUIRE(scene.get<arc::scene::hierarchy_component>(root_b).next_sibling == root_a);
+}
+
+TEST_CASE("scene hierarchy propagates transforms and destroys complete subtrees")
+{
+    arc::scene::registry scene;
+    const auto logical_root = scene.create();
+    const auto root = scene.create();
+    const auto child = scene.create();
+    const auto grandchild = scene.create();
+    scene.emplace<arc::scene::transform_component>(root).position = { 3.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(child).position = { 2.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(grandchild).position = { 1.0f, 0.0f, 0.0f };
+    REQUIRE(arc::scene::reparent(scene, root, logical_root, {}, arc::scene::reparent_transform_policy::preserve_local));
+    REQUIRE(arc::scene::reparent(scene, child, root, {}, arc::scene::reparent_transform_policy::preserve_local));
+    REQUIRE(arc::scene::reparent(scene, grandchild, child, {}, arc::scene::reparent_transform_policy::preserve_local));
+    arc::scene::update_world_transforms(scene);
+    REQUIRE(arc::scene::world_position(scene.get<arc::scene::transform_component>(grandchild))[0] == Catch::Approx(6.0f));
+    REQUIRE(arc::scene::destroy_subtree(scene, child));
+    REQUIRE(scene.alive(root));
+    REQUIRE_FALSE(scene.alive(child));
+    REQUIRE_FALSE(scene.alive(grandchild));
+    REQUIRE(scene.get<arc::scene::hierarchy_component>(root).child_count == 0);
+}
+
 TEST_CASE("transform and camera helpers use right handed minus z forward")
 {
     arc::scene::transform_component transform;
@@ -738,4 +818,75 @@ TEST_CASE("render scene applies first valid LOD mesh")
     const auto packet = renderer.frame_queue().commit(4);
     const auto& world_event = std::get<arc::render::render_world_event>(packet.events[0].payload);
     REQUIRE(world_event.packet->items[0].mesh == lod_mesh);
+}
+
+TEST_CASE("terrain heightfields generate deterministic normalized chunk data")
+{
+    arc::scene::terrain_component first;
+    first.size = 180.0f;
+    first.subdivisions = 256;
+    first.chunk_quads = 128;
+    first.height_scale = 28.0f;
+    auto second = first;
+
+    arc::scene::generate_terrain_heightfield(first);
+    arc::scene::generate_terrain_heightfield(second);
+
+    REQUIRE(arc::scene::terrain_heightfield_valid(first));
+    REQUIRE(first.heights == second.heights);
+    REQUIRE(first.layer_weights == second.layer_weights);
+    REQUIRE(first.heights.size() == 257u * 257u);
+    for (const auto& weights : first.layer_weights)
+        REQUIRE(static_cast<unsigned>(weights[0]) + weights[1] + weights[2] + weights[3] == 255u);
+
+    const auto chunk00 = arc::scene::make_terrain_chunk_mesh(first, 0, 0);
+    const auto chunk10 = arc::scene::make_terrain_chunk_mesh(first, 1, 0);
+    REQUIRE(chunk00.vertices.size() == 129u * 129u);
+    REQUIRE(chunk00.indices.size() == 128u * 128u * 6u);
+    REQUIRE(chunk00.vertices[128].position[1] == Catch::Approx(chunk10.vertices[0].position[1]));
+}
+
+TEST_CASE("terrain brushes sculpt smooth flatten and paint normalized layers")
+{
+    arc::scene::terrain_component terrain;
+    terrain.size = 32.0f;
+    terrain.subdivisions = 32;
+    terrain.chunk_quads = 16;
+    terrain.height_scale = 4.0f;
+    arc::scene::generate_terrain_heightfield(terrain);
+    const auto center_index = 16u * 33u + 16u;
+    const float original = terrain.heights[center_index];
+
+    arc::scene::terrain_brush_settings brush;
+    brush.radius = 4.0f;
+    brush.strength = 1.0f;
+    auto dirty = arc::scene::apply_terrain_brush(terrain, { 0.0f, original, 0.0f }, brush, 1.0f / 60.0f);
+    REQUIRE(dirty.valid);
+    REQUIRE(terrain.heights[center_index] > original);
+
+    brush.tool = arc::scene::terrain_brush_tool::flatten;
+    brush.flatten_height = 2.0f;
+    arc::scene::apply_terrain_brush(terrain, { 0.0f, 0.0f, 0.0f }, brush, 1.0f);
+    REQUIRE(terrain.heights[center_index] == Catch::Approx(2.0f));
+
+    brush.tool = arc::scene::terrain_brush_tool::paint;
+    brush.active_layer = 3;
+    const auto before = terrain.layer_weights[center_index][3];
+    arc::scene::apply_terrain_brush(terrain, { 0.0f, 0.0f, 0.0f }, brush, 1.0f);
+    const auto weights = terrain.layer_weights[center_index];
+    REQUIRE(weights[3] >= before);
+    REQUIRE(static_cast<unsigned>(weights[0]) + weights[1] + weights[2] + weights[3] == 255u);
+}
+
+TEST_CASE("terrain raycasts return the actual heightfield surface")
+{
+    arc::scene::terrain_component terrain;
+    terrain.size = 8.0f;
+    terrain.subdivisions = 8;
+    terrain.chunk_quads = 4;
+    terrain.height_scale = 1.0f;
+    arc::scene::generate_terrain_heightfield(terrain);
+    const auto hit = arc::scene::raycast_terrain(terrain, { 0.0f, 20.0f, 0.0f }, { 0.0f, -1.0f, 0.0f });
+    REQUIRE(hit.hit);
+    REQUIRE(hit.position[1] == Catch::Approx(arc::scene::sample_terrain_height(terrain, 0.0f, 0.0f)).margin(0.001f));
 }

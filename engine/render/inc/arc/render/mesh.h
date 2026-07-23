@@ -15,6 +15,12 @@
 namespace arc::render
 {
 
+enum class mesh_usage : std::uint8_t
+{
+    static_gpu,
+    dynamic_per_frame
+};
+
 /**
  * @brief Static mesh vertex used by the first renderer mesh path.
  */
@@ -33,6 +39,7 @@ struct mesh_vertex
 struct mesh_data
 {
     std::string name;
+    mesh_usage usage{ mesh_usage::static_gpu };
     std::vector<mesh_vertex> vertices;
     std::vector<std::uint32_t> indices;
     std::size_t material_index{ std::numeric_limits<std::size_t>::max() };

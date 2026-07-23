@@ -97,6 +97,12 @@ public:
      */
     mesh_handle create_mesh(mesh_data mesh);
 
+    /** @brief Replace mesh vertices while retaining its handle and topology. */
+    bool update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex> vertices);
+
+    /** @brief Retire a mesh handle and enqueue backend cleanup. */
+    bool destroy_mesh(mesh_handle handle);
+
     /**
      * @brief Create a renderer-owned virtual mesh resource and enqueue its upload.
      */
@@ -207,6 +213,7 @@ private:
     std::uint32_t viewport_height_{};
     dynamic_resolution_controller dynamic_resolution_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
+    std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
 };
 
 /**

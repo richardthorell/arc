@@ -2,6 +2,7 @@ add_library(arc-render-vulkan STATIC
     inc/arc/render/vulkan/vulkan_backend.h
     src/vma_impl.cpp
     src/vulkan_backend.cpp
+    src/vulkan_pick_utils.h
     src/vulkan_sky_constants.cpp
     src/vulkan_sky_constants.h
 )

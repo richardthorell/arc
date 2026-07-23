@@ -449,6 +449,18 @@ render_graph make_scene_draw_graph(
         .writes = { { .handle = scene_color, .kind = render_resource_kind::color_texture,
             .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
     });
+    if (editor_view)
+    {
+        graph.add_pass({
+            .name = "debug overlay",
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::debug_overlay,
+            .reads = { { .handle = depth, .kind = render_resource_kind::depth_texture,
+                .usage = render_resource_usage::depth_attachment } },
+            .writes = { { .handle = scene_color, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
+        });
+    }
     graph.add_pass({
         .name = "present viewport",
         .kind = render_pass_kind::present,

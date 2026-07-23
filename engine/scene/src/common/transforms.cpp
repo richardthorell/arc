@@ -1,5 +1,7 @@
 #include <arc/scene/transforms.h>
 
+#include <algorithm>
+
 namespace arc::scene
 {
 namespace
@@ -34,6 +36,112 @@ math::matrix4f local_matrix(const transform_component& transform) noexcept
     const auto rotation = rotation_matrix(transform.rotation);
     const auto scale = math::scaling(transform.scale);
     return math::matmul(math::matmul(translation, rotation), scale);
+}
+
+bool inverse_affine(const math::matrix4f& value, math::matrix4f& result) noexcept
+{
+    const float a00 = value(0, 0), a01 = value(0, 1), a02 = value(0, 2);
+    const float a10 = value(1, 0), a11 = value(1, 1), a12 = value(1, 2);
+    const float a20 = value(2, 0), a21 = value(2, 1), a22 = value(2, 2);
+    const float c00 = a11 * a22 - a12 * a21;
+    const float c01 = a02 * a21 - a01 * a22;
+    const float c02 = a01 * a12 - a02 * a11;
+    const float determinant = a00 * c00 + a10 * c01 + a20 * c02;
+    if (std::abs(determinant) <= 1.0e-8f)
+        return false;
+    const float d = 1.0f / determinant;
+    result = math::identity<float, 4>();
+    result(0, 0) = c00 * d;
+    result(0, 1) = (a12 * a20 - a10 * a22) * d;
+    result(0, 2) = (a10 * a21 - a11 * a20) * d;
+    result(1, 0) = c01 * d;
+    result(1, 1) = (a00 * a22 - a02 * a20) * d;
+    result(1, 2) = (a02 * a10 - a00 * a12) * d;
+    result(2, 0) = c02 * d;
+    result(2, 1) = (a01 * a20 - a00 * a21) * d;
+    result(2, 2) = (a00 * a11 - a01 * a10) * d;
+    const auto inverse_translation = math::transform_vector(
+        result, math::vector3f{ value(0, 3), value(1, 3), value(2, 3) });
+    result(0, 3) = -inverse_translation[0];
+    result(1, 3) = -inverse_translation[1];
+    result(2, 3) = -inverse_translation[2];
+    return true;
+}
+
+bool decompose_trs(const math::matrix4f& matrix, transform_component& transform) noexcept
+{
+    transform.position = { matrix(0, 3), matrix(1, 3), matrix(2, 3) };
+    transform.scale = {
+        std::sqrt(matrix(0, 0) * matrix(0, 0) + matrix(1, 0) * matrix(1, 0) + matrix(2, 0) * matrix(2, 0)),
+        std::sqrt(matrix(0, 1) * matrix(0, 1) + matrix(1, 1) * matrix(1, 1) + matrix(2, 1) * matrix(2, 1)),
+        std::sqrt(matrix(0, 2) * matrix(0, 2) + matrix(1, 2) * matrix(1, 2) + matrix(2, 2) * matrix(2, 2)) };
+    if (transform.scale[0] <= 1.0e-8f || transform.scale[1] <= 1.0e-8f || transform.scale[2] <= 1.0e-8f)
+        return false;
+    const float determinant =
+        matrix(0, 0) * (matrix(1, 1) * matrix(2, 2) - matrix(1, 2) * matrix(2, 1)) -
+        matrix(0, 1) * (matrix(1, 0) * matrix(2, 2) - matrix(1, 2) * matrix(2, 0)) +
+        matrix(0, 2) * (matrix(1, 0) * matrix(2, 1) - matrix(1, 1) * matrix(2, 0));
+    if (determinant < 0.0f)
+        transform.scale[0] = -transform.scale[0];
+    math::matrix4f rotation = matrix;
+    for (std::size_t column = 0; column < 3; ++column)
+        for (std::size_t row = 0; row < 3; ++row)
+            rotation(row, column) /= transform.scale[column];
+
+    const float trace = rotation(0, 0) + rotation(1, 1) + rotation(2, 2);
+    math::quatf quaternion{};
+    if (trace > 0.0f)
+    {
+        const float s = std::sqrt(trace + 1.0f) * 2.0f;
+        quaternion = { (rotation(2, 1) - rotation(1, 2)) / s, (rotation(0, 2) - rotation(2, 0)) / s,
+            (rotation(1, 0) - rotation(0, 1)) / s, 0.25f * s };
+    }
+    else if (rotation(0, 0) > rotation(1, 1) && rotation(0, 0) > rotation(2, 2))
+    {
+        const float s = std::sqrt(1.0f + rotation(0, 0) - rotation(1, 1) - rotation(2, 2)) * 2.0f;
+        quaternion = { 0.25f * s, (rotation(0, 1) + rotation(1, 0)) / s,
+            (rotation(0, 2) + rotation(2, 0)) / s, (rotation(2, 1) - rotation(1, 2)) / s };
+    }
+    else if (rotation(1, 1) > rotation(2, 2))
+    {
+        const float s = std::sqrt(1.0f + rotation(1, 1) - rotation(0, 0) - rotation(2, 2)) * 2.0f;
+        quaternion = { (rotation(0, 1) + rotation(1, 0)) / s, 0.25f * s,
+            (rotation(1, 2) + rotation(2, 1)) / s, (rotation(0, 2) - rotation(2, 0)) / s };
+    }
+    else
+    {
+        const float s = std::sqrt(1.0f + rotation(2, 2) - rotation(0, 0) - rotation(1, 1)) * 2.0f;
+        quaternion = { (rotation(0, 2) + rotation(2, 0)) / s, (rotation(1, 2) + rotation(2, 1)) / s,
+            0.25f * s, (rotation(1, 0) - rotation(0, 1)) / s };
+    }
+    transform.rotation = math::normalize(quaternion);
+    transform.mark_dirty();
+    return true;
+}
+
+math::matrix4f world_view_matrix(const transform_component& transform) noexcept
+{
+    math::matrix4f result{};
+    const auto world = transform.dirty ? local_matrix(transform) : transform.world;
+    return inverse_affine(world, result) ? result : math::identity<float, 4>();
+}
+
+math::vector3f world_position(const transform_component& transform) noexcept
+{
+    const auto world = transform.dirty ? local_matrix(transform) : transform.world;
+    return { world(0, 3), world(1, 3), world(2, 3) };
+}
+
+math::vector3f world_forward_direction(const transform_component& transform) noexcept
+{
+    const auto world = transform.dirty ? local_matrix(transform) : transform.world;
+    return math::normalize(math::transform_vector(world, math::vector3f{ 0.0f, 0.0f, -1.0f }));
+}
+
+math::vector3f world_up_direction(const transform_component& transform) noexcept
+{
+    const auto world = transform.dirty ? local_matrix(transform) : transform.world;
+    return math::normalize(math::transform_vector(world, math::vector3f{ 0.0f, 1.0f, 0.0f }));
 }
 
 math::matrix4f view_matrix(const transform_component& transform) noexcept

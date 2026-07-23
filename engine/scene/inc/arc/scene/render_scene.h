@@ -68,6 +68,7 @@ render_scene_result render_scene(
     render::editor_overlay_mode overlay = render::editor_overlay_mode::selected_wireframe,
     bool shadows_enabled = true,
     scene_render_visibility environment_visibility = {},
-    float delta_seconds = 0.0f);
+    float delta_seconds = 0.0f,
+    render::debug_overlay_stream debug_overlay = {});
 
 } // namespace arc::scene

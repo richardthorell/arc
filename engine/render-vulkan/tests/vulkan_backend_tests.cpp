@@ -1,14 +1,53 @@
 #include <arc/render/vulkan/vulkan_backend.h>
+#include <arc/render/primitives.h>
 #include <arc/render/renderer.h>
 #include <arc/math/constants.h>
 
 #include "vulkan_sky_constants.h"
+#include "vulkan_pick_utils.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <bit>
 #include <limits>
+
+namespace
+{
+
+void require_terrain_frame_submission(arc::render::renderer& renderer)
+{
+    renderer.resize_viewport(64u, 64u);
+    const auto mesh = renderer.create_mesh(arc::render::make_plane_mesh(16.0f));
+    arc::render::material_desc terrain;
+    terrain.name = "Vulkan terrain sampler smoke";
+    terrain.domain = arc::render::material_domain::terrain;
+    const auto material = renderer.create_material(std::move(terrain));
+
+    arc::render::render_event_buffer events;
+    arc::render::render_event_writer writer(events);
+    const auto identity = arc::math::identity<float, 4>();
+    writer.draw_mesh(mesh, material, identity, identity, "terrain sampler smoke");
+    renderer.frame_queue().submit(std::move(events));
+
+    const auto submitted = renderer.render_frame(
+        1u, arc::render::make_scene_draw_graph("vulkan terrain smoke", arc::render::render_path::deferred));
+    REQUIRE(submitted.submitted);
+}
+
+} // namespace
+
+TEST_CASE("Vulkan picking maps output pixels to dynamic-resolution ObjectID pixels")
+{
+    using arc::render::vulkan::detail::map_output_pixel_to_render_pixel;
+
+    STATIC_REQUIRE(map_output_pixel_to_render_pixel(0, 1920, 1286) == 0);
+    STATIC_REQUIRE(map_output_pixel_to_render_pixel(960, 1920, 1286) == 643);
+    STATIC_REQUIRE(map_output_pixel_to_render_pixel(1919, 1920, 1286) == 1285);
+    STATIC_REQUIRE(map_output_pixel_to_render_pixel(799, 800, 800) == 799);
+    STATIC_REQUIRE(map_output_pixel_to_render_pixel(10, 0, 800) == 0);
+    STATIC_REQUIRE(map_output_pixel_to_render_pixel(10, 800, 0) == 0);
+}
 
 TEST_CASE("Vulkan sky settings use the portable 128-byte push constant layout")
 {
@@ -66,11 +105,12 @@ TEST_CASE("Vulkan loader availability can be queried")
 
 TEST_CASE("Vulkan backend creation either succeeds or reports a reason")
 {
-    const auto result = arc::render::vulkan::create_vulkan_backend();
+    auto result = arc::render::vulkan::create_vulkan_backend();
     if (result.succeeded())
     {
+        arc::render::renderer renderer;
         REQUIRE(result.backend->type() == arc::render::render_backend_type::vulkan);
-        const auto& capabilities = result.backend->capabilities();
+        const auto capabilities = result.backend->capabilities();
         REQUIRE(capabilities.api_major >= 1);
         REQUIRE((capabilities.api_major > 1 || capabilities.api_minor >= 2));
         REQUIRE_FALSE(capabilities.adapter_name.empty());
@@ -78,6 +118,8 @@ TEST_CASE("Vulkan backend creation either succeeds or reports a reason")
         REQUIRE(capabilities.compute_queue);
         REQUIRE(capabilities.dynamic_rendering);
         REQUIRE(capabilities.max_color_attachments >= 5);
+        renderer.set_backend(std::move(result.backend));
+        require_terrain_frame_submission(renderer);
     }
     else
     {
@@ -97,6 +139,7 @@ TEST_CASE("Vulkan compatibility override leaves optional device paths disabled")
         REQUIRE_FALSE(renderer.resolved_config().features.synchronization2);
         REQUIRE_FALSE(renderer.resolved_config().features.timeline_semaphores);
         REQUIRE_FALSE(renderer.resolved_config().features.descriptor_indexing);
+        require_terrain_frame_submission(renderer);
     }
     else
     {

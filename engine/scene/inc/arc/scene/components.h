@@ -4,9 +4,11 @@
 #include <arc/render/lighting.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/scene/entity.h>
+#include <arc/scene/entity_guid.h>
 #include <arc/geometric/box.h>
 #include <arc/math/math.h>
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -19,6 +21,22 @@ namespace arc::scene
 struct name_component
 {
     std::string value;
+};
+
+/** Stable identity for persistence and editor references. */
+struct persistent_id_component
+{
+    entity_guid value{};
+};
+
+/** Intrusive, allocation-free scene hierarchy links. */
+struct hierarchy_component
+{
+    entity parent{};
+    entity first_child{};
+    entity previous_sibling{};
+    entity next_sibling{};
+    std::uint32_t child_count{};
 };
 
 /**
@@ -451,11 +469,16 @@ struct terrain_component
 {
     bool enabled{ true };
     float size{ 32.0f };
-    std::uint32_t subdivisions{ 64 };
+    std::uint32_t subdivisions{ 256 };
+    std::uint32_t chunk_quads{ 128 };
     float height_scale{ 1.45f };
     math::vector3f base_color{ 1.0f, 1.0f, 1.0f };
     render::material_handle material{};
     bool receive_shadows{ true };
+    std::vector<float> heights;
+    std::vector<std::array<std::uint8_t, 4>> layer_weights;
+    std::vector<render::mesh_handle> chunk_meshes;
+    std::uint64_t content_revision{};
 };
 
 /**

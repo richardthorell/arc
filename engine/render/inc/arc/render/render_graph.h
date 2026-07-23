@@ -47,7 +47,8 @@ enum class builtin_render_pass : std::uint8_t
     atmosphere_sky_view,
     cloud_shadow,
     sky_composite,
-    environment_prefilter
+    environment_prefilter,
+    debug_overlay
 };
 
 /**

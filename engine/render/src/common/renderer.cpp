@@ -240,12 +240,42 @@ mesh_handle renderer::create_mesh(mesh_data mesh)
 {
     const mesh_handle handle = mesh_handles_.allocate();
     auto shared_mesh = std::make_shared<mesh_data>(std::move(mesh));
+    mesh_data_[renderer_resource_key(handle)] = shared_mesh;
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_upload(handle, shared_mesh, shared_mesh->name);
     frame_queue_.submit(std::move(buffer));
     return handle;
+}
+
+bool renderer::update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex> vertices)
+{
+    if (!mesh_handles_.alive(handle))
+        return false;
+    const auto found = mesh_data_.find(renderer_resource_key(handle));
+    if (found == mesh_data_.end() || !found->second || found->second->vertices.size() != vertices.size())
+        return false;
+    auto replacement = std::make_shared<mesh_data>(*found->second);
+    replacement->vertices = std::move(vertices);
+    found->second = replacement;
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.mesh_upload(handle, replacement, replacement->name);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::destroy_mesh(mesh_handle handle)
+{
+    if (!mesh_handles_.release(handle))
+        return false;
+    mesh_data_.erase(renderer_resource_key(handle));
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.mesh_destroy(handle);
+    frame_queue_.submit(std::move(buffer));
+    return true;
 }
 
 virtual_mesh_handle renderer::create_virtual_mesh(virtual_mesh_data mesh)

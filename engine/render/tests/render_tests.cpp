@@ -551,7 +551,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     const auto graph = arc::render::make_scene_draw_graph("viewport", arc::render::render_path::deferred);
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 10);
+    REQUIRE(compiled.passes.size() == 11);
     const auto pass_index = [&](std::string_view name) {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
@@ -575,6 +575,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     REQUIRE(gbuffer_index < deferred_index);
     REQUIRE(sky_index < deferred_index);
     REQUIRE(deferred_index < transparent_index);
+    REQUIRE(compiled.passes[compiled.passes.size() - 2].builtin == arc::render::builtin_render_pass::debug_overlay);
     REQUIRE(compiled.passes.back().name == "present viewport");
     REQUIRE(compiled.resources.size() == 12);
     REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource) {
@@ -619,6 +620,7 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
     REQUIRE(contains(arc::render::builtin_render_pass::atmosphere_sky_view));
     REQUIRE(contains(arc::render::builtin_render_pass::cloud_shadow));
     REQUIRE(contains(arc::render::builtin_render_pass::sky_composite));
+    REQUIRE(contains(arc::render::builtin_render_pass::debug_overlay));
 
     standard.quality = arc::render::render_quality_tier::low;
     standard.path = arc::render::render_path::forward_plus;
@@ -629,6 +631,9 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
     }));
     REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass) {
         return pass.builtin == arc::render::builtin_render_pass::sky_composite;
+    }));
+    REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass) {
+        return pass.builtin == arc::render::builtin_render_pass::debug_overlay;
     }));
 }
 
@@ -900,6 +905,36 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     REQUIRE(upload.handle == handle);
     REQUIRE(upload.mesh->vertices.size() == 3);
     REQUIRE(upload.mesh->indices.size() == 3);
+}
+
+TEST_CASE("renderer updates mesh vertices and retires stale handles")
+{
+    arc::render::renderer renderer;
+    arc::render::mesh_data mesh;
+    mesh.name = "dynamic terrain chunk";
+    mesh.usage = arc::render::mesh_usage::dynamic_per_frame;
+    mesh.vertices.resize(4);
+    mesh.indices = { 0, 1, 2, 0, 2, 3 };
+    const auto handle = renderer.create_mesh(std::move(mesh));
+    renderer.frame_queue().commit(1);
+
+    std::vector<arc::render::mesh_vertex> vertices(4);
+    vertices[0].position[1] = 3.0f;
+    REQUIRE(renderer.update_mesh_vertices(handle, vertices));
+    auto update = renderer.frame_queue().commit(2);
+    REQUIRE(update.events.size() == 1);
+    REQUIRE(update.events[0].type() == arc::render::render_event_type::mesh_upload);
+    REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->indices.size() == 6);
+    REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->usage ==
+        arc::render::mesh_usage::dynamic_per_frame);
+    REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->vertices[0].position[1] == 3.0f);
+
+    REQUIRE(renderer.destroy_mesh(handle));
+    REQUIRE_FALSE(renderer.mesh_alive(handle));
+    auto destroy = renderer.frame_queue().commit(3);
+    REQUIRE(destroy.events.size() == 1);
+    REQUIRE(destroy.events[0].type() == arc::render::render_event_type::mesh_destroy);
+    REQUIRE_FALSE(renderer.destroy_mesh(handle));
 }
 
 TEST_CASE("renderer create virtual mesh enqueues typed upload and keeps CPU cluster metadata")

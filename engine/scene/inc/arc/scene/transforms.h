@@ -12,6 +12,19 @@ namespace arc::scene
  */
 math::matrix4f local_matrix(const transform_component& transform) noexcept;
 
+/** Decompose an affine TRS matrix. Returns false for singular transforms. */
+bool decompose_trs(const math::matrix4f& matrix, transform_component& transform) noexcept;
+
+/** Invert an affine matrix. Returns false for singular transforms. */
+bool inverse_affine(const math::matrix4f& matrix, math::matrix4f& inverse) noexcept;
+
+/** Build a view matrix from a cached world transform matrix. */
+math::matrix4f world_view_matrix(const transform_component& transform) noexcept;
+
+math::vector3f world_position(const transform_component& transform) noexcept;
+math::vector3f world_forward_direction(const transform_component& transform) noexcept;
+math::vector3f world_up_direction(const transform_component& transform) noexcept;
+
 /**
  * @brief Build a view matrix for a right-handed camera looking along local -Z.
  */

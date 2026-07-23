@@ -21,6 +21,7 @@ public:
     virtual ~component_pool_base() = default;
     virtual void remove(entity value) = 0;
     virtual bool contains(entity value) const = 0;
+    virtual std::unique_ptr<component_pool_base> clone() const = 0;
 };
 
 template <class T>
@@ -86,6 +87,11 @@ public:
             entities_[sparse_[value.index]] == value;
     }
 
+    std::unique_ptr<component_pool_base> clone() const override
+    {
+        return std::make_unique<component_pool<T>>(*this);
+    }
+
     const std::vector<entity>& entities() const noexcept
     {
         return entities_;
@@ -136,6 +142,39 @@ private:
 class registry
 {
 public:
+    registry() = default;
+
+    registry(const registry& other)
+        : generations_(other.generations_)
+        , alive_(other.alive_)
+        , free_list_(other.free_list_)
+        , live_count_(other.live_count_)
+    {
+        for (const auto& [key, values] : other.pools_)
+            pools_.emplace(key, values->clone());
+    }
+
+    registry& operator=(const registry& other)
+    {
+        if (this == &other)
+            return *this;
+        registry copy(other);
+        swap(copy);
+        return *this;
+    }
+
+    registry(registry&&) noexcept = default;
+    registry& operator=(registry&&) noexcept = default;
+
+    void swap(registry& other) noexcept
+    {
+        generations_.swap(other.generations_);
+        alive_.swap(other.alive_);
+        free_list_.swap(other.free_list_);
+        pools_.swap(other.pools_);
+        std::swap(live_count_, other.live_count_);
+    }
+
     /**
      * @brief Create a new live entity.
      */
@@ -194,6 +233,17 @@ public:
     std::size_t live_count() const noexcept
     {
         return live_count_;
+    }
+
+    /** Return a stable snapshot of all currently live entity handles. */
+    std::vector<entity> entities() const
+    {
+        std::vector<entity> result;
+        result.reserve(live_count_);
+        for (std::uint32_t index = 0; index < generations_.size(); ++index)
+            if (alive_[index])
+                result.push_back({ index, generations_[index] });
+        return result;
     }
 
     template <class T, class... Args>

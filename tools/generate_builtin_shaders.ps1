@@ -10,13 +10,17 @@ $sources = @(
     "default_phong.vert",
     "default_unlit.frag",
     "default_unlit.vert",
+    "debug_overlay.frag",
+    "debug_overlay.vert",
     "deferred_lighting.frag",
     "deferred_lighting.vert",
     "gbuffer.frag",
     "gbuffer.vert",
     "shadow_depth.vert",
     "sky_atmosphere.frag",
-    "sky_atmosphere.vert"
+    "sky_atmosphere.vert",
+    "terrain_forward.frag",
+    "terrain_gbuffer.frag"
 )
 
 $temporary = Join-Path ([System.IO.Path]::GetTempPath()) "arc-builtin-shaders"
