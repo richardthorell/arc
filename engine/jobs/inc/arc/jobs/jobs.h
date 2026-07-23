@@ -603,6 +603,7 @@ public:
     }
 
     std::size_t pump_main_thread(std::size_t maximum_jobs = static_cast<std::size_t>(-1));
+    std::size_t pump_render_thread(std::size_t maximum_jobs = static_cast<std::size_t>(-1));
     void register_main_thread() noexcept;
     bool is_main_thread() const noexcept;
     job_handle current_job() const noexcept;

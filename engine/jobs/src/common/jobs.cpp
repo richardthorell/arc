@@ -852,6 +852,24 @@ std::size_t job_system::pump_main_thread(std::size_t maximum_jobs)
     return executed;
 }
 
+std::size_t job_system::pump_render_thread(std::size_t maximum_jobs)
+{
+    if (!implementation_->config.run_inline &&
+        (worker_context.scheduler != this || worker_context.affinity != job_affinity::render_thread))
+        return 0;
+    std::size_t executed{};
+    std::size_t streak{};
+    while (executed < maximum_jobs)
+    {
+        auto state = implementation_->render.pop_local(streak);
+        if (!state)
+            break;
+        execute_state(*implementation_, state);
+        ++executed;
+    }
+    return executed;
+}
+
 void job_system::register_main_thread() noexcept
 {
     implementation_->main_thread = std::this_thread::get_id();

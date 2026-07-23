@@ -2,12 +2,12 @@
 
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
+#include <arc/jobs/jobs.h>
 #include <arc/editor/material_library.h>
 
 #include <array>
 #include <atomic>
 #include <filesystem>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <cstdint>
@@ -123,7 +123,8 @@ struct editor_scene_import_state
     editor_scene_open_mode mode{ editor_scene_open_mode::replace };
     std::filesystem::path source_path;
     std::shared_ptr<editor_scene_import_shared_state> shared;
-    std::future<render::scene_import_result> task;
+    cancellation_source cancellation;
+    job_future<render::scene_import_result> task;
     render::scene_import_result result;
     bool modal_open{};
     bool result_ready{};
@@ -216,6 +217,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
 
 bool start_scene_import(
     editor_scene_import_state& state,
+    job_system& jobs,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& path,
     editor_scene_open_mode mode);

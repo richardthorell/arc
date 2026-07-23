@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/render/material.h>
+#include <arc/io/io.h>
 
 #include <filesystem>
 #include <string>
@@ -42,6 +43,21 @@ texture_load_result parse_dds_texture(
  * builds without a decoder preserve the encoded bytes for later processing.
  */
 texture_load_result load_texture_asset(const std::filesystem::path& path);
+
+/**
+ * @brief Decode texture bytes already supplied by an async or streaming source.
+ */
+texture_load_result load_texture_asset_bytes(
+    std::vector<std::byte> bytes,
+    const std::filesystem::path& source_path);
+
+/**
+ * @brief Read and decode a texture without blocking the submitting thread.
+ */
+job_future<texture_load_result> load_texture_asset_async(
+    io::async_file_service& files,
+    std::filesystem::path path,
+    cancellation_token cancellation = {});
 
 /**
  * @brief Return whether an extension is accepted by the renderer texture loader.

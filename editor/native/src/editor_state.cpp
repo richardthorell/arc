@@ -745,6 +745,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
 
 bool start_scene_import(
     editor_scene_import_state& state,
+    job_system& jobs,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& path,
     editor_scene_open_mode mode)
@@ -766,7 +767,12 @@ bool start_scene_import(
     state.source_path = resolved_path;
     state.shared = shared;
     state.modal_open = true;
-    state.task = std::async(std::launch::async, [resolved_path, options, shared]() mutable {
+    state.task = jobs.submit_future({
+        .name = "editor.import_scene",
+        .priority = job_priority::normal,
+        .affinity = job_affinity::io_thread,
+        .cancellation = state.cancellation.token()
+    }, [resolved_path, options, shared]() mutable {
         return render::load_scene_asset(resolved_path, options, [shared](const render::scene_import_progress& progress) {
             {
                 std::scoped_lock lock(shared->mutex);
@@ -785,8 +791,34 @@ bool poll_scene_import(editor_scene_import_state& state)
     if (state.status != editor_scene_import_status::running || !state.task.valid())
         return false;
 
-    if (state.task.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    if (!state.task.ready())
         return false;
+
+    const auto completion = state.task.handle().wait_result();
+    if (completion.status == job_status::cancelled)
+    {
+        state.status = editor_scene_import_status::cancelled;
+        state.result_ready = true;
+        state.modal_open = true;
+        if (state.shared)
+        {
+            std::scoped_lock lock(state.shared->mutex);
+            state.shared->message = "Import cancelled";
+        }
+        return true;
+    }
+    if (completion.status == job_status::failed)
+    {
+        state.status = editor_scene_import_status::failed;
+        state.result_ready = true;
+        state.modal_open = true;
+        if (state.shared)
+        {
+            std::scoped_lock lock(state.shared->mutex);
+            state.shared->message = "Import job failed";
+        }
+        return true;
+    }
 
     state.result = state.task.get();
     if (state.shared)
@@ -810,9 +842,12 @@ bool poll_scene_import(editor_scene_import_state& state)
 void reset_scene_import(editor_scene_import_state& state)
 {
     if (state.status == editor_scene_import_status::running && state.shared)
+    {
         state.shared->cancel_requested = true;
+        state.cancellation.request_cancel();
+    }
     if (state.task.valid())
-        state.task.wait();
+        (void)state.task.handle().wait_result();
     state = {};
 }
 

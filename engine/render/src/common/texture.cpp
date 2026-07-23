@@ -441,7 +441,15 @@ texture_load_result load_texture_asset(const std::filesystem::path& path)
     auto bytes = read_binary_file(path);
     if (bytes.empty())
         return { .message = "texture file could not be read" };
+    return load_texture_asset_bytes(std::move(bytes), path);
+}
 
+texture_load_result load_texture_asset_bytes(
+    std::vector<std::byte> bytes,
+    const std::filesystem::path& path)
+{
+    if (bytes.empty())
+        return { .message = "texture payload is empty" };
     if (lowercase(path.extension().string()) == ".dds")
     {
         auto result = parse_dds_texture(bytes, path.filename().string());
@@ -520,6 +528,26 @@ texture_load_result load_texture_asset(const std::filesystem::path& path)
         .message = "loaded encoded texture"
 #endif
     };
+}
+
+job_future<texture_load_result> load_texture_asset_async(
+    io::async_file_service& files,
+    std::filesystem::path path,
+    cancellation_token cancellation)
+{
+    auto read = files.read_all(path, cancellation);
+    return files.scheduler().submit_future({
+        .name = "render.decode_texture",
+        .priority = job_priority::normal,
+        .affinity = job_affinity::any_worker,
+        .dependencies = { read.handle() },
+        .cancellation = cancellation
+    }, [read, path = std::move(path)]() mutable {
+        auto loaded = read.get();
+        if (!loaded)
+            return texture_load_result{ .message = loaded.error().message };
+        return load_texture_asset_bytes(std::move(loaded).value(), path);
+    });
 }
 
 bool is_supported_texture_asset(const std::filesystem::path& path)

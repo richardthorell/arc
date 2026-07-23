@@ -1,7 +1,7 @@
 arc_add_module(
     NAME arc-render
     TYPE STATIC
-    DEPS arc-framework arc-math arc-jobs arc-memory arc-diagnostics
+    DEPS arc-framework arc-math arc-jobs arc-memory arc-io arc-diagnostics
     NO_TESTS
 )
 

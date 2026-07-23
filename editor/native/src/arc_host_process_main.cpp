@@ -2,6 +2,8 @@
 #include <arc/editor/editor_defaults.h>
 #include <arc/editor/editor_gizmo.h>
 #include <arc/editor/editor_state.h>
+#include <arc/jobs/jobs.h>
+#include <arc/memory/memory.h>
 #include <arc/render/render.h>
 
 #if defined(_WIN32) && defined(ARC_EDITOR_HOST_ENABLE_VULKAN_RENDER)
@@ -53,9 +55,13 @@ bool create_win32_surface(VkInstance instance, VkSurfaceKHR* surface, void* user
 class native_viewport_controller
 {
 public:
-    native_viewport_controller(std::shared_ptr<arc::editor::arc_host> host, std::mutex& host_mutex)
+    native_viewport_controller(
+        std::shared_ptr<arc::editor::arc_host> host,
+        std::mutex& host_mutex,
+        arc::job_system& jobs)
         : host_(std::move(host))
         , host_mutex_(host_mutex)
+        , jobs_(&jobs)
     {
     }
 
@@ -77,7 +83,11 @@ public:
         }
 
         if (!running_.exchange(true))
-            render_thread_ = std::thread([this] { render_loop(); });
+            render_task_ = jobs_->submit({
+                .name = "editor.native_viewport",
+                .priority = arc::job_priority::critical,
+                .affinity = arc::job_affinity::render_thread
+            }, [this] { render_loop(); });
     }
 
     void resize(std::int32_t x, std::int32_t y, std::uint32_t width, std::uint32_t height)
@@ -96,8 +106,8 @@ public:
             return;
         if (window_)
             PostMessageW(window_, WM_CLOSE, 0, 0);
-        if (render_thread_.joinable())
-            render_thread_.join();
+        if (render_task_.valid())
+            (void)render_task_.wait_result();
     }
 
     LRESULT handle_message(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
@@ -711,6 +721,7 @@ private:
 
         while (running_)
         {
+            jobs_->pump_render_thread(32);
             MSG message{};
             while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
             {
@@ -753,7 +764,8 @@ private:
 
     std::shared_ptr<arc::editor::arc_host> host_;
     std::mutex& host_mutex_;
-    std::thread render_thread_;
+    arc::job_system* jobs_{};
+    arc::job_handle render_task_;
     std::atomic<bool> running_{};
     mutable std::mutex bounds_mutex_;
     HWND parent_{};
@@ -812,7 +824,7 @@ LRESULT CALLBACK native_viewport_wnd_proc(HWND window, UINT message, WPARAM wpar
 class native_viewport_controller
 {
 public:
-    native_viewport_controller(std::shared_ptr<arc::editor::arc_host>, std::mutex&)
+    native_viewport_controller(std::shared_ptr<arc::editor::arc_host>, std::mutex&, arc::job_system&)
     {
     }
 
@@ -836,10 +848,13 @@ public:
 
 int main()
 {
+    arc::memory_system memory;
+    arc::job_system jobs({ .memory = &memory });
+    jobs.register_main_thread();
     auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
     std::mutex host_mutex;
     std::mutex output_mutex;
-    native_viewport_controller native_viewport(host, host_mutex);
+    native_viewport_controller native_viewport(host, host_mutex, jobs);
     const auto write_response = [&](const arc::editor::host_response& response) {
         std::lock_guard output_lock(output_mutex);
         std::cout << arc::editor::to_json(response) << '\n';
@@ -867,6 +882,7 @@ int main()
     std::string line;
     while (std::getline(std::cin, line))
     {
+        jobs.pump_main_thread();
         if (line.empty())
             continue;
 

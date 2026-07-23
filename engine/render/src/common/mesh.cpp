@@ -1338,6 +1338,21 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
     };
 }
 
+job_future<mesh_load_result> load_gltf_mesh_async(
+    job_system& jobs,
+    std::filesystem::path path,
+    cancellation_token cancellation)
+{
+    return jobs.submit_future({
+        .name = "render.load_gltf",
+        .priority = job_priority::normal,
+        .affinity = job_affinity::io_thread,
+        .cancellation = cancellation
+    }, [path = std::move(path)] {
+        return load_gltf_mesh(path);
+    });
+}
+
 scene_import_result load_scene_asset(
     const std::filesystem::path& path,
     const scene_import_options& options,
@@ -1396,6 +1411,27 @@ scene_import_result load_scene_asset(const std::filesystem::path& path)
 {
     scene_import_options options;
     return load_scene_asset(path, options);
+}
+
+job_future<scene_import_result> load_scene_asset_async(
+    job_system& jobs,
+    std::filesystem::path path,
+    scene_import_options options,
+    scene_import_progress_callback progress,
+    cancellation_token cancellation)
+{
+    return jobs.submit_future({
+        .name = "render.import_scene",
+        .priority = job_priority::normal,
+        .affinity = job_affinity::io_thread,
+        .cancellation = cancellation
+    }, [
+        path = std::move(path),
+        options = std::move(options),
+        progress = std::move(progress)
+    ]() mutable {
+        return load_scene_asset(path, options, std::move(progress));
+    });
 }
 
 } // namespace arc::render

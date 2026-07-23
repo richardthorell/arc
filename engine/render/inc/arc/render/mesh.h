@@ -3,6 +3,7 @@
 #include <arc/math/quaternion.h>
 #include <arc/math/vector.h>
 #include <arc/render/material.h>
+#include <arc/jobs/jobs.h>
 
 #include <cstdint>
 #include <atomic>
@@ -184,6 +185,11 @@ struct scene_import_result
  */
 mesh_load_result load_gltf_mesh(const std::filesystem::path& path);
 
+job_future<mesh_load_result> load_gltf_mesh_async(
+    job_system& jobs,
+    std::filesystem::path path,
+    cancellation_token cancellation = {});
+
 /**
  * @brief Load a supported static scene asset by extension.
  *
@@ -200,5 +206,12 @@ scene_import_result load_scene_asset(
  * @brief Load a supported static scene asset by extension with default options.
  */
 scene_import_result load_scene_asset(const std::filesystem::path& path);
+
+job_future<scene_import_result> load_scene_asset_async(
+    job_system& jobs,
+    std::filesystem::path path,
+    scene_import_options options = {},
+    scene_import_progress_callback progress = {},
+    cancellation_token cancellation = {});
 
 } // namespace arc::render
