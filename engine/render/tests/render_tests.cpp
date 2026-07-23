@@ -1187,6 +1187,24 @@ TEST_CASE("GPU upload arena retires ranges by completed frame")
     REQUIRE(arena.used() == 0);
 }
 
+TEST_CASE("GPU upload arena can suballocate persistently mapped backend storage")
+{
+    std::array<std::byte, 128> mapped{};
+    arc::render::gpu_upload_arena arena(mapped);
+    arena.begin_frame(9);
+
+    auto allocation = arena.try_allocate(24, 32);
+    REQUIRE(allocation);
+    REQUIRE(allocation.offset % 32 == 0);
+    REQUIRE(allocation.bytes.data() == mapped.data() + allocation.offset);
+    allocation.bytes.front() = std::byte{ 0x5a };
+    REQUIRE(mapped[allocation.offset] == std::byte{ 0x5a });
+
+    REQUIRE(arena.retire_completed(8) == 0);
+    REQUIRE(arena.retire_completed(9) == 1);
+    REQUIRE(arena.used() == 0);
+}
+
 TEST_CASE("pipeline handle cache reuses equivalent keys")
 {
     arc::render::pipeline_handle_cache cache;

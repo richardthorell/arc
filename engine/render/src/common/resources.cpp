@@ -116,6 +116,12 @@ std::size_t frame_allocator::capacity() const noexcept
 
 gpu_upload_arena::gpu_upload_arena(std::size_t capacity)
     : storage_(capacity)
+    , bytes_(storage_)
+{
+}
+
+gpu_upload_arena::gpu_upload_arena(std::span<std::byte> mapped_storage) noexcept
+    : bytes_(mapped_storage)
 {
 }
 
@@ -126,7 +132,7 @@ void gpu_upload_arena::begin_frame(std::uint64_t frame) noexcept
 
 upload_allocation gpu_upload_arena::try_allocate(std::size_t bytes, std::size_t alignment) noexcept
 {
-    if (bytes == 0 || bytes > storage_.size() || alignment == 0 || (alignment & (alignment - 1)) != 0)
+    if (bytes == 0 || bytes > bytes_.size() || alignment == 0 || (alignment & (alignment - 1)) != 0)
         return {};
     if (!ranges_.empty() && head_ == ranges_.front().begin)
         return {};
@@ -143,11 +149,11 @@ upload_allocation gpu_upload_arena::try_allocate(std::size_t bytes, std::size_t 
             .consumed = consumed,
             .frame = current_frame_
         });
-        head_ = allocation_end == storage_.size() ? 0 : allocation_end;
+        head_ = allocation_end == bytes_.size() ? 0 : allocation_end;
         used_ += consumed;
         peak_used_ = std::max(peak_used_, used_);
         return {
-            .bytes = std::span<std::byte>(storage_.data() + aligned, bytes),
+            .bytes = bytes_.subspan(aligned, bytes),
             .offset = aligned,
             .frame = current_frame_
         };
@@ -156,13 +162,13 @@ upload_allocation gpu_upload_arena::try_allocate(std::size_t bytes, std::size_t 
     if (ranges_.empty())
     {
         head_ = 0;
-        return attempt(0, storage_.size());
+        return attempt(0, bytes_.size());
     }
 
     const auto tail = ranges_.front().begin;
     if (head_ < tail)
         return attempt(head_, tail);
-    if (auto result = attempt(head_, storage_.size()))
+    if (auto result = attempt(head_, bytes_.size()))
         return result;
     if (tail != 0)
         return attempt(0, tail);
@@ -188,7 +194,7 @@ std::size_t gpu_upload_arena::retire_completed(std::uint64_t completed_frame) no
 
 std::size_t gpu_upload_arena::capacity() const noexcept
 {
-    return storage_.size();
+    return bytes_.size();
 }
 
 std::size_t gpu_upload_arena::used() const noexcept

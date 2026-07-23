@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <unordered_map>
@@ -41,6 +42,7 @@ constexpr std::uint32_t terrain_normal_binding = 7u;
 constexpr std::uint32_t terrain_surface_binding = 11u;
 constexpr std::uint32_t material_binding_count = 15u;
 constexpr std::uint32_t material_descriptor_set_capacity = 12288u;
+constexpr VkDeviceSize upload_staging_capacity = 64u * 1024u * 1024u;
 constexpr std::array<std::uint32_t, 14> material_image_bindings{
     0u, 1u, 2u, 3u, 4u, material_shadow_binding,
     terrain_normal_binding + 0u, terrain_normal_binding + 1u,
@@ -347,6 +349,8 @@ public:
 
     render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) override
     {
+        upload_frame_ = packet.frame_index;
+        upload_batch_failed_ = false;
         frame_draws_.clear();
         frame_virtual_draws_.clear();
         frame_shadow_draws_.clear();
@@ -392,6 +396,8 @@ public:
             else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
                 pending_debug_markers_.push_back(marker->label);
         }
+        if (!flush_upload_batch())
+            upload_batch_failed_ = true;
 
         last_profile_.frame_index = packet.frame_index;
         last_profile_.graph = graph;
@@ -445,6 +451,11 @@ public:
         std::ostringstream message;
         message << "vulkan accepted frame " << packet.frame_index << " with "
                 << packet.events.size() << " event(s) and " << graph.passes.size() << " pass(es)";
+        if (upload_batch_failed_)
+        {
+            message << "; one or more resource upload batches failed";
+            return { .submitted = false, .message = message.str() };
+        }
         return { .submitted = true, .message = message.str() };
     }
 
@@ -1286,11 +1297,61 @@ private:
         }
 
         descriptor_slots_.allocate(descriptor_resource_type::sampled_image);
+
+        if (!create_buffer(
+                upload_staging_capacity,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VMA_MEMORY_USAGE_CPU_TO_GPU,
+                upload_staging_) ||
+            vmaMapMemory(allocator_, upload_staging_.allocation, &upload_staging_mapped_) != VK_SUCCESS)
+        {
+            destroy_buffer(upload_staging_);
+            upload_staging_mapped_ = nullptr;
+            arc::error("render.vulkan", "failed to create the persistent upload staging buffer");
+            return;
+        }
+
+        upload_arena_ = std::make_unique<gpu_upload_arena>(
+            std::span<std::byte>(
+                static_cast<std::byte*>(upload_staging_mapped_),
+                static_cast<std::size_t>(upload_staging_capacity)));
+
+        VkCommandPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        pool_info.queueFamilyIndex = graphics_queue_family_;
+        if (vkCreateCommandPool(device_, &pool_info, nullptr, &upload_command_pool_) != VK_SUCCESS)
+        {
+            destroy_upload_objects();
+            arc::error("render.vulkan", "failed to create the persistent upload command pool");
+            return;
+        }
+
+        VkCommandBufferAllocateInfo allocate{};
+        allocate.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocate.commandPool = upload_command_pool_;
+        allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocate.commandBufferCount = 1;
+        if (vkAllocateCommandBuffers(device_, &allocate, &upload_command_buffer_) != VK_SUCCESS)
+        {
+            destroy_upload_objects();
+            arc::error("render.vulkan", "failed to allocate the persistent upload command buffer");
+            return;
+        }
+
+        VkFenceCreateInfo fence_info{};
+        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        if (vkCreateFence(device_, &fence_info, nullptr, &upload_fence_) != VK_SUCCESS)
+        {
+            destroy_upload_objects();
+            arc::error("render.vulkan", "failed to create the persistent upload fence");
+        }
     }
 
     void destroy_support_objects() noexcept
     {
         deferred_releases_.collect(UINT64_MAX);
+        destroy_upload_objects();
         if (timestamp_query_pool_ != VK_NULL_HANDLE)
         {
             vkDestroyQueryPool(device_, timestamp_query_pool_, nullptr);
@@ -1503,6 +1564,97 @@ private:
         return submit_result == VK_SUCCESS;
     }
 
+    void destroy_upload_objects() noexcept
+    {
+        upload_arena_.reset();
+        if (upload_fence_ != VK_NULL_HANDLE)
+        {
+            vkDestroyFence(device_, upload_fence_, nullptr);
+            upload_fence_ = VK_NULL_HANDLE;
+        }
+        if (upload_command_pool_ != VK_NULL_HANDLE)
+        {
+            vkDestroyCommandPool(device_, upload_command_pool_, nullptr);
+            upload_command_pool_ = VK_NULL_HANDLE;
+            upload_command_buffer_ = VK_NULL_HANDLE;
+        }
+        if (upload_staging_mapped_ != nullptr && upload_staging_.allocation != VK_NULL_HANDLE)
+        {
+            vmaUnmapMemory(allocator_, upload_staging_.allocation);
+            upload_staging_mapped_ = nullptr;
+        }
+        destroy_buffer(upload_staging_);
+        upload_batch_active_ = false;
+        upload_batch_has_work_ = false;
+    }
+
+    bool begin_upload_batch()
+    {
+        if (upload_batch_active_)
+            return true;
+        if (!upload_arena_ || upload_command_pool_ == VK_NULL_HANDLE ||
+            upload_command_buffer_ == VK_NULL_HANDLE || upload_fence_ == VK_NULL_HANDLE)
+        {
+            return false;
+        }
+
+        upload_arena_->retire_completed(std::numeric_limits<std::uint64_t>::max());
+        upload_arena_->begin_frame(upload_frame_);
+        if (vkResetCommandPool(device_, upload_command_pool_, 0) != VK_SUCCESS)
+            return false;
+
+        VkCommandBufferBeginInfo begin{};
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(upload_command_buffer_, &begin) != VK_SUCCESS)
+            return false;
+        upload_batch_active_ = true;
+        upload_batch_has_work_ = false;
+        return true;
+    }
+
+    upload_allocation reserve_upload(VkDeviceSize size, std::size_t alignment)
+    {
+        if (!begin_upload_batch())
+            return {};
+
+        auto allocation = upload_arena_->try_allocate(static_cast<std::size_t>(size), alignment);
+        if (allocation)
+            return allocation;
+
+        if (!flush_upload_batch() || !begin_upload_batch())
+            return {};
+        return upload_arena_->try_allocate(static_cast<std::size_t>(size), alignment);
+    }
+
+    bool flush_upload_batch()
+    {
+        if (!upload_batch_active_)
+            return true;
+        if (vkEndCommandBuffer(upload_command_buffer_) != VK_SUCCESS)
+        {
+            upload_batch_active_ = false;
+            return false;
+        }
+        upload_batch_active_ = false;
+        if (!upload_batch_has_work_)
+            return true;
+
+        vkResetFences(device_, 1, &upload_fence_);
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &upload_command_buffer_;
+        const VkResult submit_result = vkQueueSubmit(queue_, 1, &submit, upload_fence_);
+        if (submit_result != VK_SUCCESS)
+            return false;
+        const VkResult wait_result = vkWaitForFences(device_, 1, &upload_fence_, VK_TRUE, UINT64_MAX);
+        if (wait_result == VK_SUCCESS)
+            upload_arena_->retire_completed(upload_frame_);
+        upload_batch_has_work_ = false;
+        return wait_result == VK_SUCCESS;
+    }
+
     void destroy_buffer(gpu_buffer& value) noexcept
     {
         if (value.buffer != VK_NULL_HANDLE)
@@ -1620,63 +1772,24 @@ private:
         if (size == 0)
             return false;
 
-        gpu_buffer staging;
-        if (!create_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, staging))
+        const auto staging = reserve_upload(size, 16u);
+        if (!staging)
             return false;
-
-        void* mapped{};
-        if (vmaMapMemory(allocator_, staging.allocation, &mapped) != VK_SUCCESS)
-        {
-            destroy_buffer(staging);
-            return false;
-        }
-        std::memcpy(mapped, source, static_cast<std::size_t>(size));
-        vmaUnmapMemory(allocator_, staging.allocation);
+        std::memcpy(staging.bytes.data(), source, static_cast<std::size_t>(size));
+        vmaFlushAllocation(
+            allocator_,
+            upload_staging_.allocation,
+            static_cast<VkDeviceSize>(staging.offset),
+            size);
 
         if (!create_buffer(size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY, destination))
-        {
-            destroy_buffer(staging);
             return false;
-        }
 
-        VkCommandPool pool{};
-        VkCommandPoolCreateInfo pool_info{};
-        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        pool_info.queueFamilyIndex = graphics_queue_family_;
-        if (vkCreateCommandPool(device_, &pool_info, nullptr, &pool) != VK_SUCCESS)
-        {
-            destroy_buffer(destination);
-            destroy_buffer(staging);
-            return false;
-        }
-
-        VkCommandBuffer command_buffer{};
-        VkCommandBufferAllocateInfo allocate{};
-        allocate.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocate.commandPool = pool;
-        allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocate.commandBufferCount = 1;
-        vkAllocateCommandBuffers(device_, &allocate, &command_buffer);
-
-        VkCommandBufferBeginInfo begin{};
-        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(command_buffer, &begin);
         VkBufferCopy copy{};
+        copy.srcOffset = static_cast<VkDeviceSize>(staging.offset);
         copy.size = size;
-        vkCmdCopyBuffer(command_buffer, staging.buffer, destination.buffer, 1, &copy);
-        vkEndCommandBuffer(command_buffer);
-
-        const bool submitted = submit_upload_commands(command_buffer);
-
-        vkDestroyCommandPool(device_, pool, nullptr);
-        destroy_buffer(staging);
-        if (!submitted)
-        {
-            destroy_buffer(destination);
-            return false;
-        }
+        vkCmdCopyBuffer(upload_command_buffer_, upload_staging_.buffer, destination.buffer, 1, &copy);
+        upload_batch_has_work_ = true;
         return true;
     }
 
@@ -1695,24 +1808,15 @@ private:
         if (upload_bytes.empty())
             return false;
 
-        gpu_buffer staging;
-        if (!create_buffer(
-                upload_bytes.size(),
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VMA_MEMORY_USAGE_CPU_TO_GPU,
-                staging))
-        {
+        const auto staging = reserve_upload(upload_bytes.size(), 16u);
+        if (!staging)
             return false;
-        }
-
-        void* mapped{};
-        if (vmaMapMemory(allocator_, staging.allocation, &mapped) != VK_SUCCESS)
-        {
-            destroy_buffer(staging);
-            return false;
-        }
-        std::memcpy(mapped, upload_bytes.data(), upload_bytes.size());
-        vmaUnmapMemory(allocator_, staging.allocation);
+        std::memcpy(staging.bytes.data(), upload_bytes.data(), upload_bytes.size());
+        vmaFlushAllocation(
+            allocator_,
+            upload_staging_.allocation,
+            static_cast<VkDeviceSize>(staging.offset),
+            static_cast<VkDeviceSize>(upload_bytes.size()));
 
         const bool has_mip_payload = !data.mips.empty();
         const std::uint32_t mip_count = has_mip_payload
@@ -1739,10 +1843,7 @@ private:
         VmaAllocationCreateInfo allocation{};
         allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
         if (vmaCreateImage(allocator_, &image, &allocation, &destination.image, &destination.allocation, nullptr) != VK_SUCCESS)
-        {
-            destroy_buffer(staging);
             return false;
-        }
 
         VkImageViewCreateInfo view{};
         view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1759,7 +1860,6 @@ private:
         if (vkCreateImageView(device_, &view, nullptr, &destination.view) != VK_SUCCESS)
         {
             destroy_texture(destination);
-            destroy_buffer(staging);
             return false;
         }
 
@@ -1782,34 +1882,8 @@ private:
         if (vkCreateSampler(device_, &sampler, nullptr, &destination.sampler) != VK_SUCCESS)
         {
             destroy_texture(destination);
-            destroy_buffer(staging);
             return false;
         }
-
-        VkCommandPool pool{};
-        VkCommandPoolCreateInfo pool_info{};
-        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        pool_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-        pool_info.queueFamilyIndex = graphics_queue_family_;
-        if (vkCreateCommandPool(device_, &pool_info, nullptr, &pool) != VK_SUCCESS)
-        {
-            destroy_texture(destination);
-            destroy_buffer(staging);
-            return false;
-        }
-
-        VkCommandBuffer command_buffer{};
-        VkCommandBufferAllocateInfo allocate{};
-        allocate.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocate.commandPool = pool;
-        allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocate.commandBufferCount = 1;
-        vkAllocateCommandBuffers(device_, &allocate, &command_buffer);
-
-        VkCommandBufferBeginInfo begin{};
-        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(command_buffer, &begin);
 
         VkImageMemoryBarrier to_copy{};
         to_copy.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1823,7 +1897,7 @@ private:
         to_copy.subresourceRange.levelCount = mip_count;
         to_copy.subresourceRange.layerCount = image.arrayLayers;
         vkCmdPipelineBarrier(
-            command_buffer,
+            upload_command_buffer_,
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
             0,
@@ -1842,7 +1916,9 @@ private:
             {
                 const auto& source_mip = data.mips[mip];
                 VkBufferImageCopy copy{};
-                copy.bufferOffset = static_cast<VkDeviceSize>(source_mip.offset);
+                copy.bufferOffset =
+                    static_cast<VkDeviceSize>(staging.offset) +
+                    static_cast<VkDeviceSize>(source_mip.offset);
                 copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
                 copy.imageSubresource.mipLevel = mip;
                 copy.imageSubresource.layerCount = image.arrayLayers;
@@ -1854,6 +1930,7 @@ private:
         else
         {
             VkBufferImageCopy copy{};
+            copy.bufferOffset = static_cast<VkDeviceSize>(staging.offset);
             copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             copy.imageSubresource.layerCount = image.arrayLayers;
             copy.imageExtent = { data.width, data.height,
@@ -1862,8 +1939,8 @@ private:
         }
 
         vkCmdCopyBufferToImage(
-            command_buffer,
-            staging.buffer,
+            upload_command_buffer_,
+            upload_staging_.buffer,
             destination.image,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             static_cast<std::uint32_t>(regions.size()),
@@ -1875,7 +1952,7 @@ private:
         to_shader.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         to_shader.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
         vkCmdPipelineBarrier(
-            command_buffer,
+            upload_command_buffer_,
             VK_PIPELINE_STAGE_TRANSFER_BIT,
             VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
             0,
@@ -1885,17 +1962,7 @@ private:
             nullptr,
             1,
             &to_shader);
-        vkEndCommandBuffer(command_buffer);
-
-        const bool submitted = submit_upload_commands(command_buffer);
-        vkDestroyCommandPool(device_, pool, nullptr);
-        destroy_buffer(staging);
-        if (!submitted)
-        {
-            destroy_texture(destination);
-            return false;
-        }
-
+        upload_batch_has_work_ = true;
         destination.format = *format;
         destination.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         destination.mip_count = mip_count;
@@ -5269,6 +5336,16 @@ private:
     frame_allocator frame_arena_{ 256u * 1024u };
     pipeline_handle_cache pipeline_handles_;
     VkPipelineCache vk_pipeline_cache_{};
+    gpu_buffer upload_staging_;
+    void* upload_staging_mapped_{};
+    std::unique_ptr<gpu_upload_arena> upload_arena_;
+    VkCommandPool upload_command_pool_{};
+    VkCommandBuffer upload_command_buffer_{};
+    VkFence upload_fence_{};
+    std::uint64_t upload_frame_{};
+    bool upload_batch_active_{};
+    bool upload_batch_has_work_{};
+    bool upload_batch_failed_{};
     static constexpr std::uint32_t max_timestamp_queries_{ 64 };
     VkQueryPool timestamp_query_pool_{};
     float timestamp_period_{ 1.0f };

@@ -167,6 +167,12 @@ class gpu_upload_arena
 {
 public:
     explicit gpu_upload_arena(std::size_t capacity = 16u * 1024u * 1024u);
+    explicit gpu_upload_arena(std::span<std::byte> mapped_storage) noexcept;
+
+    gpu_upload_arena(const gpu_upload_arena&) = delete;
+    gpu_upload_arena& operator=(const gpu_upload_arena&) = delete;
+    gpu_upload_arena(gpu_upload_arena&&) = delete;
+    gpu_upload_arena& operator=(gpu_upload_arena&&) = delete;
 
     void begin_frame(std::uint64_t frame) noexcept;
     upload_allocation try_allocate(
@@ -189,6 +195,7 @@ private:
     };
 
     std::vector<std::byte> storage_;
+    std::span<std::byte> bytes_;
     std::deque<range> ranges_;
     std::size_t head_{};
     std::size_t used_{};

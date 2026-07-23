@@ -19,9 +19,18 @@ void require_terrain_frame_submission(arc::render::renderer& renderer)
 {
     renderer.resize_viewport(64u, 64u);
     const auto mesh = renderer.create_mesh(arc::render::make_plane_mesh(16.0f));
+    arc::render::texture_data texture;
+    texture.name = "Vulkan upload batch smoke";
+    texture.width = 2;
+    texture.height = 2;
+    texture.format = arc::render::texture_format::rgba8_srgb;
+    texture.pixels.assign(16, std::byte{ 0x7f });
+    const auto texture_handle = renderer.create_texture(std::move(texture));
+
     arc::render::material_desc terrain;
     terrain.name = "Vulkan terrain sampler smoke";
     terrain.domain = arc::render::material_domain::terrain;
+    terrain.base_color_texture = texture_handle;
     const auto material = renderer.create_material(std::move(terrain));
 
     arc::render::render_event_buffer events;
