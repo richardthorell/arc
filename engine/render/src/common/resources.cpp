@@ -114,6 +114,98 @@ std::size_t frame_allocator::capacity() const noexcept
     return arena_.capacity();
 }
 
+gpu_upload_arena::gpu_upload_arena(std::size_t capacity)
+    : storage_(capacity)
+{
+}
+
+void gpu_upload_arena::begin_frame(std::uint64_t frame) noexcept
+{
+    current_frame_ = frame;
+}
+
+upload_allocation gpu_upload_arena::try_allocate(std::size_t bytes, std::size_t alignment) noexcept
+{
+    if (bytes == 0 || bytes > storage_.size() || alignment == 0 || (alignment & (alignment - 1)) != 0)
+        return {};
+    if (!ranges_.empty() && head_ == ranges_.front().begin)
+        return {};
+
+    auto attempt = [&](std::size_t begin, std::size_t end) -> upload_allocation {
+        const auto aligned = (begin + alignment - 1) & ~(alignment - 1);
+        if (aligned > end || bytes > end - aligned)
+            return {};
+        const auto allocation_end = aligned + bytes;
+        const auto consumed = allocation_end - begin;
+        ranges_.push_back({
+            .begin = aligned,
+            .end = allocation_end,
+            .consumed = consumed,
+            .frame = current_frame_
+        });
+        head_ = allocation_end == storage_.size() ? 0 : allocation_end;
+        used_ += consumed;
+        peak_used_ = std::max(peak_used_, used_);
+        return {
+            .bytes = std::span<std::byte>(storage_.data() + aligned, bytes),
+            .offset = aligned,
+            .frame = current_frame_
+        };
+    };
+
+    if (ranges_.empty())
+    {
+        head_ = 0;
+        return attempt(0, storage_.size());
+    }
+
+    const auto tail = ranges_.front().begin;
+    if (head_ < tail)
+        return attempt(head_, tail);
+    if (auto result = attempt(head_, storage_.size()))
+        return result;
+    if (tail != 0)
+        return attempt(0, tail);
+    return {};
+}
+
+std::size_t gpu_upload_arena::retire_completed(std::uint64_t completed_frame) noexcept
+{
+    std::size_t retired{};
+    while (!ranges_.empty() && ranges_.front().frame <= completed_frame)
+    {
+        used_ -= ranges_.front().consumed;
+        ranges_.pop_front();
+        ++retired;
+    }
+    if (ranges_.empty())
+    {
+        head_ = 0;
+        used_ = 0;
+    }
+    return retired;
+}
+
+std::size_t gpu_upload_arena::capacity() const noexcept
+{
+    return storage_.size();
+}
+
+std::size_t gpu_upload_arena::used() const noexcept
+{
+    return used_;
+}
+
+std::size_t gpu_upload_arena::peak_used() const noexcept
+{
+    return peak_used_;
+}
+
+std::uint64_t gpu_upload_arena::current_frame() const noexcept
+{
+    return current_frame_;
+}
+
 bool operator==(const graphics_pipeline_key& lhs, const graphics_pipeline_key& rhs) noexcept
 {
     return lhs.vertex_shader == rhs.vertex_shader &&

@@ -76,6 +76,51 @@ TEST_CASE("registry copies component pools without sharing storage")
     REQUIRE(copy.get<arc::scene::name_component>(value).value == "Copy");
 }
 
+TEST_CASE("paged component pools keep live component addresses stable while growing")
+{
+    arc::memory_system memory({
+        .physical_memory_override = 16 * 1024 * 1024,
+        .track_live_allocations = true,
+        .capture_call_stacks = false
+    });
+    arc::scene::registry scene(memory, 99);
+    const auto first = scene.create();
+    auto* stable = &scene.emplace<arc::scene::name_component>(first, "Stable");
+
+    for (std::size_t index = 0; index < 2048; ++index)
+    {
+        const auto entity = scene.create();
+        scene.emplace<arc::scene::name_component>(entity, "Additional");
+    }
+
+    REQUIRE(&scene.get<arc::scene::name_component>(first) == stable);
+    REQUIRE(stable->value == "Stable");
+    REQUIRE(scene.memory().world_id() == 99);
+    const auto snapshot = memory.snapshot();
+    const auto component_domain = std::find_if(snapshot.domains.begin(), snapshot.domains.end(), [](const auto& value) {
+        return value.domain == arc::memory_domain::components;
+    });
+    REQUIRE(component_domain != snapshot.domains.end());
+    REQUIRE(component_domain->stats.bytes_outstanding > 0);
+}
+
+TEST_CASE("paged component removal only invalidates the removed component")
+{
+    arc::scene::registry scene;
+    const auto first = scene.create();
+    const auto second = scene.create();
+    auto* first_component = &scene.emplace<arc::scene::name_component>(first, "First");
+    auto* second_component = &scene.emplace<arc::scene::name_component>(second, "Second");
+
+    scene.remove<arc::scene::name_component>(first);
+    REQUIRE_FALSE(scene.has<arc::scene::name_component>(first));
+    REQUIRE(&scene.get<arc::scene::name_component>(second) == second_component);
+    REQUIRE(second_component->value == "Second");
+
+    auto& replacement = scene.emplace<arc::scene::name_component>(first, "Replacement");
+    REQUIRE(&replacement == first_component);
+}
+
 TEST_CASE("entity GUIDs round trip and reject malformed values")
 {
     const auto guid = arc::scene::generate_entity_guid();

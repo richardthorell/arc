@@ -1161,6 +1161,32 @@ TEST_CASE("frame allocator resets transient allocations")
     REQUIRE(*second == 7);
 }
 
+TEST_CASE("GPU upload arena retires ranges by completed frame")
+{
+    arc::render::gpu_upload_arena arena(256);
+    arena.begin_frame(4);
+    auto first = arena.try_allocate(80, 16);
+    auto second = arena.try_allocate(80, 16);
+    REQUIRE(first);
+    REQUIRE(second);
+    REQUIRE(first.offset % 16 == 0);
+    REQUIRE(arena.used() >= 160);
+
+    arena.begin_frame(5);
+    auto third = arena.try_allocate(80, 16);
+    REQUIRE(third);
+    REQUIRE_FALSE(arena.try_allocate(80, 16));
+    REQUIRE(arena.retire_completed(3) == 0);
+    REQUIRE(arena.retire_completed(4) == 2);
+
+    auto wrapped = arena.try_allocate(80, 16);
+    REQUIRE(wrapped);
+    REQUIRE(wrapped.frame == 5);
+    REQUIRE(arena.peak_used() >= 240);
+    REQUIRE(arena.retire_completed(5) == 2);
+    REQUIRE(arena.used() == 0);
+}
+
 TEST_CASE("pipeline handle cache reuses equivalent keys")
 {
     arc::render::pipeline_handle_cache cache;

@@ -368,4 +368,55 @@ private:
     fixed_block_pool pool_;
 };
 
+class world_memory_context
+{
+public:
+    explicit world_memory_context(
+        memory_system& system = default_memory_system(),
+        std::uint64_t world_id = 0,
+        memory_budget budget = {});
+    ~world_memory_context();
+
+    std::uint64_t world_id() const noexcept;
+    std::pmr::memory_resource* world_resource() noexcept;
+    std::pmr::memory_resource* component_resource() noexcept;
+    std::vector<memory_leak_record> leaks() const;
+
+private:
+    memory_system* system_{};
+    std::uint64_t world_id_{};
+    system_memory_resource world_resource_;
+    system_memory_resource component_resource_;
+};
+
+/**
+ * Bounded, coalescing heap for decoded or streamed asset payloads.
+ */
+class streaming_heap final : public std::pmr::memory_resource
+{
+public:
+    explicit streaming_heap(
+        memory_system& memory,
+        std::size_t capacity,
+        memory_tag tag = make_memory_tag("assets.streaming"));
+    ~streaming_heap() override;
+
+    streaming_heap(const streaming_heap&) = delete;
+    streaming_heap& operator=(const streaming_heap&) = delete;
+
+    void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    std::size_t capacity() const noexcept;
+    std::size_t used() const noexcept;
+    std::size_t peak_used() const noexcept;
+    std::size_t largest_free_block() const noexcept;
+
+private:
+    void* do_allocate(std::size_t bytes, std::size_t alignment) override;
+    void do_deallocate(void* pointer, std::size_t bytes, std::size_t alignment) override;
+    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override;
+
+    struct implementation;
+    std::unique_ptr<implementation> implementation_;
+};
+
 } // namespace arc

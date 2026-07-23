@@ -6,7 +6,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -146,6 +148,52 @@ public:
 
 private:
     arc::linear_arena arena_;
+};
+
+struct upload_allocation
+{
+    std::span<std::byte> bytes;
+    std::size_t offset{};
+    std::uint64_t frame{};
+
+    explicit operator bool() const noexcept { return !bytes.empty(); }
+};
+
+/**
+ * Backend-neutral fixed-capacity upload ring. Ranges are reused only after
+ * their owning frame has completed.
+ */
+class gpu_upload_arena
+{
+public:
+    explicit gpu_upload_arena(std::size_t capacity = 16u * 1024u * 1024u);
+
+    void begin_frame(std::uint64_t frame) noexcept;
+    upload_allocation try_allocate(
+        std::size_t bytes,
+        std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    std::size_t retire_completed(std::uint64_t completed_frame) noexcept;
+
+    std::size_t capacity() const noexcept;
+    std::size_t used() const noexcept;
+    std::size_t peak_used() const noexcept;
+    std::uint64_t current_frame() const noexcept;
+
+private:
+    struct range
+    {
+        std::size_t begin{};
+        std::size_t end{};
+        std::size_t consumed{};
+        std::uint64_t frame{};
+    };
+
+    std::vector<std::byte> storage_;
+    std::deque<range> ranges_;
+    std::size_t head_{};
+    std::size_t used_{};
+    std::size_t peak_used_{};
+    std::uint64_t current_frame_{};
 };
 
 /**

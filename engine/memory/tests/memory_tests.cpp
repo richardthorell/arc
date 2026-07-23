@@ -148,3 +148,42 @@ TEST_CASE("allocation tag scopes restore their previous value")
     }
     REQUIRE(arc::current_memory_tag().id == original.id);
 }
+
+TEST_CASE("streaming heap coalesces released ranges")
+{
+    arc::memory_system memory({
+        .physical_memory_override = 4 * 1024 * 1024,
+        .track_live_allocations = true,
+        .capture_call_stacks = false
+    });
+    arc::streaming_heap heap(memory, 4096);
+    void* first = heap.allocate(512, 16);
+    void* second = heap.allocate(1024, 16);
+    void* third = heap.allocate(512, 16);
+    REQUIRE(heap.used() == 2048);
+    REQUIRE(heap.peak_used() == 2048);
+
+    heap.deallocate(second, 1024, 16);
+    heap.deallocate(first, 512, 16);
+    heap.deallocate(third, 512, 16);
+    REQUIRE(heap.used() == 0);
+    REQUIRE(heap.largest_free_block() == heap.capacity());
+}
+
+TEST_CASE("world memory contexts tag allocations with stable world identity")
+{
+    arc::memory_system memory({
+        .physical_memory_override = 4 * 1024 * 1024,
+        .track_live_allocations = true,
+        .capture_call_stacks = false
+    });
+    arc::world_memory_context world(memory, 1234);
+    std::pmr::vector<int> values(world.component_resource());
+    values.resize(32);
+
+    REQUIRE(world.world_id() == 1234);
+    const auto leaks = world.leaks();
+    REQUIRE_FALSE(leaks.empty());
+    REQUIRE(leaks.front().world_id == 1234);
+    REQUIRE(leaks.front().domain == arc::memory_domain::components);
+}

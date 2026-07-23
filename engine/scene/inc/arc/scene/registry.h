@@ -1,10 +1,12 @@
 #pragma once
 
 #include <arc/scene/entity.h>
+#include <arc/memory/memory.h>
 
 #include <algorithm>
 #include <cassert>
 #include <memory>
+#include <memory_resource>
 #include <stdexcept>
 #include <tuple>
 #include <typeindex>
@@ -21,33 +23,62 @@ public:
     virtual ~component_pool_base() = default;
     virtual void remove(entity value) = 0;
     virtual bool contains(entity value) const = 0;
-    virtual std::unique_ptr<component_pool_base> clone() const = 0;
+    virtual std::unique_ptr<component_pool_base> clone(std::pmr::memory_resource* resource) const = 0;
 };
 
 template <class T>
 class component_pool final : public component_pool_base
 {
 public:
+    explicit component_pool(std::pmr::memory_resource* resource = std::pmr::get_default_resource())
+        : resource_(resource ? resource : std::pmr::get_default_resource())
+        , sparse_(resource_)
+        , entities_(resource_)
+        , dense_(resource_)
+        , pages_(resource_)
+        , free_slots_(resource_)
+    {
+    }
+
+    ~component_pool() override
+    {
+        for (T* value : dense_)
+            std::destroy_at(value);
+        for (slot* page : pages_)
+            resource_->deallocate(page, sizeof(slot) * page_size, alignof(slot));
+    }
+
+    component_pool(const component_pool&) = delete;
+    component_pool& operator=(const component_pool&) = delete;
+
     template <class... Args>
     T& emplace(entity value, Args&&... args)
     {
         if (contains(value))
             return get(value) = T{ std::forward<Args>(args)... };
 
+        if (free_slots_.empty())
+            add_page();
+        slot* storage = free_slots_.back();
+        free_slots_.pop_back();
+        T* component = reinterpret_cast<T*>(storage->storage);
+        std::construct_at(component, T{ std::forward<Args>(args)... });
+        storage->occupied = true;
+
         sparse_[value.index] = dense_.size();
         entities_.push_back(value);
-        dense_.push_back(T{ std::forward<Args>(args)... });
-        return dense_.back();
+        dense_.push_back(component);
+        return *component;
     }
 
     T& get(entity value)
     {
-        return dense_[sparse_[value.index]];
+        return *dense_[sparse_[value.index]];
     }
 
     const T& get(entity value) const
     {
-        return dense_[sparse_[value.index]];
+        return *dense_[sparse_[value.index]];
     }
 
     T* try_get(entity value)
@@ -67,9 +98,10 @@ public:
 
         const std::size_t removed = sparse_[value.index];
         const std::size_t last = dense_.size() - 1;
+        T* removed_component = dense_[removed];
         if (removed != last)
         {
-            dense_[removed] = std::move(dense_[last]);
+            dense_[removed] = dense_[last];
             entities_[removed] = entities_[last];
             sparse_[entities_[removed].index] = removed;
         }
@@ -77,6 +109,10 @@ public:
         dense_.pop_back();
         entities_.pop_back();
         sparse_[value.index] = invalid_sparse;
+        std::destroy_at(removed_component);
+        auto* storage = reinterpret_cast<slot*>(removed_component);
+        storage->occupied = false;
+        free_slots_.push_back(storage);
     }
 
     bool contains(entity value) const override
@@ -87,12 +123,16 @@ public:
             entities_[sparse_[value.index]] == value;
     }
 
-    std::unique_ptr<component_pool_base> clone() const override
+    std::unique_ptr<component_pool_base> clone(std::pmr::memory_resource* resource) const override
     {
-        return std::make_unique<component_pool<T>>(*this);
+        auto result = std::make_unique<component_pool<T>>(resource);
+        result->ensure_entity_capacity(sparse_.size());
+        for (std::size_t index = 0; index < dense_.size(); ++index)
+            result->emplace(entities_[index], *dense_[index]);
+        return result;
     }
 
-    const std::vector<entity>& entities() const noexcept
+    const std::pmr::vector<entity>& entities() const noexcept
     {
         return entities_;
     }
@@ -105,10 +145,31 @@ public:
 
 private:
     static constexpr std::size_t invalid_sparse = static_cast<std::size_t>(-1);
+    static constexpr std::size_t page_size = 256;
 
-    std::vector<std::size_t> sparse_;
-    std::vector<entity> entities_;
-    std::vector<T> dense_;
+    struct alignas(T) slot
+    {
+        alignas(T) std::byte storage[sizeof(T)];
+        bool occupied{};
+    };
+
+    void add_page()
+    {
+        auto* page = static_cast<slot*>(resource_->allocate(sizeof(slot) * page_size, alignof(slot)));
+        pages_.push_back(page);
+        for (std::size_t index = 0; index < page_size; ++index)
+        {
+            std::construct_at(page + index);
+            free_slots_.push_back(page + (page_size - index - 1));
+        }
+    }
+
+    std::pmr::memory_resource* resource_{};
+    std::pmr::vector<std::size_t> sparse_;
+    std::pmr::vector<entity> entities_;
+    std::pmr::vector<T*> dense_;
+    std::pmr::vector<slot*> pages_;
+    std::pmr::vector<slot*> free_slots_;
 };
 
 class registry;
@@ -142,16 +203,25 @@ private:
 class registry
 {
 public:
-    registry() = default;
+    registry()
+        : memory_(std::make_shared<world_memory_context>())
+    {
+    }
+
+    explicit registry(memory_system& memory, std::uint64_t world_id = 0, memory_budget budget = {})
+        : memory_(std::make_shared<world_memory_context>(memory, world_id, budget))
+    {
+    }
 
     registry(const registry& other)
-        : generations_(other.generations_)
+        : memory_(other.memory_)
+        , generations_(other.generations_)
         , alive_(other.alive_)
         , free_list_(other.free_list_)
         , live_count_(other.live_count_)
     {
         for (const auto& [key, values] : other.pools_)
-            pools_.emplace(key, values->clone());
+            pools_.emplace(key, values->clone(memory_->component_resource()));
     }
 
     registry& operator=(const registry& other)
@@ -172,6 +242,7 @@ public:
         alive_.swap(other.alive_);
         free_list_.swap(other.free_list_);
         pools_.swap(other.pools_);
+        memory_.swap(other.memory_);
         std::swap(live_count_, other.live_count_);
     }
 
@@ -233,6 +304,16 @@ public:
     std::size_t live_count() const noexcept
     {
         return live_count_;
+    }
+
+    world_memory_context& memory() noexcept
+    {
+        return *memory_;
+    }
+
+    const world_memory_context& memory() const noexcept
+    {
+        return *memory_;
     }
 
     /** Return a stable snapshot of all currently live entity handles. */
@@ -325,7 +406,7 @@ private:
         auto found = pools_.find(key);
         if (found == pools_.end())
         {
-            auto values = std::make_unique<component_pool<T>>();
+            auto values = std::make_unique<component_pool<T>>(memory_->component_resource());
             values->ensure_entity_capacity(generations_.size());
             found = pools_.emplace(key, std::move(values)).first;
         }
@@ -355,6 +436,7 @@ private:
         return static_cast<const component_pool<T>*>(found->second.get());
     }
 
+    std::shared_ptr<world_memory_context> memory_;
     std::vector<std::uint32_t> generations_;
     std::vector<bool> alive_;
     std::vector<std::uint32_t> free_list_;

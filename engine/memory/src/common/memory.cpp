@@ -1,4 +1,5 @@
 #include <arc/memory/memory.h>
+#include <arc/diagnostics/log.h>
 
 #include <algorithm>
 #include <array>
@@ -917,6 +918,205 @@ void network_packet_pool::deallocate(void* pointer, std::size_t bytes) noexcept
 std::size_t network_packet_pool::outstanding_bytes() const noexcept
 {
     return pool_.outstanding_bytes();
+}
+
+world_memory_context::world_memory_context(
+    memory_system& system,
+    std::uint64_t world_id,
+    memory_budget budget)
+    : system_(&system)
+    , world_id_(world_id != 0 ? world_id : allocation_sequence.fetch_add(1, std::memory_order_relaxed) + 1)
+    , world_resource_(system, memory_domain::world, make_memory_tag("world"), world_id_)
+    , component_resource_(system, memory_domain::components, make_memory_tag("world.components"), world_id_)
+{
+    if (budget.soft_limit != 0 || budget.hard_limit != 0)
+        system.set_budget(memory_domain::world, budget);
+}
+
+world_memory_context::~world_memory_context()
+{
+    const auto outstanding = leaks();
+    if (!outstanding.empty())
+    {
+        std::size_t bytes{};
+        for (const auto& leak : outstanding)
+            bytes += leak.bytes;
+        warn(
+            "memory.world",
+            "World " + std::to_string(world_id_) + " released with " +
+                std::to_string(outstanding.size()) + " tracked allocation(s), " +
+                std::to_string(bytes) + " byte(s) outstanding");
+    }
+}
+
+std::uint64_t world_memory_context::world_id() const noexcept
+{
+    return world_id_;
+}
+
+std::pmr::memory_resource* world_memory_context::world_resource() noexcept
+{
+    return &world_resource_;
+}
+
+std::pmr::memory_resource* world_memory_context::component_resource() noexcept
+{
+    return &component_resource_;
+}
+
+std::vector<memory_leak_record> world_memory_context::leaks() const
+{
+    return system_->leaks(world_id_);
+}
+
+struct streaming_heap::implementation
+{
+    struct free_block
+    {
+        std::size_t offset{};
+        std::size_t size{};
+    };
+
+    implementation(memory_system& memory, std::size_t requested_capacity, memory_tag tag)
+        : resource(memory, memory_domain::streaming, tag)
+        , capacity(requested_capacity)
+    {
+        if (capacity != 0)
+        {
+            storage = static_cast<std::byte*>(resource.allocate(capacity, alignof(std::max_align_t)));
+            free.push_back({ .offset = 0, .size = capacity });
+        }
+    }
+
+    system_memory_resource resource;
+    std::byte* storage{};
+    std::size_t capacity{};
+    std::size_t used{};
+    std::size_t peak{};
+    std::vector<free_block> free;
+    std::unordered_map<void*, std::size_t> allocations;
+    mutable std::mutex mutex;
+};
+
+streaming_heap::streaming_heap(memory_system& memory, std::size_t capacity, memory_tag tag)
+    : implementation_(std::make_unique<implementation>(memory, capacity, tag))
+{
+}
+
+streaming_heap::~streaming_heap()
+{
+    if (implementation_->storage)
+        implementation_->resource.deallocate(
+            implementation_->storage,
+            implementation_->capacity,
+            alignof(std::max_align_t));
+}
+
+void* streaming_heap::try_allocate(std::size_t bytes, std::size_t alignment) noexcept
+{
+    if (bytes == 0)
+        bytes = 1;
+    if (!valid_alignment(alignment))
+        return nullptr;
+    std::lock_guard lock(implementation_->mutex);
+    for (auto iterator = implementation_->free.begin(); iterator != implementation_->free.end(); ++iterator)
+    {
+        const auto aligned = (iterator->offset + alignment - 1) & ~(alignment - 1);
+        const auto padding = aligned - iterator->offset;
+        if (padding > iterator->size || bytes > iterator->size - padding)
+            continue;
+
+        const auto original_end = iterator->offset + iterator->size;
+        const auto allocation_end = aligned + bytes;
+        const auto original_offset = iterator->offset;
+        iterator = implementation_->free.erase(iterator);
+        if (padding != 0)
+            iterator = implementation_->free.insert(iterator, { .offset = original_offset, .size = padding }) + 1;
+        if (allocation_end < original_end)
+            implementation_->free.insert(iterator, { .offset = allocation_end, .size = original_end - allocation_end });
+
+        void* pointer = implementation_->storage + aligned;
+        implementation_->allocations.emplace(pointer, bytes);
+        implementation_->used += bytes;
+        implementation_->peak = std::max(implementation_->peak, implementation_->used);
+        return pointer;
+    }
+    return nullptr;
+}
+
+std::size_t streaming_heap::capacity() const noexcept
+{
+    return implementation_->capacity;
+}
+
+std::size_t streaming_heap::used() const noexcept
+{
+    std::lock_guard lock(implementation_->mutex);
+    return implementation_->used;
+}
+
+std::size_t streaming_heap::peak_used() const noexcept
+{
+    std::lock_guard lock(implementation_->mutex);
+    return implementation_->peak;
+}
+
+std::size_t streaming_heap::largest_free_block() const noexcept
+{
+    std::lock_guard lock(implementation_->mutex);
+    std::size_t result{};
+    for (const auto& block : implementation_->free)
+        result = std::max(result, block.size);
+    return result;
+}
+
+void* streaming_heap::do_allocate(std::size_t bytes, std::size_t alignment)
+{
+    if (void* pointer = try_allocate(bytes, alignment))
+        return pointer;
+    throw std::bad_alloc();
+}
+
+void streaming_heap::do_deallocate(void* pointer, std::size_t, std::size_t)
+{
+    if (!pointer)
+        return;
+    std::lock_guard lock(implementation_->mutex);
+    const auto allocation = implementation_->allocations.find(pointer);
+    if (allocation == implementation_->allocations.end())
+        return;
+    const auto offset = static_cast<std::size_t>(static_cast<std::byte*>(pointer) - implementation_->storage);
+    const auto bytes = allocation->second;
+    implementation_->allocations.erase(allocation);
+    implementation_->used -= bytes;
+
+    auto position = std::lower_bound(
+        implementation_->free.begin(),
+        implementation_->free.end(),
+        offset,
+        [](const auto& block, std::size_t value) { return block.offset < value; });
+    position = implementation_->free.insert(position, { .offset = offset, .size = bytes });
+    if (position != implementation_->free.begin())
+    {
+        auto previous = position - 1;
+        if (previous->offset + previous->size == position->offset)
+        {
+            previous->size += position->size;
+            position = implementation_->free.erase(position);
+            position = previous;
+        }
+    }
+    if (position + 1 != implementation_->free.end() &&
+        position->offset + position->size == (position + 1)->offset)
+    {
+        position->size += (position + 1)->size;
+        implementation_->free.erase(position + 1);
+    }
+}
+
+bool streaming_heap::do_is_equal(const std::pmr::memory_resource& other) const noexcept
+{
+    return this == &other;
 }
 
 } // namespace arc
