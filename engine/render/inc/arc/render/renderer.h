@@ -145,6 +145,11 @@ public:
     bool mesh_alive(mesh_handle handle) const;
 
     /**
+     * @brief Return retained CPU mesh data for tooling and backend-neutral queries.
+     */
+    const mesh_data* mesh_data_for(mesh_handle handle) const;
+
+    /**
      * @brief Return whether a virtual mesh handle still references a live renderer virtual mesh.
      */
     bool virtual_mesh_alive(virtual_mesh_handle handle) const;
@@ -187,7 +192,7 @@ public:
     /**
      * @brief Request an async ObjectID readback at viewport pixel coordinates.
      */
-    void request_object_pick(std::uint32_t x, std::uint32_t y);
+    void request_object_pick(std::uint64_t request_id, std::uint32_t x, std::uint32_t y);
 
     /**
      * @brief Return the latest async ObjectID readback result.

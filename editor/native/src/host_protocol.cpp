@@ -536,8 +536,25 @@ const char* to_string(host_event_type value) noexcept
     case host_event_type::command_failed: return "command.failed";
     case host_event_type::viewport_error: return "viewport.error";
     case host_event_type::profiler_snapshot: return "profiler.snapshot";
+    case host_event_type::terrain_tool_changed: return "terrain.toolChanged";
+    case host_event_type::terrain_stroke_committed: return "terrain.strokeCommitted";
+    case host_event_type::runtime_state_changed: return "runtime.stateChanged";
+    case host_event_type::runtime_tick_completed: return "runtime.tickCompleted";
+    case host_event_type::runtime_fault: return "runtime.fault";
     }
     return "unknown";
+}
+
+const char* to_string(host_runtime_state value) noexcept
+{
+    switch (value)
+    {
+    case host_runtime_state::stopped: return "stopped";
+    case host_runtime_state::running: return "running";
+    case host_runtime_state::paused: return "paused";
+    case host_runtime_state::faulted: return "faulted";
+    }
+    return "stopped";
 }
 
 const char* to_string(host_entity_kind value) noexcept
@@ -727,6 +744,7 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_set_terrain_brush_command>) return "terrain.setBrush";
         else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>) return "terrain.assignLayer";
         else if constexpr (std::is_same_v<type, host_terrain_stroke_command>) return "terrain.stroke";
+        else if constexpr (std::is_same_v<type, host_terrain_hover_command>) return "terrain.hover";
         else if constexpr (std::is_same_v<type, host_set_entity_material_command>) return "entity.setMaterial";
         else if constexpr (std::is_same_v<type, host_set_world_environment_command>) return "environment.update";
         else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>) return "environment.applyPreset";
@@ -739,6 +757,13 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>) return "viewport.cameraInput";
         else if constexpr (std::is_same_v<type, host_history_undo_command>) return "history.undo";
         else if constexpr (std::is_same_v<type, host_history_redo_command>) return "history.redo";
+        else if constexpr (std::is_same_v<type, host_runtime_resume_command>) return "runtime.resume";
+        else if constexpr (std::is_same_v<type, host_runtime_pause_command>) return "runtime.pause";
+        else if constexpr (std::is_same_v<type, host_runtime_stop_command>) return "runtime.stop";
+        else if constexpr (std::is_same_v<type, host_runtime_step_command>) return "runtime.step";
+        else if constexpr (std::is_same_v<type, host_runtime_set_time_scale_command>) return "runtime.setTimeScale";
+        else if constexpr (std::is_same_v<type, host_runtime_capture_snapshot_command>) return "runtime.captureSnapshot";
+        else if constexpr (std::is_same_v<type, host_runtime_restore_snapshot_command>) return "runtime.restoreSnapshot";
         else if constexpr (std::is_same_v<type, host_viewport_set_tool_command>) return "viewport.setTool";
         else if constexpr (std::is_same_v<type, host_viewport_pick_command>) return "viewport.pick";
         else return "unknown";
@@ -756,8 +781,38 @@ std::string query_type(const host_query_payload& payload)
         else if constexpr (std::is_same_v<type, host_viewport_state_query>) return "viewport.state";
         else if constexpr (std::is_same_v<type, host_world_environment_query>) return "environment.state";
         else if constexpr (std::is_same_v<type, host_history_state_query>) return "history.state";
+        else if constexpr (std::is_same_v<type, host_runtime_state_query>) return "runtime.state";
+        else if constexpr (std::is_same_v<type, host_terrain_tool_state_query>) return "terrain.toolState";
         else return "unknown";
     }, payload);
+}
+
+std::string to_json(const host_runtime_snapshot& snapshot)
+{
+    std::ostringstream stream;
+    stream << "{\"state\":" << quote(to_string(snapshot.state))
+        << ",\"tickId\":" << snapshot.tick_id
+        << ",\"revision\":" << snapshot.revision
+        << ",\"discardedTicks\":" << snapshot.discarded_ticks
+        << ",\"timeScale\":" << snapshot.time_scale
+        << ",\"interpolationAlpha\":" << snapshot.interpolation_alpha
+        << ",\"worldCount\":" << snapshot.world_count << '}';
+    return stream.str();
+}
+
+std::string to_json(const host_terrain_tool_snapshot& snapshot)
+{
+    const char* tool = snapshot.tool == host_terrain_brush_tool::smooth ? "smooth" :
+        snapshot.tool == host_terrain_brush_tool::flatten ? "flatten" :
+        snapshot.tool == host_terrain_brush_tool::paint ? "paint" : "sculpt";
+    return "{\"entity\":" + to_json(snapshot.entity) +
+        ",\"active\":" + bool_json(snapshot.active) +
+        ",\"hoverVisible\":" + bool_json(snapshot.hover_visible) +
+        ",\"tool\":" + quote(tool) +
+        ",\"radius\":" + std::to_string(snapshot.radius) +
+        ",\"strength\":" + std::to_string(snapshot.strength) +
+        ",\"falloff\":" + std::to_string(snapshot.falloff) +
+        ",\"activeLayer\":" + std::to_string(snapshot.active_layer) + '}';
 }
 
 std::string to_json(const host_entity_id& entity)
@@ -970,6 +1025,10 @@ std::string to_json(const host_command_envelope& envelope)
                 ",\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
                 ",\"phase\":" + quote(phase) + ",\"invert\":" + bool_json(payload.invert) + '}';
         }
+        else if constexpr (std::is_same_v<type, host_terrain_hover_command>)
+            return "{\"entity\":" + to_json(payload.entity) +
+                ",\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
+                ",\"clear\":" + bool_json(payload.clear) + '}';
         else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
             return "{\"entity\":" + to_json(payload.entity) +
                 ",\"path\":" + quote(payload.path.generic_string()) + '}';
@@ -1008,6 +1067,14 @@ std::string to_json(const host_command_envelope& envelope)
                 ",\"forward\":" + std::to_string(payload.forward) +
                 ",\"zoom\":" + std::to_string(payload.zoom) +
                 ",\"focusSelected\":" + bool_json(payload.focus_selected) + '}';
+        else if constexpr (std::is_same_v<type, host_runtime_step_command>)
+            return "{\"ticks\":" + std::to_string(payload.ticks) + '}';
+        else if constexpr (std::is_same_v<type, host_runtime_set_time_scale_command>)
+            return "{\"value\":" + std::to_string(payload.value) + '}';
+        else if constexpr (std::is_same_v<type, host_runtime_capture_snapshot_command>)
+            return "{\"label\":" + quote(payload.label) + '}';
+        else if constexpr (std::is_same_v<type, host_runtime_restore_snapshot_command>)
+            return "{\"snapshotId\":" + std::to_string(payload.snapshot_id) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_set_tool_command>)
             return "{\"tool\":" + quote(payload.tool == host_viewport_tool::translate ? "translate" :
                     payload.tool == host_viewport_tool::rotate ? "rotate" : payload.tool == host_viewport_tool::scale ? "scale" :
@@ -1521,6 +1588,18 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "invert", command.invert);
         envelope.payload = command;
     }
+    else if (type == "terrain.hover")
+    {
+        host_terrain_hover_command command;
+        bool_value(payload, "clear", command.clear);
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            (!command.clear && (!number_value(payload, "x", command.x) || !number_value(payload, "y", command.y))))
+        {
+            error = "Terrain hover requires entity and viewport coordinates";
+            return false;
+        }
+        envelope.payload = command;
+    }
     else if (type == "terrain.assignLayer")
     {
         host_set_terrain_layer_command command;
@@ -1672,6 +1751,45 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         envelope.payload = host_history_undo_command{};
     else if (type == "history.redo")
         envelope.payload = host_history_redo_command{};
+    else if (type == "runtime.resume")
+        envelope.payload = host_runtime_resume_command{};
+    else if (type == "runtime.pause")
+        envelope.payload = host_runtime_pause_command{};
+    else if (type == "runtime.stop")
+        envelope.payload = host_runtime_stop_command{};
+    else if (type == "runtime.step")
+    {
+        host_runtime_step_command command;
+        number_value(payload, "ticks", command.ticks);
+        command.ticks = std::clamp(command.ticks, 1u, 1024u);
+        envelope.payload = command;
+    }
+    else if (type == "runtime.setTimeScale")
+    {
+        host_runtime_set_time_scale_command command;
+        if (!number_value(payload, "value", command.value))
+        {
+            error = "Runtime time-scale command requires value";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "runtime.captureSnapshot")
+    {
+        host_runtime_capture_snapshot_command command;
+        string_value(payload, "label", command.label);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "runtime.restoreSnapshot")
+    {
+        host_runtime_restore_snapshot_command command;
+        if (!number_value(payload, "snapshotId", command.snapshot_id) || command.snapshot_id == 0)
+        {
+            error = "Runtime snapshot restore requires snapshotId";
+            return false;
+        }
+        envelope.payload = command;
+    }
     else if (type == "viewport.setTool")
     {
         static constexpr std::pair<std::string_view, host_viewport_tool> tools[]{
@@ -1760,6 +1878,10 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
     }
     else if (type == "history.state")
         envelope.payload = host_history_state_query{};
+    else if (type == "runtime.state")
+        envelope.payload = host_runtime_state_query{};
+    else if (type == "terrain.toolState")
+        envelope.payload = host_terrain_tool_state_query{};
     else
     {
         error = "Unsupported host query type: " + type;

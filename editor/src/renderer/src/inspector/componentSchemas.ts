@@ -3,7 +3,7 @@ import type { PropertyComponentSchema, PropertyFieldSchema } from './propertySch
 import { generatedEcsComponents } from './generatedEcsMetadata';
 export { getPathValue, setPathValue } from './propertySchema';
 
-export type InspectorComponentId = 'transform' | 'camera' | 'meshRenderer' | 'terrain' | 'terrainBrush' | 'prefab';
+export type InspectorComponentId = 'transform' | 'camera' | 'meshRenderer' | 'terrain' | 'prefab';
 export type InspectorFieldSchema = PropertyFieldSchema<InspectorEntitySnapshot>;
 export type InspectorComponentSchema = PropertyComponentSchema<InspectorEntitySnapshot, InspectorComponentId>;
 
@@ -65,23 +65,6 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       { id: 'dirt', label: 'Dirt Layer', path: 'terrain.layers.1.baseColorPath', type: 'asset', assetKind: 'texture', allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'], allowEmpty: true },
       { id: 'rock', label: 'Rock Layer', path: 'terrain.layers.2.baseColorPath', type: 'asset', assetKind: 'texture', allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'], allowEmpty: true },
       { id: 'sand', label: 'Sand Layer', path: 'terrain.layers.3.baseColorPath', type: 'asset', assetKind: 'texture', allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'], allowEmpty: true },
-    ],
-  },
-  {
-    id: 'terrainBrush',
-    title: 'Terrain Brush',
-    fields: [
-      { id: 'tool', label: 'Tool', path: 'terrain.brushTool', type: 'enum', options: [
-        { value: 'sculpt', label: 'Sculpt' }, { value: 'smooth', label: 'Smooth' },
-        { value: 'flatten', label: 'Flatten' }, { value: 'paint', label: 'Paint' },
-      ] },
-      { id: 'radius', label: 'Radius', path: 'terrain.brushRadius', type: 'number', precision: 2, step: 0.5, scrubSensitivity: 0.05, unit: ' m', min: 0.25, max: 128 },
-      { id: 'strength', label: 'Strength', path: 'terrain.brushStrength', type: 'number', precision: 2, step: 0.05, scrubSensitivity: 0.01, min: 0.001, max: 1 },
-      { id: 'falloff', label: 'Smooth Falloff', path: 'terrain.brushFalloff', type: 'number', precision: 2, step: 0.05, scrubSensitivity: 0.01, min: 0, max: 1 },
-      { id: 'activeLayer', label: 'Paint Layer', path: 'terrain.activeLayer', type: 'enum', options: [
-        { value: '0', label: 'Grass' }, { value: '1', label: 'Dirt' },
-        { value: '2', label: 'Rock' }, { value: '3', label: 'Sand' },
-      ], visible: (snapshot) => snapshot.terrain?.brushTool === 'paint' },
     ],
   },
   {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import {
-  AlertTriangle,
   Box,
   ChevronDown,
   ChevronRight,
@@ -45,6 +44,9 @@ import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../ins
 import { eulerDegreesToQuaternion, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
 import { ProfilerPanel } from '../profiler/ProfilerPanel';
 import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
+import { TerrainToolsPanel } from '../terrain/TerrainToolsPanel';
+import type { TerrainToolState } from '../terrain/TerrainToolsPanel';
+import { ConsolePanel } from '../console/ConsolePanel';
 
 import './workbench.css';
 
@@ -72,6 +74,16 @@ type HostSceneSnapshot = {
 };
 
 type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
+
+type HostRuntimeSnapshot = {
+  state: 'stopped' | 'running' | 'paused' | 'faulted';
+  tickId: number;
+  revision: number;
+  discardedTicks: number;
+  timeScale: number;
+  interpolationAlpha: number;
+  worldCount: number;
+};
 
 type HostAssetSnapshot = {
   path: string;
@@ -184,6 +196,10 @@ export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId:
     if (!validHostEntity(event.entity)) return 'none';
     return hostEntityKey(event.entity) === selectedEntityId ? 'selected' : 'hierarchy';
   }
+  if (event.type === 'terrain.strokeCommitted') {
+    if (!validHostEntity(event.entity)) return 'none';
+    return hostEntityKey(event.entity) === selectedEntityId ? 'selected' : 'hierarchy';
+  }
   if (event.type === 'scene.changed' || event.type === 'entity.created' || event.type === 'entity.deleted' ||
       event.type === 'project.opened' || event.type === 'project.closed') return 'all';
   return 'none';
@@ -197,6 +213,7 @@ const resizeLimits = {
 const translationSnapOptions = [0.05, 0.1, 0.25, 0.5, 1] as const;
 const rotationSnapOptions = [5, 10, 15, 30, 45, 90] as const;
 const scaleSnapOptions = [0.05, 0.1, 0.25, 0.5] as const;
+const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
 const nextSnapOption = (options: readonly number[], current: number) => options[(options.indexOf(current) + 1) % options.length];
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -252,11 +269,27 @@ const snapshotFromMockEntity = (entity: SceneEntity | null): InspectorEntitySnap
   };
 };
 
+const terrainToolStateFromSnapshot = (snapshot: InspectorEntitySnapshot): TerrainToolState | null => {
+  if (!snapshot.terrain) return null;
+  return {
+    entity: snapshot.entity,
+    active: true,
+    hoverVisible: false,
+    tool: snapshot.terrain.brushTool,
+    radius: snapshot.terrain.brushRadius,
+    strength: snapshot.terrain.brushStrength,
+    falloff: snapshot.terrain.brushFalloff,
+    activeLayer: snapshot.terrain.activeLayer,
+  };
+};
+
 export function Workbench() {
   const { layout, setLayout, resetLayout } = useWorkbenchLayout();
   const [startupState, setStartupState] = useState<StartupState | null>(null);
   const [project, setProject] = useState<ProjectSnapshot | null>(null);
   const [hostConsoleEvents, setHostConsoleEvents] = useState<ConsoleEvent[]>([]);
+  const [consoleLocked, setConsoleLocked] = useState(true);
+  const [clearedConsoleIds, setClearedConsoleIds] = useState<ReadonlySet<string>>(new Set());
   const [selectedEntityId, setSelectedEntityId] = useState('camera-main');
   const selectedEntityIdRef = useRef(selectedEntityId);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>('asset-scene-demo');
@@ -271,6 +304,7 @@ export function Workbench() {
     canUndo: false, canRedo: false, undoLabel: '', redoLabel: '',
   });
   const [activeTool, setActiveTool] = useState<'select' | 'translate' | 'rotate' | 'scale' | 'terrain'>('translate');
+  const [terrainToolState, setTerrainToolState] = useState<TerrainToolState | null>(null);
   const [coordinateSpace, setCoordinateSpace] = useState<'world' | 'local'>('world');
   const [snapping, setSnapping] = useState(false);
   const [translationSnap, setTranslationSnap] = useState(0.25);
@@ -278,12 +312,44 @@ export function Workbench() {
   const [scaleSnap, setScaleSnap] = useState(0.1);
   const [lastCommand, setLastCommand] = useState('Workbench ready');
   const [profilerSamples, setProfilerSamples] = useState<ProfilerSnapshot[]>([]);
+  const [runtimeState, setRuntimeState] = useState<HostRuntimeSnapshot>({
+    state: 'stopped', tickId: 0, revision: 0, discardedTicks: 0,
+    timeScale: 1, interpolationAlpha: 0, worldCount: 0,
+  });
+  const runtimeRevision = useRef(0);
+
+  const acceptRuntimeSnapshot = useCallback((value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    const candidate = value as Partial<HostRuntimeSnapshot>;
+    if (candidate.state !== 'stopped' && candidate.state !== 'running' &&
+        candidate.state !== 'paused' && candidate.state !== 'faulted') return;
+    const revision = Number(candidate.revision ?? 0);
+    if (!Number.isFinite(revision) || revision < runtimeRevision.current) return;
+    runtimeRevision.current = revision;
+    setRuntimeState({
+      state: candidate.state,
+      tickId: Number(candidate.tickId ?? 0),
+      revision,
+      discardedTicks: Number(candidate.discardedTicks ?? 0),
+      timeScale: Number(candidate.timeScale ?? 1),
+      interpolationAlpha: Number(candidate.interpolationAlpha ?? 0),
+      worldCount: Number(candidate.worldCount ?? 0),
+    });
+  }, []);
 
   const loadAssetThumbnail = useCallback(async (path: string): Promise<string | null> => {
     if (!startupState?.engineHostConnected || !window.arc?.host) return null;
     const response = await window.arc.host.query('asset.thumbnail', { path, maxSize: 128 }) as HostResponse<HostAssetThumbnailSnapshot>;
     return response.succeeded && response.payload?.dataUrl ? response.payload.dataUrl : null;
   }, [project?.assetRoot, startupState?.engineHostConnected]);
+
+  const refreshTerrainToolState = useCallback(async () => {
+    if (!window.arc?.host) return;
+    const response = await window.arc.host.query('terrain.toolState') as HostResponse<TerrainToolState>;
+    if (response.succeeded && response.payload &&
+        hostEntityKey(response.payload.entity) === selectedEntityIdRef.current)
+      setTerrainToolState(response.payload);
+  }, []);
 
   useEffect(() => {
     if (!activityRegistry.some((activity) => activity.id === layout.activeActivity)) {
@@ -315,12 +381,25 @@ export function Workbench() {
       setProfilerSamples((current) => [...current, sample].slice(-3000));
       return;
     }
+    if ((event.type === 'runtime.stateChanged' || event.type === 'runtime.tickCompleted' ||
+        event.type === 'runtime.fault') && event.payload) {
+      acceptRuntimeSnapshot(event.payload);
+      setLastCommand(event.message || event.type);
+      return;
+    }
+    if (event.type === 'terrain.toolChanged' && event.payload) {
+      const next = event.payload as TerrainToolState;
+      if (hostEntityKey(next.entity) === selectedEntityIdRef.current)
+        setTerrainToolState(next);
+      setLastCommand(event.message || event.type);
+      return;
+    }
     setLastCommand(event.message || event.type);
     if (event.payload && typeof event.payload === 'object' && 'tool' in event.payload) {
       const payload = event.payload as { tool?: unknown; coordinateSpace?: unknown; snapping?: unknown;
         translationSnap?: unknown; rotationSnapDegrees?: unknown; scaleSnap?: unknown };
       const tool = String(payload.tool);
-      if (tool === 'select' || tool === 'translate' || tool === 'rotate' || tool === 'scale') setActiveTool(tool);
+      if (tool === 'select' || tool === 'translate' || tool === 'rotate' || tool === 'scale' || tool === 'terrain') setActiveTool(tool);
       if (payload.coordinateSpace === 'world' || payload.coordinateSpace === 'local') setCoordinateSpace(payload.coordinateSpace);
       if (typeof payload.snapping === 'boolean') setSnapping(payload.snapping);
       if (typeof payload.translationSnap === 'number') setTranslationSnap(payload.translationSnap);
@@ -359,7 +438,23 @@ export function Workbench() {
       else if (mode === 'selected' && selectedEntityIdRef.current)
         void refreshSelectedEntity(selectedEntityIdRef.current, true);
     }, 24);
-  }), []);
+  }), [acceptRuntimeSnapshot]);
+
+  useEffect(() => {
+    if (activeTool !== 'terrain') return;
+    if (selectedSnapshot && !selectedSnapshot.terrain) {
+      setActiveTool('select');
+      if (startupState?.engineHostConnected)
+        void window.arc.host.command('viewport.setTool', {
+          tool: 'select', coordinateSpace, snapping,
+          translationSnap, rotationSnapDegrees: rotationSnap, scaleSnap,
+        });
+      return;
+    }
+    if (selectedSnapshot?.terrain)
+      void refreshTerrainToolState();
+  }, [activeTool, coordinateSpace, refreshTerrainToolState, rotationSnap, scaleSnap,
+    selectedSnapshot, snapping, startupState?.engineHostConnected, translationSnap]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -393,19 +488,20 @@ export function Workbench() {
       }
       return;
     }
-    setSelectedSnapshotLoading(true);
+    const replacingSelection = !selectedSnapshot || hostEntityKey(selectedSnapshot.entity) !== entityId;
+    if (replacingSelection) setSelectedSnapshotLoading(true);
     try {
       const response = await window.arc.host.query('entity.selected') as HostResponse<unknown>;
       if (requestRevision !== selectedSnapshotRevision.current) return;
       if (!response.succeeded || !response.payload) {
-        setSelectedSnapshot(null);
+        if (replacingSelection) setSelectedSnapshot(null);
         setLastCommand(response.error || 'Could not read selected entity');
         return;
       }
       setSelectedSnapshot(parseSelectedEntitySnapshot(response.payload));
     } catch (error) {
       if (requestRevision !== selectedSnapshotRevision.current) return;
-      setSelectedSnapshot(null);
+      if (replacingSelection) setSelectedSnapshot(null);
       setLastCommand(error instanceof Error ? error.message : String(error));
     } finally {
       if (requestRevision === selectedSnapshotRevision.current) {
@@ -484,6 +580,14 @@ export function Workbench() {
           response = await window.arc.host.command('entity.duplicate', { entity: selectedSnapshot.entity }) as HostResponse;
         } else if (command === 'entity.delete' && selectedSnapshot) {
           response = await window.arc.host.command('entity.delete', { entity: selectedSnapshot.entity }) as HostResponse;
+        } else if (command === 'scene.play') {
+          response = await window.arc.host.command('runtime.resume') as HostResponse<HostRuntimeSnapshot>;
+        } else if (command === 'scene.pause') {
+          response = await window.arc.host.command('runtime.pause') as HostResponse<HostRuntimeSnapshot>;
+        } else if (command === 'scene.stop') {
+          response = await window.arc.host.command('runtime.stop') as HostResponse<HostRuntimeSnapshot>;
+        } else if (command === 'scene.step') {
+          response = await window.arc.host.command('runtime.step', { ticks: 1 }) as HostResponse<HostRuntimeSnapshot>;
         } else if (command.startsWith('viewport.')) {
           if (command === 'viewport.frameSelected') {
             await window.arc.viewport.cameraInput({ focusSelected: true });
@@ -499,10 +603,17 @@ export function Workbench() {
           }
         }
         if (response) {
+          if (command.startsWith('scene.') && response.succeeded)
+            acceptRuntimeSnapshot(response.payload);
           setLastCommand(response.succeeded ? `${command} completed` : response.error || `${command} failed`);
           const responsePath = response.payload && typeof response.payload === 'object' && 'path' in response.payload
             ? String((response.payload as { path?: unknown }).path ?? '') : undefined;
-          if (response.succeeded) await refreshProjectFromHost(responsePath);
+          const refreshesScene = command === 'file.new' || command === 'file.save' ||
+            command === 'file.saveAs' || command === 'edit.undo' ||
+            command === 'edit.redo' || command === 'entity.duplicate' || command === 'entity.delete';
+          if (response.succeeded && refreshesScene) await refreshProjectFromHost(responsePath);
+          if (response.succeeded && command === 'viewport.terrain')
+            setLayout((current) => ({ ...current, leftVisible: true }));
           return;
         }
       } catch (error) {
@@ -606,6 +717,8 @@ export function Workbench() {
       .then(async (state) => {
         setStartupState(state);
         if (state.engineHostConnected) {
+          const runtimeResponse = await window.arc.host.query('runtime.state') as HostResponse<HostRuntimeSnapshot>;
+          if (runtimeResponse.succeeded) acceptRuntimeSnapshot(runtimeResponse.payload);
           await refreshProjectFromHost();
           return;
         }
@@ -619,7 +732,7 @@ export function Workbench() {
         setStartupState(fallbackStartupState);
         setProject(await mockHost.getProjectSnapshot());
       });
-  }, []);
+  }, [acceptRuntimeSnapshot]);
 
   const selectEntity = async (entityId: string) => {
     const result = await mockHost.selectEntity(entityId);
@@ -835,6 +948,21 @@ export function Workbench() {
       return <div className="side-loading">Loading workbench data...</div>;
     }
 
+    if (activeTool === 'terrain' && selectedSnapshot?.terrain) {
+      const selectedKey = hostEntityKey(selectedSnapshot.entity);
+      const visibleTerrainState = terrainToolState && hostEntityKey(terrainToolState.entity) === selectedKey
+        ? terrainToolState
+        : terrainToolStateFromSnapshot(selectedSnapshot)!;
+      return <TerrainToolsPanel terrain={selectedSnapshot.terrain} state={visibleTerrainState}
+        assets={project.assets} thumbnailProvider={loadAssetThumbnail} onStateChange={setTerrainToolState}
+        onStatus={setLastCommand}
+        command={async (type, payload) => {
+          if (!startupState?.engineHostConnected)
+            return { succeeded: true, payload: { ...visibleTerrainState, ...(payload as Partial<TerrainToolState>) } };
+          return window.arc.host.command(type, payload as Record<string, unknown>) as Promise<HostResponse<TerrainToolState>>;
+        }} />;
+    }
+
     if (layout.activeActivity === 'scene') {
       return <ExplorerPanel project={project} selectedEntityId={selectedEntityId} onSelectEntity={selectEntity}
         onRenameEntity={renameHierarchyEntity} onSetEntityActive={setHierarchyEntityActive} onMoveEntity={moveHierarchyEntity}
@@ -901,7 +1029,14 @@ export function Workbench() {
     }
 
     if (panel === 'console') {
-      return <ConsolePanel events={[...(project?.console ?? []), ...hostConsoleEvents]} lastCommand={lastCommand} />;
+      const events = [...(project?.console ?? []), ...hostConsoleEvents];
+      return <ConsolePanel events={events} clearedIds={clearedConsoleIds} locked={consoleLocked}
+        onClear={(current) => setClearedConsoleIds((cleared) => {
+          const next = new Set(cleared);
+          current.forEach((event) => next.add(event.id));
+          return next;
+        })}
+        onLockedChange={setConsoleLocked} />;
     }
 
     if (panel === 'profiler') {
@@ -927,6 +1062,19 @@ export function Workbench() {
       <MainToolbar activeTool={activeTool} coordinateSpace={coordinateSpace} snapping={snapping}
         terrainEnabled={selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined}
         translationSnap={translationSnap} rotationSnap={rotationSnap} scaleSnap={scaleSnap} onCommand={runCommand}
+        runtimeState={runtimeState.state} timeScale={runtimeState.timeScale}
+        onCycleTimeScale={() => {
+          const next = nextSnapOption(timeScaleOptions, runtimeState.timeScale);
+          if (!startupState?.engineHostConnected) {
+            setRuntimeState((current) => ({ ...current, timeScale: next }));
+            return;
+          }
+          void window.arc.host.command('runtime.setTimeScale', { value: next }).then((response) => {
+            const result = response as HostResponse<HostRuntimeSnapshot>;
+            if (result.succeeded) acceptRuntimeSnapshot(result.payload);
+            else setLastCommand(result.error || 'Could not change runtime time scale');
+          });
+        }}
         onToggleCoordinateSpace={() => void updateViewportToolOptions(coordinateSpace === 'world' ? 'local' : 'world', snapping)}
         onToggleSnapping={() => void updateViewportToolOptions(coordinateSpace, !snapping)}
         onCycleTranslationSnap={() => void updateViewportToolOptions(coordinateSpace, snapping,
@@ -1170,10 +1318,6 @@ function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onComman
   );
 }
 
-function ConsolePanel({ events, lastCommand }: { events: ConsoleEvent[]; lastCommand: string }) {
-  return <div className="bottom-content">{events.map((event) => <LogLine key={event.id} level={event.level} text={`[${event.timestamp}] [${event.source}] ${event.message}`} />)}<LogLine level="debug" text={`last command: ${lastCommand}`} /></div>;
-}
-
 function SettingsPanel({ onResetLayout }: { onResetLayout: () => void }) {
   return <Panel icon={<Settings size={14} />} title="Settings"><UiButton className="settings-action" onClick={onResetLayout} variant="toolbar">Reset Layout</UiButton><PropertyRow label="Theme" value="Arc Dark" /><PropertyRow label="Host" value="Mock" /></Panel>;
 }
@@ -1318,10 +1462,6 @@ function AssetIcon({ kind }: { kind: AssetItem['kind'] }) {
 
 function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
   return <div className="ui-property-row property-row"><span>{label}</span><strong>{value}</strong></div>;
-}
-
-function LogLine({ level, text }: { level: ConsoleEvent['level'] | 'warning' | 'debug'; text: string }) {
-  return <code className={`log-line ${level}`}>{level === 'warning' && <AlertTriangle size={13} />} {text}</code>;
 }
 
 function PlaceholderPanel({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {

@@ -77,7 +77,31 @@ enum class host_event_type : std::uint8_t
     component_changed,
     command_failed,
     viewport_error,
-    profiler_snapshot
+    profiler_snapshot,
+    terrain_tool_changed,
+    terrain_stroke_committed,
+    runtime_state_changed,
+    runtime_tick_completed,
+    runtime_fault
+};
+
+enum class host_runtime_state : std::uint8_t
+{
+    stopped,
+    running,
+    paused,
+    faulted
+};
+
+struct host_runtime_snapshot
+{
+    host_runtime_state state{ host_runtime_state::stopped };
+    std::uint64_t tick_id{};
+    std::uint64_t revision{};
+    std::uint64_t discarded_ticks{};
+    double time_scale{ 1.0 };
+    double interpolation_alpha{};
+    std::uint32_t world_count{};
 };
 
 enum class host_entity_kind : std::uint8_t
@@ -243,6 +267,18 @@ struct host_terrain_snapshot
     std::uint32_t active_layer{};
     std::array<std::string, 4> layer_names{ "Grass", "Dirt", "Rock", "Sand" };
     std::array<std::string, 4> layer_base_color_paths{};
+};
+
+struct host_terrain_tool_snapshot
+{
+    host_entity_id entity{};
+    bool active{};
+    bool hover_visible{};
+    host_terrain_brush_tool tool{ host_terrain_brush_tool::sculpt };
+    float radius{ 6.0f };
+    float strength{ 0.25f };
+    float falloff{ 1.0f };
+    std::uint32_t active_layer{};
 };
 
 struct host_prefab_snapshot
@@ -604,6 +640,14 @@ struct host_terrain_stroke_command
     bool invert{};
 };
 
+struct host_terrain_hover_command
+{
+    host_entity_id entity{};
+    std::uint32_t x{};
+    std::uint32_t y{};
+    bool clear{};
+};
+
 struct host_set_entity_material_command
 {
     host_entity_id entity{};
@@ -676,6 +720,13 @@ struct host_viewport_camera_input_command
 
 struct host_history_undo_command {};
 struct host_history_redo_command {};
+struct host_runtime_resume_command {};
+struct host_runtime_pause_command {};
+struct host_runtime_stop_command {};
+struct host_runtime_step_command { std::uint32_t ticks{ 1 }; };
+struct host_runtime_set_time_scale_command { double value{ 1.0 }; };
+struct host_runtime_capture_snapshot_command { std::string label; };
+struct host_runtime_restore_snapshot_command { std::uint64_t snapshot_id{}; };
 struct host_viewport_set_tool_command
 {
     host_viewport_tool tool{ host_viewport_tool::select };
@@ -717,6 +768,7 @@ using host_command_payload = std::variant<
     host_set_terrain_brush_command,
     host_set_terrain_layer_command,
     host_terrain_stroke_command,
+    host_terrain_hover_command,
     host_set_entity_material_command,
     host_set_world_environment_command,
     host_apply_world_environment_preset_command,
@@ -729,6 +781,13 @@ using host_command_payload = std::variant<
     host_viewport_camera_input_command,
     host_history_undo_command,
     host_history_redo_command,
+    host_runtime_resume_command,
+    host_runtime_pause_command,
+    host_runtime_stop_command,
+    host_runtime_step_command,
+    host_runtime_set_time_scale_command,
+    host_runtime_capture_snapshot_command,
+    host_runtime_restore_snapshot_command,
     host_viewport_set_tool_command,
     host_viewport_pick_command>;
 
@@ -774,6 +833,8 @@ struct host_world_environment_query
     host_entity_id entity{};
 };
 struct host_history_state_query {};
+struct host_runtime_state_query {};
+struct host_terrain_tool_state_query {};
 
 using host_query_payload = std::variant<
     host_scene_hierarchy_query,
@@ -782,7 +843,9 @@ using host_query_payload = std::variant<
     host_asset_thumbnail_query,
     host_viewport_state_query,
     host_world_environment_query,
-    host_history_state_query>;
+    host_history_state_query,
+    host_runtime_state_query,
+    host_terrain_tool_state_query>;
 
 struct host_query_envelope
 {
@@ -831,6 +894,7 @@ const char* to_string(host_sun_position_mode value) noexcept;
 const char* to_string(host_celestial_time_mode value) noexcept;
 const char* to_string(host_environment_lighting_source value) noexcept;
 const char* to_string(host_world_environment_preset value) noexcept;
+const char* to_string(host_runtime_state value) noexcept;
 
 std::string command_type(const host_command_payload& payload);
 std::string query_type(const host_query_payload& payload);
@@ -849,6 +913,8 @@ std::string to_json(const host_camera_snapshot& camera);
 std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer);
 std::string to_json(const host_world_environment_snapshot& environment);
 std::string to_json(const host_profiler_snapshot& snapshot);
+std::string to_json(const host_runtime_snapshot& snapshot);
+std::string to_json(const host_terrain_tool_snapshot& snapshot);
 std::string to_json_string(std::string_view value);
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error);

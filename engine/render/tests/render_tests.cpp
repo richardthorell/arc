@@ -860,9 +860,10 @@ TEST_CASE("renderer forwards ObjectID pick requests to backend")
     arc::render::renderer renderer;
     renderer.set_backend(std::move(backend));
 
-    renderer.request_object_pick(12, 34);
+    renderer.request_object_pick(7, 12, 34);
 
     REQUIRE(backend_ptr->pick_requested);
+    REQUIRE(backend_ptr->pick_request.request_id == 7);
     REQUIRE(backend_ptr->pick_request.x == 12);
     REQUIRE(backend_ptr->pick_request.y == 34);
     REQUIRE_FALSE(renderer.last_object_pick().available);

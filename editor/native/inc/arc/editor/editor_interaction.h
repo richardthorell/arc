@@ -7,6 +7,11 @@
 
 #include <cstdint>
 
+namespace arc::render
+{
+class renderer;
+}
+
 namespace arc::editor
 {
 
@@ -35,6 +40,14 @@ struct editor_ray
     math::vector3f direction{ 0.0f, 0.0f, -1.0f };
 };
 
+struct editor_pick_result
+{
+    scene::entity entity{};
+    float distance{};
+    bool exact{};
+    bool background{};
+};
+
 /**
  * @brief Orbit camera state used by the editor viewport.
  */
@@ -45,6 +58,11 @@ public:
      * @brief Set the orbit focus point and distance from a bounding radius.
      */
     void focus(const math::vector3f& point, float radius) noexcept;
+
+    /**
+     * @brief Synchronize the orbit rig from an externally changed camera transform.
+     */
+    void synchronize_from(const scene::transform_component& transform) noexcept;
 
     /**
      * @brief Orbit around the focus point by mouse delta in pixels.
@@ -107,6 +125,14 @@ bool select_entity(scene::registry& registry, scene::entity entity, scene::entit
  * @brief Pick the nearest bounded entity hit by a ray.
  */
 scene::entity pick_bounded_entity(const scene::registry& registry, const editor_ray& ray) noexcept;
+
+/**
+ * @brief Pick the nearest exact terrain or static-mesh surface, with bounds fallback.
+ */
+editor_pick_result pick_scene_entity(
+    const scene::registry& registry,
+    const render::renderer& renderer,
+    const editor_ray& ray) noexcept;
 
 /**
  * @brief Build a world-space picking ray from camera and viewport coordinates.

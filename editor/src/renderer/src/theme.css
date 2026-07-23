@@ -33,4 +33,10 @@
 
   --arc-color-shadow: rgba(0, 0, 0, 0.45);
   --arc-color-focus-ring: rgba(47, 129, 247, 0.42);
+
+  --arc-color-scrollbar-track: #111820;
+  --arc-color-scrollbar-thumb: #3a4652;
+  --arc-color-scrollbar-thumb-hover: #526171;
+  --arc-color-scrollbar-thumb-active: #637588;
+  --arc-color-scrollbar-corner: #0f151b;
 }

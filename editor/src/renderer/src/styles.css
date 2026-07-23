@@ -7,7 +7,44 @@
   -webkit-font-smoothing: antialiased;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  scrollbar-color: var(--arc-color-scrollbar-thumb) var(--arc-color-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: var(--arc-scrollbar-size);
+  height: var(--arc-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--arc-color-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  border: 2px solid var(--arc-color-scrollbar-track);
+  border-radius: 999px;
+  background: var(--arc-color-scrollbar-thumb);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--arc-color-scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: var(--arc-color-scrollbar-thumb-active);
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--arc-color-scrollbar-corner);
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+}
 
 body {
   margin: 0;

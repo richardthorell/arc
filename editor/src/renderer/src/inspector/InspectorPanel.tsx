@@ -175,12 +175,6 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
           ...entityPayload(next), enabled: next.terrain.enabled, receiveShadows: next.terrain.receiveShadows,
         }, settled, transactionKey, transactionLabel);
       }
-    } else if (component === 'terrainBrush' && next.terrain) {
-      void runMutation(next, 'terrain.setBrush', {
-        ...entityPayload(next), tool: next.terrain.brushTool, radius: next.terrain.brushRadius,
-        strength: next.terrain.brushStrength, falloff: next.terrain.brushFalloff,
-        activeLayer: Number(next.terrain.activeLayer),
-      }, true);
     }
   };
 
@@ -220,7 +214,7 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
     })();
   };
 
-  if (loading) return <div className="inspector-state">Loading selection…</div>;
+  if (loading && !draft) return <div className="inspector-state">Loading selection…</div>;
   if (!draft) return <div className="inspector-state">Select an entity to inspect its components.</div>;
 
   const layerValue = draft.renderLayerMask === defaultLayerMask

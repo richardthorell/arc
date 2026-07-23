@@ -1505,6 +1505,7 @@ private:
         vmaUnmapMemory(allocator_, pick_readback_buffer_.allocation);
 
         last_pick_result_ = {
+            .request_id = in_flight_pick_.request.request_id,
             .available = true,
             .hit = false,
             .object = {},
@@ -5108,6 +5109,7 @@ private:
             else
             {
                 last_pick_result_ = {
+                    .request_id = request.request_id,
                     .available = true,
                     .hit = false,
                     .object = {},

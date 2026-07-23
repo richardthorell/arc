@@ -386,6 +386,14 @@ bool renderer::mesh_alive(mesh_handle handle) const
     return mesh_handles_.alive(handle);
 }
 
+const mesh_data* renderer::mesh_data_for(mesh_handle handle) const
+{
+    if (!mesh_handles_.alive(handle))
+        return nullptr;
+    const auto found = mesh_data_.find(renderer_resource_key(handle));
+    return found == mesh_data_.end() ? nullptr : found->second.get();
+}
+
 bool renderer::virtual_mesh_alive(virtual_mesh_handle handle) const
 {
     return virtual_mesh_handles_.alive(handle);
@@ -436,10 +444,10 @@ render_backend_frame_profile renderer::last_frame_profile() const
     return backend_->last_frame_profile();
 }
 
-void renderer::request_object_pick(std::uint32_t x, std::uint32_t y)
+void renderer::request_object_pick(std::uint64_t request_id, std::uint32_t x, std::uint32_t y)
 {
     if (backend_)
-        backend_->request_object_pick({ .x = x, .y = y });
+        backend_->request_object_pick({ .request_id = request_id, .x = x, .y = y });
 }
 
 render_object_pick_result renderer::last_object_pick() const

@@ -1,4 +1,5 @@
 #include <arc/editor/editor_interaction.h>
+#include <arc/render/renderer.h>
 
 #include <algorithm>
 #include <array>
@@ -46,6 +47,45 @@ float bounds_radius(const geometric::box3f& bounds) noexcept
     return std::max(0.1f, math::length(geometric::size(bounds)) * 0.5f);
 }
 
+bool intersect_ray_triangle(
+    const editor_ray& ray,
+    const math::vector3f& a,
+    const math::vector3f& b,
+    const math::vector3f& c,
+    float& distance) noexcept
+{
+    constexpr float epsilon = 1.0e-7f;
+    const auto edge1 = math::sub(b, a);
+    const auto edge2 = math::sub(c, a);
+    const auto p = math::cross(ray.direction, edge2);
+    const float determinant = math::dot(edge1, p);
+    if (std::abs(determinant) <= epsilon)
+        return false;
+    const float inverse_determinant = 1.0f / determinant;
+    const auto offset = math::sub(ray.origin, a);
+    const float u = math::dot(offset, p) * inverse_determinant;
+    if (u < 0.0f || u > 1.0f)
+        return false;
+    const auto q = math::cross(offset, edge1);
+    const float v = math::dot(ray.direction, q) * inverse_determinant;
+    if (v < 0.0f || u + v > 1.0f)
+        return false;
+    const float hit = math::dot(edge2, q) * inverse_determinant;
+    if (hit < 0.0f)
+        return false;
+    distance = hit;
+    return true;
+}
+
+float world_hit_distance(
+    const editor_ray& world_ray,
+    const math::matrix4f& world,
+    const math::vector3f& local_position) noexcept
+{
+    const auto world_position = math::transform_point(world, local_position);
+    return math::dot(math::sub(world_position, world_ray.origin), world_ray.direction);
+}
+
 } // namespace
 
 const char* editor_tool_label(editor_tool tool) noexcept
@@ -70,10 +110,19 @@ void editor_camera_controller::focus(const math::vector3f& point, float radius) 
     distance_ = std::clamp(radius * 3.2f, 0.35f, 500.0f);
 }
 
+void editor_camera_controller::synchronize_from(const scene::transform_component& transform) noexcept
+{
+    const auto forward = scene::world_forward_direction(transform);
+    yaw_ = std::atan2(-forward[0], -forward[2]);
+    pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
+    const auto position = scene::world_position(transform);
+    focus_ = math::add(position, math::mul(forward, distance_));
+}
+
 void editor_camera_controller::orbit(float delta_x, float delta_y) noexcept
 {
     yaw_ = std::remainder(yaw_ - delta_x * 0.008f, math::tau<float>);
-    pitch_ = std::clamp(pitch_ - delta_y * 0.008f, -1.45f, 1.45f);
+    pitch_ = std::clamp(pitch_ + delta_y * 0.008f, -1.45f, 1.45f);
 }
 
 void editor_camera_controller::pan(float delta_x, float delta_y) noexcept
@@ -160,10 +209,8 @@ bool select_entity(scene::registry& registry, scene::entity entity, scene::entit
 
 scene::entity pick_bounded_entity(const scene::registry& registry, const editor_ray& ray) noexcept
 {
-    scene::entity foreground_pick{};
-    scene::entity background_pick{};
-    float foreground_distance = std::numeric_limits<float>::max();
-    float background_distance = std::numeric_limits<float>::max();
+    scene::entity picked{};
+    float picked_distance = std::numeric_limits<float>::max();
 
     registry.view<scene::transform_component, scene::bounds_component>().each(
         [&](scene::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds) {
@@ -175,10 +222,6 @@ scene::entity pick_bounded_entity(const scene::registry& registry, const editor_
             if (!intersect_ray_box(ray, transformed_bounds(bounds.local_bounds, transform), hit_distance))
                 return;
 
-            const bool background_surface = registry.has<scene::terrain_component>(value) ||
-                registry.has<scene::water_component>(value) || registry.has<scene::world_environment_component>(value);
-            auto& picked = background_surface ? background_pick : foreground_pick;
-            auto& picked_distance = background_surface ? background_distance : foreground_distance;
             if (hit_distance < picked_distance)
             {
                 picked = value;
@@ -186,9 +229,95 @@ scene::entity pick_bounded_entity(const scene::registry& registry, const editor_
             }
         });
 
-    // Terrain and water bounds are intentionally enormous broad-phase volumes.
-    // They are valid fallbacks, but must not hide a bounded prop sitting on top.
-    return foreground_pick.valid() ? foreground_pick : background_pick;
+    return picked;
+}
+
+editor_pick_result pick_scene_entity(
+    const scene::registry& registry,
+    const render::renderer& renderer,
+    const editor_ray& ray) noexcept
+{
+    editor_pick_result picked{ .distance = std::numeric_limits<float>::max() };
+
+    registry.view<scene::transform_component, scene::bounds_component>().each(
+        [&](scene::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds) {
+            const auto* active = registry.try_get<scene::active_component>(value);
+            if (active && !active->active)
+                return;
+            if (const auto* mesh_renderer = registry.try_get<scene::mesh_renderer_component>(value);
+                mesh_renderer && !mesh_renderer->visible)
+                return;
+
+            float broad_distance{};
+            if (!intersect_ray_box(ray, transformed_bounds(bounds.local_bounds, transform), broad_distance))
+                return;
+
+            const auto world = transform.dirty ? scene::local_matrix(transform) : transform.world;
+            math::matrix4f inverse_world;
+            if (!scene::inverse_affine(world, inverse_world))
+                return;
+            const editor_ray local_ray{
+                .origin = math::transform_point(inverse_world, ray.origin),
+                .direction = math::normalize(math::transform_vector(inverse_world, ray.direction))
+            };
+
+            float hit_distance = broad_distance;
+            bool exact = false;
+            if (const auto* terrain = registry.try_get<scene::terrain_component>(value))
+            {
+                const auto terrain_hit = scene::raycast_terrain(*terrain, local_ray.origin, local_ray.direction);
+                if (!terrain_hit.hit)
+                    return;
+                hit_distance = world_hit_distance(ray, world, terrain_hit.position);
+                exact = true;
+            }
+            else if (const auto* mesh_renderer = registry.try_get<scene::mesh_renderer_component>(value))
+            {
+                const auto* mesh = renderer.mesh_data_for(mesh_renderer->mesh);
+                if (mesh && mesh->indices.size() >= 3)
+                {
+                    float local_distance = std::numeric_limits<float>::max();
+                    for (std::size_t index = 0; index + 2 < mesh->indices.size(); index += 3)
+                    {
+                        const auto ia = mesh->indices[index];
+                        const auto ib = mesh->indices[index + 1];
+                        const auto ic = mesh->indices[index + 2];
+                        if (ia >= mesh->vertices.size() || ib >= mesh->vertices.size() || ic >= mesh->vertices.size())
+                            continue;
+                        const auto position = [](const render::mesh_vertex& vertex) {
+                            return math::vector3f{ vertex.position[0], vertex.position[1], vertex.position[2] };
+                        };
+                        float triangle_distance{};
+                        if (intersect_ray_triangle(
+                                local_ray,
+                                position(mesh->vertices[ia]),
+                                position(mesh->vertices[ib]),
+                                position(mesh->vertices[ic]),
+                                triangle_distance))
+                            local_distance = std::min(local_distance, triangle_distance);
+                    }
+                    if (local_distance == std::numeric_limits<float>::max())
+                        return;
+                    hit_distance = world_hit_distance(
+                        ray,
+                        world,
+                        math::add(local_ray.origin, math::mul(local_ray.direction, local_distance)));
+                    exact = true;
+                }
+            }
+
+            if (hit_distance < 0.0f || hit_distance >= picked.distance)
+                return;
+            picked = {
+                .entity = value,
+                .distance = hit_distance,
+                .exact = exact,
+                .background = registry.has<scene::terrain_component>(value) ||
+                    registry.has<scene::water_component>(value) ||
+                    registry.has<scene::world_environment_component>(value)
+            };
+        });
+    return picked;
 }
 
 editor_ray screen_ray_from_camera(
@@ -201,11 +330,13 @@ editor_ray screen_ray_from_camera(
     const float width = static_cast<float>(std::max(1u, viewport.width()));
     const float height = static_cast<float>(std::max(1u, viewport.height()));
     const float aspect = width / height;
-    const float ndc_x = (local_x / width) * 2.0f - 1.0f;
-    const float ndc_y = 1.0f - (local_y / height) * 2.0f;
-    const auto right = math::rotate(camera_transform.rotation, math::vector3f{ 1.0f, 0.0f, 0.0f });
-    const auto up = math::rotate(camera_transform.rotation, math::vector3f{ 0.0f, 1.0f, 0.0f });
-    const auto forward = math::rotate(camera_transform.rotation, math::vector3f{ 0.0f, 0.0f, -1.0f });
+    const float ndc_x = ((local_x + 0.5f) / width) * 2.0f - 1.0f;
+    const float ndc_y = 1.0f - ((local_y + 0.5f) / height) * 2.0f;
+    const auto world = camera_transform.dirty ? scene::local_matrix(camera_transform) : camera_transform.world;
+    const auto right = math::normalize(math::transform_vector(world, math::vector3f{ 1.0f, 0.0f, 0.0f }));
+    const auto up = math::normalize(math::transform_vector(world, math::vector3f{ 0.0f, 1.0f, 0.0f }));
+    const auto forward = math::normalize(math::transform_vector(world, math::vector3f{ 0.0f, 0.0f, -1.0f }));
+    const auto origin = scene::world_position(camera_transform);
 
     if (camera.projection == scene::camera_projection::orthographic)
     {
@@ -213,7 +344,7 @@ editor_ray screen_ray_from_camera(
         const float half_width = half_height * aspect;
         const auto offset = math::add(math::mul(right, ndc_x * half_width), math::mul(up, ndc_y * half_height));
         return {
-            .origin = math::add(camera_transform.position, offset),
+            .origin = math::add(origin, offset),
             .direction = math::normalize(forward)
         };
     }
@@ -225,8 +356,10 @@ editor_ray screen_ray_from_camera(
         -1.0f
     };
     return {
-        .origin = camera_transform.position,
-        .direction = math::normalize(math::rotate(camera_transform.rotation, math::normalize(camera_direction)))
+        .origin = origin,
+        .direction = math::normalize(math::add(
+            math::add(math::mul(right, camera_direction[0]), math::mul(up, camera_direction[1])),
+            math::mul(forward, -camera_direction[2])))
     };
 }
 

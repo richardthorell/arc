@@ -202,6 +202,7 @@ public:
         width_ = std::max(static_cast<std::uint32_t>(arc::editor::defaults::native_viewport_min_dimension), width);
         height_ = std::max(static_cast<std::uint32_t>(arc::editor::defaults::native_viewport_min_dimension), height);
         bounds_dirty_ = true;
+        terrain_hover_dirty_ = true;
     }
 
     void stop()
@@ -231,7 +232,18 @@ public:
             end_drag(window, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
             return 0;
         case WM_MOUSEMOVE:
+            if (!mouse_tracking_)
+            {
+                TRACKMOUSEEVENT tracking{ sizeof(TRACKMOUSEEVENT), TME_LEAVE, window, 0 };
+                TrackMouseEvent(&tracking);
+                mouse_tracking_ = true;
+            }
             update_drag(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+            return 0;
+        case WM_MOUSELEAVE:
+            mouse_tracking_ = false;
+            pointer_inside_ = false;
+            clear_terrain_hover();
             return 0;
         case WM_MOUSEWHEEL:
             send_camera_input(arc::editor::host_viewport_camera_input_command{
@@ -374,6 +386,7 @@ private:
             return;
 
         std::string message;
+        update_terrain_hover();
         {
             std::lock_guard lock(host_mutex_);
             host_->request_viewport(arc::editor::host_viewport_request{
@@ -413,9 +426,19 @@ private:
 
     void update_drag(int x, int y)
     {
+        pointer_x_ = x;
+        pointer_y_ = y;
+        pointer_inside_ = true;
+        terrain_hover_dirty_ = true;
         if (!dragging_)
         {
-            update_gizmo_hover(x, y);
+            bool terrain_mode{};
+            {
+                std::lock_guard lock(host_mutex_);
+                terrain_mode = host_->viewport_tool_state().tool == arc::editor::host_viewport_tool::terrain;
+            }
+            if (!terrain_mode)
+                update_gizmo_hover(x, y);
             return;
         }
 
@@ -470,7 +493,10 @@ private:
             camera_drag_started_ = true;
         }
         if (input.orbit_x != 0.0f || input.orbit_y != 0.0f || input.pan_x != 0.0f || input.pan_y != 0.0f)
+        {
             send_camera_input(input);
+            terrain_hover_dirty_ = true;
+        }
     }
 
     void end_drag(HWND window, int x, int y)
@@ -528,22 +554,65 @@ private:
         if (host_->viewport_tool_state().tool != arc::editor::host_viewport_tool::terrain)
             return false;
         const auto snapshot = host_->selected_entity_snapshot();
-        if (!snapshot.entity.valid() || !snapshot.terrain)
+        if (!snapshot.entity.valid() || !snapshot.terrain || !host_->terrain_tool_snapshot().hover_visible)
             return false;
-        terrain_stroking_ = true;
-        terrain_entity_ = snapshot.entity;
-        terrain_transaction_ = ++next_manipulation_transaction_;
-        terrain_last_preview_frame_ = frame_index_;
+        const auto transaction = ++next_manipulation_transaction_;
         const bool invert = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
-        host_->execute(arc::editor::host_command_envelope{
+        const auto response = host_->execute(arc::editor::host_command_envelope{
             .command_type = "terrain.stroke",
             .payload = arc::editor::host_terrain_stroke_command{
-                terrain_entity_, static_cast<std::uint32_t>(std::max(0, x)), static_cast<std::uint32_t>(std::max(0, y)),
+                snapshot.entity, static_cast<std::uint32_t>(std::max(0, x)), static_cast<std::uint32_t>(std::max(0, y)),
                 arc::editor::host_edit_phase::begin, invert },
             .edit = arc::editor::host_edit_transaction{
-                terrain_transaction_, arc::editor::host_edit_phase::begin, "Terrain Stroke" }
+                transaction, arc::editor::host_edit_phase::begin, "Terrain Stroke" }
         });
+        if (!response.succeeded || response.payload_json.find("\"hit\":true") == std::string::npos)
+        {
+            host_->execute(arc::editor::host_command_envelope{
+                .command_type = "terrain.stroke",
+                .payload = arc::editor::host_terrain_stroke_command{
+                    snapshot.entity, static_cast<std::uint32_t>(std::max(0, x)), static_cast<std::uint32_t>(std::max(0, y)),
+                    arc::editor::host_edit_phase::cancel, false },
+                .edit = arc::editor::host_edit_transaction{
+                    transaction, arc::editor::host_edit_phase::cancel, "Terrain Stroke" }
+            });
+            return false;
+        }
+        terrain_stroking_ = true;
+        terrain_entity_ = snapshot.entity;
+        terrain_transaction_ = transaction;
+        terrain_last_preview_frame_ = frame_index_;
         return true;
+    }
+
+    void update_terrain_hover()
+    {
+        if (!terrain_hover_dirty_ || dragging_ || !pointer_inside_)
+            return;
+        terrain_hover_dirty_ = false;
+        std::lock_guard lock(host_mutex_);
+        if (host_->viewport_tool_state().tool != arc::editor::host_viewport_tool::terrain)
+            return;
+        const auto snapshot = host_->selected_entity_snapshot();
+        if (!snapshot.entity.valid() || !snapshot.terrain)
+            return;
+        host_->execute(arc::editor::host_terrain_hover_command{
+            .entity = snapshot.entity,
+            .x = static_cast<std::uint32_t>(std::max(0, pointer_x_)),
+            .y = static_cast<std::uint32_t>(std::max(0, pointer_y_))
+        });
+    }
+
+    void clear_terrain_hover()
+    {
+        std::lock_guard lock(host_mutex_);
+        const auto snapshot = host_->selected_entity_snapshot();
+        if (!snapshot.entity.valid() || !snapshot.terrain)
+            return;
+        host_->execute(arc::editor::host_terrain_hover_command{
+            .entity = snapshot.entity,
+            .clear = true
+        });
     }
 
     void update_terrain_stroke(int x, int y)
@@ -890,6 +959,11 @@ private:
     int drag_distance_{};
     bool selection_candidate_{};
     bool camera_drag_started_{};
+    bool mouse_tracking_{};
+    bool pointer_inside_{};
+    bool terrain_hover_dirty_{};
+    int pointer_x_{};
+    int pointer_y_{};
     bool manipulating_{};
     bool terrain_stroking_{};
     arc::editor::host_entity_id terrain_entity_{};

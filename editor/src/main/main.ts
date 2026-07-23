@@ -133,6 +133,8 @@ class ArcHostClient {
   private requestId = 1;
   private readonly pending = new Map<number, { resolve: (value: HostResponse) => void; reject: (reason: Error) => void }>();
   private lastError = '';
+  private pendingRuntimeTick: HostEvent | null = null;
+  private runtimeTickScheduled = false;
 
   constructor() {
     this.executablePath = resolveHostProcessPath();
@@ -241,7 +243,21 @@ class ArcHostClient {
 
     const maybeResponse = parsed as Partial<HostResponse>;
     if ((parsed as Partial<HostEvent>).kind === 'event') {
-      activeWindow()?.webContents.send('host:event', parsed as HostEvent);
+      const event = parsed as HostEvent;
+      if (event.type === 'runtime.tickCompleted') {
+        this.pendingRuntimeTick = event;
+        if (!this.runtimeTickScheduled) {
+          this.runtimeTickScheduled = true;
+          setImmediate(() => {
+            this.runtimeTickScheduled = false;
+            const latest = this.pendingRuntimeTick;
+            this.pendingRuntimeTick = null;
+            if (latest) activeWindow()?.webContents.send('host:event', latest);
+          });
+        }
+      } else {
+        activeWindow()?.webContents.send('host:event', event);
+      }
       return;
     }
     if (maybeResponse.kind !== 'response' || typeof maybeResponse.requestId !== 'number') {

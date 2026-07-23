@@ -11,6 +11,7 @@
 #include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
 #include <arc/geometric/box.h>
+#include <arc/framework/framework.h>
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
 
@@ -826,14 +827,52 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
 
 } // namespace
 
+class editor_preview_application final : public application
+{
+public:
+    application_config configure() const override
+    {
+        application_config config{};
+        config.title = "ARC Editor Preview Runtime";
+        config.visible = false;
+        config.simulation.snapshot_budget_bytes = 64u * 1024u * 1024u;
+        config.simulation.presentation_enabled = false;
+        return config;
+    }
+
+    void register_worlds(runtime_world_manager& worlds) override
+    {
+        worlds.create({
+            .name = "Editor Preview World",
+            .role = runtime_world_role::editor_preview,
+            .seed = 0x4152435f45444954ull,
+            .presentation_enabled = false
+        });
+    }
+};
+
 struct arc_host::state
 {
     explicit state(std::unique_ptr<render::renderer> renderer_value)
         : renderer(std::move(renderer_value))
+        , simulation(simulation_application)
     {
+        simulation.start();
+        simulation.pause();
+        const auto worlds = simulation.worlds().ordered_worlds();
+        if (!worlds.empty())
+        {
+            if (runtime_world* world = simulation.worlds().find(worlds.front()))
+                world->attach_entities(scene.scene);
+        }
     }
 
     std::unique_ptr<render::renderer> renderer;
+    editor_preview_application simulation_application;
+    runtime simulation;
+    std::uint64_t runtime_revision{ 1 };
+    std::uint64_t last_runtime_tick_event{};
+    bool preview_stopped{ true };
     editor_project_state project;
     editor_asset_state assets;
     editor_scene_state scene;
@@ -847,12 +886,14 @@ struct arc_host::state
     bool viewport_submitted{};
     struct pending_viewport_pick
     {
+        std::uint64_t request_id{};
         std::uint32_t x{};
         std::uint32_t y{};
-        scene::entity cpu_fallback{};
+        editor_pick_result cpu_fallback{};
         std::uint64_t requested_after_frame{};
     };
     std::optional<pending_viewport_pick> pending_pick;
+    std::uint64_t next_pick_request_id{ 1 };
     editor_history history;
     host_viewport_set_tool_command viewport_tool;
     scene::terrain_brush_settings terrain_brush;
@@ -877,6 +918,7 @@ arc_host::~arc_host()
     {
         arc::info("editor.host", "Arc Host shutdown");
         push_event(state_->events, state_->event_sequence, host_event_type::host_shutdown, "Arc Host shutdown");
+        state_->simulation.shutdown();
     }
 }
 
@@ -925,6 +967,7 @@ host_response arc_host::execute(const host_command_envelope& command)
         if (!state_->history.cancel(command.edit->id, state_->scene))
             return { .request_id = command.request_id, .succeeded = false, .error = "No matching edit transaction to cancel" };
         rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+        state_->terrain_brush_local_position.reset();
         push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Edit transaction cancelled");
         return { .request_id = command.request_id, .succeeded = true, .payload_json = "{}" };
     }
@@ -970,6 +1013,116 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::project_closed, message);
             return success();
         }
+        else if constexpr (std::is_same_v<command_type, host_runtime_resume_command>)
+        {
+            state_->simulation.resume();
+            state_->preview_stopped = false;
+            ++state_->runtime_revision;
+            const auto snapshot = runtime_snapshot();
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::runtime_state_changed,
+                "Preview runtime resumed",
+                {},
+                to_json(snapshot));
+            return success(to_json(snapshot));
+        }
+        else if constexpr (
+            std::is_same_v<command_type, host_runtime_pause_command> ||
+            std::is_same_v<command_type, host_runtime_stop_command>)
+        {
+            state_->simulation.pause();
+            state_->preview_stopped = std::is_same_v<command_type, host_runtime_stop_command>;
+            ++state_->runtime_revision;
+            const auto snapshot = runtime_snapshot();
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::runtime_state_changed,
+                std::is_same_v<command_type, host_runtime_stop_command>
+                    ? "Preview runtime stopped"
+                    : "Preview runtime paused",
+                {},
+                to_json(snapshot));
+            return success(to_json(snapshot));
+        }
+        else if constexpr (std::is_same_v<command_type, host_runtime_step_command>)
+        {
+            if (!state_->simulation.paused())
+                state_->simulation.pause();
+            state_->preview_stopped = false;
+            if (!state_->simulation.step(payload.ticks))
+                return fail("Preview runtime could not queue a fixed-step");
+            const frame_time stepped = state_->simulation.advance(0.0);
+            ++state_->runtime_revision;
+            const auto snapshot = runtime_snapshot();
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::runtime_tick_completed,
+                "Preview runtime stepped " + std::to_string(stepped.completed_ticks) + " tick(s)",
+                {},
+                to_json(snapshot));
+            return success(to_json(snapshot));
+        }
+        else if constexpr (std::is_same_v<command_type, host_runtime_set_time_scale_command>)
+        {
+            if (!state_->simulation.set_time_scale(payload.value))
+                return fail("Runtime time scale must be finite and between 0 and 16");
+            ++state_->runtime_revision;
+            const auto snapshot = runtime_snapshot();
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::runtime_state_changed,
+                "Preview runtime time scale changed",
+                {},
+                to_json(snapshot));
+            return success(to_json(snapshot));
+        }
+        else if constexpr (std::is_same_v<command_type, host_runtime_capture_snapshot_command>)
+        {
+            const auto worlds = state_->simulation.worlds().ordered_worlds();
+            if (worlds.empty())
+                return fail("Preview runtime has no world to snapshot");
+            const world_snapshot_result captured =
+                state_->simulation.capture_snapshot(worlds.front(), payload.label);
+            if (!captured.succeeded)
+                return fail(captured.error);
+            return success(
+                "{\"snapshotId\":" + std::to_string(captured.metadata.id.value) +
+                ",\"tickId\":" + std::to_string(captured.metadata.tick.value) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_runtime_restore_snapshot_command>)
+        {
+            const world_snapshot_result restored =
+                state_->simulation.restore_snapshot({ payload.snapshot_id });
+            if (!restored.succeeded)
+                return fail(restored.error);
+            if (state_->scene.selected_entity.valid() &&
+                !state_->scene.scene.alive(state_->scene.selected_entity))
+                clear_selection(state_->scene.scene, state_->scene.selected_entity);
+            rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+            if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                state_->camera_controller.synchronize_from(*camera_transform);
+            ++state_->runtime_revision;
+            const auto snapshot = runtime_snapshot();
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::scene_changed,
+                "Preview runtime snapshot restored",
+                state_->scene.selected_entity);
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::runtime_state_changed,
+                "Preview runtime snapshot restored",
+                {},
+                to_json(snapshot));
+            return success(to_json(snapshot));
+        }
         else if constexpr (std::is_same_v<command_type, host_open_scene_command>)
         {
             if (!state_->project_open)
@@ -984,6 +1137,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!loaded.succeeded)
                     return fail(loaded.message);
                 state_->history.clear(state_->scene, true);
+                if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                    state_->camera_controller.synchronize_from(*camera_transform);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "ARC scene loaded", state_->scene.selected_entity);
                 return success("{\"entityCount\":" + std::to_string(loaded.entity_count) + '}');
             }
@@ -1002,6 +1157,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return fail(result.message.empty() ? "Failed to open scene asset" : result.message);
 
             ensure_scene_authoring_metadata(state_->scene);
+            if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                state_->camera_controller.synchronize_from(*camera_transform);
             if (import_before)
                 state_->history.record("Import Scene", std::move(*import_before), state_->scene);
             else
@@ -1023,6 +1180,8 @@ host_response arc_host::execute(const host_command_envelope& command)
             state_->scene.scene_name = payload.name.empty() ? "Untitled" : payload.name;
             state_->scene.active_scene_path.clear();
             state_->history.clear(state_->scene, false);
+            if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                state_->camera_controller.synchronize_from(*camera_transform);
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "New scene created", state_->scene.selected_entity);
             return success();
         }
@@ -1285,6 +1444,9 @@ host_response arc_host::execute(const host_command_envelope& command)
 
             state_->scene.scene.emplace<scene::transform_component>(entity, to_scene_transform(payload.transform));
             scene::mark_transform_subtree_dirty(state_->scene.scene, entity);
+            scene::update_world_transforms(state_->scene.scene);
+            if (entity == state_->scene.camera_entity)
+                state_->camera_controller.synchronize_from(state_->scene.scene.get<scene::transform_component>(entity));
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity transform changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
@@ -1354,8 +1516,9 @@ host_response arc_host::execute(const host_command_envelope& command)
             state_->terrain_brush.strength = payload.strength;
             state_->terrain_brush.falloff = payload.falloff;
             state_->terrain_brush.active_layer = payload.active_layer;
-            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Terrain brush changed", entity);
-            return success("{\"entity\":" + to_json(payload.entity) + '}');
+            push_event(state_->events, state_->event_sequence, host_event_type::terrain_tool_changed,
+                "Terrain brush changed", entity, to_json(terrain_tool_snapshot()));
+            return success(to_json(terrain_tool_snapshot()));
         }
         else if constexpr (std::is_same_v<command_type, host_set_terrain_layer_command>)
         {
@@ -1419,6 +1582,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return success("{\"hit\":false}");
             }
             state_->terrain_brush_local_position = hit.position;
+            if (payload.phase == host_edit_phase::commit)
+            {
+                push_event(state_->events, state_->event_sequence, host_event_type::terrain_stroke_committed,
+                    "Terrain stroke committed", entity,
+                    "{\"revision\":" + std::to_string(terrain->content_revision) + '}');
+                return success("{\"hit\":true,\"revision\":" + std::to_string(terrain->content_revision) + '}');
+            }
             state_->terrain_brush.invert = payload.invert;
             if (payload.phase == host_edit_phase::begin)
             {
@@ -1428,10 +1598,42 @@ host_response arc_host::execute(const host_command_envelope& command)
             const auto dirty = scene::apply_terrain_brush(*terrain, hit.position, state_->terrain_brush);
             if (dirty.valid && !rebuild_terrain_chunks(state_->scene, *state_->renderer, entity, &dirty))
                 return fail("Terrain runtime chunks could not be updated", entity);
-            push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                "Terrain stroke preview changed", entity,
-                "{\"revision\":" + std::to_string(terrain->content_revision) + '}');
             return success("{\"hit\":true,\"revision\":" + std::to_string(terrain->content_revision) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_terrain_hover_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (payload.clear)
+            {
+                state_->terrain_brush_local_position.reset();
+                return success(to_json(terrain_tool_snapshot()));
+            }
+            const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+            const auto* terrain_transform = state_->scene.scene.try_get<scene::transform_component>(entity);
+            const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+            const auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
+            if (!terrain || !terrain_transform || !camera || !camera_transform)
+                return fail("Terrain hover is missing terrain or viewport camera data", entity);
+            editor_viewport viewport;
+            viewport.set_size(static_cast<float>(state_->viewport_options.width), static_cast<float>(state_->viewport_options.height));
+            if (!viewport.valid())
+                return fail("Terrain hover requires a valid viewport", entity);
+            scene::update_world_transforms(state_->scene.scene);
+            const auto ray = screen_ray_from_camera(
+                *camera, *camera_transform, viewport, static_cast<float>(payload.x), static_cast<float>(payload.y));
+            math::matrix4f inverse_terrain;
+            const auto terrain_world = terrain_transform->dirty ? scene::local_matrix(*terrain_transform) : terrain_transform->world;
+            if (!scene::inverse_affine(terrain_world, inverse_terrain))
+                return fail("Terrain transform cannot be inverted", entity);
+            const auto hit = scene::raycast_terrain(
+                *terrain,
+                math::transform_point(inverse_terrain, ray.origin),
+                math::normalize(math::transform_vector(inverse_terrain, ray.direction)));
+            if (hit.hit)
+                state_->terrain_brush_local_position = hit.position;
+            else
+                state_->terrain_brush_local_position.reset();
+            return success(to_json(terrain_tool_snapshot()));
         }
         else if constexpr (std::is_same_v<command_type, host_set_entity_material_command>)
         {
@@ -1608,6 +1810,8 @@ host_response arc_host::execute(const host_command_envelope& command)
         else if constexpr (std::is_same_v<command_type, host_history_undo_command>)
         {
             if (!state_->history.undo(state_->scene)) return fail("Nothing to undo");
+            if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                state_->camera_controller.synchronize_from(*camera_transform);
             if (const auto& changed = state_->history.last_terrain_change(); changed)
                 rebuild_terrain_chunks(state_->scene, *state_->renderer,
                     find_entity_by_guid(state_->scene, changed->entity), &changed->region);
@@ -1619,6 +1823,8 @@ host_response arc_host::execute(const host_command_envelope& command)
         else if constexpr (std::is_same_v<command_type, host_history_redo_command>)
         {
             if (!state_->history.redo(state_->scene)) return fail("Nothing to redo");
+            if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                state_->camera_controller.synchronize_from(*camera_transform);
             if (const auto& changed = state_->history.last_terrain_change(); changed)
                 rebuild_terrain_chunks(state_->scene, *state_->renderer,
                     find_entity_by_guid(state_->scene, changed->entity), &changed->region);
@@ -1647,20 +1853,24 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
         else if constexpr (std::is_same_v<command_type, host_viewport_pick_command>)
         {
-            state_->renderer->request_object_pick(payload.x, payload.y);
-            scene::entity cpu_fallback{};
+            const std::uint64_t request_id = state_->next_pick_request_id++;
             scene::update_world_transforms(state_->scene.scene);
             editor_viewport viewport;
             viewport.set_size(static_cast<float>(state_->viewport_options.width), static_cast<float>(state_->viewport_options.height));
             const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
             const auto* transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
+            editor_pick_result cpu_fallback{};
             if (camera && transform && viewport.valid())
-                cpu_fallback = pick_bounded_entity(state_->scene.scene,
+                cpu_fallback = pick_scene_entity(
+                    state_->scene.scene,
+                    *state_->renderer,
                     screen_ray_from_camera(*camera, *transform, viewport, static_cast<float>(payload.x), static_cast<float>(payload.y)));
+            state_->renderer->request_object_pick(request_id, payload.x, payload.y);
 
             if (state_->renderer->backend())
             {
                 state_->pending_pick = state::pending_viewport_pick{
+                    .request_id = request_id,
                     .x = payload.x,
                     .y = payload.y,
                     .cpu_fallback = cpu_fallback,
@@ -1670,14 +1880,14 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
 
             const auto previous_selection = state_->scene.selected_entity;
-            if (state_->scene.scene.alive(cpu_fallback))
-                select_entity(state_->scene.scene, cpu_fallback, state_->scene.selected_entity);
+            if (state_->scene.scene.alive(cpu_fallback.entity))
+                select_entity(state_->scene.scene, cpu_fallback.entity, state_->scene.selected_entity);
             else
                 clear_selection(state_->scene.scene, state_->scene.selected_entity);
             if (state_->scene.selected_entity != previous_selection)
                 push_event(state_->events, state_->event_sequence, host_event_type::entity_selected,
-                    cpu_fallback.valid() ? "Viewport entity selected" : "Viewport selection cleared", cpu_fallback);
-            return success("{\"entity\":" + to_json(to_host_entity(cpu_fallback)) + '}');
+                    cpu_fallback.entity.valid() ? "Viewport entity selected" : "Viewport selection cleared", cpu_fallback.entity);
+            return success("{\"entity\":" + to_json(to_host_entity(cpu_fallback.entity)) + '}');
         }
 
         return fail("Unsupported host command");
@@ -1764,9 +1974,73 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"redoLabel\":" + to_json_string(history.redo_label) +
                     ",\"revision\":" + std::to_string(history.revision) + '}'};
         }
+        else if constexpr (std::is_same_v<query_type, host_runtime_state_query>)
+        {
+            return {
+                .request_id = request_id,
+                .succeeded = true,
+                .payload_json = to_json(runtime_snapshot())
+            };
+        }
+        else if constexpr (std::is_same_v<query_type, host_terrain_tool_state_query>)
+        {
+            return {
+                .request_id = request_id,
+                .succeeded = true,
+                .payload_json = to_json(terrain_tool_snapshot())
+            };
+        }
 
         return { .request_id = request_id, .succeeded = false, .error = "Unsupported host query" };
     }, query.payload);
+}
+
+host_runtime_snapshot arc_host::runtime_snapshot() const
+{
+    host_runtime_snapshot snapshot;
+    snapshot.state = state_->preview_stopped
+        ? host_runtime_state::stopped
+        : state_->simulation.paused()
+        ? host_runtime_state::paused
+        : state_->simulation.running()
+            ? host_runtime_state::running
+            : host_runtime_state::stopped;
+    for (const runtime_world_id id : state_->simulation.worlds().ordered_worlds())
+    {
+        const runtime_world* world = state_->simulation.worlds().find(id);
+        if (world && world->state() == runtime_world_state::faulted)
+        {
+            snapshot.state = host_runtime_state::faulted;
+            break;
+        }
+    }
+    snapshot.tick_id = state_->simulation.current_tick().id.value;
+    snapshot.revision = state_->runtime_revision;
+    snapshot.discarded_ticks = state_->simulation.discarded_ticks();
+    snapshot.time_scale = state_->simulation.time_scale();
+    snapshot.world_count = static_cast<std::uint32_t>(state_->simulation.worlds().size());
+    return snapshot;
+}
+
+host_terrain_tool_snapshot arc_host::terrain_tool_snapshot() const
+{
+    host_terrain_tool_snapshot snapshot;
+    snapshot.entity = to_host_entity(state_->scene.selected_entity);
+    snapshot.active = state_->viewport_tool.tool == host_viewport_tool::terrain &&
+        state_->scene.scene.has<scene::terrain_component>(state_->scene.selected_entity);
+    snapshot.hover_visible = snapshot.active && state_->terrain_brush_local_position.has_value();
+    snapshot.tool = state_->terrain_brush.tool == scene::terrain_brush_tool::smooth
+        ? host_terrain_brush_tool::smooth
+        : state_->terrain_brush.tool == scene::terrain_brush_tool::flatten
+            ? host_terrain_brush_tool::flatten
+            : state_->terrain_brush.tool == scene::terrain_brush_tool::paint
+                ? host_terrain_brush_tool::paint
+                : host_terrain_brush_tool::sculpt;
+    snapshot.radius = state_->terrain_brush.radius;
+    snapshot.strength = state_->terrain_brush.strength;
+    snapshot.falloff = state_->terrain_brush.falloff;
+    snapshot.active_layer = state_->terrain_brush.active_layer;
+    return snapshot;
 }
 
 host_scene_snapshot arc_host::scene_snapshot() const
@@ -2061,6 +2335,25 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     float delta_seconds = 0.0f;
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)
         delta_seconds = std::chrono::duration<float>(frame_start - state_->last_viewport_frame_time).count();
+    const frame_time runtime_frame = state_->simulation.advance(delta_seconds);
+    if (runtime_frame.last_completed_tick.value != state_->last_runtime_tick_event)
+    {
+        state_->last_runtime_tick_event = runtime_frame.last_completed_tick.value;
+        ++state_->runtime_revision;
+        host_runtime_snapshot snapshot = runtime_snapshot();
+        snapshot.interpolation_alpha = runtime_frame.interpolation_alpha;
+        push_event(
+            state_->events,
+            state_->event_sequence,
+            snapshot.state == host_runtime_state::faulted
+                ? host_event_type::runtime_fault
+                : host_event_type::runtime_tick_completed,
+            snapshot.state == host_runtime_state::faulted
+                ? "Preview runtime faulted"
+                : "Preview runtime tick completed",
+            {},
+            to_json(snapshot));
+    }
     state_->viewport_options = request;
     state_->viewport_frame_index = request.frame_index;
     if (!state_->renderer->backend())
@@ -2074,7 +2367,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     if (state_->pending_pick)
     {
         const auto gpu = state_->renderer->last_object_pick();
-        const bool gpu_ready = gpu.available && gpu.x == state_->pending_pick->x && gpu.y == state_->pending_pick->y &&
+        const bool gpu_ready = gpu.available && gpu.request_id == state_->pending_pick->request_id &&
+            gpu.x == state_->pending_pick->x && gpu.y == state_->pending_pick->y &&
             gpu.frame_index > state_->pending_pick->requested_after_frame;
         const bool fallback_due = request.frame_index >= state_->pending_pick->requested_after_frame +
             defaults::viewport_pick_fallback_frame_count;
@@ -2082,9 +2376,27 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         {
             scene::entity picked = gpu_ready && gpu.hit
                 ? scene::entity{ gpu.object.index, gpu.object.generation }
-                : gpu_ready ? scene::entity{} : state_->pending_pick->cpu_fallback;
+                : state_->pending_pick->cpu_fallback.entity;
+            if (gpu_ready && gpu.hit && state_->scene.scene.alive(picked))
+            {
+                const bool gpu_background = state_->scene.scene.has<scene::terrain_component>(picked) ||
+                    state_->scene.scene.has<scene::water_component>(picked) ||
+                    state_->scene.scene.has<scene::world_environment_component>(picked);
+                if (gpu_background && state_->pending_pick->cpu_fallback.entity.valid() &&
+                    !state_->pending_pick->cpu_fallback.background &&
+                    state_->pending_pick->cpu_fallback.exact)
+                    picked = state_->pending_pick->cpu_fallback.entity;
+            }
             if (gpu_ready && gpu.hit && !state_->scene.scene.alive(picked))
-                picked = state_->pending_pick->cpu_fallback;
+                picked = state_->pending_pick->cpu_fallback.entity;
+            arc::debug(
+                "editor.pick",
+                "pick request=" + std::to_string(state_->pending_pick->request_id) +
+                    " source=" + std::string(gpu_ready && gpu.hit ? "gpu" : "cpu") +
+                    " x=" + std::to_string(state_->pending_pick->x) +
+                    " y=" + std::to_string(state_->pending_pick->y) +
+                    " entity=" + std::to_string(picked.index) +
+                    " cpuDistance=" + std::to_string(state_->pending_pick->cpu_fallback.distance));
             const auto previous_selection = state_->scene.selected_entity;
             if (state_->scene.scene.alive(picked))
                 select_entity(state_->scene.scene, picked, state_->scene.selected_entity);

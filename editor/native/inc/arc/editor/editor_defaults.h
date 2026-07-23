@@ -18,7 +18,7 @@ inline constexpr math::vector3f default_camera_position{ 30.0f, 27.0f, 48.0f };
 inline constexpr math::vector3f default_camera_focus{ 0.0f, 7.0f, -15.0f };
 inline constexpr float default_camera_focus_radius = 22.0f;
 inline constexpr float default_camera_orbit_x = -55.0f;
-inline constexpr float default_camera_orbit_y = 35.0f;
+inline constexpr float default_camera_orbit_y = -35.0f;
 
 inline constexpr float default_terrain_size = 180.0f;
 inline constexpr std::uint32_t default_terrain_subdivisions = 256;

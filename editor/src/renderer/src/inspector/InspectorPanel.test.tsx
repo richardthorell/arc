@@ -132,17 +132,15 @@ describe('data-driven InspectorPanel', () => {
     }));
   });
 
-  it('renders terrain and virtual brush schemas and sends typed brush and layer commands', async () => {
+  it('renders persistent terrain fields without transient brush controls', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     const assets = [{ id: 'sand', name: 'Sand', path: 'textures/sand.jpg', kind: 'texture', status: 'ready' as const }];
     render(<InspectorPanel snapshot={terrainSnapshot()} command={command} refresh={async () => undefined} assets={assets} />);
 
     expect(screen.getByLabelText('Collapse Terrain')).toBeInTheDocument();
-    expect(screen.getByLabelText('Collapse Terrain Brush')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Collapse Terrain Brush')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Choose Grass Layer asset')).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Tool'), 'paint');
-    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.setBrush', expect.objectContaining({ tool: 'paint' })));
-    expect(screen.getByLabelText('Paint Layer')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Tool')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByLabelText('Choose Sand Layer asset'));
     await userEvent.click(screen.getByLabelText('Select Sand'));

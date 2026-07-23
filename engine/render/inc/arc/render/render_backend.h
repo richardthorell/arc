@@ -313,6 +313,7 @@ struct render_backend_frame_profile
  */
 struct render_object_pick_request
 {
+    std::uint64_t request_id{};
     std::uint32_t x{};
     std::uint32_t y{};
 };
@@ -322,6 +323,7 @@ struct render_object_pick_request
  */
 struct render_object_pick_result
 {
+    std::uint64_t request_id{};
     bool available{};
     bool hit{};
     render_object_id object{};

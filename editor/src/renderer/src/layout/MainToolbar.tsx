@@ -17,27 +17,33 @@ type MainToolbarProps = {
   onCycleTranslationSnap?: () => void;
   onCycleRotationSnap?: () => void;
   onCycleScaleSnap?: () => void;
+  runtimeState?: 'stopped' | 'running' | 'paused' | 'faulted';
+  timeScale?: number;
+  onCycleTimeScale?: () => void;
 };
 
 export function MainToolbar({ onCommand, activeTool = 'translate', coordinateSpace = 'world', snapping = false,
   translationSnap = 0.25, rotationSnap = 15, scaleSnap = 0.1, onToggleCoordinateSpace, onToggleSnapping,
-  onCycleTranslationSnap, onCycleRotationSnap, onCycleScaleSnap, terrainEnabled = false }: MainToolbarProps) {
+  onCycleTranslationSnap, onCycleRotationSnap, onCycleScaleSnap, terrainEnabled = false,
+  runtimeState = 'stopped', timeScale = 1, onCycleTimeScale }: MainToolbarProps) {
   return (
     <section className="main-toolbar" aria-label="Editor toolbar">
       <div className="toolbar-left">
         <div className="ui-toolbar-group toolbar-group playback-group" aria-label="Playback controls">
-          <UiIconButton className="toolbar-button play" label="Play" onClick={() => onCommand('scene.play')}>
+          <UiIconButton active={runtimeState === 'running'} className="toolbar-button play" label="Play" onClick={() => onCommand('scene.play')}>
             <Play fill="currentColor" strokeWidth={0} size={14} />
           </UiIconButton>
-          <UiIconButton className="toolbar-button" label="Pause" onClick={() => onCommand('scene.pause')}>
+          <UiIconButton active={runtimeState === 'paused'} className="toolbar-button" label="Pause" onClick={() => onCommand('scene.pause')}>
             <Pause size={14} />
           </UiIconButton>
-          <UiIconButton className="toolbar-button" label="Stop" onClick={() => onCommand('scene.stop')}>
+          <UiIconButton active={runtimeState === 'stopped'} className="toolbar-button" label="Stop" onClick={() => onCommand('scene.stop')}>
             <Square size={13} />
           </UiIconButton>
           <UiIconButton className="toolbar-button" label="Step" onClick={() => onCommand('scene.step')}>
             <StepForward size={14} />
           </UiIconButton>
+          <UiSelectButton className="toolbar-select toolbar-select-narrow" onClick={onCycleTimeScale}
+            title="Cycle preview simulation time scale">{timeScale}×</UiSelectButton>
         </div>
       </div>
 
