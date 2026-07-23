@@ -21,7 +21,7 @@ inline constexpr float default_camera_orbit_x = -55.0f;
 inline constexpr float default_camera_orbit_y = 35.0f;
 
 inline constexpr float default_terrain_size = 180.0f;
-inline constexpr std::uint32_t default_terrain_subdivisions = 192;
+inline constexpr std::uint32_t default_terrain_subdivisions = 256;
 inline constexpr float default_terrain_height_scale = 28.0f;
 inline constexpr float default_water_size = 30.0f;
 inline constexpr math::vector3f default_water_position{ 15.0f, -1.1f, 15.0f };
@@ -38,5 +38,7 @@ inline constexpr float default_sun_shadow_normal_bias = 0.003f;
 inline constexpr std::chrono::milliseconds native_viewport_frame_interval{ 16 };
 inline constexpr int native_viewport_min_dimension = 1;
 inline constexpr int viewport_modifier_key_down_mask = 0x8000;
+inline constexpr int viewport_click_movement_threshold = 3;
+inline constexpr std::uint64_t viewport_pick_fallback_frame_count = 4;
 
 } // namespace arc::editor::defaults

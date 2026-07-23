@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -128,6 +129,7 @@ enum class host_world_environment_preset : std::uint8_t
 
 enum class host_create_entity_kind : std::uint8_t
 {
+    empty,
     plane,
     cube,
     sphere,
@@ -177,6 +179,11 @@ enum class host_overlay_mode : std::uint8_t
     all_wireframe
 };
 
+enum class host_viewport_tool : std::uint8_t { select, translate, rotate, scale, terrain };
+enum class host_terrain_brush_tool : std::uint8_t { sculpt, smooth, flatten, paint };
+enum class host_coordinate_space : std::uint8_t { world, local };
+enum class host_edit_phase : std::uint8_t { none, begin, update, commit, cancel };
+
 struct host_environment_visibility
 {
     bool sky{ true };
@@ -219,9 +226,29 @@ struct host_mesh_renderer_snapshot
     friend constexpr bool operator==(const host_mesh_renderer_snapshot&, const host_mesh_renderer_snapshot&) noexcept = default;
 };
 
+struct host_terrain_snapshot
+{
+    bool enabled{ true };
+    float size{ 180.0f };
+    std::uint32_t resolution{ 257u };
+    std::uint32_t chunk_quads{ 128u };
+    bool receive_shadows{ true };
+    std::uint64_t content_revision{};
+    host_terrain_brush_tool brush_tool{ host_terrain_brush_tool::sculpt };
+    float brush_radius{ 6.0f };
+    float brush_strength{ 0.25f };
+    float brush_falloff{ 1.0f };
+    std::uint32_t active_layer{};
+    std::array<std::string, 4> layer_names{ "Grass", "Dirt", "Rock", "Sand" };
+    std::array<std::string, 4> layer_base_color_paths{};
+};
+
 struct host_scene_entity_snapshot
 {
     host_entity_id entity{};
+    std::string guid;
+    std::string parent_guid;
+    std::uint32_t sibling_order{};
     std::string name;
     host_entity_kind kind{ host_entity_kind::unknown };
     bool active{ true };
@@ -231,6 +258,14 @@ struct host_scene_entity_snapshot
 struct host_scene_snapshot
 {
     std::vector<host_scene_entity_snapshot> entities;
+    std::string scene_guid;
+    std::string scene_name;
+    std::string active_scene_path;
+    bool dirty{};
+    bool can_undo{};
+    bool can_redo{};
+    std::string undo_label;
+    std::string redo_label;
 };
 
 struct host_selected_entity_snapshot
@@ -243,6 +278,7 @@ struct host_selected_entity_snapshot
     std::optional<host_transform> transform;
     std::optional<host_camera_snapshot> camera;
     std::optional<host_mesh_renderer_snapshot> mesh_renderer;
+    std::optional<host_terrain_snapshot> terrain;
     std::vector<host_component_snapshot> components;
 };
 
@@ -389,15 +425,30 @@ struct host_open_scene_command
     bool append{};
 };
 
+struct host_new_scene_command { std::string name{ "Untitled" }; };
+struct host_save_scene_command {};
+struct host_save_scene_as_command { std::filesystem::path path; };
+
 struct host_create_entity_command
 {
     host_create_entity_kind kind{ host_create_entity_kind::cube };
+    host_entity_id parent{};
 };
 
 struct host_delete_entity_command
 {
     host_entity_id entity{};
 };
+
+struct host_duplicate_entity_command { host_entity_id entity{}; };
+struct host_reparent_entity_command
+{
+    host_entity_id entity{};
+    host_entity_id parent{};
+    host_entity_id before_sibling{};
+    bool preserve_world{ true };
+};
+struct host_reorder_entity_command { host_entity_id entity{}; host_entity_id before_sibling{}; };
 
 struct host_rename_entity_command
 {
@@ -449,6 +500,39 @@ struct host_set_mesh_renderer_command
     host_entity_id entity{};
     bool visible{ true };
     host_vec4 base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+};
+
+struct host_set_terrain_command
+{
+    host_entity_id entity{};
+    bool enabled{ true };
+    bool receive_shadows{ true };
+};
+
+struct host_set_terrain_brush_command
+{
+    host_entity_id entity{};
+    host_terrain_brush_tool tool{ host_terrain_brush_tool::sculpt };
+    float radius{ 6.0f };
+    float strength{ 0.25f };
+    float falloff{ 1.0f };
+    std::uint32_t active_layer{};
+};
+
+struct host_set_terrain_layer_command
+{
+    host_entity_id entity{};
+    std::uint32_t layer{};
+    std::filesystem::path path;
+};
+
+struct host_terrain_stroke_command
+{
+    host_entity_id entity{};
+    std::uint32_t x{};
+    std::uint32_t y{};
+    host_edit_phase phase{ host_edit_phase::begin };
+    bool invert{};
 };
 
 struct host_set_entity_material_command
@@ -521,12 +605,31 @@ struct host_viewport_camera_input_command
     bool focus_selected{};
 };
 
+struct host_history_undo_command {};
+struct host_history_redo_command {};
+struct host_viewport_set_tool_command
+{
+    host_viewport_tool tool{ host_viewport_tool::select };
+    host_coordinate_space coordinate_space{ host_coordinate_space::world };
+    bool snapping{};
+    float translation_snap{ 0.25f };
+    float rotation_snap_degrees{ 15.0f };
+    float scale_snap{ 0.1f };
+};
+struct host_viewport_pick_command { std::uint32_t x{}; std::uint32_t y{}; };
+
 using host_command_payload = std::variant<
     host_open_project_command,
     host_close_project_command,
     host_open_scene_command,
+    host_new_scene_command,
+    host_save_scene_command,
+    host_save_scene_as_command,
     host_create_entity_command,
     host_delete_entity_command,
+    host_duplicate_entity_command,
+    host_reparent_entity_command,
+    host_reorder_entity_command,
     host_rename_entity_command,
     host_select_entity_command,
     host_clear_selection_command,
@@ -536,6 +639,10 @@ using host_command_payload = std::variant<
     host_set_render_layer_command,
     host_set_camera_command,
     host_set_mesh_renderer_command,
+    host_set_terrain_command,
+    host_set_terrain_brush_command,
+    host_set_terrain_layer_command,
+    host_terrain_stroke_command,
     host_set_entity_material_command,
     host_set_world_environment_command,
     host_apply_world_environment_preset_command,
@@ -545,13 +652,25 @@ using host_command_payload = std::variant<
     host_viewport_resize_command,
     host_viewport_set_camera_mode_command,
     host_viewport_set_render_options_command,
-    host_viewport_camera_input_command>;
+    host_viewport_camera_input_command,
+    host_history_undo_command,
+    host_history_redo_command,
+    host_viewport_set_tool_command,
+    host_viewport_pick_command>;
+
+struct host_edit_transaction
+{
+    std::uint64_t id{};
+    host_edit_phase phase{ host_edit_phase::none };
+    std::string label;
+};
 
 struct host_command_envelope
 {
     std::uint64_t request_id{};
     std::string command_type;
     host_command_payload payload{ host_close_project_command{} };
+    std::optional<host_edit_transaction> edit;
 };
 
 struct host_scene_hierarchy_query
@@ -580,6 +699,7 @@ struct host_world_environment_query
 {
     host_entity_id entity{};
 };
+struct host_history_state_query {};
 
 using host_query_payload = std::variant<
     host_scene_hierarchy_query,
@@ -587,7 +707,8 @@ using host_query_payload = std::variant<
     host_project_assets_query,
     host_asset_thumbnail_query,
     host_viewport_state_query,
-    host_world_environment_query>;
+    host_world_environment_query,
+    host_history_state_query>;
 
 struct host_query_envelope
 {
@@ -653,8 +774,10 @@ std::string to_json(const host_transform& transform);
 std::string to_json(const host_camera_snapshot& camera);
 std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer);
 std::string to_json(const host_world_environment_snapshot& environment);
+std::string to_json_string(std::string_view value);
 
 bool from_json(std::string_view json, host_command_envelope& envelope, std::string& error);
 bool from_json(std::string_view json, host_query_envelope& envelope, std::string& error);
+bool from_json(std::string_view json, host_world_environment_snapshot& environment, std::string& error);
 
 } // namespace arc::editor

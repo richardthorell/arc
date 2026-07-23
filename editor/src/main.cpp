@@ -228,45 +228,7 @@ std::filesystem::path editor_asset_root()
 
 editor_asset_state load_default_editor_assets()
 {
-    editor_asset_state assets{};
-    assets.root = editor_asset_root();
-    assets.default_mesh_path = assets.root / "models" / "UAL2_Standard.glb";
-    assets.default_vertex_shader_path = assets.root / "shaders" / "default_phong.vert";
-    assets.default_fragment_shader_path = assets.root / "shaders" / "default_phong.frag";
-
-    auto mesh_result = arc::render::load_gltf_mesh(assets.default_mesh_path);
-    assets.default_mesh_message = mesh_result.message;
-    if (mesh_result.succeeded())
-    {
-        assets.default_mesh = std::move(mesh_result.mesh);
-        assets.default_textures = std::move(mesh_result.textures);
-        assets.default_materials = std::move(mesh_result.materials);
-        assets.default_mesh_loaded = true;
-        arc::info(
-            "editor.assets",
-            "Loaded default mesh '" + assets.default_mesh_path.filename().string() + "' with " +
-                std::to_string(assets.default_mesh.vertices.size()) + " vertices and " +
-                std::to_string(assets.default_mesh.indices.size()) + " indices, " +
-                std::to_string(assets.default_materials.size()) + " material(s)");
-    }
-    else
-    {
-        arc::warn(
-            "editor.assets",
-            "Default mesh '" + assets.default_mesh_path.string() + "' was not loaded: " + assets.default_mesh_message);
-    }
-
-    if (std::filesystem::exists(assets.default_vertex_shader_path) &&
-        std::filesystem::exists(assets.default_fragment_shader_path))
-    {
-        arc::info("editor.assets", "Default PBR shader sources are available");
-    }
-    else
-    {
-        arc::warn("editor.assets", "Default PBR shader source files are missing");
-    }
-
-    return assets;
+    return arc::editor::load_default_editor_assets(editor_asset_root());
 }
 
 editor_project_state make_project_state(const editor_asset_state& assets)

@@ -11,17 +11,6 @@ namespace arc::editor
 namespace
 {
 
-math::quatf quaternion_from_yaw_pitch(float yaw, float pitch) noexcept
-{
-    const float half_yaw = yaw * 0.5f;
-    const float half_pitch = pitch * 0.5f;
-    const float sy = std::sin(half_yaw);
-    const float cy = std::cos(half_yaw);
-    const float sp = std::sin(half_pitch);
-    const float cp = std::cos(half_pitch);
-    return math::normalize(math::quatf{ cy * sp, sy * cp, -sy * sp, cy * cp });
-}
-
 math::quatf multiply_quaternion(const math::quatf& lhs, const math::quatf& rhs) noexcept
 {
     return math::quatf{
@@ -30,6 +19,16 @@ math::quatf multiply_quaternion(const math::quatf& lhs, const math::quatf& rhs) 
         lhs[3] * rhs[2] + lhs[0] * rhs[1] - lhs[1] * rhs[0] + lhs[2] * rhs[3],
         lhs[3] * rhs[3] - lhs[0] * rhs[0] - lhs[1] * rhs[1] - lhs[2] * rhs[2]
     };
+}
+
+math::quatf quaternion_from_yaw_pitch(float yaw, float pitch) noexcept
+{
+    // Turntable orbit: yaw is always around the rig's stable +Y up axis,
+    // followed by pitch around the yawed camera-local +X axis. Rebuilding the
+    // orientation from these two scalars prevents any accumulated roll.
+    const auto yaw_rotation = math::from_axis_angle(math::vector3f{ 0.0f, 1.0f, 0.0f }, yaw);
+    const auto pitch_rotation = math::from_axis_angle(math::vector3f{ 1.0f, 0.0f, 0.0f }, pitch);
+    return math::normalize(multiply_quaternion(yaw_rotation, pitch_rotation));
 }
 
 math::vector3f point_to_vector(const geometric::point3f& point) noexcept
@@ -73,7 +72,7 @@ void editor_camera_controller::focus(const math::vector3f& point, float radius) 
 
 void editor_camera_controller::orbit(float delta_x, float delta_y) noexcept
 {
-    yaw_ -= delta_x * 0.008f;
+    yaw_ = std::remainder(yaw_ - delta_x * 0.008f, math::tau<float>);
     pitch_ = std::clamp(pitch_ - delta_y * 0.008f, -1.45f, 1.45f);
 }
 
@@ -161,8 +160,10 @@ bool select_entity(scene::registry& registry, scene::entity entity, scene::entit
 
 scene::entity pick_bounded_entity(const scene::registry& registry, const editor_ray& ray) noexcept
 {
-    scene::entity picked{};
-    float picked_distance = std::numeric_limits<float>::max();
+    scene::entity foreground_pick{};
+    scene::entity background_pick{};
+    float foreground_distance = std::numeric_limits<float>::max();
+    float background_distance = std::numeric_limits<float>::max();
 
     registry.view<scene::transform_component, scene::bounds_component>().each(
         [&](scene::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds) {
@@ -174,6 +175,10 @@ scene::entity pick_bounded_entity(const scene::registry& registry, const editor_
             if (!intersect_ray_box(ray, transformed_bounds(bounds.local_bounds, transform), hit_distance))
                 return;
 
+            const bool background_surface = registry.has<scene::terrain_component>(value) ||
+                registry.has<scene::water_component>(value) || registry.has<scene::world_environment_component>(value);
+            auto& picked = background_surface ? background_pick : foreground_pick;
+            auto& picked_distance = background_surface ? background_distance : foreground_distance;
             if (hit_distance < picked_distance)
             {
                 picked = value;
@@ -181,7 +186,9 @@ scene::entity pick_bounded_entity(const scene::registry& registry, const editor_
             }
         });
 
-    return picked;
+    // Terrain and water bounds are intentionally enormous broad-phase volumes.
+    // They are valid fallbacks, but must not hide a bounded prop sitting on top.
+    return foreground_pick.valid() ? foreground_pick : background_pick;
 }
 
 editor_ray screen_ray_from_camera(
@@ -258,7 +265,7 @@ bool intersect_ray_box(const editor_ray& ray, const geometric::box3f& bounds, fl
 
 geometric::box3f transformed_bounds(const geometric::box3f& local_bounds, const scene::transform_component& transform) noexcept
 {
-    const auto matrix = scene::local_matrix(transform);
+    const auto matrix = transform.dirty ? scene::local_matrix(transform) : transform.world;
     const std::array<math::vector3f, 8> corners{
         math::vector3f{ local_bounds.min[0], local_bounds.min[1], local_bounds.min[2] },
         math::vector3f{ local_bounds.max[0], local_bounds.min[1], local_bounds.min[2] },
@@ -304,7 +311,7 @@ bool focus_selected_entity(
         return true;
     }
 
-    camera.focus(transform->position, 1.0f);
+    camera.focus(scene::world_position(*transform), 1.0f);
     return true;
 }
 

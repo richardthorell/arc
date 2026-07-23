@@ -232,6 +232,8 @@ bool load_material_asset(
     asset.name = string_value(json, "name").value_or(asset.name);
     asset.shader = string_value(json, "shader").value_or(asset.shader);
     asset.domain = string_value(json, "domain").value_or(asset.domain);
+    asset.material.domain = lowercase(asset.domain) == "terrain"
+        ? render::material_domain::terrain : render::material_domain::surface;
     asset.material.name = asset.name;
     asset.material.alpha_mode = blend_mode_from_string(string_value(json, "blendMode").value_or("opaque"));
     asset.material.double_sided = bool_value(json, "doubleSided").value_or(asset.material.double_sided);
@@ -285,6 +287,30 @@ bool load_material_asset(
         asset.textures.ao = string_value(*textures, "ao").value_or("");
         asset.textures.emissive = string_value(*textures, "emissive").value_or("");
         asset.textures.height = string_value(*textures, "height").value_or("");
+    }
+
+    if (auto terrain_layers = object_for_key(json, "terrainLayers"))
+    {
+        for (std::size_t layer_index = 0; layer_index < asset.terrain_layers.size(); ++layer_index)
+        {
+            const auto key = "layer" + std::to_string(layer_index);
+            const auto layer = object_for_key(*terrain_layers, key);
+            if (!layer)
+                continue;
+            auto& desc = asset.material.terrain_layers[layer_index];
+            auto& paths = asset.terrain_layers[layer_index];
+            desc.name = string_value(*layer, "name").value_or(desc.name);
+            paths.base_color = string_value(*layer, "baseColor").value_or("");
+            paths.normal = string_value(*layer, "normal").value_or("");
+            paths.roughness = string_value(*layer, "roughnessTexture").value_or("");
+            paths.ao = string_value(*layer, "ao").value_or("");
+            paths.height = string_value(*layer, "height").value_or("");
+            paths.packed_aorh = string_value(*layer, "packedAorh").value_or("");
+            if (auto tint = object_for_key(*layer, "tint"))
+                assign_vec4(*tint, "r", "g", "b", "a", desc.tint);
+            desc.world_scale = float_value(*layer, "worldScale").value_or(desc.world_scale);
+            desc.roughness = float_value(*layer, "roughness").value_or(desc.roughness);
+        }
     }
 
     (void)asset_root;
@@ -341,6 +367,28 @@ bool save_material_asset(
     write_texture("emissive", asset.textures.emissive, true);
     write_texture("height", asset.textures.height, false);
     stream << "  },\n";
+    if (asset.material.domain == render::material_domain::terrain || lowercase(asset.domain) == "terrain")
+    {
+        stream << "  \"terrainLayers\": {\n";
+        for (std::size_t layer_index = 0; layer_index < asset.terrain_layers.size(); ++layer_index)
+        {
+            const auto& desc = asset.material.terrain_layers[layer_index];
+            const auto& paths = asset.terrain_layers[layer_index];
+            stream << "    \"layer" << layer_index << "\": { "
+                << "\"name\": \"" << escape_json(desc.name) << "\", "
+                << "\"baseColor\": \"" << escape_json(paths.base_color) << "\", "
+                << "\"normal\": \"" << escape_json(paths.normal) << "\", "
+                << "\"roughnessTexture\": \"" << escape_json(paths.roughness) << "\", "
+                << "\"ao\": \"" << escape_json(paths.ao) << "\", "
+                << "\"height\": \"" << escape_json(paths.height) << "\", "
+                << "\"packedAorh\": \"" << escape_json(paths.packed_aorh) << "\", "
+                << "\"tint\": { \"r\": " << desc.tint[0] << ", \"g\": " << desc.tint[1]
+                << ", \"b\": " << desc.tint[2] << ", \"a\": " << desc.tint[3] << " }, "
+                << "\"worldScale\": " << desc.world_scale << ", \"roughness\": " << desc.roughness << " }"
+                << (layer_index + 1u < asset.terrain_layers.size() ? "," : "") << "\n";
+        }
+        stream << "  },\n";
+    }
     stream << "  \"advanced\": {\n";
     stream << "    \"clearCoat\": " << asset.material.clear_coat_factor << ",\n";
     stream << "    \"clearCoatRoughness\": " << asset.material.clear_coat_roughness << ",\n";

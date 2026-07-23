@@ -14,6 +14,29 @@ option(ARC_USE_SYSTEM_STB "Use a system-provided stb package" OFF)
 option(ARC_FETCH_STB "Fetch stb when ARC_USE_SYSTEM_STB is OFF" ON)
 option(ARC_USE_SYSTEM_UFBX "Use a system-provided ufbx package" OFF)
 option(ARC_FETCH_UFBX "Fetch ufbx when ARC_USE_SYSTEM_UFBX is OFF" ON)
+option(ARC_USE_SYSTEM_NLOHMANN_JSON "Use a system-provided nlohmann_json package" OFF)
+
+add_library(arc-third-party-json INTERFACE)
+if(NOT TARGET arc::third-party-json)
+    add_library(arc::third-party-json ALIAS arc-third-party-json)
+endif()
+
+if(ARC_USE_SYSTEM_NLOHMANN_JSON)
+    find_package(nlohmann_json CONFIG REQUIRED)
+    target_link_libraries(arc-third-party-json INTERFACE nlohmann_json::nlohmann_json)
+elseif(ARC_FETCH_THIRD_PARTY)
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.11.3
+        GIT_SHALLOW TRUE
+    )
+    set(JSON_BuildTests OFF CACHE INTERNAL "" FORCE)
+    FetchContent_MakeAvailable(nlohmann_json)
+    target_link_libraries(arc-third-party-json INTERFACE nlohmann_json::nlohmann_json)
+else()
+    message(FATAL_ERROR "ARC_FETCH_THIRD_PARTY is OFF and ARC_USE_SYSTEM_NLOHMANN_JSON is OFF")
+endif()
 
 add_library(arc-third-party-ufbx INTERFACE)
 if(NOT TARGET arc::third-party-ufbx)

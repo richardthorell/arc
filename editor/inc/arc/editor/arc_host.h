@@ -12,6 +12,8 @@ class renderer;
 namespace arc::editor
 {
 
+enum class gizmo_axis : std::uint8_t;
+
 struct editor_asset_state;
 struct editor_scene_state;
 
@@ -46,6 +48,8 @@ public:
     const render::renderer& renderer_service() const noexcept;
     editor_scene_state& scene_state() noexcept;
     const editor_scene_state& scene_state() const noexcept;
+    const host_viewport_set_tool_command& viewport_tool_state() const noexcept;
+    void set_viewport_gizmo_highlight(gizmo_axis axis) noexcept;
 
 private:
     struct state;

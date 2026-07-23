@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "name": "ARC Layered Terrain",
+  "shader": "arc/terrain",
+  "domain": "terrain",
+  "blendMode": "opaque",
+  "doubleSided": false,
+  "surface": {
+    "baseColor": { "r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0 },
+    "metallic": 0.0,
+    "roughness": 0.82,
+    "normalScale": 1.0,
+    "aoStrength": 1.0,
+    "emissive": { "r": 0.0, "g": 0.0, "b": 0.0 },
+    "emissiveStrength": 0.0,
+    "alphaCutoff": 0.5
+  },
+  "textures": {
+    "baseColor": "",
+    "metallicRoughness": "",
+    "normal": "",
+    "ao": "",
+    "emissive": "",
+    "height": ""
+  },
+  "terrainLayers": {
+    "layer0": { "name": "Grass", "baseColor": "textures/terrain/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg", "normal": "", "roughnessTexture": "textures/terrain/aerial_grass_rock/aerial_grass_rock_rough_1k.jpg", "ao": "textures/terrain/aerial_grass_rock/aerial_grass_rock_ao_1k.jpg", "height": "textures/terrain/aerial_grass_rock/aerial_grass_rock_disp_1k.jpg", "packedAorh": "", "tint": { "r": 0.68, "g": 0.82, "b": 0.55, "a": 1.0 }, "worldScale": 2.8, "roughness": 0.82 },
+    "layer1": { "name": "Dirt", "baseColor": "textures/terrain/forest_ground_04/forest_ground_04_diff_1k.jpg", "normal": "", "roughnessTexture": "textures/terrain/forest_ground_04/forest_ground_04_rough_1k.jpg", "ao": "textures/terrain/forest_ground_04/forest_ground_04_ao_1k.jpg", "height": "textures/terrain/forest_ground_04/forest_ground_04_disp_1k.jpg", "packedAorh": "", "tint": { "r": 0.72, "g": 0.59, "b": 0.43, "a": 1.0 }, "worldScale": 2.2, "roughness": 0.88 },
+    "layer2": { "name": "Rock", "baseColor": "textures/terrain/rocky_terrain_03/rocky_terrain_03_diff_4k.jpg", "normal": "", "roughnessTexture": "", "ao": "", "height": "textures/terrain/rocky_terrain_03/rocky_terrain_03_disp_4k.png", "packedAorh": "", "tint": { "r": 0.82, "g": 0.83, "b": 0.80, "a": 1.0 }, "worldScale": 3.6, "roughness": 0.72 },
+    "layer3": { "name": "Sand", "baseColor": "", "normal": "", "roughnessTexture": "", "ao": "", "height": "", "packedAorh": "", "tint": { "r": 0.90, "g": 0.80, "b": 0.58, "a": 1.0 }, "worldScale": 1.8, "roughness": 0.91 }
+  },
+  "advanced": {
+    "clearCoat": 0.0,
+    "clearCoatRoughness": 0.0,
+    "sheen": 0.0,
+    "transmission": 0.0,
+    "subsurface": 0.0,
+    "anisotropy": 0.0,
+    "anisotropyRotation": 0.0,
+    "parallaxHeightScale": 0.0
+  },
+  "graph": null
+}

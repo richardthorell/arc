@@ -81,10 +81,74 @@ render::material_handle ensure_terrain_material(editor_scene_state& scene, rende
 
     render::material_desc material;
     material.name = "Default Terrain Material";
+    material.domain = render::material_domain::terrain;
     material.base_color = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f };
     material.roughness = 0.82f;
+    material.terrain_layers[0] = { .name = "Grass", .tint = { 0.68f, 0.82f, 0.55f, 1.0f }, .world_scale = 2.8f, .roughness = 0.82f };
+    material.terrain_layers[1] = { .name = "Dirt", .tint = { 0.72f, 0.59f, 0.43f, 1.0f }, .world_scale = 2.2f, .roughness = 0.88f };
+    material.terrain_layers[2] = { .name = "Rock", .tint = { 0.82f, 0.83f, 0.80f, 1.0f }, .world_scale = 3.6f, .roughness = 0.72f };
+    material.terrain_layers[3] = { .name = "Sand", .tint = { 0.90f, 0.80f, 0.58f, 1.0f }, .world_scale = 1.8f, .roughness = 0.91f };
+    scene.terrain_material_desc = material;
     scene.terrain_material = renderer.create_material(material);
     return scene.terrain_material;
+}
+
+render::mesh_data make_procedural_hero_rock()
+{
+    auto mesh = render::make_uv_sphere_mesh(1.0f, 64u, 32u);
+    mesh.name = "Procedural Hero Rock";
+    for (auto& vertex : mesh.vertices)
+    {
+        const auto direction = math::normalize(math::vector3f{
+            vertex.position[0], vertex.position[1], vertex.position[2] });
+        const float breakup = 1.0f +
+            std::sin(direction[0] * 8.7f + direction[2] * 5.1f) * 0.11f +
+            std::sin(direction[1] * 13.0f - direction[0] * 4.3f) * 0.07f;
+        vertex.position[0] = direction[0] * breakup * 1.45f;
+        vertex.position[1] = direction[1] * breakup * 1.05f + 1.08f;
+        vertex.position[2] = direction[2] * breakup * 1.25f;
+        const auto normal = math::normalize(math::vector3f{
+            direction[0] / 1.45f,
+            direction[1] / 1.05f,
+            direction[2] / 1.25f
+        });
+        vertex.normal[0] = normal[0];
+        vertex.normal[1] = normal[1];
+        vertex.normal[2] = normal[2];
+    }
+    return mesh;
+}
+
+render::texture_handle load_first_texture(
+    editor_scene_state& scene,
+    render::renderer& renderer,
+    std::initializer_list<std::filesystem::path> candidates,
+    std::string_view layer,
+    std::filesystem::path* selected_path = nullptr)
+{
+    if (selected_path)
+        selected_path->clear();
+    for (const auto& path : candidates)
+    {
+        if (path.empty() || !std::filesystem::is_regular_file(path))
+            continue;
+        auto loaded = render::load_texture_asset(path);
+        if (!loaded.succeeded())
+        {
+            arc::warn("editor.terrain", "Terrain " + std::string(layer) + " texture failed to decode: " + loaded.message);
+            continue;
+        }
+        const auto handle = renderer.create_texture(std::move(loaded.texture));
+        if (handle.valid())
+        {
+            scene.default_textures.push_back(handle);
+            if (selected_path)
+                *selected_path = path.lexically_normal();
+            return handle;
+        }
+    }
+    arc::warn("editor.terrain", "Terrain " + std::string(layer) + " texture is unavailable; using the explicit shader fallback");
+    return {};
 }
 
 render::material_handle ensure_water_material(editor_scene_state& scene, render::renderer& renderer)
@@ -117,6 +181,8 @@ render::material_handle ensure_vegetation_material(editor_scene_state& scene, re
 
 void add_selectable_common(editor_scene_state& scene, scene::entity entity, const char* name, const char* tag)
 {
+    scene.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+    scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.scene.emplace<scene::name_component>(entity, name);
     scene.scene.emplace<scene::tag_component>(entity, tag);
     scene.scene.emplace<scene::active_component>(entity);
@@ -176,6 +242,132 @@ render::material_handle material_from_import(
 
 } // namespace
 
+editor_asset_state load_default_editor_assets(const std::filesystem::path& asset_root)
+{
+    editor_asset_state assets{};
+    assets.root = asset_root;
+    assets.default_mesh_path = assets.root / "models" / "terrain" / "hero_rock.glb";
+    assets.default_vertex_shader_path = assets.root / "shaders" / "default_phong.vert";
+    assets.default_fragment_shader_path = assets.root / "shaders" / "default_phong.frag";
+
+    const auto loaded = render::load_gltf_mesh(assets.default_mesh_path);
+    if (loaded.succeeded())
+    {
+        assets.default_mesh = loaded.mesh;
+        assets.default_textures = loaded.textures;
+        assets.default_materials = loaded.materials;
+        assets.default_mesh_message = loaded.message;
+        assets.default_mesh_loaded = true;
+        arc::info("editor.assets", "Loaded terrain hero rock '" + assets.default_mesh_path.generic_string() + "'");
+    }
+    else
+    {
+        assets.default_mesh = make_procedural_hero_rock();
+        render::material_import rock_material;
+        rock_material.material.name = "Procedural Rock Material";
+        rock_material.material.base_color = math::vector4f{ 0.32f, 0.34f, 0.33f, 1.0f };
+        rock_material.material.roughness = 0.78f;
+        assets.default_materials.push_back(std::move(rock_material));
+        assets.default_mesh_message = "hero_rock.glb unavailable (" + loaded.message + "); deterministic procedural rock fallback generated";
+        assets.default_mesh_loaded = true;
+        arc::warn("editor.assets", assets.default_mesh_message);
+    }
+    return assets;
+}
+
+render::material_handle create_default_terrain_material(
+    editor_scene_state& scene,
+    render::renderer& renderer,
+    const std::filesystem::path& asset_root)
+{
+    material_asset authored;
+    const auto authored_path = asset_root / "materials" / "layered_terrain.arcmat";
+    const auto authored_handle = load_material_for_editor(
+        scene.material_library, renderer, asset_root, authored_path, &authored);
+    if (authored_handle.valid() && authored.material.domain == render::material_domain::terrain)
+    {
+        scene.terrain_material = authored_handle;
+        scene.terrain_material_desc = authored.material;
+        for (std::size_t layer = 0; layer < authored.terrain_layers.size(); ++layer)
+        {
+            scene.terrain_layer_paths[layer] = resolve_material_texture_path(
+                asset_root, authored.terrain_layers[layer].base_color);
+        }
+        return authored_handle;
+    }
+
+    render::material_desc material;
+    material.name = "ARC Layered Terrain";
+    material.domain = render::material_domain::terrain;
+    material.base_color = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f };
+    material.roughness = 0.82f;
+    material.terrain_layers[0] = { .name = "Grass", .tint = { 0.68f, 0.82f, 0.55f, 1.0f }, .world_scale = 2.8f, .roughness = 0.82f };
+    material.terrain_layers[1] = { .name = "Dirt", .tint = { 0.72f, 0.59f, 0.43f, 1.0f }, .world_scale = 2.2f, .roughness = 0.88f };
+    material.terrain_layers[2] = { .name = "Rock", .tint = { 0.82f, 0.83f, 0.80f, 1.0f }, .world_scale = 3.6f, .roughness = 0.72f };
+    material.terrain_layers[3] = { .name = "Sand", .tint = { 0.90f, 0.80f, 0.58f, 1.0f }, .world_scale = 1.8f, .roughness = 0.91f };
+
+    const auto terrain_root = asset_root / "textures" / "terrain";
+    material.terrain_layers[0].base_color_texture = load_first_texture(scene, renderer, {
+        terrain_root / "grass" / "grass_basecolor_2k.jpg",
+        terrain_root / "aerial_grass_rock" / "aerial_grass_rock_diff_1k.jpg" }, "grass", &scene.terrain_layer_paths[0]);
+    material.terrain_layers[1].base_color_texture = load_first_texture(scene, renderer, {
+        terrain_root / "dirt" / "dirt_basecolor_2k.jpg",
+        terrain_root / "forest_ground_04" / "forest_ground_04_diff_1k.jpg" }, "dirt", &scene.terrain_layer_paths[1]);
+    material.terrain_layers[2].base_color_texture = load_first_texture(scene, renderer, {
+        terrain_root / "rock" / "rock_basecolor_2k.jpg",
+        terrain_root / "rocky_terrain_03" / "rocky_terrain_03_diff_4k.jpg" }, "rock", &scene.terrain_layer_paths[2]);
+    material.terrain_layers[3].base_color_texture = load_first_texture(scene, renderer, {
+        terrain_root / "sand" / "sand_basecolor_2k.jpg" }, "sand", &scene.terrain_layer_paths[3]);
+
+    scene.terrain_material_desc = material;
+    scene.terrain_material = renderer.create_material(material);
+    return scene.terrain_material;
+}
+
+void ensure_scene_authoring_metadata(editor_scene_state& state)
+{
+    if (!state.scene_guid.valid())
+        state.scene_guid = scene::generate_entity_guid();
+    for (const auto entity : state.scene.entities())
+    {
+        if (!state.scene.has<scene::persistent_id_component>(entity))
+            state.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+        if (!state.scene.has<scene::hierarchy_component>(entity))
+            state.scene.emplace<scene::hierarchy_component>(entity);
+    }
+}
+
+scene::entity find_entity_by_guid(const editor_scene_state& state, scene::entity_guid guid) noexcept
+{
+    if (!guid.valid())
+        return {};
+    const auto values = state.scene.view<scene::persistent_id_component>();
+    for (const auto entity : values.entities())
+        if (state.scene.get<scene::persistent_id_component>(entity).value == guid)
+            return entity;
+    return {};
+}
+
+scene::entity_guid entity_guid_of(const editor_scene_state& state, scene::entity entity) noexcept
+{
+    const auto* id = state.scene.try_get<scene::persistent_id_component>(entity);
+    return id ? id->value : scene::entity_guid{};
+}
+
+editor_scene_state::asset_binding* find_asset_binding(editor_scene_state& state, scene::entity_guid guid) noexcept
+{
+    const auto found = std::find_if(state.asset_bindings.begin(), state.asset_bindings.end(),
+        [guid](const auto& value) { return value.entity == guid; });
+    return found == state.asset_bindings.end() ? nullptr : &*found;
+}
+
+const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& state, scene::entity_guid guid) noexcept
+{
+    const auto found = std::find_if(state.asset_bindings.begin(), state.asset_bindings.end(),
+        [guid](const auto& value) { return value.entity == guid; });
+    return found == state.asset_bindings.end() ? nullptr : &*found;
+}
+
 const char* selected_entity_name(const editor_scene_state& scene, const char* fallback)
 {
     if (!scene.scene.alive(scene.selected_entity))
@@ -229,6 +421,12 @@ scene::entity add_primitive_to_scene(
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, mesh_handle, material, true);
+    scene.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+    scene.scene.emplace<scene::hierarchy_component>(entity);
+    scene.asset_bindings.push_back({
+        .entity = scene.scene.get<scene::persistent_id_component>(entity).value,
+        .source_kind = "primitive",
+        .subresource = primitive_type_name(type) });
     scene.primitive_entities.push_back(entity);
     select_entity(scene.scene, entity, scene.selected_entity);
     return entity;
@@ -260,15 +458,6 @@ scene::entity add_terrain_to_scene(
     render::renderer& renderer,
     render::material_handle material)
 {
-    auto mesh = render::make_terrain_grid_mesh(
-        defaults::default_terrain_size,
-        defaults::default_terrain_subdivisions,
-        defaults::default_terrain_height_scale);
-    const auto local_bounds = bounds_for_mesh(mesh);
-    const auto mesh_handle = renderer.create_mesh(mesh);
-    if (!mesh_handle.valid())
-        return {};
-
     if (!material.valid())
         material = ensure_terrain_material(scene, renderer);
     else
@@ -279,19 +468,84 @@ scene::entity add_terrain_to_scene(
     scene::terrain_component terrain;
     terrain.size = defaults::default_terrain_size;
     terrain.subdivisions = defaults::default_terrain_subdivisions;
+    terrain.chunk_quads = scene::default_terrain_chunk_quads;
     terrain.height_scale = defaults::default_terrain_height_scale;
     terrain.material = material;
+    scene::generate_terrain_heightfield(terrain);
+    const auto chunks_per_axis = (terrain.subdivisions + terrain.chunk_quads - 1u) / terrain.chunk_quads;
+    for (std::uint32_t z = 0; z < chunks_per_axis; ++z)
+        for (std::uint32_t x = 0; x < chunks_per_axis; ++x)
+            terrain.chunk_meshes.push_back(renderer.create_mesh(scene::make_terrain_chunk_mesh(terrain, x, z)));
+    const auto [minimum, maximum] = std::minmax_element(terrain.heights.begin(), terrain.heights.end());
+    const float half = terrain.size * 0.5f;
+    const geometric::box3f local_bounds{
+        geometric::point3f{ -half, minimum != terrain.heights.end() ? *minimum : 0.0f, -half },
+        geometric::point3f{ half, maximum != terrain.heights.end() ? *maximum : 0.0f, half }
+    };
     scene.scene.emplace<scene::terrain_component>(entity, terrain);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity);
-    scene.scene.emplace<scene::mesh_renderer_component>(
-        entity,
-        mesh_handle,
-        material,
-        true,
-        math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f });
     scene.world_feature_entities.push_back(entity);
     return entity;
+}
+
+bool rebuild_terrain_chunks(
+    editor_scene_state& scene,
+    render::renderer& renderer,
+    scene::entity entity,
+    const scene::terrain_dirty_region* dirty_region)
+{
+    auto* terrain = scene.scene.try_get<scene::terrain_component>(entity);
+    if (terrain == nullptr || !scene::terrain_heightfield_valid(*terrain))
+        return false;
+
+    const auto chunks_per_axis = (terrain->subdivisions + terrain->chunk_quads - 1u) / terrain->chunk_quads;
+    const auto required_chunk_count = static_cast<std::size_t>(chunks_per_axis) * chunks_per_axis;
+    while (terrain->chunk_meshes.size() > required_chunk_count)
+    {
+        renderer.destroy_mesh(terrain->chunk_meshes.back());
+        terrain->chunk_meshes.pop_back();
+    }
+    terrain->chunk_meshes.resize(required_chunk_count);
+
+    for (std::uint32_t chunk_z = 0; chunk_z < chunks_per_axis; ++chunk_z)
+    {
+        for (std::uint32_t chunk_x = 0; chunk_x < chunks_per_axis; ++chunk_x)
+        {
+            const auto sample_min_x = chunk_x * terrain->chunk_quads;
+            const auto sample_min_z = chunk_z * terrain->chunk_quads;
+            const auto sample_max_x = std::min(sample_min_x + terrain->chunk_quads, terrain->subdivisions);
+            const auto sample_max_z = std::min(sample_min_z + terrain->chunk_quads, terrain->subdivisions);
+            if (dirty_region != nullptr && dirty_region->valid &&
+                (dirty_region->max_x < sample_min_x || dirty_region->min_x > sample_max_x ||
+                 dirty_region->max_z < sample_min_z || dirty_region->min_z > sample_max_z))
+                continue;
+
+            const auto index = static_cast<std::size_t>(chunk_z) * chunks_per_axis + chunk_x;
+            auto mesh = scene::make_terrain_chunk_mesh(*terrain, chunk_x, chunk_z);
+            if (!terrain->chunk_meshes[index].valid() ||
+                !renderer.update_mesh_vertices(terrain->chunk_meshes[index], mesh.vertices))
+            {
+                if (terrain->chunk_meshes[index].valid())
+                    renderer.destroy_mesh(terrain->chunk_meshes[index]);
+                terrain->chunk_meshes[index] = renderer.create_mesh(std::move(mesh));
+            }
+        }
+    }
+
+    const auto [minimum, maximum] = std::minmax_element(terrain->heights.begin(), terrain->heights.end());
+    const float half = terrain->size * 0.5f;
+    const geometric::box3f local_bounds{
+        geometric::point3f{ -half, *minimum, -half },
+        geometric::point3f{ half, *maximum, half }
+    };
+    if (auto* bounds = scene.scene.try_get<scene::bounds_component>(entity))
+    {
+        bounds->local_bounds = local_bounds;
+        bounds->world_bounds = local_bounds;
+        bounds->dirty = true;
+    }
+    return true;
 }
 
 scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer)
@@ -460,6 +714,13 @@ editor_scene_open_result apply_scene_import_result_to_editor(
             meshes[node.mesh_index],
             materials[material_index],
             true);
+        scene.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+        scene.scene.emplace<scene::hierarchy_component>(entity);
+        scene.asset_bindings.push_back({
+            .entity = scene.scene.get<scene::persistent_id_component>(entity).value,
+            .source_kind = "imported",
+            .source_path = source_path,
+            .subresource = node.name });
         scene.imported_scene_entities.push_back(entity);
         ++created;
     }

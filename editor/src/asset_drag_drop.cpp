@@ -78,7 +78,7 @@ editor_asset_kind classify_asset_path(const std::filesystem::path& path, bool di
         return editor_asset_kind::scene;
     if (ext == ".vert" || ext == ".frag" || ext == ".spv")
         return editor_asset_kind::shader;
-    if (ext == ".scene")
+    if (ext == ".scene" || ext == ".arcscene")
         return editor_asset_kind::scene;
     return editor_asset_kind::unknown;
 }

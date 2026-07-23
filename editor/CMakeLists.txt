@@ -2,8 +2,10 @@ add_library(arc-editor-core STATIC
     src/arc_host.cpp
     src/asset_drag_drop.cpp
     src/editor_console.cpp
+    src/editor_gizmo.cpp
     src/editor_defaults.cpp
     src/editor_interaction.cpp
+    src/editor_history.cpp
     src/editor_state.cpp
     src/editor_viewport.cpp
     src/host_protocol.cpp
@@ -21,6 +23,7 @@ add_library(arc-editor-core STATIC
     src/panels/status_bar.cpp
     src/panels/toolbar_panel.cpp
     src/sdl_events.cpp
+    src/scene_document.cpp
     src/ui/theme.cpp
     src/ui/widgets.cpp
     src/world_environment_host.cpp
@@ -41,6 +44,8 @@ target_link_libraries(arc-editor-core
         arc
         arc-third-party-sdl
         arc-third-party-imgui
+    PRIVATE
+        arc-third-party-json
 )
 
 if(NOT TARGET arc::editor-core)

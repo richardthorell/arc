@@ -2,9 +2,12 @@
 
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/editor/editor_defaults.h>
+#include <arc/editor/editor_gizmo.h>
+#include <arc/editor/editor_history.h>
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
+#include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
 #include <arc/geometric/box.h>
 #include <arc/render/render.h>
@@ -18,6 +21,7 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -30,6 +34,97 @@ namespace
 {
 
 constexpr std::string_view base64_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+template <class Component>
+void copy_component(const scene::registry& source, scene::registry& target, scene::entity from, scene::entity to)
+{
+    if (const auto* value = source.try_get<Component>(from))
+        target.emplace<Component>(to, *value);
+}
+
+scene::entity duplicate_entity_subtree(editor_scene_state& state, scene::entity source, scene::entity parent = {})
+{
+    if (!state.scene.alive(source))
+        return {};
+    const auto duplicate = state.scene.create();
+    copy_component<scene::name_component>(state.scene, state.scene, source, duplicate);
+    if (auto* name = state.scene.try_get<scene::name_component>(duplicate)) name->value += " Copy";
+    copy_component<scene::tag_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::active_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::transform_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::bounds_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::camera_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::mesh_renderer_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::virtual_mesh_renderer_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::skinned_mesh_renderer_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::lod_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::render_layer_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::directional_light_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::point_light_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::spot_light_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::world_environment_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::sky_atmosphere_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::celestial_sky_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::cloud_layers_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::environment_lighting_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::height_fog_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::terrain_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::water_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::vegetation_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::decal_component>(state.scene, state.scene, source, duplicate);
+    state.scene.emplace<scene::persistent_id_component>(duplicate, scene::generate_entity_guid());
+    state.scene.emplace<scene::hierarchy_component>(duplicate);
+    state.scene.emplace<scene::selection_component>(duplicate, false);
+    const auto new_guid = entity_guid_of(state, duplicate);
+    if (const auto* binding = find_asset_binding(state, entity_guid_of(state, source)))
+    {
+        auto copied = *binding;
+        copied.entity = new_guid;
+        state.asset_bindings.push_back(std::move(copied));
+    }
+    if (state.scene.alive(parent))
+        scene::reparent(state.scene, duplicate, parent, {}, scene::reparent_transform_policy::preserve_local);
+    for (const auto child : scene::children(state.scene, source))
+        duplicate_entity_subtree(state, child, duplicate);
+    return duplicate;
+}
+
+template <class Command>
+constexpr bool is_authoring_command() noexcept
+{
+    return std::is_same_v<Command, host_create_entity_command> || std::is_same_v<Command, host_delete_entity_command> ||
+        std::is_same_v<Command, host_duplicate_entity_command> || std::is_same_v<Command, host_reparent_entity_command> ||
+        std::is_same_v<Command, host_reorder_entity_command> || std::is_same_v<Command, host_rename_entity_command> ||
+        std::is_same_v<Command, host_set_active_command> || std::is_same_v<Command, host_set_tag_command> ||
+        std::is_same_v<Command, host_set_transform_command> || std::is_same_v<Command, host_set_render_layer_command> ||
+        std::is_same_v<Command, host_set_camera_command> || std::is_same_v<Command, host_set_mesh_renderer_command> ||
+        std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_terrain_stroke_command> ||
+        std::is_same_v<Command, host_set_terrain_layer_command> ||
+        std::is_same_v<Command, host_set_entity_material_command> || std::is_same_v<Command, host_set_world_environment_command> ||
+        std::is_same_v<Command, host_apply_world_environment_preset_command> || std::is_same_v<Command, host_set_environment_hdri_command>;
+}
+
+std::string history_label(const host_command_payload& command)
+{
+    return std::visit([](const auto& value) -> std::string {
+        using type = std::decay_t<decltype(value)>;
+        if constexpr (std::is_same_v<type, host_create_entity_command>) return "Create Entity";
+        if constexpr (std::is_same_v<type, host_delete_entity_command>) return "Delete Entity";
+        if constexpr (std::is_same_v<type, host_duplicate_entity_command>) return "Duplicate Entity";
+        if constexpr (std::is_same_v<type, host_reparent_entity_command>) return "Reparent Entity";
+        if constexpr (std::is_same_v<type, host_reorder_entity_command>) return "Reorder Entity";
+        if constexpr (std::is_same_v<type, host_rename_entity_command>) return "Rename Entity";
+        if constexpr (std::is_same_v<type, host_set_transform_command>) return "Transform Entity";
+        if constexpr (std::is_same_v<type, host_set_entity_material_command>) return "Assign Material";
+        if constexpr (std::is_same_v<type, host_set_terrain_command>) return "Edit Terrain";
+        if constexpr (std::is_same_v<type, host_set_terrain_layer_command>) return "Assign Terrain Layer";
+        if constexpr (std::is_same_v<type, host_terrain_stroke_command>) return "Terrain Stroke";
+        if constexpr (std::is_same_v<type, host_set_world_environment_command> ||
+            std::is_same_v<type, host_apply_world_environment_preset_command> ||
+            std::is_same_v<type, host_set_environment_hdri_command>) return "Edit World Environment";
+        return "Edit Component";
+    }, command);
+}
 
 std::string base64_encode(const std::vector<std::byte>& bytes)
 {
@@ -295,6 +390,8 @@ const char* create_entity_kind_label(host_create_entity_kind kind) noexcept
 {
     switch (kind)
     {
+    case host_create_entity_kind::empty:
+        return "Entity";
     case host_create_entity_kind::plane:
         return "Plane";
     case host_create_entity_kind::cube:
@@ -365,6 +462,19 @@ render::editor_overlay_mode to_overlay(host_overlay_mode mode) noexcept
     return render::editor_overlay_mode::selected_wireframe;
 }
 
+editor_tool to_editor_tool(host_viewport_tool tool) noexcept
+{
+    switch (tool)
+    {
+    case host_viewport_tool::translate: return editor_tool::translate;
+    case host_viewport_tool::rotate: return editor_tool::rotate;
+    case host_viewport_tool::scale: return editor_tool::scale;
+    case host_viewport_tool::select: return editor_tool::select;
+    case host_viewport_tool::terrain: return editor_tool::select;
+    }
+    return editor_tool::select;
+}
+
 scene::scene_render_visibility to_scene_visibility(host_environment_visibility visibility) noexcept
 {
     return {
@@ -430,6 +540,13 @@ void forget_entity(editor_scene_state& scene, scene::entity entity)
     remove_entity_ref(scene.primitive_entities, entity);
     remove_entity_ref(scene.imported_scene_entities, entity);
     remove_entity_ref(scene.world_feature_entities, entity);
+}
+
+void rebuild_all_terrain_chunks(editor_scene_state& state, render::renderer& renderer)
+{
+    for (const auto entity : state.scene.entities())
+        if (state.scene.has<scene::terrain_component>(entity))
+            rebuild_terrain_chunks(state, renderer, entity);
 }
 
 std::string entity_name(const editor_scene_state& state, scene::entity entity, const char* fallback)
@@ -624,57 +741,51 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     if (auto* lighting = state.scene.try_get<scene::environment_lighting_component>(state.world_environment_entity))
         lighting->environment = state.environment_lighting_resource;
 
-    render::material_handle terrain_material;
-    if (!assets.root.empty())
-    {
-        terrain_material = load_material_for_editor(
-            state.material_library,
-            renderer,
-            assets.root,
-            assets.root / "materials" / "mountain_landscape.arcmat");
-    }
+    const auto terrain_material = create_default_terrain_material(state, renderer, assets.root);
     const auto terrain = add_terrain_to_scene(state, renderer, terrain_material);
     add_water_to_scene(state, renderer);
     add_grass_patch_to_scene(state, renderer);
 
     if (state.default_mesh.valid())
     {
-        const auto mesh = state.scene.create();
-        state.mesh_entity = mesh;
-        const float scale = defaults::imported_mesh_fit_size / radius;
-        scene::transform_component mesh_transform;
-        mesh_transform.position = math::mul(center, -scale);
-        constexpr float landmark_x = -3.0f;
-        constexpr float landmark_z = 4.0f;
-        const float landmark_height = render::sample_terrain_height(
-            landmark_x,
-            landmark_z,
-            defaults::default_terrain_size,
-            defaults::default_terrain_height_scale);
-        mesh_transform.position = math::add(
-            mesh_transform.position,
-            math::vector3f{ landmark_x, landmark_height + defaults::imported_mesh_fit_size, landmark_z });
-        mesh_transform.scale = math::vector3f{ scale, scale, scale };
-        state.scene.emplace<scene::name_component>(mesh, assets.default_mesh.name);
-        state.scene.emplace<scene::tag_component>(mesh, "Mesh");
-        state.scene.emplace<scene::active_component>(mesh);
-        state.scene.emplace<scene::selection_component>(mesh, true);
-        state.scene.emplace<scene::bounds_component>(
-            mesh,
-            geometric::box3f{ geometric::point3f(local_min), geometric::point3f(local_max) },
-            geometric::box3f{ geometric::point3f(local_min), geometric::point3f(local_max) },
-            true);
-        state.scene.emplace<scene::transform_component>(mesh, mesh_transform);
-        state.scene.emplace<scene::mesh_renderer_component>(
-            mesh,
-            state.default_mesh,
-            state.default_material,
-            true);
-        state.selected_entity = mesh;
+        const auto* terrain_data = state.scene.try_get<scene::terrain_component>(terrain);
+        const auto create_rock = [&](const char* name, float x, float z, float scale_factor, float yaw) {
+            const auto mesh = state.scene.create();
+            const float scale = (defaults::imported_mesh_fit_size / radius) * scale_factor;
+            const float terrain_height = terrain_data != nullptr
+                ? scene::sample_terrain_height(*terrain_data, x, z)
+                : 0.0f;
+            scene::transform_component transform;
+            transform.position = math::vector3f{
+                x - center[0] * scale,
+                terrain_height - local_min[1] * scale,
+                z - center[2] * scale
+            };
+            transform.rotation = quaternion_from_euler_degrees({ 0.0f, yaw, 0.0f });
+            transform.scale = math::vector3f{ scale, scale, scale };
+            state.scene.emplace<scene::name_component>(mesh, name);
+            state.scene.emplace<scene::tag_component>(mesh, "Mesh");
+            state.scene.emplace<scene::active_component>(mesh);
+            state.scene.emplace<scene::selection_component>(mesh, false);
+            state.scene.emplace<scene::bounds_component>(
+                mesh,
+                geometric::box3f{ geometric::point3f(local_min), geometric::point3f(local_max) },
+                geometric::box3f{ geometric::point3f(local_min), geometric::point3f(local_max) },
+                true);
+            state.scene.emplace<scene::transform_component>(mesh, transform);
+            state.scene.emplace<scene::mesh_renderer_component>(mesh, state.default_mesh, state.default_material, true);
+            state.world_feature_entities.push_back(mesh);
+            return mesh;
+        };
+        state.mesh_entity = create_rock("Hero Rock Formation", -5.0f, 5.0f, 1.0f, 18.0f);
+        create_rock("Rock Formation East", 11.0f, -2.0f, 0.56f, -34.0f);
+        create_rock("Rock Formation Shore", -13.0f, -10.0f, 0.42f, 57.0f);
     }
 
     if (state.scene.alive(terrain))
         select_entity(state.scene, terrain, state.selected_entity);
+
+    ensure_scene_authoring_metadata(state);
 
     return state;
 }
@@ -700,6 +811,20 @@ struct arc_host::state
     std::uint32_t viewport_draw_calls{};
     std::uint64_t viewport_frame_index{};
     bool viewport_submitted{};
+    struct pending_viewport_pick
+    {
+        std::uint32_t x{};
+        std::uint32_t y{};
+        scene::entity cpu_fallback{};
+        std::uint64_t requested_after_frame{};
+    };
+    std::optional<pending_viewport_pick> pending_pick;
+    editor_history history;
+    host_viewport_set_tool_command viewport_tool;
+    scene::terrain_brush_settings terrain_brush;
+    bool terrain_flatten_height_captured{};
+    std::optional<math::vector3f> terrain_brush_local_position;
+    gizmo_axis gizmo_highlight{ gizmo_axis::none };
     std::vector<host_event> events;
     std::uint64_t event_sequence{};
     bool project_open{};
@@ -730,6 +855,7 @@ host_response arc_host::open_project(
     state_->project.name = command.name.empty() ? "Arc Project" : command.name;
     state_->project.root = command.root;
     state_->scene = create_default_scene(assets, *state_->renderer);
+    state_->history.clear(state_->scene, false);
     state_->camera_controller = {};
     state_->camera_controller.focus(defaults::default_camera_focus, defaults::default_camera_focus_radius);
     state_->camera_controller.orbit(defaults::default_camera_orbit_x, defaults::default_camera_orbit_y);
@@ -755,7 +881,30 @@ host_response arc_host::execute(host_command_payload command)
 
 host_response arc_host::execute(const host_command_envelope& command)
 {
-    return std::visit([this, request_id = command.request_id](const auto& payload) -> host_response {
+    const bool authoring = std::visit([](const auto& payload) {
+        return is_authoring_command<std::decay_t<decltype(payload)>>();
+    }, command.payload);
+    const std::string edit_label = command.edit && !command.edit->label.empty()
+        ? command.edit->label : history_label(command.payload);
+    if (command.edit && command.edit->phase == host_edit_phase::cancel)
+    {
+        if (!state_->history.cancel(command.edit->id, state_->scene))
+            return { .request_id = command.request_id, .succeeded = false, .error = "No matching edit transaction to cancel" };
+        rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+        push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Edit transaction cancelled");
+        return { .request_id = command.request_id, .succeeded = true, .payload_json = "{}" };
+    }
+    if (authoring && command.edit && command.edit->phase == host_edit_phase::begin &&
+        !state_->history.begin(command.edit->id, edit_label, state_->scene))
+        return { .request_id = command.request_id, .succeeded = false, .error = "Could not begin edit transaction" };
+    if (authoring && command.edit && (command.edit->phase == host_edit_phase::update || command.edit->phase == host_edit_phase::commit) &&
+        !state_->history.transaction_matches(command.edit->id))
+        return { .request_id = command.request_id, .succeeded = false, .error = "Edit transaction does not match the active transaction" };
+    std::optional<editor_scene_state> before;
+    if (authoring && !command.edit)
+        before = state_->scene;
+
+    auto response = std::visit([this, request_id = command.request_id](const auto& payload) -> host_response {
         using command_type = std::decay_t<decltype(payload)>;
         const auto fail = [this, request_id](std::string message, scene::entity entity = {}) {
             arc::warn("editor.host", message);
@@ -768,12 +917,11 @@ host_response arc_host::execute(const host_command_envelope& command)
 
         if constexpr (std::is_same_v<command_type, host_open_project_command>)
         {
-            editor_asset_state empty_assets;
             const auto project_assets = payload.root / "assets";
-            empty_assets.root = std::filesystem::is_directory(project_assets)
+            const auto asset_root = std::filesystem::is_directory(project_assets)
                 ? project_assets
                 : payload.root;
-            return open_project(payload, empty_assets, request_id);
+            return open_project(payload, load_default_editor_assets(asset_root), request_id);
         }
         else if constexpr (std::is_same_v<command_type, host_close_project_command>)
         {
@@ -793,7 +941,22 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (!state_->project_open)
                 return fail("Cannot open a scene before a project is open");
 
+            if (payload.path.extension() == ".arcscene")
+            {
+                if (payload.append)
+                    return fail("Appending native ARC scene documents is not supported");
+                const auto path = payload.path.is_absolute() ? payload.path : state_->project.root / payload.path;
+                const auto loaded = load_scene_document(state_->scene, *state_->renderer, state_->project.root, path);
+                if (!loaded.succeeded)
+                    return fail(loaded.message);
+                state_->history.clear(state_->scene, true);
+                push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "ARC scene loaded", state_->scene.selected_entity);
+                return success("{\"entityCount\":" + std::to_string(loaded.entity_count) + '}');
+            }
             const auto mode = payload.append ? editor_scene_open_mode::append : editor_scene_open_mode::replace;
+            std::optional<editor_scene_state> import_before;
+            if (payload.append)
+                import_before = state_->scene;
             const auto asset_root = payload.path.is_absolute() ? payload.path.parent_path() : state_->assets.root;
             const auto result = open_scene_asset_in_editor(
                 state_->scene,
@@ -804,17 +967,63 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (!result.succeeded)
                 return fail(result.message.empty() ? "Failed to open scene asset" : result.message);
 
+            ensure_scene_authoring_metadata(state_->scene);
+            if (import_before)
+                state_->history.record("Import Scene", std::move(*import_before), state_->scene);
+            else
+            {
+                state_->scene.scene_name = payload.path.stem().string();
+                state_->scene.active_scene_path.clear();
+                state_->history.clear(state_->scene, false);
+            }
+
             const std::string message =
                 std::string(payload.append ? "Imported scene asset: " : "Opened scene asset: ") +
                 payload.path.filename().string();
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, message, state_->scene.selected_entity);
             return success("{\"entityCount\":" + std::to_string(result.entity_count) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_new_scene_command>)
+        {
+            state_->scene = create_default_scene(state_->assets, *state_->renderer);
+            state_->scene.scene_name = payload.name.empty() ? "Untitled" : payload.name;
+            state_->scene.active_scene_path.clear();
+            state_->history.clear(state_->scene, false);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "New scene created", state_->scene.selected_entity);
+            return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_save_scene_command> || std::is_same_v<command_type, host_save_scene_as_command>)
+        {
+            std::filesystem::path path;
+            if constexpr (std::is_same_v<command_type, host_save_scene_as_command>) path = payload.path;
+            else path = state_->scene.active_scene_path;
+            if (path.empty()) return fail("Scene has no path; use scene.saveAs first");
+            if (path.is_relative()) path = state_->project.root / path;
+            if (path.extension() != ".arcscene") path.replace_extension(".arcscene");
+            const auto saved = save_scene_document(state_->scene, state_->project.root, path);
+            if (!saved.succeeded) return fail(saved.message);
+            state_->history.mark_saved();
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene saved", state_->scene.selected_entity);
+            return success("{\"path\":" + to_json_string(path.generic_string()) + '}');
+        }
         else if constexpr (std::is_same_v<command_type, host_create_entity_command>)
         {
+            const auto requested_parent = to_scene_entity(payload.parent);
+            if (payload.parent.valid() && !state_->scene.scene.alive(requested_parent))
+                return fail("Cannot create a child under a missing parent", requested_parent);
             scene::entity created{};
             switch (payload.kind)
             {
+            case host_create_entity_kind::empty:
+                created = state_->scene.scene.create();
+                state_->scene.scene.emplace<scene::name_component>(created, "Entity");
+                state_->scene.scene.emplace<scene::tag_component>(created, "Untagged");
+                state_->scene.scene.emplace<scene::active_component>(created);
+                state_->scene.scene.emplace<scene::transform_component>(created);
+                state_->scene.scene.emplace<scene::selection_component>(created, false);
+                ensure_scene_authoring_metadata(state_->scene);
+                select_entity(state_->scene.scene, created, state_->scene.selected_entity);
+                break;
             case host_create_entity_kind::plane:
             case host_create_entity_kind::cube:
             case host_create_entity_kind::sphere:
@@ -842,6 +1051,15 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (!created.valid())
                 return fail("Failed to create entity: " + label);
 
+            if (payload.parent.valid())
+            {
+                if (!scene::reparent(state_->scene.scene, created, requested_parent, {}, scene::reparent_transform_policy::preserve_local))
+                {
+                    scene::destroy_subtree(state_->scene.scene, created);
+                    return fail("Cannot create a child under an invalid parent", requested_parent);
+                }
+            }
+
             const std::string message = "Created entity: " + label;
             arc::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::entity_created, message, created);
@@ -856,13 +1074,45 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return fail("Cannot delete a missing entity", entity);
 
             const std::string name = entity_name(state_->scene, entity, "Entity");
-            state_->scene.scene.destroy(entity);
-            forget_entity(state_->scene, entity);
+            const auto removed = scene::subtree(state_->scene.scene, entity);
+            scene::destroy_subtree(state_->scene.scene, entity);
+            for (const auto nested : removed) forget_entity(state_->scene, nested);
             const std::string message = "Deleted entity: " + name;
             arc::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::entity_deleted, message, entity);
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_duplicate_entity_command>)
+        {
+            const auto source = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(source)) return fail("Cannot duplicate a missing entity", source);
+            const auto* links = state_->scene.scene.try_get<scene::hierarchy_component>(source);
+            const auto duplicate = duplicate_entity_subtree(state_->scene, source, links ? links->parent : scene::entity{});
+            if (!duplicate.valid()) return fail("Entity duplication failed", source);
+            select_entity(state_->scene.scene, duplicate, state_->scene.selected_entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::entity_created, "Entity duplicated", duplicate);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", duplicate);
+            return success("{\"entity\":" + to_json(to_host_entity(duplicate)) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_reparent_entity_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            const auto parent = to_scene_entity(payload.parent);
+            const auto before = to_scene_entity(payload.before_sibling);
+            if (!scene::reparent(state_->scene.scene, entity, parent, before, payload.preserve_world
+                    ? scene::reparent_transform_policy::preserve_world : scene::reparent_transform_policy::preserve_local))
+                return fail("Invalid hierarchy reparent operation", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Entity reparented", entity);
+            return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_reorder_entity_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!scene::reorder(state_->scene.scene, entity, to_scene_entity(payload.before_sibling)))
+                return fail("Invalid hierarchy reorder operation", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Entity reordered", entity);
+            return success();
         }
         else if constexpr (std::is_same_v<command_type, host_rename_entity_command>)
         {
@@ -879,6 +1129,8 @@ host_response arc_host::execute(const host_command_envelope& command)
         else if constexpr (std::is_same_v<command_type, host_select_entity_command>)
         {
             const auto entity = to_scene_entity(payload.entity);
+            if (entity == state_->scene.selected_entity && state_->scene.scene.alive(entity))
+                return success("{\"entity\":" + to_json(payload.entity) + '}');
             if (!select_entity(state_->scene.scene, entity, state_->scene.selected_entity))
                 return fail("Cannot select a missing entity", entity);
 
@@ -888,6 +1140,8 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
         else if constexpr (std::is_same_v<command_type, host_clear_selection_command>)
         {
+            if (!state_->scene.scene.alive(state_->scene.selected_entity))
+                return success();
             clear_selection(state_->scene.scene, state_->scene.selected_entity);
             push_event(state_->events, state_->event_sequence, host_event_type::entity_selected, "Cleared entity selection");
             return success();
@@ -919,6 +1173,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return fail("Cannot edit a missing entity", entity);
 
             state_->scene.scene.emplace<scene::transform_component>(entity, to_scene_transform(payload.transform));
+            scene::mark_transform_subtree_dirty(state_->scene.scene, entity);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity transform changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
@@ -960,6 +1215,113 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity mesh renderer changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_set_terrain_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+            if (!terrain)
+                return fail("Entity does not have an editable terrain component", entity);
+            terrain->enabled = payload.enabled;
+            terrain->receive_shadows = payload.receive_shadows;
+            ++terrain->content_revision;
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Terrain settings changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_set_terrain_brush_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.has<scene::terrain_component>(entity))
+                return fail("Terrain brush requires a terrain entity", entity);
+            if (!std::isfinite(payload.radius) || !std::isfinite(payload.strength) || !std::isfinite(payload.falloff) ||
+                payload.radius < 0.25f || payload.radius > 128.0f || payload.strength <= 0.0f || payload.strength > 1.0f ||
+                payload.falloff < 0.0f || payload.falloff > 1.0f || payload.active_layer >= 4u)
+                return fail("Terrain brush values are outside supported ranges", entity);
+            state_->terrain_brush.tool = payload.tool == host_terrain_brush_tool::smooth ? scene::terrain_brush_tool::smooth :
+                payload.tool == host_terrain_brush_tool::flatten ? scene::terrain_brush_tool::flatten :
+                payload.tool == host_terrain_brush_tool::paint ? scene::terrain_brush_tool::paint : scene::terrain_brush_tool::sculpt;
+            state_->terrain_brush.radius = payload.radius;
+            state_->terrain_brush.strength = payload.strength;
+            state_->terrain_brush.falloff = payload.falloff;
+            state_->terrain_brush.active_layer = payload.active_layer;
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Terrain brush changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_set_terrain_layer_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+            if (!terrain || payload.layer >= 4u)
+                return fail("Terrain layer assignment requires a valid terrain and layer 0-3", entity);
+            render::texture_handle texture;
+            std::filesystem::path resolved_path;
+            if (!payload.path.empty())
+            {
+                const auto path = resolve_project_asset(state_->assets.root, payload.path);
+                if (!path || !render::is_supported_texture_asset(*path))
+                    return fail("Terrain layer must reference a supported project texture", entity);
+                auto loaded = render::load_texture_asset(*path);
+                if (!loaded.succeeded())
+                    return fail("Terrain layer texture failed to load: " + loaded.message, entity);
+                texture = state_->renderer->create_texture(std::move(loaded.texture));
+                if (!texture.valid())
+                    return fail("Terrain layer texture could not be uploaded", entity);
+                state_->scene.default_textures.push_back(texture);
+                resolved_path = *path;
+            }
+            state_->scene.terrain_material_desc.domain = render::material_domain::terrain;
+            state_->scene.terrain_material_desc.terrain_layers[payload.layer].base_color_texture = texture;
+            if (!state_->renderer->update_material(terrain->material, state_->scene.terrain_material_desc))
+                return fail("Terrain material could not be updated", entity);
+            state_->scene.terrain_layer_paths[payload.layer] = std::move(resolved_path);
+            ++terrain->content_revision;
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Terrain layer assigned", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_terrain_stroke_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+            auto* terrain_transform = state_->scene.scene.try_get<scene::transform_component>(entity);
+            const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+            const auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
+            if (!terrain || !terrain_transform || !camera || !camera_transform)
+                return fail("Terrain stroke is missing terrain or viewport camera data", entity);
+            if (state_->viewport_tool.tool != host_viewport_tool::terrain)
+                return fail("Terrain strokes require Terrain viewport mode", entity);
+            editor_viewport viewport;
+            viewport.set_size(static_cast<float>(state_->viewport_options.width), static_cast<float>(state_->viewport_options.height));
+            if (!viewport.valid())
+                return fail("Terrain stroke requires a valid viewport", entity);
+            scene::update_world_transforms(state_->scene.scene);
+            const auto ray = screen_ray_from_camera(*camera, *camera_transform, viewport,
+                static_cast<float>(payload.x), static_cast<float>(payload.y));
+            math::matrix4f inverse_terrain{};
+            const auto terrain_world = terrain_transform->dirty ? scene::local_matrix(*terrain_transform) : terrain_transform->world;
+            if (!scene::inverse_affine(terrain_world, inverse_terrain))
+                return fail("Terrain transform cannot be inverted", entity);
+            const auto local_origin = math::transform_point(inverse_terrain, ray.origin);
+            const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
+            const auto hit = scene::raycast_terrain(*terrain, local_origin, local_direction);
+            if (!hit.hit)
+            {
+                state_->terrain_brush_local_position.reset();
+                return success("{\"hit\":false}");
+            }
+            state_->terrain_brush_local_position = hit.position;
+            state_->terrain_brush.invert = payload.invert;
+            if (payload.phase == host_edit_phase::begin)
+            {
+                state_->terrain_flatten_height_captured = true;
+                state_->terrain_brush.flatten_height = hit.position[1];
+            }
+            const auto dirty = scene::apply_terrain_brush(*terrain, hit.position, state_->terrain_brush);
+            if (dirty.valid && !rebuild_terrain_chunks(state_->scene, *state_->renderer, entity, &dirty))
+                return fail("Terrain runtime chunks could not be updated", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                "Terrain stroke preview changed", entity,
+                "{\"revision\":" + std::to_string(terrain->content_revision) + '}');
+            return success("{\"hit\":true,\"revision\":" + std::to_string(terrain->content_revision) + '}');
+        }
         else if constexpr (std::is_same_v<command_type, host_set_entity_material_command>)
         {
             const auto entity = to_scene_entity(payload.entity);
@@ -978,6 +1340,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                     entity,
                     &message))
                 return fail(message.empty() ? "Material assignment failed" : message, entity);
+            ensure_scene_authoring_metadata(state_->scene);
+            const auto guid = entity_guid_of(state_->scene, entity);
+            auto* binding = find_asset_binding(state_->scene, guid);
+            if (!binding)
+            {
+                state_->scene.asset_bindings.push_back({ .entity = guid });
+                binding = &state_->scene.asset_bindings.back();
+            }
+            binding->material_path = *path;
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, message, entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
@@ -1006,7 +1377,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return fail("Cannot apply a preset to a missing world environment", entity);
 
             scene::apply_world_environment_preset(to_scene_preset(payload.preset), *settings);
-            scene::set_world_environment_settings(state_->scene.scene, entity, *settings);
+            if (!scene::set_world_environment_settings(state_->scene.scene, entity, *settings))
+                return fail("World environment preset could not be applied", entity);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                 "World environment preset applied", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -1118,19 +1490,109 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
             {
                 state_->camera_controller.apply_to(*camera_transform);
-                push_event(
-                    state_->events,
-                    state_->event_sequence,
-                    host_event_type::component_changed,
-                    "Viewport camera changed",
-                    state_->scene.camera_entity);
                 return success("{\"entity\":" + to_json(to_host_entity(state_->scene.camera_entity)) + '}');
             }
             return fail("No editor camera is available", state_->scene.camera_entity);
         }
+        else if constexpr (std::is_same_v<command_type, host_history_undo_command>)
+        {
+            if (!state_->history.undo(state_->scene)) return fail("Nothing to undo");
+            if (const auto& changed = state_->history.last_terrain_change(); changed)
+                rebuild_terrain_chunks(state_->scene, *state_->renderer,
+                    find_entity_by_guid(state_->scene, changed->entity), &changed->region);
+            else
+                rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Undo completed", state_->scene.selected_entity);
+            return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_history_redo_command>)
+        {
+            if (!state_->history.redo(state_->scene)) return fail("Nothing to redo");
+            if (const auto& changed = state_->history.last_terrain_change(); changed)
+                rebuild_terrain_chunks(state_->scene, *state_->renderer,
+                    find_entity_by_guid(state_->scene, changed->entity), &changed->region);
+            else
+                rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Redo completed", state_->scene.selected_entity);
+            return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_viewport_set_tool_command>)
+        {
+            if (!(payload.translation_snap > 0.0f && payload.rotation_snap_degrees > 0.0f && payload.scale_snap > 0.0f))
+                return fail("Viewport snap values must be positive");
+            state_->viewport_tool = payload;
+            const char* tool = payload.tool == host_viewport_tool::translate ? "translate" :
+                payload.tool == host_viewport_tool::rotate ? "rotate" :
+                payload.tool == host_viewport_tool::scale ? "scale" :
+                payload.tool == host_viewport_tool::terrain ? "terrain" : "select";
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                "Viewport tool changed", {}, "{\"tool\":" + to_json_string(tool) +
+                    ",\"coordinateSpace\":" + to_json_string(payload.coordinate_space == host_coordinate_space::local ? "local" : "world") +
+                    ",\"snapping\":" + std::string(payload.snapping ? "true" : "false") +
+                    ",\"translationSnap\":" + std::to_string(payload.translation_snap) +
+                    ",\"rotationSnapDegrees\":" + std::to_string(payload.rotation_snap_degrees) +
+                    ",\"scaleSnap\":" + std::to_string(payload.scale_snap) + '}');
+            return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_viewport_pick_command>)
+        {
+            state_->renderer->request_object_pick(payload.x, payload.y);
+            scene::entity cpu_fallback{};
+            scene::update_world_transforms(state_->scene.scene);
+            editor_viewport viewport;
+            viewport.set_size(static_cast<float>(state_->viewport_options.width), static_cast<float>(state_->viewport_options.height));
+            const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+            const auto* transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
+            if (camera && transform && viewport.valid())
+                cpu_fallback = pick_bounded_entity(state_->scene.scene,
+                    screen_ray_from_camera(*camera, *transform, viewport, static_cast<float>(payload.x), static_cast<float>(payload.y)));
+
+            if (state_->renderer->backend())
+            {
+                state_->pending_pick = state::pending_viewport_pick{
+                    .x = payload.x,
+                    .y = payload.y,
+                    .cpu_fallback = cpu_fallback,
+                    .requested_after_frame = state_->viewport_frame_index
+                };
+                return success("{\"pending\":true}");
+            }
+
+            const auto previous_selection = state_->scene.selected_entity;
+            if (state_->scene.scene.alive(cpu_fallback))
+                select_entity(state_->scene.scene, cpu_fallback, state_->scene.selected_entity);
+            else
+                clear_selection(state_->scene.scene, state_->scene.selected_entity);
+            if (state_->scene.selected_entity != previous_selection)
+                push_event(state_->events, state_->event_sequence, host_event_type::entity_selected,
+                    cpu_fallback.valid() ? "Viewport entity selected" : "Viewport selection cleared", cpu_fallback);
+            return success("{\"entity\":" + to_json(to_host_entity(cpu_fallback)) + '}');
+        }
 
         return fail("Unsupported host command");
     }, command.payload);
+
+    if (authoring && !response.succeeded && command.edit)
+        state_->history.cancel(command.edit->id, state_->scene);
+    else if (authoring && response.succeeded)
+    {
+        if (command.edit && command.edit->phase == host_edit_phase::commit)
+        {
+            if (const auto* terrain_stroke = std::get_if<host_terrain_stroke_command>(&command.payload))
+            {
+                const auto terrain_entity = to_scene_entity(terrain_stroke->entity);
+                state_->history.commit_terrain(
+                    command.edit->id, state_->scene, entity_guid_of(state_->scene, terrain_entity));
+            }
+            else
+            {
+                state_->history.commit(command.edit->id, state_->scene);
+            }
+        }
+        else if (!command.edit && before)
+            state_->history.record(edit_label, std::move(*before), state_->scene);
+    }
+    return response;
 }
 
 host_response arc_host::query(const host_query_envelope& query) const
@@ -1177,6 +1639,18 @@ host_response arc_host::query(const host_query_envelope& query) const
                 return { .request_id = request_id, .succeeded = false, .error = "World environment is missing" };
             return { .request_id = request_id, .succeeded = true, .payload_json = to_json(*snapshot) };
         }
+        else if constexpr (std::is_same_v<query_type, host_history_state_query>)
+        {
+            const auto history = state_->history.snapshot();
+            return { .request_id = request_id, .succeeded = true,
+                .payload_json = "{\"canUndo\":" + std::string(history.can_undo ? "true" : "false") +
+                    ",\"canRedo\":" + std::string(history.can_redo ? "true" : "false") +
+                    ",\"dirty\":" + std::string(history.dirty ? "true" : "false") +
+                    ",\"transactionActive\":" + std::string(history.transaction_active ? "true" : "false") +
+                    ",\"undoLabel\":" + to_json_string(history.undo_label) +
+                    ",\"redoLabel\":" + to_json_string(history.redo_label) +
+                    ",\"revision\":" + std::to_string(history.revision) + '}'};
+        }
 
         return { .request_id = request_id, .succeeded = false, .error = "Unsupported host query" };
     }, query.payload);
@@ -1185,27 +1659,71 @@ host_response arc_host::query(const host_query_envelope& query) const
 host_scene_snapshot arc_host::scene_snapshot() const
 {
     host_scene_snapshot snapshot;
-    const auto add = [&](scene::entity entity, const char* fallback, host_entity_kind kind) {
+    const auto history = state_->history.snapshot();
+    snapshot.scene_guid = scene::to_string(state_->scene.scene_guid);
+    snapshot.scene_name = state_->scene.scene_name;
+    snapshot.active_scene_path = state_->scene.active_scene_path.generic_string();
+    snapshot.dirty = history.dirty;
+    snapshot.can_undo = history.can_undo;
+    snapshot.can_redo = history.can_redo;
+    snapshot.undo_label = history.undo_label;
+    snapshot.redo_label = history.redo_label;
+    const auto root_entities = scene::roots(state_->scene.scene);
+    std::uint32_t maximum_root_index{};
+    for (const auto root : root_entities)
+        maximum_root_index = std::max(maximum_root_index, root.index);
+    std::vector<std::uint32_t> root_orders(static_cast<std::size_t>(maximum_root_index) + 1u, 0u);
+    std::uint32_t root_order{};
+    for (const auto root : root_entities)
+        if (root != state_->scene.camera_entity)
+            root_orders[root.index] = root_order++;
+    const auto add = [&](scene::entity entity) {
         if (!entity.valid() || !state_->scene.scene.alive(entity))
             return;
+        host_entity_kind kind = host_entity_kind::unknown;
+        if (state_->scene.scene.has<scene::world_environment_component>(entity) ||
+            state_->scene.scene.has<scene::terrain_component>(entity) || state_->scene.scene.has<scene::water_component>(entity) ||
+            state_->scene.scene.has<scene::vegetation_component>(entity) || state_->scene.scene.has<scene::decal_component>(entity))
+            kind = host_entity_kind::environment;
+        else if (state_->scene.scene.has<scene::directional_light_component>(entity) ||
+            state_->scene.scene.has<scene::point_light_component>(entity) || state_->scene.scene.has<scene::spot_light_component>(entity))
+            kind = host_entity_kind::light;
+        else if (state_->scene.scene.has<scene::camera_component>(entity)) kind = host_entity_kind::camera;
+        else if (state_->scene.scene.has<scene::mesh_renderer_component>(entity)) kind = host_entity_kind::mesh;
+        std::string parent_guid;
+        std::uint32_t sibling_order{};
+        if (const auto* hierarchy = state_->scene.scene.try_get<scene::hierarchy_component>(entity))
+        {
+            if (state_->scene.scene.alive(hierarchy->parent))
+            {
+                parent_guid = scene::to_string(entity_guid_of(state_->scene, hierarchy->parent));
+                auto sibling = hierarchy->previous_sibling;
+                while (state_->scene.scene.alive(sibling))
+                {
+                    ++sibling_order;
+                    sibling = state_->scene.scene.get<scene::hierarchy_component>(sibling).previous_sibling;
+                }
+            }
+            else if (entity.index < root_orders.size())
+            {
+                sibling_order = root_orders[entity.index];
+            }
+        }
         snapshot.entities.push_back({
             .entity = to_host_entity(entity),
-            .name = entity_name(state_->scene, entity, fallback),
+            .guid = scene::to_string(entity_guid_of(state_->scene, entity)),
+            .parent_guid = std::move(parent_guid),
+            .sibling_order = sibling_order,
+            .name = entity_name(state_->scene, entity, "Entity"),
             .kind = kind,
             .active = entity_active(state_->scene, entity),
             .selected = entity == state_->scene.selected_entity
         });
     };
 
-    add(state_->scene.sun_entity, "Sun", host_entity_kind::light);
-    add(state_->scene.game_camera_entity, "Main Camera", host_entity_kind::camera);
-    for (const auto entity : state_->scene.world_feature_entities)
-        add(entity, "Environment", host_entity_kind::environment);
-    add(state_->scene.mesh_entity, "Default Mesh", host_entity_kind::mesh);
-    for (const auto entity : state_->scene.imported_scene_entities)
-        add(entity, "Imported Mesh", host_entity_kind::imported);
-    for (const auto entity : state_->scene.primitive_entities)
-        add(entity, "Primitive", host_entity_kind::primitive);
+    for (const auto entity : state_->scene.scene.entities())
+        if (entity != state_->scene.camera_entity)
+            add(entity);
     return snapshot;
 }
 
@@ -1256,8 +1774,28 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
         add_component_snapshot(snapshot.components, host_component_kind::environment_lighting, "Environment Lighting");
     if (state_->scene.scene.has<scene::height_fog_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::height_fog, "Height Fog");
-    if (state_->scene.scene.has<scene::terrain_component>(selected))
+    if (const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(selected))
+    {
+        host_terrain_snapshot terrain_snapshot;
+        terrain_snapshot.enabled = terrain->enabled;
+        terrain_snapshot.size = terrain->size;
+        terrain_snapshot.resolution = terrain->subdivisions + 1u;
+        terrain_snapshot.chunk_quads = terrain->chunk_quads;
+        terrain_snapshot.receive_shadows = terrain->receive_shadows;
+        terrain_snapshot.content_revision = terrain->content_revision;
+        terrain_snapshot.brush_tool = state_->terrain_brush.tool == scene::terrain_brush_tool::smooth ? host_terrain_brush_tool::smooth :
+            state_->terrain_brush.tool == scene::terrain_brush_tool::flatten ? host_terrain_brush_tool::flatten :
+            state_->terrain_brush.tool == scene::terrain_brush_tool::paint ? host_terrain_brush_tool::paint : host_terrain_brush_tool::sculpt;
+        terrain_snapshot.brush_radius = state_->terrain_brush.radius;
+        terrain_snapshot.brush_strength = state_->terrain_brush.strength;
+        terrain_snapshot.brush_falloff = state_->terrain_brush.falloff;
+        terrain_snapshot.active_layer = state_->terrain_brush.active_layer;
+        for (std::size_t layer = 0; layer < state_->scene.terrain_layer_paths.size(); ++layer)
+            terrain_snapshot.layer_base_color_paths[layer] = asset_relative_path(
+                state_->assets.root, state_->scene.terrain_layer_paths[layer]);
+        snapshot.terrain = std::move(terrain_snapshot);
         add_component_snapshot(snapshot.components, host_component_kind::terrain, "Terrain");
+    }
     if (state_->scene.scene.has<scene::water_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::water, "Water");
     if (state_->scene.scene.has<scene::vegetation_component>(selected))
@@ -1407,6 +1945,32 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         return { .message = message };
     }
 
+    if (state_->pending_pick)
+    {
+        const auto gpu = state_->renderer->last_object_pick();
+        const bool gpu_ready = gpu.available && gpu.x == state_->pending_pick->x && gpu.y == state_->pending_pick->y &&
+            gpu.frame_index > state_->pending_pick->requested_after_frame;
+        const bool fallback_due = request.frame_index >= state_->pending_pick->requested_after_frame +
+            defaults::viewport_pick_fallback_frame_count;
+        if (gpu_ready || fallback_due)
+        {
+            scene::entity picked = gpu_ready && gpu.hit
+                ? scene::entity{ gpu.object.index, gpu.object.generation }
+                : gpu_ready ? scene::entity{} : state_->pending_pick->cpu_fallback;
+            if (gpu_ready && gpu.hit && !state_->scene.scene.alive(picked))
+                picked = state_->pending_pick->cpu_fallback;
+            const auto previous_selection = state_->scene.selected_entity;
+            if (state_->scene.scene.alive(picked))
+                select_entity(state_->scene.scene, picked, state_->scene.selected_entity);
+            else
+                clear_selection(state_->scene.scene, state_->scene.selected_entity);
+            if (state_->scene.selected_entity != previous_selection)
+                push_event(state_->events, state_->event_sequence, host_event_type::entity_selected,
+                    picked.valid() ? "Viewport entity selected" : "Viewport selection cleared", picked);
+            state_->pending_pick.reset();
+        }
+    }
+
     if (state_->scene.focus_imported_scene_requested)
     {
         focus_selected_entity(state_->scene.scene, state_->scene.selected_entity, state_->camera_controller);
@@ -1415,6 +1979,48 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         state_->scene.focus_imported_scene_requested = false;
     }
 
+    auto debug_overlay = build_editor_gizmo_overlay(
+        state_->scene.scene,
+        state_->scene.selected_entity,
+        state_->scene.camera_entity,
+        editor_gizmo_context{
+            .tool = to_editor_tool(state_->viewport_tool.tool),
+            .coordinate_space = state_->viewport_tool.coordinate_space == host_coordinate_space::local
+                ? gizmo_coordinate_space::local : gizmo_coordinate_space::world,
+            .highlighted_axis = state_->gizmo_highlight,
+            .viewport_width = request.width,
+            .viewport_height = request.height });
+    if (state_->viewport_tool.tool == host_viewport_tool::terrain && state_->terrain_brush_local_position &&
+        state_->scene.scene.alive(state_->scene.terrain_entity))
+    {
+        const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(state_->scene.terrain_entity);
+        const auto* transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.terrain_entity);
+        if (terrain && transform)
+        {
+            constexpr std::uint32_t segment_count = 64u;
+            const auto world = transform->dirty ? scene::local_matrix(*transform) : transform->world;
+            for (std::uint32_t segment = 0; segment < segment_count; ++segment)
+            {
+                const float angle0 = math::tau<float> * static_cast<float>(segment) / segment_count;
+                const float angle1 = math::tau<float> * static_cast<float>(segment + 1u) / segment_count;
+                auto point0 = math::vector3f{
+                    (*state_->terrain_brush_local_position)[0] + std::cos(angle0) * state_->terrain_brush.radius,
+                    0.0f,
+                    (*state_->terrain_brush_local_position)[2] + std::sin(angle0) * state_->terrain_brush.radius };
+                auto point1 = math::vector3f{
+                    (*state_->terrain_brush_local_position)[0] + std::cos(angle1) * state_->terrain_brush.radius,
+                    0.0f,
+                    (*state_->terrain_brush_local_position)[2] + std::sin(angle1) * state_->terrain_brush.radius };
+                point0[1] = scene::sample_terrain_height(*terrain, point0[0], point0[2]) + 0.04f;
+                point1[1] = scene::sample_terrain_height(*terrain, point1[0], point1[2]) + 0.04f;
+                debug_overlay.lines.push_back({
+                    .start = math::transform_point(world, point0),
+                    .end = math::transform_point(world, point1),
+                    .color = { 0.95f, 0.68f, 0.16f, 1.0f },
+                    .depth = render::debug_overlay_depth_mode::tested });
+            }
+        }
+    }
     state_->scene.last_render = scene::render_scene(
         state_->scene.scene,
         *state_->renderer,
@@ -1425,7 +2031,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         to_overlay(request.overlay),
         request.shadows,
         to_scene_visibility(request.environment),
-        delta_seconds);
+        delta_seconds,
+        std::move(debug_overlay));
 
     const auto submit_result = state_->renderer->render_frame(
         request.frame_index,
@@ -1476,6 +2083,16 @@ editor_scene_state& arc_host::scene_state() noexcept
 const editor_scene_state& arc_host::scene_state() const noexcept
 {
     return state_->scene;
+}
+
+const host_viewport_set_tool_command& arc_host::viewport_tool_state() const noexcept
+{
+    return state_->viewport_tool;
+}
+
+void arc_host::set_viewport_gizmo_highlight(gizmo_axis axis) noexcept
+{
+    state_->gizmo_highlight = axis;
 }
 
 in_process_host_session::in_process_host_session(std::shared_ptr<arc_host> host)

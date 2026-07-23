@@ -419,11 +419,11 @@ void parse_cloud_layer(std::string_view json, host_cloud_layer& value)
     number_value(json, "silverLining", value.silver_lining);
 }
 
-bool parse_world_environment(std::string_view payload, host_world_environment_snapshot& value)
+bool parse_world_environment(std::string_view payload, host_world_environment_snapshot& value, bool require_entity = true)
 {
     std::string_view json;
     if (!object_value(payload, "environment", json))
-        return false;
+        json = payload;
     entity_field_value(json, "entity", value.entity);
     bool_value(json, "enabled", value.enabled);
     bool_value(json, "skyVisible", value.sky_visible);
@@ -508,7 +508,7 @@ bool parse_world_environment(std::string_view payload, host_world_environment_sn
     array3_value(json, "lightingColor", value.lighting_color);
     number_value(json, "diffuseIntensity", value.diffuse_intensity);
     number_value(json, "specularIntensity", value.specular_intensity);
-    return value.entity.valid();
+    return !require_entity || value.entity.valid();
 }
 
 template <class Enum>
@@ -582,6 +582,7 @@ const char* to_string(host_create_entity_kind value) noexcept
 {
     switch (value)
     {
+    case host_create_entity_kind::empty: return "empty";
     case host_create_entity_kind::plane: return "plane";
     case host_create_entity_kind::cube: return "cube";
     case host_create_entity_kind::sphere: return "sphere";
@@ -698,8 +699,14 @@ std::string command_type(const host_command_payload& payload)
         if constexpr (std::is_same_v<type, host_open_project_command>) return "project.open";
         else if constexpr (std::is_same_v<type, host_close_project_command>) return "project.close";
         else if constexpr (std::is_same_v<type, host_open_scene_command>) return "scene.open";
+        else if constexpr (std::is_same_v<type, host_new_scene_command>) return "scene.new";
+        else if constexpr (std::is_same_v<type, host_save_scene_command>) return "scene.save";
+        else if constexpr (std::is_same_v<type, host_save_scene_as_command>) return "scene.saveAs";
         else if constexpr (std::is_same_v<type, host_create_entity_command>) return "entity.create";
         else if constexpr (std::is_same_v<type, host_delete_entity_command>) return "entity.delete";
+        else if constexpr (std::is_same_v<type, host_duplicate_entity_command>) return "entity.duplicate";
+        else if constexpr (std::is_same_v<type, host_reparent_entity_command>) return "entity.reparent";
+        else if constexpr (std::is_same_v<type, host_reorder_entity_command>) return "entity.reorder";
         else if constexpr (std::is_same_v<type, host_rename_entity_command>) return "entity.rename";
         else if constexpr (std::is_same_v<type, host_select_entity_command>) return "entity.select";
         else if constexpr (std::is_same_v<type, host_clear_selection_command>) return "entity.clearSelection";
@@ -709,6 +716,10 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_set_render_layer_command>) return "entity.setRenderLayer";
         else if constexpr (std::is_same_v<type, host_set_camera_command>) return "entity.setCamera";
         else if constexpr (std::is_same_v<type, host_set_mesh_renderer_command>) return "entity.setMeshRenderer";
+        else if constexpr (std::is_same_v<type, host_set_terrain_command>) return "terrain.update";
+        else if constexpr (std::is_same_v<type, host_set_terrain_brush_command>) return "terrain.setBrush";
+        else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>) return "terrain.assignLayer";
+        else if constexpr (std::is_same_v<type, host_terrain_stroke_command>) return "terrain.stroke";
         else if constexpr (std::is_same_v<type, host_set_entity_material_command>) return "entity.setMaterial";
         else if constexpr (std::is_same_v<type, host_set_world_environment_command>) return "environment.update";
         else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>) return "environment.applyPreset";
@@ -719,6 +730,10 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>) return "viewport.setCameraMode";
         else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>) return "viewport.setRenderOptions";
         else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>) return "viewport.cameraInput";
+        else if constexpr (std::is_same_v<type, host_history_undo_command>) return "history.undo";
+        else if constexpr (std::is_same_v<type, host_history_redo_command>) return "history.redo";
+        else if constexpr (std::is_same_v<type, host_viewport_set_tool_command>) return "viewport.setTool";
+        else if constexpr (std::is_same_v<type, host_viewport_pick_command>) return "viewport.pick";
         else return "unknown";
     }, payload);
 }
@@ -733,6 +748,7 @@ std::string query_type(const host_query_payload& payload)
         else if constexpr (std::is_same_v<type, host_asset_thumbnail_query>) return "asset.thumbnail";
         else if constexpr (std::is_same_v<type, host_viewport_state_query>) return "viewport.state";
         else if constexpr (std::is_same_v<type, host_world_environment_query>) return "environment.state";
+        else if constexpr (std::is_same_v<type, host_history_state_query>) return "history.state";
         else return "unknown";
     }, payload);
 }
@@ -740,6 +756,11 @@ std::string query_type(const host_query_payload& payload)
 std::string to_json(const host_entity_id& entity)
 {
     return "{\"index\":" + std::to_string(entity.index) + ",\"generation\":" + std::to_string(entity.generation) + '}';
+}
+
+std::string to_json_string(std::string_view value)
+{
+    return quote(value);
 }
 
 std::string to_json(const host_transform& transform)
@@ -770,6 +791,34 @@ std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer)
         ",\"assetBackedMaterial\":" + bool_json(mesh_renderer.asset_backed_material) +
         ",\"materialName\":" + quote(mesh_renderer.material_name) +
         ",\"materialPath\":" + quote(mesh_renderer.material_path) + '}';
+}
+
+std::string to_json(const host_terrain_snapshot& terrain)
+{
+    const char* tool = terrain.brush_tool == host_terrain_brush_tool::smooth ? "smooth" :
+        terrain.brush_tool == host_terrain_brush_tool::flatten ? "flatten" :
+        terrain.brush_tool == host_terrain_brush_tool::paint ? "paint" : "sculpt";
+    std::ostringstream stream;
+    stream << "{\"enabled\":" << bool_json(terrain.enabled)
+        << ",\"size\":" << terrain.size
+        << ",\"resolution\":" << terrain.resolution
+        << ",\"chunkQuads\":" << terrain.chunk_quads
+        << ",\"receiveShadows\":" << bool_json(terrain.receive_shadows)
+        << ",\"contentRevision\":" << terrain.content_revision
+        << ",\"brushTool\":" << quote(tool)
+        << ",\"brushRadius\":" << terrain.brush_radius
+        << ",\"brushStrength\":" << terrain.brush_strength
+        << ",\"brushFalloff\":" << terrain.brush_falloff
+        << ",\"activeLayer\":" << terrain.active_layer
+        << ",\"layers\":[";
+    for (std::size_t index = 0; index < terrain.layer_names.size(); ++index)
+    {
+        if (index != 0) stream << ',';
+        stream << "{\"name\":" << quote(terrain.layer_names[index])
+            << ",\"baseColorPath\":" << quote(terrain.layer_base_color_paths[index]) << '}';
+    }
+    stream << "]}";
+    return stream.str();
 }
 
 std::string to_json(const host_world_environment_snapshot& value)
@@ -849,10 +898,20 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"name\":" + quote(payload.name) + ",\"root\":" + quote(payload.root.generic_string()) + '}';
         else if constexpr (std::is_same_v<type, host_open_scene_command>)
             return "{\"path\":" + quote(payload.path.generic_string()) + ",\"append\":" + bool_json(payload.append) + '}';
+        else if constexpr (std::is_same_v<type, host_new_scene_command>)
+            return "{\"name\":" + quote(payload.name) + '}';
+        else if constexpr (std::is_same_v<type, host_save_scene_as_command>)
+            return "{\"path\":" + quote(payload.path.generic_string()) + '}';
         else if constexpr (std::is_same_v<type, host_create_entity_command>)
-            return "{\"kind\":" + quote(to_string(payload.kind)) + '}';
-        else if constexpr (std::is_same_v<type, host_delete_entity_command> || std::is_same_v<type, host_select_entity_command>)
+            return "{\"kind\":" + quote(to_string(payload.kind)) + ",\"parent\":" + to_json(payload.parent) + '}';
+        else if constexpr (std::is_same_v<type, host_delete_entity_command> || std::is_same_v<type, host_select_entity_command> ||
+            std::is_same_v<type, host_duplicate_entity_command>)
             return "{\"entity\":" + to_json(payload.entity) + '}';
+        else if constexpr (std::is_same_v<type, host_reparent_entity_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"parent\":" + to_json(payload.parent) +
+                ",\"beforeSibling\":" + to_json(payload.before_sibling) + ",\"preserveWorld\":" + bool_json(payload.preserve_world) + '}';
+        else if constexpr (std::is_same_v<type, host_reorder_entity_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"beforeSibling\":" + to_json(payload.before_sibling) + '}';
         else if constexpr (std::is_same_v<type, host_rename_entity_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"name\":" + quote(payload.name) + '}';
         else if constexpr (std::is_same_v<type, host_set_active_command>)
@@ -870,6 +929,33 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"entity\":" + to_json(payload.entity) +
                 ",\"visible\":" + bool_json(payload.visible) +
                 ",\"baseColorTint\":" + vec4_json(payload.base_color_tint) + '}';
+        else if constexpr (std::is_same_v<type, host_set_terrain_command>)
+            return "{\"entity\":" + to_json(payload.entity) +
+                ",\"enabled\":" + bool_json(payload.enabled) +
+                ",\"receiveShadows\":" + bool_json(payload.receive_shadows) + '}';
+        else if constexpr (std::is_same_v<type, host_set_terrain_brush_command>)
+        {
+            const char* tool = payload.tool == host_terrain_brush_tool::smooth ? "smooth" :
+                payload.tool == host_terrain_brush_tool::flatten ? "flatten" :
+                payload.tool == host_terrain_brush_tool::paint ? "paint" : "sculpt";
+            return "{\"entity\":" + to_json(payload.entity) + ",\"tool\":" + quote(tool) +
+                ",\"radius\":" + std::to_string(payload.radius) +
+                ",\"strength\":" + std::to_string(payload.strength) +
+                ",\"falloff\":" + std::to_string(payload.falloff) +
+                ",\"activeLayer\":" + std::to_string(payload.active_layer) + '}';
+        }
+        else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"layer\":" + std::to_string(payload.layer) +
+                ",\"path\":" + quote(payload.path.generic_string()) + '}';
+        else if constexpr (std::is_same_v<type, host_terrain_stroke_command>)
+        {
+            const char* phase = payload.phase == host_edit_phase::update ? "update" :
+                payload.phase == host_edit_phase::commit ? "commit" :
+                payload.phase == host_edit_phase::cancel ? "cancel" : "begin";
+            return "{\"entity\":" + to_json(payload.entity) +
+                ",\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
+                ",\"phase\":" + quote(phase) + ",\"invert\":" + bool_json(payload.invert) + '}';
+        }
         else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
             return "{\"entity\":" + to_json(payload.entity) +
                 ",\"path\":" + quote(payload.path.generic_string()) + '}';
@@ -908,12 +994,32 @@ std::string to_json(const host_command_envelope& envelope)
                 ",\"forward\":" + std::to_string(payload.forward) +
                 ",\"zoom\":" + std::to_string(payload.zoom) +
                 ",\"focusSelected\":" + bool_json(payload.focus_selected) + '}';
+        else if constexpr (std::is_same_v<type, host_viewport_set_tool_command>)
+            return "{\"tool\":" + quote(payload.tool == host_viewport_tool::translate ? "translate" :
+                    payload.tool == host_viewport_tool::rotate ? "rotate" : payload.tool == host_viewport_tool::scale ? "scale" :
+                    payload.tool == host_viewport_tool::terrain ? "terrain" : "select") +
+                ",\"coordinateSpace\":" + quote(payload.coordinate_space == host_coordinate_space::local ? "local" : "world") +
+                ",\"snapping\":" + bool_json(payload.snapping) + ",\"translationSnap\":" + std::to_string(payload.translation_snap) +
+                ",\"rotationSnapDegrees\":" + std::to_string(payload.rotation_snap_degrees) +
+                ",\"scaleSnap\":" + std::to_string(payload.scale_snap) + '}';
+        else if constexpr (std::is_same_v<type, host_viewport_pick_command>)
+            return "{\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) + '}';
         else
             return "{}";
     }, envelope.payload);
 
+    std::string edit_json;
+    if (envelope.edit)
+    {
+        const char* phase = envelope.edit->phase == host_edit_phase::begin ? "begin" :
+            envelope.edit->phase == host_edit_phase::update ? "update" :
+            envelope.edit->phase == host_edit_phase::commit ? "commit" :
+            envelope.edit->phase == host_edit_phase::cancel ? "cancel" : "none";
+        edit_json = ",\"edit\":{\"id\":" + std::to_string(envelope.edit->id) +
+            ",\"phase\":" + quote(phase) + ",\"label\":" + quote(envelope.edit->label) + '}';
+    }
     return "{\"kind\":\"command\",\"requestId\":" + std::to_string(envelope.request_id) +
-        ",\"type\":" + quote(type) + ",\"payload\":" + payload_json + '}';
+        ",\"type\":" + quote(type) + ",\"payload\":" + payload_json + edit_json + '}';
 }
 
 std::string to_json(const host_query_envelope& envelope)
@@ -952,13 +1058,24 @@ std::string to_json(const host_event& event)
 
 std::string to_json(const host_scene_snapshot& snapshot)
 {
-    std::string json = "{\"entities\":[";
+    std::string json = "{\"sceneGuid\":" + quote(snapshot.scene_guid) +
+        ",\"sceneName\":" + quote(snapshot.scene_name) +
+        ",\"activeScenePath\":" + quote(snapshot.active_scene_path) +
+        ",\"dirty\":" + bool_json(snapshot.dirty) +
+        ",\"canUndo\":" + bool_json(snapshot.can_undo) +
+        ",\"canRedo\":" + bool_json(snapshot.can_redo) +
+        ",\"undoLabel\":" + quote(snapshot.undo_label) +
+        ",\"redoLabel\":" + quote(snapshot.redo_label) +
+        ",\"entities\":[";
     for (std::size_t index = 0; index < snapshot.entities.size(); ++index)
     {
         const auto& entity = snapshot.entities[index];
         if (index != 0)
             json += ',';
         json += "{\"entity\":" + to_json(entity.entity) +
+            ",\"guid\":" + quote(entity.guid) +
+            ",\"parentGuid\":" + quote(entity.parent_guid) +
+            ",\"siblingOrder\":" + std::to_string(entity.sibling_order) +
             ",\"name\":" + quote(entity.name) +
             ",\"kind\":" + quote(to_string(entity.kind)) +
             ",\"active\":" + bool_json(entity.active) +
@@ -981,6 +1098,8 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
     json += snapshot.camera ? to_json(*snapshot.camera) : "null";
     json += ",\"meshRenderer\":";
     json += snapshot.mesh_renderer ? to_json(*snapshot.mesh_renderer) : "null";
+    json += ",\"terrain\":";
+    json += snapshot.terrain ? to_json(*snapshot.terrain) : "null";
     json += ",\"components\":[";
     for (std::size_t index = 0; index < snapshot.components.size(); ++index)
     {
@@ -1065,9 +1184,30 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "append", command.append);
         envelope.payload = std::move(command);
     }
+    else if (type == "scene.new")
+    {
+        host_new_scene_command command;
+        string_value(payload, "name", command.name);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "scene.save")
+        envelope.payload = host_save_scene_command{};
+    else if (type == "scene.saveAs")
+    {
+        host_save_scene_as_command command;
+        std::string path;
+        if (!string_value(payload, "path", path) || path.empty())
+        {
+            error = "Scene save-as command requires path";
+            return false;
+        }
+        command.path = std::move(path);
+        envelope.payload = std::move(command);
+    }
     else if (type == "entity.create")
     {
         static constexpr std::pair<std::string_view, host_create_entity_kind> values[]{
+            { "empty", host_create_entity_kind::empty },
             { "plane", host_create_entity_kind::plane },
             { "cube", host_create_entity_kind::cube },
             { "sphere", host_create_entity_kind::sphere },
@@ -1080,6 +1220,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         };
         host_create_entity_command command;
         parse_enum(payload, "kind", values, std::size(values), command.kind);
+        entity_field_value(payload, "parent", command.parent);
         envelope.payload = command;
     }
     else if (type == "entity.delete" || type == "entity.select")
@@ -1094,6 +1235,40 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             envelope.payload = host_delete_entity_command{ .entity = entity };
         else
             envelope.payload = host_select_entity_command{ .entity = entity };
+    }
+    else if (type == "entity.duplicate")
+    {
+        host_duplicate_entity_command command;
+        if (!entity_field_value(payload, "entity", command.entity))
+        {
+            error = "Duplicate command requires entity";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "entity.reparent")
+    {
+        host_reparent_entity_command command;
+        if (!entity_field_value(payload, "entity", command.entity))
+        {
+            error = "Reparent command requires entity";
+            return false;
+        }
+        entity_field_value(payload, "parent", command.parent);
+        entity_field_value(payload, "beforeSibling", command.before_sibling);
+        bool_value(payload, "preserveWorld", command.preserve_world);
+        envelope.payload = command;
+    }
+    else if (type == "entity.reorder")
+    {
+        host_reorder_entity_command command;
+        if (!entity_field_value(payload, "entity", command.entity))
+        {
+            error = "Reorder command requires entity";
+            return false;
+        }
+        entity_field_value(payload, "beforeSibling", command.before_sibling);
+        envelope.payload = command;
     }
     else if (type == "entity.rename")
     {
@@ -1176,6 +1351,65 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         envelope.payload = command;
+    }
+    else if (type == "terrain.update")
+    {
+        host_set_terrain_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !bool_value(payload, "enabled", command.enabled) ||
+            !bool_value(payload, "receiveShadows", command.receive_shadows))
+        {
+            error = "Terrain update requires entity, enabled, and receiveShadows";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "terrain.setBrush")
+    {
+        static constexpr std::pair<std::string_view, host_terrain_brush_tool> tools[]{
+            { "sculpt", host_terrain_brush_tool::sculpt }, { "smooth", host_terrain_brush_tool::smooth },
+            { "flatten", host_terrain_brush_tool::flatten }, { "paint", host_terrain_brush_tool::paint } };
+        host_set_terrain_brush_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !number_value(payload, "radius", command.radius) ||
+            !number_value(payload, "strength", command.strength) ||
+            !number_value(payload, "falloff", command.falloff) ||
+            !number_value(payload, "activeLayer", command.active_layer))
+        {
+            error = "Terrain brush requires entity and complete brush settings";
+            return false;
+        }
+        parse_enum(payload, "tool", tools, std::size(tools), command.tool);
+        envelope.payload = command;
+    }
+    else if (type == "terrain.stroke")
+    {
+        host_terrain_stroke_command command;
+        std::string phase;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !number_value(payload, "x", command.x) || !number_value(payload, "y", command.y) ||
+            !string_value(payload, "phase", phase))
+        {
+            error = "Terrain stroke requires entity, viewport coordinates, and phase";
+            return false;
+        }
+        command.phase = phase == "update" ? host_edit_phase::update : phase == "commit" ? host_edit_phase::commit :
+            phase == "cancel" ? host_edit_phase::cancel : host_edit_phase::begin;
+        bool_value(payload, "invert", command.invert);
+        envelope.payload = command;
+    }
+    else if (type == "terrain.assignLayer")
+    {
+        host_set_terrain_layer_command command;
+        std::string path;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !number_value(payload, "layer", command.layer) || !string_value(payload, "path", path))
+        {
+            error = "Terrain layer assignment requires entity, layer, and path";
+            return false;
+        }
+        command.path = std::move(path);
+        envelope.payload = std::move(command);
     }
     else if (type == "entity.setMaterial")
     {
@@ -1311,12 +1545,53 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "focusSelected", command.focus_selected);
         envelope.payload = command;
     }
+    else if (type == "history.undo")
+        envelope.payload = host_history_undo_command{};
+    else if (type == "history.redo")
+        envelope.payload = host_history_redo_command{};
+    else if (type == "viewport.setTool")
+    {
+        static constexpr std::pair<std::string_view, host_viewport_tool> tools[]{
+            { "select", host_viewport_tool::select }, { "translate", host_viewport_tool::translate },
+            { "rotate", host_viewport_tool::rotate }, { "scale", host_viewport_tool::scale },
+            { "terrain", host_viewport_tool::terrain } };
+        static constexpr std::pair<std::string_view, host_coordinate_space> spaces[]{
+            { "world", host_coordinate_space::world }, { "local", host_coordinate_space::local } };
+        host_viewport_set_tool_command command;
+        parse_enum(payload, "tool", tools, std::size(tools), command.tool);
+        parse_enum(payload, "coordinateSpace", spaces, std::size(spaces), command.coordinate_space);
+        bool_value(payload, "snapping", command.snapping);
+        number_value(payload, "translationSnap", command.translation_snap);
+        number_value(payload, "rotationSnapDegrees", command.rotation_snap_degrees);
+        number_value(payload, "scaleSnap", command.scale_snap);
+        envelope.payload = command;
+    }
+    else if (type == "viewport.pick")
+    {
+        host_viewport_pick_command command;
+        number_value(payload, "x", command.x);
+        number_value(payload, "y", command.y);
+        envelope.payload = command;
+    }
     else
     {
         error = "Unsupported host command type: " + type;
         return false;
     }
 
+    std::string_view edit;
+    if (object_value(json, "edit", edit))
+    {
+        host_edit_transaction transaction;
+        number_value(edit, "id", transaction.id);
+        string_value(edit, "label", transaction.label);
+        std::string phase;
+        string_value(edit, "phase", phase);
+        transaction.phase = phase == "begin" ? host_edit_phase::begin : phase == "update" ? host_edit_phase::update :
+            phase == "commit" ? host_edit_phase::commit : phase == "cancel" ? host_edit_phase::cancel : host_edit_phase::none;
+        if (transaction.id != 0 && transaction.phase != host_edit_phase::none)
+            envelope.edit = std::move(transaction);
+    }
     envelope.command_type = std::move(type);
     return true;
 }
@@ -1360,12 +1635,25 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
         }
         envelope.payload = host_world_environment_query{ .entity = entity };
     }
+    else if (type == "history.state")
+        envelope.payload = host_history_state_query{};
     else
     {
         error = "Unsupported host query type: " + type;
         return false;
     }
     envelope.query_type = std::move(type);
+    return true;
+}
+
+bool from_json(std::string_view json, host_world_environment_snapshot& environment, std::string& error)
+{
+    if (!parse_world_environment(json, environment, false))
+    {
+        error = "invalid world environment snapshot";
+        return false;
+    }
+    error.clear();
     return true;
 }
 

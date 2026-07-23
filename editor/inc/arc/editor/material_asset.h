@@ -2,6 +2,7 @@
 
 #include <arc/render/material.h>
 
+#include <array>
 #include <filesystem>
 #include <string>
 
@@ -18,15 +19,27 @@ struct material_texture_paths
     std::string height;
 };
 
+struct terrain_layer_texture_paths
+{
+    std::string base_color;
+    std::string normal;
+    std::string roughness;
+    std::string ao;
+    std::string height;
+    // Optional prepacked override: R=AO, G=roughness, B=height.
+    std::string packed_aorh;
+};
+
 struct material_asset
 {
-    int version{ 1 };
+    int version{ 2 };
     std::filesystem::path path;
     std::string name{ "New Material" };
     std::string shader{ "arc/default_phong" };
     std::string domain{ "surface" };
     render::material_desc material;
     material_texture_paths textures;
+    std::array<terrain_layer_texture_paths, 4> terrain_layers;
     bool graph_reserved{};
 };
 

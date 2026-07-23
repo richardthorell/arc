@@ -1,5 +1,7 @@
 #include <arc/editor/arc_host.h>
 #include <arc/editor/editor_defaults.h>
+#include <arc/editor/editor_gizmo.h>
+#include <arc/editor/editor_state.h>
 #include <arc/render/render.h>
 
 #if defined(_WIN32) && defined(ARC_EDITOR_HOST_ENABLE_VULKAN_RENDER)
@@ -17,6 +19,7 @@
 #include <atomic>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -111,7 +114,7 @@ public:
         case WM_LBUTTONUP:
         case WM_RBUTTONUP:
         case WM_MBUTTONUP:
-            end_drag(window);
+            end_drag(window, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
             return 0;
         case WM_MOUSEMOVE:
             update_drag(GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
@@ -122,7 +125,27 @@ public:
             });
             return 0;
         case WM_CAPTURECHANGED:
+            if (manipulating_)
+                cancel_manipulation();
+            if (terrain_stroking_)
+                finish_terrain_stroke(false, drag_x_, drag_y_);
             dragging_ = false;
+            drag_button_ = drag_button::none;
+            selection_candidate_ = false;
+            camera_drag_started_ = false;
+            return 0;
+        case WM_KEYDOWN:
+            if (wparam == VK_ESCAPE && manipulating_)
+            {
+                cancel_manipulation();
+                return 0;
+            }
+            if (wparam == VK_ESCAPE && terrain_stroking_)
+            {
+                finish_terrain_stroke(false, drag_x_, drag_y_);
+                return 0;
+            }
+            handle_key(wparam);
             return 0;
         case WM_CLOSE:
             running_ = false;
@@ -252,18 +275,35 @@ private:
     void begin_drag(HWND window, UINT message, int x, int y)
     {
         dragging_ = true;
+        drag_start_x_ = x;
+        drag_start_y_ = y;
         drag_x_ = x;
         drag_y_ = y;
+        drag_distance_ = 0;
+        camera_drag_started_ = false;
         drag_button_ = message == WM_MBUTTONDOWN
             ? drag_button::middle
             : message == WM_RBUTTONDOWN ? drag_button::right : drag_button::left;
+        const bool alt = (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        selection_candidate_ = drag_button_ == drag_button::left && !alt;
+        if (drag_button_ == drag_button::left && !alt)
+        {
+            if (!begin_terrain_stroke(x, y))
+                begin_manipulation(x, y);
+            else
+                selection_candidate_ = false;
+        }
         SetCapture(window);
+        SetFocus(window);
     }
 
     void update_drag(int x, int y)
     {
         if (!dragging_)
+        {
+            update_gizmo_hover(x, y);
             return;
+        }
 
         const int delta_x = x - drag_x_;
         const int delta_y = y - drag_y_;
@@ -271,34 +311,377 @@ private:
         drag_y_ = y;
         if (delta_x == 0 && delta_y == 0)
             return;
+        drag_distance_ += std::abs(delta_x) + std::abs(delta_y);
+        if (drag_distance_ > arc::editor::defaults::viewport_click_movement_threshold)
+            selection_candidate_ = false;
+
+        if (manipulating_)
+        {
+            update_manipulation(x, y);
+            return;
+        }
+        if (terrain_stroking_)
+        {
+            update_terrain_stroke(x, y);
+            return;
+        }
 
         const bool shift = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
         const bool alt = (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
 
         arc::editor::host_viewport_camera_input_command input;
-        if (alt)
+        if (alt && drag_button_ == drag_button::left)
         {
-            input.forward = static_cast<float>(delta_y);
+            input.orbit_x = static_cast<float>(delta_x);
+            input.orbit_y = static_cast<float>(delta_y);
         }
         else if (shift || drag_button_ == drag_button::middle)
         {
             input.pan_x = static_cast<float>(delta_x);
             input.pan_y = static_cast<float>(delta_y);
         }
-        else
+        else if (drag_button_ == drag_button::right)
         {
             input.orbit_x = static_cast<float>(delta_x);
             input.orbit_y = static_cast<float>(delta_y);
         }
-        send_camera_input(input);
+        else if (drag_button_ == drag_button::left &&
+            drag_distance_ > arc::editor::defaults::viewport_click_movement_threshold)
+        {
+            // An unmodified left press remains a selection candidate until it
+            // crosses the click threshold. At that point navigation owns the
+            // gesture and receives the complete movement since mouse-down.
+            input.orbit_x = static_cast<float>(camera_drag_started_ ? delta_x : x - drag_start_x_);
+            input.orbit_y = static_cast<float>(camera_drag_started_ ? delta_y : y - drag_start_y_);
+            camera_drag_started_ = true;
+        }
+        if (input.orbit_x != 0.0f || input.orbit_y != 0.0f || input.pan_x != 0.0f || input.pan_y != 0.0f)
+            send_camera_input(input);
     }
 
-    void end_drag(HWND window)
+    void end_drag(HWND window, int x, int y)
     {
+        const auto completed_button = drag_button_;
         dragging_ = false;
         drag_button_ = drag_button::none;
+        if (manipulating_)
+        {
+            finish_manipulation(drag_distance_ > arc::editor::defaults::viewport_click_movement_threshold);
+            if (GetCapture() == window) ReleaseCapture();
+            selection_candidate_ = false;
+            camera_drag_started_ = false;
+            return;
+        }
+        if (terrain_stroking_)
+        {
+            finish_terrain_stroke(true, x, y);
+            if (GetCapture() == window) ReleaseCapture();
+            selection_candidate_ = false;
+            camera_drag_started_ = false;
+            return;
+        }
         if (GetCapture() == window)
             ReleaseCapture();
+        if (completed_button == drag_button::left && selection_candidate_)
+            send_pick(std::max(0, x), std::max(0, y));
+        selection_candidate_ = false;
+        camera_drag_started_ = false;
+    }
+
+    void send_pick(int x, int y)
+    {
+        std::lock_guard lock(host_mutex_);
+        host_->execute(arc::editor::host_viewport_pick_command{
+            .x = static_cast<std::uint32_t>(x), .y = static_cast<std::uint32_t>(y) });
+    }
+
+    static arc::editor::editor_tool editor_tool_for(arc::editor::host_viewport_tool tool) noexcept
+    {
+        switch (tool)
+        {
+        case arc::editor::host_viewport_tool::translate: return arc::editor::editor_tool::translate;
+        case arc::editor::host_viewport_tool::rotate: return arc::editor::editor_tool::rotate;
+        case arc::editor::host_viewport_tool::scale: return arc::editor::editor_tool::scale;
+        case arc::editor::host_viewport_tool::select: return arc::editor::editor_tool::select;
+        case arc::editor::host_viewport_tool::terrain: return arc::editor::editor_tool::select;
+        }
+        return arc::editor::editor_tool::select;
+    }
+
+    bool begin_terrain_stroke(int x, int y)
+    {
+        std::lock_guard lock(host_mutex_);
+        if (host_->viewport_tool_state().tool != arc::editor::host_viewport_tool::terrain)
+            return false;
+        const auto snapshot = host_->selected_entity_snapshot();
+        if (!snapshot.entity.valid() || !snapshot.terrain)
+            return false;
+        terrain_stroking_ = true;
+        terrain_entity_ = snapshot.entity;
+        terrain_transaction_ = ++next_manipulation_transaction_;
+        terrain_last_preview_frame_ = frame_index_;
+        const bool invert = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        host_->execute(arc::editor::host_command_envelope{
+            .command_type = "terrain.stroke",
+            .payload = arc::editor::host_terrain_stroke_command{
+                terrain_entity_, static_cast<std::uint32_t>(std::max(0, x)), static_cast<std::uint32_t>(std::max(0, y)),
+                arc::editor::host_edit_phase::begin, invert },
+            .edit = arc::editor::host_edit_transaction{
+                terrain_transaction_, arc::editor::host_edit_phase::begin, "Terrain Stroke" }
+        });
+        return true;
+    }
+
+    void update_terrain_stroke(int x, int y)
+    {
+        if (terrain_last_preview_frame_ == frame_index_)
+            return;
+        terrain_last_preview_frame_ = frame_index_;
+        std::lock_guard lock(host_mutex_);
+        const bool invert = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        host_->execute(arc::editor::host_command_envelope{
+            .command_type = "terrain.stroke",
+            .payload = arc::editor::host_terrain_stroke_command{
+                terrain_entity_, static_cast<std::uint32_t>(std::max(0, x)), static_cast<std::uint32_t>(std::max(0, y)),
+                arc::editor::host_edit_phase::update, invert },
+            .edit = arc::editor::host_edit_transaction{
+                terrain_transaction_, arc::editor::host_edit_phase::update, "Terrain Stroke" }
+        });
+    }
+
+    void finish_terrain_stroke(bool commit, int x, int y)
+    {
+        const auto phase = commit ? arc::editor::host_edit_phase::commit : arc::editor::host_edit_phase::cancel;
+        std::lock_guard lock(host_mutex_);
+        host_->execute(arc::editor::host_command_envelope{
+            .command_type = "terrain.stroke",
+            .payload = arc::editor::host_terrain_stroke_command{
+                terrain_entity_, static_cast<std::uint32_t>(std::max(0, x)), static_cast<std::uint32_t>(std::max(0, y)), phase, false },
+            .edit = arc::editor::host_edit_transaction{ terrain_transaction_, phase, "Terrain Stroke" }
+        });
+        terrain_stroking_ = false;
+        terrain_entity_ = {};
+    }
+
+    arc::editor::editor_gizmo_context gizmo_context() const
+    {
+        const auto& tool = host_->viewport_tool_state();
+        std::lock_guard bounds_lock(bounds_mutex_);
+        return {
+            .tool = editor_tool_for(tool.tool),
+            .coordinate_space = tool.coordinate_space == arc::editor::host_coordinate_space::local
+                ? arc::editor::gizmo_coordinate_space::local : arc::editor::gizmo_coordinate_space::world,
+            .highlighted_axis = active_axis_,
+            .viewport_width = width_,
+            .viewport_height = height_
+        };
+    }
+
+    void update_gizmo_hover(int x, int y)
+    {
+        std::lock_guard lock(host_mutex_);
+        const auto& state = host_->scene_state();
+        const auto axis = arc::editor::hit_test_editor_gizmo(state.scene, state.selected_entity, state.camera_entity,
+            gizmo_context(), static_cast<float>(x), static_cast<float>(y));
+        active_axis_ = axis;
+        host_->set_viewport_gizmo_highlight(axis);
+    }
+
+    void begin_manipulation(int x, int y)
+    {
+        std::lock_guard lock(host_mutex_);
+        const auto& state = host_->scene_state();
+        const auto axis = arc::editor::hit_test_editor_gizmo(state.scene, state.selected_entity, state.camera_entity,
+            gizmo_context(), static_cast<float>(x), static_cast<float>(y));
+        if (axis == arc::editor::gizmo_axis::none) return;
+        const auto snapshot = host_->selected_entity_snapshot();
+        if (!snapshot.entity.valid() || !snapshot.transform) return;
+        manipulating_ = true;
+        active_axis_ = axis;
+        manipulation_entity_ = snapshot.entity;
+        manipulation_original_ = *snapshot.transform;
+        manipulation_current_ = *snapshot.transform;
+        manipulation_start_x_ = x;
+        manipulation_start_y_ = y;
+        manipulation_transaction_ = ++next_manipulation_transaction_;
+        manipulation_local_axis_ = {};
+        manipulation_local_axis_[static_cast<std::size_t>(axis) - 1u] = 1.0f;
+        manipulation_rotation_axis_ = manipulation_local_axis_;
+        manipulation_world_units_per_pixel_ = 0.02f;
+        const auto selected_entity = arc::scene::entity{ snapshot.entity.index, snapshot.entity.generation };
+        const auto* selected_transform = state.scene.try_get<arc::scene::transform_component>(selected_entity);
+        const auto* camera = state.scene.try_get<arc::scene::camera_component>(state.camera_entity);
+        const auto* camera_transform = state.scene.try_get<arc::scene::transform_component>(state.camera_entity);
+        if (selected_transform && camera && camera_transform)
+        {
+            const std::size_t axis_index = static_cast<std::size_t>(axis) - 1u;
+            arc::math::vector3f world_axis{};
+            world_axis[axis_index] = 1.0f;
+            if (gizmo_context().coordinate_space == arc::editor::gizmo_coordinate_space::local)
+                world_axis = arc::math::normalize(arc::math::vector3f{
+                    selected_transform->world(0, axis_index), selected_transform->world(1, axis_index), selected_transform->world(2, axis_index) });
+            manipulation_local_axis_ = world_axis;
+            manipulation_rotation_axis_ = world_axis;
+            auto parent = state.scene.try_get<arc::scene::hierarchy_component>(selected_entity)
+                ? state.scene.get<arc::scene::hierarchy_component>(selected_entity).parent : arc::scene::entity{};
+            while (state.scene.alive(parent) && !state.scene.has<arc::scene::transform_component>(parent))
+            {
+                const auto* hierarchy = state.scene.try_get<arc::scene::hierarchy_component>(parent);
+                parent = hierarchy ? hierarchy->parent : arc::scene::entity{};
+            }
+            if (const auto* parent_transform = state.scene.try_get<arc::scene::transform_component>(parent))
+            {
+                arc::math::matrix4f inverse_parent;
+                if (arc::scene::inverse_affine(parent_transform->world, inverse_parent))
+                {
+                    manipulation_local_axis_ = arc::math::transform_vector(inverse_parent, world_axis);
+                    manipulation_rotation_axis_ = arc::math::normalize(manipulation_local_axis_);
+                }
+            }
+            manipulation_world_units_per_pixel_ = arc::editor::editor_gizmo_world_scale(*camera, *camera_transform,
+                arc::scene::world_position(*selected_transform), height_) / arc::editor::editor_gizmo_pixel_length;
+            manipulation_rotation_is_local_ = gizmo_context().coordinate_space == arc::editor::gizmo_coordinate_space::local;
+        }
+        host_->set_viewport_gizmo_highlight(axis);
+        host_->execute(arc::editor::host_command_envelope{
+            .command_type = "entity.setTransform",
+            .payload = arc::editor::host_set_transform_command{ manipulation_entity_, manipulation_original_ },
+            .edit = arc::editor::host_edit_transaction{ manipulation_transaction_, arc::editor::host_edit_phase::begin, "Gizmo Transform" }
+        });
+    }
+
+    static float snapped(float value, float interval) noexcept
+    {
+        return interval > 0.0f ? std::round(value / interval) * interval : value;
+    }
+
+    static float axis_value(const arc::editor::host_vec3& value, std::size_t axis) noexcept
+    {
+        return axis == 0 ? value.x : axis == 1 ? value.y : value.z;
+    }
+
+    static void set_axis_value(arc::editor::host_vec3& value, std::size_t axis, float next) noexcept
+    {
+        if (axis == 0) value.x = next;
+        else if (axis == 1) value.y = next;
+        else value.z = next;
+    }
+
+    static arc::math::quatf multiply_rotation(const arc::math::quatf& lhs, const arc::math::quatf& rhs) noexcept
+    {
+        return arc::math::normalize(arc::math::quatf{
+            lhs[3] * rhs[0] + lhs[0] * rhs[3] + lhs[1] * rhs[2] - lhs[2] * rhs[1],
+            lhs[3] * rhs[1] - lhs[0] * rhs[2] + lhs[1] * rhs[3] + lhs[2] * rhs[0],
+            lhs[3] * rhs[2] + lhs[0] * rhs[1] - lhs[1] * rhs[0] + lhs[2] * rhs[3],
+            lhs[3] * rhs[3] - lhs[0] * rhs[0] - lhs[1] * rhs[1] - lhs[2] * rhs[2] });
+    }
+
+    void update_manipulation(int x, int y)
+    {
+        std::lock_guard lock(host_mutex_);
+        const auto& tool = host_->viewport_tool_state();
+        const float pixel_delta = active_axis_ == arc::editor::gizmo_axis::y
+            ? static_cast<float>(manipulation_start_y_ - y)
+            : active_axis_ == arc::editor::gizmo_axis::z
+                ? static_cast<float>((x - manipulation_start_x_) + (manipulation_start_y_ - y)) * 0.5f
+                : static_cast<float>(x - manipulation_start_x_);
+        const std::size_t axis = static_cast<std::size_t>(active_axis_) - 1u;
+        manipulation_current_ = manipulation_original_;
+        if (tool.tool == arc::editor::host_viewport_tool::translate)
+        {
+            float delta = pixel_delta * manipulation_world_units_per_pixel_;
+            if (tool.snapping) delta = snapped(delta, tool.translation_snap);
+            manipulation_current_.position.x = manipulation_original_.position.x + manipulation_local_axis_[0] * delta;
+            manipulation_current_.position.y = manipulation_original_.position.y + manipulation_local_axis_[1] * delta;
+            manipulation_current_.position.z = manipulation_original_.position.z + manipulation_local_axis_[2] * delta;
+        }
+        else if (tool.tool == arc::editor::host_viewport_tool::scale)
+        {
+            float value = std::max(0.001f, axis_value(manipulation_original_.scale, axis) * std::exp(pixel_delta * 0.01f));
+            if (tool.snapping) value = std::max(0.001f, snapped(value, tool.scale_snap));
+            set_axis_value(manipulation_current_.scale, axis, value);
+        }
+        else if (tool.tool == arc::editor::host_viewport_tool::rotate)
+        {
+            float degrees = pixel_delta * 0.35f;
+            if (tool.snapping) degrees = snapped(degrees, tool.rotation_snap_degrees);
+            arc::math::vector3f local_axis{};
+            local_axis[axis] = 1.0f;
+            const auto delta = arc::math::from_axis_angle(
+                manipulation_rotation_is_local_ ? local_axis : manipulation_rotation_axis_, arc::math::to_radians(degrees));
+            const arc::math::quatf original{ manipulation_original_.rotation.x, manipulation_original_.rotation.y,
+                manipulation_original_.rotation.z, manipulation_original_.rotation.w };
+            const auto result = manipulation_rotation_is_local_
+                ? multiply_rotation(original, delta) : multiply_rotation(delta, original);
+            manipulation_current_.rotation = { result[0], result[1], result[2], result[3] };
+        }
+        host_->execute(arc::editor::host_command_envelope{
+            .command_type = "entity.setTransform",
+            .payload = arc::editor::host_set_transform_command{ manipulation_entity_, manipulation_current_ },
+            .edit = arc::editor::host_edit_transaction{ manipulation_transaction_, arc::editor::host_edit_phase::update, "Gizmo Transform" }
+        });
+    }
+
+    void finish_manipulation(bool commit)
+    {
+        const auto phase = commit ? arc::editor::host_edit_phase::commit : arc::editor::host_edit_phase::cancel;
+        {
+            std::lock_guard lock(host_mutex_);
+            host_->execute(arc::editor::host_command_envelope{
+                .command_type = "entity.setTransform",
+                .payload = arc::editor::host_set_transform_command{ manipulation_entity_, manipulation_current_ },
+                .edit = arc::editor::host_edit_transaction{ manipulation_transaction_, phase, "Gizmo Transform" }
+            });
+            host_->set_viewport_gizmo_highlight(arc::editor::gizmo_axis::none);
+        }
+        manipulating_ = false;
+        active_axis_ = arc::editor::gizmo_axis::none;
+    }
+
+    void cancel_manipulation()
+    {
+        finish_manipulation(false);
+    }
+
+    void handle_key(WPARAM key)
+    {
+        if (key == 'F')
+            return send_camera_input(arc::editor::host_viewport_camera_input_command{ .focus_selected = true });
+        if (key == VK_DELETE || ((GetKeyState(VK_CONTROL) & 0x8000) && key == 'D'))
+        {
+            std::lock_guard lock(host_mutex_);
+            const auto selected = host_->selected_entity_snapshot().entity;
+            if (!selected.valid()) return;
+            if (key == VK_DELETE) host_->execute(arc::editor::host_delete_entity_command{ selected });
+            else host_->execute(arc::editor::host_duplicate_entity_command{ selected });
+            return;
+        }
+        if (key == VK_OEM_4 || key == VK_OEM_6)
+        {
+            std::lock_guard lock(host_mutex_);
+            const auto snapshot = host_->selected_entity_snapshot();
+            if (!snapshot.entity.valid() || !snapshot.terrain) return;
+            const float multiplier = key == VK_OEM_4 ? 0.8f : 1.25f;
+            const auto& terrain = *snapshot.terrain;
+            host_->execute(arc::editor::host_set_terrain_brush_command{
+                snapshot.entity,
+                terrain.brush_tool,
+                std::clamp(terrain.brush_radius * multiplier, 0.25f, 128.0f),
+                terrain.brush_strength,
+                terrain.brush_falloff,
+                terrain.active_layer });
+            return;
+        }
+        arc::editor::host_viewport_tool tool;
+        if (key == 'Q') tool = arc::editor::host_viewport_tool::select;
+        else if (key == 'W') tool = arc::editor::host_viewport_tool::translate;
+        else if (key == 'E') tool = arc::editor::host_viewport_tool::rotate;
+        else if (key == 'R') tool = arc::editor::host_viewport_tool::scale;
+        else return;
+        std::lock_guard lock(host_mutex_);
+        auto command = host_->viewport_tool_state();
+        command.tool = tool;
+        host_->execute(command);
     }
 
     void send_camera_input(const arc::editor::host_viewport_camera_input_command& input)
@@ -372,7 +755,7 @@ private:
     std::mutex& host_mutex_;
     std::thread render_thread_;
     std::atomic<bool> running_{};
-    std::mutex bounds_mutex_;
+    mutable std::mutex bounds_mutex_;
     HWND parent_{};
     HWND window_{};
     arc::render::vulkan::vulkan_backend* backend_{};
@@ -386,6 +769,28 @@ private:
     drag_button drag_button_{ drag_button::none };
     int drag_x_{};
     int drag_y_{};
+    int drag_start_x_{};
+    int drag_start_y_{};
+    int drag_distance_{};
+    bool selection_candidate_{};
+    bool camera_drag_started_{};
+    bool manipulating_{};
+    bool terrain_stroking_{};
+    arc::editor::host_entity_id terrain_entity_{};
+    std::uint64_t terrain_transaction_{};
+    std::uint64_t terrain_last_preview_frame_{};
+    arc::editor::gizmo_axis active_axis_{ arc::editor::gizmo_axis::none };
+    arc::editor::host_entity_id manipulation_entity_{};
+    arc::editor::host_transform manipulation_original_{};
+    arc::editor::host_transform manipulation_current_{};
+    int manipulation_start_x_{};
+    int manipulation_start_y_{};
+    std::uint64_t manipulation_transaction_{};
+    std::uint64_t next_manipulation_transaction_{};
+    arc::math::vector3f manipulation_local_axis_{ 1.0f, 0.0f, 0.0f };
+    arc::math::vector3f manipulation_rotation_axis_{ 1.0f, 0.0f, 0.0f };
+    float manipulation_world_units_per_pixel_{ 0.02f };
+    bool manipulation_rotation_is_local_{};
 };
 
 LRESULT CALLBACK native_viewport_wnd_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
@@ -433,7 +838,31 @@ int main()
 {
     auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
     std::mutex host_mutex;
+    std::mutex output_mutex;
     native_viewport_controller native_viewport(host, host_mutex);
+    const auto write_response = [&](const arc::editor::host_response& response) {
+        std::lock_guard output_lock(output_mutex);
+        std::cout << arc::editor::to_json(response) << '\n';
+        std::cout.flush();
+    };
+    std::jthread event_pump([&](std::stop_token stop) {
+        while (!stop.stop_requested())
+        {
+            std::vector<arc::editor::host_event> events;
+            {
+                std::lock_guard host_lock(host_mutex);
+                events = host->poll_events();
+            }
+            if (!events.empty())
+            {
+                std::lock_guard output_lock(output_mutex);
+                for (const auto& event : events)
+                    std::cout << arc::editor::to_json(event) << '\n';
+                std::cout.flush();
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+    });
 
     std::string line;
     while (std::getline(std::cin, line))
@@ -448,17 +877,18 @@ int main()
             if (!arc::editor::from_json(line, query, error))
             {
                 std::cerr << "arc_host_process query parse error: " << error << '\n';
-                std::cout << arc::editor::to_json(arc::editor::host_response{
+                write_response(arc::editor::host_response{
                     .request_id = query.request_id,
                     .succeeded = false,
-                    .error = error }) << '\n';
-                std::cout.flush();
+                    .error = error });
                 continue;
             }
+            arc::editor::host_response response;
             {
                 std::lock_guard lock(host_mutex);
-                std::cout << arc::editor::to_json(host->query(query)) << '\n';
+                response = host->query(query);
             }
+            write_response(response);
         }
         else
         {
@@ -466,11 +896,10 @@ int main()
             if (!arc::editor::from_json(line, command, error))
             {
                 std::cerr << "arc_host_process command parse error: " << error << '\n';
-                std::cout << arc::editor::to_json(arc::editor::host_response{
+                write_response(arc::editor::host_response{
                     .request_id = command.request_id,
                     .succeeded = false,
-                    .error = error }) << '\n';
-                std::cout.flush();
+                    .error = error });
                 continue;
             }
             arc::editor::host_response response;
@@ -478,7 +907,7 @@ int main()
                 std::lock_guard lock(host_mutex);
                 response = host->execute(command);
             }
-            std::cout << arc::editor::to_json(response) << '\n';
+            write_response(response);
 
             if (response.succeeded)
             {
@@ -489,16 +918,9 @@ int main()
             }
         }
 
-        std::vector<arc::editor::host_event> events;
-        {
-            std::lock_guard lock(host_mutex);
-            events = host->poll_events();
-        }
-        for (const auto& event : events)
-            std::cout << arc::editor::to_json(event) << '\n';
-        std::cout.flush();
     }
 
+    event_pump.request_stop();
     native_viewport.stop();
     return 0;
 }

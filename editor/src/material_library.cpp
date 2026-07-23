@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 
 namespace arc::editor
 {
@@ -50,12 +52,106 @@ render::texture_handle ensure_texture(
     return handle;
 }
 
+render::texture_handle ensure_packed_terrain_surface(
+    editor_material_library& library,
+    render::renderer& renderer,
+    const std::filesystem::path& asset_root,
+    const material_asset& asset,
+    std::size_t layer_index)
+{
+    const auto& paths = asset.terrain_layers[layer_index];
+    if (!paths.packed_aorh.empty())
+        return ensure_texture(library, renderer, resolve_material_texture_path(asset_root, paths.packed_aorh));
+
+    auto cache_key = canonical_key(asset.path);
+    cache_key += ".terrain-aorh-" + std::to_string(layer_index);
+    for (const auto& [texture_path, handle] : library.textures)
+    {
+        if (texture_path == cache_key)
+            return handle;
+    }
+
+    const auto load_channel = [&](const std::string& relative_path, std::string_view channel)
+        -> std::optional<render::texture_data> {
+        if (relative_path.empty())
+            return std::nullopt;
+        const auto path = resolve_material_texture_path(asset_root, relative_path);
+        auto loaded = render::load_texture_asset(path);
+        if (!loaded.succeeded() || !loaded.texture.has_pixels())
+        {
+            arc::warn("editor.materials", "Terrain " + std::string(channel) +
+                " map could not be packed: " + path.generic_string());
+            return std::nullopt;
+        }
+        return std::move(loaded.texture);
+    };
+
+    auto ao = load_channel(paths.ao, "AO");
+    auto roughness = load_channel(paths.roughness, "roughness");
+    auto height = load_channel(paths.height, "height");
+    const render::texture_data* reference = ao ? &*ao : roughness ? &*roughness : height ? &*height : nullptr;
+    if (reference == nullptr)
+        return {};
+
+    const auto pixel_count = static_cast<std::size_t>(reference->width) * reference->height;
+    const auto channel_usable = [&](const std::optional<render::texture_data>& source) {
+        return source && source->width == reference->width && source->height == reference->height &&
+            source->pixels.size() >= pixel_count * 4u;
+    };
+    if ((ao && !channel_usable(ao)) || (roughness && !channel_usable(roughness)) || (height && !channel_usable(height)))
+        arc::warn("editor.materials", "Terrain AORH source dimensions differ; mismatched channels use explicit defaults");
+
+    render::texture_data packed;
+    packed.name = asset.name + " " + asset.material.terrain_layers[layer_index].name + " AORH";
+    packed.source_path = cache_key;
+    packed.width = reference->width;
+    packed.height = reference->height;
+    packed.format = render::texture_format::rgba8_unorm;
+    packed.pixels.resize(pixel_count * 4u);
+    const auto channel_value = [&](const std::optional<render::texture_data>& source,
+                                   std::size_t pixel, std::uint8_t fallback) {
+        return channel_usable(source)
+            ? std::to_integer<std::uint8_t>(source->pixels[pixel * 4u])
+            : fallback;
+    };
+    const auto roughness_fallback = static_cast<std::uint8_t>(std::clamp(
+        asset.material.terrain_layers[layer_index].roughness, 0.0f, 1.0f) * 255.0f + 0.5f);
+    for (std::size_t pixel = 0; pixel < pixel_count; ++pixel)
+    {
+        packed.pixels[pixel * 4u + 0u] = std::byte{ channel_value(ao, pixel, 255u) };
+        packed.pixels[pixel * 4u + 1u] = std::byte{ channel_value(roughness, pixel, roughness_fallback) };
+        packed.pixels[pixel * 4u + 2u] = std::byte{ channel_value(height, pixel, 128u) };
+        packed.pixels[pixel * 4u + 3u] = std::byte{ 255u };
+    }
+
+    const auto handle = renderer.create_texture(std::move(packed));
+    if (handle.valid())
+        library.textures.push_back({ std::move(cache_key), handle });
+    return handle;
+}
+
 void resolve_texture_handles(
     editor_material_library& library,
     render::renderer& renderer,
     const std::filesystem::path& asset_root,
     material_asset& asset)
 {
+    if (asset.material.domain == render::material_domain::terrain)
+    {
+        for (std::size_t layer_index = 0; layer_index < asset.terrain_layers.size(); ++layer_index)
+        {
+            const auto& paths = asset.terrain_layers[layer_index];
+            auto& layer = asset.material.terrain_layers[layer_index];
+            layer.base_color_texture = ensure_texture(
+                library, renderer, resolve_material_texture_path(asset_root, paths.base_color));
+            layer.normal_texture = ensure_texture(
+                library, renderer, resolve_material_texture_path(asset_root, paths.normal));
+            layer.packed_surface_texture = ensure_packed_terrain_surface(
+                library, renderer, asset_root, asset, layer_index);
+        }
+        return;
+    }
+
     asset.material.base_color_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.base_color));
     asset.material.metallic_roughness_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.metallic_roughness));
     asset.material.normal_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.normal));
