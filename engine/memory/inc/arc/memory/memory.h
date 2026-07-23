@@ -177,6 +177,22 @@ enum class memory_pressure_level : std::uint8_t
 
 using memory_pressure_handler = std::function<void(memory_pressure_level, memory_domain, std::size_t)>;
 
+enum class allocation_error : std::uint8_t
+{
+    none,
+    invalid_request,
+    budget_exceeded,
+    upstream_failure
+};
+
+struct allocation_result
+{
+    void* pointer{};
+    allocation_error error{ allocation_error::none };
+
+    explicit operator bool() const noexcept { return pointer != nullptr; }
+};
+
 class memory_system
 {
 public:
@@ -189,6 +205,12 @@ public:
     memory_system& operator=(const memory_system&) = delete;
 
     void* try_allocate(
+        std::size_t bytes,
+        std::size_t alignment = alignof(std::max_align_t),
+        memory_domain domain = memory_domain::general,
+        memory_tag tag = {},
+        std::uint64_t world_id = 0) noexcept;
+    allocation_result try_allocate_result(
         std::size_t bytes,
         std::size_t alignment = alignof(std::max_align_t),
         memory_domain domain = memory_domain::general,

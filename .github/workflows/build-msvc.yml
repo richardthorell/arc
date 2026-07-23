@@ -12,8 +12,12 @@ permissions:
 
 jobs:
   build:
-    name: Build - MSVC
+    name: Build - MSVC (coroutines ${{ matrix.job-coroutines }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        job-coroutines: [ON, OFF]
 
     steps:
       - name: Checkout repository
@@ -32,6 +36,7 @@ jobs:
           -DARC_BUILD_EDITOR=OFF
           -DARC_BUILD_RENDER_VULKAN=OFF
           -DARC_BUILD_ENGINE_TESTS=ON
+          -DARC_ENABLE_JOB_COROUTINES=${{ matrix.job-coroutines }}
           -DBUILD_TESTING=ON
 
       - name: Build

@@ -166,6 +166,17 @@ struct memory_system::implementation
             bytes > budgets[index].hard_limit - std::min(budgets[index].hard_limit, domain_outstanding);
     }
 
+    bool over_soft(memory_domain domain, std::size_t bytes) const noexcept
+    {
+        const auto index = domain_index(domain);
+        const auto global_outstanding = outstanding.load(std::memory_order_relaxed);
+        if (global.soft_limit != 0 && bytes > global.soft_limit - std::min(global.soft_limit, global_outstanding))
+            return true;
+        const auto domain_outstanding = stats[index].bytes_outstanding.load(std::memory_order_relaxed);
+        return budgets[index].soft_limit != 0 &&
+            bytes > budgets[index].soft_limit - std::min(budgets[index].soft_limit, domain_outstanding);
+    }
+
     struct atomic_stats
     {
         std::atomic_size_t allocation_count{};
@@ -182,6 +193,7 @@ struct memory_system::implementation
     memory_budget global{};
     std::array<memory_budget, domain_count> budgets{};
     std::array<atomic_stats, domain_count> stats{};
+    std::array<std::atomic_bool, domain_count> soft_pressure_announced{};
     std::atomic_size_t outstanding{};
     std::atomic_size_t pressure_events{};
     mutable std::mutex mutex;
@@ -206,10 +218,20 @@ void* memory_system::try_allocate(
     memory_tag tag,
     std::uint64_t world_id) noexcept
 {
+    return try_allocate_result(bytes, alignment, domain, tag, world_id).pointer;
+}
+
+allocation_result memory_system::try_allocate_result(
+    std::size_t bytes,
+    std::size_t alignment,
+    memory_domain domain,
+    memory_tag tag,
+    std::uint64_t world_id) noexcept
+{
     if (bytes == 0)
         bytes = 1;
     if (!valid_alignment(alignment) || domain == memory_domain::count)
-        return nullptr;
+        return { .error = allocation_error::invalid_request };
     if (tag.id == 0)
         tag = current_memory_tag();
 
@@ -246,7 +268,17 @@ void* memory_system::try_allocate(
     {
         run_pressure_handlers(memory_pressure_level::hard);
         if (implementation_->over_hard(domain, bytes))
-            return nullptr;
+            return { .error = allocation_error::budget_exceeded };
+    }
+    else if (implementation_->over_soft(domain, bytes))
+    {
+        const auto index = domain_index(domain);
+        bool expected = false;
+        if (implementation_->soft_pressure_announced[index].compare_exchange_strong(
+                expected, true, std::memory_order_relaxed))
+        {
+            run_pressure_handlers(memory_pressure_level::soft);
+        }
     }
 
     void* pointer{};
@@ -263,7 +295,7 @@ void* memory_system::try_allocate(
         }
         catch (...)
         {
-            return nullptr;
+            return { .error = allocation_error::upstream_failure };
         }
     }
 
@@ -304,7 +336,7 @@ void* memory_system::try_allocate(
             // Allocation tracking is diagnostic and must never make a successful allocation fail.
         }
     }
-    return pointer;
+    return { .pointer = pointer };
 }
 
 void* memory_system::allocate(
@@ -347,6 +379,11 @@ void memory_system::deallocate(
     stats.bytes_deallocated.fetch_add(bytes, std::memory_order_relaxed);
     stats.bytes_outstanding.fetch_sub(bytes, std::memory_order_relaxed);
     implementation_->outstanding.fetch_sub(bytes, std::memory_order_relaxed);
+    const auto domain_outstanding = stats.bytes_outstanding.load(std::memory_order_relaxed);
+    const auto index = domain_index(domain);
+    const auto domain_budget = implementation_->budgets[index];
+    if (domain_budget.soft_limit == 0 || domain_outstanding < domain_budget.soft_limit)
+        implementation_->soft_pressure_announced[index].store(false, std::memory_order_relaxed);
 }
 
 void memory_system::set_budget(memory_domain domain, memory_budget budget)

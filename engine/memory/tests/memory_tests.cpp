@@ -95,6 +95,54 @@ TEST_CASE("memory hard budgets invoke pressure handlers before rejecting")
         arc::make_memory_tag("too-large")) == nullptr);
     REQUIRE(pressure_count == 1);
     REQUIRE(system.snapshot().pressure_event_count == 1);
+
+    const auto rejected = system.try_allocate_result(
+        128,
+        alignof(std::max_align_t),
+        arc::memory_domain::assets,
+        arc::make_memory_tag("typed-too-large"));
+    REQUIRE_FALSE(rejected);
+    REQUIRE(rejected.error == arc::allocation_error::budget_exceeded);
+}
+
+TEST_CASE("fallible allocations distinguish invalid requests")
+{
+    arc::memory_system system({
+        .physical_memory_override = 1024,
+        .track_live_allocations = false,
+        .capture_call_stacks = false
+    });
+    const auto result = system.try_allocate_result(
+        16,
+        3,
+        arc::memory_domain::general);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error == arc::allocation_error::invalid_request);
+}
+
+TEST_CASE("soft memory pressure is reported once until usage recovers")
+{
+    arc::memory_system system({
+        .physical_memory_override = 4096,
+        .track_live_allocations = false,
+        .capture_call_stacks = false
+    });
+    system.set_budget(arc::memory_domain::streaming, { .soft_limit = 64, .hard_limit = 512 });
+    std::size_t soft_events{};
+    system.add_pressure_handler([&](arc::memory_pressure_level level, arc::memory_domain, std::size_t) {
+        if (level == arc::memory_pressure_level::soft)
+            ++soft_events;
+    });
+
+    void* first = system.allocate(80, 16, arc::memory_domain::streaming);
+    void* second = system.allocate(16, 16, arc::memory_domain::streaming);
+    REQUIRE(soft_events == 1);
+    system.deallocate(second, 16, 16, arc::memory_domain::streaming);
+    system.deallocate(first, 80, 16, arc::memory_domain::streaming);
+
+    void* third = system.allocate(80, 16, arc::memory_domain::streaming);
+    REQUIRE(soft_events == 2);
+    system.deallocate(third, 80, 16, arc::memory_domain::streaming);
 }
 
 TEST_CASE("linear arena growth preserves pointers and supports marks")

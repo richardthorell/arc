@@ -8,8 +8,9 @@ Current modules:
 - `math/` provides the math foundation through the `arc-math` target and `arc::math` alias. It depends on `arc-simd`.
 - `geometric/` provides 2D/3D primitive types through the `arc-geometric` target and `arc::geometric` alias. It depends on `arc-math`.
 - `diagnostics/` provides logging through the `arc-diagnostics` target and `arc::diagnostics` alias.
-- `jobs/` provides shared worker-pool services through the `arc-jobs` target and `arc::jobs` alias. It depends on `arc-diagnostics`.
-- `memory/` provides tracked memory-resource instrumentation through the `arc-memory` target and `arc::memory` alias. It depends on `arc-diagnostics`.
+- `jobs/` provides dependency-aware task scheduling, priorities, cancellation, work stealing, main/render/IO affinity, profiling, futures, and optional C++20 coroutine integration through the `arc-jobs` target and `arc::jobs` alias. It depends on `arc-memory` and `arc-diagnostics`.
+- `memory/` provides domain/tag tracking, adaptive budgets, pressure recovery, leak snapshots, PMR adapters, arenas, world/component storage, packet pools, and streaming heaps through the `arc-memory` target and `arc::memory` alias. It depends on `arc-diagnostics`.
+- `io/` provides backend-neutral asynchronous file reads, ranged reads, writes, atomic writes, metadata queries, and cancellation through the `arc-io` target and `arc::io` alias. Its portable implementation runs chunked blocking operations on scheduler-owned IO workers.
 - `framework/` provides the platform-neutral application lifecycle and runtime module manager through the `arc-framework` target and `arc::framework` alias. It depends on `arc-geometric`, `arc-jobs`, and `arc-memory`.
 - `input/` provides runtime input bindings through the `arc-input` target and `arc::input` alias. It depends on `arc-framework`.
 - `render/` provides the backend-neutral renderer foundation through the `arc-render` target and `arc::render` alias. It depends on `arc-framework`. It currently includes render events, render graph resources, renderer handles, material/resource scaffolding, scene draw packets, CPU culling/sorting/batching, and Vulkan backend bring-up.
@@ -60,13 +61,19 @@ The framework public include path is:
 #include <arc/framework/framework.h>
 ```
 
-The diagnostics, jobs, and memory public include paths are:
+The diagnostics, jobs, memory, and IO public include paths are:
 
 ```cpp
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/jobs/jobs.h>
 #include <arc/memory/memory.h>
+#include <arc/io/io.h>
 ```
+
+Job coroutine integration is enabled by default and has no external runtime
+dependency. Configure with `-DARC_ENABLE_JOB_COROUTINES=OFF`, or use the
+`default-no-coroutines` configure/build/test presets, to validate the
+non-coroutine contract.
 
 The render public include path is:
 
