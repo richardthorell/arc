@@ -108,7 +108,8 @@ enum class host_component_kind : std::uint8_t
     terrain,
     water,
     vegetation,
-    decal
+    decal,
+    prefab_instance
 };
 
 inline constexpr std::uint32_t host_default_render_layer = 1u << 0u;
@@ -244,6 +245,14 @@ struct host_terrain_snapshot
     std::array<std::string, 4> layer_base_color_paths{};
 };
 
+struct host_prefab_snapshot
+{
+    std::string prefab_guid;
+    std::string prefab_path;
+    std::size_t override_count{};
+    bool source_missing{};
+};
+
 struct host_scene_entity_snapshot
 {
     host_entity_id entity{};
@@ -280,6 +289,7 @@ struct host_selected_entity_snapshot
     std::optional<host_camera_snapshot> camera;
     std::optional<host_mesh_renderer_snapshot> mesh_renderer;
     std::optional<host_terrain_snapshot> terrain;
+    std::optional<host_prefab_snapshot> prefab;
     std::vector<host_component_snapshot> components;
 };
 
@@ -495,6 +505,11 @@ struct host_delete_entity_command
 };
 
 struct host_duplicate_entity_command { host_entity_id entity{}; };
+struct host_create_prefab_command { host_entity_id entity{}; std::filesystem::path path; };
+struct host_instantiate_prefab_command { std::filesystem::path path; host_entity_id parent{}; };
+struct host_apply_prefab_command { host_entity_id entity{}; };
+struct host_revert_prefab_command { host_entity_id entity{}; };
+struct host_unpack_prefab_command { host_entity_id entity{}; };
 struct host_reparent_entity_command
 {
     host_entity_id entity{};
@@ -682,6 +697,11 @@ using host_command_payload = std::variant<
     host_create_entity_command,
     host_delete_entity_command,
     host_duplicate_entity_command,
+    host_create_prefab_command,
+    host_instantiate_prefab_command,
+    host_apply_prefab_command,
+    host_revert_prefab_command,
+    host_unpack_prefab_command,
     host_reparent_entity_command,
     host_reorder_entity_command,
     host_rename_entity_command,

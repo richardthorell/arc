@@ -349,7 +349,14 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         { .request_id = 16, .payload = arc::editor::host_set_mesh_renderer_command{
             .entity = entity, .visible = false, .base_color_tint = { 0.8f, 0.7f, 0.6f, 1.0f } } },
         { .request_id = 17, .payload = arc::editor::host_set_entity_material_command{
-            .entity = entity, .path = "materials/stone.arcmat" } }
+            .entity = entity, .path = "materials/stone.arcmat" } },
+        { .request_id = 18, .payload = arc::editor::host_create_prefab_command{
+            .entity = entity, .path = "assets/prefabs/stone.arcprefab" } },
+        { .request_id = 19, .payload = arc::editor::host_instantiate_prefab_command{
+            .path = "assets/prefabs/stone.arcprefab", .parent = entity } },
+        { .request_id = 20, .payload = arc::editor::host_apply_prefab_command{ .entity = entity } },
+        { .request_id = 21, .payload = arc::editor::host_revert_prefab_command{ .entity = entity } },
+        { .request_id = 22, .payload = arc::editor::host_unpack_prefab_command{ .entity = entity } }
     };
 
     for (const auto& command : commands)
@@ -1785,5 +1792,65 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
     const auto revision_before = loaded.content_revision;
     REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{ .path = corrupt_path }).succeeded);
     REQUIRE(host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity).content_revision == revision_before);
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("prefab authoring creates, instantiates, persists, reverts, and unpacks instances")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-prefab-authoring-test";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root / "assets" / "prefabs", error);
+    REQUIRE_FALSE(error);
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "assets";
+    REQUIRE(host->open_project({ .name = "Prefab Authoring", .root = root }, assets).succeeded);
+
+    const auto created_source = host->execute(arc::editor::host_create_entity_command{
+        .kind = arc::editor::host_create_entity_kind::cube });
+    REQUIRE(created_source.succeeded);
+    const auto source = parse_entity_from_response(created_source.payload_json);
+    REQUIRE(source.valid());
+    const auto prefab_path = root / "assets" / "prefabs" / "camera_rig.arcprefab";
+    REQUIRE(host->execute(arc::editor::host_create_prefab_command{
+        .entity = source, .path = prefab_path }).succeeded);
+    REQUIRE(std::filesystem::is_regular_file(prefab_path));
+    REQUIRE(host->selected_entity_snapshot().prefab.has_value());
+    REQUIRE(host->selected_entity_snapshot().prefab->prefab_path == "assets/prefabs/camera_rig.arcprefab");
+
+    const auto instantiated = host->execute(arc::editor::host_instantiate_prefab_command{
+        .path = "assets/prefabs/camera_rig.arcprefab" });
+    REQUIRE(instantiated.succeeded);
+    const auto instance_id = parse_entity_from_response(instantiated.payload_json);
+    REQUIRE(instance_id.valid());
+    REQUIRE(host->selected_entity_snapshot().entity == instance_id);
+    REQUIRE(host->selected_entity_snapshot().prefab.has_value());
+    REQUIRE(host->selected_entity_snapshot().prefab->source_missing == false);
+
+    REQUIRE(host->execute(arc::editor::host_rename_entity_command{
+        .entity = instance_id, .name = "Changed Prefab Instance" }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_apply_prefab_command{ .entity = instance_id }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_revert_prefab_command{ .entity = instance_id }).succeeded);
+    const auto reverted = host->selected_entity_snapshot().entity;
+    REQUIRE(reverted.valid());
+    REQUIRE(host->selected_entity_snapshot().name == "Changed Prefab Instance");
+    REQUIRE(host->selected_entity_snapshot().prefab.has_value());
+
+    REQUIRE(host->execute(arc::editor::host_unpack_prefab_command{ .entity = reverted }).succeeded);
+    REQUIRE_FALSE(host->selected_entity_snapshot().prefab.has_value());
+    REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
+    REQUIRE(host->selected_entity_snapshot().prefab.has_value());
+
+    const auto scene_path = root / "prefab_scene.arcscene";
+    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{ .path = scene_path }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_open_scene_command{ .path = scene_path }).succeeded);
+    const auto reopened = host->scene_snapshot();
+    REQUIRE(std::any_of(reopened.entities.begin(), reopened.entities.end(),
+        [](const auto& value) { return value.name == "Changed Prefab Instance"; }));
+
     std::filesystem::remove_all(root, error);
 }

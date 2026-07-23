@@ -575,6 +575,7 @@ const char* to_string(host_component_kind value) noexcept
     case host_component_kind::water: return "water";
     case host_component_kind::vegetation: return "vegetation";
     case host_component_kind::decal: return "decal";
+    case host_component_kind::prefab_instance: return "prefabInstance";
     }
     return "unknown";
 }
@@ -706,6 +707,11 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_create_entity_command>) return "entity.create";
         else if constexpr (std::is_same_v<type, host_delete_entity_command>) return "entity.delete";
         else if constexpr (std::is_same_v<type, host_duplicate_entity_command>) return "entity.duplicate";
+        else if constexpr (std::is_same_v<type, host_create_prefab_command>) return "prefab.create";
+        else if constexpr (std::is_same_v<type, host_instantiate_prefab_command>) return "prefab.instantiate";
+        else if constexpr (std::is_same_v<type, host_apply_prefab_command>) return "prefab.apply";
+        else if constexpr (std::is_same_v<type, host_revert_prefab_command>) return "prefab.revert";
+        else if constexpr (std::is_same_v<type, host_unpack_prefab_command>) return "prefab.unpack";
         else if constexpr (std::is_same_v<type, host_reparent_entity_command>) return "entity.reparent";
         else if constexpr (std::is_same_v<type, host_reorder_entity_command>) return "entity.reorder";
         else if constexpr (std::is_same_v<type, host_rename_entity_command>) return "entity.rename";
@@ -907,6 +913,13 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"kind\":" + quote(to_string(payload.kind)) + ",\"parent\":" + to_json(payload.parent) + '}';
         else if constexpr (std::is_same_v<type, host_delete_entity_command> || std::is_same_v<type, host_select_entity_command> ||
             std::is_same_v<type, host_duplicate_entity_command>)
+            return "{\"entity\":" + to_json(payload.entity) + '}';
+        else if constexpr (std::is_same_v<type, host_create_prefab_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) + '}';
+        else if constexpr (std::is_same_v<type, host_instantiate_prefab_command>)
+            return "{\"path\":" + quote(payload.path.generic_string()) + ",\"parent\":" + to_json(payload.parent) + '}';
+        else if constexpr (std::is_same_v<type, host_apply_prefab_command> ||
+            std::is_same_v<type, host_revert_prefab_command> || std::is_same_v<type, host_unpack_prefab_command>)
             return "{\"entity\":" + to_json(payload.entity) + '}';
         else if constexpr (std::is_same_v<type, host_reparent_entity_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"parent\":" + to_json(payload.parent) +
@@ -1163,6 +1176,16 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
     json += snapshot.mesh_renderer ? to_json(*snapshot.mesh_renderer) : "null";
     json += ",\"terrain\":";
     json += snapshot.terrain ? to_json(*snapshot.terrain) : "null";
+    json += ",\"prefab\":";
+    if (snapshot.prefab)
+    {
+        json += "{\"prefabGuid\":" + quote(snapshot.prefab->prefab_guid) +
+            ",\"prefabPath\":" + quote(snapshot.prefab->prefab_path) +
+            ",\"overrideCount\":" + std::to_string(snapshot.prefab->override_count) +
+            ",\"sourceMissing\":" + bool_json(snapshot.prefab->source_missing) + '}';
+    }
+    else
+        json += "null";
     json += ",\"components\":[";
     for (std::size_t index = 0; index < snapshot.components.size(); ++index)
     {
@@ -1308,6 +1331,43 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         envelope.payload = command;
+    }
+    else if (type == "prefab.create")
+    {
+        host_create_prefab_command command;
+        std::string path;
+        if (!entity_field_value(payload, "entity", command.entity) || !string_value(payload, "path", path))
+        {
+            error = "Prefab create requires entity and path";
+            return false;
+        }
+        command.path = std::filesystem::path(path);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "prefab.instantiate")
+    {
+        host_instantiate_prefab_command command;
+        std::string path;
+        if (!string_value(payload, "path", path))
+        {
+            error = "Prefab instantiate requires path";
+            return false;
+        }
+        command.path = std::filesystem::path(path);
+        entity_field_value(payload, "parent", command.parent);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "prefab.apply" || type == "prefab.revert" || type == "prefab.unpack")
+    {
+        host_entity_id entity;
+        if (!entity_field_value(payload, "entity", entity))
+        {
+            error = "Prefab command requires entity";
+            return false;
+        }
+        if (type == "prefab.apply") envelope.payload = host_apply_prefab_command{ entity };
+        else if (type == "prefab.revert") envelope.payload = host_revert_prefab_command{ entity };
+        else envelope.payload = host_unpack_prefab_command{ entity };
     }
     else if (type == "entity.reparent")
     {

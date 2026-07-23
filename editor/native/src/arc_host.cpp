@@ -7,6 +7,7 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
+#include <arc/editor/prefab_document.h>
 #include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
 #include <arc/geometric/box.h>
@@ -25,6 +26,7 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -94,6 +96,9 @@ constexpr bool is_authoring_command() noexcept
 {
     return std::is_same_v<Command, host_create_entity_command> || std::is_same_v<Command, host_delete_entity_command> ||
         std::is_same_v<Command, host_duplicate_entity_command> || std::is_same_v<Command, host_reparent_entity_command> ||
+        std::is_same_v<Command, host_create_prefab_command> || std::is_same_v<Command, host_instantiate_prefab_command> ||
+        std::is_same_v<Command, host_revert_prefab_command> ||
+        std::is_same_v<Command, host_unpack_prefab_command> ||
         std::is_same_v<Command, host_reorder_entity_command> || std::is_same_v<Command, host_rename_entity_command> ||
         std::is_same_v<Command, host_set_active_command> || std::is_same_v<Command, host_set_tag_command> ||
         std::is_same_v<Command, host_set_transform_command> || std::is_same_v<Command, host_set_render_layer_command> ||
@@ -111,6 +116,11 @@ std::string history_label(const host_command_payload& command)
         if constexpr (std::is_same_v<type, host_create_entity_command>) return "Create Entity";
         if constexpr (std::is_same_v<type, host_delete_entity_command>) return "Delete Entity";
         if constexpr (std::is_same_v<type, host_duplicate_entity_command>) return "Duplicate Entity";
+        if constexpr (std::is_same_v<type, host_create_prefab_command>) return "Create Prefab";
+        if constexpr (std::is_same_v<type, host_instantiate_prefab_command>) return "Instantiate Prefab";
+        if constexpr (std::is_same_v<type, host_apply_prefab_command>) return "Apply Prefab";
+        if constexpr (std::is_same_v<type, host_revert_prefab_command>) return "Revert Prefab";
+        if constexpr (std::is_same_v<type, host_unpack_prefab_command>) return "Unpack Prefab";
         if constexpr (std::is_same_v<type, host_reparent_entity_command>) return "Reparent Entity";
         if constexpr (std::is_same_v<type, host_reorder_entity_command>) return "Reorder Entity";
         if constexpr (std::is_same_v<type, host_rename_entity_command>) return "Rename Entity";
@@ -253,6 +263,30 @@ std::optional<std::filesystem::path> resolve_project_asset(
         if (part == "..")
             return std::nullopt;
     }
+    return candidate;
+}
+
+std::optional<std::filesystem::path> resolve_project_document(
+    const std::filesystem::path& project_root,
+    const std::filesystem::path& authored,
+    bool must_exist)
+{
+    if (project_root.empty() || authored.empty())
+        return std::nullopt;
+    std::error_code error;
+    const auto root = std::filesystem::weakly_canonical(project_root, error);
+    if (error)
+        return std::nullopt;
+    auto candidate = authored.is_absolute() ? authored : root / authored;
+    candidate = must_exist ? std::filesystem::weakly_canonical(candidate, error) : candidate.lexically_normal();
+    if (error || (must_exist && !std::filesystem::is_regular_file(candidate, error)))
+        return std::nullopt;
+    const auto relative = std::filesystem::relative(candidate, root, error);
+    if (error || relative.empty() || relative.is_absolute())
+        return std::nullopt;
+    for (const auto& part : relative)
+        if (part == "..")
+            return std::nullopt;
     return candidate;
 }
 
@@ -1095,6 +1129,83 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", duplicate);
             return success("{\"entity\":" + to_json(to_host_entity(duplicate)) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_create_prefab_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(entity))
+                return fail("Cannot create a prefab from a missing entity", entity);
+            auto path = payload.path;
+            if (path.extension() != ".arcprefab")
+                path.replace_extension(".arcprefab");
+            const auto resolved = resolve_project_document(state_->project.root, path, false);
+            if (!resolved)
+                return fail("Prefab path must be inside the active project", entity);
+            const auto result = save_prefab_document(state_->scene, state_->project.root, entity, *resolved);
+            if (!result.succeeded)
+                return fail(result.message, entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Prefab created", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) +
+                ",\"path\":" + to_json_string(std::filesystem::relative(*resolved, state_->project.root).generic_string()) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_instantiate_prefab_command>)
+        {
+            const auto parent = to_scene_entity(payload.parent);
+            if (payload.parent.valid() && !state_->scene.scene.alive(parent))
+                return fail("Cannot instantiate a prefab below a missing parent", parent);
+            const auto resolved = resolve_project_document(state_->project.root, payload.path, true);
+            if (!resolved || resolved->extension() != ".arcprefab")
+                return fail("Prefab source is missing or outside the active project");
+            const auto result = instantiate_prefab_document(
+                state_->scene, *state_->renderer, state_->project.root, *resolved, parent);
+            if (!result.succeeded)
+                return fail(result.message);
+            select_entity(state_->scene.scene, result.root, state_->scene.selected_entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::entity_created, "Prefab instantiated", result.root);
+            push_event(state_->events, state_->event_sequence, host_event_type::entity_selected, "Selected prefab instance", result.root);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", result.root);
+            return success("{\"entity\":" + to_json(to_host_entity(result.root)) +
+                ",\"entityCount\":" + std::to_string(result.entity_count) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_apply_prefab_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(entity))
+                return fail("Cannot apply a missing prefab instance", entity);
+            const auto result = apply_prefab_instance(state_->scene, state_->project.root, entity);
+            if (!result.succeeded)
+                return fail(result.message, entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Prefab changes applied", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", entity);
+            return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_revert_prefab_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(entity))
+                return fail("Cannot revert a missing prefab instance", entity);
+            const auto result = revert_prefab_instance(
+                state_->scene, *state_->renderer, state_->project.root, entity);
+            if (!result.succeeded)
+                return fail(result.message, entity);
+            select_entity(state_->scene.scene, result.root, state_->scene.selected_entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::entity_deleted, "Prefab instance replaced", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::entity_created, "Prefab instance reverted", result.root);
+            push_event(state_->events, state_->event_sequence, host_event_type::entity_selected, "Selected prefab instance", result.root);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", result.root);
+            return success("{\"entity\":" + to_json(to_host_entity(result.root)) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_unpack_prefab_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(entity))
+                return fail("Cannot unpack a missing prefab instance", entity);
+            if (!unpack_prefab_instance(state_->scene, entity))
+                return fail("Entity is not a prefab instance", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Prefab instance unpacked", entity);
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", entity);
+            return success();
+        }
         else if constexpr (std::is_same_v<command_type, host_reparent_entity_command>)
         {
             const auto entity = to_scene_entity(payload.entity);
@@ -1590,7 +1701,9 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
         }
         else if (!command.edit && before)
+        {
             state_->history.record(edit_label, std::move(*before), state_->scene);
+        }
     }
     return response;
 }
@@ -1698,7 +1811,8 @@ host_scene_snapshot arc_host::scene_snapshot() const
             {
                 parent_guid = scene::to_string(entity_guid_of(state_->scene, hierarchy->parent));
                 auto sibling = hierarchy->previous_sibling;
-                while (state_->scene.scene.alive(sibling))
+                std::unordered_set<scene::entity, ecs::entity_hash> visited_siblings;
+                while (state_->scene.scene.alive(sibling) && visited_siblings.insert(sibling).second)
                 {
                     ++sibling_order;
                     sibling = state_->scene.scene.get<scene::hierarchy_component>(sibling).previous_sibling;
@@ -1802,6 +1916,16 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
         add_component_snapshot(snapshot.components, host_component_kind::vegetation, "Vegetation");
     if (state_->scene.scene.has<scene::decal_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::decal, "Decal");
+    if (const auto* prefab = state_->scene.scene.try_get<scene::prefab_instance_component>(selected))
+    {
+        snapshot.prefab = host_prefab_snapshot{
+            .prefab_guid = scene::to_string(prefab->prefab_guid),
+            .prefab_path = prefab->prefab_path,
+            .override_count = prefab->overrides.size(),
+            .source_missing = prefab->source_missing
+        };
+        add_component_snapshot(snapshot.components, host_component_kind::prefab_instance, "Prefab Instance");
+    }
     return snapshot;
 }
 
@@ -1863,7 +1987,8 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             });
             const bool texture_asset = render::is_supported_texture_asset(iterator->path());
             const bool material_asset_path = is_material_asset_path(iterator->path());
-            if (!texture_asset && !material_asset_path)
+            const bool prefab_asset_path = extension == ".arcprefab";
+            if (!texture_asset && !material_asset_path && !prefab_asset_path)
                 continue;
             const auto relative_path = std::filesystem::relative(iterator->path(), state_->assets.root, error).generic_string();
             if (std::any_of(snapshot.assets.begin(), snapshot.assets.end(), [&](const auto& asset) {
@@ -1872,7 +1997,8 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                 continue;
             snapshot.assets.push_back({
                 .path = relative_path,
-                .kind = material_asset_path ? "material" : extension == ".hdr" ? "environment" : "texture",
+                .kind = prefab_asset_path ? "prefab" :
+                    material_asset_path ? "material" : extension == ".hdr" ? "environment" : "texture",
                 .imported = true,
                 .import_running = false
             });

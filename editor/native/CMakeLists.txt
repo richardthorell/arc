@@ -11,6 +11,7 @@ add_library(arc-editor-host STATIC
     src/material_asset.cpp
     src/material_library.cpp
     src/material_preview.cpp
+    src/prefab_document.cpp
     src/scene_document.cpp
     src/world_environment_host.cpp
 )
