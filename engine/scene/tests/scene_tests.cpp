@@ -427,6 +427,35 @@ TEST_CASE("simulated geographic environment advances time and drives its linked 
     REQUIRE(updated_light.temperature_kelvin <= 40000.0f);
 }
 
+TEST_CASE("automatic geographic sun writes physically meaningful lux")
+{
+    arc::scene::registry registry;
+    const auto sun = registry.create();
+    registry.emplace<arc::scene::transform_component>(sun);
+    registry.emplace<arc::scene::directional_light_component>(sun);
+
+    const auto environment = registry.create();
+    registry.emplace<arc::scene::world_environment_component>(environment);
+    arc::scene::celestial_sky_component celestial;
+    celestial.sun_light = sun;
+    celestial.sun_mode = arc::scene::sun_position_mode::geographic;
+    celestial.time_mode = arc::scene::celestial_time_mode::fixed;
+    celestial.latitude_degrees = 0.0f;
+    celestial.longitude_degrees = 0.0f;
+    celestial.year = 2024;
+    celestial.month = 3;
+    celestial.day = 20;
+    celestial.local_time_hours = 12.0f;
+    celestial.utc_offset_hours = 0.0f;
+    registry.emplace<arc::scene::celestial_sky_component>(environment, celestial);
+
+    arc::scene::update_world_environments(registry, 0.0f);
+    const auto& light = registry.get<arc::scene::directional_light_component>(sun);
+    REQUIRE(light.enabled);
+    REQUIRE(light.intensity_unit == arc::render::light_intensity_unit::lux);
+    REQUIRE(light.intensity > 50000.0f);
+}
+
 TEST_CASE("world environment clocks handle reverse midnight leap years and fixed time")
 {
     arc::scene::registry registry;

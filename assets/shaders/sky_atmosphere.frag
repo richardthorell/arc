@@ -8,6 +8,12 @@ layout(location = 0) out vec4 out_color;
 
 layout(set = 0, binding = 0) uniform sampler2D sky_hdri;
 
+// Calibrates the analytic unit-scale daytime sky against physically authored
+// illuminance. A clear sky is commonly several thousand cd/m2; keeping it in
+// that range prevents automatic exposure from treating the sky and sun-lit
+// surfaces as unrelated brightness domains.
+const float physical_sky_luminance_scale = 6000.0;
+
 layout(push_constant) uniform sky_constants
 {
     vec4 camera_forward_fov;
@@ -169,9 +175,10 @@ void main()
     vec3 sun_color = mix(vec3(1.0, 0.42, 0.12), vec3(1.0, 0.96, 0.82),
         smoothstep(-0.04, 0.25, toward_sun.y));
     sky += sun_color * (sun_disk * sun_intensity + sun_glow * min(sun_intensity, 2.0)) * (1.0 - cloud);
-    sky *= max(constants.atmosphere.w, 0.0);
+    float source_luminance_scale = source == 0 ? physical_sky_luminance_scale : 1.0;
+    sky *= max(constants.atmosphere.w, 0.0) * source_luminance_scale;
 
-    // The viewport target is currently SDR; this is the sole sky output transform.
-    sky = clamp((sky * (2.51 * sky + 0.03)) / (sky * (2.43 * sky + 0.59) + 0.14), 0.0, 1.0);
-    out_color = vec4(sky, 1.0);
+    // Sky remains scene-linear HDR. Exposure and the SDR output transform are
+    // applied exactly once by the presentation pass.
+    out_color = vec4(max(sky, vec3(0.0)), 1.0);
 }

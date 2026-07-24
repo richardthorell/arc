@@ -13,6 +13,8 @@ namespace arc::scene
 namespace
 {
 
+inline constexpr float clear_day_sun_illuminance_lux = 65000.0f;
+
 constexpr float hours_per_day = 24.0f;
 constexpr float minutes_per_hour = 60.0f;
 constexpr float seconds_per_hour = 3600.0f;
@@ -458,7 +460,9 @@ void update_world_environments(registry& scene, float delta_seconds)
                         (6500.0f - warm * 4000.0f) * celestial.sun_temperature_multiplier,
                         1000.0f,
                         40000.0f);
-                    light->intensity = 3.2f * daylight * celestial.sun_intensity_multiplier;
+                    light->intensity =
+                        clear_day_sun_illuminance_lux * daylight * celestial.sun_intensity_multiplier;
+                    light->intensity_unit = render::light_intensity_unit::lux;
                     light->enabled = daylight > 0.001f;
                 }
             }

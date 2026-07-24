@@ -127,7 +127,7 @@ void main()
     vec2 previous_ndc = in_previous_clip_position.xy / max(in_previous_clip_position.w, 0.00001);
     out_albedo = vec4(albedo * constants.base_color.rgb, 1.0);
     out_normal = vec4(normal * 0.5 + 0.5, clamp(ao, 0.0, 1.0));
-    out_material = vec4(0.0, roughness, 0.0, shadow_visibility(normal));
+    out_material = vec4(0.0, roughness, shadow_visibility(normal), 0.0);
     out_emissive = vec4(0.0);
     out_motion = (current_ndc - previous_ndc) * 0.5;
     out_object_id = uint(constants.fog_params.w);
