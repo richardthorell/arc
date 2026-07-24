@@ -28,6 +28,7 @@
 #include <optional>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -40,7 +41,8 @@ constexpr std::uint32_t material_shadow_binding = 5u;
 constexpr std::uint32_t material_shadow_data_binding = 6u;
 constexpr std::uint32_t terrain_normal_binding = 7u;
 constexpr std::uint32_t terrain_surface_binding = 11u;
-constexpr std::uint32_t material_binding_count = 15u;
+constexpr std::uint32_t material_light_data_binding = 15u;
+constexpr std::uint32_t material_binding_count = 16u;
 constexpr std::uint32_t material_descriptor_set_capacity = 12288u;
 constexpr VkDeviceSize upload_staging_capacity = 64u * 1024u * 1024u;
 constexpr std::array<std::uint32_t, 14> material_image_bindings{
@@ -206,15 +208,42 @@ struct mesh_push_constants
     float fog_color_density[4]{};
     float fog_params[4]{};
     float material_params[4]{ 1.0f, 1.0f, 1.0f, 0.0f };
+    float emissive_factor[4]{ 0.0f, 0.0f, 0.0f, 1.0f };
+    float material_lobes[4]{};
+    float volume_params[4]{};
+    float subsurface_color_factor[4]{ 1.0f, 0.35f, 0.2f, 0.0f };
+    float attenuation_color[4]{ 1.0f, 1.0f, 1.0f, 0.0f };
 };
 
 struct deferred_push_constants
 {
+    float inverse_view_projection[16]{};
+    float camera_position[4]{};
     float light_direction_intensity[4]{ 0.35f, -0.85f, -0.40f, 1.0f };
-    float light_color_exposure[4]{ 1.0f, 1.0f, 1.0f, 1.0f };
+    float light_color[4]{ 1.0f, 1.0f, 1.0f, 1.0f };
     float ambient_visualization[4]{ 0.18f, 0.18f, 0.18f, 0.0f };
-    float debug_counts[4]{};
 };
+static_assert(sizeof(deferred_push_constants) == 128);
+
+struct output_transform_push_constants
+{
+    float exposure_output[4]{ 1.0f, 0.0f, 0.0f, 0.0f };
+};
+
+struct histogram_push_constants
+{
+    float log_luminance_extent[4]{ -12.0f, 16.0f, 1.0f, 1.0f };
+};
+
+struct exposure_resolve_push_constants
+{
+    float log_range_percentiles[4]{ -12.0f, 16.0f, 0.005f, 0.98f };
+    float limits_speeds[4]{ -8.0f, 20.0f, 3.0f, 1.0f };
+    float timing_mode[4]{ 1.0f / 60.0f, 1.0f, 10.0f, 0.0f };
+};
+
+inline constexpr VkDeviceSize exposure_histogram_bytes = sizeof(std::uint32_t) * 256u;
+inline constexpr VkDeviceSize exposure_buffer_bytes = exposure_histogram_bytes + sizeof(std::uint32_t) * 4u;
 
 struct shadow_uniform_data
 {
@@ -284,6 +313,7 @@ public:
         for (auto& buffer : debug_overlay_buffers_)
             destroy_buffer(buffer.vertices);
         destroy_buffer(light_buffer_);
+        destroy_buffer(exposure_buffer_);
         destroy_meshes();
         destroy_support_objects();
         if (allocator_ != VK_NULL_HANDLE)
@@ -374,6 +404,7 @@ public:
         frame_directional_lights_.clear();
         frame_point_lights_.clear();
         frame_spot_lights_.clear();
+        frame_area_lights_.clear();
         frame_debug_overlay_lines_.clear();
         frame_environment_ = {};
         pending_debug_markers_.clear();
@@ -408,6 +439,8 @@ public:
                 frame_point_lights_.push_back(*light);
             else if (const auto* light = std::get_if<spot_light_event>(&event.payload))
                 frame_spot_lights_.push_back(*light);
+            else if (const auto* light = std::get_if<area_light_event>(&event.payload))
+                frame_area_lights_.push_back(*light);
             else if (const auto* world = std::get_if<render_world_event>(&event.payload))
                 append_render_world(*world);
             else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
@@ -432,15 +465,47 @@ public:
             if (found != environments_.end())
                 lighting_environment = &found->second.data;
         }
+        auto point_lights_for_tier = frame_point_lights_;
+        const bool low_area_fallback = resolved_config_.quality == render_quality_tier::low;
+        if (low_area_fallback)
+        {
+            for (const auto& area : frame_area_lights_)
+            {
+                const float width = std::max(area.width, 0.001f);
+                const float height = area.shape == area_light_shape::disk
+                    ? width
+                    : std::max(area.height, 0.001f);
+                const float surface_area = area.shape == area_light_shape::disk
+                    ? math::pi<float> * 0.25f * width * width
+                    : width * height;
+                const float lumens = area.intensity_unit == light_intensity_unit::nit
+                    ? area.intensity * math::pi<float> * surface_area * (area.two_sided ? 2.0f : 1.0f)
+                    : area.intensity;
+                point_lights_for_tier.push_back({
+                    .position = area.position,
+                    .color = area.color,
+                    .intensity = lumens,
+                    .range = std::clamp(std::sqrt(std::max(lumens, 0.0f)) * 0.5f, 5.0f, 50.0f),
+                    .enabled = area.enabled,
+                    .use_color_temperature = area.use_color_temperature,
+                    .temperature_kelvin = area.temperature_kelvin,
+                    .intensity_unit = area.intensity_unit == light_intensity_unit::unitless
+                        ? light_intensity_unit::unitless
+                        : light_intensity_unit::lumen,
+                    .label = area.label + " (low-tier point fallback)"
+                });
+            }
+        }
         frame_lighting_ = pack_scene_lighting(
             frame_directional_lights_,
-            frame_point_lights_,
+            point_lights_for_tier,
             frame_spot_lights_,
             frame_environment_.affect_lighting && frame_environment_.lighting.enabled
                 ? lighting_environment
                 : nullptr,
             resolved_config_.max_point_lights,
-            resolved_config_.max_spot_lights);
+            resolved_config_.max_spot_lights,
+            low_area_fallback ? empty_area_lights_ : frame_area_lights_);
         if (frame_environment_.affect_lighting && frame_environment_.lighting.enabled)
         {
             math::vector3f ambient = frame_environment_.lighting.constant_color;
@@ -1244,6 +1309,10 @@ private:
             frame_spot_lights_.end(),
             packet.spot_lights.begin(),
             packet.spot_lights.end());
+        frame_area_lights_.insert(
+            frame_area_lights_.end(),
+            packet.area_lights.begin(),
+            packet.area_lights.end());
 
         for (const auto index : packet.visible_items)
         {
@@ -1274,7 +1343,11 @@ private:
             frame_shadow_draws_.push_back(make_draw(item, item.selected));
         }
 
+        if (!frame_camera_valid_ ||
+            math::length_squared(math::sub(packet.camera.position, frame_camera_.position)) > 100.0f)
+            exposure_needs_reset_ = true;
         frame_camera_ = packet.camera;
+        frame_camera_valid_ = true;
         frame_environment_ = packet.environment;
         frame_shadows_enabled_ = packet.shadows_enabled;
         frame_debug_overlay_lines_.insert(frame_debug_overlay_lines_.end(),
@@ -2427,6 +2500,19 @@ private:
         return material != materials_.end() && material->second.data.domain == material_domain::terrain;
     }
 
+    bool material_requires_forward(const draw_mesh_event& draw) const noexcept
+    {
+        const auto material = materials_.find(resource_key(draw.material));
+        if (material == materials_.end())
+            return false;
+        const auto& desc = material->second.data;
+        return desc.shading_model != material_shading_model::standard ||
+            desc.clear_coat_factor > 0.0f ||
+            std::abs(desc.anisotropy_factor) > 0.0001f ||
+            desc.transmission_factor > 0.0f ||
+            desc.subsurface_factor > 0.0f;
+    }
+
     mesh_push_constants build_mesh_constants(const draw_mesh_event& draw) const
     {
         const math::matrix4f mvp = math::matmul(draw.view_projection, draw.model);
@@ -2504,6 +2590,35 @@ private:
                 constants.material_params[1] = desc.occlusion_strength;
                 constants.material_params[2] = desc.emissive_strength;
                 constants.material_params[3] = static_cast<float>(desc.alpha_mode);
+                constants.emissive_factor[0] = desc.emissive_factor[0];
+                constants.emissive_factor[1] = desc.emissive_factor[1];
+                constants.emissive_factor[2] = desc.emissive_factor[2];
+                constants.emissive_factor[3] = desc.emissive_luminance_nits > 0.0f
+                    ? desc.emissive_luminance_nits / 100.0f
+                    : desc.emissive_strength;
+                constants.material_lobes[0] = desc.clear_coat_factor;
+                constants.material_lobes[1] = desc.clear_coat_roughness;
+                constants.material_lobes[2] = desc.anisotropy_factor;
+                constants.material_lobes[3] = desc.transmission_factor;
+                constants.volume_params[0] = static_cast<float>(desc.shading_model);
+                constants.volume_params[1] = desc.index_of_refraction;
+                constants.volume_params[2] = desc.thickness_factor;
+                constants.volume_params[3] = desc.attenuation_distance;
+                constants.subsurface_color_factor[0] = desc.subsurface_color[0];
+                constants.subsurface_color_factor[1] = desc.subsurface_color[1];
+                constants.subsurface_color_factor[2] = desc.subsurface_color[2];
+                constants.subsurface_color_factor[3] = desc.subsurface_factor;
+                constants.attenuation_color[0] = desc.attenuation_color[0];
+                constants.attenuation_color[1] = desc.attenuation_color[1];
+                constants.attenuation_color[2] = desc.attenuation_color[2];
+                constants.attenuation_color[3] =
+                    (texture_ready(desc.clear_coat_texture) ? 1.0f : 0.0f) +
+                    (texture_ready(desc.clear_coat_roughness_texture) ? 2.0f : 0.0f) +
+                    (texture_ready(desc.clear_coat_normal_texture) ? 4.0f : 0.0f) +
+                    (texture_ready(desc.anisotropy_texture) ? 8.0f : 0.0f) +
+                    (texture_ready(desc.subsurface_texture) ? 16.0f : 0.0f) +
+                    (texture_ready(desc.thickness_texture) ? 32.0f : 0.0f) +
+                    (texture_ready(desc.transmission_texture) ? 64.0f : 0.0f);
                 constants.light_color[3] =
                     (texture_ready(desc.base_color_texture) ? 1.0f : 0.0f) +
                     (texture_ready(desc.metallic_roughness_texture) ? 2.0f : 0.0f) +
@@ -2561,6 +2676,47 @@ private:
         {
             vkDestroyPipelineLayout(device_, deferred_pipeline_layout_, nullptr);
             deferred_pipeline_layout_ = VK_NULL_HANDLE;
+        }
+        if (output_transform_pipeline_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(device_, output_transform_pipeline_, nullptr);
+            output_transform_pipeline_ = VK_NULL_HANDLE;
+        }
+        if (output_transform_pipeline_layout_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(device_, output_transform_pipeline_layout_, nullptr);
+            output_transform_pipeline_layout_ = VK_NULL_HANDLE;
+        }
+        if (luminance_histogram_pipeline_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(device_, luminance_histogram_pipeline_, nullptr);
+            luminance_histogram_pipeline_ = VK_NULL_HANDLE;
+        }
+        if (luminance_histogram_pipeline_layout_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(device_, luminance_histogram_pipeline_layout_, nullptr);
+            luminance_histogram_pipeline_layout_ = VK_NULL_HANDLE;
+        }
+        if (exposure_resolve_pipeline_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(device_, exposure_resolve_pipeline_, nullptr);
+            exposure_resolve_pipeline_ = VK_NULL_HANDLE;
+        }
+        if (exposure_resolve_pipeline_layout_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(device_, exposure_resolve_pipeline_layout_, nullptr);
+            exposure_resolve_pipeline_layout_ = VK_NULL_HANDLE;
+        }
+        if (output_transform_descriptor_pool_ != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(device_, output_transform_descriptor_pool_, nullptr);
+            output_transform_descriptor_pool_ = VK_NULL_HANDLE;
+            output_transform_descriptor_set_ = VK_NULL_HANDLE;
+        }
+        if (output_transform_descriptor_set_layout_ != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(device_, output_transform_descriptor_set_layout_, nullptr);
+            output_transform_descriptor_set_layout_ = VK_NULL_HANDLE;
         }
         if (gbuffer_pipeline_ != VK_NULL_HANDLE)
         {
@@ -2987,16 +3143,31 @@ private:
             white_view_ == VK_NULL_HANDLE ||
             shadow_atlas_.array_view == VK_NULL_HANDLE ||
             shadow_buffer_resource == nullptr ||
-            shadow_buffer_resource->buffer == VK_NULL_HANDLE)
+            shadow_buffer_resource->buffer == VK_NULL_HANDLE ||
+            light_buffer_.buffer == VK_NULL_HANDLE)
             return;
 
-        const auto resolve_texture = [&](texture_handle handle, VkSampler& sampler, VkImageView& view) {
+        const auto resolve_texture = [&](texture_handle handle, VkSampler& sampler, VkImageView& view,
+                                         std::optional<texture_semantic> expected = std::nullopt) {
             sampler = white_sampler_;
             view = white_view_;
             if (!handle.valid())
                 return;
             if (const auto found = textures_.find(resource_key(handle)); found != textures_.end())
             {
+                if (expected && !valid_texture_color_space(*expected, found->second.data.color_space))
+                {
+                    const auto diagnostic_key =
+                        resource_key(handle) ^ (static_cast<std::uint64_t>(*expected) << 56u);
+                    if (texture_semantic_diagnostics_.insert(diagnostic_key).second)
+                    {
+                        arc::warn(
+                            "render.vulkan",
+                            "Texture '" + found->second.data.name +
+                                "' has a color space incompatible with its material slot; binding the explicit fallback");
+                    }
+                    return;
+                }
                 if (found->second.view != VK_NULL_HANDLE && found->second.sampler != VK_NULL_HANDLE)
                 {
                     sampler = found->second.sampler;
@@ -3015,26 +3186,40 @@ private:
         {
             for (std::size_t layer = 0; layer < material->terrain_layers.size(); ++layer)
             {
-                resolve_texture(material->terrain_layers[layer].base_color_texture, sampler, view);
+                resolve_texture(material->terrain_layers[layer].base_color_texture, sampler, view, texture_semantic::base_color);
                 image_infos[layer] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                resolve_texture(material->terrain_layers[layer].normal_texture, sampler, view);
+                resolve_texture(material->terrain_layers[layer].normal_texture, sampler, view, texture_semantic::normal);
                 image_infos[6u + layer] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-                resolve_texture(material->terrain_layers[layer].packed_surface_texture, sampler, view);
+                resolve_texture(material->terrain_layers[layer].packed_surface_texture, sampler, view, texture_semantic::metallic_roughness);
                 image_infos[10u + layer] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
             }
         }
         else
         {
-            resolve_texture(material ? material->base_color_texture : texture_handle{}, sampler, view);
+            resolve_texture(material ? material->base_color_texture : texture_handle{}, sampler, view, texture_semantic::base_color);
             image_infos[0] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            resolve_texture(material ? material->metallic_roughness_texture : texture_handle{}, sampler, view);
+            resolve_texture(material ? material->metallic_roughness_texture : texture_handle{}, sampler, view, texture_semantic::metallic_roughness);
             image_infos[1] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            resolve_texture(material ? material->normal_texture : texture_handle{}, sampler, view);
+            resolve_texture(material ? material->normal_texture : texture_handle{}, sampler, view, texture_semantic::normal);
             image_infos[2] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            resolve_texture(material ? material->occlusion_texture : texture_handle{}, sampler, view);
+            resolve_texture(material ? material->occlusion_texture : texture_handle{}, sampler, view, texture_semantic::occlusion);
             image_infos[3] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-            resolve_texture(material ? material->emissive_texture : texture_handle{}, sampler, view);
+            resolve_texture(material ? material->emissive_texture : texture_handle{}, sampler, view, texture_semantic::emissive);
             image_infos[4] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            resolve_texture(material ? material->clear_coat_texture : texture_handle{}, sampler, view, texture_semantic::clear_coat);
+            image_infos[6] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            resolve_texture(material ? material->clear_coat_roughness_texture : texture_handle{}, sampler, view, texture_semantic::clear_coat);
+            image_infos[7] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            resolve_texture(material ? material->clear_coat_normal_texture : texture_handle{}, sampler, view, texture_semantic::normal);
+            image_infos[8] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            resolve_texture(material ? material->anisotropy_texture : texture_handle{}, sampler, view, texture_semantic::anisotropy);
+            image_infos[9] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            resolve_texture(material ? material->subsurface_texture : texture_handle{}, sampler, view, texture_semantic::thickness);
+            image_infos[10] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            resolve_texture(material ? material->thickness_texture : texture_handle{}, sampler, view, texture_semantic::thickness);
+            image_infos[11] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+            resolve_texture(material ? material->transmission_texture : texture_handle{}, sampler, view, texture_semantic::transmission);
+            image_infos[12] = { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         }
 
         image_infos[5].sampler = shadow_atlas_.sampler;
@@ -3046,7 +3231,7 @@ private:
         shadow_buffer.offset = 0;
         shadow_buffer.range = sizeof(shadow_uniform_data);
 
-        std::array<VkWriteDescriptorSet, material_image_bindings.size() + 1u> writes{};
+        std::array<VkWriteDescriptorSet, material_image_bindings.size() + 2u> writes{};
         for (std::uint32_t image_index = 0; image_index < image_infos.size(); ++image_index)
         {
             writes[image_index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -3056,13 +3241,23 @@ private:
             writes[image_index].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             writes[image_index].pImageInfo = &image_infos[image_index];
         }
-        auto& shadow_write = writes.back();
+        auto& shadow_write = writes[material_image_bindings.size()];
         shadow_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         shadow_write.dstSet = descriptor_set;
         shadow_write.dstBinding = material_shadow_data_binding;
         shadow_write.descriptorCount = 1;
         shadow_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         shadow_write.pBufferInfo = &shadow_buffer;
+        VkDescriptorBufferInfo light_buffer{};
+        light_buffer.buffer = light_buffer_.buffer;
+        light_buffer.range = sizeof(scene_lighting_data);
+        auto& light_write = writes.back();
+        light_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        light_write.dstSet = descriptor_set;
+        light_write.dstBinding = material_light_data_binding;
+        light_write.descriptorCount = 1;
+        light_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        light_write.pBufferInfo = &light_buffer;
         vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
@@ -3136,9 +3331,13 @@ private:
         {
             bindings[binding_index].binding = binding_index;
             bindings[binding_index].descriptorType = binding_index == material_shadow_data_binding
-                ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                : binding_index == material_light_data_binding
+                    ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             bindings[binding_index].descriptorCount = 1;
-            bindings[binding_index].stageFlags = binding_index == material_shadow_data_binding
+            bindings[binding_index].stageFlags =
+                binding_index == material_shadow_data_binding || binding_index == material_light_data_binding
                 ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_FRAGMENT_BIT;
         }
 
@@ -3245,11 +3444,13 @@ private:
         vkDestroyCommandPool(device_, pool, nullptr);
         destroy_buffer(staging);
 
-        std::array<VkDescriptorPoolSize, 2> pool_sizes{};
+        std::array<VkDescriptorPoolSize, 3> pool_sizes{};
         pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         pool_sizes[0].descriptorCount = static_cast<std::uint32_t>(material_image_bindings.size()) * material_descriptor_set_capacity;
         pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         pool_sizes[1].descriptorCount = material_descriptor_set_capacity;
+        pool_sizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        pool_sizes[2].descriptorCount = material_descriptor_set_capacity;
         VkDescriptorPoolCreateInfo descriptor_pool{};
         descriptor_pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         descriptor_pool.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -3364,7 +3565,7 @@ private:
         VkPipelineRenderingCreateInfo rendering{};
         rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
         rendering.colorAttachmentCount = 1;
-        rendering.pColorAttachmentFormats = &viewport_format_;
+        rendering.pColorAttachmentFormats = &scene_color_format_;
         rendering.depthAttachmentFormat = depth_format_;
 
         VkGraphicsPipelineCreateInfo pipeline{};
@@ -3517,7 +3718,7 @@ private:
         VkPipelineDynamicStateCreateInfo dynamic{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
         dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size()); dynamic.pDynamicStates = dynamic_states.data();
         VkPipelineRenderingCreateInfo rendering{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
-        rendering.colorAttachmentCount = 1; rendering.pColorAttachmentFormats = &viewport_format_;
+        rendering.colorAttachmentCount = 1; rendering.pColorAttachmentFormats = &scene_color_format_;
         rendering.depthAttachmentFormat = depth_format_;
         VkGraphicsPipelineCreateInfo pipeline{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
         pipeline.pNext = &rendering; pipeline.stageCount = static_cast<std::uint32_t>(stages.size()); pipeline.pStages = stages.data();
@@ -3619,7 +3820,7 @@ private:
         depth.depthWriteEnable = VK_FALSE;
         depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
-        std::array<VkPipelineColorBlendAttachmentState, 5> attachments{};
+        std::array<VkPipelineColorBlendAttachmentState, 6> attachments{};
         for (auto& attachment : attachments)
         {
             attachment.colorWriteMask =
@@ -3636,7 +3837,8 @@ private:
         dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
         dynamic.pDynamicStates = dynamic_states.data();
 
-        const std::array<VkFormat, 5> color_formats{
+        const std::array<VkFormat, 6> color_formats{
+            VK_FORMAT_R16G16B16A16_SFLOAT,
             VK_FORMAT_R16G16B16A16_SFLOAT,
             VK_FORMAT_R16G16B16A16_SFLOAT,
             VK_FORMAT_R16G16B16A16_SFLOAT,
@@ -3693,8 +3895,10 @@ private:
             gbuffer_albedo_.view == VK_NULL_HANDLE ||
             gbuffer_normal_.view == VK_NULL_HANDLE ||
             gbuffer_material_.view == VK_NULL_HANDLE ||
+            gbuffer_emissive_.view == VK_NULL_HANDLE ||
             gbuffer_motion_.view == VK_NULL_HANDLE ||
-            gbuffer_object_id_.view == VK_NULL_HANDLE)
+            gbuffer_object_id_.view == VK_NULL_HANDLE ||
+            viewport_depth_view_ == VK_NULL_HANDLE)
             return false;
 
         if (gbuffer_sampler_ == VK_NULL_HANDLE)
@@ -3713,14 +3917,22 @@ private:
 
         if (gbuffer_descriptor_set_layout_ == VK_NULL_HANDLE)
         {
-            std::array<VkDescriptorSetLayoutBinding, 5> bindings{};
-            for (std::uint32_t index = 0; index < bindings.size(); ++index)
+            std::array<VkDescriptorSetLayoutBinding, 9> bindings{};
+            for (std::uint32_t index = 0; index < 7; ++index)
             {
                 bindings[index].binding = index;
                 bindings[index].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                 bindings[index].descriptorCount = 1;
                 bindings[index].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
             }
+            bindings[7].binding = 7;
+            bindings[7].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings[7].descriptorCount = 1;
+            bindings[7].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            bindings[8].binding = 8;
+            bindings[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            bindings[8].descriptorCount = 1;
+            bindings[8].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
             VkDescriptorSetLayoutCreateInfo layout{};
             layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -3732,14 +3944,15 @@ private:
 
         if (gbuffer_descriptor_pool_ == VK_NULL_HANDLE)
         {
-            VkDescriptorPoolSize pool_size{};
-            pool_size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            pool_size.descriptorCount = 5;
+            std::array<VkDescriptorPoolSize, 2> pool_sizes{
+                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8 },
+                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }
+            };
             VkDescriptorPoolCreateInfo pool{};
             pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             pool.maxSets = 1;
-            pool.poolSizeCount = 1;
-            pool.pPoolSizes = &pool_size;
+            pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+            pool.pPoolSizes = pool_sizes.data();
             if (vkCreateDescriptorPool(device_, &pool, nullptr, &gbuffer_descriptor_pool_) != VK_SUCCESS)
                 return false;
         }
@@ -3758,19 +3971,34 @@ private:
 
     void update_gbuffer_descriptor_set()
     {
-        if (gbuffer_descriptor_set_ == VK_NULL_HANDLE)
+        if (gbuffer_descriptor_set_ == VK_NULL_HANDLE || light_buffer_.buffer == VK_NULL_HANDLE)
             return;
 
-        std::array<VkDescriptorImageInfo, 5> images{};
+        std::array<VkDescriptorImageInfo, 8> images{};
         const VkSampler sampler = gbuffer_sampler_ != VK_NULL_HANDLE ? gbuffer_sampler_ : white_sampler_;
         images[0] = { sampler, gbuffer_albedo_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[1] = { sampler, gbuffer_normal_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[2] = { sampler, gbuffer_material_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-        images[3] = { sampler, gbuffer_object_id_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-        images[4] = { sampler, gbuffer_motion_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        images[3] = { sampler, gbuffer_emissive_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        images[4] = { sampler, gbuffer_object_id_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        images[5] = { sampler, gbuffer_motion_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        images[6] = { sampler, viewport_depth_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        images[7] = { white_sampler_, white_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        if (const auto* environment = active_environment())
+        {
+            if (const auto found = textures_.find(resource_key(environment->equirectangular_texture));
+                found != textures_.end() && found->second.view != VK_NULL_HANDLE)
+            {
+                images[7] = {
+                    found->second.sampler,
+                    found->second.view,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                };
+            }
+        }
 
-        std::array<VkWriteDescriptorSet, 5> writes{};
-        for (std::uint32_t index = 0; index < writes.size(); ++index)
+        std::array<VkWriteDescriptorSet, 8> writes{};
+        for (std::uint32_t index = 0; index < 7; ++index)
         {
             writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[index].dstSet = gbuffer_descriptor_set_;
@@ -3779,7 +4007,26 @@ private:
             writes[index].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             writes[index].pImageInfo = &images[index];
         }
+        writes[7].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[7].dstSet = gbuffer_descriptor_set_;
+        writes[7].dstBinding = 8;
+        writes[7].descriptorCount = 1;
+        writes[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[7].pImageInfo = &images[7];
         vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        VkDescriptorBufferInfo lights{
+            light_buffer_.buffer,
+            0,
+            sizeof(scene_lighting_data)
+        };
+        VkWriteDescriptorSet light_write{};
+        light_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        light_write.dstSet = gbuffer_descriptor_set_;
+        light_write.dstBinding = 7;
+        light_write.descriptorCount = 1;
+        light_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        light_write.pBufferInfo = &lights;
+        vkUpdateDescriptorSets(device_, 1, &light_write, 0, nullptr);
     }
 
     bool ensure_deferred_pipeline()
@@ -3856,7 +4103,7 @@ private:
         VkPipelineRenderingCreateInfo rendering{};
         rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
         rendering.colorAttachmentCount = 1;
-        rendering.pColorAttachmentFormats = &viewport_format_;
+        rendering.pColorAttachmentFormats = &scene_color_format_;
 
         VkGraphicsPipelineCreateInfo pipeline{};
         pipeline.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -3879,6 +4126,305 @@ private:
         if (result != VK_SUCCESS)
             arc::warn("render.vulkan", "Vulkan deferred lighting pipeline creation failed; falling back to forward rendering");
         return result == VK_SUCCESS;
+    }
+
+    bool ensure_output_transform_pipeline()
+    {
+        if (exposure_buffer_.buffer == VK_NULL_HANDLE &&
+            !create_buffer(
+                exposure_buffer_bytes,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_GPU_ONLY,
+                exposure_buffer_))
+            return false;
+
+        if (output_transform_pipeline_ != VK_NULL_HANDLE)
+        {
+            VkDescriptorImageInfo image{
+                viewport_sampler_,
+                scene_color_.view,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+            };
+            VkWriteDescriptorSet write{};
+            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            write.dstSet = output_transform_descriptor_set_;
+            write.descriptorCount = 1;
+            write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            write.pImageInfo = &image;
+            vkUpdateDescriptorSets(device_, 1, &write, 0, nullptr);
+            return true;
+        }
+        if (scene_color_.view == VK_NULL_HANDLE || viewport_sampler_ == VK_NULL_HANDLE)
+            return false;
+
+        std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+        bindings[0].binding = 0;
+        bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        bindings[0].descriptorCount = 1;
+        bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+        bindings[1].binding = 1;
+        bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[1].descriptorCount = 1;
+        bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+        VkDescriptorSetLayoutCreateInfo descriptor_layout{};
+        descriptor_layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        descriptor_layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+        descriptor_layout.pBindings = bindings.data();
+        if (vkCreateDescriptorSetLayout(
+                device_, &descriptor_layout, nullptr, &output_transform_descriptor_set_layout_) != VK_SUCCESS)
+            return false;
+
+        std::array<VkDescriptorPoolSize, 2> pool_sizes{
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
+            VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }
+        };
+        VkDescriptorPoolCreateInfo pool{};
+        pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool.maxSets = 1;
+        pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+        pool.pPoolSizes = pool_sizes.data();
+        if (vkCreateDescriptorPool(device_, &pool, nullptr, &output_transform_descriptor_pool_) != VK_SUCCESS)
+            return false;
+        VkDescriptorSetAllocateInfo allocate{};
+        allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocate.descriptorPool = output_transform_descriptor_pool_;
+        allocate.descriptorSetCount = 1;
+        allocate.pSetLayouts = &output_transform_descriptor_set_layout_;
+        if (vkAllocateDescriptorSets(device_, &allocate, &output_transform_descriptor_set_) != VK_SUCCESS)
+            return false;
+
+        VkDescriptorImageInfo image{
+            viewport_sampler_,
+            scene_color_.view,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        };
+        VkDescriptorBufferInfo exposure_buffer_info{ exposure_buffer_.buffer, 0, exposure_buffer_bytes };
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet = output_transform_descriptor_set_;
+        writes[0].dstBinding = 0;
+        writes[0].descriptorCount = 1;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[0].pImageInfo = &image;
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet = output_transform_descriptor_set_;
+        writes[1].dstBinding = 1;
+        writes[1].descriptorCount = 1;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        writes[1].pBufferInfo = &exposure_buffer_info;
+        vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+
+        const auto vert = create_shader_module(
+            builtin::deferred_lighting_vert_spv,
+            std::size(builtin::deferred_lighting_vert_spv));
+        const auto frag = create_shader_module(
+            builtin::output_transform_frag_spv,
+            std::size(builtin::output_transform_frag_spv));
+        if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
+            return false;
+
+        VkPushConstantRange push{};
+        push.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        push.size = sizeof(output_transform_push_constants);
+        VkPipelineLayoutCreateInfo layout{};
+        layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout.setLayoutCount = 1;
+        layout.pSetLayouts = &output_transform_descriptor_set_layout_;
+        layout.pushConstantRangeCount = 1;
+        layout.pPushConstantRanges = &push;
+        if (vkCreatePipelineLayout(device_, &layout, nullptr, &output_transform_pipeline_layout_) != VK_SUCCESS)
+        {
+            vkDestroyShaderModule(device_, vert, nullptr);
+            vkDestroyShaderModule(device_, frag, nullptr);
+            return false;
+        }
+
+        std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
+        stages[0] = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+        stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[0].module = vert;
+        stages[0].pName = "main";
+        stages[1] = { VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO };
+        stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[1].module = frag;
+        stages[1].pName = "main";
+        VkPipelineVertexInputStateCreateInfo vertex_input{ VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+        VkPipelineInputAssemblyStateCreateInfo input_assembly{ VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+        input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo viewport{ VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+        viewport.viewportCount = 1;
+        viewport.scissorCount = 1;
+        VkPipelineRasterizationStateCreateInfo raster{ VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+        raster.polygonMode = VK_POLYGON_MODE_FILL;
+        raster.cullMode = VK_CULL_MODE_NONE;
+        raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        raster.lineWidth = 1.0f;
+        VkPipelineMultisampleStateCreateInfo multisample{ VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineColorBlendAttachmentState color_attachment{};
+        color_attachment.colorWriteMask =
+            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        VkPipelineColorBlendStateCreateInfo color_blend{ VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+        color_blend.attachmentCount = 1;
+        color_blend.pAttachments = &color_attachment;
+        const std::array<VkDynamicState, 2> dynamic_states{
+            VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+        VkPipelineDynamicStateCreateInfo dynamic{ VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+        dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
+        dynamic.pDynamicStates = dynamic_states.data();
+        VkPipelineRenderingCreateInfo rendering{ VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+        rendering.colorAttachmentCount = 1;
+        rendering.pColorAttachmentFormats = &viewport_format_;
+        VkGraphicsPipelineCreateInfo pipeline{ VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+        pipeline.pNext = &rendering;
+        pipeline.stageCount = static_cast<std::uint32_t>(stages.size());
+        pipeline.pStages = stages.data();
+        pipeline.pVertexInputState = &vertex_input;
+        pipeline.pInputAssemblyState = &input_assembly;
+        pipeline.pViewportState = &viewport;
+        pipeline.pRasterizationState = &raster;
+        pipeline.pMultisampleState = &multisample;
+        pipeline.pColorBlendState = &color_blend;
+        pipeline.pDynamicState = &dynamic;
+        pipeline.layout = output_transform_pipeline_layout_;
+        const auto result = vkCreateGraphicsPipelines(
+            device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &output_transform_pipeline_);
+        vkDestroyShaderModule(device_, vert, nullptr);
+        vkDestroyShaderModule(device_, frag, nullptr);
+        if (result != VK_SUCCESS)
+            arc::warn("render.vulkan", "Vulkan output-transform pipeline creation failed");
+        return result == VK_SUCCESS;
+    }
+
+    bool ensure_exposure_pipelines()
+    {
+        if (luminance_histogram_pipeline_ != VK_NULL_HANDLE && exposure_resolve_pipeline_ != VK_NULL_HANDLE)
+            return true;
+        if (!ensure_output_transform_pipeline())
+            return false;
+
+        const auto create_compute = [&](const std::uint32_t* words, std::size_t word_count,
+                                        std::uint32_t push_size, VkPipelineLayout& pipeline_layout,
+                                        VkPipeline& pipeline) {
+            const auto shader = create_shader_module(words, word_count);
+            if (shader == VK_NULL_HANDLE)
+                return false;
+            VkPushConstantRange push{};
+            push.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            push.size = push_size;
+            VkPipelineLayoutCreateInfo layout{};
+            layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            layout.setLayoutCount = 1;
+            layout.pSetLayouts = &output_transform_descriptor_set_layout_;
+            layout.pushConstantRangeCount = 1;
+            layout.pPushConstantRanges = &push;
+            if (vkCreatePipelineLayout(device_, &layout, nullptr, &pipeline_layout) != VK_SUCCESS)
+            {
+                vkDestroyShaderModule(device_, shader, nullptr);
+                return false;
+            }
+            VkComputePipelineCreateInfo create{};
+            create.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+            create.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            create.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            create.stage.module = shader;
+            create.stage.pName = "main";
+            create.layout = pipeline_layout;
+            const auto result = vkCreateComputePipelines(
+                device_, vk_pipeline_cache_, 1, &create, nullptr, &pipeline);
+            vkDestroyShaderModule(device_, shader, nullptr);
+            return result == VK_SUCCESS;
+        };
+
+        if (!create_compute(
+                builtin::luminance_histogram_comp_spv,
+                std::size(builtin::luminance_histogram_comp_spv),
+                sizeof(histogram_push_constants),
+                luminance_histogram_pipeline_layout_,
+                luminance_histogram_pipeline_))
+            return false;
+        if (!create_compute(
+                builtin::exposure_resolve_comp_spv,
+                std::size(builtin::exposure_resolve_comp_spv),
+                sizeof(exposure_resolve_push_constants),
+                exposure_resolve_pipeline_layout_,
+                exposure_resolve_pipeline_))
+            return false;
+        return true;
+    }
+
+    void dispatch_exposure(VkCommandBuffer command_buffer)
+    {
+        if (!ensure_exposure_pipelines())
+            return;
+
+        const VkDeviceSize clear_size = exposure_needs_reset_
+            ? exposure_buffer_bytes
+            : exposure_histogram_bytes;
+        vkCmdFillBuffer(command_buffer, exposure_buffer_.buffer, 0, clear_size, 0u);
+        VkBufferMemoryBarrier clear_barrier{};
+        clear_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        clear_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        clear_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        clear_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        clear_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        clear_barrier.buffer = exposure_buffer_.buffer;
+        clear_barrier.size = exposure_buffer_bytes;
+        vkCmdPipelineBarrier(
+            command_buffer,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 1, &clear_barrier, 0, nullptr);
+
+        histogram_push_constants histogram{};
+        histogram.log_luminance_extent[2] = static_cast<float>(viewport_width_);
+        histogram.log_luminance_extent[3] = static_cast<float>(viewport_height_);
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, luminance_histogram_pipeline_);
+        vkCmdBindDescriptorSets(
+            command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, luminance_histogram_pipeline_layout_,
+            0, 1, &output_transform_descriptor_set_, 0, nullptr);
+        vkCmdPushConstants(
+            command_buffer, luminance_histogram_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+            0, sizeof(histogram), &histogram);
+        const std::uint32_t sample_width = (viewport_width_ + 3u) / 4u;
+        const std::uint32_t sample_height = (viewport_height_ + 3u) / 4u;
+        vkCmdDispatch(command_buffer, (sample_width + 15u) / 16u, (sample_height + 15u) / 16u, 1u);
+
+        VkBufferMemoryBarrier histogram_barrier = clear_barrier;
+        histogram_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        histogram_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(
+            command_buffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 0, nullptr, 1, &histogram_barrier, 0, nullptr);
+
+        exposure_resolve_push_constants resolve{};
+        resolve.limits_speeds[0] = frame_camera_.exposure.minimum_ev100;
+        resolve.limits_speeds[1] = frame_camera_.exposure.maximum_ev100;
+        resolve.limits_speeds[2] = frame_camera_.exposure.brighten_speed;
+        resolve.limits_speeds[3] = frame_camera_.exposure.darken_speed;
+        resolve.timing_mode[1] = frame_camera_.exposure.mode == exposure_mode::automatic ? 1.0f : 0.0f;
+        resolve.timing_mode[2] = frame_camera_.exposure.manual_ev100;
+        resolve.timing_mode[3] = exposure_needs_reset_ ? 1.0f : 0.0f;
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, exposure_resolve_pipeline_);
+        vkCmdBindDescriptorSets(
+            command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, exposure_resolve_pipeline_layout_,
+            0, 1, &output_transform_descriptor_set_, 0, nullptr);
+        vkCmdPushConstants(
+            command_buffer, exposure_resolve_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT,
+            0, sizeof(resolve), &resolve);
+        vkCmdDispatch(command_buffer, 1u, 1u, 1u);
+
+        VkBufferMemoryBarrier output_barrier = histogram_barrier;
+        output_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        output_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(
+            command_buffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, nullptr, 1, &output_barrier, 0, nullptr);
+        exposure_needs_reset_ = false;
     }
 
     bool ensure_sky_pipeline()
@@ -3970,7 +4516,7 @@ private:
         VkPipelineRenderingCreateInfo rendering{};
         rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
         rendering.colorAttachmentCount = 1;
-        rendering.pColorAttachmentFormats = &viewport_format_;
+        rendering.pColorAttachmentFormats = &scene_color_format_;
         rendering.depthAttachmentFormat = depth_format_;
 
         VkGraphicsPipelineCreateInfo pipeline{};
@@ -4123,9 +4669,11 @@ private:
     {
         const VkImageUsageFlags sampled_color_usage =
             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-        const bool ok = ensure_graph_image(gbuffer_albedo_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
+        const bool ok = ensure_graph_image(scene_color_, width, height, scene_color_format_, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
+            ensure_graph_image(gbuffer_albedo_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
             ensure_graph_image(gbuffer_normal_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
             ensure_graph_image(gbuffer_material_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
+            ensure_graph_image(gbuffer_emissive_, width, height, VK_FORMAT_R16G16B16A16_SFLOAT, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
             ensure_graph_image(gbuffer_motion_, width, height, VK_FORMAT_R16G16_SFLOAT, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
             ensure_graph_image(gbuffer_object_id_, width, height, VK_FORMAT_R32_UINT, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT) &&
             ensure_graph_image(selection_mask_, width, height, VK_FORMAT_R8_UNORM, sampled_color_usage, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -4192,6 +4740,7 @@ private:
             viewport_descriptor_ = ImGui_ImplVulkan_AddTexture(viewport_sampler_, viewport_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         viewport_width_ = width;
         viewport_height_ = height;
+        exposure_needs_reset_ = true;
         viewport_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
         ensure_deferred_targets(width, height);
 
@@ -4204,7 +4753,7 @@ private:
         depth_image.arrayLayers = 1;
         depth_image.samples = VK_SAMPLE_COUNT_1_BIT;
         depth_image.tiling = VK_IMAGE_TILING_OPTIMAL;
-        depth_image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        depth_image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
         VmaAllocationCreateInfo depth_allocation{};
         depth_allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -4271,9 +4820,11 @@ private:
         destroy_graph_image(gbuffer_albedo_);
         destroy_graph_image(gbuffer_normal_);
         destroy_graph_image(gbuffer_material_);
+        destroy_graph_image(gbuffer_emissive_);
         destroy_graph_image(gbuffer_motion_);
         destroy_graph_image(gbuffer_object_id_);
         destroy_graph_image(selection_mask_);
+        destroy_graph_image(scene_color_);
         if (gbuffer_descriptor_pool_ != VK_NULL_HANDLE)
         {
             vkDestroyDescriptorPool(device_, gbuffer_descriptor_pool_, nullptr);
@@ -4352,11 +4903,34 @@ private:
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         barrier.subresourceRange.levelCount = 1;
         barrier.subresourceRange.layerCount = 1;
-        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        VkPipelineStageFlags source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkPipelineStageFlags destination_stage =
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        if (viewport_depth_layout_ == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            barrier.srcAccessMask =
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            source_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        }
+        else if (viewport_depth_layout_ == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            source_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else
+        {
+            barrier.dstAccessMask =
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        }
         vkCmdPipelineBarrier(
             command_buffer,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            source_stage,
+            destination_stage,
             0,
             0,
             nullptr,
@@ -4828,7 +5402,9 @@ private:
         bool has_opaque_draws = false;
         for (const auto& draw : frame_draws_)
         {
-            if (draw.mode != render_mode::wireframe && material_alpha_mode_for(draw) != material_alpha_mode::blend)
+            if (draw.mode != render_mode::wireframe &&
+                material_alpha_mode_for(draw) != material_alpha_mode::blend &&
+                !material_requires_forward(draw))
             {
                 has_opaque_draws = true;
                 break;
@@ -4836,7 +5412,9 @@ private:
         }
         for (const auto& draw : frame_virtual_draws_)
         {
-            if (draw.draw.mode != render_mode::wireframe && material_alpha_mode_for(draw.draw) != material_alpha_mode::blend)
+            if (draw.draw.mode != render_mode::wireframe &&
+                material_alpha_mode_for(draw.draw) != material_alpha_mode::blend &&
+                !material_requires_forward(draw.draw))
             {
                 has_opaque_draws = true;
                 break;
@@ -4867,13 +5445,15 @@ private:
 
             for (const auto& draw : frame_draws_)
             {
-                if (draw.mode == render_mode::wireframe || material_alpha_mode_for(draw) == material_alpha_mode::blend)
+                if (draw.mode == render_mode::wireframe ||
+                    material_alpha_mode_for(draw) == material_alpha_mode::blend)
                     continue;
                 draw_indexed_mesh(command_buffer, draw, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT);
             }
             for (const auto& draw : frame_virtual_draws_)
             {
-                if (draw.draw.mode == render_mode::wireframe || material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
+                if (draw.draw.mode == render_mode::wireframe ||
+                    material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
                     continue;
                 draw_indexed_virtual_cluster(command_buffer, draw, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT);
             }
@@ -4884,15 +5464,17 @@ private:
         transition_graph_image(command_buffer, gbuffer_albedo_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_normal_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_material_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        transition_graph_image(command_buffer, gbuffer_emissive_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_motion_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_object_id_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
         {
-            std::array<VkRenderingAttachmentInfo, 5> color_attachments{};
-            graph_image* images[5]{
+            std::array<VkRenderingAttachmentInfo, 6> color_attachments{};
+            graph_image* images[6]{
                 &gbuffer_albedo_,
                 &gbuffer_normal_,
                 &gbuffer_material_,
+                &gbuffer_emissive_,
                 &gbuffer_motion_,
                 &gbuffer_object_id_
             };
@@ -4984,16 +5566,18 @@ private:
         transition_graph_image(command_buffer, gbuffer_albedo_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_normal_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_material_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_graph_image(command_buffer, gbuffer_emissive_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_motion_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         transition_graph_image(command_buffer, gbuffer_object_id_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_depth(command_buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         update_gbuffer_descriptor_set();
 
         {
-            transition_viewport(command_buffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
             VkRenderingAttachmentInfo color_attachment{};
             color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-            color_attachment.imageView = viewport_view_;
+            color_attachment.imageView = scene_color_.view;
             color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
             color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -5007,6 +5591,13 @@ private:
             cmd_begin_rendering(command_buffer, &rendering);
             set_viewport_and_scissor(command_buffer);
             deferred_push_constants constants{};
+            std::copy(
+                frame_camera_.inverse_view_projection.data(),
+                frame_camera_.inverse_view_projection.data() + 16,
+                constants.inverse_view_projection);
+            constants.camera_position[0] = frame_camera_.position[0];
+            constants.camera_position[1] = frame_camera_.position[1];
+            constants.camera_position[2] = frame_camera_.position[2];
             constants.light_direction_intensity[0] = 0.35f;
             constants.light_direction_intensity[1] = -0.85f;
             constants.light_direction_intensity[2] = -0.40f;
@@ -5017,24 +5608,22 @@ private:
                 constants.light_direction_intensity[1] = light.direction[1];
                 constants.light_direction_intensity[2] = light.direction[2];
                 constants.light_direction_intensity[3] = light.intensity;
-                constants.light_color_exposure[0] = light.color[0];
-                constants.light_color_exposure[1] = light.color[1];
-                constants.light_color_exposure[2] = light.color[2];
+                constants.light_color[0] = light.color[0];
+                constants.light_color[1] = light.color[1];
+                constants.light_color[2] = light.color[2];
             }
-            constants.light_color_exposure[3] = frame_environment_.enabled
-                ? std::max(frame_environment_.atmosphere.exposure, 0.001f)
-                : 1.0f;
             constants.ambient_visualization[0] = frame_lighting_.ambient_color_intensity[0] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[1] = frame_lighting_.ambient_color_intensity[1] * frame_lighting_.ambient_color_intensity[3];
             constants.ambient_visualization[2] = frame_lighting_.ambient_color_intensity[2] * frame_lighting_.ambient_color_intensity[3];
+            if (const auto* environment = active_environment())
+            {
+                const auto found = textures_.find(resource_key(environment->equirectangular_texture));
+                constants.light_color[3] =
+                    found != textures_.end() && found->second.view != VK_NULL_HANDLE ? 1.0f : 0.0f;
+            }
             constants.ambient_visualization[3] = !frame_draws_.empty()
                 ? static_cast<float>(frame_draws_.front().visualization)
                 : static_cast<float>(frame_virtual_draws_.front().draw.visualization);
-            constants.debug_counts[0] = static_cast<float>(frame_lighting_.point_count);
-            constants.debug_counts[1] = static_cast<float>(frame_lighting_.spot_count);
-            constants.debug_counts[2] = 16.0f;
-            constants.debug_counts[3] = static_cast<float>(frame_lighting_.skipped_point_count + frame_lighting_.skipped_spot_count);
-
             vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, deferred_pipeline_);
             vkCmdBindDescriptorSets(
                 command_buffer,
@@ -5128,12 +5717,12 @@ private:
         if (viewport_image_ == VK_NULL_HANDLE)
             return;
 
-        transition_viewport(command_buffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
         VkRenderingAttachmentInfo color_attachment{};
         color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        color_attachment.imageView = viewport_view_;
+        color_attachment.imageView = scene_color_.view;
         color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -5207,7 +5796,7 @@ private:
         const bool deferred_rendered = resolved_config_.path == render_path::deferred &&
             render_deferred_scene(command_buffer);
 
-        transition_viewport(command_buffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
@@ -5310,7 +5899,7 @@ private:
                 if (material_alpha_mode_for(draw) == material_alpha_mode::blend)
                     continue;
 
-                if (deferred_rendered)
+                if (deferred_rendered && !material_requires_forward(draw))
                 {
                     continue;
                 }
@@ -5338,7 +5927,7 @@ private:
                 if (material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
                     continue;
 
-                if (deferred_rendered)
+                if (deferred_rendered && !material_requires_forward(draw.draw))
                     continue;
 
                 draw_virtual_with_pipeline(
@@ -5371,6 +5960,58 @@ private:
         }
 
         draw_debug_overlay(command_buffer);
+        cmd_end_rendering(command_buffer);
+
+        transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (!ensure_output_transform_pipeline())
+        {
+            arc::warn("render.vulkan", "Output transform unavailable; the viewport retains its previous valid image");
+            return;
+        }
+        dispatch_exposure(command_buffer);
+        transition_viewport(command_buffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        VkRenderingAttachmentInfo output_attachment{};
+        output_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        output_attachment.imageView = viewport_view_;
+        output_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        output_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        output_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        VkRenderingInfo output_rendering{};
+        output_rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        output_rendering.renderArea.extent = { viewport_width_, viewport_height_ };
+        output_rendering.layerCount = 1;
+        output_rendering.colorAttachmentCount = 1;
+        output_rendering.pColorAttachments = &output_attachment;
+        cmd_begin_rendering(command_buffer, &output_rendering);
+        set_viewport_and_scissor(command_buffer);
+        output_transform_push_constants output_constants{};
+        output_constants.exposure_output[0] =
+            frame_camera_.exposure.mode == exposure_mode::manual
+                ? exposure_multiplier(
+                    frame_camera_.exposure.manual_ev100,
+                    frame_camera_.exposure.compensation_ev)
+                : 1.0f;
+        output_constants.exposure_output[1] =
+            frame_camera_.exposure.mode == exposure_mode::automatic ? 1.0f : 0.0f;
+        output_constants.exposure_output[2] = frame_camera_.exposure.compensation_ev;
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, output_transform_pipeline_);
+        vkCmdBindDescriptorSets(
+            command_buffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            output_transform_pipeline_layout_,
+            0,
+            1,
+            &output_transform_descriptor_set_,
+            0,
+            nullptr);
+        vkCmdPushConstants(
+            command_buffer,
+            output_transform_pipeline_layout_,
+            VK_SHADER_STAGE_FRAGMENT_BIT,
+            0,
+            sizeof(output_constants),
+            &output_constants);
+        vkCmdDraw(command_buffer, 3, 1, 0, 0);
         cmd_end_rendering(command_buffer);
         transition_viewport(command_buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
@@ -5424,16 +6065,20 @@ private:
     std::unordered_map<std::uint64_t, gpu_texture> textures_;
     std::unordered_map<std::uint64_t, gpu_material> materials_;
     std::unordered_map<std::uint64_t, gpu_environment> environments_;
+    std::unordered_set<std::uint64_t> texture_semantic_diagnostics_;
     std::vector<draw_mesh_event> frame_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_draws_;
     std::vector<draw_mesh_event> frame_shadow_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
     std::vector<point_light_event> frame_point_lights_;
     std::vector<spot_light_event> frame_spot_lights_;
+    std::vector<area_light_event> frame_area_lights_;
+    const std::vector<area_light_event> empty_area_lights_{};
     std::vector<debug_overlay_line> frame_debug_overlay_lines_;
     scene_lighting_data frame_lighting_;
     world_environment_data frame_environment_;
     render_camera frame_camera_;
+    bool frame_camera_valid_{};
     bool frame_shadows_enabled_{ true };
     gpu_buffer light_buffer_;
     std::vector<gpu_buffer> shadow_uniform_buffers_;
@@ -5464,6 +6109,17 @@ private:
     VkSampler gbuffer_sampler_{};
     VkPipelineLayout deferred_pipeline_layout_{};
     VkPipeline deferred_pipeline_{};
+    VkDescriptorSetLayout output_transform_descriptor_set_layout_{};
+    VkDescriptorPool output_transform_descriptor_pool_{};
+    VkDescriptorSet output_transform_descriptor_set_{};
+    VkPipelineLayout output_transform_pipeline_layout_{};
+    VkPipeline output_transform_pipeline_{};
+    gpu_buffer exposure_buffer_;
+    VkPipelineLayout luminance_histogram_pipeline_layout_{};
+    VkPipeline luminance_histogram_pipeline_{};
+    VkPipelineLayout exposure_resolve_pipeline_layout_{};
+    VkPipeline exposure_resolve_pipeline_{};
+    bool exposure_needs_reset_{ true };
     VkPipelineLayout sky_pipeline_layout_{};
     VkPipeline sky_pipeline_{};
     VkPipelineLayout shadow_pipeline_layout_{};
@@ -5480,6 +6136,7 @@ private:
     bool swapchain_rebuild_{};
     std::uint32_t min_image_count_{ 2 };
     VkFormat viewport_format_{ VK_FORMAT_R16G16B16A16_SFLOAT };
+    VkFormat scene_color_format_{ VK_FORMAT_R16G16B16A16_SFLOAT };
     VkFormat depth_format_{ VK_FORMAT_D32_SFLOAT };
     VkImage viewport_image_{};
     VmaAllocation viewport_allocation_{};
@@ -5491,9 +6148,11 @@ private:
     VmaAllocation viewport_depth_allocation_{};
     VkImageView viewport_depth_view_{};
     VkImageLayout viewport_depth_layout_{ VK_IMAGE_LAYOUT_UNDEFINED };
+    graph_image scene_color_{};
     graph_image gbuffer_albedo_{};
     graph_image gbuffer_normal_{};
     graph_image gbuffer_material_{};
+    graph_image gbuffer_emissive_{};
     graph_image gbuffer_motion_{};
     graph_image gbuffer_object_id_{};
     graph_image selection_mask_{};

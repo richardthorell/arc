@@ -1,0 +1,36 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D scene_color;
+layout(std430, set = 0, binding = 1) buffer exposure_buffer
+{
+    uint bins[256];
+    float ev100;
+    uint valid;
+    uint reserved0;
+    uint reserved1;
+} exposure;
+
+layout(push_constant) uniform histogram_constants
+{
+    vec4 log_luminance_extent;
+} constants;
+
+void main()
+{
+    uvec2 pixel = gl_GlobalInvocationID.xy * 4u + uvec2(2u);
+    uvec2 extent = uvec2(constants.log_luminance_extent.zw);
+    if (pixel.x >= extent.x || pixel.y >= extent.y)
+        return;
+
+    vec3 radiance = max(texelFetch(scene_color, ivec2(pixel), 0).rgb, vec3(0.0));
+    float luminance = dot(radiance, vec3(0.2126, 0.7152, 0.0722));
+    float log_luminance = log2(max(luminance, 1.0e-6));
+    float normalized = clamp(
+        (log_luminance - constants.log_luminance_extent.x) /
+        max(constants.log_luminance_extent.y - constants.log_luminance_extent.x, 1.0e-5),
+        0.0,
+        1.0);
+    atomicAdd(exposure.bins[uint(normalized * 255.0 + 0.5)], 1u);
+}

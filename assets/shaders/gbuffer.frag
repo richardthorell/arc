@@ -11,8 +11,9 @@ layout(location = 6) in vec4 in_previous_clip_position;
 layout(location = 0) out vec4 out_albedo;
 layout(location = 1) out vec4 out_normal;
 layout(location = 2) out vec4 out_material;
-layout(location = 3) out vec2 out_motion;
-layout(location = 4) out uint out_object_id;
+layout(location = 3) out vec4 out_emissive;
+layout(location = 4) out vec2 out_motion;
+layout(location = 5) out uint out_object_id;
 
 layout(set = 0, binding = 0) uniform sampler2D base_texture;
 layout(set = 0, binding = 1) uniform sampler2D metallic_roughness_texture;
@@ -33,6 +34,8 @@ layout(push_constant) uniform mesh_constants
     vec4 fog_color_density;
     vec4 fog_params;
     vec4 material_params;
+    vec4 emissive_factor;
+    vec4 material_lobes;
 } constants;
 
 layout(set = 0, binding = 6) uniform shadow_data
@@ -131,8 +134,8 @@ void main()
         ? mix(1.0, texture(occlusion_texture, in_texcoord).r, constants.material_params.y)
         : 1.0;
     vec3 emissive = has_texture(16.0)
-        ? texture(emissive_texture, in_texcoord).rgb * constants.material_params.z
-        : vec3(0.0);
+        ? texture(emissive_texture, in_texcoord).rgb * constants.emissive_factor.rgb * constants.emissive_factor.w
+        : constants.emissive_factor.rgb * constants.emissive_factor.w;
 
     vec2 current_ndc = in_clip_position.xy / max(in_clip_position.w, 0.00001);
     vec2 previous_ndc = in_previous_clip_position.xy / max(in_previous_clip_position.w, 0.00001);
@@ -142,7 +145,8 @@ void main()
 
     out_albedo = vec4(material_color.rgb, material_color.a);
     out_normal = vec4(normal * 0.5 + vec3(0.5), ao);
-    out_material = vec4(metallic, roughness, length(emissive), shadow.x);
-    out_motion = vec2(shadow.y / 3.0, shadow.x);
+    out_material = vec4(metallic, roughness, shadow.x, 0.0);
+    out_emissive = vec4(emissive, 1.0);
+    out_motion = (current_ndc - previous_ndc) * 0.5;
     out_object_id = uint(constants.fog_params.w);
 }

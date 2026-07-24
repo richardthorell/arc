@@ -1,0 +1,75 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 1) buffer exposure_buffer
+{
+    uint bins[256];
+    float ev100;
+    uint valid;
+    uint reserved0;
+    uint reserved1;
+} exposure;
+
+layout(push_constant) uniform exposure_constants
+{
+    vec4 log_range_percentiles;
+    vec4 limits_speeds;
+    vec4 timing_mode;
+} constants;
+
+void main()
+{
+    uint total = 0u;
+    for (uint index = 0u; index < 256u; ++index)
+        total += exposure.bins[index];
+
+    float target_ev = constants.timing_mode.z;
+    if (constants.timing_mode.y > 0.5 && total > 0u)
+    {
+        uint low_count = uint(float(total) * constants.log_range_percentiles.z);
+        uint high_count = uint(float(total) * constants.log_range_percentiles.w);
+        uint cumulative = 0u;
+        float weighted_log_sum = 0.0;
+        uint accepted = 0u;
+        for (uint index = 0u; index < 256u; ++index)
+        {
+            uint count = exposure.bins[index];
+            uint begin = cumulative;
+            uint end = cumulative + count;
+            uint accepted_begin = max(begin, low_count);
+            uint accepted_end = min(end, max(high_count, low_count + 1u));
+            if (accepted_end > accepted_begin)
+            {
+                uint contribution = accepted_end - accepted_begin;
+                float t = (float(index) + 0.5) / 256.0;
+                float log_luminance = mix(
+                    constants.log_range_percentiles.x,
+                    constants.log_range_percentiles.y,
+                    t);
+                weighted_log_sum += log_luminance * float(contribution);
+                accepted += contribution;
+            }
+            cumulative = end;
+        }
+        if (accepted > 0u)
+        {
+            float average_luminance = exp2(weighted_log_sum / float(accepted));
+            target_ev = log2(max(average_luminance * 100.0 / 12.5, 1.0e-6));
+        }
+    }
+    target_ev = clamp(target_ev, constants.limits_speeds.x, constants.limits_speeds.y);
+
+    bool reset = exposure.valid == 0u || constants.timing_mode.w > 0.5;
+    if (reset)
+        exposure.ev100 = target_ev;
+    else
+    {
+        float speed = target_ev < exposure.ev100
+            ? constants.limits_speeds.z
+            : constants.limits_speeds.w;
+        float blend = 1.0 - exp(-max(speed, 0.0) * max(constants.timing_mode.x, 0.0));
+        exposure.ev100 = mix(exposure.ev100, target_ev, clamp(blend, 0.0, 1.0));
+    }
+    exposure.valid = 1u;
+}

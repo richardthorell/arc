@@ -11,8 +11,9 @@ layout(location = 6) in vec4 in_previous_clip_position;
 layout(location = 0) out vec4 out_albedo;
 layout(location = 1) out vec4 out_normal;
 layout(location = 2) out vec4 out_material;
-layout(location = 3) out vec2 out_motion;
-layout(location = 4) out uint out_object_id;
+layout(location = 3) out vec4 out_emissive;
+layout(location = 4) out vec2 out_motion;
+layout(location = 5) out uint out_object_id;
 
 layout(set = 0, binding = 0) uniform sampler2D grass_texture;
 layout(set = 0, binding = 1) uniform sampler2D dirt_texture;
@@ -31,7 +32,7 @@ layout(set = 0, binding = 14) uniform sampler2D sand_surface_texture;
 layout(push_constant) uniform mesh_constants {
     mat4 model_view_projection; mat4 model; vec4 base_color; vec4 light_direction_intensity;
     vec4 light_color; vec4 camera_position; vec4 visualization; vec4 fog_color_density;
-    vec4 fog_params; vec4 material_params;
+    vec4 fog_params; vec4 material_params; vec4 emissive_factor; vec4 material_lobes;
 } constants;
 layout(set = 0, binding = 6) uniform shadow_data {
     mat4 light_view_projection[4]; vec4 cascade_splits; vec4 params; vec4 cascade_texel_size;
@@ -127,6 +128,7 @@ void main()
     out_albedo = vec4(albedo * constants.base_color.rgb, 1.0);
     out_normal = vec4(normal * 0.5 + 0.5, clamp(ao, 0.0, 1.0));
     out_material = vec4(0.0, roughness, 0.0, shadow_visibility(normal));
+    out_emissive = vec4(0.0);
     out_motion = (current_ndc - previous_ndc) * 0.5;
     out_object_id = uint(constants.fog_params.w);
 }

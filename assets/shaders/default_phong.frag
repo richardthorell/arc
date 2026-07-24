@@ -1,7 +1,9 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 
-#include "include/arc_math.glsl"
+#include "include/arc_pbr.glsl"
+#define ARC_LIGHT_BUFFER_BINDING 15
+#include "include/arc_lighting.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_world_position;
@@ -18,6 +20,13 @@ layout(set = 0, binding = 2) uniform sampler2D normal_texture;
 layout(set = 0, binding = 3) uniform sampler2D occlusion_texture;
 layout(set = 0, binding = 4) uniform sampler2D emissive_texture;
 layout(set = 0, binding = 5) uniform sampler2DArrayShadow shadow_map;
+layout(set = 0, binding = 7) uniform sampler2D clear_coat_texture;
+layout(set = 0, binding = 8) uniform sampler2D clear_coat_roughness_texture;
+layout(set = 0, binding = 9) uniform sampler2D clear_coat_normal_texture;
+layout(set = 0, binding = 10) uniform sampler2D anisotropy_texture;
+layout(set = 0, binding = 11) uniform sampler2D subsurface_texture;
+layout(set = 0, binding = 12) uniform sampler2D thickness_texture;
+layout(set = 0, binding = 13) uniform sampler2D transmission_texture;
 
 layout(push_constant) uniform mesh_constants
 {
@@ -31,6 +40,11 @@ layout(push_constant) uniform mesh_constants
     vec4 fog_color_density;
     vec4 fog_params;
     vec4 material_params;
+    vec4 emissive_factor;
+    vec4 material_lobes;
+    vec4 volume_params;
+    vec4 subsurface_color_factor;
+    vec4 attenuation_color;
 } constants;
 
 layout(set = 0, binding = 6) uniform shadow_data
@@ -46,15 +60,9 @@ bool has_texture(float flag)
     return mod(floor(constants.light_color.w / flag), 2.0) >= 1.0;
 }
 
-float saturate(float value)
+bool has_advanced_texture(float flag)
 {
-    return clamp(value, 0.0, 1.0);
-}
-
-vec3 aces_filmic(vec3 color)
-{
-    color *= 1.08;
-    return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14), 0.0, 1.0);
+    return mod(floor(constants.attenuation_color.w / flag), 2.0) >= 1.0;
 }
 
 float sample_shadow(vec3 world_position)
@@ -145,24 +153,15 @@ vec3 material_normal()
     return normalize(mat3(t, b, n) * mapped);
 }
 
-float distribution_ggx(float n_dot_h, float roughness)
+vec3 material_clear_coat_normal(vec3 fallback)
 {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float denom = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
-    return a2 / max(ARC_PI * denom * denom, 0.00001);
-}
-
-float geometry_schlick_ggx(float n_dot_v, float roughness)
-{
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
-    return n_dot_v / max(n_dot_v * (1.0 - k) + k, 0.00001);
-}
-
-vec3 fresnel_schlick(float cos_theta, vec3 f0)
-{
-    return f0 + (1.0 - f0) * pow(1.0 - cos_theta, 5.0);
+    if (!has_advanced_texture(4.0))
+        return fallback;
+    vec3 t = normalize(in_tangent.xyz);
+    t = normalize(t - fallback * dot(fallback, t));
+    vec3 b = normalize(cross(fallback, t) * in_tangent.w);
+    vec3 mapped = texture(clear_coat_normal_texture, in_texcoord).xyz * 2.0 - vec3(1.0);
+    return normalize(mat3(t, b, fallback) * mapped);
 }
 
 void main()
@@ -176,7 +175,7 @@ void main()
     vec3 normal = material_normal();
     vec3 light_dir = normalize(-constants.light_direction_intensity.xyz);
     vec3 view_dir = normalize(constants.camera_position.xyz - in_world_position);
-    vec3 half_dir = normalize(light_dir + view_dir);
+    float key_n_dot_l = max(dot(normal, light_dir), 0.0);
 
     vec4 mr = has_texture(2.0) ? texture(metallic_roughness_texture, in_texcoord) : vec4(1.0);
     float roughness = clamp(constants.visualization.z * mr.g, 0.04, 1.0);
@@ -185,25 +184,64 @@ void main()
         ? mix(1.0, texture(occlusion_texture, in_texcoord).r, constants.material_params.y)
         : 1.0;
     vec3 emissive = has_texture(16.0)
-        ? texture(emissive_texture, in_texcoord).rgb * constants.material_params.z
-        : vec3(0.0);
+        ? texture(emissive_texture, in_texcoord).rgb * constants.emissive_factor.rgb * constants.emissive_factor.w
+        : constants.emissive_factor.rgb * constants.emissive_factor.w;
 
-    float n_dot_l = saturate(dot(normal, light_dir));
-    float n_dot_v = saturate(dot(normal, view_dir));
-    float n_dot_h = saturate(dot(normal, half_dir));
-    float h_dot_v = saturate(dot(half_dir, view_dir));
-
-    vec3 f0 = mix(vec3(0.04), material_color.rgb, metallic);
-    vec3 f = fresnel_schlick(h_dot_v, f0);
-    float d = distribution_ggx(n_dot_h, roughness);
-    float g = geometry_schlick_ggx(n_dot_l, roughness) * geometry_schlick_ggx(n_dot_v, roughness);
-    vec3 specular = (d * g * f) / max(4.0 * n_dot_v * n_dot_l, 0.0001);
-    vec3 diffuse = (1.0 - f) * (1.0 - metallic) * material_color.rgb / ARC_PI;
-    vec3 radiance = constants.light_color.rgb * constants.light_direction_intensity.w;
+    arc_surface_data surface;
+    surface.base_color = material_color.rgb;
+    surface.normal = normal;
+    surface.clear_coat_normal = material_clear_coat_normal(normal);
+    surface.tangent = in_tangent.xyz;
+    surface.emissive = emissive;
+    surface.metallic = metallic;
+    surface.perceptual_roughness = roughness;
+    surface.occlusion = ao;
+    surface.clear_coat = constants.material_lobes.x *
+        (has_advanced_texture(1.0) ? texture(clear_coat_texture, in_texcoord).r : 1.0);
+    surface.clear_coat_roughness = constants.material_lobes.y *
+        (has_advanced_texture(2.0) ? texture(clear_coat_roughness_texture, in_texcoord).g : 1.0);
+    surface.anisotropy = constants.material_lobes.z *
+        (has_advanced_texture(8.0) ? texture(anisotropy_texture, in_texcoord).b : 1.0);
     float shadow = sample_shadow(in_world_position);
-    vec3 direct = (diffuse + specular) * radiance * n_dot_l * shadow;
-    vec3 ambient = material_color.rgb * ao * 0.18;
+    vec3 radiance = constants.light_color.rgb * constants.light_direction_intensity.w;
+    vec3 direct = arc_evaluate_scene_lights(surface, view_dir, in_world_position, shadow);
+    vec3 ambient = arc_evaluate_split_sum_ibl(
+        surface,
+        view_dir,
+        vec3(0.18),
+        vec3(0.18) * mix(0.35, 1.0, 1.0 - roughness),
+        vec2(1.0 - 0.5 * roughness, 0.04));
+    int shading_model = int(constants.volume_params.x + 0.5);
+    float subsurface_factor = constants.subsurface_color_factor.w *
+        (has_advanced_texture(16.0) ? texture(subsurface_texture, in_texcoord).r : 1.0);
+    if (shading_model == 1 && subsurface_factor > 0.0)
+    {
+        float wrapped = clamp((dot(normal, light_dir) + 0.45) / 1.45, 0.0, 1.0);
+        float back_scatter = pow(clamp(dot(-normal, light_dir), 0.0, 1.0), 2.0);
+        direct += constants.subsurface_color_factor.rgb *
+            subsurface_factor * radiance *
+            (wrapped * 0.22 + back_scatter * 0.18) * shadow;
+    }
     vec3 lit_color = ambient + direct + emissive;
+    float transmission_factor = constants.material_lobes.w *
+        (has_advanced_texture(64.0) ? texture(transmission_texture, in_texcoord).r : 1.0);
+    float thickness = constants.volume_params.z *
+        (has_advanced_texture(32.0) ? texture(thickness_texture, in_texcoord).r : 1.0);
+    if (shading_model == 2 && transmission_factor > 0.0)
+    {
+        float ior = max(constants.volume_params.y, 1.0001);
+        float fresnel = pow((ior - 1.0) / (ior + 1.0), 2.0);
+        vec3 transmitted_environment = mix(
+            constants.fog_color_density.rgb,
+            constants.light_color.rgb * 0.18,
+            clamp(refract(-view_dir, normal, 1.0 / ior).y * 0.5 + 0.5, 0.0, 1.0));
+        transmitted_environment *= arc_beer_lambert(
+            constants.attenuation_color.rgb,
+            constants.volume_params.w,
+            thickness);
+        float transmission_weight = transmission_factor * (1.0 - fresnel);
+        lit_color = mix(lit_color, transmitted_environment + emissive, transmission_weight);
+    }
 
     int mode = int(constants.visualization.x + 0.5);
     vec3 color = lit_color;
@@ -214,7 +252,7 @@ void main()
     else if (mode == 3)
         color = normal * 0.5 + vec3(0.5);
     else if (mode == 4)
-        color = f0;
+        color = mix(vec3(0.04), material_color.rgb, metallic);
     else if (mode == 5)
         color = vec3(1.0 - roughness);
     else if (mode == 6)
@@ -224,16 +262,11 @@ void main()
     else if (mode == 8)
         color = emissive;
     else if (mode == 9)
-        color = vec3(n_dot_l * shadow);
+        color = vec3(key_n_dot_l * shadow);
     else if (mode == 10)
         color = vec3(in_texcoord, 0.0);
     else
         color = apply_height_fog(color);
 
-    if (mode == 0)
-    {
-        color *= max(constants.camera_position.w, 0.001);
-        color = aces_filmic(color);
-    }
     out_color = vec4(color, material_color.a);
 }
