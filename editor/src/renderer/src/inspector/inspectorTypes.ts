@@ -20,6 +20,31 @@ export type InspectorCamera = {
   farPlane: number;
   active: boolean;
   clearColor: Vec4;
+  exposureMode: 'manual' | 'automatic';
+  exposureMetering: 'average' | 'centerWeighted';
+  manualEV100: number;
+  exposureCompensation: number;
+  minimumEV100: number;
+  maximumEV100: number;
+  brightenSpeed: number;
+  darkenSpeed: number;
+};
+
+export type InspectorLight = {
+  kind: 'directional' | 'point' | 'spot' | 'rectangle' | 'disk';
+  unit: 'unitless' | 'lumens' | 'candela' | 'lux' | 'nits';
+  color: Vec4;
+  intensity: number;
+  range: number;
+  innerAngleDegrees: number;
+  outerAngleDegrees: number;
+  width: number;
+  height: number;
+  twoSided: boolean;
+  enabled: boolean;
+  castsShadows: boolean;
+  useColorTemperature: boolean;
+  temperatureKelvin: number;
 };
 
 export type InspectorMeshRenderer = {
@@ -67,6 +92,7 @@ export type InspectorEntitySnapshot = {
   renderLayerMask: number;
   transform: InspectorTransform | null;
   camera: InspectorCamera | null;
+  light: InspectorLight | null;
   meshRenderer: InspectorMeshRenderer | null;
   terrain: InspectorTerrain | null;
   prefab: InspectorPrefab | null;
@@ -107,7 +133,31 @@ const hostSelectedEntitySchema = z.object({
     farPlane: finiteNumber,
     active: z.boolean(),
     clearColor: vec4Tuple,
+    exposureMode: z.enum(['manual', 'automatic']).default('automatic'),
+    exposureMetering: z.enum(['average', 'centerWeighted']).default('average'),
+    manualEV100: finiteNumber.default(10),
+    exposureCompensation: finiteNumber.default(0),
+    minimumEV100: finiteNumber.default(-8),
+    maximumEV100: finiteNumber.default(20),
+    brightenSpeed: finiteNumber.nonnegative().default(3),
+    darkenSpeed: finiteNumber.nonnegative().default(1),
   }).nullable(),
+  light: z.object({
+    kind: z.enum(['directional', 'point', 'spot', 'rectangle', 'disk']),
+    unit: z.enum(['unitless', 'lumens', 'candela', 'lux', 'nits']),
+    color: vec3Tuple,
+    intensity: finiteNumber.nonnegative(),
+    range: finiteNumber.positive(),
+    innerAngleDegrees: finiteNumber.nonnegative(),
+    outerAngleDegrees: finiteNumber.positive(),
+    width: finiteNumber.positive(),
+    height: finiteNumber.positive(),
+    twoSided: z.boolean(),
+    enabled: z.boolean(),
+    castsShadows: z.boolean(),
+    useColorTemperature: z.boolean(),
+    temperatureKelvin: finiteNumber.min(1000).max(40000),
+  }).nullable().default(null),
   meshRenderer: z.object({
     visible: z.boolean(),
     baseColorTint: vec4Tuple,
@@ -196,6 +246,10 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
       ...parsed.camera,
       clearColor: tupleToVec4(parsed.camera.clearColor),
     } : null,
+    light: parsed.light ? {
+      ...parsed.light,
+      color: { ...tupleToVec3(parsed.light.color), w: 1 },
+    } : null,
     meshRenderer: parsed.meshRenderer ? {
       ...parsed.meshRenderer,
       baseColorTint: tupleToVec4(parsed.meshRenderer.baseColorTint),
@@ -216,6 +270,13 @@ export function cameraHostPayload(value: InspectorCamera) {
   return {
     ...value,
     clearColor: [value.clearColor.x, value.clearColor.y, value.clearColor.z, value.clearColor.w],
+  };
+}
+
+export function lightHostPayload(value: InspectorLight) {
+  return {
+    ...value,
+    color: [value.color.x, value.color.y, value.color.z],
   };
 }
 

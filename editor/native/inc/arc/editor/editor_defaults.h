@@ -29,7 +29,7 @@ inline constexpr math::vector3f default_grass_position{ -13.0f, 0.0f, 15.0f };
 
 inline constexpr math::vector3f default_sun_rotation_degrees{ -50.0f, -35.0f, 0.0f };
 inline constexpr math::vector3f default_sun_color{ 1.0f, 0.91f, 0.78f };
-inline constexpr float default_sun_intensity = 3.2f;
+inline constexpr float default_sun_intensity = 65000.0f;
 inline constexpr std::uint32_t default_sun_shadow_resolution = 4096;
 inline constexpr render::shadow_filter default_sun_shadow_filter = render::shadow_filter::pcf_3x3;
 inline constexpr float default_sun_shadow_bias = 0.0008f;

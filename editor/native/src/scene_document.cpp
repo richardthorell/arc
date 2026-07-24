@@ -123,12 +123,14 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     }
     static const std::unordered_set<std::string_view> known{
         "Name", "Tag", "Active", "RenderLayer", "Transform", "Camera", "MeshRenderer", "DirectionalLight",
-        "PointLight", "SpotLight", "WorldEnvironment", "Terrain", "Water", "Vegetation", "Decal",
+        "PointLight", "SpotLight", "AreaLight", "WorldEnvironment", "Terrain", "Water", "Vegetation", "Decal",
         "PrefabInstance", "WorldRegion" };
     if (!known.contains(name)) return true;
     const auto component_version = value["version"].get<std::uint32_t>();
-    if ((name == "Terrain" && component_version != 1u && component_version != 2u) ||
-        (name != "Terrain" && component_version != 1u))
+    const bool supports_v2 = name == "Terrain" || name == "Camera" ||
+        name == "DirectionalLight" || name == "PointLight" ||
+        name == "SpotLight" || name == "AreaLight";
+    if (component_version != 1u && !(supports_v2 && component_version == 2u))
     {
         error = "component '" + std::string(name) + "' uses an unsupported schema version";
         return false;
@@ -180,9 +182,27 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             return fail("has invalid authored values");
         const auto fov = value["fovY"].get<double>();
         const auto near_plane = value["near"].get<double>();
-        return fov > math::to_radians(1.0) && fov < math::to_radians(179.0) &&
+        const bool projection_valid = fov > math::to_radians(1.0) && fov < math::to_radians(179.0) &&
             value["orthographicHeight"].get<double>() > 0.0 && near_plane > 0.0 && value["far"].get<double>() > near_plane
-            ? true : fail("is outside supported projection ranges");
+            ;
+        if (!projection_valid)
+            return fail("is outside supported projection ranges");
+        if (value.contains("exposure"))
+        {
+            const auto& exposure = value["exposure"];
+            if (!exposure.is_object() ||
+                !finite_number(exposure, "manualEV100") ||
+                !finite_number(exposure, "compensationEV") ||
+                !finite_number(exposure, "minimumEV100") ||
+                !finite_number(exposure, "maximumEV100") ||
+                !finite_number(exposure, "brightenSpeed") ||
+                !finite_number(exposure, "darkenSpeed") ||
+                exposure["maximumEV100"].get<double>() <= exposure["minimumEV100"].get<double>() ||
+                exposure["brightenSpeed"].get<double>() < 0.0 ||
+                exposure["darkenSpeed"].get<double>() < 0.0)
+                return fail("has invalid exposure settings");
+        }
+        return true;
     }
     if (name == "MeshRenderer")
         return value.contains("visible") && value["visible"].is_boolean() && value.contains("baseColorTint") &&
@@ -264,12 +284,20 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             (shadow.contains("filter") && !shadow["filter"].is_number_integer()))
             return fail("has invalid shadow settings");
     }
-    if (name != "DirectionalLight" && (!finite_number(value, "range") || value["range"].get<double>() <= 0.0))
+    if (name != "DirectionalLight" && name != "AreaLight" &&
+        (!finite_number(value, "range") || value["range"].get<double>() <= 0.0))
         return fail("has an invalid range");
     if (name == "SpotLight" && (!finite_number(value, "innerAngle") || !finite_number(value, "outerAngle") ||
         value["innerAngle"].get<double>() < 0.0 || value["outerAngle"].get<double>() <= value["innerAngle"].get<double>() ||
         value["outerAngle"].get<double>() > math::pi<double>))
         return fail("has invalid cone angles");
+    if (name == "AreaLight" &&
+        (!finite_number(value, "width") || value["width"].get<double>() <= 0.0 ||
+            !finite_number(value, "height") || value["height"].get<double>() <= 0.0 ||
+            !value.contains("shape") || !value["shape"].is_number_integer() ||
+            value["shape"].get<int>() < 0 || value["shape"].get<int>() > 1 ||
+            !value.contains("twoSided") || !value["twoSided"].is_boolean()))
+        return fail("has invalid area-light dimensions");
     return true;
 }
 
@@ -408,7 +436,7 @@ json serialize_light_common(const math::vector3f& color, float intensity, bool s
     bool use_temperature, float temperature, render::light_intensity_unit unit, const render::shadow_settings& shadow)
 {
     return {
-        { "version", 1 }, { "color", vector3(color) }, { "intensity", intensity },
+        { "version", 2 }, { "color", vector3(color) }, { "intensity", intensity },
         { "castsShadows", shadows }, { "enabled", enabled }, { "useColorTemperature", use_temperature },
         { "temperatureKelvin", temperature }, { "intensityUnit", static_cast<int>(unit) },
         { "shadow", { { "enabled", shadow.enabled }, { "resolution", shadow.resolution },
@@ -497,10 +525,20 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
         components["Transform"] = { { "version", 1 }, { "position", vector3(component->position) },
             { "rotation", quaternion(component->rotation) }, { "scale", vector3(component->scale) } };
     if (const auto* component = state.scene.try_get<scene::camera_component>(value))
-        components["Camera"] = { { "version", 1 }, { "projection", static_cast<int>(component->projection) },
+        components["Camera"] = { { "version", 2 }, { "projection", static_cast<int>(component->projection) },
             { "fovY", component->fov_y_radians }, { "near", component->near_plane }, { "far", component->far_plane },
             { "orthographicHeight", component->orthographic_height }, { "active", component->active },
-            { "clearColor", vector4(component->clear_color) } };
+            { "clearColor", vector4(component->clear_color) },
+            { "exposure", {
+                { "mode", static_cast<int>(component->exposure.mode) },
+                { "metering", static_cast<int>(component->exposure.metering) },
+                { "manualEV100", component->exposure.manual_ev100 },
+                { "compensationEV", component->exposure.compensation_ev },
+                { "minimumEV100", component->exposure.minimum_ev100 },
+                { "maximumEV100", component->exposure.maximum_ev100 },
+                { "brightenSpeed", component->exposure.brighten_speed },
+                { "darkenSpeed", component->exposure.darken_speed }
+            } } };
     if (const auto* component = state.scene.try_get<scene::mesh_renderer_component>(value))
         components["MeshRenderer"] = { { "version", 1 }, { "visible", component->visible },
             { "baseColorTint", vector4(component->base_color_tint) } };
@@ -523,6 +561,16 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
         components["SpotLight"]["range"] = component->range;
         components["SpotLight"]["innerAngle"] = component->inner_angle;
         components["SpotLight"]["outerAngle"] = component->outer_angle;
+    }
+    if (const auto* component = state.scene.try_get<scene::area_light_component>(value))
+    {
+        components["AreaLight"] = serialize_light_common(component->color, component->intensity,
+            component->casts_shadows, component->enabled, component->use_color_temperature,
+            component->temperature_kelvin, component->intensity_unit, component->shadow);
+        components["AreaLight"]["width"] = component->width;
+        components["AreaLight"]["height"] = component->height;
+        components["AreaLight"]["shape"] = static_cast<int>(component->shape);
+        components["AreaLight"]["twoSided"] = component->two_sided;
     }
     if (state.scene.has<scene::world_environment_component>(value))
     {
@@ -962,6 +1010,20 @@ scene_document_result load_scene_document(
                 camera.orthographic_height = value.value("orthographicHeight", camera.orthographic_height);
                 camera.active = value.value("active", true);
                 camera.clear_color = read_vector4(value.at("clearColor"));
+                if (value.contains("exposure"))
+                {
+                    const auto& exposure = value["exposure"];
+                    camera.exposure.mode = static_cast<render::exposure_mode>(
+                        exposure.value("mode", static_cast<int>(camera.exposure.mode)));
+                    camera.exposure.metering = static_cast<render::exposure_metering_mode>(
+                        exposure.value("metering", static_cast<int>(camera.exposure.metering)));
+                    camera.exposure.manual_ev100 = exposure.value("manualEV100", camera.exposure.manual_ev100);
+                    camera.exposure.compensation_ev = exposure.value("compensationEV", camera.exposure.compensation_ev);
+                    camera.exposure.minimum_ev100 = exposure.value("minimumEV100", camera.exposure.minimum_ev100);
+                    camera.exposure.maximum_ev100 = exposure.value("maximumEV100", camera.exposure.maximum_ev100);
+                    camera.exposure.brighten_speed = exposure.value("brightenSpeed", camera.exposure.brighten_speed);
+                    camera.exposure.darken_speed = exposure.value("darkenSpeed", camera.exposure.darken_speed);
+                }
                 if (!(camera.near_plane > 0.0f && camera.far_plane > camera.near_plane))
                     throw std::runtime_error("invalid camera clip planes");
                 loaded.scene.emplace<scene::camera_component>(entity, camera);
@@ -985,6 +1047,12 @@ scene_document_result load_scene_document(
                 scene::directional_light_component light;
                 deserialize_light_common(components["DirectionalLight"], light.color, light.intensity, light.casts_shadows,
                     light.enabled, light.use_color_temperature, light.temperature_kelvin, light.intensity_unit, light.shadow);
+                if (components["DirectionalLight"].value("version", 1u) < 2u &&
+                    light.intensity_unit == render::light_intensity_unit::unitless)
+                {
+                    light.intensity *= 20000.0f;
+                    light.intensity_unit = render::light_intensity_unit::lux;
+                }
                 loaded.scene.emplace<scene::directional_light_component>(entity, light);
                 if (!loaded.sun_entity.valid()) loaded.sun_entity = entity;
             }
@@ -993,6 +1061,12 @@ scene_document_result load_scene_document(
                 scene::point_light_component light;
                 deserialize_light_common(components["PointLight"], light.color, light.intensity, light.casts_shadows,
                     light.enabled, light.use_color_temperature, light.temperature_kelvin, light.intensity_unit, light.shadow);
+                if (components["PointLight"].value("version", 1u) < 2u &&
+                    light.intensity_unit == render::light_intensity_unit::unitless)
+                {
+                    light.intensity *= 1000.0f;
+                    light.intensity_unit = render::light_intensity_unit::lumen;
+                }
                 light.range = components["PointLight"].value("range", light.range);
                 loaded.scene.emplace<scene::point_light_component>(entity, light);
             }
@@ -1001,10 +1075,28 @@ scene_document_result load_scene_document(
                 scene::spot_light_component light;
                 deserialize_light_common(components["SpotLight"], light.color, light.intensity, light.casts_shadows,
                     light.enabled, light.use_color_temperature, light.temperature_kelvin, light.intensity_unit, light.shadow);
+                if (components["SpotLight"].value("version", 1u) < 2u &&
+                    light.intensity_unit == render::light_intensity_unit::unitless)
+                {
+                    light.intensity *= 1000.0f;
+                    light.intensity_unit = render::light_intensity_unit::lumen;
+                }
                 light.range = components["SpotLight"].value("range", light.range);
                 light.inner_angle = components["SpotLight"].value("innerAngle", light.inner_angle);
                 light.outer_angle = components["SpotLight"].value("outerAngle", light.outer_angle);
                 loaded.scene.emplace<scene::spot_light_component>(entity, light);
+            }
+            if (components.contains("AreaLight"))
+            {
+                scene::area_light_component light;
+                deserialize_light_common(components["AreaLight"], light.color, light.intensity, light.casts_shadows,
+                    light.enabled, light.use_color_temperature, light.temperature_kelvin, light.intensity_unit, light.shadow);
+                light.width = components["AreaLight"].value("width", light.width);
+                light.height = components["AreaLight"].value("height", light.height);
+                light.shape = static_cast<render::area_light_shape>(
+                    components["AreaLight"].value("shape", static_cast<int>(light.shape)));
+                light.two_sided = components["AreaLight"].value("twoSided", false);
+                loaded.scene.emplace<scene::area_light_component>(entity, light);
             }
             if (components.contains("WorldEnvironment"))
             {
@@ -1080,7 +1172,7 @@ scene_document_result load_scene_document(
             }
 
             static const std::unordered_set<std::string> known{ "Name", "Tag", "Active", "RenderLayer", "Transform", "Camera",
-                "MeshRenderer", "DirectionalLight", "PointLight", "SpotLight", "WorldEnvironment", "Terrain", "Water",
+                "MeshRenderer", "DirectionalLight", "PointLight", "SpotLight", "AreaLight", "WorldEnvironment", "Terrain", "Water",
                 "Vegetation", "Decal", "PrefabInstance", "WorldRegion" };
             json unknown = json::object();
             for (const auto& [name, value] : components.items())

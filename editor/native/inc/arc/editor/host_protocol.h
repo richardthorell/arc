@@ -123,6 +123,7 @@ enum class host_component_kind : std::uint8_t
     directional_light,
     point_light,
     spot_light,
+    area_light,
     world_environment,
     sky_atmosphere,
     celestial_sky,
@@ -227,6 +228,18 @@ struct host_component_snapshot
     bool editable{ true };
 };
 
+enum class host_exposure_mode : std::uint8_t
+{
+    manual,
+    automatic
+};
+
+enum class host_exposure_metering_mode : std::uint8_t
+{
+    average,
+    center_weighted
+};
+
 struct host_camera_snapshot
 {
     host_camera_projection projection{ host_camera_projection::perspective };
@@ -236,8 +249,54 @@ struct host_camera_snapshot
     float far_plane{ 1000.0f };
     bool active{ true };
     host_vec4 clear_color{ 0.10f, 0.22f, 0.34f, 1.0f };
+    host_exposure_mode exposure_mode{ host_exposure_mode::automatic };
+    host_exposure_metering_mode exposure_metering{ host_exposure_metering_mode::average };
+    float manual_ev100{ 10.0f };
+    float exposure_compensation{};
+    float minimum_ev100{ -8.0f };
+    float maximum_ev100{ 20.0f };
+    float brighten_speed{ 3.0f };
+    float darken_speed{ 1.0f };
 
     friend constexpr bool operator==(const host_camera_snapshot&, const host_camera_snapshot&) noexcept = default;
+};
+
+enum class host_light_kind : std::uint8_t
+{
+    directional,
+    point,
+    spot,
+    rectangle,
+    disk
+};
+
+enum class host_light_unit : std::uint8_t
+{
+    unitless,
+    lumen,
+    candela,
+    lux,
+    nit
+};
+
+struct host_light_snapshot
+{
+    host_light_kind kind{ host_light_kind::point };
+    host_light_unit unit{ host_light_unit::lumen };
+    host_vec3 color{ 1.0f, 1.0f, 1.0f };
+    float intensity{ 1000.0f };
+    float range{ 10.0f };
+    float inner_angle_degrees{ 20.0f };
+    float outer_angle_degrees{ 40.0f };
+    float width{ 1.0f };
+    float height{ 1.0f };
+    bool two_sided{};
+    bool enabled{ true };
+    bool casts_shadows{};
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+
+    friend constexpr bool operator==(const host_light_snapshot&, const host_light_snapshot&) noexcept = default;
 };
 
 struct host_mesh_renderer_snapshot
@@ -323,6 +382,7 @@ struct host_selected_entity_snapshot
     std::uint32_t render_layer_mask{ host_default_render_layer };
     std::optional<host_transform> transform;
     std::optional<host_camera_snapshot> camera;
+    std::optional<host_light_snapshot> light;
     std::optional<host_mesh_renderer_snapshot> mesh_renderer;
     std::optional<host_terrain_snapshot> terrain;
     std::optional<host_prefab_snapshot> prefab;
@@ -600,6 +660,12 @@ struct host_set_camera_command
     host_camera_snapshot camera;
 };
 
+struct host_set_light_command
+{
+    host_entity_id entity{};
+    host_light_snapshot light;
+};
+
 struct host_set_mesh_renderer_command
 {
     host_entity_id entity{};
@@ -763,6 +829,7 @@ using host_command_payload = std::variant<
     host_set_transform_command,
     host_set_render_layer_command,
     host_set_camera_command,
+    host_set_light_command,
     host_set_mesh_renderer_command,
     host_set_terrain_command,
     host_set_terrain_brush_command,

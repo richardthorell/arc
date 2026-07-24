@@ -5,6 +5,8 @@ set(ARC_ECS_CODEGEN "${CMAKE_SOURCE_DIR}/tools/ecs_codegen.py")
 set(ARC_SCENE_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(ARC_SCENE_GENERATED_METADATA
     "${ARC_SCENE_GENERATED_ROOT}/arc/scene/generated_component_metadata.h")
+set(ARC_SCENE_GENERATED_TYPESCRIPT
+    "${CMAKE_SOURCE_DIR}/editor/src/renderer/src/inspector/generatedEcsMetadata.ts")
 
 add_custom_command(
     OUTPUT "${ARC_SCENE_GENERATED_METADATA}"
@@ -33,6 +35,7 @@ if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
         COMMAND "${Python3_EXECUTABLE}" "${ARC_ECS_CODEGEN}"
             --schema "${ARC_SCENE_SCHEMA}"
             --cpp-output "${ARC_SCENE_GENERATED_METADATA}"
+            --ts-output "${ARC_SCENE_GENERATED_TYPESCRIPT}"
             --check
     )
 endif()

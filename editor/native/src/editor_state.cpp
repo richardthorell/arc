@@ -234,6 +234,12 @@ render::material_handle material_from_import(
     assign_texture(imported.textures.normal, material.normal_texture);
     assign_texture(imported.textures.occlusion, material.occlusion_texture);
     assign_texture(imported.textures.emissive, material.emissive_texture);
+    assign_texture(imported.textures.clear_coat, material.clear_coat_texture);
+    assign_texture(imported.textures.clear_coat_roughness, material.clear_coat_roughness_texture);
+    assign_texture(imported.textures.clear_coat_normal, material.clear_coat_normal_texture);
+    assign_texture(imported.textures.anisotropy, material.anisotropy_texture);
+    assign_texture(imported.textures.thickness, material.thickness_texture);
+    assign_texture(imported.textures.transmission, material.transmission_texture);
     if (material.name.empty())
         material.name = "Imported Material";
     const auto handle = renderer.create_material(material);

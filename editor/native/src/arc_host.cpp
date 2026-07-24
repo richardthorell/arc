@@ -65,6 +65,7 @@ scene::entity duplicate_entity_subtree(editor_scene_state& state, scene::entity 
     copy_component<scene::directional_light_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::point_light_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::spot_light_component>(state.scene, state.scene, source, duplicate);
+    copy_component<scene::area_light_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::world_environment_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::sky_atmosphere_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::celestial_sky_component>(state.scene, state.scene, source, duplicate);
@@ -103,7 +104,8 @@ constexpr bool is_authoring_command() noexcept
         std::is_same_v<Command, host_reorder_entity_command> || std::is_same_v<Command, host_rename_entity_command> ||
         std::is_same_v<Command, host_set_active_command> || std::is_same_v<Command, host_set_tag_command> ||
         std::is_same_v<Command, host_set_transform_command> || std::is_same_v<Command, host_set_render_layer_command> ||
-        std::is_same_v<Command, host_set_camera_command> || std::is_same_v<Command, host_set_mesh_renderer_command> ||
+        std::is_same_v<Command, host_set_camera_command> || std::is_same_v<Command, host_set_light_command> ||
+        std::is_same_v<Command, host_set_mesh_renderer_command> ||
         std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_terrain_stroke_command> ||
         std::is_same_v<Command, host_set_terrain_layer_command> ||
         std::is_same_v<Command, host_set_entity_material_command> || std::is_same_v<Command, host_set_world_environment_command> ||
@@ -366,7 +368,19 @@ host_camera_snapshot to_host_camera(const scene::camera_component& camera) noexc
         .near_plane = camera.near_plane,
         .far_plane = camera.far_plane,
         .active = camera.active,
-        .clear_color = to_host_vec4(camera.clear_color)
+        .clear_color = to_host_vec4(camera.clear_color),
+        .exposure_mode = camera.exposure.mode == render::exposure_mode::manual
+            ? host_exposure_mode::manual
+            : host_exposure_mode::automatic,
+        .exposure_metering = camera.exposure.metering == render::exposure_metering_mode::center_weighted
+            ? host_exposure_metering_mode::center_weighted
+            : host_exposure_metering_mode::average,
+        .manual_ev100 = camera.exposure.manual_ev100,
+        .exposure_compensation = camera.exposure.compensation_ev,
+        .minimum_ev100 = camera.exposure.minimum_ev100,
+        .maximum_ev100 = camera.exposure.maximum_ev100,
+        .brighten_speed = camera.exposure.brighten_speed,
+        .darken_speed = camera.exposure.darken_speed
     };
 }
 
@@ -377,6 +391,12 @@ bool valid_camera(const host_camera_snapshot& camera) noexcept
         finite(camera.orthographic_height) && camera.orthographic_height > 0.0f &&
         finite(camera.near_plane) && camera.near_plane > 0.0f &&
         finite(camera.far_plane) && camera.far_plane > camera.near_plane &&
+        finite(camera.manual_ev100) &&
+        finite(camera.exposure_compensation) &&
+        finite(camera.minimum_ev100) &&
+        finite(camera.maximum_ev100) && camera.maximum_ev100 > camera.minimum_ev100 &&
+        finite(camera.brighten_speed) && camera.brighten_speed >= 0.0f &&
+        finite(camera.darken_speed) && camera.darken_speed >= 0.0f &&
         finite(camera.clear_color.x) && camera.clear_color.x >= 0.0f && camera.clear_color.x <= 1.0f &&
         finite(camera.clear_color.y) && camera.clear_color.y >= 0.0f && camera.clear_color.y <= 1.0f &&
         finite(camera.clear_color.z) && camera.clear_color.z >= 0.0f && camera.clear_color.z <= 1.0f &&
@@ -400,8 +420,149 @@ scene::camera_component to_scene_camera(const host_camera_snapshot& camera) noex
         .far_plane = camera.far_plane,
         .orthographic_height = camera.orthographic_height,
         .active = camera.active,
-        .clear_color = to_math_vec4(camera.clear_color)
+        .clear_color = to_math_vec4(camera.clear_color),
+        .exposure = {
+            .mode = camera.exposure_mode == host_exposure_mode::manual
+                ? render::exposure_mode::manual
+                : render::exposure_mode::automatic,
+            .metering = camera.exposure_metering == host_exposure_metering_mode::center_weighted
+                ? render::exposure_metering_mode::center_weighted
+                : render::exposure_metering_mode::average,
+            .manual_ev100 = camera.manual_ev100,
+            .compensation_ev = camera.exposure_compensation,
+            .minimum_ev100 = camera.minimum_ev100,
+            .maximum_ev100 = camera.maximum_ev100,
+            .brighten_speed = camera.brighten_speed,
+            .darken_speed = camera.darken_speed
+        }
     };
+}
+
+host_light_unit to_host_light_unit(render::light_intensity_unit unit) noexcept
+{
+    switch (unit)
+    {
+    case render::light_intensity_unit::lumen: return host_light_unit::lumen;
+    case render::light_intensity_unit::candela: return host_light_unit::candela;
+    case render::light_intensity_unit::lux: return host_light_unit::lux;
+    case render::light_intensity_unit::nit: return host_light_unit::nit;
+    case render::light_intensity_unit::unitless: return host_light_unit::unitless;
+    }
+    return host_light_unit::unitless;
+}
+
+render::light_intensity_unit to_render_light_unit(host_light_unit unit) noexcept
+{
+    switch (unit)
+    {
+    case host_light_unit::lumen: return render::light_intensity_unit::lumen;
+    case host_light_unit::candela: return render::light_intensity_unit::candela;
+    case host_light_unit::lux: return render::light_intensity_unit::lux;
+    case host_light_unit::nit: return render::light_intensity_unit::nit;
+    case host_light_unit::unitless: return render::light_intensity_unit::unitless;
+    }
+    return render::light_intensity_unit::unitless;
+}
+
+host_light_snapshot to_host_light(const scene::directional_light_component& light) noexcept
+{
+    return {
+        .kind = host_light_kind::directional,
+        .unit = to_host_light_unit(light.intensity_unit),
+        .color = to_host_vec3(light.color),
+        .intensity = light.intensity,
+        .enabled = light.enabled,
+        .casts_shadows = light.casts_shadows,
+        .use_color_temperature = light.use_color_temperature,
+        .temperature_kelvin = light.temperature_kelvin
+    };
+}
+
+host_light_snapshot to_host_light(const scene::point_light_component& light) noexcept
+{
+    return {
+        .kind = host_light_kind::point,
+        .unit = to_host_light_unit(light.intensity_unit),
+        .color = to_host_vec3(light.color),
+        .intensity = light.intensity,
+        .range = light.range,
+        .enabled = light.enabled,
+        .casts_shadows = light.casts_shadows,
+        .use_color_temperature = light.use_color_temperature,
+        .temperature_kelvin = light.temperature_kelvin
+    };
+}
+
+host_light_snapshot to_host_light(const scene::spot_light_component& light) noexcept
+{
+    return {
+        .kind = host_light_kind::spot,
+        .unit = to_host_light_unit(light.intensity_unit),
+        .color = to_host_vec3(light.color),
+        .intensity = light.intensity,
+        .range = light.range,
+        .inner_angle_degrees = math::to_degrees(light.inner_angle),
+        .outer_angle_degrees = math::to_degrees(light.outer_angle),
+        .enabled = light.enabled,
+        .casts_shadows = light.casts_shadows,
+        .use_color_temperature = light.use_color_temperature,
+        .temperature_kelvin = light.temperature_kelvin
+    };
+}
+
+host_light_snapshot to_host_light(const scene::area_light_component& light) noexcept
+{
+    return {
+        .kind = light.shape == render::area_light_shape::disk
+            ? host_light_kind::disk
+            : host_light_kind::rectangle,
+        .unit = to_host_light_unit(light.intensity_unit),
+        .color = to_host_vec3(light.color),
+        .intensity = light.intensity,
+        .width = light.width,
+        .height = light.height,
+        .two_sided = light.two_sided,
+        .enabled = light.enabled,
+        .casts_shadows = light.casts_shadows,
+        .use_color_temperature = light.use_color_temperature,
+        .temperature_kelvin = light.temperature_kelvin
+    };
+}
+
+bool valid_light(const host_light_snapshot& light) noexcept
+{
+    const auto finite_nonnegative = [](float value) {
+        return std::isfinite(value) && value >= 0.0f;
+    };
+    const bool color_valid = finite_nonnegative(light.color.x) &&
+        finite_nonnegative(light.color.y) && finite_nonnegative(light.color.z);
+    const bool common_valid = color_valid && finite_nonnegative(light.intensity) &&
+        std::isfinite(light.temperature_kelvin) &&
+        light.temperature_kelvin >= 1000.0f && light.temperature_kelvin <= 40000.0f;
+    if (!common_valid)
+        return false;
+    const bool unit_valid =
+        (light.kind == host_light_kind::directional &&
+            (light.unit == host_light_unit::lux || light.unit == host_light_unit::unitless)) ||
+        ((light.kind == host_light_kind::point || light.kind == host_light_kind::spot) &&
+            (light.unit == host_light_unit::lumen || light.unit == host_light_unit::candela ||
+                light.unit == host_light_unit::unitless)) ||
+        ((light.kind == host_light_kind::rectangle || light.kind == host_light_kind::disk) &&
+            (light.unit == host_light_unit::lumen || light.unit == host_light_unit::nit ||
+                light.unit == host_light_unit::unitless));
+    if (!unit_valid)
+        return false;
+    if ((light.kind == host_light_kind::point || light.kind == host_light_kind::spot) &&
+        (!std::isfinite(light.range) || light.range <= 0.0f))
+        return false;
+    if (light.kind == host_light_kind::spot &&
+        (!std::isfinite(light.inner_angle_degrees) || !std::isfinite(light.outer_angle_degrees) ||
+            light.inner_angle_degrees < 0.0f || light.outer_angle_degrees <= light.inner_angle_degrees ||
+            light.outer_angle_degrees >= 179.0f))
+        return false;
+    return (light.kind != host_light_kind::rectangle && light.kind != host_light_kind::disk) ||
+        (std::isfinite(light.width) && light.width > 0.0f &&
+            std::isfinite(light.height) && light.height > 0.0f);
 }
 
 editor_primitive_type primitive_type_for(host_create_entity_kind kind) noexcept
@@ -711,6 +872,12 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
             assign_texture(imported.textures.normal, material.normal_texture);
             assign_texture(imported.textures.occlusion, material.occlusion_texture);
             assign_texture(imported.textures.emissive, material.emissive_texture);
+            assign_texture(imported.textures.clear_coat, material.clear_coat_texture);
+            assign_texture(imported.textures.clear_coat_roughness, material.clear_coat_roughness_texture);
+            assign_texture(imported.textures.clear_coat_normal, material.clear_coat_normal_texture);
+            assign_texture(imported.textures.anisotropy, material.anisotropy_texture);
+            assign_texture(imported.textures.thickness, material.thickness_texture);
+            assign_texture(imported.textures.transmission, material.transmission_texture);
         }
         state.default_material = renderer.create_material(material);
         state.default_mesh = renderer.create_mesh(assets.default_mesh);
@@ -759,6 +926,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
         defaults::default_sun_intensity,
         true);
     auto& sun_light = state.scene.get<scene::directional_light_component>(sun);
+    sun_light.intensity_unit = render::light_intensity_unit::lux;
     sun_light.shadow.resolution = defaults::default_sun_shadow_resolution;
     sun_light.shadow.filter = defaults::default_sun_shadow_filter;
     sun_light.shadow.bias = defaults::default_sun_shadow_bias;
@@ -1475,6 +1643,84 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity camera changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_set_light_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(entity))
+                return fail("Cannot edit a missing light entity", entity);
+            if (!valid_light(payload.light))
+                return fail("Light values are outside their valid authored ranges", entity);
+
+            const auto unit = to_render_light_unit(payload.light.unit);
+            const auto color = to_math_vec3(payload.light.color);
+            if (auto* light = state_->scene.scene.try_get<scene::directional_light_component>(entity))
+            {
+                if (payload.light.kind != host_light_kind::directional)
+                    return fail("Light kind does not match the directional light component", entity);
+                light->color = color;
+                light->intensity = payload.light.intensity;
+                light->intensity_unit = unit;
+                light->enabled = payload.light.enabled;
+                light->casts_shadows = payload.light.casts_shadows;
+                light->use_color_temperature = payload.light.use_color_temperature;
+                light->temperature_kelvin = payload.light.temperature_kelvin;
+                light->shadow.enabled = payload.light.casts_shadows;
+            }
+            else if (auto* light = state_->scene.scene.try_get<scene::point_light_component>(entity))
+            {
+                if (payload.light.kind != host_light_kind::point)
+                    return fail("Light kind does not match the point light component", entity);
+                light->color = color;
+                light->intensity = payload.light.intensity;
+                light->range = payload.light.range;
+                light->intensity_unit = unit;
+                light->enabled = payload.light.enabled;
+                light->casts_shadows = payload.light.casts_shadows;
+                light->use_color_temperature = payload.light.use_color_temperature;
+                light->temperature_kelvin = payload.light.temperature_kelvin;
+                light->shadow.enabled = payload.light.casts_shadows;
+            }
+            else if (auto* light = state_->scene.scene.try_get<scene::spot_light_component>(entity))
+            {
+                if (payload.light.kind != host_light_kind::spot)
+                    return fail("Light kind does not match the spot light component", entity);
+                light->color = color;
+                light->intensity = payload.light.intensity;
+                light->range = payload.light.range;
+                light->inner_angle = math::to_radians(payload.light.inner_angle_degrees);
+                light->outer_angle = math::to_radians(payload.light.outer_angle_degrees);
+                light->intensity_unit = unit;
+                light->enabled = payload.light.enabled;
+                light->casts_shadows = payload.light.casts_shadows;
+                light->use_color_temperature = payload.light.use_color_temperature;
+                light->temperature_kelvin = payload.light.temperature_kelvin;
+                light->shadow.enabled = payload.light.casts_shadows;
+            }
+            else if (auto* light = state_->scene.scene.try_get<scene::area_light_component>(entity))
+            {
+                if (payload.light.kind != host_light_kind::rectangle && payload.light.kind != host_light_kind::disk)
+                    return fail("Light kind does not match the area light component", entity);
+                light->shape = payload.light.kind == host_light_kind::disk
+                    ? render::area_light_shape::disk
+                    : render::area_light_shape::rectangle;
+                light->color = color;
+                light->intensity = payload.light.intensity;
+                light->width = payload.light.width;
+                light->height = payload.light.height;
+                light->two_sided = payload.light.two_sided;
+                light->intensity_unit = unit;
+                light->enabled = payload.light.enabled;
+                light->casts_shadows = payload.light.casts_shadows;
+                light->use_color_temperature = payload.light.use_color_temperature;
+                light->temperature_kelvin = payload.light.temperature_kelvin;
+                light->shadow.enabled = payload.light.casts_shadows;
+            }
+            else
+                return fail("Entity does not have an editable light component", entity);
+
+            push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity light changed", entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
         else if constexpr (std::is_same_v<command_type, host_set_mesh_renderer_command>)
         {
             const auto entity = to_scene_entity(payload.entity);
@@ -2073,7 +2319,9 @@ host_scene_snapshot arc_host::scene_snapshot() const
             state_->scene.scene.has<scene::vegetation_component>(entity) || state_->scene.scene.has<scene::decal_component>(entity))
             kind = host_entity_kind::environment;
         else if (state_->scene.scene.has<scene::directional_light_component>(entity) ||
-            state_->scene.scene.has<scene::point_light_component>(entity) || state_->scene.scene.has<scene::spot_light_component>(entity))
+            state_->scene.scene.has<scene::point_light_component>(entity) ||
+            state_->scene.scene.has<scene::spot_light_component>(entity) ||
+            state_->scene.scene.has<scene::area_light_component>(entity))
             kind = host_entity_kind::light;
         else if (state_->scene.scene.has<scene::camera_component>(entity)) kind = host_entity_kind::camera;
         else if (state_->scene.scene.has<scene::mesh_renderer_component>(entity)) kind = host_entity_kind::mesh;
@@ -2144,12 +2392,26 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
         snapshot.mesh_renderer = mesh_renderer_snapshot(state_->scene, state_->assets, *mesh_renderer);
         add_component_snapshot(snapshot.components, host_component_kind::mesh_renderer, "Mesh Renderer");
     }
-    if (state_->scene.scene.has<scene::directional_light_component>(selected))
+    if (const auto* light = state_->scene.scene.try_get<scene::directional_light_component>(selected))
+    {
+        snapshot.light = to_host_light(*light);
         add_component_snapshot(snapshot.components, host_component_kind::directional_light, "Directional Light");
-    if (state_->scene.scene.has<scene::point_light_component>(selected))
+    }
+    if (const auto* light = state_->scene.scene.try_get<scene::point_light_component>(selected))
+    {
+        snapshot.light = to_host_light(*light);
         add_component_snapshot(snapshot.components, host_component_kind::point_light, "Point Light");
-    if (state_->scene.scene.has<scene::spot_light_component>(selected))
+    }
+    if (const auto* light = state_->scene.scene.try_get<scene::spot_light_component>(selected))
+    {
+        snapshot.light = to_host_light(*light);
         add_component_snapshot(snapshot.components, host_component_kind::spot_light, "Spot Light");
+    }
+    if (const auto* light = state_->scene.scene.try_get<scene::area_light_component>(selected))
+    {
+        snapshot.light = to_host_light(*light);
+        add_component_snapshot(snapshot.components, host_component_kind::area_light, "Area Light");
+    }
     if (state_->scene.scene.has<scene::sky_atmosphere_component>(selected))
         add_component_snapshot(snapshot.components, host_component_kind::sky_atmosphere, "Sky Atmosphere");
     if (state_->scene.scene.has<scene::world_environment_component>(selected))

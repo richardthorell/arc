@@ -28,7 +28,16 @@ const cameraSnapshot = (): InspectorEntitySnapshot => ({
     farPlane: 2000,
     active: true,
     clearColor: { x: 0.055, y: 0.12, z: 0.22, w: 1 },
+    exposureMode: 'automatic',
+    exposureMetering: 'average',
+    manualEV100: 10,
+    exposureCompensation: 0,
+    minimumEV100: -8,
+    maximumEV100: 20,
+    brightenSpeed: 3,
+    darkenSpeed: 1,
   },
+  light: null,
   meshRenderer: null,
   terrain: null,
   prefab: null,
@@ -103,6 +112,33 @@ const prefabSnapshot = (): InspectorEntitySnapshot => ({
   ],
 });
 
+const areaLightSnapshot = (): InspectorEntitySnapshot => ({
+  ...cameraSnapshot(),
+  name: 'Window Light',
+  tag: 'Light',
+  camera: null,
+  light: {
+    kind: 'rectangle',
+    unit: 'lumens',
+    color: { x: 1, y: 0.8, z: 0.6, w: 1 },
+    intensity: 1600,
+    range: 10,
+    innerAngleDegrees: 20,
+    outerAngleDegrees: 40,
+    width: 2,
+    height: 1,
+    twoSided: false,
+    enabled: true,
+    castsShadows: true,
+    useColorTemperature: false,
+    temperatureKelvin: 5000,
+  },
+  components: [
+    { kind: 'transform', label: 'Transform', editable: true },
+    { kind: 'areaLight', label: 'Area Light', editable: true },
+  ],
+});
+
 describe('data-driven InspectorPanel', () => {
   beforeEach(() => {
     window.requestAnimationFrame = (callback) => window.setTimeout(() => callback(performance.now()), 0);
@@ -145,6 +181,21 @@ describe('data-driven InspectorPanel', () => {
     await userEvent.click(screen.getByLabelText('Choose Sand Layer asset'));
     await userEvent.click(screen.getByLabelText('Select Sand'));
     await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.assignLayer', expect.objectContaining({ layer: 3, path: 'textures/sand.jpg' })));
+  });
+
+  it('renders physical area-light controls and sends one typed light snapshot', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    render(<InspectorPanel snapshot={areaLightSnapshot()} command={command} refresh={async () => undefined} />);
+
+    expect(screen.getByLabelText('Collapse Area Light')).toBeInTheDocument();
+    expect(screen.getByLabelText('Width')).toHaveValue('2.00');
+    expect(screen.getByLabelText('Height')).toHaveValue('1.00');
+    expect(screen.queryByRole('option', { name: 'Candela (cd)' })).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Shape'), 'disk');
+    await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setLight', expect.objectContaining({
+      light: expect.objectContaining({ kind: 'disk', unit: 'lumens', color: [1, 0.8, 0.6] }),
+    })));
+    expect(screen.queryByLabelText('Height')).not.toBeInTheDocument();
   });
 
   it('filters, collapses, and restores component content', async () => {

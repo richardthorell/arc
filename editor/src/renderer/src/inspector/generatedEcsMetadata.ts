@@ -268,6 +268,17 @@ export const generatedEcsComponents = [
           "editable",
           "prefab_override"
         ]
+      },
+      {
+        "id": "0000000000000008",
+        "name": "exposure",
+        "displayName": "Exposure",
+        "kind": "struct",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
       }
     ]
   },
@@ -472,6 +483,13 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001c",
     "canonicalName": "arc::scene.decal_component",
     "displayName": "Decal",
+    "schemaVersion": 1,
+    "fields": []
+  },
+  {
+    "id": "a7c0000000000001000000000000001d",
+    "canonicalName": "arc::scene.area_light_component",
+    "displayName": "Area Light",
     "schemaVersion": 1,
     "fields": []
   }

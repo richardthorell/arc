@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <thread>
@@ -1235,6 +1236,50 @@ TEST_CASE("camera and render layer JSON commands preserve their typed payloads")
     }
 }
 
+TEST_CASE("physical light snapshots edit atomically and round trip through JSON")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    REQUIRE(host->open_project(
+        { .name = "Inspector Light Test", .root = std::filesystem::temp_directory_path() },
+        assets).succeeded);
+
+    const auto sun = host->scene_state().sun_entity;
+    const arc::editor::host_entity_id sun_id{ sun.index, sun.generation };
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{ .entity = sun_id }).succeeded);
+    const auto selected = host->selected_entity_snapshot();
+    REQUIRE(selected.light.has_value());
+    REQUIRE(selected.light->kind == arc::editor::host_light_kind::directional);
+    REQUIRE(selected.light->unit == arc::editor::host_light_unit::lux);
+
+    auto updated = *selected.light;
+    updated.intensity = 85000.0f;
+    updated.color = { 1.0f, 0.82f, 0.63f };
+    updated.use_color_temperature = true;
+    updated.temperature_kelvin = 5200.0f;
+    REQUIRE(host->execute(arc::editor::host_set_light_command{
+        .entity = sun_id, .light = updated }).succeeded);
+    REQUIRE(*host->selected_entity_snapshot().light == updated);
+
+    auto invalid = updated;
+    invalid.unit = arc::editor::host_light_unit::lumen;
+    REQUIRE_FALSE(host->execute(arc::editor::host_set_light_command{
+        .entity = sun_id, .light = invalid }).succeeded);
+    REQUIRE(*host->selected_entity_snapshot().light == updated);
+
+    const arc::editor::host_command_envelope source{
+        .request_id = 92,
+        .payload = arc::editor::host_set_light_command{ .entity = sun_id, .light = updated }
+    };
+    arc::editor::host_command_envelope parsed;
+    std::string error;
+    REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, error));
+    REQUIRE(arc::editor::command_type(parsed.payload) == "entity.setLight");
+    REQUIRE(arc::editor::to_json(host->selected_entity_snapshot()).find("\"light\":{") != std::string::npos);
+}
+
 TEST_CASE("scene authoring protocol commands and edit transactions round trip")
 {
     const arc::editor::host_entity_id entity{ 8, 3 };
@@ -1727,7 +1772,7 @@ TEST_CASE("editor material assets tolerate missing and future fields")
     REQUIRE_FALSE(arc::editor::is_material_asset_path(root / "mesh.glb"));
 }
 
-TEST_CASE("terrain material version two round trips fixed layer descriptors")
+TEST_CASE("terrain material version two migrates to version three with fixed layer descriptors")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc_editor_terrain_material_tests";
     std::filesystem::create_directories(root / "materials");
@@ -1752,7 +1797,7 @@ TEST_CASE("terrain material version two round trips fixed layer descriptors")
     REQUIRE(arc::editor::save_material_asset(asset, root, message));
     arc::editor::material_asset loaded;
     REQUIRE(arc::editor::load_material_asset(asset.path, root, loaded, message));
-    REQUIRE(loaded.version == 2);
+    REQUIRE(loaded.version == 3);
     REQUIRE(loaded.material.domain == arc::render::material_domain::terrain);
     REQUIRE(loaded.material.terrain_layers[0].name == "Grass");
     REQUIRE(loaded.material.terrain_layers[0].world_scale == Catch::Approx(2.75f));
@@ -1764,6 +1809,58 @@ TEST_CASE("terrain material version two round trips fixed layer descriptors")
     REQUIRE(loaded.terrain_layers[0].ao == "textures/terrain/grass/ao.jpg");
     REQUIRE(loaded.terrain_layers[0].height == "textures/terrain/grass/height.png");
     REQUIRE(loaded.terrain_layers[0].packed_aorh == "textures/terrain/grass/aorh.png");
+}
+
+TEST_CASE("material version three round trips advanced PBR lobes and validates ranges")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc_editor_pbr_material_tests";
+    std::filesystem::create_directories(root / "materials");
+    auto asset = arc::editor::make_default_material_asset("Advanced PBR");
+    asset.path = root / "materials" / "advanced.arcmat";
+    asset.material.shading_model = arc::render::material_shading_model::transmission;
+    asset.material.clear_coat_factor = 0.65f;
+    asset.material.clear_coat_roughness = 0.18f;
+    asset.material.anisotropy_factor = 0.72f;
+    asset.material.anisotropy_rotation = 0.25f;
+    asset.material.transmission_factor = 0.8f;
+    asset.material.index_of_refraction = 1.46f;
+    asset.material.thickness_factor = 0.35f;
+    asset.material.attenuation_color = { 0.7f, 0.9f, 1.0f };
+    asset.material.attenuation_distance = 2.5f;
+    asset.material.emissive_luminance_nits = 1200.0f;
+    asset.textures.clear_coat = "textures/coat.png";
+    asset.textures.anisotropy = "textures/brushed.png";
+    asset.textures.transmission = "textures/transmission.png";
+
+    std::string message;
+    REQUIRE(arc::editor::save_material_asset(asset, root, message));
+    arc::editor::material_asset loaded;
+    REQUIRE(arc::editor::load_material_asset(asset.path, root, loaded, message));
+    REQUIRE(loaded.version == 3);
+    REQUIRE(loaded.material.shading_model == arc::render::material_shading_model::transmission);
+    REQUIRE(loaded.material.clear_coat_factor == Catch::Approx(0.65f));
+    REQUIRE(loaded.material.anisotropy_factor == Catch::Approx(0.72f));
+    REQUIRE(loaded.material.transmission_factor == Catch::Approx(0.8f));
+    REQUIRE(loaded.material.emissive_luminance_nits == Catch::Approx(1200.0f));
+    REQUIRE(loaded.textures.clear_coat == "textures/coat.png");
+
+    std::ifstream saved_input(asset.path, std::ios::binary);
+    REQUIRE(saved_input.good());
+    std::string invalid_text{
+        std::istreambuf_iterator<char>{ saved_input },
+        std::istreambuf_iterator<char>{}
+    };
+    const auto roughness = invalid_text.find("\"roughness\": 0.62");
+    REQUIRE(roughness != std::string::npos);
+    invalid_text.replace(roughness, std::string("\"roughness\": 0.62").size(), "\"roughness\": 2.0");
+    const auto invalid_path = root / "materials" / "invalid.arcmat";
+    {
+        std::ofstream output(invalid_path, std::ios::binary | std::ios::trunc);
+        output << invalid_text;
+    }
+    REQUIRE_FALSE(arc::editor::load_material_asset(invalid_path, root, loaded, message));
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
 }
 
 TEST_CASE("editor material library applies materials to selected mesh renderer")

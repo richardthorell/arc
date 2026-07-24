@@ -9,7 +9,7 @@ import {
 } from './componentSchemas';
 import type { InspectorComponentId } from './componentSchemas';
 import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
-import { cameraHostPayload, transformHostPayload } from './inspectorTypes';
+import { cameraHostPayload, lightHostPayload, transformHostPayload } from './inspectorTypes';
 import { SchemaComponentCard } from './SchemaComponents';
 
 import './inspector.css';
@@ -142,7 +142,7 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
   const updateComponent = (component: InspectorComponentId, path: string, next: InspectorEntitySnapshot, settled: boolean) => {
     const transactionKey = `${component}:${path}`;
     const transactionLabel = component === 'transform' ? 'Transform Entity' : component === 'camera' ? 'Edit Camera' :
-      component === 'meshRenderer' ? 'Edit Mesh Renderer' : 'Edit Terrain';
+      component.endsWith('Light') ? 'Edit Light' : component === 'meshRenderer' ? 'Edit Mesh Renderer' : 'Edit Terrain';
     if (component === 'transform' && next.transform) {
       void runMutation(next, 'entity.setTransform', {
         ...entityPayload(next), transform: transformHostPayload(next.transform),
@@ -150,6 +150,10 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
     } else if (component === 'camera' && next.camera) {
       void runMutation(next, 'entity.setCamera', {
         ...entityPayload(next), camera: cameraHostPayload(next.camera),
+      }, settled, transactionKey, transactionLabel);
+    } else if (component.endsWith('Light') && next.light) {
+      void runMutation(next, 'entity.setLight', {
+        ...entityPayload(next), light: lightHostPayload(next.light),
       }, settled, transactionKey, transactionLabel);
     } else if (component === 'meshRenderer' && next.meshRenderer) {
       if (path === 'meshRenderer.materialPath') {

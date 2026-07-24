@@ -20,7 +20,14 @@ enum class material_texture_slot
     normal,
     ao,
     emissive,
-    height
+    height,
+    clear_coat,
+    clear_coat_roughness,
+    clear_coat_normal,
+    anisotropy,
+    subsurface,
+    thickness,
+    transmission
 };
 
 struct editor_material_record

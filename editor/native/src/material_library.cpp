@@ -27,11 +27,13 @@ std::filesystem::path canonical_key(const std::filesystem::path& path)
 render::texture_handle ensure_texture(
     editor_material_library& library,
     render::renderer& renderer,
-    const std::filesystem::path& path)
+    const std::filesystem::path& path,
+    render::texture_semantic semantic = render::texture_semantic::generic_color)
 {
     if (path.empty())
         return {};
-    const auto key = canonical_key(path);
+    auto key = canonical_key(path);
+    key += "#" + std::to_string(static_cast<unsigned>(semantic));
     for (const auto& [texture_path, handle] : library.textures)
     {
         if (texture_path == key)
@@ -47,6 +49,15 @@ render::texture_handle ensure_texture(
         return {};
     }
 
+    texture_result.texture.semantic = semantic;
+    texture_result.texture.color_space = render::required_color_space(semantic);
+    if (texture_result.texture.format == render::texture_format::rgba8_srgb ||
+        texture_result.texture.format == render::texture_format::rgba8_unorm)
+    {
+        texture_result.texture.format = texture_result.texture.color_space == render::texture_color_space::srgb
+            ? render::texture_format::rgba8_srgb
+            : render::texture_format::rgba8_unorm;
+    }
     const auto handle = renderer.create_texture(std::move(texture_result.texture));
     library.textures.push_back({ key, handle });
     return handle;
@@ -61,7 +72,8 @@ render::texture_handle ensure_packed_terrain_surface(
 {
     const auto& paths = asset.terrain_layers[layer_index];
     if (!paths.packed_aorh.empty())
-        return ensure_texture(library, renderer, resolve_material_texture_path(asset_root, paths.packed_aorh));
+        return ensure_texture(library, renderer, resolve_material_texture_path(asset_root, paths.packed_aorh),
+            render::texture_semantic::metallic_roughness);
 
     auto cache_key = canonical_key(asset.path);
     cache_key += ".terrain-aorh-" + std::to_string(layer_index);
@@ -107,6 +119,8 @@ render::texture_handle ensure_packed_terrain_surface(
     packed.width = reference->width;
     packed.height = reference->height;
     packed.format = render::texture_format::rgba8_unorm;
+    packed.color_space = render::texture_color_space::linear;
+    packed.semantic = render::texture_semantic::metallic_roughness;
     packed.pixels.resize(pixel_count * 4u);
     const auto channel_value = [&](const std::optional<render::texture_data>& source,
                                    std::size_t pixel, std::uint8_t fallback) {
@@ -143,20 +157,41 @@ void resolve_texture_handles(
             const auto& paths = asset.terrain_layers[layer_index];
             auto& layer = asset.material.terrain_layers[layer_index];
             layer.base_color_texture = ensure_texture(
-                library, renderer, resolve_material_texture_path(asset_root, paths.base_color));
+                library, renderer, resolve_material_texture_path(asset_root, paths.base_color),
+                render::texture_semantic::base_color);
             layer.normal_texture = ensure_texture(
-                library, renderer, resolve_material_texture_path(asset_root, paths.normal));
+                library, renderer, resolve_material_texture_path(asset_root, paths.normal),
+                render::texture_semantic::normal);
             layer.packed_surface_texture = ensure_packed_terrain_surface(
                 library, renderer, asset_root, asset, layer_index);
         }
         return;
     }
 
-    asset.material.base_color_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.base_color));
-    asset.material.metallic_roughness_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.metallic_roughness));
-    asset.material.normal_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.normal));
-    asset.material.occlusion_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.ao));
-    asset.material.emissive_texture = ensure_texture(library, renderer, resolve_material_texture_path(asset_root, asset.textures.emissive));
+    asset.material.base_color_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.base_color), render::texture_semantic::base_color);
+    asset.material.metallic_roughness_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.metallic_roughness), render::texture_semantic::metallic_roughness);
+    asset.material.normal_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.normal), render::texture_semantic::normal);
+    asset.material.occlusion_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.ao), render::texture_semantic::occlusion);
+    asset.material.emissive_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.emissive), render::texture_semantic::emissive);
+    asset.material.clear_coat_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.clear_coat), render::texture_semantic::clear_coat);
+    asset.material.clear_coat_roughness_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.clear_coat_roughness), render::texture_semantic::clear_coat);
+    asset.material.clear_coat_normal_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.clear_coat_normal), render::texture_semantic::normal);
+    asset.material.anisotropy_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.anisotropy), render::texture_semantic::anisotropy);
+    asset.material.subsurface_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.subsurface), render::texture_semantic::thickness);
+    asset.material.thickness_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.thickness), render::texture_semantic::thickness);
+    asset.material.transmission_texture = ensure_texture(library, renderer,
+        resolve_material_texture_path(asset_root, asset.textures.transmission), render::texture_semantic::transmission);
 }
 
 editor_material_record* find_record(editor_material_library& library, const std::filesystem::path& path)
@@ -237,6 +272,27 @@ bool assign_texture_to_material_slot(
         break;
     case material_texture_slot::height:
         textures.height = value;
+        break;
+    case material_texture_slot::clear_coat:
+        textures.clear_coat = value;
+        break;
+    case material_texture_slot::clear_coat_roughness:
+        textures.clear_coat_roughness = value;
+        break;
+    case material_texture_slot::clear_coat_normal:
+        textures.clear_coat_normal = value;
+        break;
+    case material_texture_slot::anisotropy:
+        textures.anisotropy = value;
+        break;
+    case material_texture_slot::subsurface:
+        textures.subsurface = value;
+        break;
+    case material_texture_slot::thickness:
+        textures.thickness = value;
+        break;
+    case material_texture_slot::transmission:
+        textures.transmission = value;
         break;
     }
 

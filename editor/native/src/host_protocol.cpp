@@ -314,6 +314,9 @@ bool transform_value(std::string_view json, std::string_view key, host_transform
         array3_value(object, "scale", out.scale);
 }
 
+template <class Enum>
+bool parse_enum(std::string_view payload, std::string_view key, const std::pair<std::string_view, Enum>* values, std::size_t count, Enum& out);
+
 bool camera_value(std::string_view json, std::string_view key, host_camera_snapshot& out)
 {
     std::string_view object;
@@ -326,13 +329,75 @@ bool camera_value(std::string_view json, std::string_view key, host_camera_snaps
     out.projection = projection == "orthographic"
         ? host_camera_projection::orthographic
         : host_camera_projection::perspective;
+    std::string exposure_mode;
+    if (string_value(object, "exposureMode", exposure_mode))
+    {
+        if (exposure_mode != "manual" && exposure_mode != "automatic")
+            return false;
+        out.exposure_mode = exposure_mode == "manual"
+            ? host_exposure_mode::manual
+            : host_exposure_mode::automatic;
+    }
+    std::string metering;
+    if (string_value(object, "exposureMetering", metering))
+    {
+        if (metering != "average" && metering != "centerWeighted")
+            return false;
+        out.exposure_metering = metering == "centerWeighted"
+            ? host_exposure_metering_mode::center_weighted
+            : host_exposure_metering_mode::average;
+    }
+    const auto optional_number = [&](std::string_view name, float& value) {
+        if (object.find(std::string{"\""} + std::string{name} + "\"") == std::string_view::npos)
+            return true;
+        return number_value(object, name, value);
+    };
     return
         number_value(object, "fovYDegrees", out.fov_y_degrees) &&
         number_value(object, "orthographicHeight", out.orthographic_height) &&
         number_value(object, "nearPlane", out.near_plane) &&
         number_value(object, "farPlane", out.far_plane) &&
         bool_value(object, "active", out.active) &&
-        array4_value(object, "clearColor", out.clear_color);
+        array4_value(object, "clearColor", out.clear_color) &&
+        optional_number("manualEV100", out.manual_ev100) &&
+        optional_number("exposureCompensation", out.exposure_compensation) &&
+        optional_number("minimumEV100", out.minimum_ev100) &&
+        optional_number("maximumEV100", out.maximum_ev100) &&
+        optional_number("brightenSpeed", out.brighten_speed) &&
+        optional_number("darkenSpeed", out.darken_speed);
+}
+
+bool light_value(std::string_view json, std::string_view key, host_light_snapshot& out)
+{
+    std::string_view object;
+    if (!object_value(json, key, object))
+        return false;
+    static constexpr std::pair<std::string_view, host_light_kind> kinds[]{
+        { "directional", host_light_kind::directional }, { "point", host_light_kind::point },
+        { "spot", host_light_kind::spot }, { "rectangle", host_light_kind::rectangle },
+        { "disk", host_light_kind::disk }
+    };
+    static constexpr std::pair<std::string_view, host_light_unit> units[]{
+        { "unitless", host_light_unit::unitless }, { "lumens", host_light_unit::lumen },
+        { "candela", host_light_unit::candela }, { "lux", host_light_unit::lux },
+        { "nits", host_light_unit::nit }
+    };
+    if (!parse_enum(object, "kind", kinds, std::size(kinds), out.kind) ||
+        !parse_enum(object, "unit", units, std::size(units), out.unit) ||
+        !array3_value(object, "color", out.color) ||
+        !number_value(object, "intensity", out.intensity) ||
+        !number_value(object, "range", out.range) ||
+        !number_value(object, "innerAngleDegrees", out.inner_angle_degrees) ||
+        !number_value(object, "outerAngleDegrees", out.outer_angle_degrees) ||
+        !number_value(object, "width", out.width) ||
+        !number_value(object, "height", out.height) ||
+        !bool_value(object, "twoSided", out.two_sided) ||
+        !bool_value(object, "enabled", out.enabled) ||
+        !bool_value(object, "castsShadows", out.casts_shadows) ||
+        !bool_value(object, "useColorTemperature", out.use_color_temperature) ||
+        !number_value(object, "temperatureKelvin", out.temperature_kelvin))
+        return false;
+    return true;
 }
 
 std::string vec3_json(const host_vec3& value)
@@ -582,6 +647,7 @@ const char* to_string(host_component_kind value) noexcept
     case host_component_kind::directional_light: return "directionalLight";
     case host_component_kind::point_light: return "pointLight";
     case host_component_kind::spot_light: return "spotLight";
+    case host_component_kind::area_light: return "areaLight";
     case host_component_kind::world_environment: return "worldEnvironment";
     case host_component_kind::sky_atmosphere: return "skyAtmosphere";
     case host_component_kind::celestial_sky: return "celestialSky";
@@ -739,6 +805,7 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_set_transform_command>) return "entity.setTransform";
         else if constexpr (std::is_same_v<type, host_set_render_layer_command>) return "entity.setRenderLayer";
         else if constexpr (std::is_same_v<type, host_set_camera_command>) return "entity.setCamera";
+        else if constexpr (std::is_same_v<type, host_set_light_command>) return "entity.setLight";
         else if constexpr (std::is_same_v<type, host_set_mesh_renderer_command>) return "entity.setMeshRenderer";
         else if constexpr (std::is_same_v<type, host_set_terrain_command>) return "terrain.update";
         else if constexpr (std::is_same_v<type, host_set_terrain_brush_command>) return "terrain.setBrush";
@@ -841,7 +908,46 @@ std::string to_json(const host_camera_snapshot& camera)
         << ",\"nearPlane\":" << camera.near_plane
         << ",\"farPlane\":" << camera.far_plane
         << ",\"active\":" << bool_json(camera.active)
-        << ",\"clearColor\":" << vec4_json(camera.clear_color) << '}';
+        << ",\"clearColor\":" << vec4_json(camera.clear_color)
+        << ",\"exposureMode\":" << quote(
+            camera.exposure_mode == host_exposure_mode::manual ? "manual" : "automatic")
+        << ",\"exposureMetering\":" << quote(
+            camera.exposure_metering == host_exposure_metering_mode::center_weighted
+                ? "centerWeighted" : "average")
+        << ",\"manualEV100\":" << camera.manual_ev100
+        << ",\"exposureCompensation\":" << camera.exposure_compensation
+        << ",\"minimumEV100\":" << camera.minimum_ev100
+        << ",\"maximumEV100\":" << camera.maximum_ev100
+        << ",\"brightenSpeed\":" << camera.brighten_speed
+        << ",\"darkenSpeed\":" << camera.darken_speed << '}';
+    return stream.str();
+}
+
+std::string to_json(const host_light_snapshot& light)
+{
+    const char* kind = light.kind == host_light_kind::directional ? "directional" :
+        light.kind == host_light_kind::point ? "point" :
+        light.kind == host_light_kind::spot ? "spot" :
+        light.kind == host_light_kind::disk ? "disk" : "rectangle";
+    const char* unit = light.unit == host_light_unit::lumen ? "lumens" :
+        light.unit == host_light_unit::candela ? "candela" :
+        light.unit == host_light_unit::lux ? "lux" :
+        light.unit == host_light_unit::nit ? "nits" : "unitless";
+    std::ostringstream stream;
+    stream << "{\"kind\":" << quote(kind)
+        << ",\"unit\":" << quote(unit)
+        << ",\"color\":" << vec3_json(light.color)
+        << ",\"intensity\":" << light.intensity
+        << ",\"range\":" << light.range
+        << ",\"innerAngleDegrees\":" << light.inner_angle_degrees
+        << ",\"outerAngleDegrees\":" << light.outer_angle_degrees
+        << ",\"width\":" << light.width
+        << ",\"height\":" << light.height
+        << ",\"twoSided\":" << bool_json(light.two_sided)
+        << ",\"enabled\":" << bool_json(light.enabled)
+        << ",\"castsShadows\":" << bool_json(light.casts_shadows)
+        << ",\"useColorTemperature\":" << bool_json(light.use_color_temperature)
+        << ",\"temperatureKelvin\":" << light.temperature_kelvin << '}';
     return stream.str();
 }
 
@@ -994,6 +1100,8 @@ std::string to_json(const host_command_envelope& envelope)
                 std::to_string(payload.render_layer_mask) + '}';
         else if constexpr (std::is_same_v<type, host_set_camera_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"camera\":" + to_json(payload.camera) + '}';
+        else if constexpr (std::is_same_v<type, host_set_light_command>)
+            return "{\"entity\":" + to_json(payload.entity) + ",\"light\":" + to_json(payload.light) + '}';
         else if constexpr (std::is_same_v<type, host_set_mesh_renderer_command>)
             return "{\"entity\":" + to_json(payload.entity) +
                 ",\"visible\":" + bool_json(payload.visible) +
@@ -1239,6 +1347,8 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
     json += snapshot.transform ? to_json(*snapshot.transform) : "null";
     json += ",\"camera\":";
     json += snapshot.camera ? to_json(*snapshot.camera) : "null";
+    json += ",\"light\":";
+    json += snapshot.light ? to_json(*snapshot.light) : "null";
     json += ",\"meshRenderer\":";
     json += snapshot.mesh_renderer ? to_json(*snapshot.mesh_renderer) : "null";
     json += ",\"terrain\":";
@@ -1526,6 +1636,17 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             !camera_value(payload, "camera", command.camera))
         {
             error = "Camera command requires entity and a typed camera snapshot";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "entity.setLight")
+    {
+        host_set_light_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !light_value(payload, "light", command.light))
+        {
+            error = "Light command requires entity and a typed light snapshot";
             return false;
         }
         envelope.payload = command;

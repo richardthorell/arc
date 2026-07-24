@@ -3,13 +3,31 @@ import type { PropertyComponentSchema, PropertyFieldSchema } from './propertySch
 import { generatedEcsComponents } from './generatedEcsMetadata';
 export { getPathValue, setPathValue } from './propertySchema';
 
-export type InspectorComponentId = 'transform' | 'camera' | 'meshRenderer' | 'terrain' | 'prefab';
+export type InspectorComponentId = 'transform' | 'camera' | 'directionalLight' | 'pointLight' | 'spotLight' |
+  'areaLight' | 'meshRenderer' | 'terrain' | 'prefab';
 export type InspectorFieldSchema = PropertyFieldSchema<InspectorEntitySnapshot>;
 export type InspectorComponentSchema = PropertyComponentSchema<InspectorEntitySnapshot, InspectorComponentId>;
 
 const generatedTitle = (canonicalName: string, fallback: string) => (
   generatedEcsComponents.find((component) => component.canonicalName === canonicalName)?.displayName ?? fallback
 );
+
+const legacyUnit = { value: 'unitless', label: 'Legacy Unitless' };
+const commonLightFieldsFor = (
+  unitOptions: Array<{ value: string; label: string }>,
+): InspectorFieldSchema[] => [
+  { id: 'enabled', label: 'Enabled', path: 'light.enabled', type: 'boolean' },
+  { id: 'color', label: 'Color', path: 'light.color', type: 'color', precision: 2, min: 0, max: 1 },
+  { id: 'temperatureEnabled', label: 'Use Temperature', path: 'light.useColorTemperature', type: 'boolean' },
+  {
+    id: 'temperature', label: 'Temperature', path: 'light.temperatureKelvin', type: 'number',
+    precision: 0, step: 50, scrubSensitivity: 5, min: 1000, max: 40000, unit: ' K',
+    visible: (snapshot) => snapshot.light?.useColorTemperature ?? false,
+  },
+  { id: 'unit', label: 'Intensity Unit', path: 'light.unit', type: 'enum', options: [...unitOptions, legacyUnit] },
+  { id: 'intensity', label: 'Intensity', path: 'light.intensity', type: 'number', precision: 1, step: 10, scrubSensitivity: 1, min: 0 },
+  { id: 'shadows', label: 'Cast Shadows', path: 'light.castsShadows', type: 'boolean' },
+];
 
 export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> = [
   {
@@ -43,6 +61,94 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       { id: 'farPlane', label: 'Far Clip', path: 'camera.farPlane', type: 'number', precision: 1, step: 10, scrubSensitivity: 1, min: 0.002 },
       { id: 'active', label: 'Active Camera', path: 'camera.active', type: 'boolean' },
       { id: 'clearColor', label: 'Clear Color', path: 'camera.clearColor', type: 'color', precision: 2, min: 0, max: 1 },
+      {
+        id: 'exposureMode', label: 'Exposure', path: 'camera.exposureMode', type: 'enum',
+        options: [{ value: 'automatic', label: 'Automatic' }, { value: 'manual', label: 'Manual' }],
+      },
+      {
+        id: 'metering', label: 'Metering', path: 'camera.exposureMetering', type: 'enum',
+        options: [{ value: 'average', label: 'Average' }, { value: 'centerWeighted', label: 'Center Weighted' }],
+        visible: (snapshot) => snapshot.camera?.exposureMode === 'automatic',
+      },
+      {
+        id: 'manualEV100', label: 'EV100', path: 'camera.manualEV100', type: 'number',
+        precision: 2, step: 0.25, scrubSensitivity: 0.05, unit: ' EV',
+        visible: (snapshot) => snapshot.camera?.exposureMode === 'manual',
+      },
+      {
+        id: 'exposureCompensation', label: 'Compensation', path: 'camera.exposureCompensation', type: 'number',
+        precision: 2, step: 0.25, scrubSensitivity: 0.05, unit: ' EV',
+      },
+      {
+        id: 'minimumEV100', label: 'Minimum EV', path: 'camera.minimumEV100', type: 'number',
+        precision: 1, step: 0.5, scrubSensitivity: 0.1,
+        visible: (snapshot) => snapshot.camera?.exposureMode === 'automatic',
+      },
+      {
+        id: 'maximumEV100', label: 'Maximum EV', path: 'camera.maximumEV100', type: 'number',
+        precision: 1, step: 0.5, scrubSensitivity: 0.1,
+        visible: (snapshot) => snapshot.camera?.exposureMode === 'automatic',
+      },
+      {
+        id: 'brightenSpeed', label: 'Brighten Speed', path: 'camera.brightenSpeed', type: 'number',
+        precision: 2, step: 0.1, scrubSensitivity: 0.02, min: 0,
+        visible: (snapshot) => snapshot.camera?.exposureMode === 'automatic',
+      },
+      {
+        id: 'darkenSpeed', label: 'Darken Speed', path: 'camera.darkenSpeed', type: 'number',
+        precision: 2, step: 0.1, scrubSensitivity: 0.02, min: 0,
+        visible: (snapshot) => snapshot.camera?.exposureMode === 'automatic',
+      },
+    ],
+  },
+  {
+    id: 'directionalLight',
+    title: generatedTitle('arc::scene.directional_light_component', 'Directional Light'),
+    fields: commonLightFieldsFor([{ value: 'lux', label: 'Lux (lx)' }]),
+  },
+  {
+    id: 'pointLight',
+    title: generatedTitle('arc::scene.point_light_component', 'Point Light'),
+    fields: [
+      ...commonLightFieldsFor([
+        { value: 'lumens', label: 'Lumens (lm)' },
+        { value: 'candela', label: 'Candela (cd)' },
+      ]),
+      { id: 'range', label: 'Range', path: 'light.range', type: 'number', precision: 2, step: 0.25, scrubSensitivity: 0.05, min: 0.001, unit: ' m' },
+    ],
+  },
+  {
+    id: 'spotLight',
+    title: generatedTitle('arc::scene.spot_light_component', 'Spot Light'),
+    fields: [
+      ...commonLightFieldsFor([
+        { value: 'lumens', label: 'Lumens (lm)' },
+        { value: 'candela', label: 'Candela (cd)' },
+      ]),
+      { id: 'range', label: 'Range', path: 'light.range', type: 'number', precision: 2, step: 0.25, scrubSensitivity: 0.05, min: 0.001, unit: ' m' },
+      { id: 'innerAngle', label: 'Inner Angle', path: 'light.innerAngleDegrees', type: 'number', precision: 1, step: 1, scrubSensitivity: 0.2, min: 0, max: 178, unit: '°' },
+      { id: 'outerAngle', label: 'Outer Angle', path: 'light.outerAngleDegrees', type: 'number', precision: 1, step: 1, scrubSensitivity: 0.2, min: 0.1, max: 178.9, unit: '°' },
+    ],
+  },
+  {
+    id: 'areaLight',
+    title: generatedTitle('arc::scene.area_light_component', 'Area Light'),
+    fields: [
+      {
+        id: 'shape', label: 'Shape', path: 'light.kind', type: 'enum',
+        options: [{ value: 'rectangle', label: 'Rectangle' }, { value: 'disk', label: 'Disk' }],
+      },
+      ...commonLightFieldsFor([
+        { value: 'lumens', label: 'Lumens (lm)' },
+        { value: 'nits', label: 'Nits (cd/m²)' },
+      ]),
+      { id: 'width', label: 'Width', path: 'light.width', type: 'number', precision: 2, step: 0.1, scrubSensitivity: 0.02, min: 0.001, unit: ' m' },
+      {
+        id: 'height', label: 'Height', path: 'light.height', type: 'number', precision: 2,
+        step: 0.1, scrubSensitivity: 0.02, min: 0.001, unit: ' m',
+        visible: (snapshot) => snapshot.light?.kind === 'rectangle',
+      },
+      { id: 'twoSided', label: 'Two Sided', path: 'light.twoSided', type: 'boolean' },
     ],
   },
   {
@@ -89,6 +195,10 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
 export const schemaForSnapshot = (snapshot: InspectorEntitySnapshot) => inspectorComponentSchemas.filter((schema) => (
   schema.id === 'transform' ? snapshot.transform !== null
     : schema.id === 'camera' ? snapshot.camera !== null
+      : schema.id === 'directionalLight' ? snapshot.light?.kind === 'directional'
+        : schema.id === 'pointLight' ? snapshot.light?.kind === 'point'
+          : schema.id === 'spotLight' ? snapshot.light?.kind === 'spot'
+            : schema.id === 'areaLight' ? snapshot.light?.kind === 'rectangle' || snapshot.light?.kind === 'disk'
       : schema.id === 'meshRenderer' ? snapshot.meshRenderer !== null
         : schema.id === 'prefab' ? snapshot.prefab !== null
           : snapshot.terrain !== null

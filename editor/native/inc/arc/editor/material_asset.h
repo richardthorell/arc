@@ -17,6 +17,13 @@ struct material_texture_paths
     std::string ao;
     std::string emissive;
     std::string height;
+    std::string clear_coat;
+    std::string clear_coat_roughness;
+    std::string clear_coat_normal;
+    std::string anisotropy;
+    std::string subsurface;
+    std::string thickness;
+    std::string transmission;
 };
 
 struct terrain_layer_texture_paths
@@ -32,7 +39,7 @@ struct terrain_layer_texture_paths
 
 struct material_asset
 {
-    int version{ 2 };
+    int version{ 3 };
     std::filesystem::path path;
     std::string name{ "New Material" };
     std::string shader{ "arc/default_phong" };

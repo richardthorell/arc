@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -79,6 +80,27 @@ render::material_alpha_mode blend_mode_from_string(std::string value)
     if (value == "blend" || value == "transparent")
         return render::material_alpha_mode::blend;
     return render::material_alpha_mode::opaque;
+}
+
+std::string shading_model_to_string(render::material_shading_model model)
+{
+    switch (model)
+    {
+    case render::material_shading_model::skin: return "skin";
+    case render::material_shading_model::transmission: return "transmission";
+    case render::material_shading_model::standard: break;
+    }
+    return "standard";
+}
+
+render::material_shading_model shading_model_from_string(std::string value)
+{
+    value = lowercase(std::move(value));
+    if (value == "skin")
+        return render::material_shading_model::skin;
+    if (value == "transmission" || value == "glass")
+        return render::material_shading_model::transmission;
+    return render::material_shading_model::standard;
 }
 
 std::size_t find_key(std::string_view json, std::string_view key)
@@ -236,6 +258,8 @@ bool load_material_asset(
         ? render::material_domain::terrain : render::material_domain::surface;
     asset.material.name = asset.name;
     asset.material.alpha_mode = blend_mode_from_string(string_value(json, "blendMode").value_or("opaque"));
+    asset.material.shading_model = shading_model_from_string(
+        string_value(json, "shadingModel").value_or("standard"));
     asset.material.double_sided = bool_value(json, "doubleSided").value_or(asset.material.double_sided);
     asset.graph_reserved = json.find("\"graph\"") != std::string::npos;
 
@@ -253,6 +277,8 @@ bool load_material_asset(
             assign_vec3(*emissive, "r", "g", "b", asset.material.emissive_factor);
         if (auto parsed = float_value(*surface, "emissiveStrength"))
             asset.material.emissive_strength = *parsed;
+        if (auto parsed = float_value(*surface, "emissiveLuminanceNits"))
+            asset.material.emissive_luminance_nits = *parsed;
         if (auto parsed = float_value(*surface, "normalScale"))
             asset.material.normal_scale = *parsed;
         if (auto parsed = float_value(*surface, "aoStrength"))
@@ -265,12 +291,26 @@ bool load_material_asset(
             asset.material.clear_coat_factor = *parsed;
         if (auto parsed = float_value(*advanced, "clearCoatRoughness"))
             asset.material.clear_coat_roughness = *parsed;
+        if (auto parsed = float_value(*advanced, "clearCoatNormalScale"))
+            asset.material.clear_coat_normal_scale = *parsed;
         if (auto parsed = float_value(*advanced, "sheen"))
             asset.material.sheen_factor = *parsed;
         if (auto parsed = float_value(*advanced, "transmission"))
             asset.material.transmission_factor = *parsed;
+        if (auto parsed = float_value(*advanced, "indexOfRefraction"))
+            asset.material.index_of_refraction = *parsed;
+        if (auto parsed = float_value(*advanced, "thickness"))
+            asset.material.thickness_factor = *parsed;
+        if (auto attenuation = object_for_key(*advanced, "attenuationColor"))
+            assign_vec3(*attenuation, "r", "g", "b", asset.material.attenuation_color);
+        if (auto parsed = float_value(*advanced, "attenuationDistance"))
+            asset.material.attenuation_distance = *parsed;
         if (auto parsed = float_value(*advanced, "subsurface"))
             asset.material.subsurface_factor = *parsed;
+        if (auto color = object_for_key(*advanced, "subsurfaceColor"))
+            assign_vec3(*color, "r", "g", "b", asset.material.subsurface_color);
+        if (auto radius = object_for_key(*advanced, "subsurfaceRadius"))
+            assign_vec3(*radius, "r", "g", "b", asset.material.subsurface_radius);
         if (auto parsed = float_value(*advanced, "anisotropy"))
             asset.material.anisotropy_factor = *parsed;
         if (auto parsed = float_value(*advanced, "anisotropyRotation"))
@@ -287,6 +327,21 @@ bool load_material_asset(
         asset.textures.ao = string_value(*textures, "ao").value_or("");
         asset.textures.emissive = string_value(*textures, "emissive").value_or("");
         asset.textures.height = string_value(*textures, "height").value_or("");
+        asset.textures.clear_coat = string_value(*textures, "clearCoat").value_or("");
+        asset.textures.clear_coat_roughness = string_value(*textures, "clearCoatRoughness").value_or("");
+        asset.textures.clear_coat_normal = string_value(*textures, "clearCoatNormal").value_or("");
+        asset.textures.anisotropy = string_value(*textures, "anisotropy").value_or("");
+        asset.textures.subsurface = string_value(*textures, "subsurface").value_or("");
+        asset.textures.thickness = string_value(*textures, "thickness").value_or("");
+        asset.textures.transmission = string_value(*textures, "transmission").value_or("");
+    }
+
+    if (asset.version < 3)
+    {
+        if (asset.material.transmission_factor > 0.0f)
+            asset.material.shading_model = render::material_shading_model::transmission;
+        else if (asset.material.subsurface_factor > 0.0f)
+            asset.material.shading_model = render::material_shading_model::skin;
     }
 
     if (auto terrain_layers = object_for_key(json, "terrainLayers"))
@@ -311,6 +366,32 @@ bool load_material_asset(
             desc.world_scale = float_value(*layer, "worldScale").value_or(desc.world_scale);
             desc.roughness = float_value(*layer, "roughness").value_or(desc.roughness);
         }
+    }
+
+    const auto in_range = [](float value, float minimum, float maximum) {
+        return std::isfinite(value) && value >= minimum && value <= maximum;
+    };
+    const auto& material = asset.material;
+    const bool valid =
+        in_range(material.base_color[0], 0.0f, 1.0f) &&
+        in_range(material.base_color[1], 0.0f, 1.0f) &&
+        in_range(material.base_color[2], 0.0f, 1.0f) &&
+        in_range(material.base_color[3], 0.0f, 1.0f) &&
+        in_range(material.metallic, 0.0f, 1.0f) &&
+        in_range(material.roughness, 0.0f, 1.0f) &&
+        in_range(material.clear_coat_factor, 0.0f, 1.0f) &&
+        in_range(material.clear_coat_roughness, 0.0f, 1.0f) &&
+        in_range(material.anisotropy_factor, -1.0f, 1.0f) &&
+        in_range(material.transmission_factor, 0.0f, 1.0f) &&
+        in_range(material.index_of_refraction, 1.0f, 3.0f) &&
+        std::isfinite(material.thickness_factor) && material.thickness_factor >= 0.0f &&
+        std::isfinite(material.attenuation_distance) && material.attenuation_distance > 0.0f &&
+        in_range(material.subsurface_factor, 0.0f, 1.0f) &&
+        std::isfinite(material.emissive_luminance_nits) && material.emissive_luminance_nits >= 0.0f;
+    if (!valid)
+    {
+        message = "material values are outside their physically supported ranges";
+        return false;
     }
 
     (void)asset_root;
@@ -343,11 +424,12 @@ bool save_material_asset(
     };
 
     stream << "{\n";
-    stream << "  \"version\": " << asset.version << ",\n";
+    stream << "  \"version\": " << std::max(asset.version, 3) << ",\n";
     stream << "  \"name\": \"" << escape_json(asset.name) << "\",\n";
     stream << "  \"shader\": \"" << escape_json(asset.shader) << "\",\n";
     stream << "  \"domain\": \"" << escape_json(asset.domain) << "\",\n";
     stream << "  \"blendMode\": \"" << blend_mode_to_string(asset.material.alpha_mode) << "\",\n";
+    stream << "  \"shadingModel\": \"" << shading_model_to_string(asset.material.shading_model) << "\",\n";
     stream << "  \"doubleSided\": " << (asset.material.double_sided ? "true" : "false") << ",\n";
     stream << "  \"surface\": {\n";
     stream << "    \"baseColor\": { \"r\": " << asset.material.base_color[0] << ", \"g\": " << asset.material.base_color[1] << ", \"b\": " << asset.material.base_color[2] << ", \"a\": " << asset.material.base_color[3] << " },\n";
@@ -357,6 +439,7 @@ bool save_material_asset(
     stream << "    \"aoStrength\": " << asset.material.occlusion_strength << ",\n";
     stream << "    \"emissive\": { \"r\": " << asset.material.emissive_factor[0] << ", \"g\": " << asset.material.emissive_factor[1] << ", \"b\": " << asset.material.emissive_factor[2] << " },\n";
     stream << "    \"emissiveStrength\": " << asset.material.emissive_strength << ",\n";
+    stream << "    \"emissiveLuminanceNits\": " << asset.material.emissive_luminance_nits << ",\n";
     stream << "    \"alphaCutoff\": " << asset.material.alpha_cutoff << "\n";
     stream << "  },\n";
     stream << "  \"textures\": {\n";
@@ -365,7 +448,14 @@ bool save_material_asset(
     write_texture("normal", asset.textures.normal, true);
     write_texture("ao", asset.textures.ao, true);
     write_texture("emissive", asset.textures.emissive, true);
-    write_texture("height", asset.textures.height, false);
+    write_texture("height", asset.textures.height, true);
+    write_texture("clearCoat", asset.textures.clear_coat, true);
+    write_texture("clearCoatRoughness", asset.textures.clear_coat_roughness, true);
+    write_texture("clearCoatNormal", asset.textures.clear_coat_normal, true);
+    write_texture("anisotropy", asset.textures.anisotropy, true);
+    write_texture("subsurface", asset.textures.subsurface, true);
+    write_texture("thickness", asset.textures.thickness, true);
+    write_texture("transmission", asset.textures.transmission, false);
     stream << "  },\n";
     if (asset.material.domain == render::material_domain::terrain || lowercase(asset.domain) == "terrain")
     {
@@ -392,9 +482,22 @@ bool save_material_asset(
     stream << "  \"advanced\": {\n";
     stream << "    \"clearCoat\": " << asset.material.clear_coat_factor << ",\n";
     stream << "    \"clearCoatRoughness\": " << asset.material.clear_coat_roughness << ",\n";
+    stream << "    \"clearCoatNormalScale\": " << asset.material.clear_coat_normal_scale << ",\n";
     stream << "    \"sheen\": " << asset.material.sheen_factor << ",\n";
     stream << "    \"transmission\": " << asset.material.transmission_factor << ",\n";
+    stream << "    \"indexOfRefraction\": " << asset.material.index_of_refraction << ",\n";
+    stream << "    \"thickness\": " << asset.material.thickness_factor << ",\n";
+    stream << "    \"attenuationColor\": { \"r\": " << asset.material.attenuation_color[0]
+        << ", \"g\": " << asset.material.attenuation_color[1]
+        << ", \"b\": " << asset.material.attenuation_color[2] << " },\n";
+    stream << "    \"attenuationDistance\": " << asset.material.attenuation_distance << ",\n";
     stream << "    \"subsurface\": " << asset.material.subsurface_factor << ",\n";
+    stream << "    \"subsurfaceColor\": { \"r\": " << asset.material.subsurface_color[0]
+        << ", \"g\": " << asset.material.subsurface_color[1]
+        << ", \"b\": " << asset.material.subsurface_color[2] << " },\n";
+    stream << "    \"subsurfaceRadius\": { \"r\": " << asset.material.subsurface_radius[0]
+        << ", \"g\": " << asset.material.subsurface_radius[1]
+        << ", \"b\": " << asset.material.subsurface_radius[2] << " },\n";
     stream << "    \"anisotropy\": " << asset.material.anisotropy_factor << ",\n";
     stream << "    \"anisotropyRotation\": " << asset.material.anisotropy_rotation << ",\n";
     stream << "    \"parallaxHeightScale\": " << asset.material.parallax_height_scale << "\n";

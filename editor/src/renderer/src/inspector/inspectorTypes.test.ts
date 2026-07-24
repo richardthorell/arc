@@ -36,7 +36,7 @@ describe('inspector host bindings', () => {
   it('parses mesh renderer material bindings and linear tint', () => {
     const snapshot = parseSelectedEntitySnapshot({
       entity: { index: 8, generation: 1 }, name: 'Rock', tag: 'Mesh', active: true, renderLayerMask: 1,
-      transform: null, camera: null,
+      transform: null, camera: null, light: null,
       meshRenderer: {
         visible: true, baseColorTint: [0.8, 0.9, 1, 1], hasMaterial: true,
         assetBackedMaterial: true, materialName: 'Rock', materialPath: 'materials/rock.arcmat',
@@ -50,7 +50,7 @@ describe('inspector host bindings', () => {
   it('parses prefab instance source and override state', () => {
     const snapshot = parseSelectedEntitySnapshot({
       entity: { index: 9, generation: 4 }, name: 'Cabin', tag: 'Mesh', active: true, renderLayerMask: 1,
-      transform: null, camera: null, meshRenderer: null, terrain: null,
+      transform: null, camera: null, light: null, meshRenderer: null, terrain: null,
       prefab: {
         prefabGuid: '1020304050607080a0b0c0d0e0f00102',
         prefabPath: 'assets/prefabs/cabin.arcprefab',

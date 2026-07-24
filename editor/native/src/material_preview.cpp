@@ -219,11 +219,43 @@ material_preview_result render_material_preview(
                 const float metallic = std::clamp(material.metallic * (metallic_roughness_map.valid ? mr_sample[2] : 1.0f), 0.0f, 1.0f);
                 const float roughness = std::clamp(material.roughness * (metallic_roughness_map.valid ? mr_sample[1] : 1.0f), minimum_roughness, 1.0f);
                 const float ao = std::clamp(1.0f + ((ao_map.valid ? ao_sample[0] : 1.0f) - 1.0f) * material.occlusion_strength, 0.0f, 1.0f);
-                color = mul(mul(base_color, 0.055f), ao);
-                color = add(color, evaluate_light(normal, view, key_light, { 4.3f, 3.9f, 3.45f }, base_color, metallic, roughness));
-                color = add(color, evaluate_light(normal, view, fill_light, { 0.75f, 0.95f, 1.25f }, base_color, metallic, roughness));
-                color = add(color, evaluate_light(normal, view, rim_light, { 0.42f, 0.58f, 0.82f }, base_color, metallic, roughness));
-                color = add(color, mul(mul(emissive_factor, { emissive_sample[0], emissive_sample[1], emissive_sample[2] }), material.emissive_strength));
+                const float base_energy = 1.0f - material.clear_coat_factor * dielectric_reflectance;
+                color = mul(mul(base_color, 0.055f * base_energy), ao);
+                color = add(color, mul(evaluate_light(normal, view, key_light, { 4.3f, 3.9f, 3.45f }, base_color, metallic, roughness), base_energy));
+                color = add(color, mul(evaluate_light(normal, view, fill_light, { 0.75f, 0.95f, 1.25f }, base_color, metallic, roughness), base_energy));
+                color = add(color, mul(evaluate_light(normal, view, rim_light, { 0.42f, 0.58f, 0.82f }, base_color, metallic, roughness), base_energy));
+                if (material.clear_coat_factor > 0.0f)
+                {
+                    const auto coat = evaluate_light(
+                        normal, view, key_light, { 4.3f, 3.9f, 3.45f },
+                        { dielectric_reflectance, dielectric_reflectance, dielectric_reflectance },
+                        1.0f, std::clamp(material.clear_coat_roughness, minimum_roughness, 1.0f));
+                    color = add(color, mul(coat, material.clear_coat_factor));
+                }
+                if (material.shading_model == render::material_shading_model::skin &&
+                    material.subsurface_factor > 0.0f)
+                {
+                    const float wrap = std::clamp((dot(normal, key_light) + 0.35f) / 1.35f, 0.0f, 1.0f);
+                    const color3 subsurface{
+                        material.subsurface_color[0],
+                        material.subsurface_color[1],
+                        material.subsurface_color[2]
+                    };
+                    color = add(color, mul(mul(base_color, subsurface), wrap * material.subsurface_factor * 0.28f));
+                }
+                if (material.transmission_factor > 0.0f)
+                {
+                    const auto attenuation = render::beer_lambert_attenuation(
+                        material.attenuation_color,
+                        material.attenuation_distance,
+                        std::max(material.thickness_factor, 0.0f));
+                    const color3 transmitted = mul(background, { attenuation[0], attenuation[1], attenuation[2] });
+                    color = mix(color, transmitted, std::clamp(material.transmission_factor, 0.0f, 1.0f));
+                }
+                const float emissive_scale = material.emissive_luminance_nits > 0.0f
+                    ? material.emissive_luminance_nits / 100.0f
+                    : material.emissive_strength;
+                color = add(color, mul(mul(emissive_factor, { emissive_sample[0], emissive_sample[1], emissive_sample[2] }), emissive_scale));
                 const float opacity = std::clamp(material.base_color[3] * base_sample[3], 0.0f, 1.0f);
                 if (material.alpha_mode == render::material_alpha_mode::masked && opacity < material.alpha_cutoff)
                     color = background;
