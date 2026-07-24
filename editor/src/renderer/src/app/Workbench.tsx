@@ -707,16 +707,7 @@ export function Workbench() {
       activeScene: activeScene ?? scenePayload.activeScenePath ?? current?.activeScene ?? '',
       scene,
       assets,
-      console: [
-        ...(current?.console ?? []),
-        {
-          id: `host-scene-${Date.now()}`,
-          level: 'info',
-          source: 'host',
-          message: activeScene ? `Loaded scene asset ${assetNameFromPath(activeScene)}.` : 'Host scene snapshot refreshed.',
-          timestamp: timestamp(),
-        },
-      ],
+      console: current?.console ?? [],
     }));
   };
 

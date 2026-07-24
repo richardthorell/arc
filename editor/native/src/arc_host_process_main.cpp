@@ -386,6 +386,7 @@ private:
             return;
 
         std::string message;
+        bool rendered{};
         update_terrain_hover();
         {
             std::lock_guard lock(host_mutex_);
@@ -394,8 +395,42 @@ private:
                 .width = value.width,
                 .height = value.height
             });
-            if (!backend_->render_native_viewport_frame(value.width, value.height, message) && !message.empty())
-                std::cerr << "arc_host_process native viewport render error: " << message << '\n';
+            rendered = backend_->render_native_viewport_frame(value.width, value.height, message);
+        }
+        if (rendered)
+        {
+            last_render_error_.clear();
+            return;
+        }
+        if (message.empty())
+            return;
+
+        const auto now = std::chrono::steady_clock::now();
+        if (message != last_render_error_ ||
+            now - last_render_error_time_ >= std::chrono::seconds{ 5 })
+        {
+            std::cerr << "arc_host_process native viewport render error: " << message << '\n';
+            last_render_error_ = message;
+            last_render_error_time_ = now;
+        }
+
+        const bool recreate_backend =
+            message.find("backend recreation required") != std::string::npos;
+        if (!recreate_backend ||
+            now - last_backend_recovery_attempt_ < std::chrono::seconds{ 2 })
+            return;
+
+        last_backend_recovery_attempt_ = now;
+        {
+            std::lock_guard lock(host_mutex_);
+            backend_ = nullptr;
+            host_->renderer_service().set_backend(nullptr);
+        }
+        if (!create_backend())
+        {
+            // Stop retrying every render tick. A bounds/parent update or host
+            // restart can establish a new native surface.
+            running_ = false;
         }
     }
 
@@ -950,6 +985,9 @@ private:
     std::uint32_t height_{ 1 };
     bool bounds_dirty_{};
     std::uint64_t frame_index_{};
+    std::string last_render_error_;
+    std::chrono::steady_clock::time_point last_render_error_time_{};
+    std::chrono::steady_clock::time_point last_backend_recovery_attempt_{};
     bool dragging_{};
     drag_button drag_button_{ drag_button::none };
     int drag_x_{};
