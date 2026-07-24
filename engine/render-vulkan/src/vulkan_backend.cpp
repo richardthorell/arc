@@ -42,7 +42,8 @@ constexpr std::uint32_t material_shadow_data_binding = 6u;
 constexpr std::uint32_t terrain_normal_binding = 7u;
 constexpr std::uint32_t terrain_surface_binding = 11u;
 constexpr std::uint32_t material_light_data_binding = 15u;
-constexpr std::uint32_t material_binding_count = 16u;
+constexpr std::uint32_t material_parameters_binding = 16u;
+constexpr std::uint32_t material_binding_count = 17u;
 constexpr std::uint32_t material_descriptor_set_capacity = 12288u;
 constexpr VkDeviceSize upload_staging_capacity = 64u * 1024u * 1024u;
 constexpr std::array<std::uint32_t, 14> material_image_bindings{
@@ -57,6 +58,42 @@ void log_vk_result(VkResult result)
 {
     if (result != VK_SUCCESS)
         arc::error("render.vulkan", "Vulkan call failed");
+}
+
+const char* vk_result_name(VkResult result) noexcept
+{
+    switch (result)
+    {
+    case VK_SUCCESS: return "VK_SUCCESS";
+    case VK_NOT_READY: return "VK_NOT_READY";
+    case VK_TIMEOUT: return "VK_TIMEOUT";
+    case VK_EVENT_SET: return "VK_EVENT_SET";
+    case VK_EVENT_RESET: return "VK_EVENT_RESET";
+    case VK_INCOMPLETE: return "VK_INCOMPLETE";
+    case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
+    case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+    case VK_ERROR_INITIALIZATION_FAILED: return "VK_ERROR_INITIALIZATION_FAILED";
+    case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
+    case VK_ERROR_MEMORY_MAP_FAILED: return "VK_ERROR_MEMORY_MAP_FAILED";
+    case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
+    case VK_ERROR_EXTENSION_NOT_PRESENT: return "VK_ERROR_EXTENSION_NOT_PRESENT";
+    case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
+    case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
+    case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
+    case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
+    case VK_ERROR_FRAGMENTED_POOL: return "VK_ERROR_FRAGMENTED_POOL";
+    case VK_ERROR_SURFACE_LOST_KHR: return "VK_ERROR_SURFACE_LOST_KHR";
+    case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR: return "VK_ERROR_NATIVE_WINDOW_IN_USE_KHR";
+    case VK_SUBOPTIMAL_KHR: return "VK_SUBOPTIMAL_KHR";
+    case VK_ERROR_OUT_OF_DATE_KHR: return "VK_ERROR_OUT_OF_DATE_KHR";
+    default: return "VK_ERROR_UNKNOWN";
+    }
+}
+
+std::string describe_vk_result(VkResult result)
+{
+    return std::string{ vk_result_name(result) } + " (" +
+        std::to_string(static_cast<std::int32_t>(result)) + ")";
 }
 
 void cmd_begin_rendering(VkCommandBuffer command_buffer, const VkRenderingInfo* rendering)
@@ -208,12 +245,18 @@ struct mesh_push_constants
     float fog_color_density[4]{};
     float fog_params[4]{};
     float material_params[4]{ 1.0f, 1.0f, 1.0f, 0.0f };
+};
+static_assert(sizeof(mesh_push_constants) == 256);
+
+struct material_uniform_data
+{
     float emissive_factor[4]{ 0.0f, 0.0f, 0.0f, 1.0f };
     float material_lobes[4]{};
     float volume_params[4]{};
     float subsurface_color_factor[4]{ 1.0f, 0.35f, 0.2f, 0.0f };
     float attenuation_color[4]{ 1.0f, 1.0f, 1.0f, 0.0f };
 };
+static_assert(sizeof(material_uniform_data) == 80);
 
 struct deferred_push_constants
 {
@@ -825,6 +868,12 @@ public:
     bool render_native_viewport_frame(std::uint32_t width, std::uint32_t height, std::string& message) override
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
+        message.clear();
+        if (device_lost_)
+        {
+            message = "native viewport device is lost; backend recreation required";
+            return false;
+        }
         if (surface_ == VK_NULL_HANDLE)
         {
             message = "Vulkan backend was created without a presentation surface";
@@ -873,6 +922,12 @@ public:
                 static_cast<int>(height),
                 min_image_count_,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            if (window_.Swapchain == VK_NULL_HANDLE || window_.SemaphoreCount == 0 ||
+                window_.FrameSemaphores.Size == 0)
+            {
+                message = "native viewport swapchain creation returned no usable images";
+                return false;
+            }
             viewport_format_ = window_.SurfaceFormat.format;
             native_swapchain_initialized_ = true;
         }
@@ -890,6 +945,12 @@ public:
                 static_cast<int>(height),
                 min_image_count_,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+            if (window_.Swapchain == VK_NULL_HANDLE || window_.SemaphoreCount == 0 ||
+                window_.FrameSemaphores.Size == 0)
+            {
+                message = "native viewport swapchain rebuild returned no usable images";
+                return false;
+            }
             window_.FrameIndex = 0;
             swapchain_rebuild_ = false;
         }
@@ -904,9 +965,24 @@ public:
             swapchain_rebuild_ = true;
             return true;
         }
+        if (result == VK_ERROR_SURFACE_LOST_KHR)
+        {
+            message = "native viewport surface lost (" + describe_vk_result(result) +
+                "); backend recreation required";
+            return false;
+        }
+        if (result == VK_ERROR_DEVICE_LOST)
+        {
+            device_lost_ = true;
+            message = "native viewport device lost while acquiring the swapchain image (" +
+                describe_vk_result(result) + "); backend recreation required";
+            return false;
+        }
         if (result != VK_SUCCESS)
         {
-            message = "failed to acquire native viewport swapchain image";
+            swapchain_rebuild_ = true;
+            message = "failed to acquire native viewport swapchain image: " +
+                describe_vk_result(result);
             return false;
         }
         active_frame_index_ = window_.FrameIndex;
@@ -1026,7 +1102,8 @@ public:
         result = vkQueueSubmit(queue_, 1, &submit, frame->Fence);
         if (result != VK_SUCCESS)
         {
-            message = "failed to submit native viewport frame";
+            device_lost_ = result == VK_ERROR_DEVICE_LOST;
+            message = "failed to submit native viewport frame: " + describe_vk_result(result);
             return false;
         }
 
@@ -1045,7 +1122,14 @@ public:
         }
         if (result != VK_SUCCESS)
         {
-            message = "failed to present native viewport frame";
+            if (result == VK_ERROR_SURFACE_LOST_KHR)
+                message = "native viewport surface lost while presenting (" +
+                    describe_vk_result(result) + "); backend recreation required";
+            else
+            {
+                device_lost_ = result == VK_ERROR_DEVICE_LOST;
+                message = "failed to present native viewport frame: " + describe_vk_result(result);
+            }
             return false;
         }
 
@@ -1192,6 +1276,7 @@ private:
     struct gpu_material
     {
         material_desc data;
+        std::vector<gpu_buffer> parameter_buffers;
         std::vector<VkDescriptorSet> descriptor_sets;
     };
 
@@ -1364,6 +1449,7 @@ private:
         VkPhysicalDeviceProperties properties{};
         vkGetPhysicalDeviceProperties(physical_device_, &properties);
         timestamp_period_ = properties.limits.timestampPeriod;
+        max_push_constant_bytes_ = properties.limits.maxPushConstantsSize;
 
         std::uint32_t family_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &family_count, nullptr);
@@ -1845,6 +1931,11 @@ private:
         for (auto& [_, texture] : textures_)
             destroy_texture(texture);
         textures_.clear();
+        for (auto& [_, material] : materials_)
+        {
+            for (auto& parameters : material.parameter_buffers)
+                destroy_buffer(parameters);
+        }
         materials_.clear();
         environments_.clear();
     }
@@ -2590,35 +2681,6 @@ private:
                 constants.material_params[1] = desc.occlusion_strength;
                 constants.material_params[2] = desc.emissive_strength;
                 constants.material_params[3] = static_cast<float>(desc.alpha_mode);
-                constants.emissive_factor[0] = desc.emissive_factor[0];
-                constants.emissive_factor[1] = desc.emissive_factor[1];
-                constants.emissive_factor[2] = desc.emissive_factor[2];
-                constants.emissive_factor[3] = desc.emissive_luminance_nits > 0.0f
-                    ? desc.emissive_luminance_nits / 100.0f
-                    : desc.emissive_strength;
-                constants.material_lobes[0] = desc.clear_coat_factor;
-                constants.material_lobes[1] = desc.clear_coat_roughness;
-                constants.material_lobes[2] = desc.anisotropy_factor;
-                constants.material_lobes[3] = desc.transmission_factor;
-                constants.volume_params[0] = static_cast<float>(desc.shading_model);
-                constants.volume_params[1] = desc.index_of_refraction;
-                constants.volume_params[2] = desc.thickness_factor;
-                constants.volume_params[3] = desc.attenuation_distance;
-                constants.subsurface_color_factor[0] = desc.subsurface_color[0];
-                constants.subsurface_color_factor[1] = desc.subsurface_color[1];
-                constants.subsurface_color_factor[2] = desc.subsurface_color[2];
-                constants.subsurface_color_factor[3] = desc.subsurface_factor;
-                constants.attenuation_color[0] = desc.attenuation_color[0];
-                constants.attenuation_color[1] = desc.attenuation_color[1];
-                constants.attenuation_color[2] = desc.attenuation_color[2];
-                constants.attenuation_color[3] =
-                    (texture_ready(desc.clear_coat_texture) ? 1.0f : 0.0f) +
-                    (texture_ready(desc.clear_coat_roughness_texture) ? 2.0f : 0.0f) +
-                    (texture_ready(desc.clear_coat_normal_texture) ? 4.0f : 0.0f) +
-                    (texture_ready(desc.anisotropy_texture) ? 8.0f : 0.0f) +
-                    (texture_ready(desc.subsurface_texture) ? 16.0f : 0.0f) +
-                    (texture_ready(desc.thickness_texture) ? 32.0f : 0.0f) +
-                    (texture_ready(desc.transmission_texture) ? 64.0f : 0.0f);
                 constants.light_color[3] =
                     (texture_ready(desc.base_color_texture) ? 1.0f : 0.0f) +
                     (texture_ready(desc.metallic_roughness_texture) ? 2.0f : 0.0f) +
@@ -2793,6 +2855,9 @@ private:
 
     void destroy_white_texture() noexcept
     {
+        for (auto& parameters : white_material_parameter_buffers_)
+            destroy_buffer(parameters);
+        white_material_parameter_buffers_.clear();
         if (white_descriptor_pool_ != VK_NULL_HANDLE)
         {
             vkDestroyDescriptorPool(device_, white_descriptor_pool_, nullptr);
@@ -3047,8 +3112,86 @@ private:
         return true;
     }
 
+    material_uniform_data build_material_parameters(const material_desc* material) const noexcept
+    {
+        material_uniform_data parameters{};
+        if (material == nullptr || material->domain == material_domain::terrain)
+            return parameters;
+
+        parameters.emissive_factor[0] = material->emissive_factor[0];
+        parameters.emissive_factor[1] = material->emissive_factor[1];
+        parameters.emissive_factor[2] = material->emissive_factor[2];
+        parameters.emissive_factor[3] = material->emissive_luminance_nits > 0.0f
+            ? material->emissive_luminance_nits / 100.0f
+            : material->emissive_strength;
+        parameters.material_lobes[0] = material->clear_coat_factor;
+        parameters.material_lobes[1] = material->clear_coat_roughness;
+        parameters.material_lobes[2] = material->anisotropy_factor;
+        parameters.material_lobes[3] = material->transmission_factor;
+        parameters.volume_params[0] = static_cast<float>(material->shading_model);
+        parameters.volume_params[1] = material->index_of_refraction;
+        parameters.volume_params[2] = material->thickness_factor;
+        parameters.volume_params[3] = material->attenuation_distance;
+        parameters.subsurface_color_factor[0] = material->subsurface_color[0];
+        parameters.subsurface_color_factor[1] = material->subsurface_color[1];
+        parameters.subsurface_color_factor[2] = material->subsurface_color[2];
+        parameters.subsurface_color_factor[3] = material->subsurface_factor;
+        parameters.attenuation_color[0] = material->attenuation_color[0];
+        parameters.attenuation_color[1] = material->attenuation_color[1];
+        parameters.attenuation_color[2] = material->attenuation_color[2];
+        parameters.attenuation_color[3] =
+            (texture_ready(material->clear_coat_texture) ? 1.0f : 0.0f) +
+            (texture_ready(material->clear_coat_roughness_texture) ? 2.0f : 0.0f) +
+            (texture_ready(material->clear_coat_normal_texture) ? 4.0f : 0.0f) +
+            (texture_ready(material->anisotropy_texture) ? 8.0f : 0.0f) +
+            (texture_ready(material->subsurface_texture) ? 16.0f : 0.0f) +
+            (texture_ready(material->thickness_texture) ? 32.0f : 0.0f) +
+            (texture_ready(material->transmission_texture) ? 64.0f : 0.0f);
+        return parameters;
+    }
+
+    bool update_material_parameter_buffer(gpu_buffer& buffer, const material_desc* material)
+    {
+        if (buffer.buffer == VK_NULL_HANDLE &&
+            !create_buffer(
+                sizeof(material_uniform_data),
+                VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                VMA_MEMORY_USAGE_CPU_TO_GPU,
+                buffer))
+            return false;
+
+        const auto parameters = build_material_parameters(material);
+        void* mapped{};
+        if (vmaMapMemory(allocator_, buffer.allocation, &mapped) != VK_SUCCESS)
+            return false;
+        std::memcpy(mapped, &parameters, sizeof(parameters));
+        vmaFlushAllocation(allocator_, buffer.allocation, 0, sizeof(parameters));
+        vmaUnmapMemory(allocator_, buffer.allocation);
+        return true;
+    }
+
+    bool ensure_material_parameter_buffers(std::vector<gpu_buffer>& buffers, const material_desc* material)
+    {
+        const auto count = frame_resource_count();
+        if (buffers.size() != count)
+        {
+            for (auto& buffer : buffers)
+                destroy_buffer(buffer);
+            buffers.assign(count, {});
+        }
+        for (auto& buffer : buffers)
+        {
+            if (buffer.buffer == VK_NULL_HANDLE &&
+                !update_material_parameter_buffer(buffer, material))
+                return false;
+        }
+        return true;
+    }
+
     bool ensure_material_descriptor_sets(gpu_material& material)
     {
+        if (!ensure_material_parameter_buffers(material.parameter_buffers, &material.data))
+            return false;
         const auto count = frame_resource_count();
         if (material.descriptor_sets.size() != count)
             material.descriptor_sets.assign(count, VK_NULL_HANDLE);
@@ -3065,6 +3208,8 @@ private:
 
     bool ensure_white_descriptor_sets()
     {
+        if (!ensure_material_parameter_buffers(white_material_parameter_buffers_, nullptr))
+            return false;
         const auto count = frame_resource_count();
         if (white_descriptor_sets_.size() != count)
             white_descriptor_sets_.assign(count, VK_NULL_HANDLE);
@@ -3104,7 +3249,13 @@ private:
         if (slot >= sky_descriptor_sets_.size())
             return VK_NULL_HANDLE;
         const auto set = sky_descriptor_sets_[slot];
-        update_material_descriptor_set(set, nullptr, slot);
+        update_material_descriptor_set(
+            set,
+            nullptr,
+            slot < white_material_parameter_buffers_.size()
+                ? &white_material_parameter_buffers_[slot]
+                : nullptr,
+            slot);
 
         VkSampler sampler = white_sampler_;
         VkImageView view = white_view_;
@@ -3136,7 +3287,11 @@ private:
         return set;
     }
 
-    void update_material_descriptor_set(VkDescriptorSet descriptor_set, const material_desc* material, std::uint32_t frame_slot)
+    void update_material_descriptor_set(
+        VkDescriptorSet descriptor_set,
+        const material_desc* material,
+        const gpu_buffer* material_parameters,
+        std::uint32_t frame_slot)
     {
         const auto* shadow_buffer_resource = shadow_uniform_buffer_for_slot(frame_slot);
         if (descriptor_set == VK_NULL_HANDLE ||
@@ -3144,6 +3299,8 @@ private:
             shadow_atlas_.array_view == VK_NULL_HANDLE ||
             shadow_buffer_resource == nullptr ||
             shadow_buffer_resource->buffer == VK_NULL_HANDLE ||
+            material_parameters == nullptr ||
+            material_parameters->buffer == VK_NULL_HANDLE ||
             light_buffer_.buffer == VK_NULL_HANDLE)
             return;
 
@@ -3231,7 +3388,7 @@ private:
         shadow_buffer.offset = 0;
         shadow_buffer.range = sizeof(shadow_uniform_data);
 
-        std::array<VkWriteDescriptorSet, material_image_bindings.size() + 2u> writes{};
+        std::array<VkWriteDescriptorSet, material_image_bindings.size() + 3u> writes{};
         for (std::uint32_t image_index = 0; image_index < image_infos.size(); ++image_index)
         {
             writes[image_index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -3251,13 +3408,23 @@ private:
         VkDescriptorBufferInfo light_buffer{};
         light_buffer.buffer = light_buffer_.buffer;
         light_buffer.range = sizeof(scene_lighting_data);
-        auto& light_write = writes.back();
+        auto& light_write = writes[material_image_bindings.size() + 1u];
         light_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         light_write.dstSet = descriptor_set;
         light_write.dstBinding = material_light_data_binding;
         light_write.descriptorCount = 1;
         light_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         light_write.pBufferInfo = &light_buffer;
+        VkDescriptorBufferInfo parameter_buffer{};
+        parameter_buffer.buffer = material_parameters->buffer;
+        parameter_buffer.range = sizeof(material_uniform_data);
+        auto& parameter_write = writes.back();
+        parameter_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        parameter_write.dstSet = descriptor_set;
+        parameter_write.dstBinding = material_parameters_binding;
+        parameter_write.descriptorCount = 1;
+        parameter_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        parameter_write.pBufferInfo = &parameter_buffer;
         vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }
 
@@ -3266,7 +3433,15 @@ private:
         if (!ensure_material_descriptor_sets(material))
             return;
         for (std::uint32_t frame_slot = 0; frame_slot < material.descriptor_sets.size(); ++frame_slot)
-            update_material_descriptor_set(material.descriptor_sets[frame_slot], &material.data, frame_slot);
+        {
+            if (!update_material_parameter_buffer(material.parameter_buffers[frame_slot], &material.data))
+                continue;
+            update_material_descriptor_set(
+                material.descriptor_sets[frame_slot],
+                &material.data,
+                &material.parameter_buffers[frame_slot],
+                frame_slot);
+        }
     }
 
     void update_white_descriptor_sets()
@@ -3274,7 +3449,11 @@ private:
         if (!ensure_white_descriptor_sets())
             return;
         for (std::uint32_t frame_slot = 0; frame_slot < white_descriptor_sets_.size(); ++frame_slot)
-            update_material_descriptor_set(white_descriptor_sets_[frame_slot], nullptr, frame_slot);
+            update_material_descriptor_set(
+                white_descriptor_sets_[frame_slot],
+                nullptr,
+                &white_material_parameter_buffers_[frame_slot],
+                frame_slot);
     }
 
     void update_all_material_descriptor_sets()
@@ -3288,11 +3467,23 @@ private:
     {
         const auto frame_slot = current_frame_slot();
         if (ensure_white_descriptor_sets() && frame_slot < white_descriptor_sets_.size())
-            update_material_descriptor_set(white_descriptor_sets_[frame_slot], nullptr, frame_slot);
+            update_material_descriptor_set(
+                white_descriptor_sets_[frame_slot],
+                nullptr,
+                &white_material_parameter_buffers_[frame_slot],
+                frame_slot);
         for (auto& [_, material] : materials_)
         {
             if (ensure_material_descriptor_sets(material) && frame_slot < material.descriptor_sets.size())
-                update_material_descriptor_set(material.descriptor_sets[frame_slot], &material.data, frame_slot);
+            {
+                if (!update_material_parameter_buffer(material.parameter_buffers[frame_slot], &material.data))
+                    continue;
+                update_material_descriptor_set(
+                    material.descriptor_sets[frame_slot],
+                    &material.data,
+                    &material.parameter_buffers[frame_slot],
+                    frame_slot);
+            }
         }
     }
 
@@ -3330,14 +3521,18 @@ private:
         for (std::uint32_t binding_index = 0; binding_index < material_binding_count; ++binding_index)
         {
             bindings[binding_index].binding = binding_index;
-            bindings[binding_index].descriptorType = binding_index == material_shadow_data_binding
+            bindings[binding_index].descriptorType =
+                binding_index == material_shadow_data_binding ||
+                binding_index == material_parameters_binding
                 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                 : binding_index == material_light_data_binding
                     ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                     : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             bindings[binding_index].descriptorCount = 1;
             bindings[binding_index].stageFlags =
-                binding_index == material_shadow_data_binding || binding_index == material_light_data_binding
+                binding_index == material_shadow_data_binding ||
+                binding_index == material_light_data_binding ||
+                binding_index == material_parameters_binding
                 ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT : VK_SHADER_STAGE_FRAGMENT_BIT;
         }
 
@@ -3448,7 +3643,7 @@ private:
         pool_sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         pool_sizes[0].descriptorCount = static_cast<std::uint32_t>(material_image_bindings.size()) * material_descriptor_set_capacity;
         pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        pool_sizes[1].descriptorCount = material_descriptor_set_capacity;
+        pool_sizes[1].descriptorCount = material_descriptor_set_capacity * 2u;
         pool_sizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         pool_sizes[2].descriptorCount = material_descriptor_set_capacity;
         VkDescriptorPoolCreateInfo descriptor_pool{};
@@ -3468,6 +3663,19 @@ private:
     {
         if (mesh_pipeline_ != VK_NULL_HANDLE)
             return true;
+        if (max_push_constant_bytes_ < sizeof(mesh_push_constants))
+        {
+            if (!push_constant_limit_warning_reported_)
+            {
+                arc::error(
+                    "render.vulkan",
+                    "The selected adapter exposes only " + std::to_string(max_push_constant_bytes_) +
+                        " push-constant bytes; ARC's raster mesh path currently requires " +
+                        std::to_string(sizeof(mesh_push_constants)));
+                push_constant_limit_warning_reported_ = true;
+            }
+            return false;
+        }
         if (!ensure_white_texture())
             return false;
 
@@ -5116,6 +5324,8 @@ private:
     {
         if (shadow_pipeline_ != VK_NULL_HANDLE)
             return true;
+        if (max_push_constant_bytes_ < sizeof(mesh_push_constants))
+            return false;
 
         VkShaderModule vert = create_shader_module(
             builtin::shadow_depth_vert_spv,
@@ -6050,6 +6260,8 @@ private:
     static constexpr std::uint32_t max_timestamp_queries_{ 64 };
     VkQueryPool timestamp_query_pool_{};
     float timestamp_period_{ 1.0f };
+    std::uint32_t max_push_constant_bytes_{};
+    bool push_constant_limit_warning_reported_{};
     bool timestamps_supported_{};
     std::uint32_t next_timestamp_query_{};
     std::vector<gpu_scope_record> timestamp_scopes_;
@@ -6091,6 +6303,7 @@ private:
     VkDescriptorSetLayout white_descriptor_set_layout_{};
     VkDescriptorPool white_descriptor_pool_{};
     std::vector<VkDescriptorSet> white_descriptor_sets_;
+    std::vector<gpu_buffer> white_material_parameter_buffers_;
     std::vector<VkDescriptorSet> sky_descriptor_sets_;
     VkImage white_image_{};
     VmaAllocation white_allocation_{};
@@ -6134,6 +6347,7 @@ private:
     bool imgui_initialized_{};
     bool native_swapchain_initialized_{};
     bool swapchain_rebuild_{};
+    bool device_lost_{};
     std::uint32_t min_image_count_{ 2 };
     VkFormat viewport_format_{ VK_FORMAT_R16G16B16A16_SFLOAT };
     VkFormat scene_color_format_{ VK_FORMAT_R16G16B16A16_SFLOAT };

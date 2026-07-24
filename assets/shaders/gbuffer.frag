@@ -1,4 +1,7 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+
+#include "include/arc_material_parameters.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_world_position;
@@ -34,8 +37,6 @@ layout(push_constant) uniform mesh_constants
     vec4 fog_color_density;
     vec4 fog_params;
     vec4 material_params;
-    vec4 emissive_factor;
-    vec4 material_lobes;
 } constants;
 
 layout(set = 0, binding = 6) uniform shadow_data
@@ -134,8 +135,9 @@ void main()
         ? mix(1.0, texture(occlusion_texture, in_texcoord).r, constants.material_params.y)
         : 1.0;
     vec3 emissive = has_texture(16.0)
-        ? texture(emissive_texture, in_texcoord).rgb * constants.emissive_factor.rgb * constants.emissive_factor.w
-        : constants.emissive_factor.rgb * constants.emissive_factor.w;
+        ? texture(emissive_texture, in_texcoord).rgb *
+            material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w
+        : material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w;
 
     vec2 current_ndc = in_clip_position.xy / max(in_clip_position.w, 0.00001);
     vec2 previous_ndc = in_previous_clip_position.xy / max(in_previous_clip_position.w, 0.00001);

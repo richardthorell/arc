@@ -19,8 +19,7 @@ layout(set = 0, binding = 3) uniform sampler2D sand_texture;
 layout(push_constant) uniform mesh_constants {
     mat4 model_view_projection; mat4 model; vec4 base_color; vec4 light_direction_intensity;
     vec4 light_color; vec4 camera_position; vec4 visualization; vec4 fog_color_density;
-    vec4 fog_params; vec4 material_params; vec4 emissive_factor; vec4 material_lobes;
-    vec4 volume_params; vec4 subsurface_color_factor; vec4 attenuation_color;
+    vec4 fog_params; vec4 material_params;
 } constants;
 bool has_layer(float flag) { return mod(floor(constants.light_color.w / flag), 2.0) >= 1.0; }
 vec3 sample_layer(sampler2D source, vec2 uv, float scale, vec3 fallback, bool ready)

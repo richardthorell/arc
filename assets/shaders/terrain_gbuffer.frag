@@ -32,7 +32,7 @@ layout(set = 0, binding = 14) uniform sampler2D sand_surface_texture;
 layout(push_constant) uniform mesh_constants {
     mat4 model_view_projection; mat4 model; vec4 base_color; vec4 light_direction_intensity;
     vec4 light_color; vec4 camera_position; vec4 visualization; vec4 fog_color_density;
-    vec4 fog_params; vec4 material_params; vec4 emissive_factor; vec4 material_lobes;
+    vec4 fog_params; vec4 material_params;
 } constants;
 layout(set = 0, binding = 6) uniform shadow_data {
     mat4 light_view_projection[4]; vec4 cascade_splits; vec4 params; vec4 cascade_texel_size;

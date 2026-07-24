@@ -2,6 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "include/arc_pbr.glsl"
+#include "include/arc_material_parameters.glsl"
 #define ARC_LIGHT_BUFFER_BINDING 15
 #include "include/arc_lighting.glsl"
 
@@ -40,11 +41,6 @@ layout(push_constant) uniform mesh_constants
     vec4 fog_color_density;
     vec4 fog_params;
     vec4 material_params;
-    vec4 emissive_factor;
-    vec4 material_lobes;
-    vec4 volume_params;
-    vec4 subsurface_color_factor;
-    vec4 attenuation_color;
 } constants;
 
 layout(set = 0, binding = 6) uniform shadow_data
@@ -62,7 +58,7 @@ bool has_texture(float flag)
 
 bool has_advanced_texture(float flag)
 {
-    return mod(floor(constants.attenuation_color.w / flag), 2.0) >= 1.0;
+    return mod(floor(material_parameters.attenuation_color.w / flag), 2.0) >= 1.0;
 }
 
 float sample_shadow(vec3 world_position)
@@ -184,8 +180,9 @@ void main()
         ? mix(1.0, texture(occlusion_texture, in_texcoord).r, constants.material_params.y)
         : 1.0;
     vec3 emissive = has_texture(16.0)
-        ? texture(emissive_texture, in_texcoord).rgb * constants.emissive_factor.rgb * constants.emissive_factor.w
-        : constants.emissive_factor.rgb * constants.emissive_factor.w;
+        ? texture(emissive_texture, in_texcoord).rgb *
+            material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w
+        : material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w;
 
     arc_surface_data surface;
     surface.base_color = material_color.rgb;
@@ -196,11 +193,11 @@ void main()
     surface.metallic = metallic;
     surface.perceptual_roughness = roughness;
     surface.occlusion = ao;
-    surface.clear_coat = constants.material_lobes.x *
+    surface.clear_coat = material_parameters.material_lobes.x *
         (has_advanced_texture(1.0) ? texture(clear_coat_texture, in_texcoord).r : 1.0);
-    surface.clear_coat_roughness = constants.material_lobes.y *
+    surface.clear_coat_roughness = material_parameters.material_lobes.y *
         (has_advanced_texture(2.0) ? texture(clear_coat_roughness_texture, in_texcoord).g : 1.0);
-    surface.anisotropy = constants.material_lobes.z *
+    surface.anisotropy = material_parameters.material_lobes.z *
         (has_advanced_texture(8.0) ? texture(anisotropy_texture, in_texcoord).b : 1.0);
     float shadow = sample_shadow(in_world_position);
     vec3 radiance = constants.light_color.rgb * constants.light_direction_intensity.w;
@@ -211,33 +208,33 @@ void main()
         vec3(0.18),
         vec3(0.18) * mix(0.35, 1.0, 1.0 - roughness),
         vec2(1.0 - 0.5 * roughness, 0.04));
-    int shading_model = int(constants.volume_params.x + 0.5);
-    float subsurface_factor = constants.subsurface_color_factor.w *
+    int shading_model = int(material_parameters.volume_params.x + 0.5);
+    float subsurface_factor = material_parameters.subsurface_color_factor.w *
         (has_advanced_texture(16.0) ? texture(subsurface_texture, in_texcoord).r : 1.0);
     if (shading_model == 1 && subsurface_factor > 0.0)
     {
         float wrapped = clamp((dot(normal, light_dir) + 0.45) / 1.45, 0.0, 1.0);
         float back_scatter = pow(clamp(dot(-normal, light_dir), 0.0, 1.0), 2.0);
-        direct += constants.subsurface_color_factor.rgb *
+        direct += material_parameters.subsurface_color_factor.rgb *
             subsurface_factor * radiance *
             (wrapped * 0.22 + back_scatter * 0.18) * shadow;
     }
     vec3 lit_color = ambient + direct + emissive;
-    float transmission_factor = constants.material_lobes.w *
+    float transmission_factor = material_parameters.material_lobes.w *
         (has_advanced_texture(64.0) ? texture(transmission_texture, in_texcoord).r : 1.0);
-    float thickness = constants.volume_params.z *
+    float thickness = material_parameters.volume_params.z *
         (has_advanced_texture(32.0) ? texture(thickness_texture, in_texcoord).r : 1.0);
     if (shading_model == 2 && transmission_factor > 0.0)
     {
-        float ior = max(constants.volume_params.y, 1.0001);
+        float ior = max(material_parameters.volume_params.y, 1.0001);
         float fresnel = pow((ior - 1.0) / (ior + 1.0), 2.0);
         vec3 transmitted_environment = mix(
             constants.fog_color_density.rgb,
             constants.light_color.rgb * 0.18,
             clamp(refract(-view_dir, normal, 1.0 / ior).y * 0.5 + 0.5, 0.0, 1.0));
         transmitted_environment *= arc_beer_lambert(
-            constants.attenuation_color.rgb,
-            constants.volume_params.w,
+            material_parameters.attenuation_color.rgb,
+            material_parameters.volume_params.w,
             thickness);
         float transmission_weight = transmission_factor * (1.0 - fresnel);
         lit_color = mix(lit_color, transmitted_environment + emissive, transmission_weight);
