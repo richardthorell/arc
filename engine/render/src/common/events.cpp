@@ -31,6 +31,8 @@ render_event_type render_event::type() const noexcept
         return render_event_type::point_light;
     if (std::holds_alternative<spot_light_event>(payload))
         return render_event_type::spot_light;
+    if (std::holds_alternative<area_light_event>(payload))
+        return render_event_type::area_light;
     if (std::holds_alternative<render_world_event>(payload))
         return render_event_type::render_world;
     return render_event_type::debug_marker;
@@ -296,6 +298,46 @@ void render_event_writer::spot_light(
         .temperature_kelvin = temperature_kelvin,
         .intensity_unit = intensity_unit,
         .cookie_texture = cookie_texture,
+        .shadow = shadow,
+        .label = std::move(label)
+    };
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::area_light(
+    const math::vector3f& position,
+    const math::vector3f& direction,
+    const math::vector3f& tangent,
+    const math::vector3f& color,
+    float intensity,
+    float width,
+    float height,
+    area_light_shape shape,
+    bool two_sided,
+    bool casts_shadows,
+    std::string label,
+    bool enabled,
+    bool use_color_temperature,
+    float temperature_kelvin,
+    light_intensity_unit intensity_unit,
+    shadow_settings shadow)
+{
+    render_event event{};
+    event.payload = area_light_event{
+        .position = position,
+        .direction = direction,
+        .tangent = tangent,
+        .color = color,
+        .intensity = intensity,
+        .width = width,
+        .height = height,
+        .shape = shape,
+        .two_sided = two_sided,
+        .casts_shadows = casts_shadows,
+        .enabled = enabled,
+        .use_color_temperature = use_color_temperature,
+        .temperature_kelvin = temperature_kelvin,
+        .intensity_unit = intensity_unit,
         .shadow = shadow,
         .label = std::move(label)
     };

@@ -60,6 +60,7 @@
       "type": "camera_component",
       "id": "a7c00000000000010000000000000007",
       "display": "Camera",
+      "customSerialization": true,
       "fields": [
         { "name": "projection", "id": "0000000000000001", "kind": "enum" },
         { "name": "fov_y_radians", "id": "0000000000000002", "kind": "float", "display": "Field of View" },
@@ -67,7 +68,8 @@
         { "name": "far_plane", "id": "0000000000000004", "kind": "float", "display": "Far Clip" },
         { "name": "orthographic_height", "id": "0000000000000005", "kind": "float", "display": "Orthographic Size" },
         { "name": "active", "id": "0000000000000006", "kind": "bool", "display": "Active Camera" },
-        { "name": "clear_color", "id": "0000000000000007", "kind": "vector4", "display": "Clear Color" }
+        { "name": "clear_color", "id": "0000000000000007", "kind": "vector4", "display": "Clear Color" },
+        { "name": "exposure", "id": "0000000000000008", "kind": "struct", "display": "Exposure" }
       ]
     },
     {
@@ -108,5 +110,7 @@
     { "type": "water_component", "id": "a7c0000000000001000000000000001a", "display": "Water", "customSerialization": true },
     { "type": "vegetation_component", "id": "a7c0000000000001000000000000001b", "display": "Vegetation", "customSerialization": true },
     { "type": "decal_component", "id": "a7c0000000000001000000000000001c", "display": "Decal", "customSerialization": true }
+    ,
+    { "type": "area_light_component", "id": "a7c0000000000001000000000000001d", "display": "Area Light", "customSerialization": true }
   ]
 }

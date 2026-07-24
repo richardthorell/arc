@@ -133,6 +133,7 @@ struct camera_component
     float orthographic_height{ 10.0f };
     bool active{ true };
     math::vector4f clear_color{ 0.10f, 0.22f, 0.34f, 1.0f };
+    render::exposure_settings exposure{};
 };
 
 /**
@@ -213,12 +214,12 @@ struct render_layer_component
 struct directional_light_component
 {
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
-    float intensity{ 1.0f };
+    float intensity{ 100000.0f };
     bool casts_shadows{ false };
     bool enabled{ true };
     bool use_color_temperature{};
     float temperature_kelvin{ 6500.0f };
-    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
+    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::lux };
     render::texture_handle cookie_texture{};
     render::shadow_settings shadow{};
 };
@@ -229,13 +230,13 @@ struct directional_light_component
 struct point_light_component
 {
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
-    float intensity{ 1.0f };
+    float intensity{ 800.0f };
     float range{ 10.0f };
     bool casts_shadows{ false };
     bool enabled{ true };
     bool use_color_temperature{};
     float temperature_kelvin{ 6500.0f };
-    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
+    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::lumen };
     render::texture_handle cookie_texture{};
     render::shadow_settings shadow{ .enabled = false };
 };
@@ -246,7 +247,7 @@ struct point_light_component
 struct spot_light_component
 {
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
-    float intensity{ 1.0f };
+    float intensity{ 1000.0f };
     float range{ 10.0f };
     float inner_angle{ 0.35f };
     float outer_angle{ 0.75f };
@@ -254,8 +255,27 @@ struct spot_light_component
     bool enabled{ true };
     bool use_color_temperature{};
     float temperature_kelvin{ 6500.0f };
-    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::unitless };
+    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::lumen };
     render::texture_handle cookie_texture{};
+    render::shadow_settings shadow{ .enabled = false };
+};
+
+/**
+ * @brief Rectangle/disk emitter. Direction is local -Z and tangent is local +X.
+ */
+struct area_light_component
+{
+    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    float intensity{ 1000.0f };
+    float width{ 1.0f };
+    float height{ 1.0f };
+    render::area_light_shape shape{ render::area_light_shape::rectangle };
+    bool two_sided{};
+    bool casts_shadows{};
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    render::light_intensity_unit intensity_unit{ render::light_intensity_unit::lumen };
     render::shadow_settings shadow{ .enabled = false };
 };
 

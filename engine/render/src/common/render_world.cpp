@@ -248,6 +248,16 @@ render_graph make_scene_draw_graph(
         .array_layers = config.directional_shadow_cascades,
         .persistent = true });
 
+    const bool high_quality = config.quality == render_quality_tier::high;
+    const bool low_quality = config.quality == render_quality_tier::low;
+    const std::uint32_t radiance_resolution = high_quality ? 512u : low_quality ? 128u : 256u;
+    const std::uint32_t irradiance_resolution = high_quality ? 64u : low_quality ? 16u : 32u;
+    const std::uint32_t brdf_resolution = low_quality ? 128u : 256u;
+    render_graph_resource_handle environment_radiance{};
+    render_graph_resource_handle environment_irradiance{};
+    render_graph_resource_handle environment_specular{};
+    render_graph_resource_handle brdf_lut{};
+
     render_graph_resource_handle sky_view{};
     if (environment.enabled && environment.sky_visible && environment.atmosphere.enabled &&
         environment.source == sky_source_mode::physical_atmosphere &&
@@ -323,6 +333,92 @@ render_graph make_scene_draw_graph(
         });
     }
 
+    const bool generate_ibl =
+        environment.enabled &&
+        environment.affect_lighting &&
+        environment.lighting.enabled &&
+        environment.lighting.source != environment_lighting_source_mode::constant_color;
+    if (generate_ibl)
+    {
+        environment_radiance = graph.add_resource({
+            .name = "environment_radiance",
+            .kind = render_resource_kind::color_texture,
+            .extent = { radiance_resolution, radiance_resolution, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::rgba16_float,
+            .mip_levels = high_quality ? 10u : low_quality ? 8u : 9u,
+            .array_layers = 6,
+            .persistent = true });
+        environment_irradiance = graph.add_resource({
+            .name = "environment_irradiance",
+            .kind = render_resource_kind::color_texture,
+            .extent = { irradiance_resolution, irradiance_resolution, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::rgba16_float,
+            .array_layers = 6,
+            .persistent = true });
+        environment_specular = graph.add_resource({
+            .name = "environment_specular",
+            .kind = render_resource_kind::color_texture,
+            .extent = { radiance_resolution, radiance_resolution, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::rgba16_float,
+            .mip_levels = high_quality ? 10u : low_quality ? 8u : 9u,
+            .array_layers = 6,
+            .persistent = true });
+        brdf_lut = graph.add_resource({
+            .name = "environment_brdf_lut",
+            .kind = render_resource_kind::color_texture,
+            .extent = { brdf_resolution, brdf_resolution, 1 },
+            .extent_mode = render_extent_mode::absolute,
+            .format = render_format::rg16_float,
+            .persistent = true });
+
+        std::vector<render_resource_access> conversion_reads;
+        if (sky_view.valid())
+            conversion_reads.push_back({
+                .handle = sky_view,
+                .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
+        graph.add_pass({
+            .name = "environment radiance conversion",
+            .queue = render_queue_type::compute,
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::environment_equirect_to_cube,
+            .reads = std::move(conversion_reads),
+            .writes = { { .handle = environment_radiance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+        graph.add_pass({
+            .name = "environment irradiance convolution",
+            .queue = render_queue_type::compute,
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::environment_irradiance,
+            .reads = { { .handle = environment_radiance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled } },
+            .writes = { { .handle = environment_irradiance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+        graph.add_pass({
+            .name = "environment specular prefilter",
+            .queue = render_queue_type::compute,
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::environment_specular_prefilter,
+            .reads = { { .handle = environment_radiance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled } },
+            .writes = { { .handle = environment_specular, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+        graph.add_pass({
+            .name = "BRDF integration",
+            .queue = render_queue_type::compute,
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::brdf_integration,
+            .writes = { { .handle = brdf_lut, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::storage, .write = true } }
+        });
+    }
+
     graph.add_pass({
         .name = "directional shadow cascades",
         .kind = render_pass_kind::custom,
@@ -360,6 +456,15 @@ render_graph make_scene_draw_graph(
         if (cloud_shadow.valid())
             forward_reads.push_back({ .handle = cloud_shadow, .kind = render_resource_kind::color_texture,
                 .usage = render_resource_usage::sampled });
+        if (environment_irradiance.valid())
+        {
+            forward_reads.push_back({ .handle = environment_irradiance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
+            forward_reads.push_back({ .handle = environment_specular, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
+            forward_reads.push_back({ .handle = brdf_lut, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
+        }
         graph.add_pass({
             .name = "forward opaque",
             .kind = render_pass_kind::lighting,
@@ -382,6 +487,10 @@ render_graph make_scene_draw_graph(
             .name = "gbuffer_material", .kind = render_resource_kind::color_texture,
             .width_scale = config.render_scale, .height_scale = config.render_scale,
             .format = render_format::rgba8_unorm });
+        const auto emissive = graph.add_resource({
+            .name = "gbuffer_emissive", .kind = render_resource_kind::color_texture,
+            .width_scale = config.render_scale, .height_scale = config.render_scale,
+            .format = render_format::rgba16_float });
         const auto motion = graph.add_resource({
             .name = "gbuffer_motion", .kind = render_resource_kind::color_texture,
             .width_scale = config.render_scale, .height_scale = config.render_scale,
@@ -399,6 +508,7 @@ render_graph make_scene_draw_graph(
             { .handle = albedo, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
             { .handle = normal, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
             { .handle = material, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
+            { .handle = emissive, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear },
             { .handle = motion, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear }
         };
         if (object_id.valid())
@@ -417,6 +527,7 @@ render_graph make_scene_draw_graph(
             { .handle = albedo, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .handle = normal, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .handle = material, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
+            { .handle = emissive, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .handle = motion, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
         };
@@ -426,6 +537,15 @@ render_graph make_scene_draw_graph(
         if (cloud_shadow.valid())
             lighting_reads.push_back({ .handle = cloud_shadow, .kind = render_resource_kind::color_texture,
                 .usage = render_resource_usage::sampled });
+        if (environment_irradiance.valid())
+        {
+            lighting_reads.push_back({ .handle = environment_irradiance, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
+            lighting_reads.push_back({ .handle = environment_specular, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
+            lighting_reads.push_back({ .handle = brdf_lut, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
+        }
         graph.add_pass({
             .name = "deferred lighting",
             .kind = render_pass_kind::lighting,
@@ -461,11 +581,46 @@ render_graph make_scene_draw_graph(
                 .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::load } }
         });
     }
+
+    const auto luminance_histogram = graph.add_resource({
+        .name = "luminance_histogram",
+        .kind = render_resource_kind::buffer,
+        .extent = { low_quality ? 64u : 256u, 1, 1 } });
+    const auto exposure = graph.add_resource({
+        .name = "view_exposure",
+        .kind = render_resource_kind::buffer,
+        .extent = { 1, 1, 1 },
+        .persistent = true });
     graph.add_pass({
-        .name = "present viewport",
-        .kind = render_pass_kind::present,
+        .name = "luminance histogram",
+        .queue = render_queue_type::compute,
+        .kind = render_pass_kind::post_process,
+        .builtin = builtin_render_pass::luminance_histogram,
         .reads = { { .handle = scene_color, .kind = render_resource_kind::color_texture,
             .usage = render_resource_usage::sampled } },
+        .writes = { { .handle = luminance_histogram, .kind = render_resource_kind::buffer,
+            .usage = render_resource_usage::storage_buffer, .write = true } }
+    });
+    graph.add_pass({
+        .name = "exposure resolve",
+        .queue = render_queue_type::compute,
+        .kind = render_pass_kind::post_process,
+        .builtin = builtin_render_pass::exposure_resolve,
+        .reads = { { .handle = luminance_histogram, .kind = render_resource_kind::buffer,
+            .usage = render_resource_usage::storage_buffer } },
+        .writes = { { .handle = exposure, .kind = render_resource_kind::buffer,
+            .usage = render_resource_usage::storage_buffer, .write = true } }
+    });
+    graph.add_pass({
+        .name = "output transform",
+        .kind = render_pass_kind::present,
+        .builtin = builtin_render_pass::output_transform,
+        .reads = {
+            { .handle = scene_color, .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled },
+            { .handle = exposure, .kind = render_resource_kind::buffer,
+                .usage = render_resource_usage::storage_buffer }
+        },
         .writes = { { .handle = viewport, .kind = render_resource_kind::color_texture,
             .usage = render_resource_usage::color_attachment, .write = true, .load_op = render_load_op::clear } }
     });

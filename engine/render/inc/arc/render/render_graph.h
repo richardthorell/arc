@@ -48,6 +48,15 @@ enum class builtin_render_pass : std::uint8_t
     cloud_shadow,
     sky_composite,
     environment_prefilter,
+    environment_equirect_to_cube,
+    environment_irradiance,
+    environment_specular_prefilter,
+    brdf_integration,
+    luminance_histogram,
+    exposure_resolve,
+    subsurface_diffusion,
+    transmission_refraction,
+    output_transform,
     debug_overlay
 };
 

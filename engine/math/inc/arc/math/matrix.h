@@ -2,6 +2,9 @@
 
 #include <arc/math/vector.h>
 
+#include <cmath>
+#include <utility>
+
 namespace arc::math
 {
 
@@ -306,6 +309,86 @@ constexpr auto transpose(const Expr& expr) noexcept
         for (std::size_t col = 0; col < traits::cols; ++col)
             result(col, row) = expr(row, col);
     return result;
+}
+
+/**
+ * @brief Invert a square floating-point matrix with partial-pivot Gauss-Jordan elimination.
+ *
+ * The output is written only when the input is non-singular. This keeps callers from
+ * accidentally consuming an identity or partially reduced matrix after a failed inverse.
+ */
+template <detail::matrix_expression Expr>
+    requires (
+        detail::expr_traits<std::remove_cvref_t<Expr>>::rows ==
+            detail::expr_traits<std::remove_cvref_t<Expr>>::cols &&
+        std::is_floating_point_v<typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type>)
+constexpr bool try_inverse(
+    const Expr& expr,
+    matrix<
+        typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type,
+        detail::expr_traits<std::remove_cvref_t<Expr>>::rows,
+        detail::expr_traits<std::remove_cvref_t<Expr>>::cols,
+        detail::expr_traits<std::remove_cvref_t<Expr>>::layout>& output,
+    typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type epsilon =
+        static_cast<typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type>(1.0e-8)) noexcept
+{
+    using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
+    using value_type = typename traits::value_type;
+    constexpr std::size_t dimensions = traits::rows;
+
+    matrix<value_type, dimensions, dimensions, traits::layout> working{ expr };
+    auto result = identity<value_type, dimensions, traits::layout>();
+
+    for (std::size_t pivot_column = 0; pivot_column < dimensions; ++pivot_column)
+    {
+        std::size_t pivot_row = pivot_column;
+        value_type pivot_magnitude = std::abs(working(pivot_row, pivot_column));
+        for (std::size_t row = pivot_column + 1; row < dimensions; ++row)
+        {
+            const value_type candidate = std::abs(working(row, pivot_column));
+            if (candidate > pivot_magnitude)
+            {
+                pivot_magnitude = candidate;
+                pivot_row = row;
+            }
+        }
+
+        if (!std::isfinite(pivot_magnitude) || pivot_magnitude <= epsilon)
+            return false;
+
+        if (pivot_row != pivot_column)
+        {
+            for (std::size_t column = 0; column < dimensions; ++column)
+            {
+                std::swap(working(pivot_row, column), working(pivot_column, column));
+                std::swap(result(pivot_row, column), result(pivot_column, column));
+            }
+        }
+
+        const value_type reciprocal = value_type{ 1 } / working(pivot_column, pivot_column);
+        for (std::size_t column = 0; column < dimensions; ++column)
+        {
+            working(pivot_column, column) *= reciprocal;
+            result(pivot_column, column) *= reciprocal;
+        }
+
+        for (std::size_t row = 0; row < dimensions; ++row)
+        {
+            if (row == pivot_column)
+                continue;
+            const value_type factor = working(row, pivot_column);
+            if (factor == value_type{})
+                continue;
+            for (std::size_t column = 0; column < dimensions; ++column)
+            {
+                working(row, column) -= factor * working(pivot_column, column);
+                result(row, column) -= factor * result(pivot_column, column);
+            }
+        }
+    }
+
+    output = result;
+    return true;
 }
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>

@@ -367,6 +367,7 @@ void prepare_render_scene_queries(registry& scene)
     scene.prepare_query<transform_component, directional_light_component>();
     scene.prepare_query<transform_component, point_light_component>();
     scene.prepare_query<transform_component, spot_light_component>();
+    scene.prepare_query<transform_component, area_light_component>();
     scene.prepare_query<transform_component, reflection_probe_component>();
     scene.prepare_query<transform_component, irradiance_probe_component>();
 }
@@ -424,10 +425,13 @@ render_scene_result render_scene(
     world_packet.camera.projection = projection;
     world_packet.camera.view_projection = vp;
     world_packet.camera.previous_view_projection = vp;
+    if (!math::try_inverse(vp, world_packet.camera.inverse_view_projection))
+        arc::warn("scene", "Active camera produced a singular view-projection matrix");
     world_packet.camera.position = world_position(*camera_transform);
     world_packet.camera.forward = world_forward_direction(*camera_transform);
     world_packet.camera.up = world_up_direction(*camera_transform);
     world_packet.camera.clear_color = camera->clear_color;
+    world_packet.camera.exposure = camera->exposure;
     world_packet.camera.near_plane = camera->near_plane;
     world_packet.camera.far_plane = camera->far_plane;
     world_packet.camera.render_width = viewport_width;
@@ -602,7 +606,7 @@ render_scene_result render_scene(
             if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.directional_lights.push_back({
-                .direction = forward_direction(transform),
+                .direction = world_forward_direction(transform),
                 .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
                 .casts_shadows = light.casts_shadows,
@@ -622,7 +626,7 @@ render_scene_result render_scene(
             if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.point_lights.push_back({
-                .position = transform.position,
+                .position = world_position(transform),
                 .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
                 .range = light.range,
@@ -643,8 +647,8 @@ render_scene_result render_scene(
             if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.spot_lights.push_back({
-                .position = transform.position,
-                .direction = forward_direction(transform),
+                .position = world_position(transform),
+                .direction = world_forward_direction(transform),
                 .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
                 .range = light.range,
@@ -660,6 +664,34 @@ render_scene_result render_scene(
                 .label = entity_label(scene, value)
             });
             ++result.spot_light_count;
+        });
+
+    scene.view<transform_component, area_light_component>().each(
+        [&](entity value, const transform_component& transform, const area_light_component& light) {
+            if (!entity_is_active(scene, value) || !light.enabled)
+                return;
+            const auto direction = world_forward_direction(transform);
+            const auto up = world_up_direction(transform);
+            const auto tangent = math::normalize(math::cross(direction, up));
+            world_packet.area_lights.push_back({
+                .position = world_position(transform),
+                .direction = direction,
+                .tangent = tangent,
+                .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
+                .intensity = light.intensity,
+                .width = light.width,
+                .height = light.height,
+                .shape = light.shape,
+                .two_sided = light.two_sided,
+                .casts_shadows = light.casts_shadows,
+                .enabled = light.enabled,
+                .use_color_temperature = light.use_color_temperature,
+                .temperature_kelvin = light.temperature_kelvin,
+                .intensity_unit = light.intensity_unit,
+                .shadow = light.shadow,
+                .label = entity_label(scene, value)
+            });
+            ++result.area_light_count;
         });
 
     scene.view<transform_component, reflection_probe_component>().each(
@@ -691,10 +723,15 @@ render_scene_result render_scene(
     const auto lighting = render::pack_scene_lighting(
         world_packet.directional_lights,
         world_packet.point_lights,
-        world_packet.spot_lights);
+        world_packet.spot_lights,
+        nullptr,
+        render::max_point_lights,
+        render::max_spot_lights,
+        world_packet.area_lights);
     result.skipped_directional_light_count = lighting.skipped_directional_count;
     result.skipped_point_light_count = lighting.skipped_point_count;
     result.skipped_spot_light_count = lighting.skipped_spot_count;
+    result.skipped_area_light_count = lighting.skipped_area_count;
 
     result.environment = world_packet.environment;
     render::prepare_render_world(world_packet);

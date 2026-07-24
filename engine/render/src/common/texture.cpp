@@ -95,13 +95,36 @@ texture_format with_linear(texture_format format) noexcept
 void apply_filename_color_space(texture_data& texture, const std::filesystem::path& path)
 {
     const auto name = lowercase((path.filename().string() + " " + texture.name));
-    if (contains_any(name, { "normal", "_n.", "_nor", "roughness", "metallic", "metalness", "metallicroughness", "occlusion", "_ao", "ambientocclusion" }))
+    if (contains_any(name, { "normal", "_n.", "_nor", "roughness", "metallic", "metalness", "metallicroughness",
+            "occlusion", "_ao", "ambientocclusion", "height", "thickness", "transmission", "anisotropy",
+            "clearcoat", "clear_coat" }))
     {
         texture.format = with_linear(texture.format);
+        texture.color_space = texture_color_space::linear;
+        texture.semantic = contains_any(name, { "normal", "_n.", "_nor" }) ? texture_semantic::normal :
+            contains_any(name, { "occlusion", "_ao", "ambientocclusion" }) ? texture_semantic::occlusion :
+            contains_any(name, { "anisotropy" }) ? texture_semantic::anisotropy :
+            contains_any(name, { "transmission" }) ? texture_semantic::transmission :
+            contains_any(name, { "height", "thickness" }) ? texture_semantic::thickness :
+            contains_any(name, { "clearcoat", "clear_coat" }) ? texture_semantic::clear_coat :
+            texture_semantic::metallic_roughness;
         return;
     }
     if (contains_any(name, { "basecolor", "base_color", "albedo", "diffuse", "emissive", "emission" }))
+    {
         texture.format = with_srgb(texture.format);
+        texture.color_space = texture_color_space::srgb;
+        texture.semantic = contains_any(name, { "emissive", "emission" })
+            ? texture_semantic::emissive
+            : texture_semantic::base_color;
+        return;
+    }
+    const auto extension = lowercase(path.extension().string());
+    if (extension == ".hdr" || extension == ".exr")
+    {
+        texture.color_space = texture_color_space::linear;
+        texture.semantic = texture_semantic::environment;
+    }
 }
 
 std::string mime_type_for_path(const std::filesystem::path& path)
@@ -405,6 +428,13 @@ texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::
     texture.width = width;
     texture.height = height;
     texture.format = format;
+    texture.color_space = format == texture_format::rgba8_srgb ||
+            format == texture_format::bc1_rgba_srgb ||
+            format == texture_format::bc2_rgba_srgb ||
+            format == texture_format::bc3_rgba_srgb ||
+            format == texture_format::bc7_rgba_srgb
+        ? texture_color_space::srgb
+        : texture_color_space::linear;
     texture.mime_type = "image/vnd-ms.dds";
     texture.array_layers = array_layers;
     texture.compressed = compressed;
@@ -469,6 +499,12 @@ texture_load_result load_texture_asset_bytes(
     texture.format = lowercase(path.extension().string()) == ".hdr"
         ? texture_format::rgba32f
         : texture_format::rgba8_srgb;
+    texture.color_space = texture.format == texture_format::rgba8_srgb
+        ? texture_color_space::srgb
+        : texture_color_space::linear;
+    texture.semantic = lowercase(path.extension().string()) == ".hdr"
+        ? texture_semantic::environment
+        : texture_semantic::generic_color;
 
 #if defined(ARC_RENDER_HAS_STB)
     int width{};

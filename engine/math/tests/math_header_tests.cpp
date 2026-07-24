@@ -232,6 +232,26 @@ TEST_CASE("matrix exposes aliases and game helpers")
     REQUIRE(rotated_x[1] == Catch::Approx(1.0f).margin(0.00001f));
 }
 
+TEST_CASE("matrix inversion reports singular inputs without overwriting output")
+{
+    using namespace arc::math;
+
+    const matrix4f transform = matmul(
+        translation(3.0f, -2.0f, 5.0f),
+        scaling(2.0f, 3.0f, 4.0f));
+    matrix4f inverse_transform{};
+    REQUIRE(try_inverse(transform, inverse_transform));
+    const auto product = matmul(transform, inverse_transform);
+    for (std::size_t row = 0; row < 4; ++row)
+        for (std::size_t column = 0; column < 4; ++column)
+            REQUIRE(product(row, column) == Catch::Approx(row == column ? 1.0f : 0.0f).margin(1.0e-5f));
+
+    matrix4f unchanged = identity<float, 4>();
+    const matrix4f singular{};
+    REQUIRE_FALSE(try_inverse(singular, unchanged));
+    REQUIRE(unchanged(0, 0) == Catch::Approx(1.0f));
+}
+
 TEST_CASE("quaternion supports identity and expression assignment")
 {
     using namespace arc::math;

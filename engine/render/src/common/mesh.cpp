@@ -440,6 +440,65 @@ std::vector<material_import> parse_materials(std::string_view json, const std::v
         if (const auto emissive = parse_float_array(object, "emissiveFactor"); emissive && emissive->size() >= 3)
             import.material.emissive_factor = math::vector3f{ (*emissive)[0], (*emissive)[1], (*emissive)[2] };
 
+        if (const auto extensions = extract_object_for_key(object, "extensions"))
+        {
+            if (const auto clear_coat = extract_object_for_key(*extensions, "KHR_materials_clearcoat"))
+            {
+                import.material.clear_coat_factor =
+                    parse_float(*clear_coat, "clearcoatFactor").value_or(0.0f);
+                import.material.clear_coat_roughness =
+                    parse_float(*clear_coat, "clearcoatRoughnessFactor").value_or(0.0f);
+                import.textures.clear_coat = texture_image_index(
+                    texture_sources, parse_texture_index(*clear_coat, "clearcoatTexture"));
+                import.textures.clear_coat_roughness = texture_image_index(
+                    texture_sources, parse_texture_index(*clear_coat, "clearcoatRoughnessTexture"));
+                import.textures.clear_coat_normal = texture_image_index(
+                    texture_sources, parse_texture_index(*clear_coat, "clearcoatNormalTexture"));
+                if (const auto normal = extract_object_for_key(*clear_coat, "clearcoatNormalTexture"))
+                    import.material.clear_coat_normal_scale = parse_float(*normal, "scale").value_or(1.0f);
+            }
+            if (const auto transmission = extract_object_for_key(*extensions, "KHR_materials_transmission"))
+            {
+                import.material.transmission_factor =
+                    parse_float(*transmission, "transmissionFactor").value_or(0.0f);
+                import.textures.transmission = texture_image_index(
+                    texture_sources, parse_texture_index(*transmission, "transmissionTexture"));
+                if (import.material.transmission_factor > 0.0f)
+                    import.material.shading_model = material_shading_model::transmission;
+            }
+            if (const auto volume = extract_object_for_key(*extensions, "KHR_materials_volume"))
+            {
+                import.material.thickness_factor =
+                    parse_float(*volume, "thicknessFactor").value_or(0.0f);
+                import.material.attenuation_distance =
+                    parse_float(*volume, "attenuationDistance").value_or(import.material.attenuation_distance);
+                if (const auto color = parse_float_array(*volume, "attenuationColor"); color && color->size() >= 3)
+                {
+                    import.material.attenuation_color = {
+                        (*color)[0], (*color)[1], (*color)[2] };
+                }
+                import.textures.thickness = texture_image_index(
+                    texture_sources, parse_texture_index(*volume, "thicknessTexture"));
+            }
+            if (const auto ior = extract_object_for_key(*extensions, "KHR_materials_ior"))
+                import.material.index_of_refraction =
+                    parse_float(*ior, "ior").value_or(import.material.index_of_refraction);
+            if (const auto anisotropy = extract_object_for_key(*extensions, "KHR_materials_anisotropy"))
+            {
+                import.material.anisotropy_factor =
+                    parse_float(*anisotropy, "anisotropyStrength").value_or(0.0f);
+                import.material.anisotropy_rotation =
+                    parse_float(*anisotropy, "anisotropyRotation").value_or(0.0f);
+                import.textures.anisotropy = texture_image_index(
+                    texture_sources, parse_texture_index(*anisotropy, "anisotropyTexture"));
+            }
+            if (const auto emissive_strength = extract_object_for_key(*extensions, "KHR_materials_emissive_strength"))
+            {
+                import.material.emissive_strength =
+                    parse_float(*emissive_strength, "emissiveStrength").value_or(import.material.emissive_strength);
+            }
+        }
+
         result.push_back(std::move(import));
     }
     return result;
@@ -753,7 +812,7 @@ bool write_material_asset(
     };
 
     stream << "{\n";
-    stream << "  \"version\": 1,\n";
+    stream << "  \"version\": 3,\n";
     stream << "  \"name\": \"" << escape_json(material.name) << "\",\n";
     stream << "  \"shader\": \"arc/default_phong\",\n";
     stream << "  \"domain\": \"surface\",\n";
@@ -775,11 +834,22 @@ bool write_material_asset(
     write_texture("normal", imported.texture_paths.normal, true);
     write_texture("ao", imported.texture_paths.occlusion, true);
     write_texture("emissive", imported.texture_paths.emissive, true);
-    write_texture("height", "", false);
+    write_texture("clearCoat", imported.texture_paths.clear_coat, true);
+    write_texture("clearCoatRoughness", imported.texture_paths.clear_coat_roughness, true);
+    write_texture("clearCoatNormal", imported.texture_paths.clear_coat_normal, true);
+    write_texture("anisotropy", imported.texture_paths.anisotropy, true);
+    write_texture("thickness", imported.texture_paths.thickness, true);
+    write_texture("transmission", imported.texture_paths.transmission, false);
     stream << "  },\n";
     stream << "  \"advanced\": {\n";
     stream << "    \"clearCoat\": " << material.clear_coat_factor << ",\n";
     stream << "    \"clearCoatRoughness\": " << material.clear_coat_roughness << ",\n";
+    stream << "    \"indexOfRefraction\": " << material.index_of_refraction << ",\n";
+    stream << "    \"thickness\": " << material.thickness_factor << ",\n";
+    stream << "    \"attenuationColor\": { \"r\": " << material.attenuation_color[0]
+           << ", \"g\": " << material.attenuation_color[1]
+           << ", \"b\": " << material.attenuation_color[2] << " },\n";
+    stream << "    \"attenuationDistance\": " << material.attenuation_distance << ",\n";
     stream << "    \"sheen\": " << material.sheen_factor << ",\n";
     stream << "    \"transmission\": " << material.transmission_factor << ",\n";
     stream << "    \"subsurface\": " << material.subsurface_factor << ",\n";
@@ -996,6 +1066,54 @@ std::size_t import_material(
     }
     if (pbr.emission_factor.has_value)
         imported.material.emissive_strength = static_cast<float>(pbr.emission_factor.value_real);
+    if (pbr.coat_factor.has_value)
+        imported.material.clear_coat_factor = static_cast<float>(pbr.coat_factor.value_real);
+    if (pbr.coat_roughness.has_value)
+        imported.material.clear_coat_roughness = static_cast<float>(pbr.coat_roughness.value_real);
+    if (pbr.specular_ior.has_value)
+        imported.material.index_of_refraction = std::max(1.0f, static_cast<float>(pbr.specular_ior.value_real));
+    if (pbr.specular_anisotropy.has_value)
+        imported.material.anisotropy_factor = static_cast<float>(pbr.specular_anisotropy.value_real);
+    if (pbr.specular_rotation.has_value)
+        imported.material.anisotropy_rotation = static_cast<float>(pbr.specular_rotation.value_real);
+    if (pbr.transmission_factor.has_value)
+    {
+        imported.material.transmission_factor = static_cast<float>(pbr.transmission_factor.value_real);
+        if (imported.material.transmission_factor > 0.0f)
+            imported.material.shading_model = material_shading_model::transmission;
+    }
+    if (pbr.transmission_depth.has_value)
+        imported.material.thickness_factor = std::max(0.0f, static_cast<float>(pbr.transmission_depth.value_real));
+    if (pbr.transmission_color.has_value || pbr.transmission_color.value_components >= 3)
+    {
+        imported.material.attenuation_color = {
+            static_cast<float>(pbr.transmission_color.value_vec3.x),
+            static_cast<float>(pbr.transmission_color.value_vec3.y),
+            static_cast<float>(pbr.transmission_color.value_vec3.z)
+        };
+    }
+    if (pbr.subsurface_factor.has_value)
+    {
+        imported.material.subsurface_factor = static_cast<float>(pbr.subsurface_factor.value_real);
+        if (imported.material.subsurface_factor > 0.0f)
+            imported.material.shading_model = material_shading_model::skin;
+    }
+    if (pbr.subsurface_color.has_value || pbr.subsurface_color.value_components >= 3)
+    {
+        imported.material.subsurface_color = {
+            static_cast<float>(pbr.subsurface_color.value_vec3.x),
+            static_cast<float>(pbr.subsurface_color.value_vec3.y),
+            static_cast<float>(pbr.subsurface_color.value_vec3.z)
+        };
+    }
+    if (pbr.subsurface_radius.has_value || pbr.subsurface_radius.value_components >= 3)
+    {
+        imported.material.subsurface_radius = {
+            static_cast<float>(pbr.subsurface_radius.value_vec3.x),
+            static_cast<float>(pbr.subsurface_radius.value_vec3.y),
+            static_cast<float>(pbr.subsurface_radius.value_vec3.z)
+        };
+    }
     imported.material.double_sided = material->features.double_sided.enabled;
 
     const auto texture_folder = import_folder / "textures";
@@ -1012,6 +1130,12 @@ std::size_t import_material(
     import_map(pbr.normal_map, &material_texture_indices::normal, &material_texture_paths::normal);
     import_map(pbr.ambient_occlusion, &material_texture_indices::occlusion, &material_texture_paths::occlusion);
     import_map(pbr.emission_color, &material_texture_indices::emissive, &material_texture_paths::emissive);
+    import_map(pbr.coat_factor, &material_texture_indices::clear_coat, &material_texture_paths::clear_coat);
+    import_map(pbr.coat_roughness, &material_texture_indices::clear_coat_roughness, &material_texture_paths::clear_coat_roughness);
+    import_map(pbr.coat_normal, &material_texture_indices::clear_coat_normal, &material_texture_paths::clear_coat_normal);
+    import_map(pbr.specular_anisotropy, &material_texture_indices::anisotropy, &material_texture_paths::anisotropy);
+    import_map(pbr.transmission_depth, &material_texture_indices::thickness, &material_texture_paths::thickness);
+    import_map(pbr.transmission_factor, &material_texture_indices::transmission, &material_texture_paths::transmission);
 
     const auto material_folder = import_folder / "materials";
     imported.asset_path = material_folder / (sanitize_asset_name(imported.material.name, "material") + ".arcmat");
@@ -1330,6 +1454,34 @@ mesh_load_result load_gltf_mesh(const std::filesystem::path& path)
     const auto texture_sources = parse_texture_sources(json);
     auto textures = parse_images(json, views, bin);
     auto materials = parse_materials(json, texture_sources);
+    const auto set_texture_semantic = [&](std::size_t index, texture_semantic semantic) {
+        if (index == material_texture_indices::invalid || index >= textures.size())
+            return;
+        auto& texture = textures[index];
+        texture.semantic = semantic;
+        texture.color_space = required_color_space(semantic);
+        if (texture.format == texture_format::rgba8_srgb ||
+            texture.format == texture_format::rgba8_unorm)
+        {
+            texture.format = texture.color_space == texture_color_space::srgb
+                ? texture_format::rgba8_srgb
+                : texture_format::rgba8_unorm;
+        }
+    };
+    for (const auto& imported : materials)
+    {
+        set_texture_semantic(imported.textures.base_color, texture_semantic::base_color);
+        set_texture_semantic(imported.textures.metallic_roughness, texture_semantic::metallic_roughness);
+        set_texture_semantic(imported.textures.normal, texture_semantic::normal);
+        set_texture_semantic(imported.textures.occlusion, texture_semantic::occlusion);
+        set_texture_semantic(imported.textures.emissive, texture_semantic::emissive);
+        set_texture_semantic(imported.textures.clear_coat, texture_semantic::clear_coat);
+        set_texture_semantic(imported.textures.clear_coat_roughness, texture_semantic::clear_coat);
+        set_texture_semantic(imported.textures.clear_coat_normal, texture_semantic::normal);
+        set_texture_semantic(imported.textures.anisotropy, texture_semantic::anisotropy);
+        set_texture_semantic(imported.textures.thickness, texture_semantic::thickness);
+        set_texture_semantic(imported.textures.transmission, texture_semantic::transmission);
+    }
     return {
         .mesh = std::move(mesh),
         .textures = std::move(textures),

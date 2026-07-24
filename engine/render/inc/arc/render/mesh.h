@@ -58,6 +58,12 @@ struct material_texture_indices
     std::size_t normal{ invalid };
     std::size_t occlusion{ invalid };
     std::size_t emissive{ invalid };
+    std::size_t clear_coat{ invalid };
+    std::size_t clear_coat_roughness{ invalid };
+    std::size_t clear_coat_normal{ invalid };
+    std::size_t anisotropy{ invalid };
+    std::size_t thickness{ invalid };
+    std::size_t transmission{ invalid };
 };
 
 /**
@@ -70,6 +76,12 @@ struct material_texture_paths
     std::string normal;
     std::string occlusion;
     std::string emissive;
+    std::string clear_coat;
+    std::string clear_coat_roughness;
+    std::string clear_coat_normal;
+    std::string anisotropy;
+    std::string thickness;
+    std::string transmission;
 };
 
 /**

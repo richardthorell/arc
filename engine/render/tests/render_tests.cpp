@@ -551,7 +551,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     const auto graph = arc::render::make_scene_draw_graph("viewport", arc::render::render_path::deferred);
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 11);
+    REQUIRE(compiled.passes.size() == 13);
     const auto pass_index = [&](std::string_view name) {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
@@ -575,9 +575,11 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     REQUIRE(gbuffer_index < deferred_index);
     REQUIRE(sky_index < deferred_index);
     REQUIRE(deferred_index < transparent_index);
-    REQUIRE(compiled.passes[compiled.passes.size() - 2].builtin == arc::render::builtin_render_pass::debug_overlay);
-    REQUIRE(compiled.passes.back().name == "present viewport");
-    REQUIRE(compiled.resources.size() == 12);
+    REQUIRE(compiled.passes[compiled.passes.size() - 4].builtin == arc::render::builtin_render_pass::debug_overlay);
+    REQUIRE(compiled.passes[compiled.passes.size() - 3].builtin == arc::render::builtin_render_pass::luminance_histogram);
+    REQUIRE(compiled.passes[compiled.passes.size() - 2].builtin == arc::render::builtin_render_pass::exposure_resolve);
+    REQUIRE(compiled.passes.back().builtin == arc::render::builtin_render_pass::output_transform);
+    REQUIRE(compiled.resources.size() == 15);
     REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource) {
         return resource.name == "gbuffer_albedo" && resource.format == arc::render::render_format::rgba8_srgb;
     }));
@@ -590,11 +592,45 @@ TEST_CASE("scene draw graph provides a compact forward plus fallback")
     const auto compiled = arc::render::make_scene_draw_graph(
         "viewport", arc::render::render_path::forward_plus, false).compile();
 
-    REQUIRE(compiled.passes.size() == 6);
-    REQUIRE(compiled.resources.size() == 4);
+    REQUIRE(compiled.passes.size() == 8);
+    REQUIRE(compiled.resources.size() == 6);
     REQUIRE(compiled.passes[3].name == "forward opaque");
     for (const auto& pass : compiled.passes)
         REQUIRE(pass.name != "gbuffer pass");
+}
+
+TEST_CASE("environment lighting graph schedules scalable IBL generation")
+{
+    arc::render::resolved_render_config config;
+    config.quality = arc::render::render_quality_tier::medium;
+    config.path = arc::render::render_path::deferred;
+    arc::render::world_environment_data environment;
+    environment.enabled = true;
+    environment.sky_visible = true;
+    environment.affect_lighting = true;
+    environment.source = arc::render::sky_source_mode::hdri;
+    environment.lighting.enabled = true;
+    environment.lighting.source = arc::render::environment_lighting_source_mode::follow_sky;
+
+    const auto compiled = arc::render::make_scene_draw_graph(
+        "viewport", config, true, environment).compile();
+    const auto contains = [&](arc::render::builtin_render_pass expected) {
+        return std::any_of(compiled.passes.begin(), compiled.passes.end(),
+            [expected](const auto& pass) { return pass.builtin == expected; });
+    };
+    REQUIRE(contains(arc::render::builtin_render_pass::environment_equirect_to_cube));
+    REQUIRE(contains(arc::render::builtin_render_pass::environment_irradiance));
+    REQUIRE(contains(arc::render::builtin_render_pass::environment_specular_prefilter));
+    REQUIRE(contains(arc::render::builtin_render_pass::brdf_integration));
+    REQUIRE(contains(arc::render::builtin_render_pass::luminance_histogram));
+    REQUIRE(contains(arc::render::builtin_render_pass::exposure_resolve));
+    REQUIRE(contains(arc::render::builtin_render_pass::output_transform));
+    REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource) {
+        return resource.name == "environment_specular" &&
+            resource.extent.width == 256 &&
+            resource.array_layers == 6 &&
+            resource.mip_levels == 9;
+    }));
 }
 
 TEST_CASE("world environment graph selects scalable atmosphere and cloud passes")
@@ -1091,7 +1127,7 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     REQUIRE(data.skipped_directional_count == 2);
     REQUIRE(data.directional_lights[0].direction_intensity[3] == Catch::Approx(6.0f));
     REQUIRE(data.point_count == 2);
-    REQUIRE(data.point_lights[0].color_intensity[3] == Catch::Approx(2.0f));
+    REQUIRE(data.point_lights[0].color_intensity[3] == Catch::Approx(80.0f / (4.0f * arc::math::pi<float>)));
     REQUIRE(data.spot_count == 1);
     REQUIRE(data.spot_lights[0].params[0] == Catch::Approx(0.7f));
     REQUIRE(data.ambient_color_intensity[1] == Catch::Approx(0.2f));
@@ -1109,11 +1145,81 @@ TEST_CASE("light unit and temperature helpers provide stable defaults")
 {
     REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::unitless, 2.0f, 4.0f) == Catch::Approx(2.0f));
     REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::candela, 5.0f, 2.0f) == Catch::Approx(5.0f));
-    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lux, 3.0f, 2.0f) == Catch::Approx(12.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lux, 3.0f, 2.0f) == Catch::Approx(3.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lumen, 4.0f * arc::math::pi<float>) == Catch::Approx(1.0f));
     const auto warm = arc::render::color_temperature_rgb(3000.0f);
     const auto cool = arc::render::color_temperature_rgb(9000.0f);
     REQUIRE(warm[0] >= warm[2]);
     REQUIRE(cool[2] >= cool[0]);
+}
+
+TEST_CASE("PBR color transfer and material texture semantics are explicit")
+{
+    const arc::math::vector3f srgb{ 0.0f, 0.5f, 1.0f };
+    const auto linear = arc::render::srgb_to_linear(srgb);
+    const auto round_trip = arc::render::linear_to_srgb(linear);
+    REQUIRE(round_trip[0] == Catch::Approx(srgb[0]).margin(1.0e-6f));
+    REQUIRE(round_trip[1] == Catch::Approx(srgb[1]).margin(1.0e-5f));
+    REQUIRE(round_trip[2] == Catch::Approx(srgb[2]).margin(1.0e-6f));
+    REQUIRE(arc::render::texture_semantic_accepts(
+        arc::render::texture_semantic::base_color,
+        arc::render::texture_color_space::srgb));
+    REQUIRE_FALSE(arc::render::texture_semantic_accepts(
+        arc::render::texture_semantic::normal,
+        arc::render::texture_color_space::srgb));
+}
+
+TEST_CASE("PBR reference functions stay finite and preserve physical limits")
+{
+    for (const float roughness : { 0.04f, 0.25f, 0.6f, 1.0f })
+    {
+        const float distribution = arc::render::ggx_distribution(0.75f, roughness);
+        const float visibility = arc::render::smith_ggx_correlated(0.6f, 0.7f, roughness);
+        REQUIRE(std::isfinite(distribution));
+        REQUIRE(std::isfinite(visibility));
+        REQUIRE(distribution >= 0.0f);
+        REQUIRE(visibility >= 0.0f);
+    }
+    const auto fresnel = arc::render::fresnel_schlick(0.0f, { 0.04f, 0.04f, 0.04f });
+    REQUIRE(fresnel[0] == Catch::Approx(1.0f));
+    const auto absorption = arc::render::beer_lambert_attenuation(
+        { 0.5f, 0.25f, 1.0f }, 2.0f, 2.0f);
+    REQUIRE(absorption[0] == Catch::Approx(0.5f));
+    REQUIRE(absorption[1] == Catch::Approx(0.25f));
+    REQUIRE(absorption[2] == Catch::Approx(1.0f));
+}
+
+TEST_CASE("physical attenuation exposure and area light packing are stable")
+{
+    REQUIRE(arc::render::inverse_square_attenuation(2.0f, 0.0f) == Catch::Approx(0.25f));
+    REQUIRE(arc::render::inverse_square_attenuation(10.0f, 5.0f) == Catch::Approx(0.0f));
+    REQUIRE(arc::render::cone_solid_angle(arc::math::pi<float> * 0.5f) ==
+        Catch::Approx(2.0f * arc::math::pi<float>));
+
+    arc::render::exposure_settings settings;
+    settings.mode = arc::render::exposure_mode::automatic;
+    settings.brighten_speed = 4.0f;
+    settings.darken_speed = 2.0f;
+    auto state = arc::render::adapt_exposure({}, settings, 5.0f, 1.0f / 60.0f, true);
+    REQUIRE(state.valid);
+    REQUIRE(state.ev100 == Catch::Approx(5.0f));
+    const auto adapted = arc::render::adapt_exposure(state, settings, 8.0f, 1.0f, false);
+    REQUIRE(adapted.ev100 > state.ev100);
+    REQUIRE(adapted.ev100 < 8.0f);
+
+    std::vector<arc::render::area_light_event> areas{
+        {
+            .intensity = 1000.0f,
+            .width = 2.0f,
+            .height = 1.0f,
+            .shape = arc::render::area_light_shape::rectangle,
+            .intensity_unit = arc::render::light_intensity_unit::lumen
+        }
+    };
+    const auto lighting = arc::render::pack_scene_lighting({}, {}, {}, nullptr, 0, 0, areas);
+    REQUIRE(lighting.area_count == 1);
+    REQUIRE(lighting.area_lights[0].color_intensity[3] ==
+        Catch::Approx(1000.0f / (2.0f * arc::math::pi<float>)));
 }
 
 TEST_CASE("descriptor slots reject stale generations")

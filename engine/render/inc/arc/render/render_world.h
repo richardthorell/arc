@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arc/render/exposure.h>
 #include <arc/render/events.h>
 #include <arc/render/handles.h>
 #include <arc/render/material.h>
@@ -44,6 +45,7 @@ struct render_camera
     math::vector3f forward{ 0.0f, 0.0f, -1.0f };
     math::vector3f up{ 0.0f, 1.0f, 0.0f };
     math::vector4f clear_color{ 0.118f, 0.118f, 0.118f, 1.0f };
+    exposure_settings exposure{};
     float near_plane{ 0.01f };
     float far_plane{ 1000.0f };
     std::uint32_t render_width{};
@@ -388,6 +390,7 @@ struct render_world_packet
     std::vector<directional_light_event> directional_lights;
     std::vector<point_light_event> point_lights;
     std::vector<spot_light_event> spot_lights;
+    std::vector<area_light_event> area_lights;
     std::vector<reflection_probe_data> reflection_probes;
     std::vector<irradiance_probe_data> irradiance_probes;
     world_environment_data environment;

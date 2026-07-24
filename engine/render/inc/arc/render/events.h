@@ -19,6 +19,7 @@ namespace arc::render
 {
 
 enum class light_intensity_unit : std::uint8_t;
+enum class area_light_shape : std::uint8_t;
 struct environment_desc;
 struct render_world_packet;
 
@@ -39,6 +40,7 @@ enum class render_event_type : std::uint8_t
     directional_light,
     point_light,
     spot_light,
+    area_light,
     render_world,
     debug_marker
 };
@@ -259,6 +261,29 @@ struct spot_light_event
 };
 
 /**
+ * @brief Rectangle/disk area light evaluated through a raster approximation.
+ */
+struct area_light_event
+{
+    math::vector3f position{};
+    math::vector3f direction{ 0.0f, -1.0f, 0.0f };
+    math::vector3f tangent{ 1.0f, 0.0f, 0.0f };
+    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    float intensity{ 100.0f };
+    float width{ 1.0f };
+    float height{ 1.0f };
+    area_light_shape shape{};
+    bool two_sided{};
+    bool casts_shadows{};
+    bool enabled{ true };
+    bool use_color_temperature{};
+    float temperature_kelvin{ 6500.0f };
+    light_intensity_unit intensity_unit{};
+    shadow_settings shadow{ .enabled = false };
+    std::string label;
+};
+
+/**
  * @brief Insert a renderer debug marker.
  */
 struct debug_marker_event
@@ -288,6 +313,7 @@ using render_event_payload = std::variant<
     directional_light_event,
     point_light_event,
     spot_light_event,
+    area_light_event,
     render_world_event,
     debug_marker_event>;
 
@@ -476,6 +502,27 @@ public:
         float temperature_kelvin = 6500.0f,
         light_intensity_unit intensity_unit = {},
         texture_handle cookie_texture = {},
+        shadow_settings shadow = { .enabled = false });
+
+    /**
+     * @brief Append a rectangle/disk area light.
+     */
+    void area_light(
+        const math::vector3f& position,
+        const math::vector3f& direction,
+        const math::vector3f& tangent,
+        const math::vector3f& color,
+        float intensity,
+        float width,
+        float height,
+        area_light_shape shape,
+        bool two_sided,
+        bool casts_shadows,
+        std::string label = {},
+        bool enabled = true,
+        bool use_color_temperature = false,
+        float temperature_kelvin = 6500.0f,
+        light_intensity_unit intensity_unit = {},
         shadow_settings shadow = { .enabled = false });
 
     /**
