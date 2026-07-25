@@ -174,6 +174,13 @@ enum class host_camera_projection : std::uint8_t
     orthographic
 };
 
+enum class host_mobility : std::uint8_t
+{
+    static_object,
+    stationary,
+    movable
+};
+
 enum class host_render_mode : std::uint8_t
 {
     shaded,
@@ -293,6 +300,20 @@ struct host_light_snapshot
     bool two_sided{};
     bool enabled{ true };
     bool casts_shadows{};
+    std::uint32_t shadow_resolution{ 2048 };
+    std::uint16_t shadow_priority{ 128 };
+    float shadow_strength{ 0.75f };
+    float shadow_bias{ 0.0015f };
+    float shadow_normal_bias{ 0.01f };
+    std::uint8_t shadow_filter{ 1 };
+    bool contact_shadows{ true };
+    float contact_shadow_length{ 0.5f };
+    std::uint8_t shadow_cache_mode{};
+    std::uint32_t cascade_count{ 4 };
+    float shadow_distance{ 200.0f };
+    float cascade_split_lambda{ 0.65f };
+    float cascade_blend_fraction{ 0.10f };
+    bool stable_cascades{ true };
     bool use_color_temperature{};
     float temperature_kelvin{ 6500.0f };
 
@@ -302,6 +323,10 @@ struct host_light_snapshot
 struct host_mesh_renderer_snapshot
 {
     bool visible{ true };
+    bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     host_vec4 base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
     bool has_material{};
     bool asset_backed_material{};
@@ -318,6 +343,9 @@ struct host_terrain_snapshot
     std::uint32_t resolution{ 257u };
     std::uint32_t chunk_quads{ 128u };
     bool receive_shadows{ true };
+    bool cast_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     std::uint64_t content_revision{};
     host_terrain_brush_tool brush_tool{ host_terrain_brush_tool::sculpt };
     float brush_radius{ 6.0f };
@@ -380,6 +408,7 @@ struct host_selected_entity_snapshot
     std::string tag;
     bool active{ true };
     std::uint32_t render_layer_mask{ host_default_render_layer };
+    host_mobility mobility{ host_mobility::movable };
     std::optional<host_transform> transform;
     std::optional<host_camera_snapshot> camera;
     std::optional<host_light_snapshot> light;
@@ -654,6 +683,12 @@ struct host_set_render_layer_command
     std::uint32_t render_layer_mask{ host_default_render_layer };
 };
 
+struct host_set_mobility_command
+{
+    host_entity_id entity{};
+    host_mobility mobility{ host_mobility::movable };
+};
+
 struct host_set_camera_command
 {
     host_entity_id entity{};
@@ -670,6 +705,10 @@ struct host_set_mesh_renderer_command
 {
     host_entity_id entity{};
     bool visible{ true };
+    bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     host_vec4 base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
@@ -678,6 +717,9 @@ struct host_set_terrain_command
     host_entity_id entity{};
     bool enabled{ true };
     bool receive_shadows{ true };
+    bool cast_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
 };
 
 struct host_set_terrain_brush_command
@@ -828,6 +870,7 @@ using host_command_payload = std::variant<
     host_set_tag_command,
     host_set_transform_command,
     host_set_render_layer_command,
+    host_set_mobility_command,
     host_set_camera_command,
     host_set_light_command,
     host_set_mesh_renderer_command,
@@ -953,6 +996,7 @@ const char* to_string(host_entity_kind value) noexcept;
 const char* to_string(host_component_kind value) noexcept;
 const char* to_string(host_create_entity_kind value) noexcept;
 const char* to_string(host_camera_projection value) noexcept;
+const char* to_string(host_mobility value) noexcept;
 const char* to_string(host_render_mode value) noexcept;
 const char* to_string(host_visualization_mode value) noexcept;
 const char* to_string(host_overlay_mode value) noexcept;

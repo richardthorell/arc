@@ -1259,9 +1259,23 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
     updated.color = { 1.0f, 0.82f, 0.63f };
     updated.use_color_temperature = true;
     updated.temperature_kelvin = 5200.0f;
+    updated.shadow_resolution = 3072;
+    updated.shadow_priority = 900;
+    updated.shadow_strength = 0.9f;
+    updated.contact_shadows = true;
+    updated.contact_shadow_length = 1.25f;
+    updated.cascade_count = 3;
+    updated.shadow_distance = 180.0f;
+    updated.cascade_split_lambda = 0.7f;
+    updated.cascade_blend_fraction = 0.1f;
     REQUIRE(host->execute(arc::editor::host_set_light_command{
         .entity = sun_id, .light = updated }).succeeded);
     REQUIRE(*host->selected_entity_snapshot().light == updated);
+    REQUIRE(host->execute(arc::editor::host_set_mobility_command{
+        .entity = sun_id,
+        .mobility = arc::editor::host_mobility::static_object }).succeeded);
+    REQUIRE(host->selected_entity_snapshot().mobility ==
+        arc::editor::host_mobility::static_object);
 
     auto invalid = updated;
     invalid.unit = arc::editor::host_light_unit::lumen;
@@ -1277,7 +1291,10 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
     std::string error;
     REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, error));
     REQUIRE(arc::editor::command_type(parsed.payload) == "entity.setLight");
-    REQUIRE(arc::editor::to_json(host->selected_entity_snapshot()).find("\"light\":{") != std::string::npos);
+    const auto selected_json = arc::editor::to_json(host->selected_entity_snapshot());
+    REQUIRE(selected_json.find("\"light\":{") != std::string::npos);
+    REQUIRE(selected_json.find("\"shadowResolution\":3072") != std::string::npos);
+    REQUIRE(selected_json.find("\"mobility\":\"static\"") != std::string::npos);
 }
 
 TEST_CASE("scene authoring protocol commands and edit transactions round trip")

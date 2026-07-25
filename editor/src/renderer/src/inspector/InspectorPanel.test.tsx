@@ -54,6 +54,10 @@ const meshSnapshot = (): InspectorEntitySnapshot => ({
   camera: null,
   meshRenderer: {
     visible: true,
+    castsShadows: true,
+    receivesShadows: true,
+    shadowLodBias: 0,
+    maximumShadowDistance: 0,
     baseColorTint: { x: 1, y: 1, z: 1, w: 1 },
     hasMaterial: true,
     assetBackedMaterial: true,
@@ -77,6 +81,9 @@ const terrainSnapshot = (): InspectorEntitySnapshot => ({
     resolution: 257,
     chunkQuads: 128,
     receiveShadows: true,
+    castShadows: true,
+    shadowLodBias: 0,
+    maximumShadowDistance: 0,
     contentRevision: 3,
     brushTool: 'sculpt',
     brushRadius: 6,
@@ -130,6 +137,20 @@ const areaLightSnapshot = (): InspectorEntitySnapshot => ({
     twoSided: false,
     enabled: true,
     castsShadows: true,
+    shadowResolution: 1024,
+    shadowPriority: 128,
+    shadowStrength: 1,
+    shadowBias: 0.0015,
+    shadowNormalBias: 0.01,
+    shadowFilter: 1,
+    contactShadows: true,
+    contactShadowLength: 0.5,
+    shadowCacheMode: 0,
+    cascadeCount: 4,
+    shadowDistance: 200,
+    cascadeSplitLambda: 0.65,
+    cascadeBlendFraction: 0.1,
+    stableCascades: true,
     useColorTemperature: false,
     temperatureKelvin: 5000,
   },
@@ -223,13 +244,17 @@ describe('data-driven InspectorPanel', () => {
     const name = screen.getByLabelText('Entity name');
     await userEvent.clear(name);
     await userEvent.type(name, 'Gameplay Camera{Enter}');
+    await userEvent.click(screen.getByLabelText('Static'));
 
-    await waitFor(() => expect(command).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(5));
     expect(command).toHaveBeenCalledWith('entity.setActive', expect.objectContaining({ active: false }));
     expect(command).toHaveBeenCalledWith('entity.setTag', expect.objectContaining({ tag: 'Environment' }));
     expect(command).toHaveBeenCalledWith('entity.setRenderLayer', expect.objectContaining({ renderLayerMask: 2 }));
     expect(command).toHaveBeenCalledWith('entity.rename', expect.objectContaining({ name: 'Gameplay Camera' }));
-    expect(screen.getByLabelText('Static')).toBeDisabled();
+    expect(command).toHaveBeenCalledWith(
+      'entity.setMobility',
+      expect.objectContaining({ mobility: 'static' }),
+    );
   });
 
   it('commits typed numbers, supports arrow steps, and rolls back rejected edits', async () => {

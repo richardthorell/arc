@@ -577,12 +577,11 @@ scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& re
     scene.scene.emplace<scene::water_component>(entity, water);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
-    scene.scene.emplace<scene::mesh_renderer_component>(
-        entity,
-        mesh_handle,
-        material,
-        true,
-        math::vector4f{ 0.7f, 0.9f, 1.0f, 0.55f });
+    scene::mesh_renderer_component renderer_component;
+    renderer_component.mesh = mesh_handle;
+    renderer_component.material = material;
+    renderer_component.base_color_tint = math::vector4f{ 0.7f, 0.9f, 1.0f, 0.55f };
+    scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.world_feature_entities.push_back(entity);
     return entity;
 }

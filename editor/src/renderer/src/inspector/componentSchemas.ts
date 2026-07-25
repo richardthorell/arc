@@ -27,6 +27,52 @@ const commonLightFieldsFor = (
   { id: 'unit', label: 'Intensity Unit', path: 'light.unit', type: 'enum', options: [...unitOptions, legacyUnit] },
   { id: 'intensity', label: 'Intensity', path: 'light.intensity', type: 'number', precision: 1, step: 10, scrubSensitivity: 1, min: 0 },
   { id: 'shadows', label: 'Cast Shadows', path: 'light.castsShadows', type: 'boolean' },
+  {
+    id: 'shadowResolution', label: 'Shadow Resolution', path: 'light.shadowResolution', type: 'number',
+    precision: 0, step: 128, scrubSensitivity: 16, min: 128, max: 8192,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+  },
+  {
+    id: 'shadowPriority', label: 'Shadow Priority', path: 'light.shadowPriority', type: 'number',
+    precision: 0, step: 1, scrubSensitivity: 0.2, min: 0, max: 65535,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+  },
+  {
+    id: 'shadowStrength', label: 'Shadow Strength', path: 'light.shadowStrength', type: 'number',
+    precision: 2, step: 0.05, scrubSensitivity: 0.01, min: 0, max: 1,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+  },
+  {
+    id: 'shadowBias', label: 'Depth Bias', path: 'light.shadowBias', type: 'number',
+    precision: 5, step: 0.0001, scrubSensitivity: 0.00002, min: 0,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+  },
+  {
+    id: 'normalBias', label: 'Normal Bias', path: 'light.shadowNormalBias', type: 'number',
+    precision: 4, step: 0.001, scrubSensitivity: 0.0002, min: 0,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+  },
+  {
+    id: 'filter', label: 'Filter (0-3)', path: 'light.shadowFilter', type: 'number',
+    precision: 0, step: 1, scrubSensitivity: 0.2, min: 0, max: 3,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+    tooltip: '0 Hard, 1 PCF 3x3, 2 PCF 5x5, 3 wider authored filter.',
+  },
+  {
+    id: 'contact', label: 'Contact Shadows', path: 'light.contactShadows', type: 'boolean',
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+  },
+  {
+    id: 'contactLength', label: 'Contact Length', path: 'light.contactShadowLength', type: 'number',
+    precision: 2, step: 0.1, scrubSensitivity: 0.02, min: 0, unit: ' m',
+    visible: (snapshot) => Boolean(snapshot.light?.castsShadows && snapshot.light?.contactShadows),
+  },
+  {
+    id: 'cacheMode', label: 'Cache (0-2)', path: 'light.shadowCacheMode', type: 'number',
+    precision: 0, step: 1, scrubSensitivity: 0.2, min: 0, max: 2,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+    tooltip: '0 Automatic, 1 Always Update, 2 Static Only.',
+  },
 ];
 
 export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> = [
@@ -104,7 +150,19 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
   {
     id: 'directionalLight',
     title: generatedTitle('arc::scene.directional_light_component', 'Directional Light'),
-    fields: commonLightFieldsFor([{ value: 'lux', label: 'Lux (lx)' }]),
+    fields: [
+      ...commonLightFieldsFor([{ value: 'lux', label: 'Lux (lx)' }]),
+      { id: 'cascadeCount', label: 'Cascades', path: 'light.cascadeCount', type: 'number', precision: 0, step: 1, scrubSensitivity: 0.2, min: 1, max: 4,
+        visible: (snapshot) => snapshot.light?.castsShadows ?? false },
+      { id: 'shadowDistance', label: 'Shadow Distance', path: 'light.shadowDistance', type: 'number', precision: 1, step: 5, scrubSensitivity: 1, min: 1, unit: ' m',
+        visible: (snapshot) => snapshot.light?.castsShadows ?? false },
+      { id: 'splitLambda', label: 'Split Lambda', path: 'light.cascadeSplitLambda', type: 'number', precision: 2, step: 0.05, scrubSensitivity: 0.01, min: 0, max: 1,
+        visible: (snapshot) => snapshot.light?.castsShadows ?? false },
+      { id: 'cascadeBlend', label: 'Cascade Blend', path: 'light.cascadeBlendFraction', type: 'number', precision: 2, step: 0.01, scrubSensitivity: 0.005, min: 0, max: 0.3,
+        visible: (snapshot) => snapshot.light?.castsShadows ?? false },
+      { id: 'stableCascades', label: 'Stable Cascades', path: 'light.stableCascades', type: 'boolean',
+        visible: (snapshot) => snapshot.light?.castsShadows ?? false },
+    ],
   },
   {
     id: 'pointLight',
@@ -158,6 +216,10 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       { id: 'preview', label: 'Material Preview', path: 'meshRenderer.materialPath', namePath: 'meshRenderer.materialName', type: 'assetPreview', assetKind: 'material' },
       { id: 'material', label: 'Material', path: 'meshRenderer.materialPath', type: 'asset', assetKind: 'material', allowedExtensions: ['.arcmat'], allowEmpty: false },
       { id: 'visible', label: 'Visible', path: 'meshRenderer.visible', type: 'boolean' },
+      { id: 'castsShadows', label: 'Cast Shadows', path: 'meshRenderer.castsShadows', type: 'boolean' },
+      { id: 'receivesShadows', label: 'Receive Shadows', path: 'meshRenderer.receivesShadows', type: 'boolean' },
+      { id: 'shadowLodBias', label: 'Shadow LOD Bias', path: 'meshRenderer.shadowLodBias', type: 'number', precision: 1, step: 0.25, scrubSensitivity: 0.05, min: -4, max: 8 },
+      { id: 'maximumShadowDistance', label: 'Max Shadow Distance', path: 'meshRenderer.maximumShadowDistance', type: 'number', precision: 1, step: 5, scrubSensitivity: 1, min: 0, unit: ' m' },
       { id: 'tint', label: 'Color Tint', path: 'meshRenderer.baseColorTint', type: 'color', precision: 2, min: 0, max: 1 },
     ],
   },
@@ -167,6 +229,9 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
     fields: [
       { id: 'enabled', label: 'Enabled', path: 'terrain.enabled', type: 'boolean' },
       { id: 'receiveShadows', label: 'Receive Shadows', path: 'terrain.receiveShadows', type: 'boolean' },
+      { id: 'castShadows', label: 'Cast Shadows', path: 'terrain.castShadows', type: 'boolean' },
+      { id: 'shadowLodBias', label: 'Shadow LOD Bias', path: 'terrain.shadowLodBias', type: 'number', precision: 1, step: 0.25, scrubSensitivity: 0.05, min: -4, max: 8 },
+      { id: 'maximumShadowDistance', label: 'Max Shadow Distance', path: 'terrain.maximumShadowDistance', type: 'number', precision: 1, step: 5, scrubSensitivity: 1, min: 0, unit: ' m' },
       { id: 'grass', label: 'Grass Layer', path: 'terrain.layers.0.baseColorPath', type: 'asset', assetKind: 'texture', allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'], allowEmpty: true },
       { id: 'dirt', label: 'Dirt Layer', path: 'terrain.layers.1.baseColorPath', type: 'asset', assetKind: 'texture', allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'], allowEmpty: true },
       { id: 'rock', label: 'Rock Layer', path: 'terrain.layers.2.baseColorPath', type: 'asset', assetKind: 'texture', allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'], allowEmpty: true },

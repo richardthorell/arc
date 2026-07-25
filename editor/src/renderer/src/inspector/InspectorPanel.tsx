@@ -165,6 +165,10 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
         void runMutation(next, 'entity.setMeshRenderer', {
           ...entityPayload(next),
           visible: next.meshRenderer.visible,
+          castsShadows: next.meshRenderer.castsShadows,
+          receivesShadows: next.meshRenderer.receivesShadows,
+          shadowLodBias: next.meshRenderer.shadowLodBias,
+          maximumShadowDistance: next.meshRenderer.maximumShadowDistance,
           baseColorTint: [tint.x, tint.y, tint.z, tint.w],
         }, settled, transactionKey, transactionLabel);
       }
@@ -176,7 +180,12 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
         }, true);
       } else {
         void runMutation(next, 'terrain.update', {
-          ...entityPayload(next), enabled: next.terrain.enabled, receiveShadows: next.terrain.receiveShadows,
+          ...entityPayload(next),
+          enabled: next.terrain.enabled,
+          receiveShadows: next.terrain.receiveShadows,
+          castShadows: next.terrain.castShadows,
+          shadowLodBias: next.terrain.shadowLodBias,
+          maximumShadowDistance: next.terrain.maximumShadowDistance,
         }, settled, transactionKey, transactionLabel);
       }
     }
@@ -243,8 +252,17 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
             value={draft.name}
             onCommit={(name) => updateHeader({ ...draft, name }, 'entity.rename', { name })}
           />
-          <label className="inspector-static" title="Static mobility will be available when ARC adds an ECS mobility contract.">
-            <input aria-label="Static" disabled type="checkbox" />
+          <label className="inspector-static" title={`Mobility: ${draft.mobility ?? 'movable'}`}>
+            <input
+              aria-label="Static"
+              checked={draft.mobility === 'static'}
+              ref={(input) => { if (input) input.indeterminate = draft.mobility === 'stationary'; }}
+              onChange={(event) => {
+                const mobility = event.target.checked ? 'static' : 'movable';
+                updateHeader({ ...draft, mobility }, 'entity.setMobility', { mobility });
+              }}
+              type="checkbox"
+            />
             <span>Static</span>
           </label>
           <button aria-label="Entity actions" className="inspector-menu-button" type="button"><MoreVertical size={15} /></button>

@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cctype>
 #include <cmath>
@@ -104,6 +105,7 @@ constexpr bool is_authoring_command() noexcept
         std::is_same_v<Command, host_reorder_entity_command> || std::is_same_v<Command, host_rename_entity_command> ||
         std::is_same_v<Command, host_set_active_command> || std::is_same_v<Command, host_set_tag_command> ||
         std::is_same_v<Command, host_set_transform_command> || std::is_same_v<Command, host_set_render_layer_command> ||
+        std::is_same_v<Command, host_set_mobility_command> ||
         std::is_same_v<Command, host_set_camera_command> || std::is_same_v<Command, host_set_light_command> ||
         std::is_same_v<Command, host_set_mesh_renderer_command> ||
         std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_terrain_stroke_command> ||
@@ -128,6 +130,7 @@ std::string history_label(const host_command_payload& command)
         if constexpr (std::is_same_v<type, host_reorder_entity_command>) return "Reorder Entity";
         if constexpr (std::is_same_v<type, host_rename_entity_command>) return "Rename Entity";
         if constexpr (std::is_same_v<type, host_set_transform_command>) return "Transform Entity";
+        if constexpr (std::is_same_v<type, host_set_mobility_command>) return "Set Mobility";
         if constexpr (std::is_same_v<type, host_set_entity_material_command>) return "Assign Material";
         if constexpr (std::is_same_v<type, host_set_terrain_command>) return "Edit Terrain";
         if constexpr (std::is_same_v<type, host_set_terrain_layer_command>) return "Assign Terrain Layer";
@@ -464,9 +467,58 @@ render::light_intensity_unit to_render_light_unit(host_light_unit unit) noexcept
     return render::light_intensity_unit::unitless;
 }
 
+host_mobility to_host_mobility(render::render_mobility mobility) noexcept
+{
+    switch (mobility)
+    {
+    case render::render_mobility::static_object: return host_mobility::static_object;
+    case render::render_mobility::stationary: return host_mobility::stationary;
+    case render::render_mobility::movable: return host_mobility::movable;
+    }
+    return host_mobility::movable;
+}
+
+render::render_mobility to_render_mobility(host_mobility mobility) noexcept
+{
+    switch (mobility)
+    {
+    case host_mobility::static_object: return render::render_mobility::static_object;
+    case host_mobility::stationary: return render::render_mobility::stationary;
+    case host_mobility::movable: return render::render_mobility::movable;
+    }
+    return render::render_mobility::movable;
+}
+
+void copy_shadow_to_host(host_light_snapshot& target, const render::shadow_settings& source) noexcept
+{
+    target.shadow_resolution = source.resolution;
+    target.shadow_priority = source.priority;
+    target.shadow_strength = source.strength;
+    target.shadow_bias = source.bias;
+    target.shadow_normal_bias = source.normal_bias;
+    target.shadow_filter = static_cast<std::uint8_t>(source.filter);
+    target.contact_shadows = source.contact_shadows;
+    target.contact_shadow_length = source.contact_shadow_length;
+    target.shadow_cache_mode = static_cast<std::uint8_t>(source.cache_mode);
+}
+
+void copy_shadow_from_host(render::shadow_settings& target, const host_light_snapshot& source) noexcept
+{
+    target.enabled = source.casts_shadows;
+    target.resolution = source.shadow_resolution;
+    target.priority = source.shadow_priority;
+    target.strength = source.shadow_strength;
+    target.bias = source.shadow_bias;
+    target.normal_bias = source.shadow_normal_bias;
+    target.filter = static_cast<render::shadow_filter>(source.shadow_filter);
+    target.contact_shadows = source.contact_shadows;
+    target.contact_shadow_length = source.contact_shadow_length;
+    target.cache_mode = static_cast<render::shadow_cache_mode>(source.shadow_cache_mode);
+}
+
 host_light_snapshot to_host_light(const scene::directional_light_component& light) noexcept
 {
-    return {
+    host_light_snapshot result{
         .kind = host_light_kind::directional,
         .unit = to_host_light_unit(light.intensity_unit),
         .color = to_host_vec3(light.color),
@@ -476,11 +528,18 @@ host_light_snapshot to_host_light(const scene::directional_light_component& ligh
         .use_color_temperature = light.use_color_temperature,
         .temperature_kelvin = light.temperature_kelvin
     };
+    copy_shadow_to_host(result, light.shadow);
+    result.cascade_count = light.cascades.cascade_count;
+    result.shadow_distance = light.cascades.maximum_distance;
+    result.cascade_split_lambda = light.cascades.split_lambda;
+    result.cascade_blend_fraction = light.cascades.blend_fraction;
+    result.stable_cascades = light.cascades.stable;
+    return result;
 }
 
 host_light_snapshot to_host_light(const scene::point_light_component& light) noexcept
 {
-    return {
+    host_light_snapshot result{
         .kind = host_light_kind::point,
         .unit = to_host_light_unit(light.intensity_unit),
         .color = to_host_vec3(light.color),
@@ -491,11 +550,13 @@ host_light_snapshot to_host_light(const scene::point_light_component& light) noe
         .use_color_temperature = light.use_color_temperature,
         .temperature_kelvin = light.temperature_kelvin
     };
+    copy_shadow_to_host(result, light.shadow);
+    return result;
 }
 
 host_light_snapshot to_host_light(const scene::spot_light_component& light) noexcept
 {
-    return {
+    host_light_snapshot result{
         .kind = host_light_kind::spot,
         .unit = to_host_light_unit(light.intensity_unit),
         .color = to_host_vec3(light.color),
@@ -508,11 +569,13 @@ host_light_snapshot to_host_light(const scene::spot_light_component& light) noex
         .use_color_temperature = light.use_color_temperature,
         .temperature_kelvin = light.temperature_kelvin
     };
+    copy_shadow_to_host(result, light.shadow);
+    return result;
 }
 
 host_light_snapshot to_host_light(const scene::area_light_component& light) noexcept
 {
-    return {
+    host_light_snapshot result{
         .kind = light.shape == render::area_light_shape::disk
             ? host_light_kind::disk
             : host_light_kind::rectangle,
@@ -527,6 +590,8 @@ host_light_snapshot to_host_light(const scene::area_light_component& light) noex
         .use_color_temperature = light.use_color_temperature,
         .temperature_kelvin = light.temperature_kelvin
     };
+    copy_shadow_to_host(result, light.shadow);
+    return result;
 }
 
 bool valid_light(const host_light_snapshot& light) noexcept
@@ -538,7 +603,19 @@ bool valid_light(const host_light_snapshot& light) noexcept
         finite_nonnegative(light.color.y) && finite_nonnegative(light.color.z);
     const bool common_valid = color_valid && finite_nonnegative(light.intensity) &&
         std::isfinite(light.temperature_kelvin) &&
-        light.temperature_kelvin >= 1000.0f && light.temperature_kelvin <= 40000.0f;
+        light.temperature_kelvin >= 1000.0f && light.temperature_kelvin <= 40000.0f &&
+        light.shadow_resolution >= 128u && light.shadow_resolution <= 8192u &&
+        std::isfinite(light.shadow_strength) && light.shadow_strength >= 0.0f && light.shadow_strength <= 1.0f &&
+        finite_nonnegative(light.shadow_bias) && finite_nonnegative(light.shadow_normal_bias) &&
+        light.shadow_filter <= static_cast<std::uint8_t>(render::shadow_filter::pcss) &&
+        std::isfinite(light.contact_shadow_length) && light.contact_shadow_length >= 0.0f &&
+        light.shadow_cache_mode <= static_cast<std::uint8_t>(render::shadow_cache_mode::static_only) &&
+        light.cascade_count >= 1u && light.cascade_count <= render::maximum_directional_shadow_cascades &&
+        std::isfinite(light.shadow_distance) && light.shadow_distance > 0.0f &&
+        std::isfinite(light.cascade_split_lambda) && light.cascade_split_lambda >= 0.0f &&
+        light.cascade_split_lambda <= 1.0f &&
+        std::isfinite(light.cascade_blend_fraction) && light.cascade_blend_fraction >= 0.0f &&
+        light.cascade_blend_fraction <= 0.3f;
     if (!common_valid)
         return false;
     const bool unit_valid =
@@ -796,6 +873,10 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(
 {
     host_mesh_renderer_snapshot snapshot;
     snapshot.visible = mesh_renderer.visible;
+    snapshot.casts_shadows = mesh_renderer.casts_shadows;
+    snapshot.receives_shadows = mesh_renderer.receives_shadows;
+    snapshot.shadow_lod_bias = mesh_renderer.shadow_lod_bias;
+    snapshot.maximum_shadow_distance = mesh_renderer.maximum_shadow_distance;
     snapshot.base_color_tint = to_host_vec4(mesh_renderer.base_color_tint);
     snapshot.has_material = mesh_renderer.material.valid();
     for (const auto& record : state.material_library.materials)
@@ -920,6 +1001,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     state.scene.emplace<scene::tag_component>(sun, "Light");
     state.scene.emplace<scene::active_component>(sun);
     state.scene.emplace<scene::transform_component>(sun, sun_transform);
+    state.scene.emplace<scene::mobility_component>(sun, render::render_mobility::stationary);
     state.scene.emplace<scene::directional_light_component>(
         sun,
         defaults::default_sun_color,
@@ -946,6 +1028,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
 
     const auto terrain_material = create_default_terrain_material(state, renderer, assets.root);
     const auto terrain = add_terrain_to_scene(state, renderer, terrain_material);
+    state.scene.emplace<scene::mobility_component>(terrain, render::render_mobility::static_object);
     add_water_to_scene(state, renderer);
     add_grass_patch_to_scene(state, renderer);
 
@@ -976,6 +1059,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
                 geometric::box3f{ geometric::point3f(local_min), geometric::point3f(local_max) },
                 true);
             state.scene.emplace<scene::transform_component>(mesh, transform);
+            state.scene.emplace<scene::mobility_component>(mesh, render::render_mobility::static_object);
             state.scene.emplace<scene::mesh_renderer_component>(mesh, state.default_mesh, state.default_material, true);
             state.world_feature_entities.push_back(mesh);
             return mesh;
@@ -1630,6 +1714,22 @@ host_response arc_host::execute(const host_command_envelope& command)
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity render layer changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_set_mobility_command>)
+        {
+            const auto entity = to_scene_entity(payload.entity);
+            if (!state_->scene.scene.alive(entity))
+                return fail("Cannot edit mobility for a missing entity", entity);
+            state_->scene.scene.emplace<scene::mobility_component>(
+                entity,
+                to_render_mobility(payload.mobility));
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::component_changed,
+                "Entity mobility changed",
+                entity);
+            return success("{\"entity\":" + to_json(payload.entity) + '}');
+        }
         else if constexpr (std::is_same_v<command_type, host_set_camera_command>)
         {
             const auto entity = to_scene_entity(payload.entity);
@@ -1664,7 +1764,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                 light->casts_shadows = payload.light.casts_shadows;
                 light->use_color_temperature = payload.light.use_color_temperature;
                 light->temperature_kelvin = payload.light.temperature_kelvin;
-                light->shadow.enabled = payload.light.casts_shadows;
+                copy_shadow_from_host(light->shadow, payload.light);
+                light->cascades.cascade_count = payload.light.cascade_count;
+                light->cascades.maximum_distance = payload.light.shadow_distance;
+                light->cascades.split_lambda = payload.light.cascade_split_lambda;
+                light->cascades.blend_fraction = payload.light.cascade_blend_fraction;
+                light->cascades.stable = payload.light.stable_cascades;
             }
             else if (auto* light = state_->scene.scene.try_get<scene::point_light_component>(entity))
             {
@@ -1678,7 +1783,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 light->casts_shadows = payload.light.casts_shadows;
                 light->use_color_temperature = payload.light.use_color_temperature;
                 light->temperature_kelvin = payload.light.temperature_kelvin;
-                light->shadow.enabled = payload.light.casts_shadows;
+                copy_shadow_from_host(light->shadow, payload.light);
             }
             else if (auto* light = state_->scene.scene.try_get<scene::spot_light_component>(entity))
             {
@@ -1694,7 +1799,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 light->casts_shadows = payload.light.casts_shadows;
                 light->use_color_temperature = payload.light.use_color_temperature;
                 light->temperature_kelvin = payload.light.temperature_kelvin;
-                light->shadow.enabled = payload.light.casts_shadows;
+                copy_shadow_from_host(light->shadow, payload.light);
             }
             else if (auto* light = state_->scene.scene.try_get<scene::area_light_component>(entity))
             {
@@ -1713,7 +1818,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 light->casts_shadows = payload.light.casts_shadows;
                 light->use_color_temperature = payload.light.use_color_temperature;
                 light->temperature_kelvin = payload.light.temperature_kelvin;
-                light->shadow.enabled = payload.light.casts_shadows;
+                copy_shadow_from_host(light->shadow, payload.light);
             }
             else
                 return fail("Entity does not have an editable light component", entity);
@@ -1729,7 +1834,16 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return fail("Entity does not have an editable mesh renderer component", entity);
             if (!valid_base_color_tint(payload.base_color_tint))
                 return fail("Mesh renderer tint channels must be finite and between 0 and 1", entity);
+            if (!std::isfinite(payload.shadow_lod_bias) ||
+                !std::isfinite(payload.maximum_shadow_distance) ||
+                payload.shadow_lod_bias < -4.0f || payload.shadow_lod_bias > 8.0f ||
+                payload.maximum_shadow_distance < 0.0f)
+                return fail("Mesh renderer shadow values are outside supported ranges", entity);
             mesh_renderer->visible = payload.visible;
+            mesh_renderer->casts_shadows = payload.casts_shadows;
+            mesh_renderer->receives_shadows = payload.receives_shadows;
+            mesh_renderer->shadow_lod_bias = payload.shadow_lod_bias;
+            mesh_renderer->maximum_shadow_distance = payload.maximum_shadow_distance;
             mesh_renderer->base_color_tint = to_math_vec4(payload.base_color_tint);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Entity mesh renderer changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -1740,8 +1854,16 @@ host_response arc_host::execute(const host_command_envelope& command)
             auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
             if (!terrain)
                 return fail("Entity does not have an editable terrain component", entity);
+            if (!std::isfinite(payload.shadow_lod_bias) ||
+                !std::isfinite(payload.maximum_shadow_distance) ||
+                payload.shadow_lod_bias < -4.0f || payload.shadow_lod_bias > 8.0f ||
+                payload.maximum_shadow_distance < 0.0f)
+                return fail("Terrain shadow values are outside supported ranges", entity);
             terrain->enabled = payload.enabled;
             terrain->receive_shadows = payload.receive_shadows;
+            terrain->cast_shadows = payload.cast_shadows;
+            terrain->shadow_lod_bias = payload.shadow_lod_bias;
+            terrain->maximum_shadow_distance = payload.maximum_shadow_distance;
             ++terrain->content_revision;
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Terrain settings changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -2375,6 +2497,8 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
     if (const auto* tag = state_->scene.scene.try_get<scene::tag_component>(selected))
         snapshot.tag = tag->value;
     snapshot.active = entity_active(state_->scene, selected);
+    if (const auto* mobility = state_->scene.scene.try_get<scene::mobility_component>(selected))
+        snapshot.mobility = to_host_mobility(mobility->value);
     if (const auto* layer = state_->scene.scene.try_get<scene::render_layer_component>(selected))
         snapshot.render_layer_mask = layer->mask;
     if (const auto* transform = state_->scene.scene.try_get<scene::transform_component>(selected))
@@ -2432,6 +2556,9 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
         terrain_snapshot.resolution = terrain->subdivisions + 1u;
         terrain_snapshot.chunk_quads = terrain->chunk_quads;
         terrain_snapshot.receive_shadows = terrain->receive_shadows;
+        terrain_snapshot.cast_shadows = terrain->cast_shadows;
+        terrain_snapshot.shadow_lod_bias = terrain->shadow_lod_bias;
+        terrain_snapshot.maximum_shadow_distance = terrain->maximum_shadow_distance;
         terrain_snapshot.content_revision = terrain->content_revision;
         terrain_snapshot.brush_tool = state_->terrain_brush.tool == scene::terrain_brush_tool::smooth ? host_terrain_brush_tool::smooth :
             state_->terrain_brush.tool == scene::terrain_brush_tool::flatten ? host_terrain_brush_tool::flatten :

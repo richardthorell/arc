@@ -397,7 +397,35 @@ bool light_value(std::string_view json, std::string_view key, host_light_snapsho
         !bool_value(object, "useColorTemperature", out.use_color_temperature) ||
         !number_value(object, "temperatureKelvin", out.temperature_kelvin))
         return false;
-    return true;
+    const auto optional_number = [&](std::string_view name, auto& value) {
+        if (object.find(std::string{"\""} + std::string{name} + "\"") == std::string_view::npos)
+            return true;
+        return number_value(object, name, value);
+    };
+    const auto optional_bool = [&](std::string_view name, bool& value) {
+        if (object.find(std::string{"\""} + std::string{name} + "\"") == std::string_view::npos)
+            return true;
+        return bool_value(object, name, value);
+    };
+    std::uint32_t shadow_filter = out.shadow_filter;
+    std::uint32_t cache_mode = out.shadow_cache_mode;
+    const bool valid = optional_number("shadowResolution", out.shadow_resolution) &&
+        optional_number("shadowPriority", out.shadow_priority) &&
+        optional_number("shadowStrength", out.shadow_strength) &&
+        optional_number("shadowBias", out.shadow_bias) &&
+        optional_number("shadowNormalBias", out.shadow_normal_bias) &&
+        optional_number("shadowFilter", shadow_filter) &&
+        optional_bool("contactShadows", out.contact_shadows) &&
+        optional_number("contactShadowLength", out.contact_shadow_length) &&
+        optional_number("shadowCacheMode", cache_mode) &&
+        optional_number("cascadeCount", out.cascade_count) &&
+        optional_number("shadowDistance", out.shadow_distance) &&
+        optional_number("cascadeSplitLambda", out.cascade_split_lambda) &&
+        optional_number("cascadeBlendFraction", out.cascade_blend_fraction) &&
+        optional_bool("stableCascades", out.stable_cascades);
+    out.shadow_filter = static_cast<std::uint8_t>(shadow_filter);
+    out.shadow_cache_mode = static_cast<std::uint8_t>(cache_mode);
+    return valid;
 }
 
 std::string vec3_json(const host_vec3& value)
@@ -686,6 +714,17 @@ const char* to_string(host_camera_projection value) noexcept
     return value == host_camera_projection::orthographic ? "orthographic" : "perspective";
 }
 
+const char* to_string(host_mobility value) noexcept
+{
+    switch (value)
+    {
+    case host_mobility::static_object: return "static";
+    case host_mobility::stationary: return "stationary";
+    case host_mobility::movable: return "movable";
+    }
+    return "movable";
+}
+
 const char* to_string(host_render_mode value) noexcept
 {
     return value == host_render_mode::wireframe ? "wireframe" : "shaded";
@@ -804,6 +843,7 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_set_tag_command>) return "entity.setTag";
         else if constexpr (std::is_same_v<type, host_set_transform_command>) return "entity.setTransform";
         else if constexpr (std::is_same_v<type, host_set_render_layer_command>) return "entity.setRenderLayer";
+        else if constexpr (std::is_same_v<type, host_set_mobility_command>) return "entity.setMobility";
         else if constexpr (std::is_same_v<type, host_set_camera_command>) return "entity.setCamera";
         else if constexpr (std::is_same_v<type, host_set_light_command>) return "entity.setLight";
         else if constexpr (std::is_same_v<type, host_set_mesh_renderer_command>) return "entity.setMeshRenderer";
@@ -946,6 +986,20 @@ std::string to_json(const host_light_snapshot& light)
         << ",\"twoSided\":" << bool_json(light.two_sided)
         << ",\"enabled\":" << bool_json(light.enabled)
         << ",\"castsShadows\":" << bool_json(light.casts_shadows)
+        << ",\"shadowResolution\":" << light.shadow_resolution
+        << ",\"shadowPriority\":" << light.shadow_priority
+        << ",\"shadowStrength\":" << light.shadow_strength
+        << ",\"shadowBias\":" << light.shadow_bias
+        << ",\"shadowNormalBias\":" << light.shadow_normal_bias
+        << ",\"shadowFilter\":" << static_cast<unsigned>(light.shadow_filter)
+        << ",\"contactShadows\":" << bool_json(light.contact_shadows)
+        << ",\"contactShadowLength\":" << light.contact_shadow_length
+        << ",\"shadowCacheMode\":" << static_cast<unsigned>(light.shadow_cache_mode)
+        << ",\"cascadeCount\":" << light.cascade_count
+        << ",\"shadowDistance\":" << light.shadow_distance
+        << ",\"cascadeSplitLambda\":" << light.cascade_split_lambda
+        << ",\"cascadeBlendFraction\":" << light.cascade_blend_fraction
+        << ",\"stableCascades\":" << bool_json(light.stable_cascades)
         << ",\"useColorTemperature\":" << bool_json(light.use_color_temperature)
         << ",\"temperatureKelvin\":" << light.temperature_kelvin << '}';
     return stream.str();
@@ -954,6 +1008,10 @@ std::string to_json(const host_light_snapshot& light)
 std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer)
 {
     return std::string("{\"visible\":") + bool_json(mesh_renderer.visible) +
+        ",\"castsShadows\":" + bool_json(mesh_renderer.casts_shadows) +
+        ",\"receivesShadows\":" + bool_json(mesh_renderer.receives_shadows) +
+        ",\"shadowLodBias\":" + std::to_string(mesh_renderer.shadow_lod_bias) +
+        ",\"maximumShadowDistance\":" + std::to_string(mesh_renderer.maximum_shadow_distance) +
         ",\"baseColorTint\":" + vec4_json(mesh_renderer.base_color_tint) +
         ",\"hasMaterial\":" + bool_json(mesh_renderer.has_material) +
         ",\"assetBackedMaterial\":" + bool_json(mesh_renderer.asset_backed_material) +
@@ -972,6 +1030,9 @@ std::string to_json(const host_terrain_snapshot& terrain)
         << ",\"resolution\":" << terrain.resolution
         << ",\"chunkQuads\":" << terrain.chunk_quads
         << ",\"receiveShadows\":" << bool_json(terrain.receive_shadows)
+        << ",\"castShadows\":" << bool_json(terrain.cast_shadows)
+        << ",\"shadowLodBias\":" << terrain.shadow_lod_bias
+        << ",\"maximumShadowDistance\":" << terrain.maximum_shadow_distance
         << ",\"contentRevision\":" << terrain.content_revision
         << ",\"brushTool\":" << quote(tool)
         << ",\"brushRadius\":" << terrain.brush_radius
@@ -1098,6 +1159,9 @@ std::string to_json(const host_command_envelope& envelope)
         else if constexpr (std::is_same_v<type, host_set_render_layer_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"renderLayerMask\":" +
                 std::to_string(payload.render_layer_mask) + '}';
+        else if constexpr (std::is_same_v<type, host_set_mobility_command>)
+            return "{\"entity\":" + to_json(payload.entity) +
+                ",\"mobility\":" + quote(to_string(payload.mobility)) + '}';
         else if constexpr (std::is_same_v<type, host_set_camera_command>)
             return "{\"entity\":" + to_json(payload.entity) + ",\"camera\":" + to_json(payload.camera) + '}';
         else if constexpr (std::is_same_v<type, host_set_light_command>)
@@ -1105,11 +1169,18 @@ std::string to_json(const host_command_envelope& envelope)
         else if constexpr (std::is_same_v<type, host_set_mesh_renderer_command>)
             return "{\"entity\":" + to_json(payload.entity) +
                 ",\"visible\":" + bool_json(payload.visible) +
+                ",\"castsShadows\":" + bool_json(payload.casts_shadows) +
+                ",\"receivesShadows\":" + bool_json(payload.receives_shadows) +
+                ",\"shadowLodBias\":" + std::to_string(payload.shadow_lod_bias) +
+                ",\"maximumShadowDistance\":" + std::to_string(payload.maximum_shadow_distance) +
                 ",\"baseColorTint\":" + vec4_json(payload.base_color_tint) + '}';
         else if constexpr (std::is_same_v<type, host_set_terrain_command>)
             return "{\"entity\":" + to_json(payload.entity) +
                 ",\"enabled\":" + bool_json(payload.enabled) +
-                ",\"receiveShadows\":" + bool_json(payload.receive_shadows) + '}';
+                ",\"receiveShadows\":" + bool_json(payload.receive_shadows) +
+                ",\"castShadows\":" + bool_json(payload.cast_shadows) +
+                ",\"shadowLodBias\":" + std::to_string(payload.shadow_lod_bias) +
+                ",\"maximumShadowDistance\":" + std::to_string(payload.maximum_shadow_distance) + '}';
         else if constexpr (std::is_same_v<type, host_set_terrain_brush_command>)
         {
             const char* tool = payload.tool == host_terrain_brush_tool::smooth ? "smooth" :
@@ -1343,6 +1414,7 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
         ",\"tag\":" + quote(snapshot.tag) +
         ",\"active\":" + bool_json(snapshot.active) +
         ",\"renderLayerMask\":" + std::to_string(snapshot.render_layer_mask) +
+        ",\"mobility\":" + quote(to_string(snapshot.mobility)) +
         ",\"transform\":";
     json += snapshot.transform ? to_json(*snapshot.transform) : "null";
     json += ",\"camera\":";
@@ -1629,6 +1701,22 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         }
         envelope.payload = command;
     }
+    else if (type == "entity.setMobility")
+    {
+        host_set_mobility_command command;
+        std::string mobility;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !string_value(payload, "mobility", mobility) ||
+            (mobility != "static" && mobility != "stationary" && mobility != "movable"))
+        {
+            error = "Mobility command requires entity and static, stationary, or movable mobility";
+            return false;
+        }
+        command.mobility = mobility == "static"
+            ? host_mobility::static_object
+            : mobility == "stationary" ? host_mobility::stationary : host_mobility::movable;
+        envelope.payload = command;
+    }
     else if (type == "entity.setCamera")
     {
         host_set_camera_command command;
@@ -1656,6 +1744,10 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         host_set_mesh_renderer_command command;
         if (!entity_field_value(payload, "entity", command.entity) ||
             !bool_value(payload, "visible", command.visible) ||
+            !bool_value(payload, "castsShadows", command.casts_shadows) ||
+            !bool_value(payload, "receivesShadows", command.receives_shadows) ||
+            !number_value(payload, "shadowLodBias", command.shadow_lod_bias) ||
+            !number_value(payload, "maximumShadowDistance", command.maximum_shadow_distance) ||
             !array4_value(payload, "baseColorTint", command.base_color_tint))
         {
             error = "Mesh renderer command requires entity, visible, and baseColorTint";
@@ -1668,7 +1760,10 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         host_set_terrain_command command;
         if (!entity_field_value(payload, "entity", command.entity) ||
             !bool_value(payload, "enabled", command.enabled) ||
-            !bool_value(payload, "receiveShadows", command.receive_shadows))
+            !bool_value(payload, "receiveShadows", command.receive_shadows) ||
+            !bool_value(payload, "castShadows", command.cast_shadows) ||
+            !number_value(payload, "shadowLodBias", command.shadow_lod_bias) ||
+            !number_value(payload, "maximumShadowDistance", command.maximum_shadow_distance))
         {
             error = "Terrain update requires entity, enabled, and receiveShadows";
             return false;

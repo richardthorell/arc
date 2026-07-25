@@ -43,12 +43,30 @@ export type InspectorLight = {
   twoSided: boolean;
   enabled: boolean;
   castsShadows: boolean;
+  shadowResolution: number;
+  shadowPriority: number;
+  shadowStrength: number;
+  shadowBias: number;
+  shadowNormalBias: number;
+  shadowFilter: number;
+  contactShadows: boolean;
+  contactShadowLength: number;
+  shadowCacheMode: number;
+  cascadeCount: number;
+  shadowDistance: number;
+  cascadeSplitLambda: number;
+  cascadeBlendFraction: number;
+  stableCascades: boolean;
   useColorTemperature: boolean;
   temperatureKelvin: number;
 };
 
 export type InspectorMeshRenderer = {
   visible: boolean;
+  castsShadows: boolean;
+  receivesShadows: boolean;
+  shadowLodBias: number;
+  maximumShadowDistance: number;
   baseColorTint: Vec4;
   hasMaterial: boolean;
   assetBackedMaterial: boolean;
@@ -62,6 +80,9 @@ export type InspectorTerrain = {
   resolution: number;
   chunkQuads: number;
   receiveShadows: boolean;
+  castShadows: boolean;
+  shadowLodBias: number;
+  maximumShadowDistance: number;
   contentRevision: number;
   brushTool: 'sculpt' | 'smooth' | 'flatten' | 'paint';
   brushRadius: number;
@@ -90,6 +111,7 @@ export type InspectorEntitySnapshot = {
   tag: string;
   active: boolean;
   renderLayerMask: number;
+  mobility?: 'static' | 'stationary' | 'movable';
   transform: InspectorTransform | null;
   camera: InspectorCamera | null;
   light: InspectorLight | null;
@@ -120,6 +142,7 @@ const hostSelectedEntitySchema = z.object({
   tag: z.string(),
   active: z.boolean(),
   renderLayerMask: z.number().int().nonnegative(),
+  mobility: z.enum(['static', 'stationary', 'movable']).default('movable'),
   transform: z.object({
     position: vec3Tuple,
     rotation: quaternionTuple,
@@ -155,11 +178,29 @@ const hostSelectedEntitySchema = z.object({
     twoSided: z.boolean(),
     enabled: z.boolean(),
     castsShadows: z.boolean(),
+    shadowResolution: z.number().int().min(128).max(8192).default(2048),
+    shadowPriority: z.number().int().min(0).max(65535).default(128),
+    shadowStrength: finiteNumber.min(0).max(1).default(0.75),
+    shadowBias: finiteNumber.nonnegative().default(0.0015),
+    shadowNormalBias: finiteNumber.nonnegative().default(0.01),
+    shadowFilter: z.number().int().min(0).max(3).default(1),
+    contactShadows: z.boolean().default(true),
+    contactShadowLength: finiteNumber.nonnegative().default(0.5),
+    shadowCacheMode: z.number().int().min(0).max(2).default(0),
+    cascadeCount: z.number().int().min(1).max(4).default(4),
+    shadowDistance: finiteNumber.positive().default(200),
+    cascadeSplitLambda: finiteNumber.min(0).max(1).default(0.65),
+    cascadeBlendFraction: finiteNumber.min(0).max(0.3).default(0.1),
+    stableCascades: z.boolean().default(true),
     useColorTemperature: z.boolean(),
     temperatureKelvin: finiteNumber.min(1000).max(40000),
   }).nullable().default(null),
   meshRenderer: z.object({
     visible: z.boolean(),
+    castsShadows: z.boolean().default(true),
+    receivesShadows: z.boolean().default(true),
+    shadowLodBias: finiteNumber.min(-4).max(8).default(0),
+    maximumShadowDistance: finiteNumber.nonnegative().default(0),
     baseColorTint: vec4Tuple,
     hasMaterial: z.boolean(),
     assetBackedMaterial: z.boolean(),
@@ -172,6 +213,9 @@ const hostSelectedEntitySchema = z.object({
     resolution: z.number().int().min(3),
     chunkQuads: z.number().int().positive(),
     receiveShadows: z.boolean(),
+    castShadows: z.boolean().default(true),
+    shadowLodBias: finiteNumber.min(-4).max(8).default(0),
+    maximumShadowDistance: finiteNumber.nonnegative().default(0),
     contentRevision: z.number().int().nonnegative(),
     brushTool: z.enum(['sculpt', 'smooth', 'flatten', 'paint']),
     brushRadius: finiteNumber.min(0.25).max(128),

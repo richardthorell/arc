@@ -122,15 +122,19 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
         return false;
     }
     static const std::unordered_set<std::string_view> known{
-        "Name", "Tag", "Active", "RenderLayer", "Transform", "Camera", "MeshRenderer", "DirectionalLight",
+        "Name", "Tag", "Active", "RenderLayer", "Mobility", "Transform", "Camera", "MeshRenderer", "DirectionalLight",
         "PointLight", "SpotLight", "AreaLight", "WorldEnvironment", "Terrain", "Water", "Vegetation", "Decal",
         "PrefabInstance", "WorldRegion" };
     if (!known.contains(name)) return true;
     const auto component_version = value["version"].get<std::uint32_t>();
-    const bool supports_v2 = name == "Terrain" || name == "Camera" ||
+    const bool supports_v2 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
+        name == "Vegetation" ||
         name == "DirectionalLight" || name == "PointLight" ||
         name == "SpotLight" || name == "AreaLight";
-    if (component_version != 1u && !(supports_v2 && component_version == 2u))
+    const bool supports_v3 = name == "Terrain" || name == "DirectionalLight" ||
+        name == "PointLight" || name == "SpotLight" || name == "AreaLight";
+    if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
+        !(supports_v3 && component_version == 3u))
     {
         error = "component '" + std::string(name) + "' uses an unsupported schema version";
         return false;
@@ -145,6 +149,10 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
         return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");
     if (name == "RenderLayer")
         return value.contains("mask") && value["mask"].is_number_unsigned() ? true : fail("has an invalid layer mask");
+    if (name == "Mobility")
+        return value.contains("value") && value["value"].is_number_integer() &&
+            value["value"].get<int>() >= 0 && value["value"].get<int>() <= 2
+            ? true : fail("has invalid mobility");
     if (name == "WorldRegion")
         return value.contains("id") && value["id"].is_string() &&
             scene::parse_entity_guid(value["id"].get<std::string>()).has_value()
@@ -206,7 +214,13 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     }
     if (name == "MeshRenderer")
         return value.contains("visible") && value["visible"].is_boolean() && value.contains("baseColorTint") &&
-            finite_color(value["baseColorTint"], 4) ? true : fail("has invalid renderer values");
+            finite_color(value["baseColorTint"], 4) &&
+            (!value.contains("castsShadows") || value["castsShadows"].is_boolean()) &&
+            (!value.contains("receivesShadows") || value["receivesShadows"].is_boolean()) &&
+            (!value.contains("shadowLodBias") || finite_number(value, "shadowLodBias")) &&
+            (!value.contains("maximumShadowDistance") || (finite_number(value, "maximumShadowDistance") &&
+                value["maximumShadowDistance"].get<double>() >= 0.0))
+            ? true : fail("has invalid renderer values");
     if (name == "WorldEnvironment")
     {
         host_world_environment_snapshot snapshot;
@@ -281,8 +295,27 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             (shadow.contains("bias") && !finite_number(shadow, "bias")) ||
             (shadow.contains("normalBias") && !finite_number(shadow, "normalBias")) ||
             (shadow.contains("strength") && !finite_number(shadow, "strength")) ||
-            (shadow.contains("filter") && !shadow["filter"].is_number_integer()))
+            (shadow.contains("filter") && !shadow["filter"].is_number_integer()) ||
+            (shadow.contains("priority") && (!shadow["priority"].is_number_unsigned() ||
+                shadow["priority"].get<std::uint32_t>() > 255u)) ||
+            (shadow.contains("contactShadows") && !shadow["contactShadows"].is_boolean()) ||
+            (shadow.contains("contactShadowLength") && (!finite_number(shadow, "contactShadowLength") ||
+                shadow["contactShadowLength"].get<double>() < 0.0)) ||
+            (shadow.contains("cacheMode") && (!shadow["cacheMode"].is_number_integer() ||
+                shadow["cacheMode"].get<int>() < 0 || shadow["cacheMode"].get<int>() > 2)))
             return fail("has invalid shadow settings");
+    }
+    if (name == "DirectionalLight" && value.contains("cascades"))
+    {
+        const auto& cascades = value["cascades"];
+        if (!cascades.is_object() || !cascades.contains("count") || !cascades["count"].is_number_unsigned() ||
+            cascades["count"].get<std::uint32_t>() < 1u || cascades["count"].get<std::uint32_t>() > 4u ||
+            !finite_number(cascades, "maximumDistance") || cascades["maximumDistance"].get<double>() <= 0.0 ||
+            !finite_number(cascades, "splitLambda") || cascades["splitLambda"].get<double>() < 0.0 ||
+            cascades["splitLambda"].get<double>() > 1.0 || !finite_number(cascades, "blendFraction") ||
+            cascades["blendFraction"].get<double>() < 0.0 || cascades["blendFraction"].get<double>() > 0.3 ||
+            !cascades.contains("stable") || !cascades["stable"].is_boolean())
+            return fail("has invalid cascade settings");
     }
     if (name != "DirectionalLight" && name != "AreaLight" &&
         (!finite_number(value, "range") || value["range"].get<double>() <= 0.0))
@@ -436,12 +469,15 @@ json serialize_light_common(const math::vector3f& color, float intensity, bool s
     bool use_temperature, float temperature, render::light_intensity_unit unit, const render::shadow_settings& shadow)
 {
     return {
-        { "version", 2 }, { "color", vector3(color) }, { "intensity", intensity },
+        { "version", 3 }, { "color", vector3(color) }, { "intensity", intensity },
         { "castsShadows", shadows }, { "enabled", enabled }, { "useColorTemperature", use_temperature },
         { "temperatureKelvin", temperature }, { "intensityUnit", static_cast<int>(unit) },
         { "shadow", { { "enabled", shadow.enabled }, { "resolution", shadow.resolution },
             { "bias", shadow.bias }, { "normalBias", shadow.normal_bias }, { "strength", shadow.strength },
-            { "filter", static_cast<int>(shadow.filter) } } }
+            { "filter", static_cast<int>(shadow.filter) }, { "priority", shadow.priority },
+            { "contactShadows", shadow.contact_shadows },
+            { "contactShadowLength", shadow.contact_shadow_length },
+            { "cacheMode", static_cast<int>(shadow.cache_mode) } } }
     };
 }
 
@@ -464,6 +500,10 @@ void deserialize_light_common(const json& source, math::vector3f& color, float& 
         shadow.normal_bias = found->value("normalBias", 0.01f);
         shadow.strength = found->value("strength", 0.75f);
         shadow.filter = static_cast<render::shadow_filter>(found->value("filter", 1));
+        shadow.priority = static_cast<std::uint16_t>(std::min(found->value("priority", 128u), 255u));
+        shadow.contact_shadows = found->value("contactShadows", true);
+        shadow.contact_shadow_length = found->value("contactShadowLength", 0.5f);
+        shadow.cache_mode = static_cast<render::shadow_cache_mode>(found->value("cacheMode", 0));
     }
 }
 
@@ -486,6 +526,8 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
         components["Active"] = { { "version", 1 }, { "value", component->active } };
     if (const auto* component = state.scene.try_get<scene::render_layer_component>(value))
         components["RenderLayer"] = { { "version", 1 }, { "mask", component->mask } };
+    if (const auto* component = state.scene.try_get<scene::mobility_component>(value))
+        components["Mobility"] = { { "version", 1 }, { "value", static_cast<int>(component->value) } };
     if (const auto* component = state.scene.try_get<scene::world_region_component>(value))
         components["WorldRegion"] = {
             { "version", 1 }, { "id", scene::to_string(component->region.value) }
@@ -540,12 +582,24 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
                 { "darkenSpeed", component->exposure.darken_speed }
             } } };
     if (const auto* component = state.scene.try_get<scene::mesh_renderer_component>(value))
-        components["MeshRenderer"] = { { "version", 1 }, { "visible", component->visible },
-            { "baseColorTint", vector4(component->base_color_tint) } };
+        components["MeshRenderer"] = { { "version", 2 }, { "visible", component->visible },
+            { "baseColorTint", vector4(component->base_color_tint) },
+            { "castsShadows", component->casts_shadows }, { "receivesShadows", component->receives_shadows },
+            { "shadowLodBias", component->shadow_lod_bias },
+            { "maximumShadowDistance", component->maximum_shadow_distance } };
     if (const auto* component = state.scene.try_get<scene::directional_light_component>(value))
+    {
         components["DirectionalLight"] = serialize_light_common(component->color, component->intensity,
             component->casts_shadows, component->enabled, component->use_color_temperature,
             component->temperature_kelvin, component->intensity_unit, component->shadow);
+        components["DirectionalLight"]["cascades"] = {
+            { "count", component->cascades.cascade_count },
+            { "maximumDistance", component->cascades.maximum_distance },
+            { "splitLambda", component->cascades.split_lambda },
+            { "blendFraction", component->cascades.blend_fraction },
+            { "stable", component->cascades.stable }
+        };
+    }
     if (const auto* component = state.scene.try_get<scene::point_light_component>(value))
     {
         components["PointLight"] = serialize_light_common(component->color, component->intensity,
@@ -606,7 +660,9 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
             { "version", 2 }, { "enabled", component->enabled }, { "size", component->size },
             { "subdivisions", component->subdivisions }, { "chunkQuads", component->chunk_quads },
             { "heightScale", component->height_scale }, { "baseColor", vector3(component->base_color) },
-            { "receiveShadows", component->receive_shadows }, { "minHeight", *minimum },
+            { "receiveShadows", component->receive_shadows }, { "castShadows", component->cast_shadows },
+            { "shadowLodBias", component->shadow_lod_bias },
+            { "maximumShadowDistance", component->maximum_shadow_distance }, { "minHeight", *minimum },
             { "heightRange", range }, { "heights", base64_encode(height_bytes) },
             { "weights", base64_encode(weight_bytes) }, { "revision", component->content_revision }
         };
@@ -617,9 +673,11 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
             { "waveScale", component->wave_scale }, { "waveSpeed", component->wave_speed },
             { "transparency", component->transparency } };
     if (const auto* component = state.scene.try_get<scene::vegetation_component>(value))
-        components["Vegetation"] = { { "version", 1 }, { "enabled", component->enabled }, { "density", component->density },
+        components["Vegetation"] = { { "version", 2 }, { "enabled", component->enabled }, { "density", component->density },
             { "patchSize", component->patch_size }, { "color", vector3(component->color) },
-            { "windStrength", component->wind_strength }, { "windSpeed", component->wind_speed } };
+            { "windStrength", component->wind_strength }, { "windSpeed", component->wind_speed },
+            { "castShadows", component->cast_shadows }, { "shadowLodBias", component->shadow_lod_bias },
+            { "maximumShadowDistance", component->maximum_shadow_distance } };
     if (const auto* component = state.scene.try_get<scene::decal_component>(value))
         components["Decal"] = { { "version", 1 }, { "enabled", component->enabled },
             { "color", vector4(component->color) }, { "opacity", component->opacity } };
@@ -941,6 +999,9 @@ scene_document_result load_scene_document(
             if (components.contains("Tag")) loaded.scene.emplace<scene::tag_component>(entity, components["Tag"].value("value", "Untagged"));
             if (components.contains("Active")) loaded.scene.emplace<scene::active_component>(entity, components["Active"].value("value", true));
             if (components.contains("RenderLayer")) loaded.scene.emplace<scene::render_layer_component>(entity, components["RenderLayer"].value("mask", 1u));
+            if (components.contains("Mobility"))
+                loaded.scene.emplace<scene::mobility_component>(entity,
+                    static_cast<render::render_mobility>(components["Mobility"].value("value", 2)));
             if (components.contains("WorldRegion"))
             {
                 const auto region = scene::parse_entity_guid(components["WorldRegion"].value("id", ""));
@@ -1032,8 +1093,16 @@ scene_document_result load_scene_document(
             if (components.contains("MeshRenderer") && !loaded.scene.has<scene::mesh_renderer_component>(entity))
             {
                 const auto& value = components["MeshRenderer"];
-                loaded.scene.emplace<scene::mesh_renderer_component>(entity, loaded.default_mesh, loaded.default_material,
-                    value.value("visible", true), read_vector4(value.at("baseColorTint")));
+                scene::mesh_renderer_component renderer_component;
+                renderer_component.mesh = loaded.default_mesh;
+                renderer_component.material = loaded.default_material;
+                renderer_component.visible = value.value("visible", true);
+                renderer_component.base_color_tint = read_vector4(value.at("baseColorTint"));
+                renderer_component.casts_shadows = value.value("castsShadows", true);
+                renderer_component.receives_shadows = value.value("receivesShadows", true);
+                renderer_component.shadow_lod_bias = value.value("shadowLodBias", 0.0f);
+                renderer_component.maximum_shadow_distance = value.value("maximumShadowDistance", 0.0f);
+                loaded.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
                 diagnostics.push_back("Mesh asset for '" + id_text + "' used the default fallback");
             }
             else if (components.contains("MeshRenderer"))
@@ -1041,6 +1110,10 @@ scene_document_result load_scene_document(
                 auto& mesh = loaded.scene.get<scene::mesh_renderer_component>(entity);
                 mesh.visible = components["MeshRenderer"].value("visible", true);
                 mesh.base_color_tint = read_vector4(components["MeshRenderer"].at("baseColorTint"));
+                mesh.casts_shadows = components["MeshRenderer"].value("castsShadows", true);
+                mesh.receives_shadows = components["MeshRenderer"].value("receivesShadows", true);
+                mesh.shadow_lod_bias = components["MeshRenderer"].value("shadowLodBias", 0.0f);
+                mesh.maximum_shadow_distance = components["MeshRenderer"].value("maximumShadowDistance", 0.0f);
             }
             if (components.contains("DirectionalLight"))
             {
@@ -1054,6 +1127,16 @@ scene_document_result load_scene_document(
                     light.intensity_unit = render::light_intensity_unit::lux;
                 }
                 loaded.scene.emplace<scene::directional_light_component>(entity, light);
+                if (const auto found = components["DirectionalLight"].find("cascades");
+                    found != components["DirectionalLight"].end())
+                {
+                    auto& stored = loaded.scene.get<scene::directional_light_component>(entity).cascades;
+                    stored.cascade_count = found->value("count", stored.cascade_count);
+                    stored.maximum_distance = found->value("maximumDistance", stored.maximum_distance);
+                    stored.split_lambda = found->value("splitLambda", stored.split_lambda);
+                    stored.blend_fraction = found->value("blendFraction", stored.blend_fraction);
+                    stored.stable = found->value("stable", stored.stable);
+                }
                 if (!loaded.sun_entity.valid()) loaded.sun_entity = entity;
             }
             if (components.contains("PointLight"))
@@ -1121,6 +1204,9 @@ scene_document_result load_scene_document(
                 value.chunk_quads = source.value("chunkQuads", scene::default_terrain_chunk_quads);
                 value.height_scale = source.value("heightScale", value.height_scale);
                 value.base_color = read_vector3(source.at("baseColor")); value.receive_shadows = source.value("receiveShadows", true);
+                value.cast_shadows = source.value("castShadows", true);
+                value.shadow_lod_bias = source.value("shadowLodBias", 0.0f);
+                value.maximum_shadow_distance = source.value("maximumShadowDistance", 0.0f);
                 if (source.value("version", 1u) == 1u)
                 {
                     scene::generate_terrain_heightfield(value);
@@ -1163,6 +1249,9 @@ scene_document_result load_scene_document(
                 value.enabled = source.value("enabled", true); value.density = source.value("density", value.density);
                 value.patch_size = source.value("patchSize", value.patch_size); value.color = read_vector3(source.at("color"));
                 value.wind_strength = source.value("windStrength", value.wind_strength); value.wind_speed = source.value("windSpeed", value.wind_speed);
+                value.cast_shadows = source.value("castShadows", true);
+                value.shadow_lod_bias = source.value("shadowLodBias", value.shadow_lod_bias);
+                value.maximum_shadow_distance = source.value("maximumShadowDistance", value.maximum_shadow_distance);
             }
             if (components.contains("Decal"))
             {
@@ -1171,7 +1260,7 @@ scene_document_result load_scene_document(
                 value.opacity = source.value("opacity", value.opacity);
             }
 
-            static const std::unordered_set<std::string> known{ "Name", "Tag", "Active", "RenderLayer", "Transform", "Camera",
+            static const std::unordered_set<std::string> known{ "Name", "Tag", "Active", "RenderLayer", "Mobility", "Transform", "Camera",
                 "MeshRenderer", "DirectionalLight", "PointLight", "SpotLight", "AreaLight", "WorldEnvironment", "Terrain", "Water",
                 "Vegetation", "Decal", "PrefabInstance", "WorldRegion" };
             json unknown = json::object();

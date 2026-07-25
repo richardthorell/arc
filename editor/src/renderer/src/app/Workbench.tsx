@@ -262,6 +262,10 @@ const snapshotFromMockEntity = (entity: SceneEntity | null): InspectorEntitySnap
     light: null,
     meshRenderer: entity.kind === 'mesh' ? {
       visible: true,
+      castsShadows: true,
+      receivesShadows: true,
+      shadowLodBias: 0,
+      maximumShadowDistance: 0,
       baseColorTint: { x: 1, y: 1, z: 1, w: 1 },
       hasMaterial: true,
       assetBackedMaterial: true,

@@ -331,6 +331,50 @@ export const generatedEcsComponents = [
           "editable",
           "prefab_override"
         ]
+      },
+      {
+        "id": "0000000000000005",
+        "name": "casts_shadows",
+        "displayName": "Cast Shadows",
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000006",
+        "name": "receives_shadows",
+        "displayName": "Receive Shadows",
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000007",
+        "name": "shadow_lod_bias",
+        "displayName": "Shadow LOD Bias",
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000008",
+        "name": "maximum_shadow_distance",
+        "displayName": "Maximum Shadow Distance",
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
       }
     ]
   },
@@ -373,6 +417,25 @@ export const generatedEcsComponents = [
         "name": "mask",
         "displayName": "Mask",
         "kind": "uint",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "a7c0000000000001000000000000001e",
+    "canonicalName": "arc::scene.mobility_component",
+    "displayName": "Mobility",
+    "schemaVersion": 1,
+    "fields": [
+      {
+        "id": "0000000000000001",
+        "name": "value",
+        "displayName": "Mobility",
+        "kind": "enum",
         "flags": [
           "serialized",
           "editable",
