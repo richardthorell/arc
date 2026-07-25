@@ -243,12 +243,10 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(mesh_entity);
     scene.emplace<arc::scene::selection_component>(mesh_entity, true);
-    scene.emplace<arc::scene::mesh_renderer_component>(
-        mesh_entity,
-        mesh,
-        arc::render::material_handle{},
-        true,
-        arc::math::vector4f{ 0.2f, 0.4f, 0.6f, 1.0f });
+    arc::scene::mesh_renderer_component mesh_renderer;
+    mesh_renderer.mesh = mesh;
+    mesh_renderer.base_color_tint = arc::math::vector4f{ 0.2f, 0.4f, 0.6f, 1.0f };
+    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh_renderer);
 
     const auto result = arc::scene::render_scene(
         scene,
@@ -658,12 +656,10 @@ TEST_CASE("render scene extracts and culls virtual mesh clusters")
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(mesh_entity);
     scene.emplace<arc::scene::selection_component>(mesh_entity, true);
-    scene.emplace<arc::scene::virtual_mesh_renderer_component>(
-        mesh_entity,
-        virtual_mesh,
-        arc::render::material_handle{},
-        true,
-        arc::math::vector4f{ 0.8f, 0.2f, 0.4f, 1.0f });
+    arc::scene::virtual_mesh_renderer_component virtual_renderer;
+    virtual_renderer.mesh = virtual_mesh;
+    virtual_renderer.base_color_tint = arc::math::vector4f{ 0.8f, 0.2f, 0.4f, 1.0f };
+    scene.emplace<arc::scene::virtual_mesh_renderer_component>(mesh_entity, virtual_renderer);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
     REQUIRE(result.camera_found);
@@ -774,6 +770,16 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     sun_light.intensity_unit = arc::render::light_intensity_unit::lux;
     sun_light.shadow.resolution = 4096;
     sun_light.shadow.filter = arc::render::shadow_filter::pcf_5x5;
+    sun_light.shadow.priority = 700;
+    sun_light.shadow.contact_shadows = true;
+    sun_light.shadow.contact_shadow_length = 0.8f;
+    sun_light.cascades.cascade_count = 3;
+    sun_light.cascades.maximum_distance = 175.0f;
+    sun_light.cascades.split_lambda = 0.72f;
+    sun_light.cascades.blend_fraction = 0.12f;
+    scene.emplace<arc::scene::mobility_component>(
+        sun,
+        arc::render::render_mobility::stationary);
 
     const auto disabled_point = scene.create();
     scene.emplace<arc::scene::active_component>(disabled_point);
@@ -815,6 +821,14 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     REQUIRE(light.shadow.enabled);
     REQUIRE(light.shadow.resolution == 4096);
     REQUIRE(light.shadow.filter == arc::render::shadow_filter::pcf_5x5);
+    REQUIRE(light.shadow.priority == 700);
+    REQUIRE(light.shadow.contact_shadows);
+    REQUIRE(light.shadow.contact_shadow_length == Catch::Approx(0.8f));
+    REQUIRE(light.cascades.cascade_count == 3);
+    REQUIRE(light.cascades.maximum_distance == Catch::Approx(175.0f));
+    REQUIRE(light.cascades.split_lambda == Catch::Approx(0.72f));
+    REQUIRE(light.cascades.blend_fraction == Catch::Approx(0.12f));
+    REQUIRE(light.mobility == arc::render::render_mobility::stationary);
     REQUIRE(light.color[0] >= light.color[2]);
     REQUIRE(world_event.packet->reflection_probes.size() == 1);
     REQUIRE(world_event.packet->reflection_probes[0].radius == Catch::Approx(8.0f));

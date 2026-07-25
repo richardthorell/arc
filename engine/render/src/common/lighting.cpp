@@ -212,7 +212,14 @@ scene_lighting_data pack_scene_lighting(
                 light.color[1],
                 light.color[2],
                 light_intensity_scale(light.intensity_unit, light.intensity, light.range)
-            }
+            },
+            .object_id_shadow = {
+                static_cast<float>(light.object_id.index),
+                static_cast<float>(light.object_id.generation),
+                -1.0f,
+                0.0f
+            },
+            .shadow_parameters = { -1.0f, 0.0f, 0.0f, 0.0f }
         };
     }
 
@@ -231,7 +238,14 @@ scene_lighting_data pack_scene_lighting(
                 light.color[2],
                 intensity
             },
-            .params = { light.outer_angle, light.casts_shadows ? 1.0f : 0.0f, 0.0f, 0.0f }
+            .params = { light.outer_angle, light.casts_shadows ? 1.0f : 0.0f, 0.0f, 0.0f },
+            .object_id_shadow = {
+                static_cast<float>(light.object_id.index),
+                static_cast<float>(light.object_id.generation),
+                -1.0f,
+                0.0f
+            },
+            .shadow_parameters = { -1.0f, 0.0f, 0.0f, 0.0f }
         };
     }
 

@@ -85,6 +85,10 @@ struct render_item
     bool selected{};
     bool transparent{};
     bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    render_mobility mobility{ render_mobility::movable };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
     std::string label;
 };
@@ -106,6 +110,10 @@ struct virtual_render_item
     bool visible{ true };
     bool selected{};
     bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    render_mobility mobility{ render_mobility::movable };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
     std::string label;
 };
@@ -266,6 +274,9 @@ struct terrain_render_data
     std::uint32_t subdivisions{};
     float height_scale{};
     bool receive_shadows{ true };
+    bool cast_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     std::string label;
 };
 
@@ -297,6 +308,9 @@ struct vegetation_render_data
     math::vector3f color{ 0.22f, 0.46f, 0.18f };
     float wind_strength{ 0.25f };
     float wind_speed{ 0.8f };
+    bool cast_shadows{ true };
+    float shadow_lod_bias{ 1.0f };
+    float maximum_shadow_distance{ 120.0f };
     std::string label;
 };
 

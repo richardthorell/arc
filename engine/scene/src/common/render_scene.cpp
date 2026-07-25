@@ -90,6 +90,13 @@ math::vector3f effective_light_color(const math::vector3f& color, bool use_tempe
     return math::mul(color, render::color_temperature_rgb(kelvin));
 }
 
+render::render_mobility entity_mobility(const registry& scene, entity value) noexcept
+{
+    if (const auto* mobility = scene.try_get<mobility_component>(value))
+        return mobility->value;
+    return render::render_mobility::movable;
+}
+
 void append_mesh_item(
     registry& scene,
     render::render_world_packet& packet,
@@ -103,7 +110,11 @@ void append_mesh_item(
     render::buffer_handle skin = {},
     std::uint32_t joint_count = 0,
     std::uint32_t instance_count = 1,
-    const math::vector4f& base_color_tint = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f })
+    const math::vector4f& base_color_tint = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+    bool casts_shadows = true,
+    bool receives_shadows = true,
+    float shadow_lod_bias = 0.0f,
+    float maximum_shadow_distance = 0.0f)
 {
     if (!entity_is_active(scene, value))
         return;
@@ -128,6 +139,11 @@ void append_mesh_item(
         .visible = visible,
         .selected = selected,
         .transparent = transparent,
+        .casts_shadows = casts_shadows,
+        .receives_shadows = receives_shadows,
+        .mobility = entity_mobility(scene, value),
+        .shadow_lod_bias = shadow_lod_bias,
+        .maximum_shadow_distance = maximum_shadow_distance,
         .base_color_tint = base_color_tint,
         .label = entity_label(scene, value)
     });
@@ -175,6 +191,11 @@ void append_virtual_mesh_items(
             .object_id = object,
             .visible = mesh_renderer.visible,
             .selected = selected,
+            .casts_shadows = mesh_renderer.casts_shadows,
+            .receives_shadows = mesh_renderer.receives_shadows,
+            .mobility = entity_mobility(scene, value),
+            .shadow_lod_bias = mesh_renderer.shadow_lod_bias,
+            .maximum_shadow_distance = mesh_renderer.maximum_shadow_distance,
             .base_color_tint = mesh_renderer.base_color_tint,
             .label = label
         });
@@ -486,7 +507,10 @@ render_scene_result render_scene(
             auto mesh = mesh_renderer.mesh;
             auto material = mesh_renderer.material;
             apply_lod(scene, value, mesh, material);
-            append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible, transparent, {}, 0, 1, mesh_renderer.base_color_tint);
+            append_mesh_item(scene, world_packet, result, value, transform, mesh, material,
+                mesh_renderer.visible, transparent, {}, 0, 1, mesh_renderer.base_color_tint,
+                mesh_renderer.casts_shadows, mesh_renderer.receives_shadows,
+                mesh_renderer.shadow_lod_bias, mesh_renderer.maximum_shadow_distance);
         });
 
     scene.view<transform_component, virtual_mesh_renderer_component>().each(
@@ -505,12 +529,17 @@ render_scene_result render_scene(
                 .subdivisions = terrain.subdivisions,
                 .height_scale = terrain.height_scale,
                 .receive_shadows = terrain.receive_shadows,
+                .cast_shadows = terrain.cast_shadows,
+                .shadow_lod_bias = terrain.shadow_lod_bias,
+                .maximum_shadow_distance = terrain.maximum_shadow_distance,
                 .label = entity_label(scene, value)
             });
             for (const auto mesh : terrain.chunk_meshes)
             {
                 if (renderer.mesh_alive(mesh))
-                    append_mesh_item(scene, world_packet, result, value, transform, mesh, terrain.material, true);
+                    append_mesh_item(scene, world_packet, result, value, transform, mesh, terrain.material,
+                        true, false, {}, 0, 1, {}, terrain.cast_shadows, terrain.receive_shadows,
+                        terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
             }
             ++result.terrain_count;
         });
@@ -545,6 +574,9 @@ render_scene_result render_scene(
                 .color = vegetation.color,
                 .wind_strength = vegetation.wind_strength,
                 .wind_speed = vegetation.wind_speed,
+                .cast_shadows = vegetation.cast_shadows,
+                .shadow_lod_bias = vegetation.shadow_lod_bias,
+                .maximum_shadow_distance = vegetation.maximum_shadow_distance,
                 .label = entity_label(scene, value)
             });
             ++result.vegetation_count;
@@ -581,7 +613,13 @@ render_scene_result render_scene(
                 mesh_renderer.visible,
                 false,
                 mesh_renderer.skin_matrices,
-                mesh_renderer.joint_count);
+                mesh_renderer.joint_count,
+                1,
+                math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+                mesh_renderer.casts_shadows,
+                mesh_renderer.receives_shadows,
+                mesh_renderer.shadow_lod_bias,
+                mesh_renderer.maximum_shadow_distance);
         });
 
     scene.view<transform_component, instance_group_component>().each(
@@ -606,6 +644,7 @@ render_scene_result render_scene(
             if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.directional_lights.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
                 .direction = world_forward_direction(transform),
                 .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
@@ -616,6 +655,8 @@ render_scene_result render_scene(
                 .intensity_unit = light.intensity_unit,
                 .cookie_texture = light.cookie_texture,
                 .shadow = light.shadow,
+                .cascades = light.cascades,
+                .mobility = entity_mobility(scene, value),
                 .label = entity_label(scene, value)
             });
             ++result.directional_light_count;
@@ -626,6 +667,7 @@ render_scene_result render_scene(
             if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.point_lights.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
                 .position = world_position(transform),
                 .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                 .intensity = light.intensity,
@@ -637,6 +679,7 @@ render_scene_result render_scene(
                 .intensity_unit = light.intensity_unit,
                 .cookie_texture = light.cookie_texture,
                 .shadow = light.shadow,
+                .mobility = entity_mobility(scene, value),
                 .label = entity_label(scene, value)
             });
             ++result.point_light_count;
@@ -647,6 +690,7 @@ render_scene_result render_scene(
             if (!entity_is_active(scene, value) || !light.enabled)
                 return;
             world_packet.spot_lights.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
                 .position = world_position(transform),
                 .direction = world_forward_direction(transform),
                 .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
@@ -661,6 +705,7 @@ render_scene_result render_scene(
                 .intensity_unit = light.intensity_unit,
                 .cookie_texture = light.cookie_texture,
                 .shadow = light.shadow,
+                .mobility = entity_mobility(scene, value),
                 .label = entity_label(scene, value)
             });
             ++result.spot_light_count;
@@ -674,6 +719,7 @@ render_scene_result render_scene(
             const auto up = world_up_direction(transform);
             const auto tangent = math::normalize(math::cross(direction, up));
             world_packet.area_lights.push_back({
+                .object_id = render::make_render_object_id(value.index, value.generation),
                 .position = world_position(transform),
                 .direction = direction,
                 .tangent = tangent,
@@ -689,6 +735,7 @@ render_scene_result render_scene(
                 .temperature_kelvin = light.temperature_kelvin,
                 .intensity_unit = light.intensity_unit,
                 .shadow = light.shadow,
+                .mobility = entity_mobility(scene, value),
                 .label = entity_label(scene, value)
             });
             ++result.area_light_count;

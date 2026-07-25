@@ -3,9 +3,11 @@
 #include <arc/render/handles.h>
 #include <arc/render/material.h>
 #include <arc/render/mesh.h>
+#include <arc/render/shadow.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
+#include <arc/geometric/box.h>
 
 #include <cstdint>
 #include <memory>
@@ -108,6 +110,10 @@ struct shadow_settings
     float normal_bias{ 0.01f };
     float strength{ 0.75f };
     shadow_filter filter{ shadow_filter::pcf_3x3 };
+    std::uint16_t priority{ 128 };
+    bool contact_shadows{ true };
+    float contact_shadow_length{ 0.5f };
+    shadow_cache_mode cache_mode{ shadow_cache_mode::automatic };
 };
 
 /**
@@ -192,10 +198,16 @@ struct draw_mesh_event
     math::matrix4f previous_model{ math::identity<float, 4>() };
     math::matrix4f view_projection{ math::identity<float, 4>() };
     math::matrix4f previous_view_projection{ math::identity<float, 4>() };
+    geometric::box3f world_bounds{};
     render_mode mode{ render_mode::shaded };
     mesh_visualization_mode visualization{ mesh_visualization_mode::standard };
     render_object_id object_id{};
     bool selected{};
+    bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    render_mobility mobility{ render_mobility::movable };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
     math::vector4f wire_color{ 0.25f, 0.65f, 1.0f, 1.0f };
     std::string label;
@@ -206,6 +218,7 @@ struct draw_mesh_event
  */
 struct directional_light_event
 {
+    render_object_id object_id{};
     math::vector3f direction{ 0.0f, -1.0f, 0.0f };
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
     float intensity{ 1.0f };
@@ -216,6 +229,8 @@ struct directional_light_event
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
     shadow_settings shadow{};
+    directional_shadow_settings cascades{};
+    render_mobility mobility{ render_mobility::movable };
     std::string label;
 };
 
@@ -224,6 +239,7 @@ struct directional_light_event
  */
 struct point_light_event
 {
+    render_object_id object_id{};
     math::vector3f position{};
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
     float intensity{ 1.0f };
@@ -235,6 +251,7 @@ struct point_light_event
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
     shadow_settings shadow{ .enabled = false };
+    render_mobility mobility{ render_mobility::movable };
     std::string label;
 };
 
@@ -243,6 +260,7 @@ struct point_light_event
  */
 struct spot_light_event
 {
+    render_object_id object_id{};
     math::vector3f position{};
     math::vector3f direction{ 0.0f, -1.0f, 0.0f };
     math::vector3f color{ 1.0f, 1.0f, 1.0f };
@@ -257,6 +275,7 @@ struct spot_light_event
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
     shadow_settings shadow{ .enabled = false };
+    render_mobility mobility{ render_mobility::movable };
     std::string label;
 };
 
@@ -265,6 +284,7 @@ struct spot_light_event
  */
 struct area_light_event
 {
+    render_object_id object_id{};
     math::vector3f position{};
     math::vector3f direction{ 0.0f, -1.0f, 0.0f };
     math::vector3f tangent{ 1.0f, 0.0f, 0.0f };
@@ -280,6 +300,7 @@ struct area_light_event
     float temperature_kelvin{ 6500.0f };
     light_intensity_unit intensity_unit{};
     shadow_settings shadow{ .enabled = false };
+    render_mobility mobility{ render_mobility::movable };
     std::string label;
 };
 

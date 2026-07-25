@@ -62,6 +62,13 @@ struct render_quality_profile
     std::uint32_t max_spot_lights{ 64 };
     std::uint32_t directional_shadow_cascades{ 4 };
     std::uint32_t directional_shadow_resolution{ 2048 };
+    float directional_shadow_distance{ 200.0f };
+    std::uint32_t local_shadow_atlas_resolution{ 4096 };
+    std::uint32_t max_shadowed_point_lights{ 4 };
+    std::uint32_t max_shadowed_spot_lights{ 8 };
+    std::uint32_t max_local_shadow_resolution{ 1024 };
+    bool screen_space_shadows{ true };
+    float screen_space_shadow_scale{ 0.5f };
 };
 
 inline constexpr render_quality_profile low_render_quality_profile{
@@ -72,16 +79,43 @@ inline constexpr render_quality_profile low_render_quality_profile{
     .max_point_lights = 32,
     .max_spot_lights = 32,
     .directional_shadow_cascades = 2,
-    .directional_shadow_resolution = 1024
+    .directional_shadow_resolution = 1024,
+    .directional_shadow_distance = 80.0f,
+    .local_shadow_atlas_resolution = 2048,
+    .max_shadowed_point_lights = 0,
+    .max_shadowed_spot_lights = 2,
+    .max_local_shadow_resolution = 512,
+    .screen_space_shadows = false,
+    .screen_space_shadow_scale = 0.0f
 };
 
 inline constexpr render_quality_profile standard_render_quality_profile{};
 
+inline constexpr render_quality_profile high_render_quality_profile{
+    .quality = render_quality_tier::high,
+    .default_path = render_path::deferred,
+    .minimum_render_scale = 0.67f,
+    .maximum_render_scale = 1.0f,
+    .max_point_lights = 64,
+    .max_spot_lights = 64,
+    .directional_shadow_cascades = 4,
+    .directional_shadow_resolution = 4096,
+    .directional_shadow_distance = 300.0f,
+    .local_shadow_atlas_resolution = 8192,
+    .max_shadowed_point_lights = 8,
+    .max_shadowed_spot_lights = 16,
+    .max_local_shadow_resolution = 2048,
+    .screen_space_shadows = true,
+    .screen_space_shadow_scale = 1.0f
+};
+
 [[nodiscard]] constexpr const render_quality_profile& quality_profile(render_quality_tier quality) noexcept
 {
-    return quality == render_quality_tier::low
-        ? low_render_quality_profile
-        : standard_render_quality_profile;
+    if (quality == render_quality_tier::low)
+        return low_render_quality_profile;
+    if (quality == render_quality_tier::high)
+        return high_render_quality_profile;
+    return standard_render_quality_profile;
 }
 
 /**
@@ -166,6 +200,13 @@ struct resolved_render_config
     std::uint32_t max_spot_lights{ standard_render_quality_profile.max_spot_lights };
     std::uint32_t directional_shadow_cascades{ standard_render_quality_profile.directional_shadow_cascades };
     std::uint32_t directional_shadow_resolution{ standard_render_quality_profile.directional_shadow_resolution };
+    float directional_shadow_distance{ standard_render_quality_profile.directional_shadow_distance };
+    std::uint32_t local_shadow_atlas_resolution{ standard_render_quality_profile.local_shadow_atlas_resolution };
+    std::uint32_t max_shadowed_point_lights{ standard_render_quality_profile.max_shadowed_point_lights };
+    std::uint32_t max_shadowed_spot_lights{ standard_render_quality_profile.max_shadowed_spot_lights };
+    std::uint32_t max_local_shadow_resolution{ standard_render_quality_profile.max_local_shadow_resolution };
+    bool screen_space_shadows{ standard_render_quality_profile.screen_space_shadows };
+    float screen_space_shadow_scale{ standard_render_quality_profile.screen_space_shadow_scale };
     std::vector<std::string> fallback_reasons;
 };
 
@@ -294,6 +335,27 @@ struct render_environment_profile
     std::string fallback_reason;
 };
 
+/** @brief Actual shadow allocation/cache state executed for one frame. */
+struct render_shadow_profile
+{
+    std::uint32_t directional_cascade_count{};
+    std::uint32_t directional_resolution{};
+    std::uint32_t local_atlas_resolution{};
+    std::uint32_t local_allocation_count{};
+    std::uint32_t local_occupied_texels{};
+    std::uint32_t local_eviction_count{};
+    std::uint32_t local_resolution_reductions{};
+    std::uint32_t shadowed_point_lights{};
+    std::uint32_t shadowed_spot_lights{};
+    std::uint32_t static_caster_count{};
+    std::uint32_t dynamic_caster_count{};
+    std::uint32_t local_cache_hits{};
+    std::uint32_t local_cache_misses{};
+    bool static_cache_hit{};
+    bool screen_space_shadows{};
+    std::string fallback_reason;
+};
+
 /**
  * @brief Backend frame profile data exposed to tools such as the editor profiler.
  */
@@ -305,6 +367,7 @@ struct render_backend_frame_profile
     compiled_render_graph graph;
     clustered_light_grid_profile clustered_lights;
     render_environment_profile environment;
+    render_shadow_profile shadows;
     resolved_render_config configuration;
 };
 

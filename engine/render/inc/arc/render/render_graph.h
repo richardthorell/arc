@@ -56,6 +56,13 @@ enum class builtin_render_pass : std::uint8_t
     exposure_resolve,
     subsurface_diffusion,
     transmission_refraction,
+    directional_shadow_static,
+    directional_shadow_dynamic,
+    point_shadow,
+    spot_shadow,
+    depth_pyramid,
+    screen_space_shadow,
+    screen_space_shadow_filter,
     output_transform,
     debug_overlay
 };

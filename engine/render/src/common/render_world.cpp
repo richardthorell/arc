@@ -239,13 +239,28 @@ render_graph make_scene_draw_graph(
         .height_scale = config.render_scale,
         .format = render_format::rgba16_float,
         .persistent = true });
-    const auto shadow_atlas = graph.add_resource({
-        .name = "directional_shadow_atlas",
+    const auto directional_static_shadows = graph.add_resource({
+        .name = "directional_static_shadows",
         .kind = render_resource_kind::depth_texture,
         .extent = { config.directional_shadow_resolution, config.directional_shadow_resolution, 1 },
         .extent_mode = render_extent_mode::absolute,
         .format = render_format::d32_float,
         .array_layers = config.directional_shadow_cascades,
+        .persistent = true });
+    const auto directional_dynamic_shadows = graph.add_resource({
+        .name = "directional_dynamic_shadows",
+        .kind = render_resource_kind::depth_texture,
+        .extent = { config.directional_shadow_resolution, config.directional_shadow_resolution, 1 },
+        .extent_mode = render_extent_mode::absolute,
+        .format = render_format::d32_float,
+        .array_layers = config.directional_shadow_cascades,
+        .persistent = true });
+    const auto local_shadow_atlas = graph.add_resource({
+        .name = "local_shadow_atlas",
+        .kind = render_resource_kind::depth_texture,
+        .extent = { config.local_shadow_atlas_resolution, config.local_shadow_atlas_resolution, 1 },
+        .extent_mode = render_extent_mode::absolute,
+        .format = render_format::d32_float,
         .persistent = true });
 
     const bool high_quality = config.quality == render_quality_tier::high;
@@ -420,11 +435,39 @@ render_graph make_scene_draw_graph(
     }
 
     graph.add_pass({
-        .name = "directional shadow cascades",
+        .name = "directional static shadows",
         .kind = render_pass_kind::custom,
-        .writes = { { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture,
+        .builtin = builtin_render_pass::directional_shadow_static,
+        .writes = { { .handle = directional_static_shadows, .kind = render_resource_kind::depth_texture,
             .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::clear } }
     });
+    graph.add_pass({
+        .name = "directional dynamic shadows",
+        .kind = render_pass_kind::custom,
+        .builtin = builtin_render_pass::directional_shadow_dynamic,
+        .writes = { { .handle = directional_dynamic_shadows, .kind = render_resource_kind::depth_texture,
+            .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::clear } }
+    });
+    if (config.max_shadowed_point_lights > 0)
+    {
+        graph.add_pass({
+            .name = "point light shadows",
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::point_shadow,
+            .writes = { { .handle = local_shadow_atlas, .kind = render_resource_kind::depth_texture,
+                .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::load } }
+        });
+    }
+    if (config.max_shadowed_spot_lights > 0)
+    {
+        graph.add_pass({
+            .name = "spot light shadows",
+            .kind = render_pass_kind::custom,
+            .builtin = builtin_render_pass::spot_shadow,
+            .writes = { { .handle = local_shadow_atlas, .kind = render_resource_kind::depth_texture,
+                .usage = render_resource_usage::depth_attachment, .write = true, .load_op = render_load_op::load } }
+        });
+    }
     std::vector<render_resource_access> sky_reads;
     if (sky_view.valid())
         sky_reads.push_back({ .handle = sky_view, .kind = render_resource_kind::color_texture,
@@ -451,7 +494,9 @@ render_graph make_scene_draw_graph(
     {
         std::vector<render_resource_access> forward_reads{
             { .handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
-            { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+            { .handle = directional_static_shadows, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .handle = directional_dynamic_shadows, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .handle = local_shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
         };
         if (cloud_shadow.valid())
             forward_reads.push_back({ .handle = cloud_shadow, .kind = render_resource_kind::color_texture,
@@ -522,6 +567,73 @@ render_graph make_scene_draw_graph(
             .writes = std::move(gbuffer_writes)
         });
 
+        render_graph_resource_handle filtered_screen_shadow{};
+        if (config.screen_space_shadows)
+        {
+            const auto depth_pyramid = graph.add_resource({
+                .name = "linear_depth_pyramid",
+                .kind = render_resource_kind::color_texture,
+                .width_scale = config.screen_space_shadow_scale,
+                .height_scale = config.screen_space_shadow_scale,
+                .format = render_format::rg16_float,
+                .mip_levels = 10
+            });
+            const auto screen_shadow = graph.add_resource({
+                .name = "screen_space_shadow",
+                .kind = render_resource_kind::color_texture,
+                .width_scale = config.screen_space_shadow_scale,
+                .height_scale = config.screen_space_shadow_scale,
+                .format = render_format::r8_unorm
+            });
+            filtered_screen_shadow = graph.add_resource({
+                .name = "screen_space_shadow_filtered",
+                .kind = render_resource_kind::color_texture,
+                .width_scale = config.screen_space_shadow_scale,
+                .height_scale = config.screen_space_shadow_scale,
+                .format = render_format::r8_unorm
+            });
+            graph.add_pass({
+                .name = "depth pyramid",
+                .queue = render_queue_type::compute,
+                .kind = render_pass_kind::custom,
+                .builtin = builtin_render_pass::depth_pyramid,
+                .reads = { { .handle = depth, .kind = render_resource_kind::depth_texture,
+                    .usage = render_resource_usage::sampled } },
+                .writes = { { .handle = depth_pyramid, .kind = render_resource_kind::color_texture,
+                    .usage = render_resource_usage::storage, .write = true } }
+            });
+            graph.add_pass({
+                .name = "screen space shadows",
+                .queue = render_queue_type::compute,
+                .kind = render_pass_kind::custom,
+                .builtin = builtin_render_pass::screen_space_shadow,
+                .reads = {
+                    { .handle = depth_pyramid, .kind = render_resource_kind::color_texture,
+                        .usage = render_resource_usage::sampled },
+                    { .handle = normal, .kind = render_resource_kind::color_texture,
+                        .usage = render_resource_usage::sampled }
+                },
+                .writes = { { .handle = screen_shadow, .kind = render_resource_kind::color_texture,
+                    .usage = render_resource_usage::storage, .write = true } }
+            });
+            graph.add_pass({
+                .name = "screen space shadow filter",
+                .queue = render_queue_type::compute,
+                .kind = render_pass_kind::custom,
+                .builtin = builtin_render_pass::screen_space_shadow_filter,
+                .reads = {
+                    { .handle = screen_shadow, .kind = render_resource_kind::color_texture,
+                        .usage = render_resource_usage::sampled },
+                    { .handle = depth_pyramid, .kind = render_resource_kind::color_texture,
+                        .usage = render_resource_usage::sampled },
+                    { .handle = normal, .kind = render_resource_kind::color_texture,
+                        .usage = render_resource_usage::sampled }
+                },
+                .writes = { { .handle = filtered_screen_shadow, .kind = render_resource_kind::color_texture,
+                    .usage = render_resource_usage::storage, .write = true } }
+            });
+        }
+
         std::vector<render_resource_access> lighting_reads{
             { .handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
             { .handle = albedo, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
@@ -529,8 +641,14 @@ render_graph make_scene_draw_graph(
             { .handle = material, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .handle = emissive, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
             { .handle = motion, .kind = render_resource_kind::color_texture, .usage = render_resource_usage::sampled },
-            { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+            { .handle = directional_static_shadows, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .handle = directional_dynamic_shadows, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+            { .handle = local_shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
         };
+        if (filtered_screen_shadow.valid())
+            lighting_reads.push_back({ .handle = filtered_screen_shadow,
+                .kind = render_resource_kind::color_texture,
+                .usage = render_resource_usage::sampled });
         if (object_id.valid())
             lighting_reads.push_back({ .handle = object_id, .kind = render_resource_kind::color_texture,
                 .usage = render_resource_usage::sampled });
@@ -557,7 +675,9 @@ render_graph make_scene_draw_graph(
 
     std::vector<render_resource_access> transparent_reads{
         { .handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::depth_attachment },
-        { .handle = shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
+        { .handle = directional_static_shadows, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+        { .handle = directional_dynamic_shadows, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled },
+        { .handle = local_shadow_atlas, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled }
     };
     if (cloud_shadow.valid())
         transparent_reads.push_back({ .handle = cloud_shadow, .kind = render_resource_kind::color_texture,

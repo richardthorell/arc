@@ -144,6 +144,10 @@ struct mesh_renderer_component
     render::mesh_handle mesh{};
     render::material_handle material{};
     bool visible{ true };
+    bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
@@ -155,6 +159,10 @@ struct virtual_mesh_renderer_component
     render::virtual_mesh_handle mesh{};
     render::material_handle material{};
     bool visible{ true };
+    bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
 };
 
@@ -168,6 +176,10 @@ struct skinned_mesh_renderer_component
     render::buffer_handle skin_matrices{};
     std::uint32_t joint_count{};
     bool visible{ true };
+    bool casts_shadows{ true };
+    bool receives_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
 };
 
 /**
@@ -208,6 +220,12 @@ struct render_layer_component
     std::uint32_t mask{ 1u };
 };
 
+/** @brief Expected runtime mobility used by shadow caching and editor tools. */
+struct mobility_component
+{
+    render::render_mobility value{ render::render_mobility::movable };
+};
+
 /**
  * @brief Directional light. Direction is the owning transform's local -Z axis.
  */
@@ -222,6 +240,7 @@ struct directional_light_component
     render::light_intensity_unit intensity_unit{ render::light_intensity_unit::lux };
     render::texture_handle cookie_texture{};
     render::shadow_settings shadow{};
+    render::directional_shadow_settings cascades{};
 };
 
 /**
@@ -487,6 +506,9 @@ struct terrain_component
     math::vector3f base_color{ 1.0f, 1.0f, 1.0f };
     render::material_handle material{};
     bool receive_shadows{ true };
+    bool cast_shadows{ true };
+    float shadow_lod_bias{};
+    float maximum_shadow_distance{};
     std::vector<float> heights;
     std::vector<std::array<std::uint8_t, 4>> layer_weights;
     std::vector<render::mesh_handle> chunk_meshes;
@@ -518,6 +540,9 @@ struct vegetation_component
     math::vector3f color{ 0.22f, 0.46f, 0.18f };
     float wind_strength{ 0.25f };
     float wind_speed{ 0.8f };
+    bool cast_shadows{ true };
+    float shadow_lod_bias{ 1.0f };
+    float maximum_shadow_distance{ 120.0f };
 };
 
 /**

@@ -42,10 +42,14 @@ resolved_render_config resolve_render_config(
             ? "auto-selected low quality for an integrated or memory-constrained adapter"
             : "auto-selected standard quality");
     }
-    else if (config.quality == render_quality_tier::high)
+    else if (config.quality == render_quality_tier::high &&
+        ((capabilities.memory_budget != 0 && capabilities.memory_budget < 6ull * gibibyte) ||
+         (capabilities.memory_budget == 0 && capabilities.dedicated_video_memory != 0 &&
+          capabilities.dedicated_video_memory < 6ull * gibibyte)))
     {
         result.quality = render_quality_tier::medium;
-        result.fallback_reasons.push_back("high quality currently resolves to the standard renderer");
+        result.fallback_reasons.push_back(
+            "high shadow quality requires at least 6 GiB of available GPU memory; using standard limits");
     }
     else
     {
@@ -63,6 +67,13 @@ resolved_render_config resolve_render_config(
     result.max_spot_lights = profile.max_spot_lights;
     result.directional_shadow_cascades = profile.directional_shadow_cascades;
     result.directional_shadow_resolution = profile.directional_shadow_resolution;
+    result.directional_shadow_distance = profile.directional_shadow_distance;
+    result.local_shadow_atlas_resolution = profile.local_shadow_atlas_resolution;
+    result.max_shadowed_point_lights = profile.max_shadowed_point_lights;
+    result.max_shadowed_spot_lights = profile.max_shadowed_spot_lights;
+    result.max_local_shadow_resolution = profile.max_local_shadow_resolution;
+    result.screen_space_shadows = profile.screen_space_shadows;
+    result.screen_space_shadow_scale = profile.screen_space_shadow_scale;
     const bool optional_features = !config.force_disable_optional_features;
     result.features = {
         .dynamic_rendering = optional_features && capabilities.dynamic_rendering,

@@ -20,6 +20,9 @@ inline constexpr std::uint32_t max_directional_lights = 4;
 inline constexpr std::uint32_t max_point_lights = 64;
 inline constexpr std::uint32_t max_spot_lights = 64;
 inline constexpr std::uint32_t max_area_lights = 32;
+inline constexpr std::uint32_t max_local_shadow_lights = 24;
+inline constexpr std::uint32_t max_local_shadow_faces =
+    max_local_shadow_lights * point_shadow_face_count;
 inline constexpr std::uint32_t directional_shadow_cascade_count = 4;
 
 /**
@@ -92,6 +95,8 @@ struct point_light_data
 {
     math::vector4f position_range{ 0.0f, 0.0f, 0.0f, 1.0f };
     math::vector4f color_intensity{ 1.0f, 1.0f, 1.0f, 0.0f };
+    math::vector4f object_id_shadow{ 0.0f, 0.0f, -1.0f, 0.0f };
+    math::vector4f shadow_parameters{ -1.0f, 0.0f, 0.0f, 0.0f };
 };
 
 /**
@@ -103,6 +108,16 @@ struct spot_light_data
     math::vector4f direction_inner_angle{ 0.0f, -1.0f, 0.0f, 0.35f };
     math::vector4f color_intensity{ 1.0f, 1.0f, 1.0f, 0.0f };
     math::vector4f params{ 0.75f, 0.0f, 0.0f, 0.0f };
+    math::vector4f object_id_shadow{ 0.0f, 0.0f, -1.0f, 0.0f };
+    math::vector4f shadow_parameters{ -1.0f, 0.0f, 0.0f, 0.0f };
+};
+
+/** @brief One point face or spotlight projection packed for local-shadow sampling. */
+struct local_shadow_face_data
+{
+    math::matrix4f light_view_projection{ math::identity<float, 4>() };
+    math::vector4f atlas_rect{};
+    math::vector4f parameters{};
 };
 
 /**
@@ -126,6 +141,7 @@ struct scene_lighting_data
     std::array<point_light_data, max_point_lights> point_lights{};
     std::array<spot_light_data, max_spot_lights> spot_lights{};
     std::array<area_light_data, max_area_lights> area_lights{};
+    std::array<local_shadow_face_data, max_local_shadow_faces> local_shadow_faces{};
     math::vector4f ambient_color_intensity{ 0.12f, 0.12f, 0.12f, 1.0f };
     std::uint32_t directional_count{};
     std::uint32_t point_count{};
@@ -135,6 +151,8 @@ struct scene_lighting_data
     std::uint32_t skipped_point_count{};
     std::uint32_t skipped_spot_count{};
     std::uint32_t skipped_area_count{};
+    std::uint32_t local_shadow_face_count{};
+    std::uint32_t local_shadow_padding[3]{};
 };
 
 /**

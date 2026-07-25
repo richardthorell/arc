@@ -80,7 +80,11 @@
         { "name": "mesh", "id": "0000000000000001", "kind": "asset" },
         { "name": "material", "id": "0000000000000002", "kind": "asset" },
         { "name": "visible", "id": "0000000000000003", "kind": "bool" },
-        { "name": "base_color_tint", "id": "0000000000000004", "kind": "vector4" }
+        { "name": "base_color_tint", "id": "0000000000000004", "kind": "vector4" },
+        { "name": "casts_shadows", "id": "0000000000000005", "kind": "bool", "display": "Cast Shadows" },
+        { "name": "receives_shadows", "id": "0000000000000006", "kind": "bool", "display": "Receive Shadows" },
+        { "name": "shadow_lod_bias", "id": "0000000000000007", "kind": "float", "display": "Shadow LOD Bias" },
+        { "name": "maximum_shadow_distance", "id": "0000000000000008", "kind": "float", "display": "Maximum Shadow Distance" }
       ]
     },
     { "type": "virtual_mesh_renderer_component", "id": "a7c00000000000010000000000000009", "display": "Virtual Mesh Renderer", "customSerialization": true },
@@ -93,6 +97,14 @@
       "display": "Render Layer",
       "fields": [
         { "name": "mask", "id": "0000000000000001", "kind": "uint" }
+      ]
+    },
+    {
+      "type": "mobility_component",
+      "id": "a7c0000000000001000000000000001e",
+      "display": "Mobility",
+      "fields": [
+        { "name": "value", "id": "0000000000000001", "kind": "enum", "display": "Mobility" }
       ]
     },
     { "type": "directional_light_component", "id": "a7c0000000000001000000000000000e", "display": "Directional Light", "customSerialization": true },

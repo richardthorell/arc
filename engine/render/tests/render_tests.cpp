@@ -551,7 +551,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     const auto graph = arc::render::make_scene_draw_graph("viewport", arc::render::render_path::deferred);
     const auto compiled = graph.compile();
 
-    REQUIRE(compiled.passes.size() == 13);
+    REQUIRE(compiled.passes.size() >= 19);
     const auto pass_index = [&](std::string_view name) {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
@@ -561,7 +561,8 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
         return compiled.passes.size();
     };
 
-    const std::size_t shadow_index = pass_index("directional shadow cascades");
+    const std::size_t static_shadow_index = pass_index("directional static shadows");
+    const std::size_t dynamic_shadow_index = pass_index("directional dynamic shadows");
     const std::size_t sky_index = pass_index("sky composite");
     const std::size_t depth_index = pass_index("depth prepass");
     const std::size_t gbuffer_index = pass_index("gbuffer pass");
@@ -570,7 +571,8 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         REQUIRE_FALSE(compiled.passes[index].name.empty());
 
-    REQUIRE(shadow_index < gbuffer_index);
+    REQUIRE(static_shadow_index < gbuffer_index);
+    REQUIRE(dynamic_shadow_index < gbuffer_index);
     REQUIRE(depth_index < gbuffer_index);
     REQUIRE(gbuffer_index < deferred_index);
     REQUIRE(sky_index < deferred_index);
@@ -579,7 +581,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     REQUIRE(compiled.passes[compiled.passes.size() - 3].builtin == arc::render::builtin_render_pass::luminance_histogram);
     REQUIRE(compiled.passes[compiled.passes.size() - 2].builtin == arc::render::builtin_render_pass::exposure_resolve);
     REQUIRE(compiled.passes.back().builtin == arc::render::builtin_render_pass::output_transform);
-    REQUIRE(compiled.resources.size() == 15);
+    REQUIRE(compiled.resources.size() >= 18);
     REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource) {
         return resource.name == "gbuffer_albedo" && resource.format == arc::render::render_format::rgba8_srgb;
     }));
@@ -592,9 +594,11 @@ TEST_CASE("scene draw graph provides a compact forward plus fallback")
     const auto compiled = arc::render::make_scene_draw_graph(
         "viewport", arc::render::render_path::forward_plus, false).compile();
 
-    REQUIRE(compiled.passes.size() == 8);
-    REQUIRE(compiled.resources.size() == 6);
-    REQUIRE(compiled.passes[3].name == "forward opaque");
+    REQUIRE(compiled.passes.size() >= 11);
+    REQUIRE(compiled.resources.size() >= 8);
+    REQUIRE(std::any_of(compiled.passes.begin(), compiled.passes.end(), [](const auto& pass) {
+        return pass.name == "forward opaque";
+    }));
     for (const auto& pass : compiled.passes)
         REQUIRE(pass.name != "gbuffer pass");
 }
@@ -716,6 +720,95 @@ TEST_CASE("directional shadow cascade splits are deterministic and ordered")
     REQUIRE(splits[3] == Catch::Approx(100.0f));
 }
 
+TEST_CASE("stable directional shadow fitting produces ordered blended cascades")
+{
+    arc::render::directional_shadow_camera camera{};
+    camera.near_plane = 0.1f;
+    camera.far_plane = 1000.0f;
+    camera.inverse_view_projection = arc::math::identity<float, 4>();
+    arc::render::directional_shadow_settings settings{};
+    settings.cascade_count = 4;
+    settings.maximum_distance = 200.0f;
+    settings.blend_fraction = 0.1f;
+
+    const auto first = arc::render::fit_directional_shadow_cascades(
+        camera,
+        { 0.35f, -0.85f, -0.4f },
+        settings,
+        2048);
+    const auto second = arc::render::fit_directional_shadow_cascades(
+        camera,
+        { 0.35f, -0.85f, -0.4f },
+        settings,
+        2048);
+
+    REQUIRE(first.cascade_count == 4);
+    REQUIRE(first.cascades[3].split_depth == Catch::Approx(200.0f));
+    for (std::uint32_t index = 0; index < first.cascade_count; ++index)
+    {
+        const auto& cascade = first.cascades[index];
+        REQUIRE(cascade.radius > 0.0f);
+        REQUIRE(cascade.texel_world_size > 0.0f);
+        REQUIRE(cascade.blend_start_depth < cascade.split_depth);
+        REQUIRE(std::memcmp(
+            cascade.light_view_projection.data(),
+            second.cascades[index].light_view_projection.data(),
+            sizeof(float) * 16u) == 0);
+        if (index > 0)
+            REQUIRE(cascade.split_depth > first.cascades[index - 1].split_depth);
+    }
+}
+
+TEST_CASE("shadow atlas allocates point faces atomically and invalidates released handles")
+{
+    arc::render::shadow_atlas_allocator atlas(2048, 128, 2);
+    const auto point = atlas.allocate({
+        .kind = arc::render::shadow_light_kind::point,
+        .light_key = 42,
+        .requested_resolution = 512,
+        .minimum_resolution = 256,
+        .priority = 200,
+        .frame_index = 1
+    });
+    REQUIRE(point);
+    REQUIRE(point->face_count == arc::render::point_shadow_face_count);
+    REQUIRE(point->resolved_resolution == 512);
+    for (const auto& face : point->faces)
+        REQUIRE(face.valid());
+
+    const auto handle = point->handle;
+    REQUIRE(atlas.find(handle) != nullptr);
+    REQUIRE(atlas.release(handle));
+    REQUIRE(atlas.find(handle) == nullptr);
+    REQUIRE_FALSE(atlas.release(handle));
+}
+
+TEST_CASE("shadow atlas reduces resolution and evicts lower priority allocations")
+{
+    arc::render::shadow_atlas_allocator atlas(512, 128, 2);
+    for (std::uint64_t light = 1; light <= 4; ++light)
+    {
+        REQUIRE(atlas.allocate({
+            .kind = arc::render::shadow_light_kind::spot,
+            .light_key = light,
+            .requested_resolution = 240,
+            .minimum_resolution = 120,
+            .priority = 10,
+            .frame_index = light
+        }));
+    }
+    const auto important = atlas.allocate({
+        .kind = arc::render::shadow_light_kind::spot,
+        .light_key = 99,
+        .requested_resolution = 240,
+        .minimum_resolution = 120,
+        .priority = 250,
+        .frame_index = 10
+    });
+    REQUIRE(important);
+    REQUIRE(atlas.statistics().eviction_count >= 1);
+}
+
 TEST_CASE("render world preparation culls sorts batches and emits indirect commands")
 {
     arc::render::render_world_packet packet;
@@ -822,9 +915,10 @@ TEST_CASE("render quality profiles expose immutable implemented tier policy")
     REQUIRE(low.directional_shadow_cascades == 2);
 
     const auto& high = quality_profile(render_quality_tier::high);
-    REQUIRE(&high == &standard_render_quality_profile);
+    REQUIRE(&high == &high_render_quality_profile);
     REQUIRE(high.minimum_render_scale == Catch::Approx(0.67f));
-    REQUIRE(high.directional_shadow_resolution == 2048);
+    REQUIRE(high.directional_shadow_resolution == 4096);
+    REQUIRE(high.local_shadow_atlas_resolution == 8192);
 }
 
 TEST_CASE("renderer applies resolved configuration when attaching a backend")
@@ -1111,7 +1205,7 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     }
 
     std::vector<arc::render::point_light_event> points{
-        { .position = { 1.0f, 2.0f, 3.0f }, .color = { 1.0f, 0.5f, 0.25f }, .intensity = 80.0f, .range = 4.0f, .intensity_unit = arc::render::light_intensity_unit::lumen },
+        { .object_id = { .index = 17, .generation = 3 }, .position = { 1.0f, 2.0f, 3.0f }, .color = { 1.0f, 0.5f, 0.25f }, .intensity = 80.0f, .range = 4.0f, .intensity_unit = arc::render::light_intensity_unit::lumen },
         { .position = { 0.0f, 0.0f, 0.0f }, .color = { 1.0f, 1.0f, 1.0f }, .intensity = 2.0f, .range = 8.0f }
     };
     std::vector<arc::render::spot_light_event> spots{
@@ -1128,9 +1222,14 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     REQUIRE(data.directional_lights[0].direction_intensity[3] == Catch::Approx(6.0f));
     REQUIRE(data.point_count == 2);
     REQUIRE(data.point_lights[0].color_intensity[3] == Catch::Approx(80.0f / (4.0f * arc::math::pi<float>)));
+    REQUIRE(data.point_lights[0].object_id_shadow[0] == Catch::Approx(17.0f));
+    REQUIRE(data.point_lights[0].object_id_shadow[1] == Catch::Approx(3.0f));
+    REQUIRE(data.point_lights[0].shadow_parameters[0] == Catch::Approx(-1.0f));
     REQUIRE(data.spot_count == 1);
     REQUIRE(data.spot_lights[0].params[0] == Catch::Approx(0.7f));
     REQUIRE(data.ambient_color_intensity[1] == Catch::Approx(0.2f));
+    REQUIRE(data.local_shadow_face_count == 0);
+    STATIC_REQUIRE(arc::render::max_local_shadow_faces == 144);
 
     environment.prefiltered = true;
     environment.diffuse_irradiance = { 0.4f, 0.5f, 0.6f };

@@ -17,5 +17,6 @@
 #include <arc/render/renderer.h>
 #include <arc/render/resources.h>
 #include <arc/render/shader.h>
+#include <arc/render/shadow.h>
 #include <arc/render/texture.h>
 #include <arc/render/virtual_mesh.h>
