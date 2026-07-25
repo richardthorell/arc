@@ -4,6 +4,9 @@
 #ifndef ARC_LIGHT_BUFFER_BINDING
 #define ARC_LIGHT_BUFFER_BINDING 15
 #endif
+#ifndef ARC_LOCAL_SHADOW_BINDING
+#define ARC_LOCAL_SHADOW_BINDING 17
+#endif
 
 struct directional_light_data
 {
@@ -15,6 +18,8 @@ struct point_light_data
 {
     vec4 position_range;
     vec4 color_intensity;
+    vec4 object_id_shadow;
+    vec4 shadow_parameters;
 };
 
 struct spot_light_data
@@ -23,6 +28,15 @@ struct spot_light_data
     vec4 direction_inner_angle;
     vec4 color_intensity;
     vec4 params;
+    vec4 object_id_shadow;
+    vec4 shadow_parameters;
+};
+
+struct local_shadow_face_data
+{
+    mat4 light_view_projection;
+    vec4 atlas_rect;
+    vec4 parameters;
 };
 
 struct area_light_data
@@ -40,6 +54,7 @@ layout(std430, set = 0, binding = ARC_LIGHT_BUFFER_BINDING) readonly buffer scen
     point_light_data point_lights[64];
     spot_light_data spot_lights[64];
     area_light_data area_lights[32];
+    local_shadow_face_data local_shadow_faces[144];
     vec4 ambient_color_intensity;
     uint directional_count;
     uint point_count;
@@ -49,7 +64,67 @@ layout(std430, set = 0, binding = ARC_LIGHT_BUFFER_BINDING) readonly buffer scen
     uint skipped_point_count;
     uint skipped_spot_count;
     uint skipped_area_count;
+    uint local_shadow_face_count;
+    uint local_shadow_padding0;
+    uint local_shadow_padding1;
+    uint local_shadow_padding2;
 } lights;
+
+layout(set = 0, binding = ARC_LOCAL_SHADOW_BINDING) uniform sampler2DShadow arc_local_shadow_atlas;
+
+float arc_sample_local_shadow_face(uint face_index, vec3 world_position)
+{
+    if (face_index >= min(lights.local_shadow_face_count, 144u))
+        return 1.0;
+    local_shadow_face_data face = lights.local_shadow_faces[face_index];
+    vec4 clip = face.light_view_projection * vec4(world_position, 1.0);
+    if (clip.w <= 0.0)
+        return 1.0;
+    vec3 projected = clip.xyz / clip.w;
+    vec2 uv = projected.xy * 0.5 + 0.5;
+    if (projected.z <= 0.0 || projected.z >= 1.0 ||
+        any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))))
+        return 1.0;
+    vec2 atlas_uv = face.atlas_rect.xy + uv * face.atlas_rect.zw;
+    float comparison = projected.z - face.parameters.y;
+    float texel = face.parameters.x;
+    float visibility = 0.0;
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
+            visibility += texture(
+                arc_local_shadow_atlas,
+                vec3(atlas_uv + vec2(x, y) * texel, comparison));
+    return visibility / 9.0;
+}
+
+uint arc_point_shadow_face(vec3 direction)
+{
+    vec3 absolute_direction = abs(direction);
+    if (absolute_direction.x >= absolute_direction.y && absolute_direction.x >= absolute_direction.z)
+        return direction.x >= 0.0 ? 0u : 1u;
+    if (absolute_direction.y >= absolute_direction.z)
+        return direction.y >= 0.0 ? 2u : 3u;
+    return direction.z >= 0.0 ? 4u : 5u;
+}
+
+float arc_point_shadow_visibility(point_light_data light, vec3 world_position)
+{
+    int first_face = int(light.shadow_parameters.x + 0.5);
+    if (first_face < 0 || light.shadow_parameters.y < 5.5)
+        return 1.0;
+    uint face = arc_point_shadow_face(world_position - light.position_range.xyz);
+    float sampled = arc_sample_local_shadow_face(uint(first_face) + face, world_position);
+    return mix(1.0, sampled, clamp(light.shadow_parameters.z, 0.0, 1.0));
+}
+
+float arc_spot_shadow_visibility(spot_light_data light, vec3 world_position)
+{
+    int face = int(light.shadow_parameters.x + 0.5);
+    if (face < 0)
+        return 1.0;
+    float sampled = arc_sample_local_shadow_face(uint(face), world_position);
+    return mix(1.0, sampled, clamp(light.shadow_parameters.z, 0.0, 1.0));
+}
 
 vec3 arc_evaluate_surface_light(
     arc_surface_data surface,
@@ -93,7 +168,11 @@ vec3 arc_evaluate_scene_lights(
         vec3 radiance = lights.point_lights[index].color_intensity.rgb *
             lights.point_lights[index].color_intensity.w * cutoff * cutoff / distance_squared;
         direct += arc_evaluate_surface_light(
-            surface, view_direction, to_light / distance_to_light, radiance, 1.0);
+            surface,
+            view_direction,
+            to_light / distance_to_light,
+            radiance,
+            arc_point_shadow_visibility(lights.point_lights[index], world_position));
     }
     for (uint index = 0u; index < min(lights.spot_count, 64u); ++index)
     {
@@ -111,7 +190,11 @@ vec3 arc_evaluate_scene_lights(
         vec3 radiance = lights.spot_lights[index].color_intensity.rgb *
             lights.spot_lights[index].color_intensity.w * cutoff * cutoff * cone / distance_squared;
         direct += arc_evaluate_surface_light(
-            surface, view_direction, direction_to_light, radiance, 1.0);
+            surface,
+            view_direction,
+            direction_to_light,
+            radiance,
+            arc_spot_shadow_visibility(lights.spot_lights[index], world_position));
     }
     for (uint index = 0u; index < min(lights.area_count, 32u); ++index)
     {

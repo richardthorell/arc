@@ -5,6 +5,7 @@
 #include "include/arc_material_parameters.glsl"
 #define ARC_LIGHT_BUFFER_BINDING 15
 #include "include/arc_lighting.glsl"
+#include "include/arc_shadows.glsl"
 
 layout(location = 0) in vec3 in_normal;
 layout(location = 1) in vec3 in_world_position;
@@ -20,7 +21,6 @@ layout(set = 0, binding = 1) uniform sampler2D metallic_roughness_texture;
 layout(set = 0, binding = 2) uniform sampler2D normal_texture;
 layout(set = 0, binding = 3) uniform sampler2D occlusion_texture;
 layout(set = 0, binding = 4) uniform sampler2D emissive_texture;
-layout(set = 0, binding = 5) uniform sampler2DArrayShadow shadow_map;
 layout(set = 0, binding = 7) uniform sampler2D clear_coat_texture;
 layout(set = 0, binding = 8) uniform sampler2D clear_coat_roughness_texture;
 layout(set = 0, binding = 9) uniform sampler2D clear_coat_normal_texture;
@@ -43,14 +43,6 @@ layout(push_constant) uniform mesh_constants
     vec4 material_params;
 } constants;
 
-layout(set = 0, binding = 6) uniform shadow_data
-{
-    mat4 light_view_projection[4];
-    vec4 cascade_splits;
-    vec4 params;
-    vec4 cascade_texel_size;
-} shadows;
-
 bool has_texture(float flag)
 {
     return mod(floor(constants.light_color.w / flag), 2.0) >= 1.0;
@@ -63,52 +55,13 @@ bool has_advanced_texture(float flag)
 
 float sample_shadow(vec3 world_position)
 {
-    if (shadows.params.x <= 0.0)
-        return 1.0;
-
-    int cascade = 0;
-    vec2 uv = vec2(0.0);
-    float depth = 1.0;
-    bool covered = false;
-    for (int candidate = 0; candidate < 4; ++candidate)
-    {
-        vec4 shadow_position = shadows.light_view_projection[candidate] * vec4(world_position, 1.0);
-        vec3 projected = shadow_position.xyz / shadow_position.w;
-        vec2 candidate_uv = projected.xy * 0.5 + vec2(0.5);
-        if (candidate_uv.x >= 0.0 && candidate_uv.y >= 0.0 &&
-            candidate_uv.x <= 1.0 && candidate_uv.y <= 1.0 &&
-            projected.z >= 0.0 && projected.z <= 1.0)
-        {
-            cascade = candidate;
-            uv = candidate_uv;
-            depth = projected.z;
-            covered = true;
-            break;
-        }
-    }
-    if (!covered)
-        return 1.0;
-
-    int filter_mode = int(shadows.params.w + 0.5);
-    float radius = filter_mode == 2 ? 2.0 : 1.0;
-    if (filter_mode == 0)
-        radius = 0.0;
-    else if (filter_mode == 3)
-        radius = mix(1.5, 4.0, clamp(depth, 0.0, 1.0));
-    float bias = shadows.params.y + shadows.params.z * clamp(1.0 - dot(normalize(in_normal), normalize(-constants.light_direction_intensity.xyz)), 0.0, 1.0);
-    vec2 texel = vec2(1.0 / float(textureSize(shadow_map, 0).x));
-    float visibility = 0.0;
-    float samples = 0.0;
-    for (float y = -radius; y <= radius; y += 1.0)
-    {
-        for (float x = -radius; x <= radius; x += 1.0)
-        {
-            visibility += texture(shadow_map, vec4(uv + vec2(x, y) * texel, float(cascade), depth - bias));
-            samples += 1.0;
-        }
-    }
-    visibility = samples > 0.0 ? visibility / samples : texture(shadow_map, vec4(uv, float(cascade), depth - bias));
-    return mix(1.0 - shadows.params.x, 1.0, visibility);
+    int cascade = -1;
+    return arc_directional_shadow_visibility(
+        world_position,
+        normalize(in_normal),
+        constants.camera_position.xyz,
+        normalize(-constants.light_direction_intensity.xyz),
+        cascade);
 }
 
 vec3 apply_height_fog(vec3 color)

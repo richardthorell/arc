@@ -3,7 +3,11 @@
 
 #include "include/arc_pbr.glsl"
 #define ARC_LIGHT_BUFFER_BINDING 7
+#define ARC_LOCAL_SHADOW_BINDING 11
 #include "include/arc_lighting.glsl"
+#define ARC_SHADOW_TEXTURE_BINDING 9
+#define ARC_SHADOW_DATA_BINDING 10
+#include "include/arc_shadows.glsl"
 
 layout(location = 0) in vec2 in_uv;
 layout(location = 0) out vec4 out_color;
@@ -90,7 +94,15 @@ void main()
     surface.clear_coat_roughness = 0.0;
     surface.anisotropy = 0.0;
 
-    float shadow = clamp(material.z, 0.0, 1.0);
+    int shadow_cascade = -1;
+    float shadow = lights.directional_count > 0u
+        ? arc_directional_shadow_visibility(
+            world_position,
+            surface.normal,
+            constants.camera_position.xyz,
+            normalize(-lights.directional_lights[0].direction_intensity.xyz),
+            shadow_cascade)
+        : 1.0;
     vec3 direct = vec3(0.0);
     for (uint index = 0u; index < min(lights.directional_count, 4u); ++index)
     {
@@ -118,7 +130,7 @@ void main()
             view_direction,
             to_light / distance_to_light,
             light.color_intensity.rgb * light.color_intensity.w * attenuation,
-            1.0);
+            arc_point_shadow_visibility(light, world_position));
     }
     for (uint index = 0u; index < min(lights.spot_count, 64u); ++index)
     {
@@ -141,7 +153,7 @@ void main()
             view_direction,
             direction_to_light,
             light.color_intensity.rgb * light.color_intensity.w * attenuation,
-            1.0);
+            arc_spot_shadow_visibility(light, world_position));
     }
     for (uint index = 0u; index < min(lights.area_count, 32u); ++index)
     {
@@ -232,7 +244,9 @@ void main()
     else if (mode == 11)
         color = vec3(motion * 0.5 + 0.5, 0.0);
     else if (mode == 12)
-        color = vec3(shadow);
+        color = shadow_cascade >= 0
+            ? vec3(shadow, float(shadow_cascade) / 3.0, 1.0 - shadow)
+            : vec3(1.0);
 
     out_color = vec4(color, 1.0);
 }

@@ -20,6 +20,7 @@ $sources = @(
     "exposure_resolve.comp",
     "output_transform.frag",
     "shadow_depth.vert",
+    "shadow_depth.frag",
     "sky_atmosphere.frag",
     "sky_atmosphere.vert",
     "terrain_forward.frag",

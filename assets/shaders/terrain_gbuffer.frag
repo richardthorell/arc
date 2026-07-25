@@ -19,7 +19,6 @@ layout(set = 0, binding = 0) uniform sampler2D grass_texture;
 layout(set = 0, binding = 1) uniform sampler2D dirt_texture;
 layout(set = 0, binding = 2) uniform sampler2D rock_texture;
 layout(set = 0, binding = 3) uniform sampler2D sand_texture;
-layout(set = 0, binding = 5) uniform sampler2DArrayShadow shadow_map;
 layout(set = 0, binding = 7) uniform sampler2D grass_normal_texture;
 layout(set = 0, binding = 8) uniform sampler2D dirt_normal_texture;
 layout(set = 0, binding = 9) uniform sampler2D rock_normal_texture;
@@ -34,9 +33,6 @@ layout(push_constant) uniform mesh_constants {
     vec4 light_color; vec4 camera_position; vec4 visualization; vec4 fog_color_density;
     vec4 fog_params; vec4 material_params;
 } constants;
-layout(set = 0, binding = 6) uniform shadow_data {
-    mat4 light_view_projection[4]; vec4 cascade_splits; vec4 params; vec4 cascade_texel_size;
-} shadows;
 
 bool has_layer(float flag) { return mod(floor(constants.light_color.w / flag), 2.0) >= 1.0; }
 bool has_normal(float flag) { return mod(floor(constants.visualization.y / flag), 2.0) >= 1.0; }
@@ -91,22 +87,6 @@ vec3 layer_normal(int layer, vec3 geometric_normal)
     vec3 bitangent = normalize(cross(tangent, geometric_normal));
     return normalize(mat3(tangent, bitangent, geometric_normal) * mapped);
 }
-float shadow_visibility(vec3 normal)
-{
-    if (shadows.params.x <= 0.0) return 1.0;
-    for (int cascade = 0; cascade < 4; ++cascade) {
-        vec4 p = shadows.light_view_projection[cascade] * vec4(in_world_position, 1.0);
-        vec3 q = p.xyz / p.w; vec2 uv = q.xy * 0.5 + 0.5;
-        if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0))) && q.z >= 0.0 && q.z <= 1.0) {
-            float bias = shadows.params.y + shadows.params.z * (1.0 - max(dot(normal, normalize(-constants.light_direction_intensity.xyz)), 0.0));
-            vec2 texel = vec2(1.0 / float(textureSize(shadow_map, 0).x)); float sum = 0.0;
-            for (int y = -1; y <= 1; ++y) for (int x = -1; x <= 1; ++x)
-                sum += texture(shadow_map, vec4(uv + vec2(x, y) * texel, float(cascade), q.z - bias));
-            return mix(1.0 - shadows.params.x, 1.0, sum / 9.0);
-        }
-    }
-    return 1.0;
-}
 void main()
 {
     vec4 weights = max(in_weights, vec4(0.0)); weights /= max(dot(weights, vec4(1.0)), 0.0001);
@@ -127,7 +107,7 @@ void main()
     vec2 previous_ndc = in_previous_clip_position.xy / max(in_previous_clip_position.w, 0.00001);
     out_albedo = vec4(albedo * constants.base_color.rgb, 1.0);
     out_normal = vec4(normal * 0.5 + 0.5, clamp(ao, 0.0, 1.0));
-    out_material = vec4(0.0, roughness, shadow_visibility(normal), 0.0);
+    out_material = vec4(0.0, roughness, 1.0, 0.0);
     out_emissive = vec4(0.0);
     out_motion = (current_ndc - previous_ndc) * 0.5;
     out_object_id = uint(constants.fog_params.w);

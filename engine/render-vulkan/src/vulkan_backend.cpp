@@ -43,15 +43,18 @@ constexpr std::uint32_t terrain_normal_binding = 7u;
 constexpr std::uint32_t terrain_surface_binding = 11u;
 constexpr std::uint32_t material_light_data_binding = 15u;
 constexpr std::uint32_t material_parameters_binding = 16u;
-constexpr std::uint32_t material_binding_count = 17u;
+constexpr std::uint32_t material_local_shadow_binding = 17u;
+constexpr std::uint32_t material_binding_count = 18u;
 constexpr std::uint32_t material_descriptor_set_capacity = 12288u;
+constexpr std::uint32_t directional_shadow_layer_count = directional_shadow_cascade_count * 2u;
 constexpr VkDeviceSize upload_staging_capacity = 64u * 1024u * 1024u;
-constexpr std::array<std::uint32_t, 14> material_image_bindings{
+constexpr std::array<std::uint32_t, 15> material_image_bindings{
     0u, 1u, 2u, 3u, 4u, material_shadow_binding,
     terrain_normal_binding + 0u, terrain_normal_binding + 1u,
     terrain_normal_binding + 2u, terrain_normal_binding + 3u,
     terrain_surface_binding + 0u, terrain_surface_binding + 1u,
-    terrain_surface_binding + 2u, terrain_surface_binding + 3u
+    terrain_surface_binding + 2u, terrain_surface_binding + 3u,
+    material_local_shadow_binding
 };
 
 void log_vk_result(VkResult result)
@@ -163,6 +166,21 @@ math::matrix4f orthographic_rh_zo(float width, float height, float near_plane, f
     result(1, 1) = 2.0f / height;
     result(2, 2) = 1.0f / (near_plane - far_plane);
     result(2, 3) = near_plane / (near_plane - far_plane);
+    return result;
+}
+
+math::matrix4f perspective_rh_zo(float vertical_fov, float near_plane, float far_plane) noexcept
+{
+    near_plane = std::max(near_plane, 0.001f);
+    far_plane = std::max(far_plane, near_plane + 0.001f);
+    const float tangent = std::tan(std::clamp(vertical_fov, 0.01f, math::pi<float> - 0.01f) * 0.5f);
+    const float focal = 1.0f / std::max(tangent, 0.001f);
+    math::matrix4f result{};
+    result(0, 0) = focal;
+    result(1, 1) = focal;
+    result(2, 2) = far_plane / (near_plane - far_plane);
+    result(2, 3) = (far_plane * near_plane) / (near_plane - far_plane);
+    result(3, 2) = -1.0f;
     return result;
 }
 
@@ -294,6 +312,8 @@ struct shadow_uniform_data
     float cascade_splits[4]{};
     float params[4]{};
     float cascade_texel_size[4]{};
+    float cascade_blend_starts[4]{};
+    float configuration[4]{};
 };
 
 struct gpu_scope_record
@@ -348,6 +368,7 @@ public:
             vkDeviceWaitIdle(device_);
         destroy_mesh_pipeline();
         destroy_shadow_resources();
+        destroy_local_shadow_resources();
         destroy_white_texture();
         destroy_buffer(pick_readback_buffer_);
         deferred_releases_.collect(std::numeric_limits<std::uint64_t>::max());
@@ -382,7 +403,18 @@ public:
     void configure(const resolved_render_config& config) override
     {
         const float previous_scale = resolved_config_.render_scale;
+        const std::uint32_t previous_local_shadow_atlas =
+            resolved_config_.local_shadow_atlas_resolution;
         resolved_config_ = config;
+        if (!local_shadow_allocator_ ||
+            previous_local_shadow_atlas != config.local_shadow_atlas_resolution)
+        {
+            local_shadow_allocator_ = std::make_unique<shadow_atlas_allocator>(
+                config.local_shadow_atlas_resolution,
+                128u,
+                2u);
+            local_shadow_static_signatures_.clear();
+        }
         if (config.features.timeline_semaphores && upload_timeline_ == VK_NULL_HANDLE)
         {
             VkSemaphoreTypeCreateInfo timeline_type{};
@@ -444,6 +476,7 @@ public:
         frame_draws_.clear();
         frame_virtual_draws_.clear();
         frame_shadow_draws_.clear();
+        frame_virtual_shadow_draws_.clear();
         frame_directional_lights_.clear();
         frame_point_lights_.clear();
         frame_spot_lights_.clear();
@@ -454,15 +487,27 @@ public:
         for (const auto& event : packet.events)
         {
             if (const auto* upload = std::get_if<mesh_upload_event>(&event.payload))
+            {
                 upload_mesh(*upload);
+                ++shadow_resource_revision_;
+            }
             else if (const auto* destroy = std::get_if<mesh_destroy_event>(&event.payload))
+            {
                 retire_mesh(destroy->handle);
+                ++shadow_resource_revision_;
+            }
             else if (const auto* upload = std::get_if<virtual_mesh_upload_event>(&event.payload))
+            {
                 upload_virtual_mesh(*upload);
+                ++shadow_resource_revision_;
+            }
             else if (const auto* texture = std::get_if<texture_upload_event>(&event.payload))
                 upload_texture(*texture);
             else if (const auto* material = std::get_if<material_upload_event>(&event.payload))
+            {
                 upload_material(*material);
+                ++shadow_resource_revision_;
+            }
             else if (const auto* environment = std::get_if<environment_upload_event>(&event.payload))
                 upload_environment(*environment);
             else if (const auto* environment = std::get_if<environment_destroy_event>(&event.payload))
@@ -570,6 +615,7 @@ public:
         }
         update_environment_profile(lighting_environment);
         last_profile_.clustered_lights = make_clustered_light_profile();
+        update_shadow_profile(packet.frame_index);
         update_light_buffer();
         warn_about_skipped_lights(frame_lighting_);
 
@@ -785,9 +831,30 @@ public:
         for (const auto& marker : pending_debug_markers_)
             insert_debug_label(frame->CommandBuffer, marker, { 0.25f, 0.75f, 1.0f, 1.0f });
 
-        const auto shadow_scope = begin_gpu_scope(frame->CommandBuffer, "directional shadow cascades");
-        render_shadow_maps(frame->CommandBuffer);
-        end_gpu_scope(frame->CommandBuffer, shadow_scope);
+        if (graph_selects_any_directional_shadow_pass())
+        {
+            const auto shadow_scope = begin_gpu_scope(
+                frame->CommandBuffer,
+                graph_pass_name(
+                    builtin_render_pass::directional_shadow_dynamic,
+                    "directional shadow cascades"));
+            render_shadow_maps(frame->CommandBuffer);
+            end_gpu_scope(frame->CommandBuffer, shadow_scope);
+        }
+        if (!active_local_shadows_.empty() &&
+            (graph_selects(builtin_render_pass::point_shadow) ||
+                graph_selects(builtin_render_pass::spot_shadow)))
+        {
+            const auto local_shadow_scope = begin_gpu_scope(
+                frame->CommandBuffer,
+                "local shadow atlas");
+            render_local_shadow_maps(frame->CommandBuffer);
+            end_gpu_scope(frame->CommandBuffer, local_shadow_scope);
+        }
+        else
+            transition_local_shadow_atlas(
+                frame->CommandBuffer,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 
         const auto viewport_scope = begin_gpu_scope(
             frame->CommandBuffer,
@@ -1009,9 +1076,30 @@ public:
         begin_debug_label(frame->CommandBuffer, "ARC native viewport frame", { 0.16f, 0.45f, 1.0f, 1.0f });
         reset_timestamp_queries(frame->CommandBuffer);
 
-        const auto shadow_scope = begin_gpu_scope(frame->CommandBuffer, "directional shadow cascades");
-        render_shadow_maps(frame->CommandBuffer);
-        end_gpu_scope(frame->CommandBuffer, shadow_scope);
+        if (graph_selects_any_directional_shadow_pass())
+        {
+            const auto shadow_scope = begin_gpu_scope(
+                frame->CommandBuffer,
+                graph_pass_name(
+                    builtin_render_pass::directional_shadow_dynamic,
+                    "directional shadow cascades"));
+            render_shadow_maps(frame->CommandBuffer);
+            end_gpu_scope(frame->CommandBuffer, shadow_scope);
+        }
+        if (!active_local_shadows_.empty() &&
+            (graph_selects(builtin_render_pass::point_shadow) ||
+                graph_selects(builtin_render_pass::spot_shadow)))
+        {
+            const auto local_shadow_scope = begin_gpu_scope(
+                frame->CommandBuffer,
+                "local shadow atlas");
+            render_local_shadow_maps(frame->CommandBuffer);
+            end_gpu_scope(frame->CommandBuffer, local_shadow_scope);
+        }
+        else
+            transition_local_shadow_atlas(
+                frame->CommandBuffer,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 
         const auto viewport_scope = begin_gpu_scope(
             frame->CommandBuffer,
@@ -1292,16 +1380,41 @@ private:
         VkImage image{};
         VmaAllocation allocation{};
         VkImageView array_view{};
-        std::array<VkImageView, directional_shadow_cascade_count> cascade_views{};
+        std::array<VkImageView, directional_shadow_layer_count> cascade_views{};
         VkSampler sampler{};
         VkImageLayout layout{ VK_IMAGE_LAYOUT_UNDEFINED };
         std::uint32_t resolution{};
+    };
+
+    struct vulkan_local_shadow_atlas
+    {
+        VkImage image{};
+        VmaAllocation allocation{};
+        VkImageView view{};
+        VkSampler sampler{};
+        VkImageLayout layout{ VK_IMAGE_LAYOUT_UNDEFINED };
+        std::uint32_t resolution{};
+    };
+
+    struct active_local_shadow
+    {
+        shadow_light_kind kind{ shadow_light_kind::spot };
+        shadow_atlas_allocation allocation{};
+        math::vector3f position{};
+        math::vector3f direction{ 0.0f, -1.0f, 0.0f };
+        float range{ 1.0f };
+        float outer_angle{ math::pi<float> * 0.25f };
+        shadow_settings settings{};
+        render_mobility mobility{ render_mobility::movable };
+        bool redraw{ true };
     };
 
     struct vulkan_shadow_cache
     {
         directional_shadow_cache_key last_directional_key{};
         bool has_directional_key{};
+        std::uint64_t static_signature{};
+        bool static_layers_valid{};
     };
 
     struct object_pick_readback
@@ -1341,10 +1454,16 @@ private:
                 .previous_model = item.previous_model,
                 .view_projection = packet.camera.view_projection,
                 .previous_view_projection = packet.camera.previous_view_projection,
+                .world_bounds = item.world_bounds,
                 .mode = packet.mode,
                 .visualization = packet.visualization,
                 .object_id = item.object_id,
                 .selected = selected_for_overlay,
+                .casts_shadows = item.casts_shadows,
+                .receives_shadows = item.receives_shadows,
+                .mobility = item.mobility,
+                .shadow_lod_bias = item.shadow_lod_bias,
+                .maximum_shadow_distance = item.maximum_shadow_distance,
                 .base_color_tint = item.base_color_tint,
                 .wire_color = math::vector4f{ 0.28f, 0.62f, 1.0f, 1.0f },
                 .label = item.label
@@ -1369,10 +1488,16 @@ private:
                     .previous_model = item.previous_model,
                     .view_projection = packet.camera.view_projection,
                     .previous_view_projection = packet.camera.previous_view_projection,
+                    .world_bounds = item.world_bounds,
                     .mode = packet.mode,
                     .visualization = visualization,
                     .object_id = item.object_id,
                     .selected = selected_for_overlay,
+                    .casts_shadows = item.casts_shadows,
+                    .receives_shadows = item.receives_shadows,
+                    .mobility = item.mobility,
+                    .shadow_lod_bias = item.shadow_lod_bias,
+                    .maximum_shadow_distance = item.maximum_shadow_distance,
                     .base_color_tint = tint,
                     .wire_color = math::vector4f{ 0.28f, 0.62f, 1.0f, 1.0f },
                     .label = item.label
@@ -1426,6 +1551,12 @@ private:
             if (!item.visible || !item.casts_shadows || !item.mesh.valid())
                 continue;
             frame_shadow_draws_.push_back(make_draw(item, item.selected));
+        }
+        for (const auto& item : packet.virtual_items)
+        {
+            if (!item.visible || !item.casts_shadows || !item.mesh.valid())
+                continue;
+            frame_virtual_shadow_draws_.push_back(make_virtual_draw(item, item.selected));
         }
 
         if (!frame_camera_valid_ ||
@@ -1703,6 +1834,325 @@ private:
         profile.overflow_count = frame_lighting_.skipped_point_count + frame_lighting_.skipped_spot_count;
         profile.available = true;
         return profile;
+    }
+
+    static std::uint64_t light_shadow_key(render_object_id object) noexcept
+    {
+        return (static_cast<std::uint64_t>(object.generation) << 32u) |
+            static_cast<std::uint64_t>(object.index);
+    }
+
+    void update_shadow_profile(std::uint64_t frame_index)
+    {
+        auto& profile = last_profile_.shadows;
+        profile = {};
+        active_local_shadows_.clear();
+        frame_lighting_.local_shadow_face_count = 0u;
+        profile.directional_cascade_count = resolved_config_.directional_shadow_cascades;
+        profile.directional_resolution = resolved_config_.directional_shadow_resolution;
+        profile.local_atlas_resolution = resolved_config_.local_shadow_atlas_resolution;
+        profile.static_cache_hit = last_static_shadow_cache_hit_;
+        const auto detect_moved_static = [&](draw_mesh_event& draw) {
+            if (draw.mobility != render_mobility::static_object || !draw.object_id.valid())
+                return;
+            std::uint64_t transform_hash = 1469598103934665603ull;
+            for (std::size_t index = 0; index < 16u; ++index)
+            {
+                const float value = draw.model.data()[index];
+                transform_hash ^= std::bit_cast<std::uint32_t>(value);
+                transform_hash *= 1099511628211ull;
+            }
+            const auto key = light_shadow_key(draw.object_id);
+            const auto previous = static_shadow_transform_hashes_.find(key);
+            if (previous != static_shadow_transform_hashes_.end() &&
+                previous->second != transform_hash)
+            {
+                draw.mobility = render_mobility::movable;
+                if (reported_moved_static_objects_.insert(key).second)
+                    arc::warn(
+                        "render.vulkan",
+                        "A static shadow caster moved at runtime; treating it as movable while rebuilding caches");
+            }
+            static_shadow_transform_hashes_[key] = transform_hash;
+        };
+        for (auto& draw : frame_shadow_draws_)
+        {
+            detect_moved_static(draw);
+            if (!draw.casts_shadows)
+                continue;
+            if (draw.mobility == render_mobility::static_object)
+                ++profile.static_caster_count;
+            else
+                ++profile.dynamic_caster_count;
+        }
+        for (auto& draw : frame_virtual_shadow_draws_)
+        {
+            detect_moved_static(draw.draw);
+            if (!draw.draw.casts_shadows)
+                continue;
+            if (draw.draw.mobility == render_mobility::static_object)
+                ++profile.static_caster_count;
+            else
+                ++profile.dynamic_caster_count;
+        }
+        if (!local_shadow_allocator_)
+            return;
+
+        struct candidate
+        {
+            shadow_light_kind kind{};
+            std::uint64_t key{};
+            std::uint32_t resolution{};
+            std::uint16_t priority{};
+            float score{};
+            math::vector3f position{};
+            math::vector3f direction{ 0.0f, -1.0f, 0.0f };
+            float range{ 1.0f };
+            float outer_angle{ math::pi<float> * 0.25f };
+            shadow_settings settings{};
+            render_mobility mobility{ render_mobility::movable };
+            render_object_id object_id{};
+        };
+        std::vector<candidate> candidates;
+        candidates.reserve(frame_point_lights_.size() + frame_spot_lights_.size());
+        const auto influence = [&](const math::vector3f& position, float intensity, float range) {
+            const auto delta = math::sub(position, frame_camera_.position);
+            const float distance_squared = std::max(math::length_squared(delta), 1.0f);
+            return std::max(intensity, 0.0f) * std::max(range, 0.0f) / distance_squared;
+        };
+        for (const auto& light : frame_point_lights_)
+        {
+            if (!light.enabled || !light.casts_shadows || !light.shadow.enabled ||
+                resolved_config_.max_shadowed_point_lights == 0u)
+                continue;
+            candidates.push_back({
+                .kind = shadow_light_kind::point,
+                .key = light_shadow_key(light.object_id),
+                .resolution = light.shadow.resolution,
+                .priority = light.shadow.priority,
+                .score = static_cast<float>(light.shadow.priority) * 100000.0f +
+                    influence(light.position, light.intensity, light.range),
+                .position = light.position,
+                .range = light.range,
+                .settings = light.shadow,
+                .mobility = light.mobility,
+                .object_id = light.object_id
+            });
+        }
+        for (const auto& light : frame_spot_lights_)
+        {
+            if (!light.enabled || !light.casts_shadows || !light.shadow.enabled ||
+                resolved_config_.max_shadowed_spot_lights == 0u)
+                continue;
+            candidates.push_back({
+                .kind = shadow_light_kind::spot,
+                .key = light_shadow_key(light.object_id),
+                .resolution = light.shadow.resolution,
+                .priority = light.shadow.priority,
+                .score = static_cast<float>(light.shadow.priority) * 100000.0f +
+                    influence(light.position, light.intensity, light.range),
+                .position = light.position,
+                .direction = light.direction,
+                .range = light.range,
+                .outer_angle = light.outer_angle,
+                .settings = light.shadow,
+                .mobility = light.mobility,
+                .object_id = light.object_id
+            });
+        }
+        std::stable_sort(candidates.begin(), candidates.end(), [](const candidate& lhs, const candidate& rhs) {
+            if (lhs.score != rhs.score)
+                return lhs.score > rhs.score;
+            if (lhs.kind != rhs.kind)
+                return lhs.kind < rhs.kind;
+            return lhs.key < rhs.key;
+        });
+
+        std::uint32_t point_count{};
+        std::uint32_t spot_count{};
+        for (const auto& candidate : candidates)
+        {
+            auto& count = candidate.kind == shadow_light_kind::point ? point_count : spot_count;
+            const std::uint32_t budget = candidate.kind == shadow_light_kind::point
+                ? resolved_config_.max_shadowed_point_lights
+                : resolved_config_.max_shadowed_spot_lights;
+            if (count >= budget)
+                continue;
+            const auto allocation = local_shadow_allocator_->allocate({
+                .kind = candidate.kind,
+                .light_key = candidate.key,
+                .requested_resolution = std::min(
+                    candidate.resolution,
+                    resolved_config_.max_local_shadow_resolution),
+                .minimum_resolution = 128u,
+                .priority = candidate.priority,
+                .frame_index = frame_index
+            });
+            if (allocation)
+            {
+                ++count;
+                bool redraw = true;
+                if (candidate.mobility == render_mobility::static_object &&
+                    candidate.settings.cache_mode != shadow_cache_mode::always_update)
+                {
+                    std::uint64_t signature = 1469598103934665603ull;
+                    const auto hash = [&](const void* bytes, std::size_t count) {
+                        const auto* data = static_cast<const std::byte*>(bytes);
+                        for (std::size_t index = 0; index < count; ++index)
+                        {
+                            signature ^= std::to_integer<unsigned char>(data[index]);
+                            signature *= 1099511628211ull;
+                        }
+                    };
+                    hash(&candidate.kind, sizeof(candidate.kind));
+                    hash(&candidate.position, sizeof(candidate.position));
+                    hash(&candidate.direction, sizeof(candidate.direction));
+                    hash(&candidate.range, sizeof(candidate.range));
+                    hash(&candidate.outer_angle, sizeof(candidate.outer_angle));
+                    hash(&candidate.settings.resolution, sizeof(candidate.settings.resolution));
+                    hash(&candidate.settings.priority, sizeof(candidate.settings.priority));
+                    hash(&candidate.settings.strength, sizeof(candidate.settings.strength));
+                    hash(&candidate.settings.bias, sizeof(candidate.settings.bias));
+                    hash(&candidate.settings.normal_bias, sizeof(candidate.settings.normal_bias));
+                    hash(&candidate.settings.filter, sizeof(candidate.settings.filter));
+                    hash(&candidate.settings.cache_mode, sizeof(candidate.settings.cache_mode));
+                    hash(&allocation->handle, sizeof(allocation->handle));
+                    hash(&shadow_resource_revision_, sizeof(shadow_resource_revision_));
+                    for (const auto& draw : frame_shadow_draws_)
+                    {
+                        if (!draw.casts_shadows ||
+                            draw.mobility != render_mobility::static_object)
+                            continue;
+                        hash(&draw.object_id, sizeof(draw.object_id));
+                        hash(draw.model.data(), sizeof(float) * 16u);
+                        hash(&draw.mesh, sizeof(draw.mesh));
+                        hash(&draw.material, sizeof(draw.material));
+                    }
+                    for (const auto& draw : frame_virtual_shadow_draws_)
+                    {
+                        if (!draw.draw.casts_shadows ||
+                            draw.draw.mobility != render_mobility::static_object)
+                            continue;
+                        hash(&draw.draw.object_id, sizeof(draw.draw.object_id));
+                        hash(draw.draw.model.data(), sizeof(float) * 16u);
+                        hash(&draw.mesh, sizeof(draw.mesh));
+                        hash(&draw.cluster_index, sizeof(draw.cluster_index));
+                    }
+                    const auto cached = local_shadow_static_signatures_.find(candidate.key);
+                    redraw = cached == local_shadow_static_signatures_.end() ||
+                        cached->second != signature;
+                    local_shadow_static_signatures_[candidate.key] = signature;
+                    if (redraw)
+                        ++profile.local_cache_misses;
+                    else
+                        ++profile.local_cache_hits;
+                }
+                active_local_shadows_.push_back({
+                    .kind = candidate.kind,
+                    .allocation = *allocation,
+                    .position = candidate.position,
+                    .direction = candidate.direction,
+                    .range = candidate.range,
+                    .outer_angle = candidate.outer_angle,
+                    .settings = candidate.settings,
+                    .mobility = candidate.mobility,
+                    .redraw = redraw
+                });
+                const std::uint32_t first_face = frame_lighting_.local_shadow_face_count;
+                const std::uint32_t available = max_local_shadow_faces - first_face;
+                const std::uint32_t face_count = std::min(allocation->face_count, available);
+                const float inverse_atlas = 1.0f /
+                    static_cast<float>(std::max(resolved_config_.local_shadow_atlas_resolution, 1u));
+                static constexpr std::array<math::vector3f, point_shadow_face_count> point_directions{
+                    math::vector3f{ 1.0f, 0.0f, 0.0f },
+                    math::vector3f{ -1.0f, 0.0f, 0.0f },
+                    math::vector3f{ 0.0f, 1.0f, 0.0f },
+                    math::vector3f{ 0.0f, -1.0f, 0.0f },
+                    math::vector3f{ 0.0f, 0.0f, 1.0f },
+                    math::vector3f{ 0.0f, 0.0f, -1.0f }
+                };
+                static constexpr std::array<math::vector3f, point_shadow_face_count> point_ups{
+                    math::vector3f{ 0.0f, -1.0f, 0.0f },
+                    math::vector3f{ 0.0f, -1.0f, 0.0f },
+                    math::vector3f{ 0.0f, 0.0f, 1.0f },
+                    math::vector3f{ 0.0f, 0.0f, -1.0f },
+                    math::vector3f{ 0.0f, -1.0f, 0.0f },
+                    math::vector3f{ 0.0f, -1.0f, 0.0f }
+                };
+                const float near_plane = std::clamp(candidate.range * 0.002f, 0.02f, 0.25f);
+                const auto projection = perspective_rh_zo(
+                    candidate.kind == shadow_light_kind::point
+                        ? math::pi<float> * 0.5f
+                        : std::max(candidate.outer_angle * 2.0f, 0.02f),
+                    near_plane,
+                    std::max(candidate.range, near_plane + 0.01f));
+                for (std::uint32_t face = 0; face < face_count; ++face)
+                {
+                    const auto direction = candidate.kind == shadow_light_kind::point
+                        ? point_directions[face]
+                        : math::normalize(candidate.direction, 0.0f);
+                    const auto up = candidate.kind == shadow_light_kind::point
+                        ? point_ups[face]
+                        : (std::abs(direction[1]) > 0.98f
+                            ? math::vector3f{ 0.0f, 0.0f, 1.0f }
+                            : math::vector3f{ 0.0f, 1.0f, 0.0f });
+                    auto& packed_face = frame_lighting_.local_shadow_faces[first_face + face];
+                    packed_face.light_view_projection = math::matmul(
+                        projection,
+                        look_at_rh(
+                            candidate.position,
+                            math::add(candidate.position, direction),
+                            up));
+                    const auto& rect = allocation->faces[face];
+                    packed_face.atlas_rect = {
+                        static_cast<float>(rect.content_x()) * inverse_atlas,
+                        static_cast<float>(rect.content_y()) * inverse_atlas,
+                        static_cast<float>(rect.content_size()) * inverse_atlas,
+                        static_cast<float>(rect.content_size()) * inverse_atlas
+                    };
+                    packed_face.parameters = {
+                        inverse_atlas,
+                        std::max(candidate.settings.bias, 0.0f),
+                        near_plane,
+                        candidate.range
+                    };
+                }
+                frame_lighting_.local_shadow_face_count += face_count;
+                const auto patch_light = [&](auto& packed_lights, std::uint32_t packed_count) {
+                    for (std::uint32_t index = 0; index < packed_count; ++index)
+                    {
+                        auto& packed = packed_lights[index];
+                        if (static_cast<std::uint32_t>(packed.object_id_shadow[0]) != candidate.object_id.index ||
+                            static_cast<std::uint32_t>(packed.object_id_shadow[1]) != candidate.object_id.generation)
+                            continue;
+                        packed.shadow_parameters = {
+                            static_cast<float>(first_face),
+                            static_cast<float>(face_count),
+                            std::clamp(candidate.settings.strength, 0.0f, 1.0f),
+                            std::max(candidate.settings.normal_bias, 0.0f)
+                        };
+                        break;
+                    }
+                };
+                if (candidate.kind == shadow_light_kind::point)
+                    patch_light(frame_lighting_.point_lights, frame_lighting_.point_count);
+                else
+                    patch_light(frame_lighting_.spot_lights, frame_lighting_.spot_count);
+            }
+            else
+                profile.fallback_reason = "local shadow atlas exhausted; affected lights render unshadowed";
+        }
+        profile.shadowed_point_lights = point_count;
+        profile.shadowed_spot_lights = spot_count;
+        const auto statistics = local_shadow_allocator_->statistics();
+        profile.local_allocation_count = statistics.allocation_count;
+        profile.local_occupied_texels = statistics.occupied_texels;
+        profile.local_eviction_count = statistics.eviction_count;
+        profile.local_resolution_reductions = statistics.resolution_reduction_count;
+        profile.screen_space_shadows = false;
+        if (resolved_config_.screen_space_shadows && profile.fallback_reason.empty())
+            profile.fallback_reason =
+                "screen-space shadow passes selected but unavailable in the Vulkan compatibility path";
     }
 
     bool create_buffer(
@@ -2932,6 +3382,91 @@ private:
         }
         shadow_atlas_.layout = VK_IMAGE_LAYOUT_UNDEFINED;
         shadow_atlas_.resolution = 0;
+        shadow_cache_.static_layers_valid = false;
+    }
+
+    void destroy_local_shadow_resources() noexcept
+    {
+        if (local_shadow_atlas_.sampler != VK_NULL_HANDLE)
+            vkDestroySampler(device_, local_shadow_atlas_.sampler, nullptr);
+        if (local_shadow_atlas_.view != VK_NULL_HANDLE)
+            vkDestroyImageView(device_, local_shadow_atlas_.view, nullptr);
+        if (local_shadow_atlas_.image != VK_NULL_HANDLE)
+            vmaDestroyImage(
+                allocator_,
+                local_shadow_atlas_.image,
+                local_shadow_atlas_.allocation);
+        local_shadow_atlas_ = {};
+    }
+
+    bool ensure_local_shadow_resources()
+    {
+        const std::uint32_t resolution = active_local_shadows_.empty()
+            ? 1u
+            : std::max(resolved_config_.local_shadow_atlas_resolution, 128u);
+        if (local_shadow_atlas_.image != VK_NULL_HANDLE &&
+            local_shadow_atlas_.resolution == resolution)
+            return true;
+
+        wait_for_in_flight_frames();
+        destroy_local_shadow_resources();
+        for (auto& shadow : active_local_shadows_)
+            shadow.redraw = true;
+
+        VkImageCreateInfo image{};
+        image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        image.imageType = VK_IMAGE_TYPE_2D;
+        image.format = depth_format_;
+        image.extent = { resolution, resolution, 1 };
+        image.mipLevels = 1;
+        image.arrayLayers = 1;
+        image.samples = VK_SAMPLE_COUNT_1_BIT;
+        image.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        VmaAllocationCreateInfo allocation{};
+        allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        if (vmaCreateImage(
+                allocator_,
+                &image,
+                &allocation,
+                &local_shadow_atlas_.image,
+                &local_shadow_atlas_.allocation,
+                nullptr) != VK_SUCCESS)
+            return false;
+
+        VkImageViewCreateInfo view{};
+        view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        view.image = local_shadow_atlas_.image;
+        view.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view.format = depth_format_;
+        view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        view.subresourceRange.levelCount = 1;
+        view.subresourceRange.layerCount = 1;
+        if (vkCreateImageView(device_, &view, nullptr, &local_shadow_atlas_.view) != VK_SUCCESS)
+        {
+            destroy_local_shadow_resources();
+            return false;
+        }
+
+        VkSamplerCreateInfo sampler{};
+        sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        sampler.magFilter = VK_FILTER_LINEAR;
+        sampler.minFilter = VK_FILTER_LINEAR;
+        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        sampler.compareEnable = VK_TRUE;
+        sampler.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+        if (vkCreateSampler(device_, &sampler, nullptr, &local_shadow_atlas_.sampler) != VK_SUCCESS)
+        {
+            destroy_local_shadow_resources();
+            return false;
+        }
+        local_shadow_atlas_.resolution = resolution;
+        local_shadow_atlas_.layout = VK_IMAGE_LAYOUT_UNDEFINED;
+        return true;
     }
 
     std::uint32_t frame_resource_count() const noexcept
@@ -3050,7 +3585,7 @@ private:
         image.format = depth_format_;
         image.extent = { resolution, resolution, 1 };
         image.mipLevels = 1;
-        image.arrayLayers = directional_shadow_cascade_count;
+        image.arrayLayers = directional_shadow_layer_count;
         image.samples = VK_SAMPLE_COUNT_1_BIT;
         image.tiling = VK_IMAGE_TILING_OPTIMAL;
         image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -3070,14 +3605,14 @@ private:
         array_view.format = depth_format_;
         array_view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         array_view.subresourceRange.levelCount = 1;
-        array_view.subresourceRange.layerCount = directional_shadow_cascade_count;
+        array_view.subresourceRange.layerCount = directional_shadow_layer_count;
         if (vkCreateImageView(device_, &array_view, nullptr, &shadow_atlas_.array_view) != VK_SUCCESS)
         {
             destroy_shadow_resources();
             return false;
         }
 
-        for (std::uint32_t layer = 0; layer < directional_shadow_cascade_count; ++layer)
+        for (std::uint32_t layer = 0; layer < directional_shadow_layer_count; ++layer)
         {
             VkImageViewCreateInfo layer_view = array_view;
             layer_view.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -3297,6 +3832,7 @@ private:
         if (descriptor_set == VK_NULL_HANDLE ||
             white_view_ == VK_NULL_HANDLE ||
             shadow_atlas_.array_view == VK_NULL_HANDLE ||
+            local_shadow_atlas_.view == VK_NULL_HANDLE ||
             shadow_buffer_resource == nullptr ||
             shadow_buffer_resource->buffer == VK_NULL_HANDLE ||
             material_parameters == nullptr ||
@@ -3382,6 +3918,9 @@ private:
         image_infos[5].sampler = shadow_atlas_.sampler;
         image_infos[5].imageView = shadow_atlas_.array_view;
         image_infos[5].imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        image_infos.back().sampler = local_shadow_atlas_.sampler;
+        image_infos.back().imageView = local_shadow_atlas_.view;
+        image_infos.back().imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 
         VkDescriptorBufferInfo shadow_buffer{};
         shadow_buffer.buffer = shadow_buffer_resource->buffer;
@@ -3506,7 +4045,9 @@ private:
     bool ensure_white_texture()
     {
         const auto shadow_resolution = shadow_atlas_.resolution == 0 ? 2048u : shadow_atlas_.resolution;
-        if (!ensure_shadow_uniform_buffers() || !ensure_shadow_resources({ .enabled = false, .resolution = shadow_resolution }))
+        if (!ensure_shadow_uniform_buffers() ||
+            !ensure_shadow_resources({ .enabled = false, .resolution = shadow_resolution }) ||
+            !ensure_local_shadow_resources())
             return false;
 
         if (white_descriptor_set_layout_ != VK_NULL_HANDLE &&
@@ -4106,7 +4647,12 @@ private:
             gbuffer_emissive_.view == VK_NULL_HANDLE ||
             gbuffer_motion_.view == VK_NULL_HANDLE ||
             gbuffer_object_id_.view == VK_NULL_HANDLE ||
-            viewport_depth_view_ == VK_NULL_HANDLE)
+            viewport_depth_view_ == VK_NULL_HANDLE ||
+            shadow_atlas_.array_view == VK_NULL_HANDLE ||
+            shadow_atlas_.sampler == VK_NULL_HANDLE ||
+            local_shadow_atlas_.view == VK_NULL_HANDLE ||
+            local_shadow_atlas_.sampler == VK_NULL_HANDLE ||
+            current_shadow_uniform_buffer() == nullptr)
             return false;
 
         if (gbuffer_sampler_ == VK_NULL_HANDLE)
@@ -4125,7 +4671,7 @@ private:
 
         if (gbuffer_descriptor_set_layout_ == VK_NULL_HANDLE)
         {
-            std::array<VkDescriptorSetLayoutBinding, 9> bindings{};
+            std::array<VkDescriptorSetLayoutBinding, 12> bindings{};
             for (std::uint32_t index = 0; index < 7; ++index)
             {
                 bindings[index].binding = index;
@@ -4141,6 +4687,18 @@ private:
             bindings[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             bindings[8].descriptorCount = 1;
             bindings[8].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            bindings[9].binding = 9;
+            bindings[9].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            bindings[9].descriptorCount = 1;
+            bindings[9].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            bindings[10].binding = 10;
+            bindings[10].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            bindings[10].descriptorCount = 1;
+            bindings[10].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+            bindings[11].binding = 11;
+            bindings[11].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            bindings[11].descriptorCount = 1;
+            bindings[11].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
             VkDescriptorSetLayoutCreateInfo layout{};
             layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -4152,9 +4710,10 @@ private:
 
         if (gbuffer_descriptor_pool_ == VK_NULL_HANDLE)
         {
-            std::array<VkDescriptorPoolSize, 2> pool_sizes{
-                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8 },
-                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }
+            std::array<VkDescriptorPoolSize, 3> pool_sizes{
+                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
+                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 },
+                VkDescriptorPoolSize{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
             };
             VkDescriptorPoolCreateInfo pool{};
             pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -4182,7 +4741,7 @@ private:
         if (gbuffer_descriptor_set_ == VK_NULL_HANDLE || light_buffer_.buffer == VK_NULL_HANDLE)
             return;
 
-        std::array<VkDescriptorImageInfo, 8> images{};
+        std::array<VkDescriptorImageInfo, 10> images{};
         const VkSampler sampler = gbuffer_sampler_ != VK_NULL_HANDLE ? gbuffer_sampler_ : white_sampler_;
         images[0] = { sampler, gbuffer_albedo_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[1] = { sampler, gbuffer_normal_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
@@ -4192,6 +4751,16 @@ private:
         images[5] = { sampler, gbuffer_motion_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[6] = { sampler, viewport_depth_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
         images[7] = { white_sampler_, white_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+        images[8] = {
+            shadow_atlas_.sampler,
+            shadow_atlas_.array_view,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+        };
+        images[9] = {
+            local_shadow_atlas_.sampler,
+            local_shadow_atlas_.view,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+        };
         if (const auto* environment = active_environment())
         {
             if (const auto found = textures_.find(resource_key(environment->equirectangular_texture));
@@ -4205,7 +4774,7 @@ private:
             }
         }
 
-        std::array<VkWriteDescriptorSet, 8> writes{};
+        std::array<VkWriteDescriptorSet, 10> writes{};
         for (std::uint32_t index = 0; index < 7; ++index)
         {
             writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -4221,6 +4790,18 @@ private:
         writes[7].descriptorCount = 1;
         writes[7].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[7].pImageInfo = &images[7];
+        writes[8].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[8].dstSet = gbuffer_descriptor_set_;
+        writes[8].dstBinding = 9;
+        writes[8].descriptorCount = 1;
+        writes[8].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[8].pImageInfo = &images[8];
+        writes[9].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[9].dstSet = gbuffer_descriptor_set_;
+        writes[9].dstBinding = 11;
+        writes[9].descriptorCount = 1;
+        writes[9].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[9].pImageInfo = &images[9];
         vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
         VkDescriptorBufferInfo lights{
             light_buffer_.buffer,
@@ -4234,7 +4815,28 @@ private:
         light_write.descriptorCount = 1;
         light_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         light_write.pBufferInfo = &lights;
-        vkUpdateDescriptorSets(device_, 1, &light_write, 0, nullptr);
+        const auto* shadow_buffer = current_shadow_uniform_buffer();
+        if (shadow_buffer == nullptr)
+            return;
+        VkDescriptorBufferInfo shadow{
+            shadow_buffer->buffer,
+            0,
+            sizeof(shadow_uniform_data)
+        };
+        VkWriteDescriptorSet shadow_write{};
+        shadow_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        shadow_write.dstSet = gbuffer_descriptor_set_;
+        shadow_write.dstBinding = 10;
+        shadow_write.descriptorCount = 1;
+        shadow_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        shadow_write.pBufferInfo = &shadow;
+        const std::array buffer_writes{ light_write, shadow_write };
+        vkUpdateDescriptorSets(
+            device_,
+            static_cast<std::uint32_t>(buffer_writes.size()),
+            buffer_writes.data(),
+            0,
+            nullptr);
     }
 
     bool ensure_deferred_pipeline()
@@ -5161,21 +5763,56 @@ private:
         return nullptr;
     }
 
+    bool graph_selects(builtin_render_pass builtin) const noexcept
+    {
+        return std::ranges::any_of(last_profile_.graph.passes, [builtin](const compiled_render_pass& pass) {
+            return pass.builtin == builtin;
+        });
+    }
+
+    bool graph_selects_any_directional_shadow_pass() const noexcept
+    {
+        return graph_selects(builtin_render_pass::directional_shadow_static) ||
+            graph_selects(builtin_render_pass::directional_shadow_dynamic);
+    }
+
+    const char* graph_pass_name(builtin_render_pass builtin, const char* fallback) const noexcept
+    {
+        const auto found = std::ranges::find_if(
+            last_profile_.graph.passes,
+            [builtin](const compiled_render_pass& pass) { return pass.builtin == builtin; });
+        return found != last_profile_.graph.passes.end() ? found->name.c_str() : fallback;
+    }
+
     void prepare_frame_gpu_resources()
     {
         update_dynamic_mesh_vertices();
         const auto* light = active_directional_shadow_light();
         auto settings = light ? light->shadow : shadow_settings{ .enabled = false, .resolution = 2048 };
-        settings.resolution = std::min(settings.resolution, resolved_config_.directional_shadow_resolution);
+        settings.resolution = std::min(
+            std::bit_ceil(std::max(settings.resolution, 1u)),
+            resolved_config_.directional_shadow_resolution);
         if (ensure_shadow_uniform_buffers() && ensure_shadow_resources(settings))
         {
             update_shadow_uniform(build_shadow_uniform(light));
+            update_gbuffer_descriptor_set();
         }
+        if (!ensure_local_shadow_resources() && !active_local_shadows_.empty())
+        {
+            last_profile_.shadows.fallback_reason =
+                "local shadow atlas allocation failed; affected lights render unshadowed";
+            active_local_shadows_.clear();
+            frame_lighting_.local_shadow_face_count = 0u;
+            update_light_buffer();
+        }
+        else
+            update_gbuffer_descriptor_set();
 
         if (ensure_mesh_pipeline())
             update_current_material_descriptor_sets();
 
-        if (light && !frame_shadow_draws_.empty())
+        if (((light && !frame_shadow_draws_.empty() && graph_selects_any_directional_shadow_pass()) ||
+                !active_local_shadows_.empty()))
             ensure_shadow_pipeline();
         const auto clear_overlay_counts = [&] {
             const auto slot = current_frame_slot();
@@ -5208,7 +5845,7 @@ private:
         barrier.image = shadow_atlas_.image;
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         barrier.subresourceRange.levelCount = 1;
-        barrier.subresourceRange.layerCount = directional_shadow_cascade_count;
+        barrier.subresourceRange.layerCount = directional_shadow_layer_count;
 
         VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -5241,6 +5878,57 @@ private:
         shadow_atlas_.layout = new_layout;
     }
 
+    void transition_local_shadow_atlas(VkCommandBuffer command_buffer, VkImageLayout new_layout)
+    {
+        if (local_shadow_atlas_.image == VK_NULL_HANDLE ||
+            local_shadow_atlas_.layout == new_layout)
+            return;
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = local_shadow_atlas_.layout;
+        barrier.newLayout = new_layout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = local_shadow_atlas_.image;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.layerCount = 1;
+        VkPipelineStageFlags source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkPipelineStageFlags destination_stage =
+            VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        if (local_shadow_atlas_.layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            source_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else if (local_shadow_atlas_.layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            source_stage =
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        }
+        if (new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+        {
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else
+            barrier.dstAccessMask =
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        vkCmdPipelineBarrier(
+            command_buffer,
+            source_stage,
+            destination_stage,
+            0,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            1,
+            &barrier);
+        local_shadow_atlas_.layout = new_layout;
+    }
+
     shadow_uniform_data build_shadow_uniform(const directional_light_event* light) const noexcept
     {
         shadow_uniform_data data{};
@@ -5248,50 +5936,39 @@ private:
         for (auto& matrix : data.light_view_projection)
             std::copy(identity.data(), identity.data() + 16, matrix);
 
-        constexpr std::array<float, directional_shadow_cascade_count> cascade_radii{ 6.0f, 14.0f, 32.0f, 64.0f };
-        for (std::size_t index = 0; index < cascade_radii.size(); ++index)
-            data.cascade_splits[index] = cascade_radii[index];
-
         if (!light)
         {
             data.params[0] = 0.0f;
             return data;
         }
 
-        auto light_direction = math::normalize(light->direction);
-        if (math::length_squared(light_direction) < 0.0001f)
-            light_direction = math::vector3f{ 0.35f, -0.85f, -0.40f };
-        const auto up = std::abs(math::dot(light_direction, math::vector3f{ 0.0f, 1.0f, 0.0f })) > 0.95f
-            ? math::vector3f{ 0.0f, 0.0f, 1.0f }
-            : math::vector3f{ 0.0f, 1.0f, 0.0f };
-
-        auto camera_forward = math::normalize(frame_camera_.forward, 0.0f);
-        if (math::length_squared(camera_forward) < 0.0001f)
-            camera_forward = math::vector3f{ 0.0f, 0.0f, -1.0f };
-
-        for (std::uint32_t cascade = 0; cascade < directional_shadow_cascade_count; ++cascade)
-        {
-            const float cascade_radius = cascade_radii[cascade];
-            math::vector3f center = math::add(frame_camera_.position, math::mul(camera_forward, cascade_radius));
-
-            auto view = look_at_rh(math::sub(center, math::mul(light_direction, cascade_radius * 2.5f)), center, up);
-            const float texel_size = (cascade_radius * 2.0f) / static_cast<float>(std::max(1u, shadow_atlas_.resolution));
-            if (texel_size > 0.0f)
+        auto cascade_settings = light->cascades;
+        cascade_settings.cascade_count = std::min(
+            cascade_settings.cascade_count,
+            resolved_config_.directional_shadow_cascades);
+        cascade_settings.maximum_distance = std::min(
+            cascade_settings.maximum_distance,
+            resolved_config_.directional_shadow_distance);
+        const auto layout = fit_directional_shadow_cascades(
             {
-                const auto light_center = math::transform_point(view, center);
-                const float snapped_x = std::round(light_center[0] / texel_size) * texel_size;
-                const float snapped_y = std::round(light_center[1] / texel_size) * texel_size;
-                const auto right = matrix_row3(view, 0);
-                const auto light_up = matrix_row3(view, 1);
-                center = math::add(center, math::mul(right, snapped_x - light_center[0]));
-                center = math::add(center, math::mul(light_up, snapped_y - light_center[1]));
-                view = look_at_rh(math::sub(center, math::mul(light_direction, cascade_radius * 2.5f)), center, up);
-            }
+                .inverse_view_projection = frame_camera_.inverse_view_projection,
+                .near_plane = frame_camera_.near_plane,
+                .far_plane = frame_camera_.far_plane
+            },
+            light->direction,
+            cascade_settings,
+            shadow_atlas_.resolution);
 
-            const auto projection = orthographic_rh_zo(cascade_radius * 2.0f, cascade_radius * 2.0f, 0.1f, cascade_radius * 5.0f);
-            const auto light_view_projection = math::matmul(projection, view);
-            std::copy(light_view_projection.data(), light_view_projection.data() + 16, data.light_view_projection[cascade]);
-            data.cascade_texel_size[cascade] = texel_size;
+        for (std::uint32_t cascade = 0; cascade < layout.cascade_count; ++cascade)
+        {
+            const auto& fitted = layout.cascades[cascade];
+            std::copy(
+                fitted.light_view_projection.data(),
+                fitted.light_view_projection.data() + 16,
+                data.light_view_projection[cascade]);
+            data.cascade_splits[cascade] = fitted.split_depth;
+            data.cascade_blend_starts[cascade] = fitted.blend_start_depth;
+            data.cascade_texel_size[cascade] = fitted.texel_world_size;
         }
 
         data.params[0] = std::clamp(light->shadow.strength, 0.0f, 1.0f);
@@ -5303,6 +5980,9 @@ private:
                 static_cast<unsigned>(light->shadow.filter),
                 static_cast<unsigned>(shadow_filter::pcf_5x5)));
         data.params[3] = static_cast<float>(filter);
+        data.configuration[0] = static_cast<float>(layout.cascade_count);
+        data.configuration[1] = cascade_settings.blend_fraction;
+        data.configuration[2] = cascade_settings.maximum_distance;
         return data;
     }
 
@@ -5330,42 +6010,61 @@ private:
         VkShaderModule vert = create_shader_module(
             builtin::shadow_depth_vert_spv,
             std::size(builtin::shadow_depth_vert_spv));
-        if (vert == VK_NULL_HANDLE)
+        VkShaderModule frag = create_shader_module(
+            builtin::shadow_depth_frag_spv,
+            std::size(builtin::shadow_depth_frag_spv));
+        if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
+        {
+            if (vert != VK_NULL_HANDLE)
+                vkDestroyShaderModule(device_, vert, nullptr);
+            if (frag != VK_NULL_HANDLE)
+                vkDestroyShaderModule(device_, frag, nullptr);
             return false;
+        }
 
         VkPushConstantRange push{};
-        push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        push.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         push.offset = 0;
         push.size = sizeof(mesh_push_constants);
 
         VkPipelineLayoutCreateInfo layout{};
         layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout.setLayoutCount = 1;
+        layout.pSetLayouts = &white_descriptor_set_layout_;
         layout.pushConstantRangeCount = 1;
         layout.pPushConstantRanges = &push;
         if (vkCreatePipelineLayout(device_, &layout, nullptr, &shadow_pipeline_layout_) != VK_SUCCESS)
         {
             vkDestroyShaderModule(device_, vert, nullptr);
+            vkDestroyShaderModule(device_, frag, nullptr);
             return false;
         }
 
-        VkPipelineShaderStageCreateInfo stage{};
-        stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        stage.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        stage.module = vert;
-        stage.pName = "main";
+        std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
+        stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[0].module = vert;
+        stages[0].pName = "main";
+        stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[1].module = frag;
+        stages[1].pName = "main";
 
         VkVertexInputBindingDescription binding{};
         binding.binding = 0;
         binding.stride = sizeof(mesh_vertex);
         binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        VkVertexInputAttributeDescription attribute{ 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, position) };
+        std::array<VkVertexInputAttributeDescription, 2> attributes{
+            VkVertexInputAttributeDescription{ 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, position) },
+            VkVertexInputAttributeDescription{ 1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(mesh_vertex, texcoord) }
+        };
 
         VkPipelineVertexInputStateCreateInfo vertex_input{};
         vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
         vertex_input.vertexBindingDescriptionCount = 1;
         vertex_input.pVertexBindingDescriptions = &binding;
-        vertex_input.vertexAttributeDescriptionCount = 1;
-        vertex_input.pVertexAttributeDescriptions = &attribute;
+        vertex_input.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size());
+        vertex_input.pVertexAttributeDescriptions = attributes.data();
 
         VkPipelineInputAssemblyStateCreateInfo input_assembly{};
         input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -5409,8 +6108,8 @@ private:
         VkGraphicsPipelineCreateInfo pipeline{};
         pipeline.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
         pipeline.pNext = &rendering;
-        pipeline.stageCount = 1;
-        pipeline.pStages = &stage;
+        pipeline.stageCount = static_cast<std::uint32_t>(stages.size());
+        pipeline.pStages = stages.data();
         pipeline.pVertexInputState = &vertex_input;
         pipeline.pInputAssemblyState = &input_assembly;
         pipeline.pViewportState = &viewport;
@@ -5423,6 +6122,7 @@ private:
 
         const VkResult result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &shadow_pipeline_);
         vkDestroyShaderModule(device_, vert, nullptr);
+        vkDestroyShaderModule(device_, frag, nullptr);
         if (result != VK_SUCCESS)
         {
             arc::warn("render.vulkan", "Vulkan shadow pipeline creation failed; rendering will continue without shadows");
@@ -5439,7 +6139,7 @@ private:
             return;
         const auto uniform = build_shadow_uniform(light);
 
-        if (!light || frame_shadow_draws_.empty() || shadow_pipeline_ == VK_NULL_HANDLE)
+        if (!light || shadow_pipeline_ == VK_NULL_HANDLE)
         {
             transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
             return;
@@ -5459,59 +6159,237 @@ private:
         vkCmdSetViewport(command_buffer, 0, 1, &viewport);
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        for (std::uint32_t cascade = 0; cascade < directional_shadow_cascade_count; ++cascade)
-        {
-            VkRenderingAttachmentInfo depth_attachment{};
-            depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-            depth_attachment.imageView = shadow_atlas_.cascade_views[cascade];
-            depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-            depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-            depth_attachment.clearValue.depthStencil.depth = 1.0f;
+        const auto cascade_count = static_cast<std::uint32_t>(std::clamp(
+            uniform.configuration[0],
+            1.0f,
+            static_cast<float>(directional_shadow_cascade_count)));
+        const auto within_shadow_distance = [&](const draw_mesh_event& draw) {
+            if (draw.maximum_shadow_distance <= 0.0f)
+                return true;
+            // Draw events intentionally stay compact and do not duplicate the
+            // render world's bounds. The model origin is a conservative,
+            // stable distance proxy until shadow draws carry their selected
+            // shadow LOD's tight bounds.
+            const float x = draw.model(0, 3) - frame_camera_.position[0];
+            const float y = draw.model(1, 3) - frame_camera_.position[1];
+            const float z = draw.model(2, 3) - frame_camera_.position[2];
+            return x * x + y * y + z * z <=
+                draw.maximum_shadow_distance * draw.maximum_shadow_distance;
+        };
+        const auto is_static_caster = [&](const draw_mesh_event& draw) {
+            return draw.casts_shadows && within_shadow_distance(draw) &&
+                draw.mobility == render_mobility::static_object;
+        };
+        const auto is_dynamic_caster = [&](const draw_mesh_event& draw) {
+            if (!draw.casts_shadows || !within_shadow_distance(draw))
+                return false;
+            if (light->mobility == render_mobility::static_object)
+                return false;
+            if (light->mobility == render_mobility::movable)
+                return true;
+            return draw.mobility != render_mobility::static_object;
+        };
+        const auto intersects_cascade = [](const draw_mesh_event& draw, const math::matrix4f& matrix) {
+            const auto bounds_size = geometric::size(draw.world_bounds);
+            if (math::length_squared(bounds_size) <= 1.0e-8f)
+                return true;
 
-            VkRenderingInfo rendering{};
-            rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-            rendering.renderArea.extent = { shadow_atlas_.resolution, shadow_atlas_.resolution };
-            rendering.layerCount = 1;
-            rendering.pDepthAttachment = &depth_attachment;
-            cmd_begin_rendering(command_buffer, &rendering);
-
-            for (const auto& draw : frame_shadow_draws_)
+            bool outside_left = true;
+            bool outside_right = true;
+            bool outside_bottom = true;
+            bool outside_top = true;
+            bool outside_near = true;
+            bool outside_far = true;
+            for (std::uint32_t corner = 0; corner < 8u; ++corner)
             {
-                if (material_alpha_mode_for(draw) == material_alpha_mode::blend)
-                    continue;
-
-                auto found = meshes_.find(resource_key(draw.mesh));
-                if (found == meshes_.end())
-                    continue;
-
-                const auto cascade_matrix = [&] {
-                    math::matrix4f matrix;
-                    std::copy(uniform.light_view_projection[cascade], uniform.light_view_projection[cascade] + 16, matrix.data());
-                    return matrix;
-                }();
-                const math::matrix4f mvp = math::matmul(cascade_matrix, draw.model);
-                mesh_push_constants constants{};
-                std::copy(mvp.data(), mvp.data() + 16, constants.model_view_projection);
-                vkCmdPushConstants(
-                    command_buffer,
-                    shadow_pipeline_layout_,
-                    VK_SHADER_STAGE_VERTEX_BIT,
-                    0,
-                    sizeof(constants),
-                    &constants);
-
-                const VkDeviceSize offset = 0;
-                const VkBuffer vertex_buffer = mesh_vertex_buffer(found->second);
-                if (vertex_buffer == VK_NULL_HANDLE)
-                    continue;
-                vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offset);
-                vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
+                const float x = (corner & 1u) ? draw.world_bounds.max[0] : draw.world_bounds.min[0];
+                const float y = (corner & 2u) ? draw.world_bounds.max[1] : draw.world_bounds.min[1];
+                const float z = (corner & 4u) ? draw.world_bounds.max[2] : draw.world_bounds.min[2];
+                const float clip_x = matrix(0, 0) * x + matrix(0, 1) * y + matrix(0, 2) * z + matrix(0, 3);
+                const float clip_y = matrix(1, 0) * x + matrix(1, 1) * y + matrix(1, 2) * z + matrix(1, 3);
+                const float clip_z = matrix(2, 0) * x + matrix(2, 1) * y + matrix(2, 2) * z + matrix(2, 3);
+                const float clip_w = matrix(3, 0) * x + matrix(3, 1) * y + matrix(3, 2) * z + matrix(3, 3);
+                outside_left &= clip_x < -clip_w;
+                outside_right &= clip_x > clip_w;
+                outside_bottom &= clip_y < -clip_w;
+                outside_top &= clip_y > clip_w;
+                outside_near &= clip_z < 0.0f;
+                outside_far &= clip_z > clip_w;
             }
+            return !(outside_left || outside_right || outside_bottom ||
+                outside_top || outside_near || outside_far);
+        };
 
-            cmd_end_rendering(command_buffer);
+        std::uint64_t static_signature = 1469598103934665603ull;
+        const auto hash_bytes = [&](const void* bytes, std::size_t count) {
+            const auto* data = static_cast<const std::byte*>(bytes);
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                static_signature ^= static_cast<std::uint64_t>(std::to_integer<unsigned char>(data[index]));
+                static_signature *= 1099511628211ull;
+            }
+        };
+        hash_bytes(&uniform, sizeof(uniform));
+        hash_bytes(&shadow_resource_revision_, sizeof(shadow_resource_revision_));
+        for (const auto& draw : frame_shadow_draws_)
+        {
+            if (!is_static_caster(draw))
+                continue;
+            hash_bytes(&draw.object_id, sizeof(draw.object_id));
+            hash_bytes(draw.model.data(), sizeof(float) * 16u);
+            hash_bytes(&draw.mesh, sizeof(draw.mesh));
+            hash_bytes(&draw.material, sizeof(draw.material));
         }
+        for (const auto& draw : frame_virtual_shadow_draws_)
+        {
+            if (!is_static_caster(draw.draw))
+                continue;
+            hash_bytes(&draw.draw.object_id, sizeof(draw.draw.object_id));
+            hash_bytes(draw.draw.model.data(), sizeof(float) * 16u);
+            hash_bytes(&draw.mesh, sizeof(draw.mesh));
+            hash_bytes(&draw.cluster_index, sizeof(draw.cluster_index));
+            hash_bytes(&draw.draw.material, sizeof(draw.draw.material));
+        }
+        const bool redraw_static = !shadow_cache_.static_layers_valid ||
+            shadow_cache_.static_signature != static_signature ||
+            light->mobility == render_mobility::movable ||
+            settings.cache_mode == shadow_cache_mode::always_update;
+        last_static_shadow_cache_hit_ = !redraw_static;
+
+        const auto render_layers = [&](
+            std::uint32_t layer_offset,
+            const auto& accepts_draw,
+            bool enabled) {
+            for (std::uint32_t cascade = 0; cascade < cascade_count; ++cascade)
+            {
+                VkRenderingAttachmentInfo depth_attachment{};
+                depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+                depth_attachment.imageView = shadow_atlas_.cascade_views[layer_offset + cascade];
+                depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                depth_attachment.clearValue.depthStencil.depth = 1.0f;
+
+                VkRenderingInfo rendering{};
+                rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+                rendering.renderArea.extent = { shadow_atlas_.resolution, shadow_atlas_.resolution };
+                rendering.layerCount = 1;
+                rendering.pDepthAttachment = &depth_attachment;
+                cmd_begin_rendering(command_buffer, &rendering);
+
+                if (enabled)
+                {
+                    math::matrix4f cascade_matrix;
+                    std::copy(
+                        uniform.light_view_projection[cascade],
+                        uniform.light_view_projection[cascade] + 16,
+                        cascade_matrix.data());
+                    for (const auto& draw : frame_shadow_draws_)
+                    {
+                        if (!accepts_draw(draw) || !intersects_cascade(draw, cascade_matrix))
+                            continue;
+
+                        auto found = meshes_.find(resource_key(draw.mesh));
+                        if (found == meshes_.end())
+                            continue;
+
+                        const math::matrix4f mvp = math::matmul(cascade_matrix, draw.model);
+                        mesh_push_constants constants = build_mesh_constants(draw);
+                        std::copy(mvp.data(), mvp.data() + 16, constants.model_view_projection);
+                        VkDescriptorSet descriptor_set = material_descriptor_set_for(draw);
+                        vkCmdBindDescriptorSets(
+                            command_buffer,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            shadow_pipeline_layout_,
+                            0,
+                            1,
+                            &descriptor_set,
+                            0,
+                            nullptr);
+                        vkCmdPushConstants(
+                            command_buffer,
+                            shadow_pipeline_layout_,
+                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                            0,
+                            sizeof(constants),
+                            &constants);
+
+                        const VkDeviceSize offset = 0;
+                        const VkBuffer vertex_buffer = mesh_vertex_buffer(found->second);
+                        if (vertex_buffer == VK_NULL_HANDLE)
+                            continue;
+                        vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offset);
+                        vkCmdBindIndexBuffer(
+                            command_buffer,
+                            found->second.indices.buffer,
+                            0,
+                            VK_INDEX_TYPE_UINT32);
+                        vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
+                    }
+                    for (const auto& draw : frame_virtual_shadow_draws_)
+                    {
+                        if (!accepts_draw(draw.draw) || !intersects_cascade(draw.draw, cascade_matrix))
+                            continue;
+                        const auto found = virtual_meshes_.find(resource_key(draw.mesh));
+                        if (found == virtual_meshes_.end() ||
+                            draw.cluster_index >= found->second.clusters.size())
+                            continue;
+                        const auto& cluster = found->second.clusters[draw.cluster_index];
+                        if (cluster.index_count == 0 ||
+                            cluster.first_index + cluster.index_count > found->second.index_count)
+                            continue;
+
+                        const math::matrix4f mvp = math::matmul(cascade_matrix, draw.draw.model);
+                        mesh_push_constants constants = build_mesh_constants(draw.draw);
+                        std::copy(mvp.data(), mvp.data() + 16, constants.model_view_projection);
+                        VkDescriptorSet descriptor_set = material_descriptor_set_for(draw.draw);
+                        vkCmdBindDescriptorSets(
+                            command_buffer,
+                            VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            shadow_pipeline_layout_,
+                            0,
+                            1,
+                            &descriptor_set,
+                            0,
+                            nullptr);
+                        vkCmdPushConstants(
+                            command_buffer,
+                            shadow_pipeline_layout_,
+                            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                            0,
+                            sizeof(constants),
+                            &constants);
+                        const VkDeviceSize offset = 0;
+                        vkCmdBindVertexBuffers(
+                            command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
+                        vkCmdBindIndexBuffer(
+                            command_buffer,
+                            found->second.indices.buffer,
+                            0,
+                            VK_INDEX_TYPE_UINT32);
+                        vkCmdDrawIndexed(
+                            command_buffer,
+                            cluster.index_count,
+                            1,
+                            cluster.first_index,
+                            0,
+                            0);
+                    }
+                }
+                cmd_end_rendering(command_buffer);
+            }
+        };
+
+        if (redraw_static)
+        {
+            render_layers(
+                0u,
+                is_static_caster,
+                light->mobility != render_mobility::movable);
+            shadow_cache_.static_signature = static_signature;
+            shadow_cache_.static_layers_valid = true;
+        }
+        render_layers(directional_shadow_cascade_count, is_dynamic_caster, true);
 
         transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
         shadow_cache_.last_directional_key = {
@@ -5520,6 +6398,177 @@ private:
             .filter = settings.filter
         };
         shadow_cache_.has_directional_key = true;
+    }
+
+    void render_local_shadow_maps(VkCommandBuffer command_buffer)
+    {
+        if (active_local_shadows_.empty() ||
+            local_shadow_atlas_.image == VK_NULL_HANDLE ||
+            shadow_pipeline_ == VK_NULL_HANDLE)
+            return;
+
+        transition_local_shadow_atlas(
+            command_buffer,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_);
+
+        std::uint32_t packed_face_index{};
+        for (const auto& shadow : active_local_shadows_)
+        {
+            const bool pass_selected = shadow.kind == shadow_light_kind::point
+                ? graph_selects(builtin_render_pass::point_shadow)
+                : graph_selects(builtin_render_pass::spot_shadow);
+            if (!pass_selected)
+            {
+                packed_face_index += shadow.allocation.face_count;
+                continue;
+            }
+            if (!shadow.redraw)
+            {
+                packed_face_index += shadow.allocation.face_count;
+                continue;
+            }
+
+            const auto in_light_range = [&](const draw_mesh_event& draw) {
+                const auto bounds_size = geometric::size(draw.world_bounds);
+                math::vector3f center = matrix_translation(draw.model);
+                if (math::length_squared(bounds_size) > 1.0e-8f)
+                {
+                    const auto bounds_center = geometric::center(draw.world_bounds);
+                    center = {
+                        bounds_center[0],
+                        bounds_center[1],
+                        bounds_center[2]
+                    };
+                }
+                return math::length_squared(math::sub(center, shadow.position)) <=
+                    shadow.range * shadow.range;
+            };
+            for (std::uint32_t face = 0; face < shadow.allocation.face_count; ++face)
+            {
+                if (packed_face_index >= frame_lighting_.local_shadow_face_count)
+                    break;
+                const auto& packed = frame_lighting_.local_shadow_faces[packed_face_index++];
+                const auto& rect = shadow.allocation.faces[face];
+                VkViewport viewport{};
+                viewport.x = static_cast<float>(rect.content_x());
+                viewport.y = static_cast<float>(rect.content_y());
+                viewport.width = static_cast<float>(rect.content_size());
+                viewport.height = static_cast<float>(rect.content_size());
+                viewport.minDepth = 0.0f;
+                viewport.maxDepth = 1.0f;
+                VkRect2D scissor{};
+                scissor.offset = {
+                    static_cast<std::int32_t>(rect.content_x()),
+                    static_cast<std::int32_t>(rect.content_y())
+                };
+                scissor.extent = { rect.content_size(), rect.content_size() };
+                vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+                vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+
+                VkRenderingAttachmentInfo depth_attachment{};
+                depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+                depth_attachment.imageView = local_shadow_atlas_.view;
+                depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+                depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                depth_attachment.clearValue.depthStencil.depth = 1.0f;
+                VkRenderingInfo rendering{};
+                rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+                rendering.renderArea.offset = {
+                    static_cast<std::int32_t>(rect.x),
+                    static_cast<std::int32_t>(rect.y)
+                };
+                rendering.renderArea.extent = { rect.size, rect.size };
+                rendering.layerCount = 1;
+                rendering.pDepthAttachment = &depth_attachment;
+                cmd_begin_rendering(command_buffer, &rendering);
+
+                const auto draw_mesh = [&](const draw_mesh_event& draw, const gpu_mesh& mesh) {
+                    if (!draw.casts_shadows || !in_light_range(draw) ||
+                        (shadow.mobility == render_mobility::static_object &&
+                            draw.mobility != render_mobility::static_object))
+                        return;
+                    mesh_push_constants constants = build_mesh_constants(draw);
+                    const auto mvp = math::matmul(packed.light_view_projection, draw.model);
+                    std::copy(mvp.data(), mvp.data() + 16, constants.model_view_projection);
+                    VkDescriptorSet descriptor_set = material_descriptor_set_for(draw);
+                    vkCmdBindDescriptorSets(
+                        command_buffer,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        shadow_pipeline_layout_,
+                        0,
+                        1,
+                        &descriptor_set,
+                        0,
+                        nullptr);
+                    vkCmdPushConstants(
+                        command_buffer,
+                        shadow_pipeline_layout_,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0,
+                        sizeof(constants),
+                        &constants);
+                    const VkDeviceSize offset{};
+                    const auto vertex_buffer = mesh_vertex_buffer(mesh);
+                    if (vertex_buffer == VK_NULL_HANDLE)
+                        return;
+                    vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offset);
+                    vkCmdBindIndexBuffer(
+                        command_buffer, mesh.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexed(command_buffer, mesh.index_count, 1, 0, 0, 0);
+                };
+                for (const auto& draw : frame_shadow_draws_)
+                {
+                    const auto found = meshes_.find(resource_key(draw.mesh));
+                    if (found != meshes_.end())
+                        draw_mesh(draw, found->second);
+                }
+                for (const auto& draw : frame_virtual_shadow_draws_)
+                {
+                    if (!draw.draw.casts_shadows || !in_light_range(draw.draw) ||
+                        (shadow.mobility == render_mobility::static_object &&
+                            draw.draw.mobility != render_mobility::static_object))
+                        continue;
+                    const auto found = virtual_meshes_.find(resource_key(draw.mesh));
+                    if (found == virtual_meshes_.end() ||
+                        draw.cluster_index >= found->second.clusters.size())
+                        continue;
+                    const auto& cluster = found->second.clusters[draw.cluster_index];
+                    mesh_push_constants constants = build_mesh_constants(draw.draw);
+                    const auto mvp = math::matmul(packed.light_view_projection, draw.draw.model);
+                    std::copy(mvp.data(), mvp.data() + 16, constants.model_view_projection);
+                    VkDescriptorSet descriptor_set = material_descriptor_set_for(draw.draw);
+                    vkCmdBindDescriptorSets(
+                        command_buffer,
+                        VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        shadow_pipeline_layout_,
+                        0,
+                        1,
+                        &descriptor_set,
+                        0,
+                        nullptr);
+                    vkCmdPushConstants(
+                        command_buffer,
+                        shadow_pipeline_layout_,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0,
+                        sizeof(constants),
+                        &constants);
+                    const VkDeviceSize offset{};
+                    vkCmdBindVertexBuffers(
+                        command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
+                    vkCmdBindIndexBuffer(
+                        command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexed(
+                        command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
+                }
+                cmd_end_rendering(command_buffer);
+            }
+        }
+        transition_local_shadow_atlas(
+            command_buffer,
+            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
     }
 
     void set_viewport_and_scissor(VkCommandBuffer command_buffer) const
@@ -5655,17 +6704,43 @@ private:
 
             for (const auto& draw : frame_draws_)
             {
-                if (draw.mode == render_mode::wireframe ||
-                    material_alpha_mode_for(draw) == material_alpha_mode::blend)
+                if (draw.mode == render_mode::wireframe)
                     continue;
-                draw_indexed_mesh(command_buffer, draw, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT);
+                VkDescriptorSet descriptor_set = material_descriptor_set_for(draw);
+                vkCmdBindDescriptorSets(
+                    command_buffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    shadow_pipeline_layout_,
+                    0,
+                    1,
+                    &descriptor_set,
+                    0,
+                    nullptr);
+                draw_indexed_mesh(
+                    command_buffer,
+                    draw,
+                    shadow_pipeline_layout_,
+                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
             }
             for (const auto& draw : frame_virtual_draws_)
             {
-                if (draw.draw.mode == render_mode::wireframe ||
-                    material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
+                if (draw.draw.mode == render_mode::wireframe)
                     continue;
-                draw_indexed_virtual_cluster(command_buffer, draw, shadow_pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT);
+                VkDescriptorSet descriptor_set = material_descriptor_set_for(draw.draw);
+                vkCmdBindDescriptorSets(
+                    command_buffer,
+                    VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    shadow_pipeline_layout_,
+                    0,
+                    1,
+                    &descriptor_set,
+                    0,
+                    nullptr);
+                draw_indexed_virtual_cluster(
+                    command_buffer,
+                    draw,
+                    shadow_pipeline_layout_,
+                    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
             }
 
             cmd_end_rendering(command_buffer);
@@ -6281,6 +7356,7 @@ private:
     std::vector<draw_mesh_event> frame_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_draws_;
     std::vector<draw_mesh_event> frame_shadow_draws_;
+    std::vector<virtual_cluster_draw> frame_virtual_shadow_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
     std::vector<point_light_event> frame_point_lights_;
     std::vector<spot_light_event> frame_spot_lights_;
@@ -6298,7 +7374,15 @@ private:
     std::uint32_t active_frame_index_{};
     environment_handle active_environment_;
     vulkan_shadow_atlas shadow_atlas_;
+    vulkan_local_shadow_atlas local_shadow_atlas_;
     vulkan_shadow_cache shadow_cache_;
+    std::unique_ptr<shadow_atlas_allocator> local_shadow_allocator_;
+    std::vector<active_local_shadow> active_local_shadows_;
+    std::unordered_map<std::uint64_t, std::uint64_t> local_shadow_static_signatures_;
+    std::unordered_map<std::uint64_t, std::uint64_t> static_shadow_transform_hashes_;
+    std::unordered_set<std::uint64_t> reported_moved_static_objects_;
+    std::uint64_t shadow_resource_revision_{ 1 };
+    bool last_static_shadow_cache_hit_{};
 
     VkDescriptorSetLayout white_descriptor_set_layout_{};
     VkDescriptorPool white_descriptor_pool_{};
