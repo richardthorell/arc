@@ -231,8 +231,17 @@ struct host_environment_visibility
 struct host_component_snapshot
 {
     host_component_kind kind{ host_component_kind::transform };
+    std::string type_id;
     std::string label;
+    std::uint64_t revision{};
+    std::uint64_t dirty_fields{};
     bool editable{ true };
+};
+
+struct host_bounds_snapshot
+{
+    host_vec3 minimum{};
+    host_vec3 maximum{};
 };
 
 enum class host_exposure_mode : std::uint8_t
@@ -394,6 +403,12 @@ struct host_scene_snapshot
     std::string scene_guid;
     std::string scene_name;
     std::string active_scene_path;
+    std::uint64_t scene_revision{};
+    std::uint64_t world_epoch{};
+    std::uint64_t frame_revision{};
+    std::size_t total_entity_count{};
+    std::size_t offset{};
+    bool has_more{};
     bool dirty{};
     bool can_undo{};
     bool can_redo{};
@@ -404,12 +419,14 @@ struct host_scene_snapshot
 struct host_selected_entity_snapshot
 {
     host_entity_id entity{};
+    std::string guid;
     std::string name;
     std::string tag;
     bool active{ true };
     std::uint32_t render_layer_mask{ host_default_render_layer };
     host_mobility mobility{ host_mobility::movable };
     std::optional<host_transform> transform;
+    std::optional<host_bounds_snapshot> bounds;
     std::optional<host_camera_snapshot> camera;
     std::optional<host_light_snapshot> light;
     std::optional<host_mesh_renderer_snapshot> mesh_renderer;
@@ -825,9 +842,21 @@ struct host_viewport_camera_input_command
     float zoom{};
     bool focus_selected{};
 };
+struct host_viewport_set_pose_command
+{
+    host_vec3 position{};
+    host_vec3 target{};
+};
 
 struct host_history_undo_command {};
 struct host_history_redo_command {};
+struct host_history_begin_transaction_command
+{
+    std::uint64_t id{};
+    std::string label;
+};
+struct host_history_commit_transaction_command { std::uint64_t id{}; };
+struct host_history_cancel_transaction_command { std::uint64_t id{}; };
 struct host_runtime_resume_command {};
 struct host_runtime_pause_command {};
 struct host_runtime_stop_command {};
@@ -845,6 +874,18 @@ struct host_viewport_set_tool_command
     float scale_snap{ 0.1f };
 };
 struct host_viewport_pick_command { std::uint32_t x{}; std::uint32_t y{}; };
+struct host_viewport_capture_command
+{
+    std::uint64_t capture_id{};
+    bool color{ true };
+    bool depth{ true };
+    bool object_id{ true };
+    bool normals{ true };
+    bool scene_color{};
+    bool base_color{};
+    bool material_properties{};
+    bool emissive{};
+};
 
 using host_command_payload = std::variant<
     host_open_project_command,
@@ -889,8 +930,12 @@ using host_command_payload = std::variant<
     host_viewport_set_camera_mode_command,
     host_viewport_set_render_options_command,
     host_viewport_camera_input_command,
+    host_viewport_set_pose_command,
     host_history_undo_command,
     host_history_redo_command,
+    host_history_begin_transaction_command,
+    host_history_commit_transaction_command,
+    host_history_cancel_transaction_command,
     host_runtime_resume_command,
     host_runtime_pause_command,
     host_runtime_stop_command,
@@ -899,7 +944,8 @@ using host_command_payload = std::variant<
     host_runtime_capture_snapshot_command,
     host_runtime_restore_snapshot_command,
     host_viewport_set_tool_command,
-    host_viewport_pick_command>;
+    host_viewport_pick_command,
+    host_viewport_capture_command>;
 
 struct host_edit_transaction
 {
@@ -914,6 +960,7 @@ struct host_command_envelope
     std::string command_type;
     host_command_payload payload{ host_close_project_command{} };
     std::optional<host_edit_transaction> edit;
+    std::optional<std::uint64_t> expected_scene_revision;
 };
 
 struct host_scene_hierarchy_query
@@ -922,6 +969,50 @@ struct host_scene_hierarchy_query
 
 struct host_selected_entity_query
 {
+};
+
+struct host_scene_entities_query
+{
+    std::string search;
+    std::size_t offset{};
+    std::size_t limit{ 100 };
+};
+
+struct host_entity_by_guid_query
+{
+    std::string guid;
+};
+
+enum class host_spatial_query_kind : std::uint8_t
+{
+    raycast,
+    nearby,
+    bounds,
+    frustum
+};
+
+struct host_scene_spatial_query
+{
+    host_spatial_query_kind kind{ host_spatial_query_kind::nearby };
+    host_vec3 origin{};
+    host_vec3 direction{ 0.0f, 0.0f, -1.0f };
+    host_vec3 center{};
+    host_vec3 extent{ 1.0f, 1.0f, 1.0f };
+    float radius{ 10.0f };
+    std::size_t limit{ 100 };
+};
+
+struct host_component_schema_query
+{
+};
+
+struct host_gateway_diagnostics_query
+{
+};
+
+struct host_viewport_capture_query
+{
+    std::uint64_t capture_id{};
 };
 
 struct host_project_assets_query
@@ -949,6 +1040,12 @@ struct host_terrain_tool_state_query {};
 using host_query_payload = std::variant<
     host_scene_hierarchy_query,
     host_selected_entity_query,
+    host_scene_entities_query,
+    host_entity_by_guid_query,
+    host_scene_spatial_query,
+    host_component_schema_query,
+    host_gateway_diagnostics_query,
+    host_viewport_capture_query,
     host_project_assets_query,
     host_asset_thumbnail_query,
     host_viewport_state_query,
@@ -970,6 +1067,9 @@ struct host_response
     bool succeeded{};
     std::string error;
     std::string payload_json;
+    std::uint64_t scene_revision{};
+    std::uint64_t world_epoch{};
+    std::uint64_t frame_revision{};
 };
 
 struct host_viewport_request

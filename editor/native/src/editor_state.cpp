@@ -82,7 +82,7 @@ render::material_handle ensure_terrain_material(editor_scene_state& scene, rende
     render::material_desc material;
     material.name = "Default Terrain Material";
     material.domain = render::material_domain::terrain;
-    material.base_color = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f };
+    material.base_color = math::vector4f::one;
     material.roughness = 0.82f;
     material.terrain_layers[0] = { .name = "Grass", .tint = { 0.68f, 0.82f, 0.55f, 1.0f }, .world_scale = 2.8f, .roughness = 0.82f };
     material.terrain_layers[1] = { .name = "Dirt", .tint = { 0.72f, 0.59f, 0.43f, 1.0f }, .world_scale = 2.2f, .roughness = 0.88f };
@@ -305,7 +305,7 @@ render::material_handle create_default_terrain_material(
     render::material_desc material;
     material.name = "ARC Layered Terrain";
     material.domain = render::material_domain::terrain;
-    material.base_color = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f };
+    material.base_color = math::vector4f::one;
     material.roughness = 0.82f;
     material.terrain_layers[0] = { .name = "Grass", .tint = { 0.68f, 0.82f, 0.55f, 1.0f }, .world_scale = 2.8f, .roughness = 0.82f };
     material.terrain_layers[1] = { .name = "Dirt", .tint = { 0.72f, 0.59f, 0.43f, 1.0f }, .world_scale = 2.2f, .roughness = 0.88f };

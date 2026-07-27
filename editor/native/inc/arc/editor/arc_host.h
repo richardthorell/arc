@@ -36,6 +36,8 @@ public:
 
     host_scene_snapshot scene_snapshot() const;
     host_selected_entity_snapshot selected_entity_snapshot() const;
+    host_selected_entity_snapshot entity_snapshot(host_entity_id entity) const;
+    host_selected_entity_snapshot entity_snapshot(std::string_view guid) const;
     host_project_assets_snapshot project_assets_snapshot() const;
     host_runtime_snapshot runtime_snapshot() const;
     host_terrain_tool_snapshot terrain_tool_snapshot() const;

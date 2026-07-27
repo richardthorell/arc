@@ -89,7 +89,7 @@ struct render_item
     render_mobility mobility{ render_mobility::movable };
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
-    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f base_color_tint = math::vector4f::one;
     std::string label;
 };
 
@@ -114,7 +114,7 @@ struct virtual_render_item
     render_mobility mobility{ render_mobility::movable };
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
-    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f base_color_tint = math::vector4f::one;
     std::string label;
 };
 
@@ -381,7 +381,7 @@ struct debug_overlay_line
 {
     math::vector3f start{};
     math::vector3f end{};
-    math::vector4f color{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f color = math::vector4f::one;
     debug_overlay_depth_mode depth{ debug_overlay_depth_mode::tested };
 };
 

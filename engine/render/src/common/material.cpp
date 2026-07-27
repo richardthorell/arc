@@ -130,7 +130,7 @@ math::vector3f beer_lambert_attenuation(
     float thickness) noexcept
 {
     if (!std::isfinite(attenuation_distance) || attenuation_distance <= 0.0f)
-        return { 1.0f, 1.0f, 1.0f };
+        return math::vector3f::one;
 
     const float path = std::max(thickness, 0.0f) / attenuation_distance;
     return {

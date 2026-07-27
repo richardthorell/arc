@@ -24,6 +24,11 @@ layout(push_constant) uniform output_constants
 void main()
 {
     vec4 hdr = texture(scene_color, in_uv);
+    if (constants.exposure_output.w > 0.5)
+    {
+        out_color = vec4(arc_linear_to_srgb(clamp(hdr.rgb, vec3(0.0), vec3(1.0))), hdr.a);
+        return;
+    }
     float exposure_multiplier = constants.exposure_output.x;
     if (constants.exposure_output.y > 0.5 && exposure.valid != 0u)
         exposure_multiplier = exp2(constants.exposure_output.z - exposure.ev100) / 1.2;

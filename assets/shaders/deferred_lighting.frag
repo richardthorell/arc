@@ -95,7 +95,8 @@ void main()
     surface.anisotropy = 0.0;
 
     int shadow_cascade = -1;
-    float shadow = lights.directional_count > 0u
+    float shadow = lights.directional_count > 0u &&
+        constants.light_direction_intensity.w > 0.5
         ? arc_directional_shadow_visibility(
             world_position,
             surface.normal,
@@ -242,11 +243,14 @@ void main()
     else if (mode == 10)
         color = vec3(in_uv, 0.0);
     else if (mode == 11)
-        color = vec3(motion * 0.5 + 0.5, 0.0);
-    else if (mode == 12)
         color = shadow_cascade >= 0
-            ? vec3(shadow, float(shadow_cascade) / 3.0, 1.0 - shadow)
+            ? vec3(
+                shadow_cascade == 0 || shadow_cascade == 3 ? 1.0 : 0.0,
+                shadow_cascade == 1 || shadow_cascade == 3 ? 1.0 : 0.0,
+                shadow_cascade == 2 ? 1.0 : 0.0)
             : vec3(1.0);
+    else if (mode == 12)
+        color = vec3(shadow);
 
     out_color = vec4(color, 1.0);
 }

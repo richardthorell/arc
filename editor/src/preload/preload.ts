@@ -59,6 +59,34 @@ export type ArcHostEvent = {
   payload: unknown;
 };
 
+export type ArcAiGatewayStatus = {
+  enabled: boolean;
+  endpoint: string;
+  discoveryFile: string;
+  protocolVersion: number;
+  sceneRevision: number;
+  worldEpoch: number;
+  frameRevision: number;
+  eventSequence: number;
+  clients: Array<{ id: string; name: string; connectedAt: string; lastSeenAt: string }>;
+  pendingEditRequests: Array<{
+    id: string; clientId: string; clientName: string; label: string; requestedAt: string;
+    state: 'pending' | 'approved' | 'denied' | 'expired'; expiresAt?: string;
+  }>;
+  activeEditSession: {
+    id: string; clientId: string; label: string; startedAt: string; lastActivityAt: string;
+    expectedSceneRevision: number;
+  } | null;
+  lastCommittedEdit: {
+    clientId: string; label: string; sceneRevision: number; committedAt: string;
+  } | null;
+  viewportLease: { clientId: string; expiresAt: string } | null;
+  audit: Array<{
+    sequence: number; timestamp: string; clientId: string; category: string;
+    operation: string; succeeded: boolean; detail: string;
+  }>;
+};
+
 const arcApi = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getStartupState: (): Promise<ArcStartupState> => ipcRenderer.invoke('editor:getStartupState'),
@@ -75,6 +103,20 @@ const arcApi = {
       const listener = (_event: Electron.IpcRendererEvent, hostEvent: ArcHostEvent) => callback(hostEvent);
       ipcRenderer.on('host:event', listener);
       return () => ipcRenderer.removeListener('host:event', listener);
+    },
+  },
+  aiGateway: {
+    status: (): Promise<ArcAiGatewayStatus | null> => ipcRenderer.invoke('ai-gateway:status'),
+    approve: (requestId: string): Promise<boolean> => ipcRenderer.invoke('ai-gateway:approve', requestId),
+    deny: (requestId: string): Promise<boolean> => ipcRenderer.invoke('ai-gateway:deny', requestId),
+    revoke: (clientId: string): Promise<void> => ipcRenderer.invoke('ai-gateway:revoke', clientId),
+    cancelEdit: (sessionId: string, clientId: string): Promise<unknown> =>
+      ipcRenderer.invoke('ai-gateway:cancelEdit', sessionId, clientId),
+    undoLastEdit: (): Promise<unknown> => ipcRenderer.invoke('ai-gateway:undoLastEdit'),
+    onStatus: (callback: (status: ArcAiGatewayStatus) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: ArcAiGatewayStatus) => callback(status);
+      ipcRenderer.on('ai-gateway:status', listener);
+      return () => ipcRenderer.removeListener('ai-gateway:status', listener);
     },
   },
   dialog: {

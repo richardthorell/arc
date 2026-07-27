@@ -208,7 +208,7 @@ struct draw_mesh_event
     render_mobility mobility{ render_mobility::movable };
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
-    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f base_color_tint = math::vector4f::one;
     math::vector4f wire_color{ 0.25f, 0.65f, 1.0f, 1.0f };
     std::string label;
 };
@@ -220,7 +220,7 @@ struct directional_light_event
 {
     render_object_id object_id{};
     math::vector3f direction{ 0.0f, -1.0f, 0.0f };
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 1.0f };
     bool casts_shadows{};
     bool enabled{ true };
@@ -241,7 +241,7 @@ struct point_light_event
 {
     render_object_id object_id{};
     math::vector3f position{};
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 1.0f };
     float range{ 10.0f };
     bool casts_shadows{};
@@ -263,7 +263,7 @@ struct spot_light_event
     render_object_id object_id{};
     math::vector3f position{};
     math::vector3f direction{ 0.0f, -1.0f, 0.0f };
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 1.0f };
     float range{ 10.0f };
     float inner_angle{ 0.35f };
@@ -288,7 +288,7 @@ struct area_light_event
     math::vector3f position{};
     math::vector3f direction{ 0.0f, -1.0f, 0.0f };
     math::vector3f tangent{ 1.0f, 0.0f, 0.0f };
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 100.0f };
     float width{ 1.0f };
     float height{ 1.0f };
@@ -468,7 +468,7 @@ public:
         render_mode mode = render_mode::shaded,
         mesh_visualization_mode visualization = mesh_visualization_mode::standard,
         bool selected = false,
-        const math::vector4f& base_color_tint = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+        const math::vector4f& base_color_tint = math::vector4f::one,
         const math::vector4f& wire_color = math::vector4f{ 0.25f, 0.65f, 1.0f, 1.0f },
         std::string label = {});
 

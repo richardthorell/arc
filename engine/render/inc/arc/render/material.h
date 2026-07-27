@@ -59,7 +59,7 @@ struct terrain_layer_desc
     texture_handle base_color_texture{};
     texture_handle normal_texture{};
     texture_handle packed_surface_texture{};
-    math::vector4f tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f tint = math::vector4f::one;
     float world_scale{ 4.0f };
     float roughness{ 0.8f };
 };
@@ -196,7 +196,7 @@ struct material_desc
     material_domain domain{ material_domain::surface };
     material_shading_model shading_model{ material_shading_model::standard };
 
-    math::vector4f base_color{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f base_color = math::vector4f::one;
     float metallic{};
     float roughness{ 0.6f };
     float alpha_cutoff{ 0.5f };
@@ -230,7 +230,7 @@ struct material_desc
     float transmission_factor{};
     float index_of_refraction{ 1.5f };
     float thickness_factor{};
-    math::vector3f attenuation_color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f attenuation_color = math::vector3f::one;
     float attenuation_distance{ 1.0f };
     float subsurface_factor{};
     math::vector3f subsurface_color{ 1.0f, 0.35f, 0.2f };

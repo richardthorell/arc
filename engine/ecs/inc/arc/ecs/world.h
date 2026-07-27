@@ -596,6 +596,12 @@ public:
         return found != pools_.end() && found->second->contains(value);
     }
 
+    component_change component_change_for(entity value, component_type_id type) const noexcept
+    {
+        const auto found = pools_.find(type);
+        return found != pools_.end() ? found->second->change(value) : component_change{};
+    }
+
     template <class T>
     bool remove(entity value)
     {

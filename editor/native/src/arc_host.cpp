@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <iomanip>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -100,7 +101,7 @@ constexpr bool is_authoring_command() noexcept
     return std::is_same_v<Command, host_create_entity_command> || std::is_same_v<Command, host_delete_entity_command> ||
         std::is_same_v<Command, host_duplicate_entity_command> || std::is_same_v<Command, host_reparent_entity_command> ||
         std::is_same_v<Command, host_create_prefab_command> || std::is_same_v<Command, host_instantiate_prefab_command> ||
-        std::is_same_v<Command, host_revert_prefab_command> ||
+        std::is_same_v<Command, host_apply_prefab_command> || std::is_same_v<Command, host_revert_prefab_command> ||
         std::is_same_v<Command, host_unpack_prefab_command> ||
         std::is_same_v<Command, host_reorder_entity_command> || std::is_same_v<Command, host_rename_entity_command> ||
         std::is_same_v<Command, host_set_active_command> || std::is_same_v<Command, host_set_tag_command> ||
@@ -852,9 +853,24 @@ void push_event(
     });
 }
 
-void add_component_snapshot(std::vector<host_component_snapshot>& components, host_component_kind kind, const char* label)
+template <class Component>
+void add_component_snapshot(
+    const scene::registry& world,
+    scene::entity entity,
+    std::vector<host_component_snapshot>& components,
+    host_component_kind kind,
+    const char* label)
 {
-    components.push_back({ .kind = kind, .label = label, .editable = true });
+    const auto type = ecs::component_type<Component>();
+    const auto change = world.component_change_for(entity, type);
+    components.push_back({
+        .kind = kind,
+        .type_id = ecs::to_string(type),
+        .label = label,
+        .revision = change.revision,
+        .dirty_fields = change.fields,
+        .editable = true
+    });
 }
 
 std::string asset_relative_path(const std::filesystem::path& root, const std::filesystem::path& path)
@@ -864,6 +880,95 @@ std::string asset_relative_path(const std::filesystem::path& root, const std::fi
     std::error_code error;
     const auto relative = std::filesystem::relative(path, root, error);
     return (error ? path.lexically_normal() : relative.lexically_normal()).generic_string();
+}
+
+const char* reflected_kind_name(ecs::reflected_field_kind kind) noexcept
+{
+    switch (kind)
+    {
+    case ecs::reflected_field_kind::boolean: return "boolean";
+    case ecs::reflected_field_kind::signed_integer: return "integer";
+    case ecs::reflected_field_kind::unsigned_integer: return "unsignedInteger";
+    case ecs::reflected_field_kind::floating_point: return "number";
+    case ecs::reflected_field_kind::string: return "string";
+    case ecs::reflected_field_kind::vector2: return "vector2";
+    case ecs::reflected_field_kind::vector3: return "vector3";
+    case ecs::reflected_field_kind::vector4: return "vector4";
+    case ecs::reflected_field_kind::quaternion: return "quaternion";
+    case ecs::reflected_field_kind::matrix: return "matrix";
+    case ecs::reflected_field_kind::enumeration: return "enum";
+    case ecs::reflected_field_kind::entity_reference: return "entity";
+    case ecs::reflected_field_kind::asset_reference: return "asset";
+    case ecs::reflected_field_kind::structure: return "struct";
+    case ecs::reflected_field_kind::sequence: return "sequence";
+    case ecs::reflected_field_kind::unknown: break;
+    }
+    return "unknown";
+}
+
+template <class Component>
+void append_component_schema(std::string& json, bool& first)
+{
+    const auto& descriptor = ecs::component_metadata<Component>();
+    if (!first)
+        json += ',';
+    first = false;
+    json += "{\"id\":" + to_json_string(ecs::to_string(descriptor.id)) +
+        ",\"name\":" + to_json_string(descriptor.canonical_name) +
+        ",\"displayName\":" + to_json_string(descriptor.display_name) +
+        ",\"schemaVersion\":" + std::to_string(descriptor.schema_version) +
+        ",\"customSerialization\":" + std::string(descriptor.custom_serialization ? "true" : "false") +
+        ",\"fields\":[";
+    for (std::size_t index = 0; index < descriptor.fields.size(); ++index)
+    {
+        if (index != 0)
+            json += ',';
+        const auto& field = descriptor.fields[index];
+        json += "{\"id\":" + to_json_string([&] {
+                std::ostringstream value;
+                value << std::hex << std::setfill('0') << std::setw(16) << field.id;
+                return value.str();
+            }()) +
+            ",\"name\":" + to_json_string(field.name) +
+            ",\"displayName\":" + to_json_string(field.display_name) +
+            ",\"kind\":" + to_json_string(reflected_kind_name(field.kind)) +
+            ",\"editable\":" + std::string(
+                ecs::has_flag(field.flags, ecs::reflected_field_flags::editable) ? "true" : "false") +
+            ",\"transient\":" + std::string(
+                ecs::has_flag(field.flags, ecs::reflected_field_flags::transient) ? "true" : "false") + '}';
+    }
+    json += "]}";
+}
+
+std::string component_schema_json()
+{
+    std::string json = "{\"schemaVersion\":1,\"components\":[";
+    bool first = true;
+    append_component_schema<scene::name_component>(json, first);
+    append_component_schema<scene::transform_component>(json, first);
+    append_component_schema<scene::tag_component>(json, first);
+    append_component_schema<scene::active_component>(json, first);
+    append_component_schema<scene::bounds_component>(json, first);
+    append_component_schema<scene::camera_component>(json, first);
+    append_component_schema<scene::mesh_renderer_component>(json, first);
+    append_component_schema<scene::render_layer_component>(json, first);
+    append_component_schema<scene::mobility_component>(json, first);
+    append_component_schema<scene::directional_light_component>(json, first);
+    append_component_schema<scene::point_light_component>(json, first);
+    append_component_schema<scene::spot_light_component>(json, first);
+    append_component_schema<scene::area_light_component>(json, first);
+    append_component_schema<scene::world_environment_component>(json, first);
+    append_component_schema<scene::sky_atmosphere_component>(json, first);
+    append_component_schema<scene::celestial_sky_component>(json, first);
+    append_component_schema<scene::cloud_layers_component>(json, first);
+    append_component_schema<scene::environment_lighting_component>(json, first);
+    append_component_schema<scene::height_fog_component>(json, first);
+    append_component_schema<scene::terrain_component>(json, first);
+    append_component_schema<scene::water_component>(json, first);
+    append_component_schema<scene::vegetation_component>(json, first);
+    append_component_schema<scene::decal_component>(json, first);
+    json += "]}";
+    return json;
 }
 
 host_mesh_renderer_snapshot mesh_renderer_snapshot(
@@ -974,8 +1079,8 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     state.scene.emplace<scene::active_component>(camera);
     state.scene.emplace<scene::transform_component>(camera, camera_transform);
     scene::camera_component editor_camera;
-    editor_camera.near_plane = 0.1f;
-    editor_camera.far_plane = 2000.0f;
+    editor_camera.near_plane = defaults::default_camera_near_plane;
+    editor_camera.far_plane = defaults::default_camera_far_plane;
     editor_camera.clear_color = math::vector4f{ 0.055f, 0.12f, 0.22f, 1.0f };
     state.scene.emplace<scene::camera_component>(camera, editor_camera);
 
@@ -989,8 +1094,8 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
     state.scene.emplace<scene::transform_component>(game_camera, game_camera_transform);
     scene::camera_component main_camera;
     main_camera.active = false;
-    main_camera.near_plane = 0.1f;
-    main_camera.far_plane = 2000.0f;
+    main_camera.near_plane = defaults::default_camera_near_plane;
+    main_camera.far_plane = defaults::default_camera_far_plane;
     state.scene.emplace<scene::camera_component>(game_camera, main_camera);
 
     const auto sun = state.scene.create();
@@ -1154,6 +1259,8 @@ struct arc_host::state
     gizmo_axis gizmo_highlight{ gizmo_axis::none };
     std::vector<host_event> events;
     std::uint64_t event_sequence{};
+    std::uint64_t scene_revision{ 1 };
+    std::uint64_t world_epoch{ 1 };
     bool project_open{};
 };
 
@@ -1183,6 +1290,8 @@ host_response arc_host::open_project(
     state_->project.name = command.name.empty() ? "Arc Project" : command.name;
     state_->project.root = command.root;
     state_->scene = create_default_scene(assets, *state_->renderer);
+    ++state_->scene_revision;
+    ++state_->world_epoch;
     state_->history.clear(state_->scene, false);
     state_->camera_controller = {};
     state_->camera_controller.focus(defaults::default_camera_focus, defaults::default_camera_focus_radius);
@@ -1214,14 +1323,30 @@ host_response arc_host::execute(const host_command_envelope& command)
     }, command.payload);
     const std::string edit_label = command.edit && !command.edit->label.empty()
         ? command.edit->label : history_label(command.payload);
+    if (command.expected_scene_revision && *command.expected_scene_revision != state_->scene_revision)
+    {
+        return {
+            .request_id = command.request_id,
+            .succeeded = false,
+            .error = "Scene revision is stale",
+            .scene_revision = state_->scene_revision,
+            .world_epoch = state_->world_epoch,
+            .frame_revision = state_->viewport_frame_index
+        };
+    }
     if (command.edit && command.edit->phase == host_edit_phase::cancel)
     {
         if (!state_->history.cancel(command.edit->id, state_->scene))
-            return { .request_id = command.request_id, .succeeded = false, .error = "No matching edit transaction to cancel" };
+            return { .request_id = command.request_id, .succeeded = false, .error = "No matching edit transaction to cancel",
+                .scene_revision = state_->scene_revision, .world_epoch = state_->world_epoch,
+                .frame_revision = state_->viewport_frame_index };
         rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
         state_->terrain_brush_local_position.reset();
+        ++state_->scene_revision;
         push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Edit transaction cancelled");
-        return { .request_id = command.request_id, .succeeded = true, .payload_json = "{}" };
+        return { .request_id = command.request_id, .succeeded = true, .payload_json = "{}",
+            .scene_revision = state_->scene_revision, .world_epoch = state_->world_epoch,
+            .frame_revision = state_->viewport_frame_index };
     }
     if (authoring && command.edit && command.edit->phase == host_edit_phase::begin &&
         !state_->history.begin(command.edit->id, edit_label, state_->scene))
@@ -2175,6 +2300,20 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             return fail("No editor camera is available", state_->scene.camera_entity);
         }
+        else if constexpr (std::is_same_v<command_type, host_viewport_set_pose_command>)
+        {
+            const math::vector3f position{ payload.position.x, payload.position.y, payload.position.z };
+            const math::vector3f target{ payload.target.x, payload.target.y, payload.target.z };
+            if (!state_->camera_controller.place(position, target))
+                return fail("Viewport camera position and target must be finite and distinct");
+            if (auto* camera_transform =
+                    state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+            {
+                state_->camera_controller.apply_to(*camera_transform);
+                return success("{\"entity\":" + to_json(to_host_entity(state_->scene.camera_entity)) + '}');
+            }
+            return fail("No editor camera is available", state_->scene.camera_entity);
+        }
         else if constexpr (std::is_same_v<command_type, host_history_undo_command>)
         {
             if (!state_->history.undo(state_->scene)) return fail("Nothing to undo");
@@ -2200,6 +2339,31 @@ host_response arc_host::execute(const host_command_envelope& command)
                 rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Redo completed", state_->scene.selected_entity);
             return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_history_begin_transaction_command>)
+        {
+            if (payload.id == 0 || !state_->history.begin(payload.id,
+                payload.label.empty() ? "AI Scene Edit" : payload.label, state_->scene))
+                return fail("Could not begin edit transaction");
+            return success("{\"transactionId\":" + std::to_string(payload.id) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_history_commit_transaction_command>)
+        {
+            if (!state_->history.transaction_matches(payload.id) ||
+                !state_->history.commit(payload.id, state_->scene))
+                return fail("Could not commit edit transaction");
+            return success("{\"transactionId\":" + std::to_string(payload.id) + '}');
+        }
+        else if constexpr (std::is_same_v<command_type, host_history_cancel_transaction_command>)
+        {
+            if (!state_->history.cancel(payload.id, state_->scene))
+                return fail("Could not cancel edit transaction");
+            rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+            state_->terrain_brush_local_position.reset();
+            ++state_->scene_revision;
+            push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
+                "Edit transaction cancelled");
+            return success("{\"transactionId\":" + std::to_string(payload.id) + '}');
         }
         else if constexpr (std::is_same_v<command_type, host_viewport_set_tool_command>)
         {
@@ -2257,6 +2421,32 @@ host_response arc_host::execute(const host_command_envelope& command)
                     cpu_fallback.entity.valid() ? "Viewport entity selected" : "Viewport selection cleared", cpu_fallback.entity);
             return success("{\"entity\":" + to_json(to_host_entity(cpu_fallback.entity)) + '}');
         }
+        else if constexpr (std::is_same_v<command_type, host_viewport_capture_command>)
+        {
+            if (payload.capture_id == 0)
+                return fail("Capture ID must be non-zero");
+            render::render_frame_capture_request request{};
+            request.capture_id = payload.capture_id;
+            request.channels.clear();
+            if (payload.color)
+                request.channels.push_back(render::render_capture_channel::output_color);
+            if (payload.scene_color)
+                request.channels.push_back(render::render_capture_channel::scene_color);
+            if (payload.depth)
+                request.channels.push_back(render::render_capture_channel::linear_depth);
+            if (payload.object_id)
+                request.channels.push_back(render::render_capture_channel::object_id);
+            if (payload.normals)
+                request.channels.push_back(render::render_capture_channel::world_normal);
+            if (payload.base_color)
+                request.channels.push_back(render::render_capture_channel::base_color);
+            if (payload.material_properties)
+                request.channels.push_back(render::render_capture_channel::material_properties);
+            if (payload.emissive)
+                request.channels.push_back(render::render_capture_channel::emissive);
+            state_->renderer->request_frame_capture(std::move(request));
+            return success("{\"captureId\":" + std::to_string(payload.capture_id) + ",\"pending\":true}");
+        }
 
         return fail("Unsupported host command");
     }, command.payload);
@@ -2265,6 +2455,7 @@ host_response arc_host::execute(const host_command_envelope& command)
         state_->history.cancel(command.edit->id, state_->scene);
     else if (authoring && response.succeeded)
     {
+        ++state_->scene_revision;
         if (command.edit && command.edit->phase == host_edit_phase::commit)
         {
             if (const auto* terrain_stroke = std::get_if<host_terrain_stroke_command>(&command.payload))
@@ -2283,12 +2474,19 @@ host_response arc_host::execute(const host_command_envelope& command)
             state_->history.record(edit_label, std::move(*before), state_->scene);
         }
     }
+    if (response.succeeded && std::holds_alternative<host_open_scene_command>(command.payload))
+        ++state_->world_epoch;
+    if (response.succeeded && std::holds_alternative<host_new_scene_command>(command.payload))
+        ++state_->world_epoch;
+    response.scene_revision = state_->scene_revision;
+    response.world_epoch = state_->world_epoch;
+    response.frame_revision = state_->viewport_frame_index;
     return response;
 }
 
 host_response arc_host::query(const host_query_envelope& query) const
 {
-    return std::visit([this, request_id = query.request_id](const auto& payload) -> host_response {
+    auto response = std::visit([this, request_id = query.request_id](const auto& payload) -> host_response {
         using query_type = std::decay_t<decltype(payload)>;
         if constexpr (std::is_same_v<query_type, host_scene_hierarchy_query>)
         {
@@ -2297,6 +2495,348 @@ host_response arc_host::query(const host_query_envelope& query) const
         else if constexpr (std::is_same_v<query_type, host_selected_entity_query>)
         {
             return { .request_id = request_id, .succeeded = true, .payload_json = to_json(selected_entity_snapshot()) };
+        }
+        else if constexpr (std::is_same_v<query_type, host_scene_entities_query>)
+        {
+            auto snapshot = scene_snapshot();
+            if (!payload.search.empty())
+            {
+                std::string search = payload.search;
+                std::transform(search.begin(), search.end(), search.begin(), [](unsigned char value) {
+                    return static_cast<char>(std::tolower(value));
+                });
+                std::erase_if(snapshot.entities, [&](const host_scene_entity_snapshot& entity) {
+                    std::string name = entity.name;
+                    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char value) {
+                        return static_cast<char>(std::tolower(value));
+                    });
+                    return name.find(search) == std::string::npos && entity.guid.find(search) == std::string::npos;
+                });
+            }
+            snapshot.total_entity_count = snapshot.entities.size();
+            snapshot.offset = std::min(payload.offset, snapshot.entities.size());
+            const std::size_t end = std::min(snapshot.offset + payload.limit, snapshot.entities.size());
+            snapshot.has_more = end < snapshot.entities.size();
+            snapshot.entities = std::vector<host_scene_entity_snapshot>(
+                snapshot.entities.begin() + static_cast<std::ptrdiff_t>(snapshot.offset),
+                snapshot.entities.begin() + static_cast<std::ptrdiff_t>(end));
+            return { .request_id = request_id, .succeeded = true, .payload_json = to_json(snapshot) };
+        }
+        else if constexpr (std::is_same_v<query_type, host_entity_by_guid_query>)
+        {
+            const auto snapshot = entity_snapshot(payload.guid);
+            if (!snapshot.entity.valid())
+                return { .request_id = request_id, .succeeded = false, .error = "Entity GUID was not found" };
+            return { .request_id = request_id, .succeeded = true, .payload_json = to_json(snapshot) };
+        }
+        else if constexpr (std::is_same_v<query_type, host_scene_spatial_query>)
+        {
+            // Spatial queries are editor-authoritative reads and may arrive before the
+            // next render extraction after an edit. Refresh hierarchy-derived world
+            // transforms so bounds and exact ray tests observe the latest scene state.
+            scene::update_world_transforms(state_->scene.scene);
+            if (payload.kind == host_spatial_query_kind::raycast)
+            {
+                math::vector3f direction{ payload.direction.x, payload.direction.y, payload.direction.z };
+                const float direction_length = math::length(direction);
+                if (!std::isfinite(direction_length) || direction_length <= 0.000001f)
+                    return { .request_id = request_id, .succeeded = false, .error = "Ray direction must be finite and non-zero" };
+                direction = math::mul(direction, 1.0f / direction_length);
+                const auto hit = pick_scene_entity(
+                    state_->scene.scene,
+                    *state_->renderer,
+                    editor_ray{
+                        .origin = { payload.origin.x, payload.origin.y, payload.origin.z },
+                        .direction = direction });
+                if (!state_->scene.scene.alive(hit.entity))
+                    return { .request_id = request_id, .succeeded = true, .payload_json = "{\"hits\":[]}" };
+                const std::string json = "{\"hits\":[{\"guid\":" +
+                    to_json_string(scene::to_string(entity_guid_of(state_->scene, hit.entity))) +
+                    ",\"distance\":" + std::to_string(hit.distance) +
+                    ",\"exact\":" + std::string(hit.exact ? "true" : "false") +
+                    ",\"background\":" + std::string(hit.background ? "true" : "false") + "}]}";
+                return { .request_id = request_id, .succeeded = true, .payload_json = json };
+            }
+
+            struct spatial_match
+            {
+                std::string guid;
+                float distance{};
+            };
+            std::vector<spatial_match> matches;
+            const math::vector3f center{ payload.center.x, payload.center.y, payload.center.z };
+            const geometric::box3f query_bounds{
+                { center[0] - std::abs(payload.extent.x), center[1] - std::abs(payload.extent.y),
+                    center[2] - std::abs(payload.extent.z) },
+                { center[0] + std::abs(payload.extent.x), center[1] + std::abs(payload.extent.y),
+                    center[2] + std::abs(payload.extent.z) } };
+            std::optional<render::view_frustum> viewport_frustum;
+            if (payload.kind == host_spatial_query_kind::frustum)
+            {
+                const auto* camera =
+                    state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+                const auto* transform =
+                    state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
+                if (!camera || !transform)
+                    return { .request_id = request_id, .succeeded = false,
+                        .error = "Viewport camera is unavailable for a frustum query" };
+                const float aspect = static_cast<float>(std::max(state_->viewport_options.width, 1u)) /
+                    static_cast<float>(std::max(state_->viewport_options.height, 1u));
+                viewport_frustum = render::make_view_frustum(scene::view_projection(*camera, *transform, aspect));
+            }
+            for (const auto entity : state_->scene.scene.entities())
+            {
+                if (entity == state_->scene.camera_entity)
+                    continue;
+                const auto* bounds = state_->scene.scene.try_get<scene::bounds_component>(entity);
+                if (!bounds)
+                    continue;
+                const auto bounds_center = geometric::center(bounds->world_bounds);
+                const math::vector3f delta{
+                    bounds_center[0] - center[0], bounds_center[1] - center[1], bounds_center[2] - center[2] };
+                const float distance = math::length(delta);
+                const bool included = payload.kind == host_spatial_query_kind::bounds
+                    ? geometric::intersects(bounds->world_bounds, query_bounds)
+                    : payload.kind == host_spatial_query_kind::frustum
+                        ? render::intersects(*viewport_frustum, bounds->world_bounds)
+                        : distance <= std::max(payload.radius, 0.0f);
+                if (included)
+                    matches.push_back({ scene::to_string(entity_guid_of(state_->scene, entity)), distance });
+            }
+            std::sort(matches.begin(), matches.end(), [](const spatial_match& left, const spatial_match& right) {
+                if (left.distance != right.distance)
+                    return left.distance < right.distance;
+                return left.guid < right.guid;
+            });
+            if (matches.size() > payload.limit)
+                matches.resize(payload.limit);
+            std::string json = "{\"hits\":[";
+            for (std::size_t index = 0; index < matches.size(); ++index)
+            {
+                if (index != 0)
+                    json += ',';
+                json += "{\"guid\":" + to_json_string(matches[index].guid) +
+                    ",\"distance\":" + std::to_string(matches[index].distance) + '}';
+            }
+            json += "]}";
+            return { .request_id = request_id, .succeeded = true, .payload_json = std::move(json) };
+        }
+        else if constexpr (std::is_same_v<query_type, host_component_schema_query>)
+        {
+            return { .request_id = request_id, .succeeded = true, .payload_json = component_schema_json() };
+        }
+        else if constexpr (std::is_same_v<query_type, host_gateway_diagnostics_query>)
+        {
+            const auto profile = state_->renderer->last_frame_profile();
+            std::string json = "{\"frameIndex\":" + std::to_string(profile.frame_index) +
+                ",\"summary\":" + to_json_string(profile.summary) +
+                ",\"passes\":[";
+            for (std::size_t index = 0; index < profile.pass_timings.size(); ++index)
+            {
+                if (index != 0)
+                    json += ',';
+                json += "{\"name\":" + to_json_string(profile.pass_timings[index].name) +
+                    ",\"milliseconds\":" + std::to_string(profile.pass_timings[index].milliseconds) + '}';
+            }
+            json += "],\"timingsAvailable\":" +
+                std::string(profile.pass_timings.empty() ? "false" : "true") +
+                ",\"graph\":{\"executedPasses\":[";
+            for (std::size_t index = 0; index < profile.graph.passes.size(); ++index)
+            {
+                if (index != 0)
+                    json += ',';
+                json += to_json_string(profile.graph.passes[index].name);
+            }
+            std::uint64_t transient_bytes{};
+            for (const auto& lifetime : profile.graph.lifetimes)
+                transient_bytes += lifetime.estimated_bytes;
+            json += "],\"resourceCount\":" + std::to_string(profile.graph.resources.size()) +
+                ",\"barrierCount\":" + std::to_string(profile.graph.transitions.size()) +
+                ",\"estimatedTransientBytes\":" + std::to_string(transient_bytes) +
+                "},\"renderer\":{\"path\":" + to_json_string(profile.configuration.path == render::render_path::forward_plus
+                    ? "forwardPlus" : "deferred") +
+                ",\"renderScale\":" + std::to_string(profile.configuration.render_scale) +
+                ",\"qualityTier\":" + to_json_string(
+                    profile.configuration.quality == render::render_quality_tier::low
+                        ? "low"
+                        : profile.configuration.quality == render::render_quality_tier::high
+                            ? "high"
+                            : "standard") +
+                ",\"targetFrameMilliseconds\":" +
+                    std::to_string(profile.configuration.target_frame_time_ms) +
+                ",\"fallbackReasons\":[";
+            for (std::size_t index = 0; index < profile.configuration.fallback_reasons.size(); ++index)
+            {
+                if (index != 0)
+                    json += ',';
+                json += to_json_string(profile.configuration.fallback_reasons[index]);
+            }
+            json += "]},\"environment\":{\"enabled\":" +
+                std::string(profile.environment.enabled ? "true" : "false") +
+                ",\"skyVisible\":" + std::string(profile.environment.sky_visible ? "true" : "false") +
+                ",\"affectsLighting\":" +
+                    std::string(profile.environment.affects_lighting ? "true" : "false") +
+                ",\"source\":" + to_json_string(profile.environment.source) +
+                ",\"qualityPath\":" + to_json_string(profile.environment.quality_path) +
+                ",\"atmosphereLutState\":" +
+                    to_json_string(profile.environment.atmosphere_lut_state) +
+                ",\"lightingState\":" +
+                    to_json_string(profile.environment.environment_lighting_state) +
+                ",\"cloudShadowResolution\":" +
+                    std::to_string(profile.environment.cloud_shadow_resolution) +
+                ",\"fallback\":" + to_json_string(profile.environment.fallback_reason) +
+                "},\"shadows\":{\"cascades\":" + std::to_string(profile.shadows.directional_cascade_count) +
+                ",\"directionalResolution\":" + std::to_string(profile.shadows.directional_resolution) +
+                ",\"localAtlasResolution\":" + std::to_string(profile.shadows.local_atlas_resolution) +
+                ",\"localAllocations\":" + std::to_string(profile.shadows.local_allocation_count) +
+                ",\"localOccupiedTexels\":" + std::to_string(profile.shadows.local_occupied_texels) +
+                ",\"localEvictions\":" + std::to_string(profile.shadows.local_eviction_count) +
+                ",\"localResolutionReductions\":" +
+                    std::to_string(profile.shadows.local_resolution_reductions) +
+                ",\"shadowedPointLights\":" + std::to_string(profile.shadows.shadowed_point_lights) +
+                ",\"shadowedSpotLights\":" + std::to_string(profile.shadows.shadowed_spot_lights) +
+                ",\"staticCasters\":" + std::to_string(profile.shadows.static_caster_count) +
+                ",\"dynamicCasters\":" + std::to_string(profile.shadows.dynamic_caster_count) +
+                ",\"localCacheHits\":" + std::to_string(profile.shadows.local_cache_hits) +
+                ",\"localCacheMisses\":" + std::to_string(profile.shadows.local_cache_misses) +
+                ",\"staticCacheHit\":" + std::string(profile.shadows.static_cache_hit ? "true" : "false") +
+                ",\"screenSpaceShadows\":" +
+                    std::string(profile.shadows.screen_space_shadows ? "true" : "false") +
+                ",\"fallback\":" + to_json_string(profile.shadows.fallback_reason) + "}}";
+            return { .request_id = request_id, .succeeded = true, .payload_json = std::move(json) };
+        }
+        else if constexpr (std::is_same_v<query_type, host_viewport_capture_query>)
+        {
+            auto capture = state_->renderer->last_frame_capture();
+            if (!capture.available || capture.capture_id != payload.capture_id)
+            {
+                return {
+                    .request_id = request_id,
+                    .succeeded = true,
+                    .payload_json = "{\"captureId\":" + std::to_string(payload.capture_id) +
+                        ",\"pending\":true}"
+                };
+            }
+            const auto channel_name = [](render::render_capture_channel channel) {
+                switch (channel)
+                {
+                case render::render_capture_channel::output_color: return "color";
+                case render::render_capture_channel::scene_color: return "sceneColor";
+                case render::render_capture_channel::linear_depth: return "depth";
+                case render::render_capture_channel::object_id: return "objectId";
+                case render::render_capture_channel::world_normal: return "normals";
+                case render::render_capture_channel::base_color: return "baseColor";
+                case render::render_capture_channel::material_properties: return "materialProperties";
+                case render::render_capture_channel::emissive: return "emissive";
+                }
+                return "unknown";
+            };
+            const auto format_name = [](render::render_capture_format format) {
+                switch (format)
+                {
+                case render::render_capture_format::rgba8_unorm: return "rgba8";
+                case render::render_capture_format::bgra8_unorm: return "bgra8";
+                case render::render_capture_format::rgba16_float: return "rgba16f";
+                case render::render_capture_format::r32_float: return "r32f";
+                case render::render_capture_format::r32_uint: return "r32ui";
+                }
+                return "unknown";
+            };
+            const auto matrix_json = [](const math::matrix4f& matrix) {
+                std::string json = "[";
+                for (std::size_t index = 0; index < 16; ++index)
+                {
+                    if (index != 0)
+                        json += ',';
+                    json += std::to_string(matrix.data()[index]);
+                }
+                json += ']';
+                return json;
+            };
+            const auto& capture_camera = capture.camera;
+            const bool orthographic =
+                std::abs(capture_camera.projection(3, 3) - 1.0f) <= 0.000001f;
+            if (capture_camera.near_plane > 0.0f &&
+                capture_camera.far_plane > capture_camera.near_plane)
+            {
+                for (auto& image : capture.images)
+                {
+                    if (image.channel != render::render_capture_channel::linear_depth ||
+                        image.format != render::render_capture_format::r32_float)
+                        continue;
+                    const float near_plane = capture_camera.near_plane;
+                    const float far_plane = capture_camera.far_plane;
+                    for (std::size_t offset = 0; offset + sizeof(float) <= image.data.size(); offset += sizeof(float))
+                    {
+                        float device_depth{};
+                        std::memcpy(&device_depth, image.data.data() + offset, sizeof(device_depth));
+                        const float linear_depth = orthographic
+                            ? near_plane + device_depth * (far_plane - near_plane)
+                            : (near_plane * far_plane) /
+                                std::max(far_plane - device_depth * (far_plane - near_plane), 0.000001f);
+                        std::memcpy(image.data.data() + offset, &linear_depth, sizeof(linear_depth));
+                    }
+                }
+            }
+            std::string json = "{\"captureId\":" + std::to_string(capture.capture_id) +
+                ",\"pending\":false,\"succeeded\":" + std::string(capture.succeeded ? "true" : "false") +
+                ",\"frameIndex\":" + std::to_string(capture.frame_index) +
+                ",\"camera\":{\"position\":[" +
+                    std::to_string(capture_camera.position[0]) + ',' +
+                    std::to_string(capture_camera.position[1]) + ',' +
+                    std::to_string(capture_camera.position[2]) +
+                "],\"forward\":[" +
+                    std::to_string(capture_camera.forward[0]) + ',' +
+                    std::to_string(capture_camera.forward[1]) + ',' +
+                    std::to_string(capture_camera.forward[2]) +
+                "],\"up\":[" +
+                    std::to_string(capture_camera.up[0]) + ',' +
+                    std::to_string(capture_camera.up[1]) + ',' +
+                    std::to_string(capture_camera.up[2]) +
+                "],\"projectionType\":" + to_json_string(orthographic ? "orthographic" : "perspective") +
+                ",\"nearPlane\":" + std::to_string(capture_camera.near_plane) +
+                ",\"farPlane\":" + std::to_string(capture_camera.far_plane) +
+                ",\"renderExtent\":[" + std::to_string(capture_camera.render_width) + ',' +
+                    std::to_string(capture_camera.render_height) +
+                "],\"outputExtent\":[" + std::to_string(capture_camera.output_width) + ',' +
+                    std::to_string(capture_camera.output_height) +
+                "],\"viewProjection\":" + matrix_json(capture_camera.view_projection) +
+                ",\"inverseViewProjection\":" + matrix_json(capture_camera.inverse_view_projection) +
+                ",\"projection\":" + matrix_json(capture_camera.projection) +
+                "},\"images\":[";
+            for (std::size_t index = 0; index < capture.images.size(); ++index)
+            {
+                if (index != 0)
+                    json += ',';
+                const auto& image = capture.images[index];
+                json += "{\"channel\":" + to_json_string(channel_name(image.channel)) +
+                    ",\"format\":" + to_json_string(format_name(image.format)) +
+                    ",\"width\":" + std::to_string(image.width) +
+                    ",\"height\":" + std::to_string(image.height) +
+                    ",\"data\":" + to_json_string(base64_encode(image.data)) + '}';
+            }
+            json += "],\"objects\":[";
+            bool first_object = true;
+            for (const auto& object : capture.objects)
+            {
+                const scene::entity entity{ object.object.index, object.object.generation };
+                if (!state_->scene.scene.alive(entity))
+                    continue;
+                if (!first_object)
+                    json += ',';
+                first_object = false;
+                json += "{\"id\":" + std::to_string(object.encoded_id) +
+                    ",\"guid\":" + to_json_string(scene::to_string(entity_guid_of(state_->scene, entity))) + '}';
+            }
+            json += "],\"diagnostics\":[";
+            for (std::size_t index = 0; index < capture.diagnostics.size(); ++index)
+            {
+                if (index != 0)
+                    json += ',';
+                json += to_json_string(capture.diagnostics[index]);
+            }
+            json += "]}";
+            return { .request_id = request_id, .succeeded = true, .payload_json = std::move(json) };
         }
         else if constexpr (std::is_same_v<query_type, host_project_assets_query>)
         {
@@ -2311,6 +2851,23 @@ host_response arc_host::query(const host_query_envelope& query) const
         }
         else if constexpr (std::is_same_v<query_type, host_viewport_state_query>)
         {
+            std::string camera_json = "null";
+            if (const auto* transform =
+                    state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+            {
+                if (const auto* camera =
+                        state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity))
+                {
+                    camera_json = "{\"transform\":" + to_json(to_host_transform(*transform)) +
+                        ",\"settings\":" + to_json(to_host_camera(*camera)) +
+                        ",\"focus\":" + to_json(host_transform{
+                            .position = {
+                                state_->camera_controller.focus_point()[0],
+                                state_->camera_controller.focus_point()[1],
+                                state_->camera_controller.focus_point()[2] } }) +
+                        ",\"distance\":" + std::to_string(state_->camera_controller.distance()) + '}';
+                }
+            }
             return {
                 .request_id = request_id,
                 .succeeded = true,
@@ -2320,7 +2877,29 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"frameTimeMs\":" + std::to_string(state_->viewport_frame_ms) +
                     ",\"drawCalls\":" + std::to_string(state_->viewport_draw_calls) +
                     ",\"frameIndex\":" + std::to_string(state_->viewport_frame_index) +
-                    ",\"submitted\":" + std::string(state_->viewport_submitted ? "true" : "false") + '}'
+                    ",\"submitted\":" + std::string(state_->viewport_submitted ? "true" : "false") +
+                    ",\"renderOptions\":{\"renderMode\":" +
+                        to_json_string(to_string(state_->viewport_options.render_mode)) +
+                    ",\"visualization\":" +
+                        to_json_string(to_string(state_->viewport_options.visualization)) +
+                    ",\"overlay\":" +
+                        to_json_string(to_string(state_->viewport_options.overlay)) +
+                    ",\"shadows\":" +
+                        std::string(state_->viewport_options.shadows ? "true" : "false") +
+                    ",\"environment\":{\"sky\":" +
+                        std::string(state_->viewport_options.environment.sky ? "true" : "false") +
+                    ",\"fog\":" +
+                        std::string(state_->viewport_options.environment.fog ? "true" : "false") +
+                    ",\"terrain\":" +
+                        std::string(state_->viewport_options.environment.terrain ? "true" : "false") +
+                    ",\"water\":" +
+                        std::string(state_->viewport_options.environment.water ? "true" : "false") +
+                    ",\"vegetation\":" +
+                        std::string(state_->viewport_options.environment.vegetation ? "true" : "false") +
+                    ",\"decals\":" +
+                        std::string(state_->viewport_options.environment.decals ? "true" : "false") +
+                    "}}" +
+                    ",\"camera\":" + camera_json + '}'
             };
         }
         else if constexpr (std::is_same_v<query_type, host_world_environment_query>)
@@ -2361,6 +2940,10 @@ host_response arc_host::query(const host_query_envelope& query) const
 
         return { .request_id = request_id, .succeeded = false, .error = "Unsupported host query" };
     }, query.payload);
+    response.scene_revision = state_->scene_revision;
+    response.world_epoch = state_->world_epoch;
+    response.frame_revision = state_->viewport_frame_index;
+    return response;
 }
 
 host_runtime_snapshot arc_host::runtime_snapshot() const
@@ -2418,6 +3001,9 @@ host_scene_snapshot arc_host::scene_snapshot() const
     snapshot.scene_guid = scene::to_string(state_->scene.scene_guid);
     snapshot.scene_name = state_->scene.scene_name;
     snapshot.active_scene_path = state_->scene.active_scene_path.generic_string();
+    snapshot.scene_revision = state_->scene_revision;
+    snapshot.world_epoch = state_->world_epoch;
+    snapshot.frame_revision = state_->viewport_frame_index;
     snapshot.dirty = history.dirty;
     snapshot.can_undo = history.can_undo;
     snapshot.can_redo = history.can_redo;
@@ -2482,17 +3068,32 @@ host_scene_snapshot arc_host::scene_snapshot() const
     for (const auto entity : state_->scene.scene.entities())
         if (entity != state_->scene.camera_entity)
             add(entity);
+    snapshot.total_entity_count = snapshot.entities.size();
     return snapshot;
 }
 
 host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
 {
+    return entity_snapshot(to_host_entity(state_->scene.selected_entity));
+}
+
+host_selected_entity_snapshot arc_host::entity_snapshot(std::string_view guid_text) const
+{
+    const auto guid = scene::parse_entity_guid(guid_text);
+    if (!guid)
+        return {};
+    return entity_snapshot(to_host_entity(find_entity_by_guid(state_->scene, *guid)));
+}
+
+host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_entity) const
+{
     host_selected_entity_snapshot snapshot;
-    const auto selected = state_->scene.selected_entity;
+    const auto selected = to_scene_entity(host_entity);
     if (!state_->scene.scene.alive(selected))
         return snapshot;
 
     snapshot.entity = to_host_entity(selected);
+    snapshot.guid = scene::to_string(entity_guid_of(state_->scene, selected));
     snapshot.name = entity_name(state_->scene, selected, "Unnamed Entity");
     if (const auto* tag = state_->scene.scene.try_get<scene::tag_component>(selected))
         snapshot.tag = tag->value;
@@ -2504,50 +3105,78 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
     if (const auto* transform = state_->scene.scene.try_get<scene::transform_component>(selected))
     {
         snapshot.transform = to_host_transform(*transform);
-        add_component_snapshot(snapshot.components, host_component_kind::transform, "Transform");
+        add_component_snapshot<scene::transform_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::transform, "Transform");
+    }
+    if (const auto* bounds = state_->scene.scene.try_get<scene::bounds_component>(selected))
+    {
+        snapshot.bounds = host_bounds_snapshot{
+            .minimum = {
+                bounds->world_bounds.min[0],
+                bounds->world_bounds.min[1],
+                bounds->world_bounds.min[2]
+            },
+            .maximum = {
+                bounds->world_bounds.max[0],
+                bounds->world_bounds.max[1],
+                bounds->world_bounds.max[2]
+            }
+        };
     }
     if (const auto* camera = state_->scene.scene.try_get<scene::camera_component>(selected))
     {
         snapshot.camera = to_host_camera(*camera);
-        add_component_snapshot(snapshot.components, host_component_kind::camera, "Camera");
+        add_component_snapshot<scene::camera_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::camera, "Camera");
     }
     if (const auto* mesh_renderer = state_->scene.scene.try_get<scene::mesh_renderer_component>(selected))
     {
         snapshot.mesh_renderer = mesh_renderer_snapshot(state_->scene, state_->assets, *mesh_renderer);
-        add_component_snapshot(snapshot.components, host_component_kind::mesh_renderer, "Mesh Renderer");
+        add_component_snapshot<scene::mesh_renderer_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::mesh_renderer, "Mesh Renderer");
     }
     if (const auto* light = state_->scene.scene.try_get<scene::directional_light_component>(selected))
     {
         snapshot.light = to_host_light(*light);
-        add_component_snapshot(snapshot.components, host_component_kind::directional_light, "Directional Light");
+        add_component_snapshot<scene::directional_light_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::directional_light, "Directional Light");
     }
     if (const auto* light = state_->scene.scene.try_get<scene::point_light_component>(selected))
     {
         snapshot.light = to_host_light(*light);
-        add_component_snapshot(snapshot.components, host_component_kind::point_light, "Point Light");
+        add_component_snapshot<scene::point_light_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::point_light, "Point Light");
     }
     if (const auto* light = state_->scene.scene.try_get<scene::spot_light_component>(selected))
     {
         snapshot.light = to_host_light(*light);
-        add_component_snapshot(snapshot.components, host_component_kind::spot_light, "Spot Light");
+        add_component_snapshot<scene::spot_light_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::spot_light, "Spot Light");
     }
     if (const auto* light = state_->scene.scene.try_get<scene::area_light_component>(selected))
     {
         snapshot.light = to_host_light(*light);
-        add_component_snapshot(snapshot.components, host_component_kind::area_light, "Area Light");
+        add_component_snapshot<scene::area_light_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::area_light, "Area Light");
     }
     if (state_->scene.scene.has<scene::sky_atmosphere_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::sky_atmosphere, "Sky Atmosphere");
+        add_component_snapshot<scene::sky_atmosphere_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::sky_atmosphere, "Sky Atmosphere");
     if (state_->scene.scene.has<scene::world_environment_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::world_environment, "World Environment");
+        add_component_snapshot<scene::world_environment_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::world_environment, "World Environment");
     if (state_->scene.scene.has<scene::celestial_sky_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::celestial_sky, "Sun, Moon & Time");
+        add_component_snapshot<scene::celestial_sky_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::celestial_sky, "Sun, Moon & Time");
     if (state_->scene.scene.has<scene::cloud_layers_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::cloud_layers, "Cloud Layers");
+        add_component_snapshot<scene::cloud_layers_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::cloud_layers, "Cloud Layers");
     if (state_->scene.scene.has<scene::environment_lighting_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::environment_lighting, "Environment Lighting");
+        add_component_snapshot<scene::environment_lighting_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::environment_lighting, "Environment Lighting");
     if (state_->scene.scene.has<scene::height_fog_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::height_fog, "Height Fog");
+        add_component_snapshot<scene::height_fog_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::height_fog, "Height Fog");
     if (const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(selected))
     {
         host_terrain_snapshot terrain_snapshot;
@@ -2571,14 +3200,18 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
             terrain_snapshot.layer_base_color_paths[layer] = asset_relative_path(
                 state_->assets.root, state_->scene.terrain_layer_paths[layer]);
         snapshot.terrain = std::move(terrain_snapshot);
-        add_component_snapshot(snapshot.components, host_component_kind::terrain, "Terrain");
+        add_component_snapshot<scene::terrain_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::terrain, "Terrain");
     }
     if (state_->scene.scene.has<scene::water_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::water, "Water");
+        add_component_snapshot<scene::water_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::water, "Water");
     if (state_->scene.scene.has<scene::vegetation_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::vegetation, "Vegetation");
+        add_component_snapshot<scene::vegetation_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::vegetation, "Vegetation");
     if (state_->scene.scene.has<scene::decal_component>(selected))
-        add_component_snapshot(snapshot.components, host_component_kind::decal, "Decal");
+        add_component_snapshot<scene::decal_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::decal, "Decal");
     if (const auto* prefab = state_->scene.scene.try_get<scene::prefab_instance_component>(selected))
     {
         snapshot.prefab = host_prefab_snapshot{
@@ -2587,7 +3220,8 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
             .override_count = prefab->overrides.size(),
             .source_missing = prefab->source_missing
         };
-        add_component_snapshot(snapshot.components, host_component_kind::prefab_instance, "Prefab Instance");
+        add_component_snapshot<scene::prefab_instance_component>(
+            state_->scene.scene, selected, snapshot.components, host_component_kind::prefab_instance, "Prefab Instance");
     }
     return snapshot;
 }
@@ -2743,7 +3377,12 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
             {},
             to_json(snapshot));
     }
-    state_->viewport_options = request;
+    // Native presentation submits a lightweight request every frame. Preserve
+    // the render/debug options selected through viewport.setRenderOptions
+    // instead of resetting them to host_viewport_request defaults at 60 Hz.
+    state_->viewport_options.frame_index = request.frame_index;
+    state_->viewport_options.width = request.width;
+    state_->viewport_options.height = request.height;
     state_->viewport_frame_index = request.frame_index;
     if (!state_->renderer->backend())
     {
@@ -2853,11 +3492,11 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         *state_->renderer,
         request.width,
         request.height,
-        to_render_mode(request.render_mode),
-        to_visualization(request.visualization),
-        to_overlay(request.overlay),
-        request.shadows,
-        to_scene_visibility(request.environment),
+        to_render_mode(state_->viewport_options.render_mode),
+        to_visualization(state_->viewport_options.visualization),
+        to_overlay(state_->viewport_options.overlay),
+        state_->viewport_options.shadows,
+        to_scene_visibility(state_->viewport_options.environment),
         delta_seconds,
         std::move(debug_overlay));
 

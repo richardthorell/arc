@@ -199,6 +199,9 @@ public:
      */
     render_object_pick_result last_object_pick() const;
 
+    void request_frame_capture(render_frame_capture_request request);
+    render_frame_capture_result last_frame_capture() const;
+
     /**
      * @brief Build and submit one frame.
      */

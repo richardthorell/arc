@@ -409,27 +409,33 @@ directional_shadow_layout fit_directional_shadow_cascades(
         if (settings.stable)
             radius = std::ceil(radius * 16.0f) / 16.0f;
 
-        auto view = look_at_rh(
-            math::sub(center, math::mul(light_direction, radius * 2.5f)),
-            center,
-            up);
         const float texel_size = (radius * 2.0f) / static_cast<float>(resolution);
         if (settings.stable && texel_size > 0.0f)
         {
-            const auto light_center = math::transform_point(view, center);
+            // Quantize against a world-anchored light basis. Quantizing after
+            // building a view centered on `center` always observes x=y=0 and
+            // silently disables stabilization.
+            const auto light_basis = look_at_rh(
+                math::mul(light_direction, -1.0f),
+                math::vector3f::zero,
+                up);
+            const auto light_center = math::transform_point(light_basis, center);
             const float snapped_x = std::round(light_center[0] / texel_size) * texel_size;
             const float snapped_y = std::round(light_center[1] / texel_size) * texel_size;
             center = math::add(center, math::vector3f{
-                view(0, 0) * (snapped_x - light_center[0]) + view(1, 0) * (snapped_y - light_center[1]),
-                view(0, 1) * (snapped_x - light_center[0]) + view(1, 1) * (snapped_y - light_center[1]),
-                view(0, 2) * (snapped_x - light_center[0]) + view(1, 2) * (snapped_y - light_center[1])
+                light_basis(0, 0) * (snapped_x - light_center[0]) +
+                    light_basis(1, 0) * (snapped_y - light_center[1]),
+                light_basis(0, 1) * (snapped_x - light_center[0]) +
+                    light_basis(1, 1) * (snapped_y - light_center[1]),
+                light_basis(0, 2) * (snapped_x - light_center[0]) +
+                    light_basis(1, 2) * (snapped_y - light_center[1])
             });
-            view = look_at_rh(
-                math::sub(center, math::mul(light_direction, radius * 2.5f)),
-                center,
-                up);
         }
 
+        const auto view = look_at_rh(
+            math::sub(center, math::mul(light_direction, radius * 2.5f)),
+            center,
+            up);
         const float guard_extent = radius * 2.0f + texel_size * 4.0f;
         const auto projection = orthographic_rh_zo(guard_extent, 0.01f, radius * 5.0f);
         result.cascades[cascade_index] = {

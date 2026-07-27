@@ -99,8 +99,12 @@ render::debug_overlay_stream build_editor_gizmo_overlay(const scene::registry& r
     const auto* camera = registry.try_get<scene::camera_component>(camera_entity);
     const auto* camera_transform = registry.try_get<scene::transform_component>(camera_entity);
     if (!transform || !camera || !camera_transform) return stream;
-    if (const auto* bounds = registry.try_get<scene::bounds_component>(selected))
-        append_bounds(stream, transformed_bounds(bounds->local_bounds, *transform));
+    // A terrain's scene-wide AABB projects as enormous lines through the
+    // viewport and looks like geometry clipping. Terrain selection is already
+    // represented by the surface/ObjectID and its dedicated brush overlay.
+    if (!registry.has<scene::terrain_component>(selected))
+        if (const auto* bounds = registry.try_get<scene::bounds_component>(selected))
+            append_bounds(stream, transformed_bounds(bounds->local_bounds, *transform));
     if (context.tool == editor_tool::select) return stream;
 
     const auto origin = scene::world_position(*transform);

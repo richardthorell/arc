@@ -110,7 +110,7 @@ void append_mesh_item(
     render::buffer_handle skin = {},
     std::uint32_t joint_count = 0,
     std::uint32_t instance_count = 1,
-    const math::vector4f& base_color_tint = math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+    const math::vector4f& base_color_tint = math::vector4f::one,
     bool casts_shadows = true,
     bool receives_shadows = true,
     float shadow_lod_bias = 0.0f,
@@ -538,7 +538,8 @@ render_scene_result render_scene(
             {
                 if (renderer.mesh_alive(mesh))
                     append_mesh_item(scene, world_packet, result, value, transform, mesh, terrain.material,
-                        true, false, {}, 0, 1, {}, terrain.cast_shadows, terrain.receive_shadows,
+                        true, false, {}, 0, 1, math::vector4f::one,
+                        terrain.cast_shadows, terrain.receive_shadows,
                         terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
             }
             ++result.terrain_count;
@@ -615,7 +616,7 @@ render_scene_result render_scene(
                 mesh_renderer.skin_matrices,
                 mesh_renderer.joint_count,
                 1,
-                math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+                math::vector4f::one,
                 mesh_renderer.casts_shadows,
                 mesh_renderer.receives_shadows,
                 mesh_renderer.shadow_lod_bias,

@@ -89,8 +89,9 @@ float arc_directional_shadow_visibility(
     if (arc_shadows.params.x <= 0.0 || arc_shadows.configuration.x < 0.5)
         return 1.0;
 
-    float camera_distance = length(camera_position - world_position);
-    int cascade = arc_shadow_cascade(camera_distance);
+    vec3 camera_forward = normalize(arc_shadows.configuration.yzw);
+    float camera_depth = max(dot(world_position - camera_position, camera_forward), 0.0);
+    int cascade = arc_shadow_cascade(camera_depth);
     resolved_cascade = cascade;
     if (cascade < 0)
         return 1.0;
@@ -102,7 +103,7 @@ float arc_directional_shadow_visibility(
     {
         float blend_start = arc_shadows.cascade_blend_starts[cascade];
         float blend_end = arc_shadows.cascade_splits[cascade];
-        float blend = smoothstep(blend_start, max(blend_end, blend_start + 1.0e-5), camera_distance);
+        float blend = smoothstep(blend_start, max(blend_end, blend_start + 1.0e-5), camera_depth);
         if (blend > 0.0)
             visibility = mix(
                 visibility,

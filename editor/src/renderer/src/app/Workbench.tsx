@@ -47,6 +47,8 @@ import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
 import { TerrainToolsPanel } from '../terrain/TerrainToolsPanel';
 import type { TerrainToolState } from '../terrain/TerrainToolsPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
+import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
+import type { ArcAiGatewayStatus } from '../../../preload/preload';
 
 import './workbench.css';
 
@@ -303,6 +305,7 @@ export function Workbench() {
   const [hostConsoleEvents, setHostConsoleEvents] = useState<ConsoleEvent[]>([]);
   const [consoleLocked, setConsoleLocked] = useState(true);
   const [clearedConsoleIds, setClearedConsoleIds] = useState<ReadonlySet<string>>(new Set());
+  const [aiGatewayStatus, setAiGatewayStatus] = useState<ArcAiGatewayStatus | null>(null);
   const [selectedEntityId, setSelectedEntityId] = useState('camera-main');
   const selectedEntityIdRef = useRef(selectedEntityId);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>('asset-scene-demo');
@@ -386,6 +389,12 @@ export function Workbench() {
       setHostConsoleEvents((current) => [...current, entry].slice(-1000));
       setLastCommand(event.message);
     });
+  }, []);
+
+  useEffect(() => {
+    if (!window.arc?.aiGateway) return;
+    void window.arc.aiGateway.status().then(setAiGatewayStatus);
+    return window.arc.aiGateway.onStatus(setAiGatewayStatus);
   }, []);
 
   useEffect(() => window.arc?.host?.onEvent?.((event) => {
@@ -1047,6 +1056,15 @@ export function Workbench() {
       return <ProfilerPanel samples={profilerSamples} />;
     }
 
+    if (panel === 'aiAssistant') {
+      return <AiGatewayPanel status={aiGatewayStatus}
+        onApprove={(requestId) => void window.arc.aiGateway.approve(requestId)}
+        onDeny={(requestId) => void window.arc.aiGateway.deny(requestId)}
+        onRevoke={(clientId) => void window.arc.aiGateway.revoke(clientId)}
+        onCancelEdit={(sessionId, clientId) => void window.arc.aiGateway.cancelEdit(sessionId, clientId)}
+        onUndoLastEdit={() => void window.arc.aiGateway.undoLastEdit()} />;
+    }
+
     return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
       onCommand={runCommand} onInstantiatePrefab={(path) => void instantiatePrefab(path)}
       thumbnailProvider={loadAssetThumbnail} />;
@@ -1087,6 +1105,14 @@ export function Workbench() {
           nextSnapOption(rotationSnapOptions, rotationSnap))}
         onCycleScaleSnap={() => void updateViewportToolOptions(coordinateSpace, snapping, translationSnap, rotationSnap,
           nextSnapOption(scaleSnapOptions, scaleSnap))} />
+      <AiGatewayApprovalPrompt status={aiGatewayStatus}
+        onApprove={(requestId) => void window.arc.aiGateway.approve(requestId)}
+        onDeny={(requestId) => void window.arc.aiGateway.deny(requestId)}
+        onOpenGateway={() => setLayout((current) => ({
+          ...current,
+          bottomVisible: true,
+          activeBottomPanel: 'aiAssistant',
+        }))} />
 
       <section className={[
         'workbench-body',
@@ -1157,7 +1183,12 @@ export function Workbench() {
         )}
       </section>
 
-      <StatusBar startupState={startupState} activeScene={project?.activeScene} lastCommand={lastCommand} />
+      <StatusBar startupState={startupState} activeScene={project?.activeScene} lastCommand={lastCommand}
+        aiControl={aiGatewayStatus?.activeEditSession
+          ? `AI editing: ${aiGatewayStatus.activeEditSession.label}`
+          : aiGatewayStatus?.viewportLease
+            ? `AI viewport: ${aiGatewayStatus.viewportLease.clientId}`
+            : undefined} />
     </main>
   );
 }

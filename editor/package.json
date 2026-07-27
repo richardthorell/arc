@@ -4,21 +4,26 @@
   "description": "Electron-based editor shell for arc.",
   "private": true,
   "main": ".vite/build/main.js",
+  "bin": {
+    "arc-mcp": ".vite/build/arc-mcp-stdio.js"
+  },
   "scripts": {
     "dev": "electron-forge start",
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "test": "vitest run",
+    "mcp": "node .vite/build/arc-mcp-stdio.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@tanstack/react-virtual": "latest",
     "dockview": "latest",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "zod": "latest",
+    "zod": "4.4.3",
     "zustand": "latest"
   },
   "devDependencies": {
@@ -30,12 +35,12 @@
     "@electron-forge/plugin-auto-unpack-natives": "latest",
     "@electron-forge/plugin-vite": "latest",
     "@electron-forge/shared-types": "latest",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
     "@testing-library/user-event": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "electron": "latest",
     "jsdom": "latest",

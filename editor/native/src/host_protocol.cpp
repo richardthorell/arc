@@ -862,8 +862,12 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>) return "viewport.setCameraMode";
         else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>) return "viewport.setRenderOptions";
         else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>) return "viewport.cameraInput";
+        else if constexpr (std::is_same_v<type, host_viewport_set_pose_command>) return "viewport.setPose";
         else if constexpr (std::is_same_v<type, host_history_undo_command>) return "history.undo";
         else if constexpr (std::is_same_v<type, host_history_redo_command>) return "history.redo";
+        else if constexpr (std::is_same_v<type, host_history_begin_transaction_command>) return "history.beginTransaction";
+        else if constexpr (std::is_same_v<type, host_history_commit_transaction_command>) return "history.commitTransaction";
+        else if constexpr (std::is_same_v<type, host_history_cancel_transaction_command>) return "history.cancelTransaction";
         else if constexpr (std::is_same_v<type, host_runtime_resume_command>) return "runtime.resume";
         else if constexpr (std::is_same_v<type, host_runtime_pause_command>) return "runtime.pause";
         else if constexpr (std::is_same_v<type, host_runtime_stop_command>) return "runtime.stop";
@@ -873,6 +877,7 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_runtime_restore_snapshot_command>) return "runtime.restoreSnapshot";
         else if constexpr (std::is_same_v<type, host_viewport_set_tool_command>) return "viewport.setTool";
         else if constexpr (std::is_same_v<type, host_viewport_pick_command>) return "viewport.pick";
+        else if constexpr (std::is_same_v<type, host_viewport_capture_command>) return "viewport.capture";
         else return "unknown";
     }, payload);
 }
@@ -883,6 +888,12 @@ std::string query_type(const host_query_payload& payload)
         using type = std::decay_t<decltype(value)>;
         if constexpr (std::is_same_v<type, host_scene_hierarchy_query>) return "scene.hierarchy";
         else if constexpr (std::is_same_v<type, host_selected_entity_query>) return "entity.selected";
+        else if constexpr (std::is_same_v<type, host_scene_entities_query>) return "gateway.sceneEntities";
+        else if constexpr (std::is_same_v<type, host_entity_by_guid_query>) return "gateway.entity";
+        else if constexpr (std::is_same_v<type, host_scene_spatial_query>) return "gateway.spatialQuery";
+        else if constexpr (std::is_same_v<type, host_component_schema_query>) return "gateway.componentSchemas";
+        else if constexpr (std::is_same_v<type, host_gateway_diagnostics_query>) return "gateway.diagnostics";
+        else if constexpr (std::is_same_v<type, host_viewport_capture_query>) return "viewport.captureResult";
         else if constexpr (std::is_same_v<type, host_project_assets_query>) return "project.assets";
         else if constexpr (std::is_same_v<type, host_asset_thumbnail_query>) return "asset.thumbnail";
         else if constexpr (std::is_same_v<type, host_viewport_state_query>) return "viewport.state";
@@ -1246,6 +1257,9 @@ std::string to_json(const host_command_envelope& envelope)
                 ",\"forward\":" + std::to_string(payload.forward) +
                 ",\"zoom\":" + std::to_string(payload.zoom) +
                 ",\"focusSelected\":" + bool_json(payload.focus_selected) + '}';
+        else if constexpr (std::is_same_v<type, host_viewport_set_pose_command>)
+            return "{\"position\":" + vec3_json(payload.position) +
+                ",\"target\":" + vec3_json(payload.target) + '}';
         else if constexpr (std::is_same_v<type, host_runtime_step_command>)
             return "{\"ticks\":" + std::to_string(payload.ticks) + '}';
         else if constexpr (std::is_same_v<type, host_runtime_set_time_scale_command>)
@@ -1254,6 +1268,11 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"label\":" + quote(payload.label) + '}';
         else if constexpr (std::is_same_v<type, host_runtime_restore_snapshot_command>)
             return "{\"snapshotId\":" + std::to_string(payload.snapshot_id) + '}';
+        else if constexpr (std::is_same_v<type, host_history_begin_transaction_command>)
+            return "{\"id\":" + std::to_string(payload.id) + ",\"label\":" + quote(payload.label) + '}';
+        else if constexpr (std::is_same_v<type, host_history_commit_transaction_command> ||
+            std::is_same_v<type, host_history_cancel_transaction_command>)
+            return "{\"id\":" + std::to_string(payload.id) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_set_tool_command>)
             return "{\"tool\":" + quote(payload.tool == host_viewport_tool::translate ? "translate" :
                     payload.tool == host_viewport_tool::rotate ? "rotate" : payload.tool == host_viewport_tool::scale ? "scale" :
@@ -1264,6 +1283,16 @@ std::string to_json(const host_command_envelope& envelope)
                 ",\"scaleSnap\":" + std::to_string(payload.scale_snap) + '}';
         else if constexpr (std::is_same_v<type, host_viewport_pick_command>)
             return "{\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) + '}';
+        else if constexpr (std::is_same_v<type, host_viewport_capture_command>)
+            return "{\"captureId\":" + std::to_string(payload.capture_id) +
+                ",\"color\":" + bool_json(payload.color) +
+                ",\"depth\":" + bool_json(payload.depth) +
+                ",\"objectId\":" + bool_json(payload.object_id) +
+                ",\"normals\":" + bool_json(payload.normals) +
+                ",\"sceneColor\":" + bool_json(payload.scene_color) +
+                ",\"baseColor\":" + bool_json(payload.base_color) +
+                ",\"materialProperties\":" + bool_json(payload.material_properties) +
+                ",\"emissive\":" + bool_json(payload.emissive) + '}';
         else
             return "{}";
     }, envelope.payload);
@@ -1278,8 +1307,11 @@ std::string to_json(const host_command_envelope& envelope)
         edit_json = ",\"edit\":{\"id\":" + std::to_string(envelope.edit->id) +
             ",\"phase\":" + quote(phase) + ",\"label\":" + quote(envelope.edit->label) + '}';
     }
+    const std::string revision_json = envelope.expected_scene_revision
+        ? ",\"expectedSceneRevision\":" + std::to_string(*envelope.expected_scene_revision)
+        : std::string{};
     return "{\"kind\":\"command\",\"requestId\":" + std::to_string(envelope.request_id) +
-        ",\"type\":" + quote(type) + ",\"payload\":" + payload_json + edit_json + '}';
+        ",\"type\":" + quote(type) + ",\"payload\":" + payload_json + edit_json + revision_json + '}';
 }
 
 std::string to_json(const host_query_envelope& envelope)
@@ -1291,6 +1323,22 @@ std::string to_json(const host_query_envelope& envelope)
             return "{\"entity\":" + to_json(value.entity) + '}';
         else if constexpr (std::is_same_v<query, host_asset_thumbnail_query>)
             return "{\"path\":" + quote(value.path) + ",\"maxSize\":" + std::to_string(value.max_size) + '}';
+        else if constexpr (std::is_same_v<query, host_scene_entities_query>)
+            return "{\"search\":" + quote(value.search) + ",\"offset\":" + std::to_string(value.offset) +
+                ",\"limit\":" + std::to_string(value.limit) + '}';
+        else if constexpr (std::is_same_v<query, host_entity_by_guid_query>)
+            return "{\"guid\":" + quote(value.guid) + '}';
+        else if constexpr (std::is_same_v<query, host_scene_spatial_query>)
+            return "{\"kind\":" + quote(value.kind == host_spatial_query_kind::raycast ? "raycast" :
+                    value.kind == host_spatial_query_kind::bounds ? "bounds" : "nearby") +
+                ",\"origin\":" + vec3_json(value.origin) +
+                ",\"direction\":" + vec3_json(value.direction) +
+                ",\"center\":" + vec3_json(value.center) +
+                ",\"extent\":" + vec3_json(value.extent) +
+                ",\"radius\":" + std::to_string(value.radius) +
+                ",\"limit\":" + std::to_string(value.limit) + '}';
+        else if constexpr (std::is_same_v<query, host_viewport_capture_query>)
+            return "{\"captureId\":" + std::to_string(value.capture_id) + '}';
         return "{}";
     }, envelope.payload);
     return "{\"kind\":\"query\",\"requestId\":" + std::to_string(envelope.request_id) +
@@ -1303,6 +1351,9 @@ std::string to_json(const host_response& response)
     return "{\"kind\":\"response\",\"requestId\":" + std::to_string(response.request_id) +
         ",\"succeeded\":" + bool_json(response.succeeded) +
         ",\"error\":" + quote(response.error) +
+        ",\"sceneRevision\":" + std::to_string(response.scene_revision) +
+        ",\"worldEpoch\":" + std::to_string(response.world_epoch) +
+        ",\"frameRevision\":" + std::to_string(response.frame_revision) +
         ",\"payload\":" + payload + '}';
 }
 
@@ -1383,6 +1434,12 @@ std::string to_json(const host_scene_snapshot& snapshot)
     std::string json = "{\"sceneGuid\":" + quote(snapshot.scene_guid) +
         ",\"sceneName\":" + quote(snapshot.scene_name) +
         ",\"activeScenePath\":" + quote(snapshot.active_scene_path) +
+        ",\"sceneRevision\":" + std::to_string(snapshot.scene_revision) +
+        ",\"worldEpoch\":" + std::to_string(snapshot.world_epoch) +
+        ",\"frameRevision\":" + std::to_string(snapshot.frame_revision) +
+        ",\"totalEntityCount\":" + std::to_string(snapshot.total_entity_count) +
+        ",\"offset\":" + std::to_string(snapshot.offset) +
+        ",\"hasMore\":" + bool_json(snapshot.has_more) +
         ",\"dirty\":" + bool_json(snapshot.dirty) +
         ",\"canUndo\":" + bool_json(snapshot.can_undo) +
         ",\"canRedo\":" + bool_json(snapshot.can_redo) +
@@ -1410,6 +1467,7 @@ std::string to_json(const host_scene_snapshot& snapshot)
 std::string to_json(const host_selected_entity_snapshot& snapshot)
 {
     std::string json = "{\"entity\":" + to_json(snapshot.entity) +
+        ",\"guid\":" + quote(snapshot.guid) +
         ",\"name\":" + quote(snapshot.name) +
         ",\"tag\":" + quote(snapshot.tag) +
         ",\"active\":" + bool_json(snapshot.active) +
@@ -1417,6 +1475,12 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
         ",\"mobility\":" + quote(to_string(snapshot.mobility)) +
         ",\"transform\":";
     json += snapshot.transform ? to_json(*snapshot.transform) : "null";
+    json += ",\"bounds\":";
+    if (snapshot.bounds)
+        json += "{\"minimum\":" + vec3_json(snapshot.bounds->minimum) +
+            ",\"maximum\":" + vec3_json(snapshot.bounds->maximum) + '}';
+    else
+        json += "null";
     json += ",\"camera\":";
     json += snapshot.camera ? to_json(*snapshot.camera) : "null";
     json += ",\"light\":";
@@ -1442,7 +1506,10 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
         if (index != 0)
             json += ',';
         json += "{\"kind\":" + quote(to_string(component.kind)) +
+            ",\"typeId\":" + quote(component.type_id) +
             ",\"label\":" + quote(component.label) +
+            ",\"revision\":" + std::to_string(component.revision) +
+            ",\"dirtyFields\":" + std::to_string(component.dirty_fields) +
             ",\"editable\":" + bool_json(component.editable) + '}';
     }
     json += "]}";
@@ -1963,10 +2030,45 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "focusSelected", command.focus_selected);
         envelope.payload = command;
     }
+    else if (type == "viewport.setPose")
+    {
+        host_viewport_set_pose_command command;
+        if (!array3_value(payload, "position", command.position) ||
+            !array3_value(payload, "target", command.target))
+        {
+            error = "Viewport pose requires position and target vectors";
+            return false;
+        }
+        envelope.payload = command;
+    }
     else if (type == "history.undo")
         envelope.payload = host_history_undo_command{};
     else if (type == "history.redo")
         envelope.payload = host_history_redo_command{};
+    else if (type == "history.beginTransaction")
+    {
+        host_history_begin_transaction_command command;
+        if (!number_value(payload, "id", command.id) || command.id == 0)
+        {
+            error = "History begin transaction requires a non-zero id";
+            return false;
+        }
+        string_value(payload, "label", command.label);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "history.commitTransaction" || type == "history.cancelTransaction")
+    {
+        std::uint64_t id{};
+        if (!number_value(payload, "id", id) || id == 0)
+        {
+            error = "History transaction command requires a non-zero id";
+            return false;
+        }
+        if (type == "history.commitTransaction")
+            envelope.payload = host_history_commit_transaction_command{ id };
+        else
+            envelope.payload = host_history_cancel_transaction_command{ id };
+    }
     else if (type == "runtime.resume")
         envelope.payload = host_runtime_resume_command{};
     else if (type == "runtime.pause")
@@ -2030,6 +2132,20 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         number_value(payload, "y", command.y);
         envelope.payload = command;
     }
+    else if (type == "viewport.capture")
+    {
+        host_viewport_capture_command command;
+        number_value(payload, "captureId", command.capture_id);
+        bool_value(payload, "color", command.color);
+        bool_value(payload, "depth", command.depth);
+        bool_value(payload, "objectId", command.object_id);
+        bool_value(payload, "normals", command.normals);
+        bool_value(payload, "sceneColor", command.scene_color);
+        bool_value(payload, "baseColor", command.base_color);
+        bool_value(payload, "materialProperties", command.material_properties);
+        bool_value(payload, "emissive", command.emissive);
+        envelope.payload = command;
+    }
     else
     {
         error = "Unsupported host command type: " + type;
@@ -2049,6 +2165,9 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         if (transaction.id != 0 && transaction.phase != host_edit_phase::none)
             envelope.edit = std::move(transaction);
     }
+    std::uint64_t expected_revision{};
+    if (number_value(json, "expectedSceneRevision", expected_revision))
+        envelope.expected_scene_revision = expected_revision;
     envelope.command_type = std::move(type);
     return true;
 }
@@ -2066,6 +2185,56 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
         envelope.payload = host_scene_hierarchy_query{};
     else if (type == "entity.selected")
         envelope.payload = host_selected_entity_query{};
+    else if (type == "gateway.sceneEntities")
+    {
+        host_scene_entities_query query;
+        string_value(json, "search", query.search);
+        number_value(json, "offset", query.offset);
+        number_value(json, "limit", query.limit);
+        query.limit = std::clamp<std::size_t>(query.limit, 1u, 200u);
+        envelope.payload = std::move(query);
+    }
+    else if (type == "gateway.entity")
+    {
+        host_entity_by_guid_query query;
+        if (!string_value(json, "guid", query.guid) || query.guid.empty())
+        {
+            error = "Gateway entity query requires a valid GUID";
+            return false;
+        }
+        envelope.payload = std::move(query);
+    }
+    else if (type == "gateway.spatialQuery")
+    {
+        host_scene_spatial_query query;
+        std::string kind;
+        string_value(json, "kind", kind);
+        query.kind = kind == "raycast" ? host_spatial_query_kind::raycast :
+            kind == "bounds" ? host_spatial_query_kind::bounds :
+            kind == "frustum" ? host_spatial_query_kind::frustum : host_spatial_query_kind::nearby;
+        array3_value(json, "origin", query.origin);
+        array3_value(json, "direction", query.direction);
+        array3_value(json, "center", query.center);
+        array3_value(json, "extent", query.extent);
+        number_value(json, "radius", query.radius);
+        number_value(json, "limit", query.limit);
+        query.limit = std::clamp<std::size_t>(query.limit, 1u, 500u);
+        envelope.payload = query;
+    }
+    else if (type == "gateway.componentSchemas")
+        envelope.payload = host_component_schema_query{};
+    else if (type == "gateway.diagnostics")
+        envelope.payload = host_gateway_diagnostics_query{};
+    else if (type == "viewport.captureResult")
+    {
+        host_viewport_capture_query capture;
+        if (!number_value(json, "captureId", capture.capture_id) || capture.capture_id == 0)
+        {
+            error = "viewport.captureResult requires a non-zero captureId";
+            return false;
+        }
+        envelope.payload = capture;
+    }
     else if (type == "project.assets")
         envelope.payload = host_project_assets_query{};
     else if (type == "asset.thumbnail")

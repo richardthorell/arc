@@ -454,7 +454,7 @@ void update_world_environments(registry& scene, float delta_seconds)
                 {
                     const float daylight = std::clamp((solar.elevation_degrees + 6.0f) / 18.0f, 0.0f, 1.0f);
                     const float warm = 1.0f - std::clamp((solar.elevation_degrees + 2.0f) / 25.0f, 0.0f, 1.0f);
-                    light->color = { 1.0f, 1.0f, 1.0f };
+                    light->color = math::vector3f::one;
                     light->use_color_temperature = true;
                     light->temperature_kelvin = std::clamp(
                         (6500.0f - warm * 4000.0f) * celestial.sun_temperature_multiplier,

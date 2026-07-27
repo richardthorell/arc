@@ -3,6 +3,7 @@
 #include <arc/render/events.h>
 #include <arc/render/render_graph.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -395,6 +396,76 @@ struct render_object_pick_result
     std::uint64_t frame_index{};
 };
 
+enum class render_capture_channel : std::uint8_t
+{
+    output_color,
+    scene_color,
+    linear_depth,
+    object_id,
+    world_normal,
+    base_color,
+    material_properties,
+    emissive
+};
+
+enum class render_capture_format : std::uint8_t
+{
+    rgba8_unorm,
+    bgra8_unorm,
+    rgba16_float,
+    r32_float,
+    r32_uint
+};
+
+struct render_frame_capture_request
+{
+    std::uint64_t capture_id{};
+    std::vector<render_capture_channel> channels{ render_capture_channel::output_color };
+};
+
+struct render_capture_image
+{
+    render_capture_channel channel{ render_capture_channel::output_color };
+    render_capture_format format{ render_capture_format::rgba8_unorm };
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::vector<std::byte> data;
+};
+
+struct render_capture_object
+{
+    std::uint32_t encoded_id{};
+    render_object_id object{};
+};
+
+struct render_capture_camera_state
+{
+    math::matrix4f view_projection{ math::identity<float, 4>() };
+    math::matrix4f inverse_view_projection{ math::identity<float, 4>() };
+    math::matrix4f projection{ math::identity<float, 4>() };
+    math::vector3f position{};
+    math::vector3f forward{ 0.0f, 0.0f, -1.0f };
+    math::vector3f up{ 0.0f, 1.0f, 0.0f };
+    float near_plane{ 0.01f };
+    float far_plane{ 1000.0f };
+    std::uint32_t render_width{};
+    std::uint32_t render_height{};
+    std::uint32_t output_width{};
+    std::uint32_t output_height{};
+};
+
+struct render_frame_capture_result
+{
+    std::uint64_t capture_id{};
+    std::uint64_t frame_index{};
+    bool available{};
+    bool succeeded{};
+    render_capture_camera_state camera{};
+    std::vector<render_capture_image> images;
+    std::vector<render_capture_object> objects;
+    std::vector<std::string> diagnostics;
+};
+
 /**
  * @brief Opaque UI-facing texture exported by a backend.
  */
@@ -465,6 +536,16 @@ public:
      * @brief Return the latest async ObjectID readback result.
      */
     virtual render_object_pick_result last_object_pick() const;
+
+    /**
+     * @brief Queue an asynchronous capture of coherent channels from one rendered frame.
+     */
+    virtual void request_frame_capture(render_frame_capture_request request);
+
+    /**
+     * @brief Return the latest completed frame capture.
+     */
+    virtual render_frame_capture_result last_frame_capture() const;
 };
 
 /**

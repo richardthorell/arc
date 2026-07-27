@@ -214,7 +214,7 @@ TEST_CASE("transform and camera helpers use right handed minus z forward")
     arc::scene::transform_component camera_transform;
     camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
     const auto view = arc::scene::view_matrix(camera_transform);
-    const auto camera_space = arc::math::transform_point(view, arc::math::vector3f{ 0.0f, 0.0f, 0.0f });
+    const auto camera_space = arc::math::transform_point(view, arc::math::vector3f::zero);
     REQUIRE(camera_space[2] == Catch::Approx(-5.0f));
 
     const auto forward = arc::scene::forward_direction(camera_transform);

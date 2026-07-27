@@ -48,9 +48,16 @@ public:
     }
     void request_object_pick(arc::render::render_object_pick_request request) override { request_ = request; }
     arc::render::render_object_pick_result last_object_pick() const override { return result; }
+    void request_frame_capture(arc::render::render_frame_capture_request request) override
+    {
+        capture_request = std::move(request);
+    }
+    arc::render::render_frame_capture_result last_frame_capture() const override { return capture_result; }
 
     arc::render::render_object_pick_request request_{};
     arc::render::render_object_pick_result result{};
+    arc::render::render_frame_capture_request capture_request{};
+    arc::render::render_frame_capture_result capture_result{};
 
 private:
     arc::render::render_capabilities capabilities_{
@@ -244,7 +251,7 @@ TEST_CASE("editor camera controller orbits pans and zooms")
     arc::scene::transform_component after_right;
     direction_test.apply_to(after_right);
     REQUIRE(after_right.position[0] < before_up.position[0]);
-    direction_test.orbit(0.0f, -20.0f);
+    direction_test.orbit(0.0f, 20.0f);
     arc::scene::transform_component after_up;
     direction_test.apply_to(after_up);
     REQUIRE(after_up.position[1] > before_up.position[1]);
@@ -258,6 +265,18 @@ TEST_CASE("editor camera controller orbits pans and zooms")
     REQUIRE(arc::math::dot(
         arc::scene::forward_direction(after_up),
         arc::scene::forward_direction(synchronized_transform)) == Catch::Approx(1.0f).margin(0.00001f));
+
+    arc::editor::editor_camera_controller vertical_direction;
+    vertical_direction.focus({ 0.0f, 0.0f, 0.0f }, 2.0f);
+    arc::scene::transform_component before_vertical_drag;
+    vertical_direction.apply_to(before_vertical_drag);
+    const auto before_upward_drag_forward = arc::scene::forward_direction(before_vertical_drag);
+    vertical_direction.orbit(0.0f, -20.0f);
+    arc::scene::transform_component after_upward_drag;
+    vertical_direction.apply_to(after_upward_drag);
+    REQUIRE(after_upward_drag.position[1] < before_vertical_drag.position[1]);
+    const auto upward_drag_forward = arc::scene::forward_direction(after_upward_drag);
+    REQUIRE(upward_drag_forward[1] > before_upward_drag_forward[1]);
 }
 
 TEST_CASE("viewport rays use camera world space and pixel centers")
@@ -457,7 +476,12 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
             .path = "assets/prefabs/stone.arcprefab", .parent = entity } },
         { .request_id = 20, .payload = arc::editor::host_apply_prefab_command{ .entity = entity } },
         { .request_id = 21, .payload = arc::editor::host_revert_prefab_command{ .entity = entity } },
-        { .request_id = 22, .payload = arc::editor::host_unpack_prefab_command{ .entity = entity } }
+        { .request_id = 22, .payload = arc::editor::host_unpack_prefab_command{ .entity = entity } },
+        { .request_id = 23, .payload = arc::editor::host_viewport_set_pose_command{
+            .position = { 1.0f, 2.0f, 3.0f }, .target = { 0.0f, 0.0f, 0.0f } } },
+        { .request_id = 24, .payload = arc::editor::host_viewport_capture_command{
+            .capture_id = 99, .color = true, .depth = true, .object_id = true, .normals = true,
+            .scene_color = true, .base_color = true, .material_properties = true, .emissive = true } }
     };
 
     for (const auto& command : commands)
@@ -482,7 +506,18 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         { .request_id = 18, .payload = arc::editor::host_project_assets_query{} },
         { .request_id = 19, .payload = arc::editor::host_asset_thumbnail_query{ .path = "textures/checker.png", .max_size = 128 } },
         { .request_id = 20, .payload = arc::editor::host_viewport_state_query{} },
-        { .request_id = 21, .payload = arc::editor::host_world_environment_query{ .entity = entity } }
+        { .request_id = 21, .payload = arc::editor::host_world_environment_query{ .entity = entity } },
+        { .request_id = 22, .payload = arc::editor::host_scene_spatial_query{
+            .kind = arc::editor::host_spatial_query_kind::raycast,
+            .origin = { 0.0f, 2.0f, 4.0f }, .direction = { 0.0f, -0.2f, -1.0f } } },
+        { .request_id = 23, .payload = arc::editor::host_viewport_capture_query{ .capture_id = 99 } },
+        { .request_id = 24, .payload = arc::editor::host_scene_entities_query{
+            .search = "rock", .offset = 10, .limit = 25 } },
+        { .request_id = 25, .payload = arc::editor::host_entity_by_guid_query{
+            .guid = "00112233445566778899aabbccddeeff" } },
+        { .request_id = 26, .payload = arc::editor::host_component_schema_query{} },
+        { .request_id = 27, .payload = arc::editor::host_scene_spatial_query{
+            .kind = arc::editor::host_spatial_query_kind::frustum } }
     };
 
     for (const auto& query : queries)
@@ -984,6 +1019,71 @@ TEST_CASE("viewport picking resolves the asynchronous ObjectID result before CPU
     REQUIRE(std::count_if(events.begin(), events.end(), [](const auto& event) {
         return event.event_type == arc::editor::host_event_type::entity_selected;
     }) == 1);
+}
+
+TEST_CASE("viewport captures remain asynchronous and map ObjectIDs to persistent GUIDs")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    REQUIRE(host->open_project({ .name = "Capture Test", .root = {} }, assets).succeeded);
+    auto backend = std::make_unique<pick_test_backend>();
+    auto* backend_ptr = backend.get();
+    host->renderer_service().set_backend(std::move(backend));
+
+    REQUIRE(host->execute(arc::editor::host_viewport_capture_command{
+        .capture_id = 77, .color = true, .depth = false, .object_id = true, .normals = false,
+        .scene_color = true, .base_color = true, .material_properties = true, .emissive = true }).succeeded);
+    REQUIRE(backend_ptr->capture_request.capture_id == 77);
+    REQUIRE(backend_ptr->capture_request.channels.size() == 6);
+    REQUIRE(std::find(
+        backend_ptr->capture_request.channels.begin(),
+        backend_ptr->capture_request.channels.end(),
+        arc::render::render_capture_channel::scene_color) != backend_ptr->capture_request.channels.end());
+
+    arc::editor::host_query_envelope query{
+        .request_id = 8,
+        .payload = arc::editor::host_viewport_capture_query{ .capture_id = 77 }
+    };
+    REQUIRE(host->query(query).payload_json.find("\"pending\":true") != std::string::npos);
+
+    const auto selected = host->selected_entity_snapshot();
+    backend_ptr->capture_result = {
+        .capture_id = 77,
+        .frame_index = 4,
+        .available = true,
+        .succeeded = true,
+        .camera = {
+            .position = { 1.0f, 2.0f, 3.0f },
+            .forward = { 0.0f, 0.0f, -1.0f },
+            .up = { 0.0f, 1.0f, 0.0f },
+            .near_plane = 0.1f,
+            .far_plane = 500.0f,
+            .render_width = 640,
+            .render_height = 360,
+            .output_width = 1280,
+            .output_height = 720
+        },
+        .images = { {
+            .channel = arc::render::render_capture_channel::output_color,
+            .format = arc::render::render_capture_format::rgba8_unorm,
+            .width = 1,
+            .height = 1,
+            .data = { std::byte{ 255 }, std::byte{ 0 }, std::byte{ 0 }, std::byte{ 255 } }
+        } },
+        .objects = { {
+            .encoded_id = selected.entity.index + 1u,
+            .object = { selected.entity.index, selected.entity.generation }
+        } }
+    };
+    const auto completed = host->query(query);
+    REQUIRE(completed.succeeded);
+    REQUIRE(completed.payload_json.find("\"pending\":false") != std::string::npos);
+    REQUIRE(completed.payload_json.find(selected.guid) != std::string::npos);
+    REQUIRE(completed.payload_json.find("\"data\":\"/wAA/w==\"") != std::string::npos);
+    REQUIRE(completed.payload_json.find("\"position\":[1.000000,2.000000,3.000000]") != std::string::npos);
+    REQUIRE(completed.payload_json.find("\"outputExtent\":[1280,720]") != std::string::npos);
 }
 
 TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject invalid loads")

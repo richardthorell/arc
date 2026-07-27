@@ -38,7 +38,7 @@ struct transform_component
 {
     math::vector3f position{};
     math::quatf rotation{};
-    math::vector3f scale{ 1.0f, 1.0f, 1.0f };
+    math::vector3f scale = math::vector3f::one;
     math::matrix4f world{ math::identity<float, 4>() };
     bool dirty{ true };
 
@@ -148,7 +148,7 @@ struct mesh_renderer_component
     bool receives_shadows{ true };
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
-    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f base_color_tint = math::vector4f::one;
 };
 
 /**
@@ -163,7 +163,7 @@ struct virtual_mesh_renderer_component
     bool receives_shadows{ true };
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
-    math::vector4f base_color_tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+    math::vector4f base_color_tint = math::vector4f::one;
 };
 
 /**
@@ -231,7 +231,7 @@ struct mobility_component
  */
 struct directional_light_component
 {
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 100000.0f };
     bool casts_shadows{ false };
     bool enabled{ true };
@@ -248,7 +248,7 @@ struct directional_light_component
  */
 struct point_light_component
 {
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 800.0f };
     float range{ 10.0f };
     bool casts_shadows{ false };
@@ -265,7 +265,7 @@ struct point_light_component
  */
 struct spot_light_component
 {
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 1000.0f };
     float range{ 10.0f };
     float inner_angle{ 0.35f };
@@ -284,7 +284,7 @@ struct spot_light_component
  */
 struct area_light_component
 {
-    math::vector3f color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f color = math::vector3f::one;
     float intensity{ 1000.0f };
     float width{ 1.0f };
     float height{ 1.0f };
@@ -503,7 +503,7 @@ struct terrain_component
     std::uint32_t subdivisions{ 256 };
     std::uint32_t chunk_quads{ 128 };
     float height_scale{ 1.45f };
-    math::vector3f base_color{ 1.0f, 1.0f, 1.0f };
+    math::vector3f base_color = math::vector3f::one;
     render::material_handle material{};
     bool receive_shadows{ true };
     bool cast_shadows{ true };

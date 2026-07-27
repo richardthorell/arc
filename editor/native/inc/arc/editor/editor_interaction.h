@@ -65,6 +65,11 @@ public:
     void synchronize_from(const scene::transform_component& transform) noexcept;
 
     /**
+     * @brief Place the orbit rig from an absolute camera position and focus point.
+     */
+    bool place(const math::vector3f& position, const math::vector3f& focus) noexcept;
+
+    /**
      * @brief Orbit around the focus point by mouse delta in pixels.
      */
     void orbit(float delta_x, float delta_y) noexcept;

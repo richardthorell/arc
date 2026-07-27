@@ -166,7 +166,7 @@ struct scene_import_node
     std::size_t material_index{ std::numeric_limits<std::size_t>::max() };
     math::vector3f position{};
     math::quatf rotation{};
-    math::vector3f scale{ 1.0f, 1.0f, 1.0f };
+    math::vector3f scale = math::vector3f::one;
 };
 
 /**

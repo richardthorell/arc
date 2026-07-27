@@ -459,4 +459,7 @@ button { color: inherit; background: transparent; border: 0; }
 .status-bar svg {
   color: var(--arc-color-text-dim);
 }
+.status-bar .status-ai-control {
+  color: #d8b56b;
+}
 .status-spacer { flex: 1; }

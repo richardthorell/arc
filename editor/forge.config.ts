@@ -32,6 +32,11 @@ const config: ForgeConfig = {
           config: 'vite.preload.config.ts',
           target: 'preload',
         },
+        {
+          entry: 'src/main/arcMcpStdio.ts',
+          config: 'vite.mcp.config.ts',
+          target: 'main',
+        },
       ],
       renderer: [
         {

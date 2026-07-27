@@ -184,6 +184,15 @@ render_object_pick_result render_backend::last_object_pick() const
     return {};
 }
 
+void render_backend::request_frame_capture(render_frame_capture_request)
+{
+}
+
+render_frame_capture_result render_backend::last_frame_capture() const
+{
+    return {};
+}
+
 void execute_render_graph(const compiled_render_graph& graph, command_encoder& encoder)
 {
     for (std::uint32_t pass_index = 0; pass_index < graph.passes.size(); ++pass_index)
@@ -466,6 +475,19 @@ render_object_pick_result renderer::last_object_pick() const
     if (!backend_)
         return {};
     return backend_->last_object_pick();
+}
+
+void renderer::request_frame_capture(render_frame_capture_request request)
+{
+    if (backend_)
+        backend_->request_frame_capture(std::move(request));
+}
+
+render_frame_capture_result renderer::last_frame_capture() const
+{
+    if (!backend_)
+        return {};
+    return backend_->last_frame_capture();
 }
 
 render_submit_result renderer::render_frame(std::uint64_t frame_index, const render_graph& graph)

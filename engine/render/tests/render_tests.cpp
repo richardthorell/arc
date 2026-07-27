@@ -85,11 +85,22 @@ public:
         pick_request = request;
         pick_requested = true;
     }
+    void request_frame_capture(arc::render::render_frame_capture_request request) override
+    {
+        capture_request = std::move(request);
+        capture_requested = true;
+    }
+    arc::render::render_frame_capture_result last_frame_capture() const override
+    {
+        return capture_result;
+    }
 
     arc::render::render_capabilities capabilities_{};
     arc::render::resolved_render_config configured{};
     arc::render::render_backend_frame_profile profile{};
     arc::render::render_object_pick_request pick_request{};
+    arc::render::render_frame_capture_request capture_request{};
+    arc::render::render_frame_capture_result capture_result{};
     std::uint64_t last_frame{};
     std::size_t last_event_count{};
     std::size_t last_pass_count{};
@@ -97,6 +108,7 @@ public:
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
     bool pick_requested{};
+    bool capture_requested{};
 };
 
 class recording_command_encoder final : public arc::render::command_encoder
@@ -340,7 +352,7 @@ TEST_CASE("render event writer emits mesh upload and draw events")
         arc::render::mesh_visualization_mode::standard,
         false,
         arc::math::vector4f{ 0.25f, 0.5f, 0.75f, 1.0f },
-        arc::math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+        arc::math::vector4f::one,
         "tinted");
     writer.directional_light({ 0.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f }, 3.0f, true, "Sun");
 
@@ -756,6 +768,19 @@ TEST_CASE("stable directional shadow fitting produces ordered blended cascades")
             sizeof(float) * 16u) == 0);
         if (index > 0)
             REQUIRE(cascade.split_depth > first.cascades[index - 1].split_depth);
+
+        const auto light_direction = arc::math::normalize(
+            arc::math::vector3f{ 0.35f, -0.85f, -0.4f });
+        const auto light_right = arc::math::normalize(arc::math::cross(
+            light_direction,
+            arc::math::vector3f{ 0.0f, 1.0f, 0.0f }));
+        const auto light_up = arc::math::cross(light_right, light_direction);
+        const float snapped_x =
+            arc::math::dot(light_right, cascade.center) / cascade.texel_world_size;
+        const float snapped_y =
+            arc::math::dot(light_up, cascade.center) / cascade.texel_world_size;
+        REQUIRE(snapped_x == Catch::Approx(std::round(snapped_x)).margin(0.0001f));
+        REQUIRE(snapped_y == Catch::Approx(std::round(snapped_y)).margin(0.0001f));
     }
 }
 
@@ -997,6 +1022,27 @@ TEST_CASE("renderer forwards ObjectID pick requests to backend")
     REQUIRE(backend_ptr->pick_request.x == 12);
     REQUIRE(backend_ptr->pick_request.y == 34);
     REQUIRE_FALSE(renderer.last_object_pick().available);
+}
+
+TEST_CASE("renderer forwards coherent asynchronous frame capture requests")
+{
+    auto backend = std::make_unique<recording_backend>();
+    auto* backend_ptr = backend.get();
+    arc::render::renderer renderer;
+    renderer.set_backend(std::move(backend));
+
+    renderer.request_frame_capture({
+        .capture_id = 31,
+        .channels = {
+            arc::render::render_capture_channel::output_color,
+            arc::render::render_capture_channel::object_id
+        }
+    });
+
+    REQUIRE(backend_ptr->capture_requested);
+    REQUIRE(backend_ptr->capture_request.capture_id == 31);
+    REQUIRE(backend_ptr->capture_request.channels.size() == 2);
+    REQUIRE_FALSE(renderer.last_frame_capture().available);
 }
 
 TEST_CASE("renderer forwards viewport resize events to backend")

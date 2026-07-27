@@ -371,6 +371,7 @@ public:
         destroy_local_shadow_resources();
         destroy_white_texture();
         destroy_buffer(pick_readback_buffer_);
+        destroy_buffer(capture_readback_buffer_);
         deferred_releases_.collect(std::numeric_limits<std::uint64_t>::max());
         for (auto& buffer : shadow_uniform_buffers_)
             destroy_buffer(buffer);
@@ -671,6 +672,18 @@ public:
         return last_pick_result_;
     }
 
+    void request_frame_capture(render_frame_capture_request request) override
+    {
+        if (request.capture_id == 0)
+            return;
+        pending_capture_request_ = std::move(request);
+    }
+
+    render_frame_capture_result last_frame_capture() const override
+    {
+        return last_capture_result_;
+    }
+
     bool initialize_imgui(std::uint32_t width, std::uint32_t height, std::string& message) override
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
@@ -809,6 +822,7 @@ public:
         vkWaitForFences(device_, 1, &frame->Fence, VK_TRUE, UINT64_MAX);
         collect_timestamp_results();
         collect_object_pick_result();
+        collect_frame_capture_result();
         retire_completed_resources();
 
         // Resource preparation may need to wait for every swapchain frame
@@ -1058,6 +1072,7 @@ public:
         vkWaitForFences(device_, 1, &frame->Fence, VK_TRUE, UINT64_MAX);
         collect_timestamp_results();
         collect_object_pick_result();
+        collect_frame_capture_result();
         retire_completed_resources();
 
         // See the ImGui presentation path above. Frame-dependent resource
@@ -1371,7 +1386,7 @@ private:
     struct folded_light_constants
     {
         math::vector3f direction{ 0.35f, -0.85f, -0.40f };
-        math::vector3f color{ 1.0f, 1.0f, 1.0f };
+        math::vector3f color = math::vector3f::one;
         float intensity{ 1.0f };
     };
 
@@ -1423,6 +1438,20 @@ private:
         std::uint64_t frame_index{};
         std::uint32_t frame_slot{};
         std::unordered_map<std::uint32_t, render_object_id> objects;
+        bool active{};
+    };
+
+    struct frame_capture_readback
+    {
+        render_frame_capture_request request{};
+        std::uint64_t frame_index{};
+        std::uint32_t frame_slot{};
+        render_capture_camera_state camera{};
+        std::vector<render_capture_image> images;
+        std::vector<VkDeviceSize> offsets;
+        std::vector<render_capture_object> objects;
+        std::vector<std::string> diagnostics;
+        VkDeviceSize byte_size{};
         bool active{};
     };
 
@@ -1816,6 +1845,50 @@ private:
         in_flight_pick_ = {};
     }
 
+    void collect_frame_capture_result()
+    {
+        if (!in_flight_capture_.active || capture_readback_buffer_.buffer == VK_NULL_HANDLE)
+            return;
+        if (in_flight_capture_.frame_slot != active_frame_index_)
+        {
+            if (in_flight_capture_.frame_slot >= window_.ImageCount)
+                return;
+            const auto submitting_fence = window_.Frames[in_flight_capture_.frame_slot].Fence;
+            if (submitting_fence == VK_NULL_HANDLE || vkGetFenceStatus(device_, submitting_fence) != VK_SUCCESS)
+                return;
+        }
+
+        void* mapped{};
+        if (vmaMapMemory(allocator_, capture_readback_buffer_.allocation, &mapped) != VK_SUCCESS)
+            return;
+        vmaInvalidateAllocation(
+            allocator_, capture_readback_buffer_.allocation, 0, in_flight_capture_.byte_size);
+        const auto* bytes = static_cast<const std::byte*>(mapped);
+        for (std::size_t index = 0; index < in_flight_capture_.images.size(); ++index)
+        {
+            auto& image = in_flight_capture_.images[index];
+            std::memcpy(
+                image.data.data(),
+                bytes + in_flight_capture_.offsets[index],
+                image.data.size());
+        }
+        vmaUnmapMemory(allocator_, capture_readback_buffer_.allocation);
+
+        last_capture_result_ = {
+            .capture_id = in_flight_capture_.request.capture_id,
+            .frame_index = in_flight_capture_.frame_index,
+            .available = true,
+            .succeeded = !in_flight_capture_.images.empty(),
+            .camera = in_flight_capture_.camera,
+            .images = std::move(in_flight_capture_.images),
+            .objects = std::move(in_flight_capture_.objects),
+            .diagnostics = std::move(in_flight_capture_.diagnostics)
+        };
+        if (last_capture_result_.images.empty())
+            last_capture_result_.diagnostics.emplace_back("none of the requested capture channels are supported");
+        in_flight_capture_ = {};
+    }
+
     clustered_light_grid_profile make_clustered_light_profile() const noexcept
     {
         clustered_light_grid_profile profile{};
@@ -1852,6 +1925,13 @@ private:
         profile.directional_resolution = resolved_config_.directional_shadow_resolution;
         profile.local_atlas_resolution = resolved_config_.local_shadow_atlas_resolution;
         profile.static_cache_hit = last_static_shadow_cache_hit_;
+        if (!frame_shadows_enabled_)
+        {
+            profile.directional_cascade_count = 0;
+            profile.local_atlas_resolution = 0;
+            profile.fallback_reason = "Shadows disabled by the viewport";
+            return;
+        }
         const auto detect_moved_static = [&](draw_mesh_event& draw) {
             if (draw.mobility != render_mobility::static_object || !draw.object_id.valid())
                 return;
@@ -2339,6 +2419,249 @@ private:
             VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VMA_MEMORY_USAGE_CPU_ONLY,
             pick_readback_buffer_);
+    }
+
+    bool ensure_capture_readback_buffer(VkDeviceSize required_size)
+    {
+        if (capture_readback_buffer_.buffer != VK_NULL_HANDLE &&
+            capture_readback_capacity_ >= required_size)
+            return true;
+        if (in_flight_capture_.active)
+            return false;
+        destroy_buffer(capture_readback_buffer_);
+        capture_readback_capacity_ = 0;
+        if (!create_buffer(
+                required_size,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VMA_MEMORY_USAGE_CPU_ONLY,
+                capture_readback_buffer_))
+            return false;
+        capture_readback_capacity_ = required_size;
+        return true;
+    }
+
+    static bool capture_channel_requested(
+        const render_frame_capture_request& request,
+        render_capture_channel channel)
+    {
+        return std::ranges::find(request.channels, channel) != request.channels.end();
+    }
+
+    static VkDeviceSize align_capture_offset(VkDeviceSize value) noexcept
+    {
+        constexpr VkDeviceSize alignment = 256;
+        return (value + alignment - 1u) & ~(alignment - 1u);
+    }
+
+    static std::optional<std::pair<render_capture_format, std::uint32_t>>
+        capture_format_for(VkFormat format)
+    {
+        switch (format)
+        {
+        case VK_FORMAT_R8G8B8A8_UNORM:
+        case VK_FORMAT_R8G8B8A8_SRGB:
+            return std::pair{ render_capture_format::rgba8_unorm, 4u };
+        case VK_FORMAT_B8G8R8A8_UNORM:
+        case VK_FORMAT_B8G8R8A8_SRGB:
+            return std::pair{ render_capture_format::bgra8_unorm, 4u };
+        case VK_FORMAT_R16G16B16A16_SFLOAT:
+            return std::pair{ render_capture_format::rgba16_float, 8u };
+        case VK_FORMAT_R32_SFLOAT:
+        case VK_FORMAT_D32_SFLOAT:
+            return std::pair{ render_capture_format::r32_float, 4u };
+        case VK_FORMAT_R32_UINT:
+            return std::pair{ render_capture_format::r32_uint, 4u };
+        default:
+            return std::nullopt;
+        }
+    }
+
+    void record_frame_capture(VkCommandBuffer command_buffer)
+    {
+        if (!pending_capture_request_ || in_flight_capture_.active)
+            return;
+
+        frame_capture_readback readback{};
+        readback.request = std::move(*pending_capture_request_);
+        pending_capture_request_.reset();
+        readback.frame_index = last_profile_.frame_index;
+        readback.frame_slot = active_frame_index_;
+        readback.camera = {
+            .view_projection = frame_camera_.view_projection,
+            .inverse_view_projection = frame_camera_.inverse_view_projection,
+            .projection = frame_camera_.projection,
+            .position = frame_camera_.position,
+            .forward = frame_camera_.forward,
+            .up = frame_camera_.up,
+            .near_plane = frame_camera_.near_plane,
+            .far_plane = frame_camera_.far_plane,
+            .render_width = frame_camera_.render_width,
+            .render_height = frame_camera_.render_height,
+            .output_width = frame_camera_.output_width,
+            .output_height = frame_camera_.output_height
+        };
+
+        const auto append_image = [&](render_capture_channel channel, VkFormat format,
+                                      std::uint32_t width, std::uint32_t height) -> bool {
+            const auto capture_format = capture_format_for(format);
+            if (!capture_format || width == 0 || height == 0)
+                return false;
+            const VkDeviceSize offset = align_capture_offset(readback.byte_size);
+            const VkDeviceSize byte_size =
+                static_cast<VkDeviceSize>(width) * height * capture_format->second;
+            render_capture_image image{};
+            image.channel = channel;
+            image.format = capture_format->first;
+            image.width = width;
+            image.height = height;
+            image.data.resize(static_cast<std::size_t>(byte_size));
+            readback.images.push_back(std::move(image));
+            readback.offsets.push_back(offset);
+            readback.byte_size = offset + byte_size;
+            return true;
+        };
+
+        if (capture_channel_requested(readback.request, render_capture_channel::output_color))
+            append_image(render_capture_channel::output_color, viewport_format_, viewport_width_, viewport_height_);
+        if (capture_channel_requested(readback.request, render_capture_channel::scene_color))
+            append_image(
+                render_capture_channel::scene_color,
+                scene_color_.format,
+                scene_color_.width,
+                scene_color_.height);
+        if (capture_channel_requested(readback.request, render_capture_channel::linear_depth))
+            append_image(render_capture_channel::linear_depth, depth_format_, viewport_width_, viewport_height_);
+        if (capture_channel_requested(readback.request, render_capture_channel::object_id))
+        {
+            if (resolved_config_.path == render_path::deferred)
+                append_image(
+                    render_capture_channel::object_id,
+                    gbuffer_object_id_.format,
+                    gbuffer_object_id_.width,
+                    gbuffer_object_id_.height);
+            else
+                readback.diagnostics.emplace_back("ObjectID capture is unavailable in the active forward+ path");
+        }
+        if (capture_channel_requested(readback.request, render_capture_channel::world_normal))
+        {
+            if (resolved_config_.path == render_path::deferred)
+                append_image(
+                    render_capture_channel::world_normal,
+                    gbuffer_normal_.format,
+                    gbuffer_normal_.width,
+                    gbuffer_normal_.height);
+            else
+                readback.diagnostics.emplace_back("World-normal capture is unavailable in the active forward+ path");
+        }
+        const auto append_deferred_channel = [&](render_capture_channel channel,
+                                                  const graph_image& image,
+                                                  std::string_view label) {
+            if (!capture_channel_requested(readback.request, channel))
+                return;
+            if (resolved_config_.path == render_path::deferred)
+                append_image(channel, image.format, image.width, image.height);
+            else
+                readback.diagnostics.emplace_back(
+                    std::string(label) + " capture is unavailable in the active forward+ path");
+        };
+        append_deferred_channel(
+            render_capture_channel::base_color,
+            gbuffer_albedo_,
+            "Base-color");
+        append_deferred_channel(
+            render_capture_channel::material_properties,
+            gbuffer_material_,
+            "Material-properties");
+        append_deferred_channel(
+            render_capture_channel::emissive,
+            gbuffer_emissive_,
+            "Emissive");
+
+        if (readback.images.empty() || !ensure_capture_readback_buffer(readback.byte_size))
+        {
+            if (readback.diagnostics.empty())
+                readback.diagnostics.emplace_back(
+                    "capture readback allocation failed or no requested channel is supported");
+            last_capture_result_ = {
+                .capture_id = readback.request.capture_id,
+                .frame_index = readback.frame_index,
+                .available = true,
+                .succeeded = false,
+                .camera = readback.camera,
+                .diagnostics = std::move(readback.diagnostics)
+            };
+            return;
+        }
+
+        for (const auto& draw : frame_draws_)
+        {
+            if (draw.object_id.valid())
+                readback.objects.push_back({ draw.object_id.index + 1u, draw.object_id });
+        }
+        for (const auto& draw : frame_virtual_draws_)
+        {
+            if (draw.draw.object_id.valid())
+                readback.objects.push_back({ draw.draw.object_id.index + 1u, draw.draw.object_id });
+        }
+
+        for (std::size_t index = 0; index < readback.images.size(); ++index)
+        {
+            const auto& image = readback.images[index];
+            VkImage source{};
+            VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+            switch (image.channel)
+            {
+            case render_capture_channel::output_color:
+                transition_viewport(command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = viewport_image_;
+                break;
+            case render_capture_channel::scene_color:
+                transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = scene_color_.image;
+                break;
+            case render_capture_channel::linear_depth:
+                transition_depth(command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = viewport_depth_image_;
+                aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+                break;
+            case render_capture_channel::object_id:
+                transition_graph_image(command_buffer, gbuffer_object_id_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = gbuffer_object_id_.image;
+                break;
+            case render_capture_channel::world_normal:
+                transition_graph_image(command_buffer, gbuffer_normal_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = gbuffer_normal_.image;
+                break;
+            case render_capture_channel::base_color:
+                transition_graph_image(command_buffer, gbuffer_albedo_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = gbuffer_albedo_.image;
+                break;
+            case render_capture_channel::material_properties:
+                transition_graph_image(command_buffer, gbuffer_material_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = gbuffer_material_.image;
+                break;
+            case render_capture_channel::emissive:
+                transition_graph_image(command_buffer, gbuffer_emissive_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                source = gbuffer_emissive_.image;
+                break;
+            }
+            if (source == VK_NULL_HANDLE)
+                continue;
+            VkBufferImageCopy region{};
+            region.bufferOffset = readback.offsets[index];
+            region.imageSubresource.aspectMask = aspect;
+            region.imageSubresource.layerCount = 1;
+            region.imageExtent = { image.width, image.height, 1 };
+            vkCmdCopyImageToBuffer(
+                command_buffer,
+                source,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                capture_readback_buffer_.buffer,
+                1,
+                &region);
+        }
+        readback.active = true;
+        in_flight_capture_ = std::move(readback);
     }
 
     void destroy_texture(gpu_texture& value) noexcept
@@ -2917,6 +3240,7 @@ private:
         if (vmaMapMemory(allocator_, light_buffer_.allocation, &mapped) != VK_SUCCESS)
             return;
         std::memcpy(mapped, &frame_lighting_, sizeof(frame_lighting_));
+        vmaFlushAllocation(allocator_, light_buffer_.allocation, 0, sizeof(frame_lighting_));
         vmaUnmapMemory(allocator_, light_buffer_.allocation);
     }
 
@@ -5511,7 +5835,8 @@ private:
         image.arrayLayers = 1;
         image.samples = VK_SAMPLE_COUNT_1_BIT;
         image.tiling = VK_IMAGE_TILING_OPTIMAL;
-        image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
         VmaAllocationCreateInfo allocation{};
         allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -5563,7 +5888,8 @@ private:
         depth_image.arrayLayers = 1;
         depth_image.samples = VK_SAMPLE_COUNT_1_BIT;
         depth_image.tiling = VK_IMAGE_TILING_OPTIMAL;
-        depth_image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        depth_image.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+            VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
         VmaAllocationCreateInfo depth_allocation{};
         depth_allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -5671,6 +5997,11 @@ private:
             barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         }
+        else if (viewport_layout_ == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            src_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
         if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
         {
             barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -5692,6 +6023,11 @@ private:
                 ? VK_PIPELINE_STAGE_TRANSFER_BIT
                 : VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+        {
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         }
 
         vkCmdPipelineBarrier(command_buffer, src_stage, dst_stage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
@@ -5727,10 +6063,20 @@ private:
             barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
             source_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
         }
+        else if (viewport_depth_layout_ == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
         if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
         {
             barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
             destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        }
+        else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+        {
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         }
         else
         {
@@ -5981,8 +6327,13 @@ private:
                 static_cast<unsigned>(shadow_filter::pcf_5x5)));
         data.params[3] = static_cast<float>(filter);
         data.configuration[0] = static_cast<float>(layout.cascade_count);
-        data.configuration[1] = cascade_settings.blend_fraction;
-        data.configuration[2] = cascade_settings.maximum_distance;
+        // Cascade splits are authored in camera view depth, not radial
+        // distance. The remaining configuration lanes carry the normalized
+        // camera forward vector so every lighting path selects the same
+        // frustum slice without expanding the Vulkan 1.2-safe uniform.
+        data.configuration[1] = frame_camera_.forward[0];
+        data.configuration[2] = frame_camera_.forward[1];
+        data.configuration[3] = frame_camera_.forward[2];
         return data;
     }
 
@@ -5997,6 +6348,7 @@ private:
         if (vmaMapMemory(allocator_, shadow_buffer->allocation, &mapped) != VK_SUCCESS)
             return;
         std::memcpy(mapped, &data, sizeof(data));
+        vmaFlushAllocation(allocator_, shadow_buffer->allocation, 0, sizeof(data));
         vmaUnmapMemory(allocator_, shadow_buffer->allocation);
     }
 
@@ -6886,13 +7238,13 @@ private:
             constants.light_direction_intensity[0] = 0.35f;
             constants.light_direction_intensity[1] = -0.85f;
             constants.light_direction_intensity[2] = -0.40f;
+            constants.light_direction_intensity[3] = frame_shadows_enabled_ ? 1.0f : 0.0f;
             if (!frame_directional_lights_.empty())
             {
                 const auto& light = frame_directional_lights_.front();
                 constants.light_direction_intensity[0] = light.direction[0];
                 constants.light_direction_intensity[1] = light.direction[1];
                 constants.light_direction_intensity[2] = light.direction[2];
-                constants.light_direction_intensity[3] = light.intensity;
                 constants.light_color[0] = light.color[0];
                 constants.light_color[1] = light.color[1];
                 constants.light_color[2] = light.color[2];
@@ -7279,6 +7631,13 @@ private:
         output_constants.exposure_output[1] =
             frame_camera_.exposure.mode == exposure_mode::automatic ? 1.0f : 0.0f;
         output_constants.exposure_output[2] = frame_camera_.exposure.compensation_ev;
+        const auto visualization = !frame_draws_.empty()
+            ? frame_draws_.front().visualization
+            : !frame_virtual_draws_.empty()
+                ? frame_virtual_draws_.front().draw.visualization
+                : mesh_visualization_mode::standard;
+        output_constants.exposure_output[3] =
+            visualization == mesh_visualization_mode::standard ? 0.0f : 1.0f;
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, output_transform_pipeline_);
         vkCmdBindDescriptorSets(
             command_buffer,
@@ -7298,6 +7657,7 @@ private:
             &output_constants);
         vkCmdDraw(command_buffer, 3, 1, 0, 0);
         cmd_end_rendering(command_buffer);
+        record_frame_capture(command_buffer);
         transition_viewport(command_buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 #endif
@@ -7346,6 +7706,11 @@ private:
     render_object_pick_result last_pick_result_{};
     gpu_buffer pick_readback_buffer_;
     object_pick_readback in_flight_pick_;
+    std::optional<render_frame_capture_request> pending_capture_request_;
+    render_frame_capture_result last_capture_result_{};
+    gpu_buffer capture_readback_buffer_;
+    VkDeviceSize capture_readback_capacity_{};
+    frame_capture_readback in_flight_capture_;
     std::vector<std::string> pending_debug_markers_;
     std::unordered_map<std::uint64_t, gpu_mesh> meshes_;
     std::unordered_map<std::uint64_t, gpu_virtual_mesh> virtual_meshes_;

@@ -119,10 +119,27 @@ void editor_camera_controller::synchronize_from(const scene::transform_component
     focus_ = math::add(position, math::mul(forward, distance_));
 }
 
+bool editor_camera_controller::place(const math::vector3f& position, const math::vector3f& focus) noexcept
+{
+    const auto delta = math::sub(focus, position);
+    const float distance = math::length(delta);
+    if (!std::isfinite(distance) || distance <= 0.0001f)
+        return false;
+    const auto forward = math::mul(delta, 1.0f / distance);
+    yaw_ = std::atan2(-forward[0], -forward[2]);
+    pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
+    distance_ = std::clamp(distance, 0.15f, 500.0f);
+    focus_ = focus;
+    return true;
+}
+
 void editor_camera_controller::orbit(float delta_x, float delta_y) noexcept
 {
     yaw_ = std::remainder(yaw_ - delta_x * 0.008f, math::tau<float>);
-    pitch_ = std::clamp(pitch_ + delta_y * 0.008f, -1.45f, 1.45f);
+    // Treat the gesture as rotating the scene, matching ARC's original
+    // editor navigation: dragging upward pitches the view upward around the
+    // camera-local X axis. Yaw remains isolated on the stable Y axis.
+    pitch_ = std::clamp(pitch_ - delta_y * 0.008f, -1.45f, 1.45f);
 }
 
 void editor_camera_controller::pan(float delta_x, float delta_y) noexcept

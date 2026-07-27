@@ -145,7 +145,7 @@ void render_event_writer::draw_mesh(
         render_mode::shaded,
         mesh_visualization_mode::standard,
         false,
-        math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+        math::vector4f::one,
         math::vector4f{ 0.25f, 0.65f, 1.0f, 1.0f },
         std::move(label));
 }
@@ -169,7 +169,7 @@ void render_event_writer::draw_mesh(
         mode,
         visualization,
         selected,
-        math::vector4f{ 1.0f, 1.0f, 1.0f, 1.0f },
+        math::vector4f::one,
         wire_color,
         std::move(label));
 }

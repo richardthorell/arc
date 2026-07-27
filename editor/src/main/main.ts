@@ -4,6 +4,8 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { SceneGatewayCore } from './aiGatewayCore';
+import { AiGatewayServer } from './aiGatewayServer';
 
 const isDevelopment = !app.isPackaged;
 
@@ -12,17 +14,23 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | null = null;
 let hostClient: ArcHostClient | null = null;
+let aiGateway: AiGatewayServer | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
+let shutdownPending = false;
+let shutdownComplete = false;
 
 const activeWindow = (): BrowserWindow | null => mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 
-type HostResponse = {
+export type HostResponse = {
   kind: 'response';
   requestId: number;
   succeeded: boolean;
   error: string;
   payload: unknown;
+  sceneRevision: number;
+  worldEpoch: number;
+  frameRevision: number;
 };
 
 type HostEvent = {
@@ -67,10 +75,12 @@ type OpenSceneDialogOptions = {
 const hostLogTimestamp = () => new Date().toLocaleTimeString([], { hour12: false });
 
 const sendHostLog = (event: Omit<HostLogEvent, 'timestamp'>): void => {
-  activeWindow()?.webContents.send('host:log', {
+  const timestamped = {
     ...event,
     timestamp: hostLogTimestamp(),
-  } satisfies HostLogEvent);
+  } satisfies HostLogEvent;
+  aiGateway?.core.recordHostLog(timestamped);
+  activeWindow()?.webContents.send('host:log', timestamped);
 };
 
 const normalizeHostLogLevel = (level: string): HostLogLevel => {
@@ -127,7 +137,7 @@ const resolveHostProcessPath = (): string | null => {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 };
 
-class ArcHostClient {
+export class ArcHostClient {
   private readonly executablePath: string | null;
   private process: ChildProcessWithoutNullStreams | null = null;
   private requestId = 1;
@@ -135,6 +145,7 @@ class ArcHostClient {
   private lastError = '';
   private pendingRuntimeTick: HostEvent | null = null;
   private runtimeTickScheduled = false;
+  private readonly eventListeners = new Set<(event: HostEvent) => void>();
 
   constructor() {
     this.executablePath = resolveHostProcessPath();
@@ -200,15 +211,22 @@ class ArcHostClient {
     this.process = null;
   }
 
-  command(type: string, payload: Record<string, unknown> = {}, edit?: Record<string, unknown>): Promise<HostResponse> {
-    return this.send({ kind: 'command', type, payload, edit });
+  command(type: string, payload: Record<string, unknown> = {}, edit?: Record<string, unknown>,
+    expectedSceneRevision?: number): Promise<HostResponse> {
+    return this.send({ kind: 'command', type, payload, edit, expectedSceneRevision });
   }
 
   query(type: string, payload: Record<string, unknown> = {}): Promise<HostResponse> {
     return this.send({ kind: 'query', type, payload });
   }
 
-  private send(message: { kind: 'command' | 'query'; type: string; payload: Record<string, unknown>; edit?: Record<string, unknown> }): Promise<HostResponse> {
+  onEvent(listener: (event: HostEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
+  }
+
+  private send(message: { kind: 'command' | 'query'; type: string; payload: Record<string, unknown>;
+    edit?: Record<string, unknown>; expectedSceneRevision?: number }): Promise<HostResponse> {
     this.start();
     const child = this.process;
     if (!child?.stdin.writable) {
@@ -244,6 +262,7 @@ class ArcHostClient {
     const maybeResponse = parsed as Partial<HostResponse>;
     if ((parsed as Partial<HostEvent>).kind === 'event') {
       const event = parsed as HostEvent;
+      for (const listener of this.eventListeners) listener(event);
       if (event.type === 'runtime.tickCompleted') {
         this.pendingRuntimeTick = event;
         if (!this.runtimeTickScheduled) {
@@ -387,9 +406,30 @@ const createMainWindow = (): void => {
   }
 };
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   hostClient = new ArcHostClient();
+  const gatewayCore = new SceneGatewayCore(hostClient);
+  hostClient.onEvent((event) => {
+    gatewayCore.recordHostEvent(event);
+    if (event.type === 'project.opened' || event.type === 'project.closed' ||
+        (event.type === 'scene.changed' && /opened|loaded|new scene/i.test(event.message))) {
+      void gatewayCore.invalidateAuthority(event.message || event.type);
+    }
+  });
+  aiGateway = new AiGatewayServer(gatewayCore, {
+    appDataPath: app.getPath('userData'),
+    onStatus: (status) => activeWindow()?.webContents.send('ai-gateway:status', status),
+  });
+  try {
+    await aiGateway.start();
+  } catch (error) {
+    sendHostLog({
+      level: 'error',
+      source: 'ai.gateway',
+      message: `AI gateway failed to start: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
 
   ipcMain.handle('app:getVersion', () => app.getVersion());
   ipcMain.handle('editor:getStartupState', () => ({
@@ -402,6 +442,15 @@ app.whenReady().then(() => {
   ipcMain.handle('host:query', (_event, type: string, payload: Record<string, unknown> = {}) => hostClient?.query(type, payload));
   ipcMain.handle('host:command', (_event, type: string, payload: Record<string, unknown>, edit?: Record<string, unknown>) =>
     hostClient?.command(type, payload, edit));
+  ipcMain.handle('ai-gateway:status', () => aiGateway?.core.status() ?? null);
+  ipcMain.handle('ai-gateway:approve', (_event, requestId: string) => aiGateway?.core.approveEdit(requestId) ?? false);
+  ipcMain.handle('ai-gateway:deny', (_event, requestId: string) => aiGateway?.core.denyEdit(requestId) ?? false);
+  ipcMain.handle('ai-gateway:revoke', async (_event, clientId: string) => {
+    await aiGateway?.core.revokeClient(clientId);
+  });
+  ipcMain.handle('ai-gateway:cancelEdit', async (_event, sessionId: string, clientId: string) =>
+    aiGateway?.core.invoke('edit.cancel', { editSessionId: sessionId }, clientId));
+  ipcMain.handle('ai-gateway:undoLastEdit', async () => aiGateway?.core.undoLastCommittedEdit());
   ipcMain.handle('dialog:openScene', async (_event, options: OpenSceneDialogOptions = {}) => {
     const target = activeWindow();
     if (!target) {
@@ -523,8 +572,25 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  hostClient?.stop();
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', (event) => {
+  if (shutdownComplete) return;
+  event.preventDefault();
+  if (shutdownPending) return;
+  shutdownPending = true;
+  void (async () => {
+    try {
+      await aiGateway?.stop();
+    } finally {
+      aiGateway = null;
+      hostClient?.stop();
+      hostClient = null;
+      shutdownComplete = true;
+      app.quit();
+    }
+  })();
 });
