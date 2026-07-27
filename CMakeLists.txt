@@ -21,9 +21,7 @@ if(ARC_ENABLE_COVERAGE)
     add_link_options(-fprofile-instr-generate -fcoverage-mapping)
 endif()
 
-if(ARC_BUILD_EDITOR OR ARC_BUILD_RENDER_VULKAN)
-    add_subdirectory(third_party)
-endif()
+add_subdirectory(third_party)
 
 add_subdirectory(engine)
 

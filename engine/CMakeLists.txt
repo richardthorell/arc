@@ -29,6 +29,7 @@ add_subdirectory(jobs)
 add_subdirectory(memory)
 add_subdirectory(io)
 add_subdirectory(framework)
+add_subdirectory(assets)
 add_subdirectory(input)
 add_subdirectory(ecs)
 add_subdirectory(render)
@@ -43,6 +44,7 @@ add_library(arc INTERFACE)
 target_link_libraries(arc
     INTERFACE
         arc-scene
+        arc-assets
         arc-input
 )
 

@@ -13,6 +13,7 @@ option(ARC_FETCH_STB "Fetch stb when ARC_USE_SYSTEM_STB is OFF" ON)
 option(ARC_USE_SYSTEM_UFBX "Use a system-provided ufbx package" OFF)
 option(ARC_FETCH_UFBX "Fetch ufbx when ARC_USE_SYSTEM_UFBX is OFF" ON)
 option(ARC_USE_SYSTEM_NLOHMANN_JSON "Use a system-provided nlohmann_json package" OFF)
+option(ARC_USE_SYSTEM_SQLITE "Use a system-provided SQLite package" OFF)
 
 add_library(arc-third-party-json INTERFACE)
 if(NOT TARGET arc::third-party-json)
@@ -36,6 +37,71 @@ else()
     message(FATAL_ERROR "ARC_FETCH_THIRD_PARTY is OFF and ARC_USE_SYSTEM_NLOHMANN_JSON is OFF")
 endif()
 
+add_library(arc-third-party-sqlite INTERFACE)
+if(NOT TARGET arc::third-party-sqlite)
+    add_library(arc::third-party-sqlite ALIAS arc-third-party-sqlite)
+endif()
+
+if(ARC_USE_SYSTEM_SQLITE)
+    find_package(SQLite3 REQUIRED)
+    target_link_libraries(arc-third-party-sqlite INTERFACE SQLite::SQLite3)
+elseif(ARC_FETCH_THIRD_PARTY)
+    enable_language(C)
+    FetchContent_Declare(
+        sqlite_amalgamation
+        URL https://www.sqlite.org/2026/sqlite-amalgamation-3530300.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(sqlite_amalgamation)
+    add_library(arc-third-party-sqlite-static STATIC
+        "${sqlite_amalgamation_SOURCE_DIR}/sqlite3.c"
+    )
+    target_include_directories(arc-third-party-sqlite-static
+        PUBLIC
+            "${sqlite_amalgamation_SOURCE_DIR}"
+    )
+    target_compile_definitions(arc-third-party-sqlite-static
+        PUBLIC
+            SQLITE_THREADSAFE=1
+            SQLITE_ENABLE_FTS5
+            SQLITE_ENABLE_JSON1
+        PRIVATE
+            SQLITE_DEFAULT_MEMSTATUS=0
+    )
+    if(MSVC)
+        target_compile_options(arc-third-party-sqlite-static PRIVATE /W0)
+    else()
+        target_compile_options(arc-third-party-sqlite-static PRIVATE -w)
+    endif()
+    target_link_libraries(arc-third-party-sqlite INTERFACE arc-third-party-sqlite-static)
+else()
+    message(FATAL_ERROR "ARC_FETCH_THIRD_PARTY is OFF and ARC_USE_SYSTEM_SQLITE is OFF")
+endif()
+
+add_library(arc-third-party-stb INTERFACE)
+if(NOT TARGET arc::third-party-stb)
+    add_library(arc::third-party-stb ALIAS arc-third-party-stb)
+endif()
+
+if(ARC_USE_SYSTEM_STB)
+    find_path(ARC_STB_INCLUDE_DIR stb_image.h REQUIRED)
+    target_include_directories(arc-third-party-stb INTERFACE "${ARC_STB_INCLUDE_DIR}")
+    target_compile_definitions(arc-third-party-stb INTERFACE ARC_RENDER_HAS_STB=1)
+elseif(ARC_FETCH_STB)
+    FetchContent_Declare(
+        stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG master
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(stb)
+    target_include_directories(arc-third-party-stb INTERFACE "${stb_SOURCE_DIR}")
+    target_compile_definitions(arc-third-party-stb INTERFACE ARC_RENDER_HAS_STB=1)
+else()
+    target_compile_definitions(arc-third-party-stb INTERFACE ARC_RENDER_STB_UNAVAILABLE=1)
+endif()
+
+if(ARC_BUILD_EDITOR OR ARC_BUILD_RENDER_VULKAN)
 add_library(arc-third-party-ufbx INTERFACE)
 if(NOT TARGET arc::third-party-ufbx)
     add_library(arc::third-party-ufbx ALIAS arc-third-party-ufbx)
@@ -67,13 +133,13 @@ elseif(ARC_FETCH_THIRD_PARTY AND ARC_FETCH_UFBX)
 else()
     target_compile_definitions(arc-third-party-ufbx INTERFACE ARC_RENDER_UFBX_UNAVAILABLE=1)
 endif()
+endif()
 
 if(ARC_BUILD_RENDER_VULKAN)
     add_library(arc-third-party-vulkan INTERFACE)
     add_library(arc-third-party-volk INTERFACE)
     add_library(arc-third-party-vma INTERFACE)
     add_library(arc-third-party-slang INTERFACE)
-    add_library(arc-third-party-stb INTERFACE)
 
     if(NOT TARGET arc::third-party-vulkan)
         add_library(arc::third-party-vulkan ALIAS arc-third-party-vulkan)
@@ -86,9 +152,6 @@ if(ARC_BUILD_RENDER_VULKAN)
     endif()
     if(NOT TARGET arc::third-party-slang)
         add_library(arc::third-party-slang ALIAS arc-third-party-slang)
-    endif()
-    if(NOT TARGET arc::third-party-stb)
-        add_library(arc::third-party-stb ALIAS arc-third-party-stb)
     endif()
 
     if(ARC_USE_SYSTEM_VULKAN)
@@ -174,24 +237,6 @@ if(ARC_BUILD_RENDER_VULKAN)
         endif()
     else()
     target_compile_definitions(arc-third-party-slang INTERFACE ARC_RENDER_SLANG_UNAVAILABLE=1)
-    endif()
-
-    if(ARC_USE_SYSTEM_STB)
-        find_path(ARC_STB_INCLUDE_DIR stb_image.h REQUIRED)
-        target_include_directories(arc-third-party-stb INTERFACE "${ARC_STB_INCLUDE_DIR}")
-        target_compile_definitions(arc-third-party-stb INTERFACE ARC_RENDER_HAS_STB=1)
-    elseif(ARC_FETCH_STB)
-        FetchContent_Declare(
-            stb
-            GIT_REPOSITORY https://github.com/nothings/stb.git
-            GIT_TAG master
-            GIT_SHALLOW TRUE
-        )
-        FetchContent_MakeAvailable(stb)
-        target_include_directories(arc-third-party-stb INTERFACE "${stb_SOURCE_DIR}")
-        target_compile_definitions(arc-third-party-stb INTERFACE ARC_RENDER_HAS_STB=1)
-    else()
-        target_compile_definitions(arc-third-party-stb INTERFACE ARC_RENDER_STB_UNAVAILABLE=1)
     endif()
 
     if(ARC_BUILD_EDITOR)

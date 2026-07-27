@@ -54,3 +54,7 @@ editor/dist/
 
 # Editor runtime state
 assets/imported/
+
+# Project-local asset registry and derived-data cache
+.arc/cache/
+**/.arc/cache/
