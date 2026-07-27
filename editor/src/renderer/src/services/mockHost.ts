@@ -27,7 +27,13 @@ export type AssetItem = {
   name: string;
   path: string;
   kind: 'scene' | 'mesh' | 'material' | 'texture' | 'shader' | 'prefab' | 'folder';
-  status: 'ready' | 'dirty' | 'importing' | 'missing';
+  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
+  guid?: string;
+  typeId?: string;
+  importerId?: string;
+  residency?: 'metadata' | 'source' | 'derived' | 'cpu' | 'device';
+  generation?: number;
+  diagnostic?: string;
 };
 
 export type ConsoleEvent = {

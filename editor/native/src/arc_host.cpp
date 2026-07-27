@@ -10,6 +10,7 @@
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
+#include <arc/assets/assets.h>
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
 #include <arc/render/render.h>
@@ -93,6 +94,81 @@ scene::entity duplicate_entity_subtree(editor_scene_state& state, scene::entity 
     for (const auto child : scene::children(state.scene, source))
         duplicate_entity_subtree(state, child, duplicate);
     return duplicate;
+}
+
+void resolve_editor_asset_bindings(
+    editor_scene_state& state,
+    assets::asset_manager& registry,
+    const std::filesystem::path& project_root)
+{
+    const auto resolve = [&](assets::asset_reference& reference) {
+        if (reference.guid.valid() || reference.path_hint.empty())
+            return;
+        std::filesystem::path path(reference.path_hint);
+        if (path.is_absolute())
+            path = path.lexically_relative(project_root);
+        auto normalized = assets::normalize_asset_path(path);
+        if (!registry.find(normalized))
+        {
+            const auto under_assets = assets::normalize_asset_path(
+                std::filesystem::path("assets") / path);
+            if (registry.find(under_assets))
+                normalized = under_assets;
+        }
+        auto resolved = registry.resolve(normalized, reference.expected_type);
+        if (!resolved.path_hint.empty())
+            reference = std::move(resolved);
+        else
+            reference.path_hint = normalized;
+    };
+    for (auto& binding : state.asset_bindings)
+    {
+        resolve(binding.source);
+        resolve(binding.material);
+    }
+}
+
+void register_editor_asset_fallbacks(
+    const editor_scene_state& state,
+    assets::asset_manager& registry)
+{
+    if (state.default_mesh.valid())
+    {
+        registry.register_virtual_asset(
+            assets::fallback_assets::missing_mesh,
+            assets::asset_types::static_mesh,
+            assets::asset_payload::make<render::mesh_handle>(
+                assets::asset_types::static_mesh,
+                std::make_shared<const render::mesh_handle>(state.default_mesh)),
+            "missing-mesh");
+        registry.set_fallback(
+            assets::asset_types::static_mesh, assets::fallback_assets::missing_mesh);
+    }
+    if (state.default_material.valid())
+    {
+        registry.register_virtual_asset(
+            assets::fallback_assets::error_material,
+            assets::asset_types::material,
+            assets::asset_payload::make<render::material_handle>(
+                assets::asset_types::material,
+                std::make_shared<const render::material_handle>(state.default_material)),
+            "error-material");
+        registry.set_fallback(
+            assets::asset_types::material, assets::fallback_assets::error_material);
+    }
+    if (state.environment_lighting_resource.valid())
+    {
+        registry.register_virtual_asset(
+            assets::fallback_assets::neutral_environment,
+            assets::asset_types::environment,
+            assets::asset_payload::make<render::environment_handle>(
+                assets::asset_types::environment,
+                std::make_shared<const render::environment_handle>(
+                    state.environment_lighting_resource)),
+            "neutral-environment");
+        registry.set_fallback(
+            assets::asset_types::environment, assets::fallback_assets::neutral_environment);
+    }
 }
 
 template <class Command>
@@ -1227,6 +1303,9 @@ struct arc_host::state
     std::unique_ptr<render::renderer> renderer;
     editor_preview_application simulation_application;
     runtime simulation;
+    std::unique_ptr<io::async_file_service> asset_files;
+    std::unique_ptr<arc::assets::asset_manager> asset_registry;
+    std::uint64_t asset_event_cursor{};
     std::uint64_t runtime_revision{ 1 };
     std::uint64_t last_runtime_tick_event{};
     bool preview_stopped{ true };
@@ -1277,6 +1356,13 @@ arc_host::~arc_host()
     {
         arc::info("editor.host", "Arc Host shutdown");
         push_event(state_->events, state_->event_sequence, host_event_type::host_shutdown, "Arc Host shutdown");
+        if (state_->asset_registry)
+        {
+            runtime_service_context context(state_->simulation.services());
+            state_->asset_registry->on_shutdown(context);
+            state_->asset_registry.reset();
+            state_->asset_files.reset();
+        }
         state_->simulation.shutdown();
     }
 }
@@ -1289,7 +1375,32 @@ host_response arc_host::open_project(
     state_->assets = assets;
     state_->project.name = command.name.empty() ? "Arc Project" : command.name;
     state_->project.root = command.root;
+    if (state_->asset_registry)
+    {
+        runtime_service_context context(state_->simulation.services());
+        state_->asset_registry->on_shutdown(context);
+    }
+    state_->asset_registry.reset();
+    state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
+    state_->asset_registry = std::make_unique<arc::assets::asset_manager>(
+        arc::assets::asset_manager_config{
+            .project_root = command.root,
+            .asset_root = assets.root,
+            .additional_source_roots = { command.root / "scenes", command.root / "prefabs" },
+            .cache_root = command.root / ".arc" / "cache"
+        },
+        state_->simulation.jobs(),
+        *state_->asset_files,
+        state_->simulation.memory());
+    {
+        runtime_service_context context(state_->simulation.services());
+        state_->asset_registry->on_start(context);
+    }
+    state_->asset_event_cursor = 0;
     state_->scene = create_default_scene(assets, *state_->renderer);
+    register_editor_asset_fallbacks(state_->scene, *state_->asset_registry);
+    resolve_editor_asset_bindings(
+        state_->scene, *state_->asset_registry, state_->project.root);
     ++state_->scene_revision;
     ++state_->world_epoch;
     state_->history.clear(state_->scene, false);
@@ -1383,12 +1494,58 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return success("{\"message\":\"No project is open\"}");
 
             const std::string message = "Closed project '" + state_->project.name + "'";
+            if (state_->asset_registry)
+            {
+                runtime_service_context context(state_->simulation.services());
+                state_->asset_registry->on_shutdown(context);
+                state_->asset_registry.reset();
+                state_->asset_files.reset();
+            }
             state_->scene = {};
             state_->project = {};
             state_->project_open = false;
             arc::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::project_closed, message);
             return success();
+        }
+        else if constexpr (std::is_same_v<command_type, host_asset_reimport_command> ||
+            std::is_same_v<command_type, host_asset_cancel_import_command> ||
+            std::is_same_v<command_type, host_asset_move_command> ||
+            std::is_same_v<command_type, host_asset_rename_command>)
+        {
+            if (!state_->asset_registry)
+                return fail("No project asset registry is active");
+            const auto guid = assets::parse_asset_guid(payload.guid);
+            if (!guid)
+                return fail("Asset GUID is malformed");
+
+            if constexpr (std::is_same_v<command_type, host_asset_reimport_command>)
+            {
+                const auto job = state_->asset_registry->reimport(
+                    *guid, assets::asset_streaming_priority::high);
+                if (!job.valid())
+                    return fail("Asset could not be queued for reimport");
+                return success("{\"queued\":true}");
+            }
+            else if constexpr (std::is_same_v<command_type, host_asset_cancel_import_command>)
+            {
+                if (!state_->asset_registry->cancel_import(*guid))
+                    return fail("Asset has no cancellable import");
+                return success("{\"cancelled\":true}");
+            }
+            else
+            {
+                const auto result = [&] {
+                    if constexpr (std::is_same_v<command_type, host_asset_move_command>)
+                        return state_->asset_registry->move(*guid, payload.path);
+                    else
+                        return state_->asset_registry->rename(*guid, payload.name);
+                }();
+                if (!result.succeeded())
+                    return fail(result.error.message);
+                return success("{\"guid\":" + to_json_string(payload.guid) +
+                    ",\"path\":" + to_json_string(result.current_path.generic_string()) + '}');
+            }
         }
         else if constexpr (std::is_same_v<command_type, host_runtime_resume_command>)
         {
@@ -1510,7 +1667,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (payload.append)
                     return fail("Appending native ARC scene documents is not supported");
                 const auto path = payload.path.is_absolute() ? payload.path : state_->project.root / payload.path;
-                const auto loaded = load_scene_document(state_->scene, *state_->renderer, state_->project.root, path);
+                const auto loaded = load_scene_document(
+                    state_->scene, *state_->renderer, state_->project.root, path, state_->asset_registry.get());
                 if (!loaded.succeeded)
                     return fail(loaded.message);
                 state_->history.clear(state_->scene, true);
@@ -1534,6 +1692,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 return fail(result.message.empty() ? "Failed to open scene asset" : result.message);
 
             ensure_scene_authoring_metadata(state_->scene);
+            if (state_->asset_registry)
+                resolve_editor_asset_bindings(
+                    state_->scene, *state_->asset_registry, state_->project.root);
             if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                 state_->camera_controller.synchronize_from(*camera_transform);
             if (import_before)
@@ -2154,7 +2315,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->scene.asset_bindings.push_back({ .entity = guid });
                 binding = &state_->scene.asset_bindings.back();
             }
-            binding->material_path = *path;
+            binding->material = state_->asset_registry
+                ? state_->asset_registry->resolve(
+                    arc::assets::normalize_asset_path(
+                        path->lexically_relative(state_->project.root)),
+                    arc::assets::asset_types::material)
+                : arc::assets::asset_reference{
+                    .expected_type = arc::assets::asset_types::material,
+                    .path_hint = path->generic_string()
+                };
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, message, entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
@@ -3250,6 +3419,69 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
     snapshot.default_mesh_path = state_->assets.default_mesh_path.generic_string();
     snapshot.default_mesh_loaded = state_->assets.default_mesh_loaded;
     snapshot.default_mesh_message = state_->assets.default_mesh_message;
+    if (state_->asset_registry)
+    {
+        const auto state_name = [](arc::assets::asset_state value) {
+            switch (value)
+            {
+            case arc::assets::asset_state::unknown: return "unknown";
+            case arc::assets::asset_state::queued: return "queued";
+            case arc::assets::asset_state::importing: return "importing";
+            case arc::assets::asset_state::ready: return "ready";
+            case arc::assets::asset_state::stale: return "stale";
+            case arc::assets::asset_state::failed: return "failed";
+            }
+            return "unknown";
+        };
+        const auto residency_name = [](arc::assets::asset_residency value) {
+            switch (value)
+            {
+            case arc::assets::asset_residency::metadata_only: return "metadata";
+            case arc::assets::asset_residency::source: return "source";
+            case arc::assets::asset_residency::derived: return "derived";
+            case arc::assets::asset_residency::cpu: return "cpu";
+            case arc::assets::asset_residency::device: return "device";
+            }
+            return "metadata";
+        };
+        const auto kind_name = [](arc::assets::asset_type_id type) {
+            if (type == arc::assets::asset_types::scene) return "scene";
+            if (type == arc::assets::asset_types::prefab) return "prefab";
+            if (type == arc::assets::asset_types::material) return "material";
+            if (type == arc::assets::asset_types::shader) return "shader";
+            if (type == arc::assets::asset_types::texture_2d) return "texture";
+            if (type == arc::assets::asset_types::environment) return "environment";
+            if (type == arc::assets::asset_types::imported_scene) return "scene";
+            if (type == arc::assets::asset_types::static_mesh) return "mesh";
+            return "unknown";
+        };
+        for (const auto& asset : state_->asset_registry->search())
+        {
+            const bool running = asset.state == arc::assets::asset_state::queued ||
+                asset.state == arc::assets::asset_state::importing;
+            const auto absolute_path = state_->project.root / asset.source_path;
+            auto display_path = absolute_path.lexically_relative(state_->assets.root);
+            if (display_path.empty() ||
+                display_path.native().starts_with(std::filesystem::path("..").native()))
+                display_path = asset.source_path;
+            snapshot.assets.push_back({
+                .guid = arc::assets::to_string(asset.guid),
+                .path = arc::assets::normalize_asset_path(display_path),
+                .kind = kind_name(asset.type),
+                .type_id = arc::assets::to_string(asset.type),
+                .importer_id = arc::assets::to_string(asset.importer),
+                .state = state_name(asset.state),
+                .residency = residency_name(asset.residency),
+                .generation = asset.generation,
+                .strong_references = asset.strong_references,
+                .pins = asset.pins,
+                .diagnostic = asset.diagnostics.empty() ? std::string{} : asset.diagnostics.back().message,
+                .imported = asset.state == arc::assets::asset_state::ready,
+                .import_running = running
+            });
+        }
+        return snapshot;
+    }
     if (!state_->assets.default_mesh_path.empty())
     {
         snapshot.assets.push_back({
@@ -3356,6 +3588,24 @@ std::vector<host_event> arc_host::poll_events()
 
 host_viewport_frame arc_host::request_viewport(const host_viewport_request& request)
 {
+    if (state_->asset_registry)
+    {
+        state_->asset_registry->poll();
+        for (const auto& event : state_->asset_registry->events_since(state_->asset_event_cursor))
+        {
+            state_->asset_event_cursor = std::max(state_->asset_event_cursor, event.sequence);
+            push_event(
+                state_->events,
+                state_->event_sequence,
+                host_event_type::asset_changed,
+                event.message,
+                {},
+                "{\"guid\":\"" + arc::assets::to_string(event.guid) +
+                    "\",\"registryRevision\":" + std::to_string(event.registry_revision) +
+                    ",\"state\":" + std::to_string(static_cast<unsigned>(event.state)) +
+                    ",\"progress\":" + std::to_string(event.progress) + "}");
+        }
+    }
     const auto frame_start = std::chrono::steady_clock::now();
     float delta_seconds = 0.0f;
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)

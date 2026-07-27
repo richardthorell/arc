@@ -7,7 +7,7 @@ export type AssetPickerItem = {
   name: string;
   path: string;
   kind: string;
-  status: 'ready' | 'dirty' | 'importing' | 'missing';
+  status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
 };
 
 export type AssetThumbnailProvider = (path: string) => Promise<string | null>;

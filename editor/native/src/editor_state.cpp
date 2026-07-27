@@ -724,7 +724,10 @@ editor_scene_open_result apply_scene_import_result_to_editor(
         scene.asset_bindings.push_back({
             .entity = scene.scene.get<scene::persistent_id_component>(entity).value,
             .source_kind = "imported",
-            .source_path = source_path,
+            .source = {
+                .expected_type = assets::asset_types::imported_scene,
+                .path_hint = source_path.generic_string()
+            },
             .subresource = node.name });
         scene.imported_scene_entities.push_back(entity);
         ++created;

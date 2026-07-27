@@ -544,12 +544,67 @@
 
 .content-browser-foundation {
   display: grid;
-  grid-template-rows: 36px minmax(0, 1fr);
+  grid-template-rows: 36px minmax(0, 1fr) auto;
   height: 100%;
   color: var(--arc-color-text);
   background:
     linear-gradient(180deg, rgba(44, 57, 70, 0.28), rgba(24, 32, 40, 0.92) 84px),
     var(--arc-color-bg-panel);
+}
+
+.asset-registry-details {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.3fr) repeat(4, minmax(120px, 1fr));
+  gap: 5px 14px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--arc-color-border);
+  background: linear-gradient(180deg, #18212a, #121920);
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xs);
+}
+
+.asset-registry-details > strong {
+  grid-row: span 2;
+  align-self: center;
+  color: var(--arc-color-text);
+  font-size: var(--arc-text-sm);
+}
+
+.asset-registry-details span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-registry-details code,
+.asset-registry-details b {
+  color: var(--arc-color-text);
+  font-family: var(--arc-font-mono);
+  font-weight: 500;
+}
+
+.asset-registry-details [data-state="failed"],
+.asset-registry-details [data-state="missing"] {
+  color: var(--arc-color-danger);
+}
+
+.asset-registry-details [data-state="stale"],
+.asset-registry-details [data-state="importing"],
+.asset-registry-details [data-state="queued"] {
+  color: var(--arc-color-warning);
+}
+
+.asset-registry-diagnostic {
+  grid-column: 2 / -1;
+  color: var(--arc-color-warning);
+}
+
+.asset-registry-actions {
+  grid-column: -2 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
 }
 
 .content-browser-toolbar {

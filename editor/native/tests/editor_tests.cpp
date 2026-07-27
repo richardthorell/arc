@@ -7,6 +7,7 @@
 #include <arc/editor/material_asset.h>
 #include <arc/editor/material_library.h>
 #include <arc/editor/material_preview.h>
+#include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
 #include <arc/render/primitives.h>
 
@@ -725,6 +726,7 @@ TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
     REQUIRE(host->execute({ .request_id = 94, .payload = arc::editor::host_set_environment_hdri_command{
         .entity = environment->entity, .path = {} } }).succeeded);
     REQUIRE(host->world_environment_snapshot(environment->entity)->hdri_path.empty());
+    host.reset();
     std::filesystem::remove_all(root);
 }
 
@@ -744,6 +746,51 @@ TEST_CASE("material preview renderer produces a deterministic PBR sphere")
     REQUIRE(first.texture.pixels == second.texture.pixels);
     const auto center = (32u * 64u + 32u) * 4u;
     REQUIRE(first.texture.pixels[center] != first.texture.pixels[0]);
+}
+
+TEST_CASE("asset registry host commands reimport rename and validate GUIDs")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-asset-command-test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "materials");
+    {
+        std::ofstream output(root / "materials" / "source.arcmat", std::ios::binary);
+        output << R"({"version":3,"name":"Source"})";
+    }
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root;
+    REQUIRE(host->open_project({ .name = "Asset Commands", .root = root }, assets).succeeded);
+
+    const auto catalog = host->project_assets_snapshot();
+    const auto source = std::find_if(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset) {
+        return asset.path == "materials/source.arcmat";
+    });
+    REQUIRE(source != catalog.assets.end());
+    const auto renamed = host->execute({ .request_id = 1, .payload = arc::editor::host_asset_rename_command{
+        .guid = source->guid, .name = "renamed.arcmat" } });
+    REQUIRE(renamed.succeeded);
+    REQUIRE(std::filesystem::exists(root / "materials" / "renamed.arcmat"));
+    REQUIRE(std::filesystem::exists(root / "materials" / "renamed.arcmat.arcmeta"));
+    REQUIRE(host->execute({ .request_id = 2, .payload = arc::editor::host_asset_reimport_command{
+        .guid = source->guid } }).succeeded);
+    REQUIRE_FALSE(host->execute({ .request_id = 3, .payload = arc::editor::host_asset_rename_command{
+        .guid = "not-a-guid", .name = "invalid.arcmat" } }).succeeded);
+
+    arc::editor::host_command_envelope parsed;
+    std::string error;
+    REQUIRE(arc::editor::from_json(
+        R"({"requestId":4,"type":"asset.move","payload":{"guid":")" + source->guid +
+        R"(","path":"materials/moved.arcmat"}})",
+        parsed,
+        error));
+    REQUIRE(std::holds_alternative<arc::editor::host_asset_move_command>(parsed.payload));
+
+    host.reset();
+    std::filesystem::remove_all(root);
 }
 
 TEST_CASE("mesh renderer host snapshot edits and material assignment round trip")
@@ -797,6 +844,7 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
     REQUIRE(preview->width == 96);
     REQUIRE(preview->height == 96);
     REQUIRE(preview->data_url.starts_with("data:image/bmp;base64,Qk"));
+    host.reset();
     std::filesystem::remove_all(root);
 }
 
@@ -1228,9 +1276,10 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     REQUIRE(resaved.find("\"quality\": \"future\"") != std::string::npos);
 
     auto invalid = resaved;
-    const auto version = invalid.find("\"formatVersion\": 1");
+    const auto current_version = "\"formatVersion\": " + std::to_string(arc::editor::arc_scene_format_version);
+    const auto version = invalid.find(current_version);
     REQUIRE(version != std::string::npos);
-    invalid.replace(version, std::string("\"formatVersion\": 1").size(), "\"formatVersion\": 99");
+    invalid.replace(version, current_version.size(), "\"formatVersion\": 99");
     const auto invalid_path = root / "scenes" / "unsupported.arcscene";
     {
         std::ofstream output(invalid_path, std::ios::binary | std::ios::trunc);

@@ -3,6 +3,7 @@
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
 #include <arc/jobs/jobs.h>
+#include <arc/assets/assets.h>
 #include <arc/editor/material_library.h>
 
 #include <array>
@@ -62,9 +63,9 @@ struct editor_scene_state
     {
         scene::entity_guid entity;
         std::string source_kind;
-        std::filesystem::path source_path;
+        assets::asset_reference source;
         std::string subresource;
-        std::filesystem::path material_path;
+        assets::asset_reference material;
     };
     scene::entity_guid scene_guid{};
     std::string scene_name{ "Untitled" };

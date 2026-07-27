@@ -354,9 +354,22 @@ std::filesystem::path relative_asset_path(const std::filesystem::path& path, con
 {
     if (path.empty())
         return {};
+    if (!path.is_absolute() && !path.has_root_name())
+        return path.lexically_normal();
     std::error_code error;
     const auto relative = std::filesystem::relative(path, project_root, error);
     return error ? path.lexically_normal() : relative.lexically_normal();
+}
+
+json serialize_asset_reference(
+    const assets::asset_reference& reference,
+    const std::filesystem::path& project_root)
+{
+    return {
+        { "guid", reference.guid.valid() ? assets::to_string(reference.guid) : std::string{} },
+        { "expectedType", reference.expected_type.valid() ? assets::to_string(reference.expected_type) : std::string{} },
+        { "pathHint", relative_asset_path(reference.path_hint, project_root).generic_string() }
+    };
 }
 
 std::vector<scene::entity> ordered_entities(const editor_scene_state& state);
@@ -380,6 +393,54 @@ std::optional<std::filesystem::path> resolve_document_asset_path(
         std::any_of(normalized.begin(), normalized.end(), [](const auto& part) { return part == ".."; }))
         return std::nullopt;
     return (project_root / normalized).lexically_normal();
+}
+
+bool validate_asset_reference_json(const json& value, const std::filesystem::path& project_root)
+{
+    if (!value.is_object() ||
+        !value.contains("guid") || !value["guid"].is_string() ||
+        !value.contains("expectedType") || !value["expectedType"].is_string() ||
+        !value.contains("pathHint") || !value["pathHint"].is_string())
+        return false;
+    const auto guid_text = value["guid"].get<std::string>();
+    const auto type_text = value["expectedType"].get<std::string>();
+    if ((!guid_text.empty() && !assets::parse_asset_guid(guid_text)) ||
+        (!type_text.empty() && !assets::parse_asset_type_id(type_text)))
+        return false;
+    return resolve_document_asset_path(value["pathHint"].get<std::string>(), project_root).has_value();
+}
+
+assets::asset_reference read_asset_reference(
+    const json& value,
+    assets::asset_type_id default_type,
+    const std::filesystem::path& project_root,
+    assets::asset_manager* asset_registry)
+{
+    assets::asset_reference result{ .expected_type = default_type };
+    if (value.is_object())
+    {
+        const auto guid_text = value.value("guid", "");
+        const auto type_text = value.value("expectedType", "");
+        if (const auto guid = assets::parse_asset_guid(guid_text))
+            result.guid = *guid;
+        if (const auto type = assets::parse_asset_type_id(type_text))
+            result.expected_type = *type;
+        const auto resolved = resolve_document_asset_path(value.value("pathHint", ""), project_root);
+        if (!resolved)
+            throw std::runtime_error("asset reference path hint must be normalized and project-relative");
+        if (!resolved->empty())
+            result.path_hint = relative_asset_path(*resolved, project_root).generic_string();
+    }
+    if (!result.guid.valid() && asset_registry && !result.path_hint.empty())
+    {
+        auto resolved = asset_registry->resolve(result.path_hint, result.expected_type);
+        result.guid = resolved.guid;
+        if (resolved.expected_type.valid())
+            result.expected_type = resolved.expected_type;
+        if (!resolved.path_hint.empty())
+            result.path_hint = resolved.path_hint;
+    }
+    return result;
 }
 
 bool validate_scene_for_save(const editor_scene_state& state, const std::filesystem::path& project_root, std::string& error)
@@ -428,8 +489,8 @@ bool validate_scene_for_save(const editor_scene_state& state, const std::filesys
     }
     for (const auto& binding : state.asset_bindings)
     {
-        if (!is_normal_project_relative_path(binding.source_path, project_root) ||
-            !is_normal_project_relative_path(binding.material_path, project_root))
+        if (!is_normal_project_relative_path(binding.source.path_hint, project_root) ||
+            !is_normal_project_relative_path(binding.material.path_hint, project_root))
         {
             error = "scene asset references must be project-relative";
             return false;
@@ -683,10 +744,10 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
             { "color", vector4(component->color) }, { "opacity", component->opacity } };
 
     if (const auto* binding = find_asset_binding(state, guid))
-        output["assetBinding"] = { { "kind", binding->source_kind },
-            { "path", relative_asset_path(binding->source_path, project_root).generic_string() },
+        output["assetBinding"] = { { "version", 2 }, { "kind", binding->source_kind },
+            { "source", serialize_asset_reference(binding->source, project_root) },
             { "subresource", binding->subresource },
-            { "material", relative_asset_path(binding->material_path, project_root).generic_string() } };
+            { "material", serialize_asset_reference(binding->material, project_root) } };
     const auto unknown = std::find_if(state.unknown_component_records.begin(), state.unknown_component_records.end(),
         [guid](const auto& entry) { return entry.first == guid; });
     if (unknown != state.unknown_component_records.end())
@@ -837,7 +898,8 @@ scene_document_result load_scene_document(
     editor_scene_state& state,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
-    const std::filesystem::path& path)
+    const std::filesystem::path& path,
+    assets::asset_manager* asset_registry)
 {
     std::ifstream stream(path, std::ios::binary);
     if (!stream)
@@ -848,7 +910,8 @@ scene_document_result load_scene_document(
     if (!document.is_object() || !document.contains("format") || !document["format"].is_string() ||
         !document.contains("formatVersion") || !document["formatVersion"].is_number_unsigned() ||
         document["format"].get<std::string>() != "arc.scene" ||
-        document["formatVersion"].get<std::uint32_t>() != arc_scene_format_version)
+        document["formatVersion"].get<std::uint32_t>() < 1u ||
+        document["formatVersion"].get<std::uint32_t>() > arc_scene_format_version)
         return { .message = "unsupported ARC scene format or version" };
     if (!document.contains("scene") || !document["scene"].is_object() || !document.contains("entities") || !document["entities"].is_array())
         return { .message = "scene document is missing required objects" };
@@ -878,14 +941,21 @@ scene_document_result load_scene_document(
             const auto& binding = record["assetBinding"];
             if (!binding.is_object() ||
                 (binding.contains("kind") && !binding["kind"].is_string()) ||
-                (binding.contains("path") && !binding["path"].is_string()) ||
-                (binding.contains("subresource") && !binding["subresource"].is_string()) ||
-                (binding.contains("material") && !binding["material"].is_string()))
+                (binding.contains("subresource") && !binding["subresource"].is_string()))
                 return { .message = "scene contains an invalid asset binding" };
-            const auto source = resolve_document_asset_path(binding.value("path", ""), project_root);
-            const auto material = resolve_document_asset_path(binding.value("material", ""), project_root);
-            if (!source || !material)
-                return { .message = "asset binding paths must be normalized project-relative paths" };
+            const auto binding_version = binding.value("version", 1u);
+            if (binding_version == 1u)
+            {
+                if ((binding.contains("path") && !binding["path"].is_string()) ||
+                    (binding.contains("material") && !binding["material"].is_string()) ||
+                    !resolve_document_asset_path(binding.value("path", ""), project_root) ||
+                    !resolve_document_asset_path(binding.value("material", ""), project_root))
+                    return { .message = "scene contains an invalid legacy asset binding" };
+            }
+            else if (binding_version != 2u ||
+                !binding.contains("source") || !validate_asset_reference_json(binding["source"], project_root) ||
+                !binding.contains("material") || !validate_asset_reference_json(binding["material"], project_root))
+                return { .message = "scene contains an invalid asset reference" };
         }
         for (const auto& [component_name, component] : record["components"].items())
         {
@@ -1270,20 +1340,47 @@ scene_document_result load_scene_document(
 
             if (!binding_kind.empty())
             {
-                const auto source_text = binding_json.value("path", "");
-                const auto material_text = binding_json.value("material", "");
-                const auto source_path = resolve_document_asset_path(source_text, project_root);
-                const auto material_path = resolve_document_asset_path(material_text, project_root);
-                if (!source_path || !material_path)
-                    throw std::runtime_error("asset binding paths must be normalized project-relative paths");
-                loaded.asset_bindings.push_back({ guid, binding_kind, *source_path,
-                    binding_json.value("subresource", ""), *material_path });
-                if (!material_path->empty() && loaded.scene.has<scene::mesh_renderer_component>(entity))
+                assets::asset_reference source_reference;
+                assets::asset_reference material_reference;
+                if (binding_json.value("version", 1u) == 1u)
+                {
+                    const auto source_path = resolve_document_asset_path(binding_json.value("path", ""), project_root);
+                    const auto material_path = resolve_document_asset_path(binding_json.value("material", ""), project_root);
+                    if (!source_path || !material_path)
+                        throw std::runtime_error("asset binding paths must be normalized project-relative paths");
+                    source_reference = {
+                        .expected_type = binding_kind == "imported"
+                            ? assets::asset_types::imported_scene : assets::asset_types::unknown,
+                        .path_hint = relative_asset_path(*source_path, project_root).generic_string()
+                    };
+                    material_reference = {
+                        .expected_type = assets::asset_types::material,
+                        .path_hint = relative_asset_path(*material_path, project_root).generic_string()
+                    };
+                    if (asset_registry)
+                    {
+                        source_reference = asset_registry->resolve(source_reference.path_hint, source_reference.expected_type);
+                        material_reference = asset_registry->resolve(material_reference.path_hint, material_reference.expected_type);
+                    }
+                }
+                else
+                {
+                    source_reference = read_asset_reference(binding_json["source"],
+                        binding_kind == "imported" ? assets::asset_types::imported_scene : assets::asset_types::unknown,
+                        project_root, asset_registry);
+                    material_reference = read_asset_reference(binding_json["material"],
+                        assets::asset_types::material, project_root, asset_registry);
+                }
+                loaded.asset_bindings.push_back({ guid, binding_kind, std::move(source_reference),
+                    binding_json.value("subresource", ""), std::move(material_reference) });
+                const auto& stored_material = loaded.asset_bindings.back().material;
+                if (!stored_material.path_hint.empty() && loaded.scene.has<scene::mesh_renderer_component>(entity))
                 {
                     std::string material_message;
                     if (!apply_material_asset_to_entity(loaded.material_library, renderer, project_root / "assets",
-                            *material_path, loaded.scene, entity, &material_message))
-                        diagnostics.push_back("Material '" + material_text + "' is missing; using fallback");
+                            project_root / stored_material.path_hint, loaded.scene, entity, &material_message))
+                        diagnostics.push_back("Material '" + stored_material.path_hint +
+                            "' is missing; using fallback");
                 }
             }
             if (!record["parent"].is_null()) pending_parents.emplace_back(entity, record["parent"].get<std::string>());

@@ -44,6 +44,7 @@ describe('host scene hierarchy reconstruction', () => {
     expect(classifyHostEventRefresh({ type: 'terrain.toolChanged', entity: { index: 7, generation: 1 } }, selected)).toBe('none');
     expect(classifyHostEventRefresh({ type: 'terrain.strokeCommitted', entity: { index: 7, generation: 1 } }, selected)).toBe('selected');
     expect(classifyHostEventRefresh({ type: 'scene.changed' }, selected)).toBe('all');
+    expect(classifyHostEventRefresh({ type: 'asset.changed' }, selected)).toBe('all');
     expect(classifyHostEventRefresh({ type: 'viewport.error' }, selected)).toBe('none');
   });
 });

@@ -5,7 +5,7 @@
 namespace arc::editor
 {
 
-inline constexpr std::uint32_t arc_scene_format_version = 1;
+inline constexpr std::uint32_t arc_scene_format_version = 2;
 
 struct scene_document_result
 {
@@ -39,6 +39,7 @@ scene_document_result load_scene_document(
     editor_scene_state& scene,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
-    const std::filesystem::path& path);
+    const std::filesystem::path& path,
+    assets::asset_manager* asset_registry = nullptr);
 
 } // namespace arc::editor

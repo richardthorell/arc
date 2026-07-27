@@ -88,8 +88,17 @@ type HostRuntimeSnapshot = {
 };
 
 type HostAssetSnapshot = {
+  guid: string;
   path: string;
   kind: AssetItem['kind'] | 'environment' | 'unknown';
+  typeId: string;
+  importerId: string;
+  state: 'unknown' | 'queued' | 'importing' | 'ready' | 'stale' | 'failed';
+  residency: 'metadata' | 'source' | 'derived' | 'cpu' | 'device';
+  generation: number;
+  strongReferences: number;
+  pins: number;
+  diagnostic: string;
   imported: boolean;
   importRunning: boolean;
 };
@@ -203,7 +212,8 @@ export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId:
     return hostEntityKey(event.entity) === selectedEntityId ? 'selected' : 'hierarchy';
   }
   if (event.type === 'scene.changed' || event.type === 'entity.created' || event.type === 'entity.deleted' ||
-      event.type === 'project.opened' || event.type === 'project.closed') return 'all';
+      event.type === 'project.opened' || event.type === 'project.closed' ||
+      event.type === 'asset.changed') return 'all';
   return 'none';
 };
 
@@ -670,11 +680,17 @@ export function Workbench() {
 
     const hostAssets = assetsResponse.succeeded && assetsResponse.payload ? assetsResponse.payload : null;
     const assets = hostAssets?.assets.map((asset): AssetItem => ({
-      id: asset.path,
+      id: asset.guid || asset.path,
       name: assetNameFromPath(asset.path),
       path: asset.path,
       kind: assetKindFromHost(asset.kind),
-      status: asset.importRunning ? 'importing' : asset.imported ? 'ready' : 'missing',
+      status: asset.state === 'unknown' ? 'missing' : asset.state,
+      guid: asset.guid,
+      typeId: asset.typeId,
+      importerId: asset.importerId,
+      residency: asset.residency,
+      generation: asset.generation,
+      diagnostic: asset.diagnostic,
     })) ?? project?.assets ?? [];
 
     const selected = hostEntities.find((entity) => entity.selected);
@@ -1038,6 +1054,11 @@ export function Workbench() {
     if (panel === 'contentBrowser') {
       return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
         onCommand={runCommand} onInstantiatePrefab={(path) => void instantiatePrefab(path)}
+        onAssetAction={async (type, guid) => {
+          const response = await window.arc.host.command(type, { guid }) as HostResponse;
+          setLastCommand(response.succeeded ? `${type} completed` : response.error || `${type} failed`);
+          if (response.succeeded) await refreshProjectFromHost(undefined, false);
+        }}
         thumbnailProvider={loadAssetThumbnail} />;
     }
 
@@ -1067,6 +1088,11 @@ export function Workbench() {
 
     return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
       onCommand={runCommand} onInstantiatePrefab={(path) => void instantiatePrefab(path)}
+      onAssetAction={async (type, guid) => {
+        const response = await window.arc.host.command(type, { guid }) as HostResponse;
+        setLastCommand(response.succeeded ? `${type} completed` : response.error || `${type} failed`);
+        if (response.succeeded) await refreshProjectFromHost(undefined, false);
+      }}
       thumbnailProvider={loadAssetThumbnail} />;
   };
 
@@ -1328,14 +1354,16 @@ function LightingPanel() {
   );
 }
 
-function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onCommand, onInstantiatePrefab, thumbnailProvider }: {
+function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onCommand, onInstantiatePrefab, onAssetAction, thumbnailProvider }: {
   project: ProjectSnapshot | null;
   selectedAssetId: string | null;
   onSelectAsset: (assetId: string) => void;
   onCommand: (command: CommandId) => void;
   onInstantiatePrefab: (path: string) => void;
+  onAssetAction: (type: 'asset.reimport' | 'asset.cancelImport', guid: string) => void;
   thumbnailProvider: AssetThumbnailProvider;
 }) {
+  const selectedAsset = project?.assets.find((asset) => asset.id === selectedAssetId) ?? null;
   return (
     <section className="content-browser-foundation">
       <div className="content-browser-toolbar">
@@ -1349,6 +1377,21 @@ function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onComman
           thumbnailProvider={thumbnailProvider} onSelect={() => onSelectAsset(asset.id)}
           onActivate={() => asset.kind === 'prefab' && onInstantiatePrefab(asset.path)} />)}
       </div>
+      {selectedAsset && <div className="asset-registry-details">
+        <strong>{selectedAsset.name}</strong>
+        <span>GUID <code>{selectedAsset.guid ?? 'Legacy path reference'}</code></span>
+        <span>Type <code>{selectedAsset.typeId ?? selectedAsset.kind}</code></span>
+        <span>Importer <code>{selectedAsset.importerId ?? 'Unregistered'}</code></span>
+        <span>State <b data-state={selectedAsset.status}>{selectedAsset.status}</b></span>
+        <span>Residency <b>{selectedAsset.residency ?? 'metadata'}</b> · Generation {selectedAsset.generation ?? 0}</span>
+        {selectedAsset.diagnostic && <span className="asset-registry-diagnostic">{selectedAsset.diagnostic}</span>}
+        {selectedAsset.guid && <div className="asset-registry-actions">
+          <UiButton onClick={() => onAssetAction('asset.reimport', selectedAsset.guid!)} variant="toolbar">Reimport</UiButton>
+          {selectedAsset.status === 'queued' || selectedAsset.status === 'importing'
+            ? <UiButton onClick={() => onAssetAction('asset.cancelImport', selectedAsset.guid!)} variant="toolbar">Cancel Import</UiButton>
+            : null}
+        </div>}
+      </div>}
     </section>
   );
 }
@@ -1478,13 +1521,14 @@ function AssetCard({ asset, selected, thumbnailProvider, onSelect, onActivate }:
 }) {
   const draggable = asset.kind === 'texture' || asset.kind === 'material' || asset.kind === 'prefab';
   return <UiButton className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'} draggable={draggable}
+    title={[asset.path, asset.guid && `GUID: ${asset.guid}`, asset.diagnostic].filter(Boolean).join('\n')}
     onDoubleClick={onActivate} onDragStart={(event) => {
     if (!draggable) return;
     event.dataTransfer.setData('application/x-arc-asset', asset.path);
     if (asset.kind === 'texture') event.dataTransfer.setData('application/x-arc-environment', asset.path);
   }} onClick={onSelect} variant="default">
     {draggable ? <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} /> : <AssetIcon kind={asset.kind} />}
-    <strong>{asset.name}</strong><span>{asset.kind}</span>
+    <strong>{asset.name}</strong><span>{asset.kind} · {asset.status}</span>
   </UiButton>;
 }
 

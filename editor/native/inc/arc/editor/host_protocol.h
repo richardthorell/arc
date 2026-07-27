@@ -82,7 +82,8 @@ enum class host_event_type : std::uint8_t
     terrain_stroke_committed,
     runtime_state_changed,
     runtime_tick_completed,
-    runtime_fault
+    runtime_fault,
+    asset_changed
 };
 
 enum class host_runtime_state : std::uint8_t
@@ -528,8 +529,17 @@ struct host_world_environment_snapshot
 
 struct host_asset_snapshot
 {
+    std::string guid;
     std::string path;
     std::string kind;
+    std::string type_id;
+    std::string importer_id;
+    std::string state;
+    std::string residency;
+    std::uint64_t generation{};
+    std::uint32_t strong_references{};
+    std::uint32_t pins{};
+    std::string diagnostic;
     bool imported{};
     bool import_running{};
 };
@@ -634,6 +644,10 @@ struct host_open_scene_command
 struct host_new_scene_command { std::string name{ "Untitled" }; };
 struct host_save_scene_command {};
 struct host_save_scene_as_command { std::filesystem::path path; };
+struct host_asset_reimport_command { std::string guid; };
+struct host_asset_cancel_import_command { std::string guid; };
+struct host_asset_move_command { std::string guid; std::filesystem::path path; };
+struct host_asset_rename_command { std::string guid; std::string name; };
 
 struct host_create_entity_command
 {
@@ -896,6 +910,10 @@ using host_command_payload = std::variant<
     host_new_scene_command,
     host_save_scene_command,
     host_save_scene_as_command,
+    host_asset_reimport_command,
+    host_asset_cancel_import_command,
+    host_asset_move_command,
+    host_asset_rename_command,
     host_create_entity_command,
     host_delete_entity_command,
     host_duplicate_entity_command,

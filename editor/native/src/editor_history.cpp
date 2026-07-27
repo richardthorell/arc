@@ -14,8 +14,8 @@ std::size_t editor_history::estimate(const editor_scene_state& scene) noexcept
 {
     std::size_t result = scene.scene.live_count() * 768u;
     for (const auto& binding : scene.asset_bindings)
-        result += sizeof(binding) + binding.source_kind.size() + binding.source_path.native().size() * sizeof(std::filesystem::path::value_type)
-            + binding.subresource.size() + binding.material_path.native().size() * sizeof(std::filesystem::path::value_type);
+        result += sizeof(binding) + binding.source_kind.size() + binding.source.path_hint.size() +
+            binding.subresource.size() + binding.material.path_hint.size();
     for (const auto& [_, unknown] : scene.unknown_component_records)
         result += unknown.size();
     scene.scene.view<scene::terrain_component>().each([&](scene::entity, const scene::terrain_component& terrain) {

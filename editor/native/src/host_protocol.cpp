@@ -634,6 +634,7 @@ const char* to_string(host_event_type value) noexcept
     case host_event_type::runtime_state_changed: return "runtime.stateChanged";
     case host_event_type::runtime_tick_completed: return "runtime.tickCompleted";
     case host_event_type::runtime_fault: return "runtime.fault";
+    case host_event_type::asset_changed: return "asset.changed";
     }
     return "unknown";
 }
@@ -826,6 +827,10 @@ std::string command_type(const host_command_payload& payload)
         else if constexpr (std::is_same_v<type, host_new_scene_command>) return "scene.new";
         else if constexpr (std::is_same_v<type, host_save_scene_command>) return "scene.save";
         else if constexpr (std::is_same_v<type, host_save_scene_as_command>) return "scene.saveAs";
+        else if constexpr (std::is_same_v<type, host_asset_reimport_command>) return "asset.reimport";
+        else if constexpr (std::is_same_v<type, host_asset_cancel_import_command>) return "asset.cancelImport";
+        else if constexpr (std::is_same_v<type, host_asset_move_command>) return "asset.move";
+        else if constexpr (std::is_same_v<type, host_asset_rename_command>) return "asset.rename";
         else if constexpr (std::is_same_v<type, host_create_entity_command>) return "entity.create";
         else if constexpr (std::is_same_v<type, host_delete_entity_command>) return "entity.delete";
         else if constexpr (std::is_same_v<type, host_duplicate_entity_command>) return "entity.duplicate";
@@ -1142,6 +1147,14 @@ std::string to_json(const host_command_envelope& envelope)
             return "{\"name\":" + quote(payload.name) + '}';
         else if constexpr (std::is_same_v<type, host_save_scene_as_command>)
             return "{\"path\":" + quote(payload.path.generic_string()) + '}';
+        else if constexpr (std::is_same_v<type, host_asset_reimport_command> ||
+            std::is_same_v<type, host_asset_cancel_import_command>)
+            return "{\"guid\":" + quote(payload.guid) + '}';
+        else if constexpr (std::is_same_v<type, host_asset_move_command>)
+            return "{\"guid\":" + quote(payload.guid) +
+                ",\"path\":" + quote(payload.path.generic_string()) + '}';
+        else if constexpr (std::is_same_v<type, host_asset_rename_command>)
+            return "{\"guid\":" + quote(payload.guid) + ",\"name\":" + quote(payload.name) + '}';
         else if constexpr (std::is_same_v<type, host_create_entity_command>)
             return "{\"kind\":" + quote(to_string(payload.kind)) + ",\"parent\":" + to_json(payload.parent) + '}';
         else if constexpr (std::is_same_v<type, host_delete_entity_command> || std::is_same_v<type, host_select_entity_command> ||
@@ -1532,8 +1545,17 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
         const auto& asset = snapshot.assets[index];
         if (index != 0)
             json += ',';
-        json += "{\"path\":" + quote(asset.path) +
+        json += "{\"guid\":" + quote(asset.guid) +
+            ",\"path\":" + quote(asset.path) +
             ",\"kind\":" + quote(asset.kind) +
+            ",\"typeId\":" + quote(asset.type_id) +
+            ",\"importerId\":" + quote(asset.importer_id) +
+            ",\"state\":" + quote(asset.state) +
+            ",\"residency\":" + quote(asset.residency) +
+            ",\"generation\":" + std::to_string(asset.generation) +
+            ",\"strongReferences\":" + std::to_string(asset.strong_references) +
+            ",\"pins\":" + std::to_string(asset.pins) +
+            ",\"diagnostic\":" + quote(asset.diagnostic) +
             ",\"imported\":" + bool_json(asset.imported) +
             ",\"importRunning\":" + bool_json(asset.import_running) + '}';
     }
@@ -1606,6 +1628,43 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         command.path = std::move(path);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "asset.reimport" || type == "asset.cancelImport")
+    {
+        std::string guid;
+        if (!string_value(payload, "guid", guid) || guid.empty())
+        {
+            error = "Asset command requires a GUID";
+            return false;
+        }
+        if (type == "asset.reimport")
+            envelope.payload = host_asset_reimport_command{ .guid = std::move(guid) };
+        else
+            envelope.payload = host_asset_cancel_import_command{ .guid = std::move(guid) };
+    }
+    else if (type == "asset.move")
+    {
+        host_asset_move_command command;
+        std::string path;
+        if (!string_value(payload, "guid", command.guid) ||
+            !string_value(payload, "path", path) || path.empty())
+        {
+            error = "Asset move requires a GUID and destination path";
+            return false;
+        }
+        command.path = std::move(path);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "asset.rename")
+    {
+        host_asset_rename_command command;
+        if (!string_value(payload, "guid", command.guid) ||
+            !string_value(payload, "name", command.name) || command.name.empty())
+        {
+            error = "Asset rename requires a GUID and filename";
+            return false;
+        }
         envelope.payload = std::move(command);
     }
     else if (type == "entity.create")
