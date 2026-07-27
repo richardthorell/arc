@@ -12,6 +12,12 @@
     #if defined(__AVX__)
         #define ARC_SIMD_AVX
     #endif
+    #if defined(__FMA__)
+        #define ARC_SIMD_FMA
+    #endif
+    #if defined(__SSE4_1__)
+        #define ARC_SIMD_SSE41
+    #endif
     #if defined(_M_X64)
         #define ARC_SIMD_SSE
         #define ARC_SIMD_SSE2
@@ -32,6 +38,12 @@
     #endif
     #if defined(__AVX__)
         #define ARC_SIMD_AVX
+    #endif
+    #if defined(__FMA__)
+        #define ARC_SIMD_FMA
+    #endif
+    #if defined(__SSE4_1__)
+        #define ARC_SIMD_SSE41
     #endif
     #if defined(__SSE2__)
         #define ARC_SIMD_SSE2

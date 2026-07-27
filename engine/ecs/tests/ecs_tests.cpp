@@ -219,6 +219,22 @@ TEST_CASE("Command buffers resolve deferred entities deterministically")
         std::as_const(owner).view<position>().entities().end());
 }
 
+TEST_CASE("Command buffers support default and explicit sort keys")
+{
+    entity_command_buffer default_buffer;
+    const entity_command_buffer::sort_key default_key{};
+
+    REQUIRE(default_buffer.key() == default_key);
+    REQUIRE(default_buffer.id() != 0);
+
+    const entity_command_buffer::sort_key requested_key{ 3, 7, 11 };
+    entity_command_buffer keyed_buffer(requested_key);
+
+    REQUIRE(keyed_buffer.key() == requested_key);
+    REQUIRE(keyed_buffer.id() != 0);
+    REQUIRE(keyed_buffer.id() != default_buffer.id());
+}
+
 TEST_CASE("System scheduler orders write conflicts and permits commands")
 {
     world owner;

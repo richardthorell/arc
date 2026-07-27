@@ -2,10 +2,56 @@
 
 #include "arc/simd/arch/x64/detect.h"
 
+#include <cmath>
+
 namespace arc
 {
 
 #if defined(ARC_SIMD_SSE)
+namespace simd_x64_detail
+{
+template <typename Operation>
+inline __m128 map(__m128 value, Operation operation) noexcept
+{
+    alignas(16) float lanes[4];
+    _mm_store_ps(lanes, value);
+    for (float& lane : lanes)
+    {
+        lane = static_cast<float>(operation(lane));
+    }
+    return _mm_load_ps(lanes);
+}
+
+template <typename Operation>
+inline __m128d map(__m128d value, Operation operation) noexcept
+{
+    alignas(16) double lanes[2];
+    _mm_store_pd(lanes, value);
+    for (double& lane : lanes)
+    {
+        lane = operation(lane);
+    }
+    return _mm_load_pd(lanes);
+}
+
+inline __m128 blend(__m128 a, __m128 b, __m128i mask) noexcept
+{
+    const __m128 float_mask = _mm_castsi128_ps(mask);
+    return _mm_or_ps(_mm_andnot_ps(float_mask, a), _mm_and_ps(float_mask, b));
+}
+
+inline __m128d blend(__m128d a, __m128d b, __m128i mask) noexcept
+{
+    const __m128d double_mask = _mm_castsi128_pd(mask);
+    return _mm_or_pd(_mm_andnot_pd(double_mask, a), _mm_and_pd(double_mask, b));
+}
+
+inline __m128i blend(__m128i a, __m128i b, __m128i mask) noexcept
+{
+    return _mm_or_si128(_mm_andnot_si128(mask, a), _mm_and_si128(mask, b));
+}
+} // namespace simd_x64_detail
+
 template <>
 struct simd_op<__m128>
 {
@@ -31,12 +77,12 @@ struct simd_op<__m128>
 
     static inline __m128 masked_load(const float* ptr, __m128i mask, __m128 default_value) noexcept
     {
-        return _mm_blendv_ps(default_value, _mm_loadu_ps(ptr), _mm_castsi128_ps(mask));
+        return simd_x64_detail::blend(default_value, _mm_loadu_ps(ptr), mask);
     }
 
     static inline void masked_store(float* ptr, __m128 value, __m128i mask) noexcept
     {
-        _mm_storeu_ps(ptr, _mm_blendv_ps(_mm_loadu_ps(ptr), value, _mm_castsi128_ps(mask)));
+        _mm_storeu_ps(ptr, simd_x64_detail::blend(_mm_loadu_ps(ptr), value, mask));
     }
 
     template <std::size_t I>
@@ -48,7 +94,15 @@ struct simd_op<__m128>
     template <std::size_t I>
     static inline __m128 insert(__m128 value, float element) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_insert_ps(value, _mm_set_ss(element), I << 4);
+#else
+        static_assert(I < 4);
+        alignas(16) float lanes[4];
+        _mm_store_ps(lanes, value);
+        lanes[I] = element;
+        return _mm_load_ps(lanes);
+#endif
     }
 
     static inline __m128 fill(float value) noexcept
@@ -143,7 +197,7 @@ struct simd_op<__m128>
 
     static inline __m128 blend(__m128 a, __m128 b, __m128i mask) noexcept
     {
-        return _mm_blendv_ps(a, b, _mm_castsi128_ps(mask));
+        return simd_x64_detail::blend(a, b, mask);
     }
 
     static inline __m128 sqrt(__m128 a) noexcept
@@ -163,27 +217,47 @@ struct simd_op<__m128>
 
     static inline __m128 fma(__m128 a, __m128 b, __m128 c) noexcept
     {
+#if defined(ARC_SIMD_FMA)
         return _mm_fmadd_ps(a, b, c);
+#else
+        return _mm_add_ps(_mm_mul_ps(a, b), c);
+#endif
     }
 
     static inline __m128 round(__m128 a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_round_ps(a, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+#else
+        return simd_x64_detail::map(a, [](float value) { return std::nearbyint(value); });
+#endif
     }
 
     static inline __m128 floor(__m128 a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_floor_ps(a);
+#else
+        return simd_x64_detail::map(a, [](float value) { return std::floor(value); });
+#endif
     }
 
     static inline __m128 ceil(__m128 a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_ceil_ps(a);
+#else
+        return simd_x64_detail::map(a, [](float value) { return std::ceil(value); });
+#endif
     }
 
     static inline __m128 trunc(__m128 a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_round_ps(a, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
+#else
+        return simd_x64_detail::map(a, [](float value) { return std::trunc(value); });
+#endif
     }
 
     static inline float sum(__m128 a) noexcept
@@ -239,12 +313,12 @@ struct simd_op<__m128d>
 
     static inline __m128d masked_load(const double* ptr, __m128i mask, __m128d default_value) noexcept
     {
-        return _mm_blendv_pd(default_value, _mm_loadu_pd(ptr), _mm_castsi128_pd(mask));
+        return simd_x64_detail::blend(default_value, _mm_loadu_pd(ptr), mask);
     }
 
     static inline void masked_store(double* ptr, __m128d value, __m128i mask) noexcept
     {
-        _mm_storeu_pd(ptr, _mm_blendv_pd(_mm_loadu_pd(ptr), value, _mm_castsi128_pd(mask)));
+        _mm_storeu_pd(ptr, simd_x64_detail::blend(_mm_loadu_pd(ptr), value, mask));
     }
 
     template <std::size_t I>
@@ -256,7 +330,19 @@ struct simd_op<__m128d>
     template <std::size_t I>
     static inline __m128d insert(__m128d value, double element) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_blend_pd(value, _mm_set1_pd(element), 1 << I);
+#else
+        static_assert(I < 2);
+        if constexpr (I == 0)
+        {
+            return _mm_move_sd(value, _mm_set_sd(element));
+        }
+        else
+        {
+            return _mm_unpacklo_pd(value, _mm_set_sd(element));
+        }
+#endif
     }
 
     static inline __m128d fill(double value) noexcept
@@ -351,7 +437,7 @@ struct simd_op<__m128d>
 
     static inline __m128d blend(__m128d a, __m128d b, __m128i mask) noexcept
     {
-        return _mm_blendv_pd(a, b, _mm_castsi128_pd(mask));
+        return simd_x64_detail::blend(a, b, mask);
     }
 
     static inline __m128d sqrt(__m128d a) noexcept
@@ -371,27 +457,47 @@ struct simd_op<__m128d>
 
     static inline __m128d fma(__m128d a, __m128d b, __m128d c) noexcept
     {
+#if defined(ARC_SIMD_FMA)
         return _mm_fmadd_pd(a, b, c);
+#else
+        return _mm_add_pd(_mm_mul_pd(a, b), c);
+#endif
     }
 
     static inline __m128d round(__m128d a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_round_pd(a, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC);
+#else
+        return simd_x64_detail::map(a, [](double value) { return std::nearbyint(value); });
+#endif
     }
 
     static inline __m128d floor(__m128d a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_floor_pd(a);
+#else
+        return simd_x64_detail::map(a, [](double value) { return std::floor(value); });
+#endif
     }
 
     static inline __m128d ceil(__m128d a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_ceil_pd(a);
+#else
+        return simd_x64_detail::map(a, [](double value) { return std::ceil(value); });
+#endif
     }
 
     static inline __m128d trunc(__m128d a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_round_pd(a, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC);
+#else
+        return simd_x64_detail::map(a, [](double value) { return std::trunc(value); });
+#endif
     }
 
     static inline double sum(__m128d a) noexcept
@@ -464,12 +570,12 @@ struct simd_op<__m128i>
 
     static inline __m128i masked_load(const int32_t* ptr, __m128i mask, __m128i default_value) noexcept
     {
-        return _mm_blendv_epi8(default_value, _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), mask);
+        return simd_x64_detail::blend(default_value, _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), mask);
     }
 
     static inline void masked_store(int32_t* ptr, __m128i value, __m128i mask) noexcept
     {
-        _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), _mm_blendv_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), value, mask));
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), simd_x64_detail::blend(_mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), value, mask));
     }
 
     template <std::size_t I>
@@ -481,7 +587,15 @@ struct simd_op<__m128i>
     template <std::size_t I>
     static inline __m128i insert(__m128i value, int32_t element) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_insert_epi32(value, element, I);
+#else
+        static_assert(I < 4);
+        alignas(16) int32_t lanes[4];
+        _mm_store_si128(reinterpret_cast<__m128i*>(lanes), value);
+        lanes[I] = element;
+        return _mm_load_si128(reinterpret_cast<const __m128i*>(lanes));
+#endif
     }
 
     static inline __m128i fill(int32_t value) noexcept
@@ -511,12 +625,20 @@ struct simd_op<__m128i>
 
     static inline __m128i min(__m128i a, __m128i b) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_min_epi32(a, b);
+#else
+        return simd_x64_detail::blend(a, b, _mm_cmpgt_epi32(a, b));
+#endif
     }
 
     static inline __m128i max(__m128i a, __m128i b) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_max_epi32(a, b);
+#else
+        return simd_x64_detail::blend(a, b, _mm_cmpgt_epi32(b, a));
+#endif
     }
 
     static inline __m128i bitwise_and(__m128i a, __m128i b) noexcept
@@ -566,17 +688,25 @@ struct simd_op<__m128i>
 
     static inline __m128i blend(__m128i a, __m128i b, __m128i mask) noexcept
     {
-        return _mm_or_si128(_mm_and_si128(a, _mm_xor_si128(mask, _mm_set1_epi32(-1))), _mm_and_si128(b, mask));
+        return simd_x64_detail::blend(a, b, mask);
     }
 
     static inline bool any(__m128i a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return !_mm_testz_si128(a, a);
+#else
+        return _mm_movemask_epi8(_mm_cmpeq_epi8(a, _mm_setzero_si128())) != 0xffff;
+#endif
     }
 
     static inline bool all(__m128i a) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return _mm_testc_si128(a, _mm_set1_epi32(-1));
+#else
+        return _mm_movemask_epi8(a) == 0xffff;
+#endif
     }
 
     static inline int32_t sum(__m128i a) noexcept
@@ -588,20 +718,28 @@ struct simd_op<__m128i>
 
     static inline int32_t dot(__m128i a, __m128i b) noexcept
     {
+#if defined(ARC_SIMD_SSE41)
         return sum(_mm_mullo_epi32(a, b));
+#else
+        alignas(16) int32_t a_lanes[4];
+        alignas(16) int32_t b_lanes[4];
+        _mm_store_si128(reinterpret_cast<__m128i*>(a_lanes), a);
+        _mm_store_si128(reinterpret_cast<__m128i*>(b_lanes), b);
+        return a_lanes[0] * b_lanes[0] + a_lanes[1] * b_lanes[1] + a_lanes[2] * b_lanes[2] + a_lanes[3] * b_lanes[3];
+#endif
     }
 
     static inline int32_t min_element(__m128i a) noexcept
     {
-        __m128i min_val = _mm_min_epi32(a, _mm_srli_si128(a, 8));
-        min_val = _mm_min_epi32(min_val, _mm_srli_si128(min_val, 4));
+        __m128i min_val = min(a, _mm_srli_si128(a, 8));
+        min_val = min(min_val, _mm_srli_si128(min_val, 4));
         return _mm_cvtsi128_si32(min_val);
     }
 
     static inline int32_t max_element(__m128i a) noexcept
     {
-        __m128i max_val = _mm_max_epi32(a, _mm_srli_si128(a, 8));
-        max_val = _mm_max_epi32(max_val, _mm_srli_si128(max_val, 4));
+        __m128i max_val = max(a, _mm_srli_si128(a, 8));
+        max_val = max(max_val, _mm_srli_si128(max_val, 4));
         return _mm_cvtsi128_si32(max_val);
     }
 };
