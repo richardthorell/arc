@@ -6,6 +6,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cmath>
 #include <type_traits>
 
@@ -269,6 +270,29 @@ TEST_CASE("matrix inversion reports singular inputs without overwriting output")
     const matrix4f singular{};
     REQUIRE_FALSE(try_inverse(singular, unchanged));
     REQUIRE(unchanged(0, 0) == Catch::Approx(1.0f));
+}
+
+TEST_CASE("column major matrix storage matches GLSL mat4 times column vector")
+{
+    using namespace arc::math;
+
+    matrix4f matrix{};
+    for (std::size_t row = 0; row < 4; ++row)
+        for (std::size_t column = 0; column < 4; ++column)
+            matrix(row, column) = static_cast<float>(row * 10 + column + 1);
+
+    constexpr std::array<float, 4> vector{ 2.0f, -3.0f, 5.0f, 7.0f };
+    for (std::size_t row = 0; row < 4; ++row)
+    {
+        float scalar_reference{};
+        float glsl_column_major_upload{};
+        for (std::size_t column = 0; column < 4; ++column)
+        {
+            scalar_reference += matrix(row, column) * vector[column];
+            glsl_column_major_upload += matrix.data()[column * 4 + row] * vector[column];
+        }
+        REQUIRE(glsl_column_major_upload == Catch::Approx(scalar_reference));
+    }
 }
 
 TEST_CASE("quaternion supports identity and expression assignment")

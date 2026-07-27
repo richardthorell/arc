@@ -52,12 +52,12 @@ bool inverse_affine(const math::matrix4f& value, math::matrix4f& result) noexcep
     const float d = 1.0f / determinant;
     result = math::identity<float, 4>();
     result(0, 0) = c00 * d;
-    result(0, 1) = (a12 * a20 - a10 * a22) * d;
-    result(0, 2) = (a10 * a21 - a11 * a20) * d;
-    result(1, 0) = c01 * d;
+    result(0, 1) = c01 * d;
+    result(0, 2) = c02 * d;
+    result(1, 0) = (a12 * a20 - a10 * a22) * d;
     result(1, 1) = (a00 * a22 - a02 * a20) * d;
     result(1, 2) = (a02 * a10 - a00 * a12) * d;
-    result(2, 0) = c02 * d;
+    result(2, 0) = (a10 * a21 - a11 * a20) * d;
     result(2, 1) = (a01 * a20 - a00 * a21) * d;
     result(2, 2) = (a00 * a11 - a01 * a10) * d;
     const auto inverse_translation = math::transform_vector(

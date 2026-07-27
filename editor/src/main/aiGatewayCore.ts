@@ -603,13 +603,16 @@ export class SceneGatewayCore {
     if (action === 'orbit') {
       payload.orbitX = Number(params.x) || 0;
       payload.orbitY = Number(params.y) || 0;
+    } else if (action === 'look') {
+      payload.lookX = Number(params.x) || 0;
+      payload.lookY = Number(params.y) || 0;
     } else if (action === 'pan') {
       payload.panX = Number(params.x) || 0;
       payload.panY = Number(params.y) || 0;
     } else if (action === 'dolly') {
       payload.zoom = Number(params.amount) || 0;
     } else {
-      throw new Error('viewport.move action must be orbit, pan, dolly, frame, or place');
+      throw new Error('viewport.move action must be orbit, look, pan, dolly, frame, or place');
     }
     this.expect(await this.host.command('viewport.cameraInput', payload));
     return this.settleViewport(params);

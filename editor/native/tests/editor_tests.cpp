@@ -225,8 +225,16 @@ TEST_CASE("editor camera controller orbits pans and zooms")
 
     camera.focus({ 0.0f, 0.0f, 0.0f }, 2.0f);
     const float focused_distance = camera.distance();
+    arc::scene::transform_component before_zoom;
+    camera.apply_to(before_zoom);
+    const auto before_zoom_forward = arc::scene::forward_direction(before_zoom);
     camera.zoom(1.0f);
-    REQUIRE(camera.distance() < focused_distance);
+    arc::scene::transform_component after_zoom;
+    camera.apply_to(after_zoom);
+    REQUIRE(camera.distance() == Catch::Approx(focused_distance));
+    const auto zoom_translation = arc::math::sub(after_zoom.position, before_zoom.position);
+    REQUIRE(arc::math::length(zoom_translation) == Catch::Approx(1.5f));
+    REQUIRE(arc::math::dot(zoom_translation, before_zoom_forward) == Catch::Approx(1.5f));
 
     camera.orbit(24.0f, -12.0f);
     camera.pan(10.0f, 5.0f);
@@ -277,6 +285,75 @@ TEST_CASE("editor camera controller orbits pans and zooms")
     REQUIRE(after_upward_drag.position[1] < before_vertical_drag.position[1]);
     const auto upward_drag_forward = arc::scene::forward_direction(after_upward_drag);
     REQUIRE(upward_drag_forward[1] > before_upward_drag_forward[1]);
+}
+
+TEST_CASE("editor camera free look rotates in place without roll")
+{
+    arc::editor::editor_camera_controller camera;
+    camera.focus({ 3.0f, 2.0f, -4.0f }, 3.0f);
+
+    arc::scene::transform_component before;
+    camera.apply_to(before);
+    const auto initial_position = before.position;
+    const auto initial_focus = camera.focus_point();
+
+    camera.look(36.0f, -24.0f);
+    arc::scene::transform_component after;
+    camera.apply_to(after);
+
+    REQUIRE(arc::math::length(arc::math::sub(after.position, initial_position)) ==
+        Catch::Approx(0.0f).margin(0.0001f));
+    REQUIRE(arc::math::length(arc::math::sub(camera.focus_point(), initial_focus)) > 0.01f);
+
+    const auto looked_forward = arc::scene::forward_direction(after);
+    const auto position_before_dolly = after.position;
+    camera.zoom(2.0f);
+    camera.apply_to(after);
+    const auto dolly_translation = arc::math::sub(after.position, position_before_dolly);
+    REQUIRE(arc::math::dot(dolly_translation, looked_forward) == Catch::Approx(3.0f).margin(0.0001f));
+    REQUIRE(arc::math::length(arc::math::cross(dolly_translation, looked_forward)) ==
+        Catch::Approx(0.0f).margin(0.0001f));
+
+    for (int index = 0; index < 128; ++index)
+        camera.look(index % 2 == 0 ? 17.0f : -9.0f, index % 3 == 0 ? 31.0f : -14.0f);
+    camera.look(0.0f, -100000.0f);
+    camera.apply_to(after);
+
+    const auto right = arc::math::rotate(after.rotation, arc::math::vector3f{ 1.0f, 0.0f, 0.0f });
+    const auto up = arc::scene::up_direction(after);
+    REQUIRE(right[1] == Catch::Approx(0.0f).margin(0.0001f));
+    REQUIRE(up[1] > 0.0f);
+    REQUIRE(arc::math::length(arc::math::sub(after.position, arc::math::add(
+        initial_position, arc::math::mul(looked_forward, 3.0f)))) ==
+        Catch::Approx(0.0f).margin(0.0001f));
+}
+
+TEST_CASE("camera transform forward matches the rendered view projection")
+{
+    arc::editor::editor_camera_controller camera_controller;
+    camera_controller.focus({ 4.0f, 3.0f, -7.0f }, 5.0f);
+    camera_controller.orbit(53.0f, -31.0f);
+
+    arc::scene::transform_component transform;
+    camera_controller.apply_to(transform);
+    const auto forward = arc::scene::forward_direction(transform);
+    const auto view = arc::scene::world_view_matrix(transform);
+    const auto point_ahead = arc::math::add(transform.position, arc::math::mul(forward, 10.0f));
+    const auto view_point_ahead = arc::math::transform_point(view, point_ahead);
+    REQUIRE(view_point_ahead[0] == Catch::Approx(0.0f).margin(0.0001f));
+    REQUIRE(view_point_ahead[1] == Catch::Approx(0.0f).margin(0.0001f));
+    REQUIRE(view_point_ahead[2] == Catch::Approx(-10.0f).margin(0.0001f));
+
+    arc::scene::camera_component camera;
+    const auto view_projection = arc::scene::view_projection(camera, transform, 16.0f / 9.0f);
+    arc::math::matrix4f inverse_view_projection;
+    REQUIRE(arc::math::try_inverse(view_projection, inverse_view_projection));
+    const auto near_center = arc::math::transform_point(
+        inverse_view_projection, arc::math::vector3f{ 0.0f, 0.0f, 0.0f });
+    const auto far_center = arc::math::transform_point(
+        inverse_view_projection, arc::math::vector3f{ 0.0f, 0.0f, 1.0f });
+    const auto rendered_forward = arc::math::normalize(arc::math::sub(far_center, near_center));
+    REQUIRE(arc::math::dot(rendered_forward, forward) == Catch::Approx(1.0f).margin(0.0001f));
 }
 
 TEST_CASE("viewport rays use camera world space and pixel centers")
@@ -459,7 +536,8 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
             .visualization = arc::editor::host_visualization_mode::world_normal,
             .overlay = arc::editor::host_overlay_mode::all_wireframe,
             .shadows = false } },
-        { .request_id = 12, .payload = arc::editor::host_viewport_camera_input_command{ .orbit_x = 4.0f, .orbit_y = -2.0f, .zoom = 1.0f } },
+        { .request_id = 12, .payload = arc::editor::host_viewport_camera_input_command{
+            .orbit_x = 4.0f, .orbit_y = -2.0f, .look_x = 3.0f, .look_y = -1.0f, .zoom = 1.0f } },
         { .request_id = 13, .payload = arc::editor::host_set_world_environment_command{
             .environment = { .entity = entity, .sky_source = arc::editor::host_sky_source::solid_color } } },
         { .request_id = 14, .payload = arc::editor::host_apply_world_environment_preset_command{
@@ -497,6 +575,12 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
             const auto& create = std::get<arc::editor::host_create_entity_command>(parsed.payload);
             REQUIRE(create.kind == arc::editor::host_create_entity_kind::empty);
             REQUIRE(create.parent == entity);
+        }
+        if (command.request_id == 12)
+        {
+            const auto& input = std::get<arc::editor::host_viewport_camera_input_command>(parsed.payload);
+            REQUIRE(input.look_x == Catch::Approx(3.0f));
+            REQUIRE(input.look_y == Catch::Approx(-1.0f));
         }
     }
 
@@ -972,7 +1056,7 @@ TEST_CASE("viewport navigation and repeated selection do not emit scene refresh 
     REQUIRE(host->poll_events().empty());
 
     REQUIRE(host->execute(arc::editor::host_viewport_camera_input_command{
-        .orbit_x = 4.0f, .orbit_y = -2.0f }).succeeded);
+        .look_x = 4.0f, .look_y = -2.0f }).succeeded);
     REQUIRE(host->poll_events().empty());
 
     REQUIRE(host->execute(arc::editor::host_clear_selection_command{}).succeeded);

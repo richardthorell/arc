@@ -514,8 +514,8 @@ private:
         }
         else if (drag_button_ == drag_button::right)
         {
-            input.orbit_x = static_cast<float>(delta_x);
-            input.orbit_y = static_cast<float>(delta_y);
+            input.look_x = static_cast<float>(delta_x);
+            input.look_y = static_cast<float>(delta_y);
         }
         else if (drag_button_ == drag_button::left &&
             drag_distance_ > arc::editor::defaults::viewport_click_movement_threshold)
@@ -523,11 +523,13 @@ private:
             // An unmodified left press remains a selection candidate until it
             // crosses the click threshold. At that point navigation owns the
             // gesture and receives the complete movement since mouse-down.
-            input.orbit_x = static_cast<float>(camera_drag_started_ ? delta_x : x - drag_start_x_);
-            input.orbit_y = static_cast<float>(camera_drag_started_ ? delta_y : y - drag_start_y_);
+            input.look_x = static_cast<float>(camera_drag_started_ ? delta_x : x - drag_start_x_);
+            input.look_y = static_cast<float>(camera_drag_started_ ? delta_y : y - drag_start_y_);
             camera_drag_started_ = true;
         }
-        if (input.orbit_x != 0.0f || input.orbit_y != 0.0f || input.pan_x != 0.0f || input.pan_y != 0.0f)
+        if (input.orbit_x != 0.0f || input.orbit_y != 0.0f ||
+            input.look_x != 0.0f || input.look_y != 0.0f ||
+            input.pan_x != 0.0f || input.pan_y != 0.0f)
         {
             send_camera_input(input);
             terrain_hover_dirty_ = true;

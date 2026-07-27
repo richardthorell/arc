@@ -207,8 +207,10 @@ export function ViewportPanel({ project, startupState, onCommand }: ViewportPane
 
     if (event.shiftKey || drag.button === 1) {
       sendCameraInput({ panX: dx, panY: dy });
-    } else {
+    } else if (event.altKey && drag.button === 0) {
       sendCameraInput({ orbitX: dx, orbitY: dy });
+    } else {
+      sendCameraInput({ lookX: dx, lookY: dy });
     }
   };
 

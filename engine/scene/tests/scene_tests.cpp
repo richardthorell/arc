@@ -228,6 +228,51 @@ TEST_CASE("transform and camera helpers use right handed minus z forward")
     REQUIRE(up[2] == Catch::Approx(0.0f));
 }
 
+TEST_CASE("affine inverse matches the generic inverse for rotated transforms")
+{
+    arc::scene::transform_component transform;
+    transform.position = { 13.0f, -7.5f, 21.0f };
+    transform.rotation = arc::math::from_axis_angle(
+        arc::math::normalize(arc::math::vector3f{ 1.0f, 2.0f, -3.0f }),
+        0.73f);
+    transform.scale = { 1.5f, 0.75f, 2.25f };
+
+    const auto affine = arc::scene::local_matrix(transform);
+    arc::math::matrix4f fast_inverse;
+    arc::math::matrix4f reference_inverse;
+    REQUIRE(arc::scene::inverse_affine(affine, fast_inverse));
+    REQUIRE(arc::math::try_inverse(affine, reference_inverse));
+
+    const auto identity = arc::math::matmul(affine, fast_inverse);
+    for (std::size_t row = 0; row < 4; ++row)
+    {
+        for (std::size_t column = 0; column < 4; ++column)
+        {
+            const float expected = row == column ? 1.0f : 0.0f;
+            REQUIRE(identity(row, column) == Catch::Approx(expected).margin(0.0001f));
+            REQUIRE(fast_inverse(row, column) ==
+                Catch::Approx(reference_inverse(row, column)).margin(0.0001f));
+        }
+    }
+}
+
+TEST_CASE("camera world view agrees with the quaternion view matrix")
+{
+    arc::scene::transform_component camera;
+    camera.position = { 26.0f, 38.0f, 42.0f };
+    camera.rotation = arc::math::from_axis_angle(
+        arc::math::normalize(arc::math::vector3f{ 0.3f, 1.0f, -0.2f }),
+        -0.91f);
+    camera.scale = arc::math::vector3f::one;
+
+    const auto world_view = arc::scene::world_view_matrix(camera);
+    const auto quaternion_view = arc::scene::view_matrix(camera);
+    for (std::size_t row = 0; row < 4; ++row)
+        for (std::size_t column = 0; column < 4; ++column)
+            REQUIRE(world_view(row, column) ==
+                Catch::Approx(quaternion_view(row, column)).margin(0.0001f));
+}
+
 TEST_CASE("render scene extracts visible mesh draw events from active camera")
 {
     arc::scene::registry scene;
@@ -273,6 +318,46 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     REQUIRE(item.selected);
     REQUIRE(item.base_color_tint[2] == Catch::Approx(0.6f));
     REQUIRE(world_event.packet->shadows_enabled);
+}
+
+TEST_CASE("render scene honors an explicitly selected editor camera")
+{
+    arc::scene::registry scene;
+    arc::render::renderer renderer;
+
+    const auto game_camera = scene.create();
+    arc::scene::transform_component game_transform;
+    game_transform.position = { 40.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(game_camera, game_transform);
+    scene.emplace<arc::scene::camera_component>(game_camera);
+
+    const auto editor_camera = scene.create();
+    arc::scene::transform_component editor_transform;
+    editor_transform.position = { 0.0f, 12.0f, 7.0f };
+    scene.emplace<arc::scene::transform_component>(editor_camera, editor_transform);
+    scene.emplace<arc::scene::camera_component>(editor_camera);
+
+    const auto result = arc::scene::render_scene(
+        scene,
+        renderer,
+        1280,
+        720,
+        arc::render::render_mode::shaded,
+        arc::render::mesh_visualization_mode::standard,
+        arc::render::editor_overlay_mode::none,
+        true,
+        {},
+        0.0f,
+        {},
+        editor_camera);
+    REQUIRE(result.camera_found);
+
+    const auto packet = renderer.frame_queue().commit(1);
+    REQUIRE(packet.events.size() == 1);
+    const auto& world = *std::get<arc::render::render_world_event>(packet.events[0].payload).packet;
+    REQUIRE(world.camera.position[0] == Catch::Approx(0.0f));
+    REQUIRE(world.camera.position[1] == Catch::Approx(12.0f));
+    REQUIRE(world.camera.position[2] == Catch::Approx(7.0f));
 }
 
 TEST_CASE("world environment solar clock and validation are deterministic")

@@ -329,9 +329,9 @@ export class AiGatewayServer {
       annotations: { readOnlyHint: true, openWorldHint: false },
     }, async () => invoke('viewport.state', {}));
     server.registerTool('arc_move_viewport', {
-      description: 'Move ARC\'s turntable camera. Orbit x is yaw around world +Y, orbit y is pitch around camera-local +X, positive drag units match editor pointer deltas; pan and dolly preserve the focus point contract.',
+      description: 'Move ARC\'s editor camera. Look rotates in place, orbit rotates around the current pivot, and both use world +Y yaw with clamped camera-local +X pitch. Dolly translates linearly along camera Z.',
       inputSchema: {
-        action: z.enum(['orbit', 'pan', 'dolly', 'frame', 'place']),
+        action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
         x: z.number().optional(),
         y: z.number().optional(),
         amount: z.number().optional(),
@@ -411,7 +411,7 @@ export class AiGatewayServer {
           }).optional(),
         }).optional(),
         camera: z.object({
-          action: z.enum(['orbit', 'pan', 'dolly', 'frame', 'place']),
+          action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
           x: z.number().optional(),
           y: z.number().optional(),
           amount: z.number().optional(),

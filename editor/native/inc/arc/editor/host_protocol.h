@@ -836,6 +836,8 @@ struct host_viewport_camera_input_command
 {
     float orbit_x{};
     float orbit_y{};
+    float look_x{};
+    float look_y{};
     float pan_x{};
     float pan_y{};
     float forward{};

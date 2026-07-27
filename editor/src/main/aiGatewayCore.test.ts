@@ -180,7 +180,11 @@ describe('SceneGatewayCore', () => {
   it('serializes viewport writers and forwards spatial queries', async () => {
     const host = new MockHost();
     const gateway = new SceneGatewayCore(host);
-    await gateway.invoke('viewport.move', { action: 'orbit', x: 2, y: 1 }, 'first');
+    await gateway.invoke('viewport.move', { action: 'look', x: 2, y: 1 }, 'first');
+    expect(host.commands.at(-1)).toMatchObject({
+      type: 'viewport.cameraInput',
+      payload: { lookX: 2, lookY: 1 },
+    });
     await expect(gateway.invoke('viewport.move', { action: 'orbit', x: 1, y: 0 }, 'second'))
       .rejects.toThrow(/leased/);
     await gateway.invoke('scene.spatialQuery', {

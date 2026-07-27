@@ -184,55 +184,6 @@ math::matrix4f perspective_rh_zo(float vertical_fov, float near_plane, float far
     return result;
 }
 
-bool inverse_matrix4(const math::matrix4f& input, math::matrix4f& output) noexcept
-{
-    float augmented[4][8]{};
-    for (std::uint32_t row = 0; row < 4; ++row)
-    {
-        for (std::uint32_t col = 0; col < 4; ++col)
-            augmented[row][col] = input(row, col);
-        augmented[row][4 + row] = 1.0f;
-    }
-
-    for (std::uint32_t col = 0; col < 4; ++col)
-    {
-        std::uint32_t pivot = col;
-        for (std::uint32_t row = col + 1; row < 4; ++row)
-        {
-            if (std::abs(augmented[row][col]) > std::abs(augmented[pivot][col]))
-                pivot = row;
-        }
-        if (std::abs(augmented[pivot][col]) < 0.000001f)
-            return false;
-
-        if (pivot != col)
-        {
-            for (std::uint32_t index = 0; index < 8; ++index)
-                std::swap(augmented[pivot][index], augmented[col][index]);
-        }
-
-        const float divisor = augmented[col][col];
-        for (float& value : augmented[col])
-            value /= divisor;
-
-        for (std::uint32_t row = 0; row < 4; ++row)
-        {
-            if (row == col)
-                continue;
-            const float factor = augmented[row][col];
-            for (std::uint32_t index = 0; index < 8; ++index)
-                augmented[row][index] -= factor * augmented[col][index];
-        }
-    }
-
-    for (std::uint32_t row = 0; row < 4; ++row)
-    {
-        for (std::uint32_t col = 0; col < 4; ++col)
-            output(row, col) = augmented[row][4 + col];
-    }
-    return true;
-}
-
 math::vector3f transform_clip_point(const math::matrix4f& matrix, float x, float y, float z) noexcept
 {
     const float clip[4]{ x, y, z, 1.0f };

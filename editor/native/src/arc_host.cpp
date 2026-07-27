@@ -2287,6 +2287,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 focus_selected_entity(state_->scene.scene, state_->scene.selected_entity, state_->camera_controller);
             if (payload.orbit_x != 0.0f || payload.orbit_y != 0.0f)
                 state_->camera_controller.orbit(payload.orbit_x, payload.orbit_y);
+            if (payload.look_x != 0.0f || payload.look_y != 0.0f)
+                state_->camera_controller.look(payload.look_x, payload.look_y);
             if (payload.pan_x != 0.0f || payload.pan_y != 0.0f)
                 state_->camera_controller.pan(payload.pan_x, payload.pan_y);
             if (payload.forward != 0.0f)
@@ -3498,7 +3500,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         state_->viewport_options.shadows,
         to_scene_visibility(state_->viewport_options.environment),
         delta_seconds,
-        std::move(debug_overlay));
+        std::move(debug_overlay),
+        state_->scene.camera_entity);
 
     const auto submit_result = state_->renderer->render_frame(
         request.frame_index,

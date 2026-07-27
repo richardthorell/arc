@@ -12,6 +12,10 @@ namespace arc::editor
 namespace
 {
 
+constexpr float camera_rotation_radians_per_pixel = 0.008f;
+constexpr float camera_maximum_pitch = 1.45f;
+constexpr float camera_wheel_dolly_units = 1.5f;
+
 math::quatf multiply_quaternion(const math::quatf& lhs, const math::quatf& rhs) noexcept
 {
     return math::quatf{
@@ -30,6 +34,46 @@ math::quatf quaternion_from_yaw_pitch(float yaw, float pitch) noexcept
     const auto yaw_rotation = math::from_axis_angle(math::vector3f{ 0.0f, 1.0f, 0.0f }, yaw);
     const auto pitch_rotation = math::from_axis_angle(math::vector3f{ 1.0f, 0.0f, 0.0f }, pitch);
     return math::normalize(multiply_quaternion(yaw_rotation, pitch_rotation));
+}
+
+math::vector3f forward_from_yaw_pitch(float yaw, float pitch) noexcept
+{
+    const float cosine_pitch = std::cos(pitch);
+    return math::vector3f{
+        -std::sin(yaw) * cosine_pitch,
+        std::sin(pitch),
+        -std::cos(yaw) * cosine_pitch
+    };
+}
+
+struct camera_basis
+{
+    math::vector3f forward{};
+    math::vector3f right{};
+    math::vector3f up{};
+};
+
+camera_basis basis_from_yaw_pitch(float yaw, float pitch) noexcept
+{
+    constexpr math::vector3f world_up{ 0.0f, 1.0f, 0.0f };
+    const auto forward = forward_from_yaw_pitch(yaw, pitch);
+    const auto right = math::normalize(math::cross(forward, world_up));
+    return {
+        .forward = forward,
+        .right = right,
+        .up = math::normalize(math::cross(right, forward))
+    };
+}
+
+void update_yaw_pitch(float delta_x, float delta_y, float& yaw, float& pitch) noexcept
+{
+    yaw = std::remainder(
+        yaw - delta_x * camera_rotation_radians_per_pixel,
+        math::tau<float>);
+    pitch = std::clamp(
+        pitch - delta_y * camera_rotation_radians_per_pixel,
+        -camera_maximum_pitch,
+        camera_maximum_pitch);
 }
 
 math::vector3f point_to_vector(const geometric::point3f& point) noexcept
@@ -88,6 +132,11 @@ float world_hit_distance(
 
 } // namespace
 
+editor_camera_controller::editor_camera_controller() noexcept
+{
+    position_ = math::sub(focus_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
+}
+
 const char* editor_tool_label(editor_tool tool) noexcept
 {
     switch (tool)
@@ -108,6 +157,7 @@ void editor_camera_controller::focus(const math::vector3f& point, float radius) 
 {
     focus_ = point;
     distance_ = std::clamp(radius * 3.2f, 0.35f, 500.0f);
+    position_ = math::sub(focus_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
 }
 
 void editor_camera_controller::synchronize_from(const scene::transform_component& transform) noexcept
@@ -115,8 +165,8 @@ void editor_camera_controller::synchronize_from(const scene::transform_component
     const auto forward = scene::world_forward_direction(transform);
     yaw_ = std::atan2(-forward[0], -forward[2]);
     pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
-    const auto position = scene::world_position(transform);
-    focus_ = math::add(position, math::mul(forward, distance_));
+    position_ = scene::world_position(transform);
+    focus_ = math::add(position_, math::mul(forward, distance_));
 }
 
 bool editor_camera_controller::place(const math::vector3f& position, const math::vector3f& focus) noexcept
@@ -129,48 +179,58 @@ bool editor_camera_controller::place(const math::vector3f& position, const math:
     yaw_ = std::atan2(-forward[0], -forward[2]);
     pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
     distance_ = std::clamp(distance, 0.15f, 500.0f);
+    position_ = position;
     focus_ = focus;
     return true;
 }
 
 void editor_camera_controller::orbit(float delta_x, float delta_y) noexcept
 {
-    yaw_ = std::remainder(yaw_ - delta_x * 0.008f, math::tau<float>);
-    // Treat the gesture as rotating the scene, matching ARC's original
-    // editor navigation: dragging upward pitches the view upward around the
-    // camera-local X axis. Yaw remains isolated on the stable Y axis.
-    pitch_ = std::clamp(pitch_ - delta_y * 0.008f, -1.45f, 1.45f);
+    update_yaw_pitch(delta_x, delta_y, yaw_, pitch_);
+    position_ = math::sub(focus_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
+}
+
+void editor_camera_controller::look(float delta_x, float delta_y) noexcept
+{
+    update_yaw_pitch(delta_x, delta_y, yaw_, pitch_);
+    focus_ = math::add(position_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
 }
 
 void editor_camera_controller::pan(float delta_x, float delta_y) noexcept
 {
-    const auto rotation = quaternion_from_yaw_pitch(yaw_, pitch_);
-    const auto right = math::rotate(rotation, math::vector3f{ 1.0f, 0.0f, 0.0f });
-    const auto up = math::rotate(rotation, math::vector3f{ 0.0f, 1.0f, 0.0f });
+    const auto basis = basis_from_yaw_pitch(yaw_, pitch_);
     constexpr float speed = 0.012f;
-    focus_ = math::add(focus_, math::mul(right, -delta_x * speed));
-    focus_ = math::add(focus_, math::mul(up, delta_y * speed));
+    math::vector3f translation{ math::mul(basis.right, -delta_x * speed) };
+    translation = math::add(translation, math::mul(basis.up, delta_y * speed));
+    position_ = math::add(position_, translation);
+    focus_ = math::add(focus_, translation);
 }
 
 void editor_camera_controller::move_forward(float delta_y) noexcept
 {
-    const auto rotation = quaternion_from_yaw_pitch(yaw_, pitch_);
-    const auto forward = math::rotate(rotation, math::vector3f{ 0.0f, 0.0f, -1.0f });
+    const auto forward = forward_from_yaw_pitch(yaw_, pitch_);
     const float speed = std::clamp(distance_ * 0.006f, 0.015f, 1.5f);
-    focus_ = math::add(focus_, math::mul(forward, -delta_y * speed));
+    const auto translation = math::mul(forward, -delta_y * speed);
+    position_ = math::add(position_, translation);
+    focus_ = math::add(focus_, translation);
 }
 
 void editor_camera_controller::zoom(float wheel_delta) noexcept
 {
-    distance_ = std::clamp(distance_ * std::pow(0.86f, wheel_delta), 0.15f, 500.0f);
+    // A wheel gesture is a linear camera-space translation, not an orbit
+    // radius change. Moving the focus with the camera preserves a useful
+    // future orbit pivot and removes the exponential slowdown/zero barrier.
+    const auto translation =
+        math::mul(forward_from_yaw_pitch(yaw_, pitch_), wheel_delta * camera_wheel_dolly_units);
+    position_ = math::add(position_, translation);
+    focus_ = math::add(focus_, translation);
 }
 
 void editor_camera_controller::apply_to(scene::transform_component& transform) const noexcept
 {
     const auto rotation = quaternion_from_yaw_pitch(yaw_, pitch_);
-    const auto forward = math::rotate(rotation, math::vector3f{ 0.0f, 0.0f, -1.0f });
     transform.set_rotation(rotation);
-    transform.set_position(math::sub(focus_, math::mul(forward, distance_)));
+    transform.set_position(position_);
 }
 
 const math::vector3f& editor_camera_controller::focus_point() const noexcept

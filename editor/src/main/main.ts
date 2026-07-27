@@ -61,6 +61,8 @@ type NativeViewportBounds = {
 type CameraInput = {
   orbitX?: number;
   orbitY?: number;
+  lookX?: number;
+  lookY?: number;
   panX?: number;
   panY?: number;
   forward?: number;

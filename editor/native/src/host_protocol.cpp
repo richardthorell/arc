@@ -1252,6 +1252,8 @@ std::string to_json(const host_command_envelope& envelope)
         else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>)
             return "{\"orbitX\":" + std::to_string(payload.orbit_x) +
                 ",\"orbitY\":" + std::to_string(payload.orbit_y) +
+                ",\"lookX\":" + std::to_string(payload.look_x) +
+                ",\"lookY\":" + std::to_string(payload.look_y) +
                 ",\"panX\":" + std::to_string(payload.pan_x) +
                 ",\"panY\":" + std::to_string(payload.pan_y) +
                 ",\"forward\":" + std::to_string(payload.forward) +
@@ -2023,6 +2025,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         host_viewport_camera_input_command command;
         number_value(payload, "orbitX", command.orbit_x);
         number_value(payload, "orbitY", command.orbit_y);
+        number_value(payload, "lookX", command.look_x);
+        number_value(payload, "lookY", command.look_y);
         number_value(payload, "panX", command.pan_x);
         number_value(payload, "panY", command.pan_y);
         number_value(payload, "forward", command.forward);

@@ -404,7 +404,8 @@ render_scene_result render_scene(
     bool shadows_enabled,
     scene_render_visibility environment_visibility,
     float delta_seconds,
-    render::debug_overlay_stream debug_overlay)
+    render::debug_overlay_stream debug_overlay,
+    entity preferred_camera)
 {
     render_scene_result result{};
     prepare_render_scene_queries(scene);
@@ -413,6 +414,16 @@ render_scene_result render_scene(
 
     const transform_component* camera_transform{};
     const camera_component* camera{};
+    if (scene.alive(preferred_camera) && entity_is_active(scene, preferred_camera))
+    {
+        const auto* preferred_transform = scene.try_get<transform_component>(preferred_camera);
+        const auto* preferred_component = scene.try_get<camera_component>(preferred_camera);
+        if (preferred_transform && preferred_component && preferred_component->active)
+        {
+            camera_transform = preferred_transform;
+            camera = preferred_component;
+        }
+    }
     scene.view<transform_component, camera_component>().each(
         [&](entity value, const transform_component& transform, const camera_component& candidate) {
             if (!camera && candidate.active && entity_is_active(scene, value))

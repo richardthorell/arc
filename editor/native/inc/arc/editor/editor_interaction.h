@@ -54,6 +54,8 @@ struct editor_pick_result
 class editor_camera_controller
 {
 public:
+    editor_camera_controller() noexcept;
+
     /**
      * @brief Set the orbit focus point and distance from a bounding radius.
      */
@@ -75,6 +77,11 @@ public:
     void orbit(float delta_x, float delta_y) noexcept;
 
     /**
+     * @brief Rotate the camera in place using stable world-yaw/local-pitch axes.
+     */
+    void look(float delta_x, float delta_y) noexcept;
+
+    /**
      * @brief Pan focus point by mouse delta in pixels.
      */
     void pan(float delta_x, float delta_y) noexcept;
@@ -85,7 +92,7 @@ public:
     void move_forward(float delta_y) noexcept;
 
     /**
-     * @brief Dolly camera by wheel delta.
+     * @brief Translate the camera forward or backward without changing orbit distance.
      */
     void zoom(float wheel_delta) noexcept;
 
@@ -106,6 +113,7 @@ public:
 
 private:
     math::vector3f focus_{};
+    math::vector3f position_{};
     float yaw_{};
     float pitch_{ -0.18f };
     float distance_{ 4.0f };
