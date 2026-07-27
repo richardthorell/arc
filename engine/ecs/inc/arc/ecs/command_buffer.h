@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <compare>
 #include <cstdint>
 #include <functional>
 #include <span>
@@ -85,7 +86,12 @@ public:
         friend constexpr auto operator<=>(sort_key, sort_key) noexcept = default;
     };
 
-    explicit entity_command_buffer(sort_key key = {})
+    entity_command_buffer()
+        : entity_command_buffer(sort_key{})
+    {
+    }
+
+    explicit entity_command_buffer(sort_key key)
         : key_(key)
         , id_(next_id())
     {
