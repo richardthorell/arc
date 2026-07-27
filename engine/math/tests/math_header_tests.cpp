@@ -21,7 +21,22 @@ constexpr bool constexpr_vector_expression_works()
     return result[0] == 4 && result[1] == 9;
 }
 
+constexpr bool constexpr_vector_constants_work()
+{
+    constexpr arc::math::vector3f splat{ 2.5f };
+    return splat[0] == 2.5f
+        && splat[1] == 2.5f
+        && splat[2] == 2.5f
+        && arc::math::vector3f::zero[0] == 0.0f
+        && arc::math::vector3f::zero[2] == 0.0f
+        && arc::math::vector3f::one[0] == 1.0f
+        && arc::math::vector3f::one[2] == 1.0f;
+}
+
 static_assert(constexpr_vector_expression_works());
+static_assert(constexpr_vector_constants_work());
+static_assert(std::is_constructible_v<arc::math::vector3f, float>);
+static_assert(!std::is_convertible_v<float, arc::math::vector3f>);
 static_assert(arc::math::to_radians(180.0) == arc::math::pi<double>);
 static_assert(arc::math::to_degrees(arc::math::pi<double>) == 180.0);
 static_assert(arc::math::tau<double> == 2.0 * arc::math::pi<double>);
@@ -42,6 +57,10 @@ TEST_CASE("shared angle constants and conversions are typed and reversible")
 TEST_CASE("vector supports construction indexing and lazy arithmetic")
 {
     using namespace arc::math;
+
+    const vector<float, 4> splat{ 3.0f };
+    REQUIRE(splat[0] == 3.0f);
+    REQUIRE(splat[3] == 3.0f);
 
     vector<float, 4> a{ 1.0f, 2.0f, 3.0f, 4.0f };
     vector<float, 4> b{ 2.0f, 3.0f, 4.0f, 5.0f };
@@ -119,7 +138,7 @@ TEST_CASE("vector exposes game aliases and helpers")
     REQUIRE(halfway[0] == Catch::Approx(0.5f));
     REQUIRE(halfway[1] == Catch::Approx(0.5f));
 
-    const vector3f clamped = clamp(vector3f{ -1.0f, 2.0f, 5.0f }, vector3f{ 0.0f, 0.0f, 0.0f }, vector3f{ 1.0f, 1.0f, 4.0f });
+    const vector3f clamped = clamp(vector3f{ -1.0f, 2.0f, 5.0f }, vector3f::zero, vector3f{ 1.0f, 1.0f, 4.0f });
     REQUIRE(clamped[0] == 0.0f);
     REQUIRE(clamped[1] == 1.0f);
     REQUIRE(clamped[2] == 4.0f);
@@ -224,7 +243,7 @@ TEST_CASE("matrix exposes aliases and game helpers")
     REQUIRE(direction[0] == Catch::Approx(1.0f));
 
     const auto scaled = scaling(2.0f, 3.0f, 4.0f);
-    REQUIRE(transform_vector(scaled, vector3f{ 1.0f, 1.0f, 1.0f })[2] == Catch::Approx(4.0f));
+    REQUIRE(transform_vector(scaled, vector3f::one)[2] == Catch::Approx(4.0f));
 
     const auto rotated = rotation_z<float>(pi<float> / 2.0f);
     const vector3f rotated_x = transform_vector(rotated, vector3f{ 1.0f, 0.0f, 0.0f });

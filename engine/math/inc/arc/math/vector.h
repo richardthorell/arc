@@ -23,6 +23,11 @@ public:
     /// @brief Number of scalar elements in the vector.
     static constexpr std::size_t size = N;
 
+    /// @brief Vector whose elements are all zero.
+    static const vector zero;
+    /// @brief Vector whose elements are all one.
+    static const vector one;
+
     /// @brief Construct a zero-initialized vector.
     constexpr vector() noexcept = default;
 
@@ -33,11 +38,16 @@ public:
     }
 
     /**
-     * @brief Construct from exactly `N` initializer-list values.
-     * @throws std::length_error when the initializer length does not match `N`.
+     * @brief Construct from one splatted value or exactly `N` component values.
+     * @throws std::length_error when the initializer length is neither one nor `N`.
      */
     constexpr vector(std::initializer_list<T> values)
     {
+        if (values.size() == 1)
+        {
+            values_.fill(*values.begin());
+            return;
+        }
         if (values.size() != N)
             throw std::length_error("vector initializer size mismatch");
 
@@ -96,6 +106,12 @@ private:
 
     std::array<T, N> values_{};
 };
+
+template <class T, std::size_t N>
+inline constexpr vector<T, N> vector<T, N>::zero{ T{} };
+
+template <class T, std::size_t N>
+inline constexpr vector<T, N> vector<T, N>::one{ T{ 1 } };
 
 /// @name Common vector aliases
 /// @{
@@ -438,7 +454,7 @@ constexpr auto project(const Value& value, const Onto& onto)
 
     const value_type denom = dot(onto, onto);
     if (denom == value_type{})
-        return vector<value_type, traits::size>{};
+        return vector<value_type, traits::size>::zero;
     return vector<value_type, traits::size>{ mul(onto, dot(value, onto) / denom) };
 }
 
