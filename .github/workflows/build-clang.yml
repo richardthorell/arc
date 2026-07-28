@@ -35,8 +35,24 @@ jobs:
           -DARC_BUILD_ENGINE_TESTS=ON
           -DBUILD_TESTING=ON
 
+      - name: Restore ARC derived data
+        uses: actions/cache@v4
+        with:
+          path: |
+            .arc/cache/cas
+            .arc/cache/actions
+          key: arc-ddc-linux-x64-vulkan-v1-clang-${{ hashFiles('arc.cook.json', 'assets/**', 'engine/assets/**', 'engine/render/**') }}
+          restore-keys: |
+            arc-ddc-linux-x64-vulkan-v1-clang-
+
       - name: Build
         run: cmake --build build --parallel
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
+
+      - name: Cook package and verify incremental reuse
+        run: |
+          build/tools/asset_cooker/arc-cook package --project . --profile linux-x64-vulkan
+          build/tools/asset_cooker/arc-cook package --project . --profile linux-x64-vulkan
+          build/tools/asset_cooker/arc-cook verify --project . --profile linux-x64-vulkan

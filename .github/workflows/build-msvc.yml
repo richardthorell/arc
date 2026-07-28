@@ -39,8 +39,25 @@ jobs:
           -DARC_ENABLE_JOB_COROUTINES=${{ matrix.job-coroutines }}
           -DBUILD_TESTING=ON
 
+      - name: Restore ARC derived data
+        uses: actions/cache@v4
+        with:
+          path: |
+            .arc/cache/cas
+            .arc/cache/actions
+          key: arc-ddc-windows-x64-vulkan-v1-${{ hashFiles('arc.cook.json', 'assets/**', 'engine/assets/**', 'engine/render/**') }}
+          restore-keys: |
+            arc-ddc-windows-x64-vulkan-v1-
+
       - name: Build
         run: cmake --build build --parallel
 
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
+
+      - name: Cook package and verify incremental reuse
+        if: matrix.job-coroutines == 'ON'
+        run: |
+          build\tools\asset_cooker\Release\arc-cook.exe package --project . --profile windows-x64-vulkan
+          build\tools\asset_cooker\Release\arc-cook.exe package --project . --profile windows-x64-vulkan
+          build\tools\asset_cooker\Release\arc-cook.exe verify --project . --profile windows-x64-vulkan
