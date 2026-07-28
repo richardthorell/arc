@@ -14,6 +14,7 @@ Current modules:
 - `io/` provides backend-neutral asynchronous file reads, ranged reads, writes, atomic writes, metadata queries, and cancellation through the `arc-io` target and `arc::io` alias. Its portable implementation runs chunked blocking operations on scheduler-owned IO workers.
 - `framework/` provides the platform-neutral application lifecycle, fixed-step multi-world simulation, deterministic random streams and checkpoints, runtime services, and renderer-free headless loop through the `arc-framework` target and `arc::framework` alias. It depends on `arc-ecs`, `arc-jobs`, `arc-memory`, and `arc-diagnostics`.
 - `assets/` provides GUID-authoritative asset metadata, the rebuildable SQLite registry, importer/dependency scheduling, content-addressed derived data, asynchronous load handles, residency, hot reload, move tracking, and missing-reference diagnostics through the `arc-assets` target and `arc::assets` alias. It depends on `arc-framework`, `arc-io`, `arc-jobs`, and `arc-memory`; SQLite and JSON remain private implementation details.
+- `persistence/` provides format-neutral document records, reflected human-readable JSON, deterministic tagged runtime archives, migration registries, SHA-256/CRC32C integrity, atomic saves, three-generation recovery, and scene/prefab dependency manifests through the `arc-persistence` target and `arc::persistence` alias. JSON remains a private implementation detail.
 - `input/` provides runtime input bindings through the `arc-input` target and `arc::input` alias. It depends on `arc-framework`.
 - `render/` provides the backend-neutral renderer foundation through the `arc-render` target and `arc::render` alias. It depends on `arc-framework`. It currently includes render events, render graph resources, renderer handles, material/resource scaffolding, scene draw packets, CPU culling/sorting/batching, and Vulkan backend bring-up.
 - `scene/` provides game/render components and render extraction through the `arc-scene` target and `arc::scene` alias. It depends on `arc-ecs` and `arc-render`; existing scene registry/entity APIs remain compatibility aliases over the generic ECS.
@@ -90,10 +91,11 @@ The render public include path is:
 #include <arc/render/render.h>
 ```
 
-The ECS, input, and scene public include paths are:
+The ECS, persistence, input, and scene public include paths are:
 
 ```cpp
 #include <arc/ecs/ecs.h>
+#include <arc/persistence/persistence.h>
 #include <arc/input/input.h>
 #include <arc/scene/scene.h>
 ```

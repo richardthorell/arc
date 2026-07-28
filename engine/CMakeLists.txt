@@ -32,6 +32,7 @@ add_subdirectory(framework)
 add_subdirectory(assets)
 add_subdirectory(input)
 add_subdirectory(ecs)
+add_subdirectory(persistence)
 add_subdirectory(render)
 
 if(ARC_BUILD_RENDER_VULKAN)
@@ -45,6 +46,7 @@ target_link_libraries(arc
     INTERFACE
         arc-scene
         arc-assets
+        arc-persistence
         arc-input
 )
 

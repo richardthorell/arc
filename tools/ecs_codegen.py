@@ -131,7 +131,9 @@ def generate_cpp(schema: dict[str, Any]) -> str:
             lines.append(
                 "        { "
                 f"0x{field['id']}ull, \"{field['name']}\", \"{display}\", "
-                f"reflected_field_kind::{KINDS[field['kind']]}, {flags_expression(field)}"
+                f"reflected_field_kind::{KINDS[field['kind']]}, {flags_expression(field)}, "
+                f"offsetof({qualified}, {field['name']}), "
+                f"sizeof((({qualified}*)nullptr)->{field['name']})"
                 " },"
             )
         lines.extend([

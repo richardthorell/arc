@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <span>
 #include <optional>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -109,6 +110,9 @@ constexpr bool has_flag(reflected_field_flags value, reflected_field_flags flag)
 
 struct component_field_descriptor
 {
+    static constexpr std::size_t invalid_offset =
+        std::numeric_limits<std::size_t>::max();
+
     component_field_id id{};
     std::string_view name;
     std::string_view display_name;
@@ -117,6 +121,8 @@ struct component_field_descriptor
         reflected_field_flags::serialized |
         reflected_field_flags::editable |
         reflected_field_flags::prefab_override };
+    std::size_t offset{ invalid_offset };
+    std::size_t value_size{};
 };
 
 struct component_descriptor
