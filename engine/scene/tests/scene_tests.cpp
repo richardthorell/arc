@@ -1063,3 +1063,28 @@ TEST_CASE("terrain raycasts return the actual heightfield surface")
     REQUIRE(hit.hit);
     REQUIRE(hit.position[1] == Catch::Approx(arc::scene::sample_terrain_height(terrain, 0.0f, 0.0f)).margin(0.001f));
 }
+
+TEST_CASE("generated scene metadata provides ordinary persistence field codecs")
+{
+    arc::persistence::component_persistence_registry registry;
+    REQUIRE(arc::scene::register_persistence_components(registry));
+
+    arc::scene::transform_component source;
+    source.position = { 3.0f, -2.0f, 7.5f };
+    source.scale = { 2.0f, 3.0f, 4.0f };
+    arc::persistence::archive_component_record encoded;
+    std::string error;
+    const auto type = arc::ecs::component_metadata<arc::scene::transform_component>().id;
+    REQUIRE(registry.encode(type, &source, encoded, error));
+    REQUIRE(encoded.fields.size() == 3);
+
+    arc::scene::transform_component destination;
+    REQUIRE(registry.decode(type, &destination, encoded, error));
+    for (std::size_t component = 0; component < 3; ++component)
+    {
+        REQUIRE(destination.position[component] == Catch::Approx(source.position[component]));
+        REQUIRE(destination.scale[component] == Catch::Approx(source.scale[component]));
+    }
+    for (std::size_t component = 0; component < 4; ++component)
+        REQUIRE(destination.rotation[component] == Catch::Approx(source.rotation[component]));
+}

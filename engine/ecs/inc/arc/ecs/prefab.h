@@ -29,7 +29,7 @@ struct prefab_entity_record
 
 struct prefab_asset
 {
-    static constexpr std::uint32_t current_format_version = 1;
+    static constexpr std::uint32_t current_format_version = 2;
     std::uint32_t format_version{ current_format_version };
     entity_guid guid{};
     std::string name;

@@ -26,6 +26,13 @@ target_include_directories(arc-editor-host
         "${CMAKE_CURRENT_SOURCE_DIR}/inc"
 )
 
+if(MSVC)
+    # The host protocol dispatch intentionally centralizes many command
+    # specializations in arc_host.cpp; debug builds can exceed COFF's default
+    # section count as editor capabilities grow.
+    target_compile_options(arc-editor-host PRIVATE /bigobj)
+endif()
+
 target_link_libraries(arc-editor-host
     PUBLIC
         arc

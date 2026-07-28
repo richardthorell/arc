@@ -5,67 +5,13 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <fstream>
 #include <unordered_map>
-
-#if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
 
 namespace arc::editor
 {
 namespace
 {
 using json = nlohmann::json;
-
-bool atomic_write(const std::filesystem::path& path, std::string_view text, std::string& error)
-{
-    std::error_code directory_error;
-    if (!path.parent_path().empty())
-        std::filesystem::create_directories(path.parent_path(), directory_error);
-    if (directory_error)
-    {
-        error = "could not create prefab directory: " + directory_error.message();
-        return false;
-    }
-    const auto temporary = path.parent_path() / (path.filename().string() + ".tmp");
-    {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-        if (!stream)
-        {
-            error = "could not open temporary prefab file";
-            return false;
-        }
-        stream.write(text.data(), static_cast<std::streamsize>(text.size()));
-        stream.flush();
-        if (!stream)
-        {
-            error = "failed while writing temporary prefab file";
-            return false;
-        }
-    }
-#if defined(_WIN32)
-    if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-    {
-        error = "atomic prefab replacement failed with Win32 error " + std::to_string(GetLastError());
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return false;
-    }
-#else
-    std::error_code move_error;
-    std::filesystem::rename(temporary, path, move_error);
-    if (move_error)
-    {
-        error = move_error.message();
-        return false;
-    }
-#endif
-    return true;
-}
 
 template <class Component>
 void copy_component(const editor_scene_state& source, editor_scene_state& target, scene::entity from, scene::entity to)
@@ -120,6 +66,14 @@ scene::entity clone_subtree(
         copied.entity = result_guid;
         target.asset_bindings.push_back(std::move(copied));
     }
+    for (const auto& [entity, record] : source.unknown_component_records)
+        if (entity == source_guid)
+            target.unknown_component_records.emplace_back(result_guid, record);
+    for (const auto& preserved : source.preserved_component_records)
+        if (preserved.entity == source_guid)
+            target.preserved_component_records.push_back({
+                result_guid, preserved.component_name, preserved.json
+            });
     if (target.scene.alive(parent))
         scene::reparent(target.scene, result, parent, {}, scene::reparent_transform_policy::preserve_local);
     for (const scene::entity child : scene::children(source.scene, source_entity))
@@ -129,21 +83,22 @@ scene::entity clone_subtree(
 
 std::optional<json> read_prefab(const std::filesystem::path& path, std::string& error)
 {
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
+    const auto stored = persistence::document_store{}.load_json(path);
+    if (!stored.succeeded)
     {
-        error = "could not open prefab file";
+        error = stored.error.empty() ? "could not open prefab file" : stored.error;
         return std::nullopt;
     }
     json document;
-    try { stream >> document; }
+    try { document = json::parse(stored.text); }
     catch (const std::exception& exception)
     {
         error = std::string("invalid prefab JSON: ") + exception.what();
         return std::nullopt;
     }
     if (!document.is_object() || document.value("format", "") != "arc.prefab" ||
-        document.value("formatVersion", 0u) != ecs::prefab_asset::current_format_version ||
+        document.value("formatVersion", 0u) < 1u ||
+        document.value("formatVersion", 0u) > ecs::prefab_asset::current_format_version ||
         !document.contains("prefab") || !document["prefab"].is_object() ||
         !document.contains("entities") || !document["entities"].is_array())
     {
@@ -173,8 +128,16 @@ std::string project_relative_path(
 
 std::filesystem::path resolve_prefab_path(
     const std::filesystem::path& project_root,
-    const std::filesystem::path& path)
+    const std::filesystem::path& path,
+    scene::entity_guid guid = {},
+    assets::asset_manager* asset_registry = nullptr)
 {
+    if (asset_registry && guid.valid())
+    {
+        if (const auto current = asset_registry->find({ guid.high, guid.low });
+            current && current->type == assets::asset_types::prefab)
+            return (project_root / current->source_path).lexically_normal();
+    }
     return path.is_absolute() ? path : (project_root / path).lexically_normal();
 }
 
@@ -184,7 +147,8 @@ prefab_document_result save_prefab_document(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
     scene::entity root,
-    const std::filesystem::path& path)
+    const std::filesystem::path& path,
+    assets::asset_manager*)
 {
     if (path.empty() || path.extension() != ".arcprefab")
         return { .message = "prefab path must use the .arcprefab extension" };
@@ -196,9 +160,9 @@ prefab_document_result save_prefab_document(
         state, project_root, root, prefab_guid, path.stem().string());
     if (!serialized.succeeded)
         return { .message = serialized.message };
-    std::string error;
-    if (!atomic_write(path, serialized.text, error))
-        return { .message = std::move(error) };
+    const auto saved = persistence::document_store{}.save_json(path, serialized.text, true);
+    if (!saved.succeeded)
+        return { .message = saved.error };
     auto& instance = state.scene.emplace<scene::prefab_instance_component>(root);
     instance.prefab_guid = prefab_guid;
     instance.prefab_path = project_relative_path(project_root, path);
@@ -218,7 +182,8 @@ prefab_document_result instantiate_prefab_document(
     render::renderer& renderer,
     const std::filesystem::path& project_root,
     const std::filesystem::path& path,
-    scene::entity parent)
+    scene::entity parent,
+    assets::asset_manager* asset_registry)
 {
     std::string error;
     const auto document = read_prefab(path, error);
@@ -231,16 +196,16 @@ prefab_document_result instantiate_prefab_document(
             { "id", scene::to_string(scene::generate_entity_guid()) },
             { "name", document->at("prefab").value("name", path.stem().string()) }
         } },
-        { "entities", document->at("entities") }
+        { "entities", document->at("entities") },
+        { "dependencies", document->value("dependencies", json::array()) }
     };
-    const auto temporary = path.parent_path() / ("." + path.filename().string() + ".instantiate.arcscene");
-    if (!atomic_write(temporary, scene_document.dump(2) + '\n', error))
-        return { .message = std::move(error) };
+    const auto sealed_scene = persistence::seal_json_document(scene_document.dump(), true);
+    if (!sealed_scene.succeeded())
+        return { .message = sealed_scene.error };
 
     editor_scene_state loaded = state;
-    const auto loaded_result = load_scene_document(loaded, renderer, project_root, temporary);
-    std::error_code ignored;
-    std::filesystem::remove(temporary, ignored);
+    const auto loaded_result = load_scene_document_text(
+        loaded, renderer, project_root, path, sealed_scene.text, asset_registry);
     if (!loaded_result.succeeded)
         return { .message = loaded_result.message, .diagnostics = loaded_result.diagnostics };
 
@@ -267,13 +232,17 @@ prefab_document_result instantiate_prefab_document(
 prefab_document_result apply_prefab_instance(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    scene::entity root)
+    scene::entity root,
+    assets::asset_manager* asset_registry)
 {
     auto* instance = state.scene.try_get<scene::prefab_instance_component>(root);
     if (!instance)
         return { .message = "entity is not a prefab instance" };
     const auto result = save_prefab_document(
-        state, project_root, root, resolve_prefab_path(project_root, instance->prefab_path));
+        state, project_root, root,
+        resolve_prefab_path(
+            project_root, instance->prefab_path, instance->prefab_guid, asset_registry),
+        asset_registry);
     if (result.succeeded)
         instance->overrides.clear();
     return result;
@@ -283,15 +252,18 @@ prefab_document_result revert_prefab_instance(
     editor_scene_state& state,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
-    scene::entity root)
+    scene::entity root,
+    assets::asset_manager* asset_registry)
 {
     const auto* instance = state.scene.try_get<scene::prefab_instance_component>(root);
     const auto* hierarchy = state.scene.try_get<scene::hierarchy_component>(root);
     if (!instance)
         return { .message = "entity is not a prefab instance" };
-    const std::filesystem::path source = resolve_prefab_path(project_root, instance->prefab_path);
+    const std::filesystem::path source = resolve_prefab_path(
+        project_root, instance->prefab_path, instance->prefab_guid, asset_registry);
     const scene::entity parent = hierarchy ? hierarchy->parent : scene::entity{};
-    const auto replacement = instantiate_prefab_document(state, renderer, project_root, source, parent);
+    const auto replacement = instantiate_prefab_document(
+        state, renderer, project_root, source, parent, asset_registry);
     if (!replacement.succeeded)
         return replacement;
     const auto removed = scene::subtree(state.scene, root);

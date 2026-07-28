@@ -1259,9 +1259,16 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     REQUIRE(component_position != std::string::npos);
     document.insert(component_position + component_marker.size(),
         "\n        \"FutureRenderer\": {\"version\": 7, \"opaque\": {\"quality\": \"future\"}},");
+    const std::string transform_marker = "\"Transform\": {";
+    const auto transform_position = document.find(transform_marker);
+    REQUIRE(transform_position != std::string::npos);
+    document.insert(transform_position + transform_marker.size(),
+        "\n          \"futureTransformState\": {\"author\": \"future-editor\"},");
+    const auto resealed = arc::persistence::seal_json_document(document, true);
+    REQUIRE(resealed.succeeded());
     {
         std::ofstream output(path, std::ios::binary | std::ios::trunc);
-        output << document;
+        output << resealed.text;
     }
     REQUIRE(host->execute(arc::editor::host_open_scene_command{ .path = path }).succeeded);
     REQUIRE_FALSE(host->scene_snapshot().dirty);
@@ -1274,6 +1281,8 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     resaved_input.close();
     REQUIRE(resaved.find("FutureRenderer") != std::string::npos);
     REQUIRE(resaved.find("\"quality\": \"future\"") != std::string::npos);
+    REQUIRE(resaved.find("futureTransformState") != std::string::npos);
+    REQUIRE(resaved.find("future-editor") != std::string::npos);
 
     auto invalid = resaved;
     const auto current_version = "\"formatVersion\": " + std::to_string(arc::editor::arc_scene_format_version);

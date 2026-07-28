@@ -190,7 +190,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000007",
     "canonicalName": "arc::scene.camera_component",
     "displayName": "Camera",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "fields": [
       {
         "id": "0000000000000001",
@@ -286,7 +286,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000008",
     "canonicalName": "arc::scene.mesh_renderer_component",
     "displayName": "Mesh Renderer",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "fields": [
       {
         "id": "0000000000000001",
@@ -448,21 +448,21 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000000e",
     "canonicalName": "arc::scene.directional_light_component",
     "displayName": "Directional Light",
-    "schemaVersion": 1,
+    "schemaVersion": 3,
     "fields": []
   },
   {
     "id": "a7c0000000000001000000000000000f",
     "canonicalName": "arc::scene.point_light_component",
     "displayName": "Point Light",
-    "schemaVersion": 1,
+    "schemaVersion": 3,
     "fields": []
   },
   {
     "id": "a7c00000000000010000000000000010",
     "canonicalName": "arc::scene.spot_light_component",
     "displayName": "Spot Light",
-    "schemaVersion": 1,
+    "schemaVersion": 3,
     "fields": []
   },
   {
@@ -539,7 +539,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001b",
     "canonicalName": "arc::scene.vegetation_component",
     "displayName": "Vegetation",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "fields": []
   },
   {
@@ -553,7 +553,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001d",
     "canonicalName": "arc::scene.area_light_component",
     "displayName": "Area Light",
-    "schemaVersion": 1,
+    "schemaVersion": 3,
     "fields": []
   }
 ] as const satisfies readonly GeneratedEcsComponentMetadata[]

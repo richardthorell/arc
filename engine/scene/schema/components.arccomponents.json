@@ -60,6 +60,7 @@
       "type": "camera_component",
       "id": "a7c00000000000010000000000000007",
       "display": "Camera",
+      "version": 2,
       "customSerialization": true,
       "fields": [
         { "name": "projection", "id": "0000000000000001", "kind": "enum" },
@@ -76,6 +77,8 @@
       "type": "mesh_renderer_component",
       "id": "a7c00000000000010000000000000008",
       "display": "Mesh Renderer",
+      "version": 2,
+      "customSerialization": true,
       "fields": [
         { "name": "mesh", "id": "0000000000000001", "kind": "asset" },
         { "name": "material", "id": "0000000000000002", "kind": "asset" },
@@ -107,9 +110,9 @@
         { "name": "value", "id": "0000000000000001", "kind": "enum", "display": "Mobility" }
       ]
     },
-    { "type": "directional_light_component", "id": "a7c0000000000001000000000000000e", "display": "Directional Light", "customSerialization": true },
-    { "type": "point_light_component", "id": "a7c0000000000001000000000000000f", "display": "Point Light", "customSerialization": true },
-    { "type": "spot_light_component", "id": "a7c00000000000010000000000000010", "display": "Spot Light", "customSerialization": true },
+    { "type": "directional_light_component", "id": "a7c0000000000001000000000000000e", "display": "Directional Light", "version": 3, "customSerialization": true },
+    { "type": "point_light_component", "id": "a7c0000000000001000000000000000f", "display": "Point Light", "version": 3, "customSerialization": true },
+    { "type": "spot_light_component", "id": "a7c00000000000010000000000000010", "display": "Spot Light", "version": 3, "customSerialization": true },
     { "type": "reflection_probe_component", "id": "a7c00000000000010000000000000011", "display": "Reflection Probe" },
     { "type": "irradiance_probe_component", "id": "a7c00000000000010000000000000012", "display": "Irradiance Probe" },
     { "type": "world_environment_component", "id": "a7c00000000000010000000000000013", "display": "World Environment", "customSerialization": true },
@@ -120,9 +123,9 @@
     { "type": "height_fog_component", "id": "a7c00000000000010000000000000018", "display": "Height Fog", "customSerialization": true },
     { "type": "terrain_component", "id": "a7c00000000000010000000000000019", "display": "Terrain", "version": 2, "customSerialization": true },
     { "type": "water_component", "id": "a7c0000000000001000000000000001a", "display": "Water", "customSerialization": true },
-    { "type": "vegetation_component", "id": "a7c0000000000001000000000000001b", "display": "Vegetation", "customSerialization": true },
+    { "type": "vegetation_component", "id": "a7c0000000000001000000000000001b", "display": "Vegetation", "version": 2, "customSerialization": true },
     { "type": "decal_component", "id": "a7c0000000000001000000000000001c", "display": "Decal", "customSerialization": true }
     ,
-    { "type": "area_light_component", "id": "a7c0000000000001000000000000001d", "display": "Area Light", "customSerialization": true }
+    { "type": "area_light_component", "id": "a7c0000000000001000000000000001d", "display": "Area Light", "version": 3, "customSerialization": true }
   ]
 }

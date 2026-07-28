@@ -72,12 +72,22 @@ struct editor_scene_state
     std::filesystem::path active_scene_path;
     std::vector<asset_binding> asset_bindings;
     std::vector<std::pair<scene::entity_guid, std::string>> unknown_component_records;
+    struct preserved_component_record
+    {
+        scene::entity_guid entity;
+        std::string component_name;
+        std::string json;
+    };
+    // Original known-component objects are retained so future fields survive
+    // editing, history, duplication, prefab operations, and resaving.
+    std::vector<preserved_component_record> preserved_component_records;
     editor_material_library material_library;
     material_editor_state material_editor;
     scene::render_scene_result last_render;
     std::uint32_t primitive_serial{};
     bool mesh_uploaded{};
     bool focus_imported_scene_requested{};
+    bool recovered_document{};
 };
 
 void ensure_scene_authoring_metadata(editor_scene_state& scene);

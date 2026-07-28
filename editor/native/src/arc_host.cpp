@@ -90,6 +90,23 @@ scene::entity duplicate_entity_subtree(editor_scene_state& state, scene::entity 
         copied.entity = new_guid;
         state.asset_bindings.push_back(std::move(copied));
     }
+    const auto source_guid = entity_guid_of(state, source);
+    const auto unknown_count = state.unknown_component_records.size();
+    for (std::size_t index = 0; index < unknown_count; ++index)
+        if (state.unknown_component_records[index].first == source_guid)
+        {
+            const auto record = state.unknown_component_records[index].second;
+            state.unknown_component_records.emplace_back(new_guid, record);
+        }
+    const auto preserved_count = state.preserved_component_records.size();
+    for (std::size_t index = 0; index < preserved_count; ++index)
+    {
+        const auto preserved = state.preserved_component_records[index];
+        if (preserved.entity == source_guid)
+            state.preserved_component_records.push_back({
+                new_guid, preserved.component_name, preserved.json
+            });
+    }
     if (state.scene.alive(parent))
         scene::reparent(state.scene, duplicate, parent, {}, scene::reparent_transform_policy::preserve_local);
     for (const auto child : scene::children(state.scene, source))
@@ -1679,7 +1696,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->scene, *state_->renderer, state_->project.root, path, state_->asset_registry.get());
                 if (!loaded.succeeded)
                     return fail(loaded.message);
-                state_->history.clear(state_->scene, true);
+                // A recovered backup is intentionally a dirty document. The
+                // damaged primary is not replaced until the user explicitly
+                // saves the recovered scene.
+                state_->history.clear(state_->scene, !state_->scene.recovered_document);
                 if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "ARC scene loaded", state_->scene.selected_entity);
@@ -1739,7 +1759,8 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (path.empty()) return fail("Scene has no path; use scene.saveAs first");
             if (path.is_relative()) path = state_->project.root / path;
             if (path.extension() != ".arcscene") path.replace_extension(".arcscene");
-            const auto saved = save_scene_document(state_->scene, state_->project.root, path);
+            const auto saved = save_scene_document(
+                state_->scene, state_->project.root, path, state_->asset_registry.get());
             if (!saved.succeeded) return fail(saved.message);
             state_->history.mark_saved();
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene saved", state_->scene.selected_entity);
@@ -1845,7 +1866,8 @@ host_response arc_host::execute(const host_command_envelope& command)
             const auto resolved = resolve_project_document(state_->project.root, path, false);
             if (!resolved)
                 return fail("Prefab path must be inside the active project", entity);
-            const auto result = save_prefab_document(state_->scene, state_->project.root, entity, *resolved);
+            const auto result = save_prefab_document(
+                state_->scene, state_->project.root, entity, *resolved, state_->asset_registry.get());
             if (!result.succeeded)
                 return fail(result.message, entity);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Prefab created", entity);
@@ -1862,7 +1884,8 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (!resolved || resolved->extension() != ".arcprefab")
                 return fail("Prefab source is missing or outside the active project");
             const auto result = instantiate_prefab_document(
-                state_->scene, *state_->renderer, state_->project.root, *resolved, parent);
+                state_->scene, *state_->renderer, state_->project.root, *resolved, parent,
+                state_->asset_registry.get());
             if (!result.succeeded)
                 return fail(result.message);
             select_entity(state_->scene.scene, result.root, state_->scene.selected_entity);
@@ -1877,7 +1900,8 @@ host_response arc_host::execute(const host_command_envelope& command)
             const auto entity = to_scene_entity(payload.entity);
             if (!state_->scene.scene.alive(entity))
                 return fail("Cannot apply a missing prefab instance", entity);
-            const auto result = apply_prefab_instance(state_->scene, state_->project.root, entity);
+            const auto result = apply_prefab_instance(
+                state_->scene, state_->project.root, entity, state_->asset_registry.get());
             if (!result.succeeded)
                 return fail(result.message, entity);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Prefab changes applied", entity);
@@ -1890,7 +1914,8 @@ host_response arc_host::execute(const host_command_envelope& command)
             if (!state_->scene.scene.alive(entity))
                 return fail("Cannot revert a missing prefab instance", entity);
             const auto result = revert_prefab_instance(
-                state_->scene, *state_->renderer, state_->project.root, entity);
+                state_->scene, *state_->renderer, state_->project.root, entity,
+                state_->asset_registry.get());
             if (!result.succeeded)
                 return fail(result.message, entity);
             select_entity(state_->scene.scene, result.root, state_->scene.selected_entity);

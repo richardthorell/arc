@@ -15,15 +15,9 @@
 #include <optional>
 #include <span>
 #include <sstream>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
-
-#if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
 
 namespace arc::editor
 {
@@ -32,6 +26,101 @@ namespace
 using json = nlohmann::json;
 
 constexpr std::string_view base64_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+const persistence::component_persistence_registry& scene_persistence_registry()
+{
+    static const auto registry = [] {
+        persistence::component_persistence_registry value;
+        if (!scene::register_persistence_components(value))
+            throw std::runtime_error("scene persistence component registration failed");
+        return value;
+    }();
+    return registry;
+}
+
+std::string field_id_text(ecs::component_field_id id)
+{
+    constexpr char digits[] = "0123456789abcdef";
+    std::string result(16, '0');
+    for (std::size_t index = 0; index < result.size(); ++index)
+        result[index] = digits[(id >> ((15u - index) * 4u)) & 0xfu];
+    return result;
+}
+
+json dependency_record(
+    const assets::asset_reference& reference,
+    scene::entity_guid owner,
+    ecs::component_type_id component,
+    ecs::component_field_id field,
+    bool required)
+{
+    return {
+        { "guid", reference.guid.valid() ? assets::to_string(reference.guid) : std::string{} },
+        { "expectedType", reference.expected_type.valid()
+            ? assets::to_string(reference.expected_type) : std::string{} },
+        { "pathHint", reference.path_hint },
+        { "ownerEntity", owner.valid() ? scene::to_string(owner) : std::string{} },
+        { "ownerComponent", component.valid() ? ecs::to_string(component) : std::string{} },
+        { "ownerField", field != 0 ? field_id_text(field) : std::string{} },
+        { "required", required }
+    };
+}
+
+json build_dependency_manifest(
+    const editor_scene_state& state,
+    assets::asset_manager* asset_registry = nullptr,
+    const std::unordered_set<scene::entity, ecs::entity_hash>* included_entities = nullptr)
+{
+    json dependencies = json::array();
+    const auto& mesh = ecs::component_metadata<scene::mesh_renderer_component>();
+    const auto refreshed = [&](assets::asset_reference reference) {
+        if (asset_registry && reference.guid.valid())
+        {
+            if (const auto current = asset_registry->find(reference.guid))
+            {
+                reference.expected_type = current->type;
+                reference.path_hint = assets::normalize_asset_path(current->source_path);
+            }
+        }
+        return reference;
+    };
+    for (const auto& binding : state.asset_bindings)
+    {
+        const auto owner = find_entity_by_guid(state, binding.entity);
+        if (included_entities &&
+            (!state.scene.alive(owner) || !included_entities->contains(owner)))
+            continue;
+        if (binding.source.guid.valid() || !binding.source.path_hint.empty())
+            dependencies.push_back(dependency_record(
+                refreshed(binding.source), binding.entity, mesh.id, 1, true));
+        if (binding.material.guid.valid() || !binding.material.path_hint.empty())
+            dependencies.push_back(dependency_record(
+                refreshed(binding.material), binding.entity, mesh.id, 2, false));
+    }
+    const auto& prefab = ecs::component_metadata<scene::prefab_instance_component>();
+    for (const auto entity : state.scene.entities())
+    {
+        if (entity == state.camera_entity)
+            continue;
+        if (included_entities && !included_entities->contains(entity))
+            continue;
+        const auto* instance = state.scene.try_get<scene::prefab_instance_component>(entity);
+        if (!instance || (!instance->prefab_guid.valid() && instance->prefab_path.empty()))
+            continue;
+        assets::asset_reference reference{
+            .guid = { instance->prefab_guid.high, instance->prefab_guid.low },
+            .expected_type = assets::asset_types::prefab,
+            .path_hint = instance->prefab_path
+        };
+        dependencies.push_back(dependency_record(
+            reference, entity_guid_of(state, entity), prefab.id, 2, true));
+    }
+    std::sort(dependencies.begin(), dependencies.end(), [](const json& lhs, const json& rhs) {
+        return std::tie(lhs["guid"], lhs["ownerEntity"], lhs["ownerComponent"], lhs["ownerField"]) <
+            std::tie(rhs["guid"], rhs["ownerEntity"], rhs["ownerComponent"], rhs["ownerField"]);
+    });
+    return dependencies;
+}
 
 std::string base64_encode(std::span<const std::uint8_t> bytes)
 {
@@ -743,6 +832,25 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
         components["Decal"] = { { "version", 1 }, { "enabled", component->enabled },
             { "color", vector4(component->color) }, { "opacity", component->opacity } };
 
+    for (const auto& preserved : state.preserved_component_records)
+    {
+        if (preserved.entity != guid || !components.contains(preserved.component_name))
+            continue;
+        auto original = json::parse(preserved.json, nullptr, false);
+        if (!original.is_object())
+            continue;
+        original.update(components[preserved.component_name]);
+        components[preserved.component_name] = std::move(original);
+    }
+    const auto& registry = scene_persistence_registry();
+    for (auto& [name, component] : components.items())
+    {
+        if (const auto* descriptor = registry.find(name))
+        {
+            component["typeId"] = ecs::to_string(descriptor->component->id);
+            component["version"] = descriptor->component->schema_version;
+        }
+    }
     if (const auto* binding = find_asset_binding(state, guid))
         output["assetBinding"] = { { "version", 2 }, { "kind", binding->source_kind },
             { "source", serialize_asset_reference(binding->source, project_root) },
@@ -757,28 +865,6 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
             components.update(unknown_json);
     }
     return output;
-}
-
-bool replace_file_atomically(const std::filesystem::path& temporary, const std::filesystem::path& target, std::string& error)
-{
-#if defined(_WIN32)
-    const BOOL replaced = MoveFileExW(
-        temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-    if (!replaced)
-    {
-        error = "atomic scene replacement failed with Win32 error " + std::to_string(GetLastError());
-        return false;
-    }
-#else
-    std::error_code move_error;
-    std::filesystem::rename(temporary, target, move_error);
-    if (move_error)
-    {
-        error = move_error.message();
-        return false;
-    }
-#endif
-    return true;
 }
 
 editor_primitive_type primitive_from_name(std::string_view value)
@@ -814,14 +900,17 @@ scene_document_text_result serialize_scene_subtree_as_prefab(
             { "name", std::string(prefab_name) },
             { "root", scene::to_string(entity_guid_of(state, root)) }
         } },
-        { "entities", json::array() }
+        { "entities", json::array() },
+        { "dependencies", build_dependency_manifest(state, nullptr, &included) }
     };
     try
     {
+        std::uint32_t order{};
         for (const scene::entity value : values)
         {
             json record = serialize_entity(state, value, project_root);
             record["components"].erase("PrefabInstance");
+            record["order"] = order++;
             const auto* hierarchy = state.scene.try_get<scene::hierarchy_component>(value);
             if (!hierarchy || !included.contains(hierarchy->parent))
                 record["parent"] = nullptr;
@@ -832,10 +921,13 @@ scene_document_text_result serialize_scene_subtree_as_prefab(
     {
         return { .message = std::string("prefab serialization failed: ") + error.what() };
     }
+    const auto sealed = persistence::seal_json_document(document.dump(), true);
+    if (!sealed.succeeded())
+        return { .message = "prefab integrity generation failed: " + sealed.error };
     return {
         .succeeded = true,
         .entity_count = values.size(),
-        .text = document.dump(2) + '\n',
+        .text = sealed.text,
         .message = "Prefab serialized"
     };
 }
@@ -843,11 +935,29 @@ scene_document_text_result serialize_scene_subtree_as_prefab(
 scene_document_result save_scene_document(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    const std::filesystem::path& path)
+    const std::filesystem::path& path,
+    assets::asset_manager* asset_registry)
 {
     ensure_scene_authoring_metadata(state);
     if (path.empty())
         return { .message = "scene save path is empty" };
+    if (asset_registry)
+    {
+        const auto refresh = [&](assets::asset_reference& reference) {
+            if (!reference.guid.valid())
+                return;
+            if (const auto current = asset_registry->find(reference.guid))
+            {
+                reference.expected_type = current->type;
+                reference.path_hint = assets::normalize_asset_path(current->source_path);
+            }
+        };
+        for (auto& binding : state.asset_bindings)
+        {
+            refresh(binding.source);
+            refresh(binding.material);
+        }
+    }
     std::string validation_error;
     if (!validate_scene_for_save(state, project_root, validation_error))
         return { .message = std::move(validation_error) };
@@ -855,12 +965,18 @@ scene_document_result save_scene_document(
     json document{
         { "format", "arc.scene" }, { "formatVersion", arc_scene_format_version },
         { "scene", { { "id", scene::to_string(state.scene_guid) }, { "name", saved_scene_name } } },
-        { "entities", json::array() }
+        { "entities", json::array() },
+        { "dependencies", build_dependency_manifest(state, asset_registry) }
     };
     try
     {
+        std::uint32_t order{};
         for (const auto entity : ordered_entities(state))
-            document["entities"].push_back(serialize_entity(state, entity, project_root));
+        {
+            auto record = serialize_entity(state, entity, project_root);
+            record["order"] = order++;
+            document["entities"].push_back(std::move(record));
+        }
     }
     catch (const std::exception& error)
     {
@@ -872,40 +988,34 @@ scene_document_result save_scene_document(
         std::filesystem::create_directories(path.parent_path(), directory_error);
     if (directory_error)
         return { .message = "could not create scene directory: " + directory_error.message() };
-    const auto temporary = path.parent_path() / (path.filename().string() + ".tmp");
-    {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-        if (!stream)
-            return { .message = "could not open temporary scene file" };
-        stream << document.dump(2) << '\n';
-        stream.flush();
-        if (!stream)
-            return { .message = "failed while writing temporary scene file" };
-    }
-    std::string replacement_error;
-    if (!replace_file_atomically(temporary, path, replacement_error))
-    {
-        std::error_code ignored;
-        std::filesystem::remove(temporary, ignored);
-        return { .message = replacement_error };
-    }
+    const auto saved = persistence::document_store{}.save_json(path, document.dump(), true);
+    if (!saved.succeeded)
+        return { .message = saved.error };
     state.active_scene_path = path;
     state.scene_name = saved_scene_name;
+    state.recovered_document = false;
     return { .succeeded = true, .entity_count = document["entities"].size(), .message = "Scene saved" };
 }
 
-scene_document_result load_scene_document(
+static scene_document_result load_scene_document_payload(
     editor_scene_state& state,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
     const std::filesystem::path& path,
+    const persistence::document_load_result& stored,
     assets::asset_manager* asset_registry)
 {
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream)
-        return { .message = "could not open scene file" };
+    std::vector<std::string> diagnostics;
+    for (const auto& diagnostic : stored.diagnostics)
+        diagnostics.push_back(diagnostic.message);
+    const auto reflected = persistence::read_reflected_json(
+        stored.text, scene_persistence_registry());
+    if (!reflected.succeeded())
+        return { .message = "scene persistence validation failed: " + reflected.error };
+    for (const auto& diagnostic : reflected.diagnostics)
+        diagnostics.push_back(diagnostic.message);
     json document;
-    try { stream >> document; }
+    try { document = json::parse(stored.text); }
     catch (const std::exception& error) { return { .message = std::string("invalid scene JSON: ") + error.what() }; }
     if (!document.is_object() || !document.contains("format") || !document["format"].is_string() ||
         !document.contains("formatVersion") || !document["formatVersion"].is_number_unsigned() ||
@@ -1009,8 +1119,10 @@ scene_document_result load_scene_document(
     loaded.world_feature_entities.clear();
     loaded.asset_bindings.clear();
     loaded.unknown_component_records.clear();
+    loaded.preserved_component_records.clear();
     loaded.scene_guid = *scene_id;
     loaded.scene_name = document["scene"].value("name", path.stem().string());
+    loaded.recovered_document = stored.recovered;
 
     loaded.camera_entity = loaded.scene.create();
     loaded.scene.emplace<scene::persistent_id_component>(loaded.camera_entity, scene::generate_entity_guid());
@@ -1024,7 +1136,6 @@ scene_document_result load_scene_document(
     std::unordered_map<std::string, scene::entity> entities;
     std::vector<std::pair<scene::entity, std::string>> pending_parents;
     std::vector<std::pair<scene::entity, std::string>> pending_suns;
-    std::vector<std::string> diagnostics;
     try
     {
         for (const auto& record : document["entities"])
@@ -1335,7 +1446,16 @@ scene_document_result load_scene_document(
                 "Vegetation", "Decal", "PrefabInstance", "WorldRegion" };
             json unknown = json::object();
             for (const auto& [name, value] : components.items())
-                if (!known.contains(name)) unknown[name] = value;
+            {
+                if (known.contains(name))
+                    loaded.preserved_component_records.push_back({
+                        .entity = guid,
+                        .component_name = name,
+                        .json = value.dump()
+                    });
+                else
+                    unknown[name] = value;
+            }
             if (!unknown.empty()) loaded.unknown_component_records.emplace_back(guid, unknown.dump());
 
             if (!binding_kind.empty())
@@ -1412,6 +1532,45 @@ scene_document_result load_scene_document(
     loaded.active_scene_path = path;
     state = std::move(loaded);
     return { .succeeded = true, .entity_count = document["entities"].size(), .message = "Scene loaded", .diagnostics = std::move(diagnostics) };
+}
+
+scene_document_result load_scene_document(
+    editor_scene_state& state,
+    render::renderer& renderer,
+    const std::filesystem::path& project_root,
+    const std::filesystem::path& path,
+    assets::asset_manager* asset_registry)
+{
+    const auto stored = persistence::document_store{}.load_json(path);
+    if (!stored.succeeded)
+        return { .message = stored.error.empty() ? "could not open scene file" : stored.error };
+    return load_scene_document_payload(
+        state, renderer, project_root, path, stored, asset_registry);
+}
+
+scene_document_result load_scene_document_text(
+    editor_scene_state& state,
+    render::renderer& renderer,
+    const std::filesystem::path& project_root,
+    const std::filesystem::path& logical_path,
+    std::string_view text,
+    assets::asset_manager* asset_registry)
+{
+    persistence::document_load_result stored;
+    stored.source_path = logical_path;
+    stored.text.assign(text);
+    assets::asset_hash hash;
+    stored.succeeded = persistence::verify_json_document(text, &hash, stored.error);
+    if (!stored.succeeded)
+        return { .message = stored.error };
+    const auto parsed = json::parse(text, nullptr, false);
+    stored.integrity_verified = parsed.is_object() && parsed.contains("integrity");
+    if (!stored.integrity_verified)
+        stored.diagnostics.push_back({
+            "persistence.integrity", "In-memory document has no integrity record"
+        });
+    return load_scene_document_payload(
+        state, renderer, project_root, logical_path, stored, asset_registry);
 }
 
 } // namespace arc::editor

@@ -18,25 +18,29 @@ prefab_document_result save_prefab_document(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
     scene::entity root,
-    const std::filesystem::path& path);
+    const std::filesystem::path& path,
+    assets::asset_manager* asset_registry = nullptr);
 
 prefab_document_result instantiate_prefab_document(
     editor_scene_state& state,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
     const std::filesystem::path& path,
-    scene::entity parent = {});
+    scene::entity parent = {},
+    assets::asset_manager* asset_registry = nullptr);
 
 prefab_document_result apply_prefab_instance(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    scene::entity root);
+    scene::entity root,
+    assets::asset_manager* asset_registry = nullptr);
 
 prefab_document_result revert_prefab_instance(
     editor_scene_state& state,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
-    scene::entity root);
+    scene::entity root,
+    assets::asset_manager* asset_registry = nullptr);
 
 bool unpack_prefab_instance(editor_scene_state& state, scene::entity root);
 

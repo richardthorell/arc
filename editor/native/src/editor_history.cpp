@@ -18,6 +18,8 @@ std::size_t editor_history::estimate(const editor_scene_state& scene) noexcept
             binding.subresource.size() + binding.material.path_hint.size();
     for (const auto& [_, unknown] : scene.unknown_component_records)
         result += unknown.size();
+    for (const auto& preserved : scene.preserved_component_records)
+        result += sizeof(preserved) + preserved.component_name.size() + preserved.json.size();
     scene.scene.view<scene::terrain_component>().each([&](scene::entity, const scene::terrain_component& terrain) {
         result += terrain.heights.size() * sizeof(float) +
             terrain.layer_weights.size() * sizeof(std::array<std::uint8_t, 4>);

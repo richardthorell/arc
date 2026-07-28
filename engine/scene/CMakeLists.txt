@@ -21,7 +21,7 @@ add_custom_command(
 arc_add_module(
     NAME arc-scene
     TYPE STATIC
-    DEPS arc-ecs arc-render arc-math arc-framework arc-diagnostics arc-memory
+    DEPS arc-ecs arc-render arc-math arc-framework arc-diagnostics arc-memory arc-persistence
     NO_TESTS
 )
 
