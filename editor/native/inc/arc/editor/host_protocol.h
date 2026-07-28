@@ -552,6 +552,15 @@ struct host_project_assets_snapshot
     std::string default_mesh_path;
     bool default_mesh_loaded{};
     std::string default_mesh_message;
+    std::filesystem::path cache_root;
+    std::uint64_t cache_local_bytes{};
+    std::uint64_t cache_local_hits{};
+    std::uint64_t cache_local_misses{};
+    std::uint64_t cache_shared_hits{};
+    std::uint64_t cache_shared_misses{};
+    std::uint64_t cache_corrupt_entries{};
+    std::uint64_t cache_evictions{};
+    double cache_hit_rate{};
     std::vector<host_asset_snapshot> assets;
 };
 

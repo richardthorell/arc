@@ -1539,6 +1539,15 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
         ",\"defaultMeshPath\":" + quote(snapshot.default_mesh_path) +
         ",\"defaultMeshLoaded\":" + bool_json(snapshot.default_mesh_loaded) +
         ",\"defaultMeshMessage\":" + quote(snapshot.default_mesh_message) +
+        ",\"cacheRoot\":" + quote(snapshot.cache_root.generic_string()) +
+        ",\"cacheLocalBytes\":" + std::to_string(snapshot.cache_local_bytes) +
+        ",\"cacheLocalHits\":" + std::to_string(snapshot.cache_local_hits) +
+        ",\"cacheLocalMisses\":" + std::to_string(snapshot.cache_local_misses) +
+        ",\"cacheSharedHits\":" + std::to_string(snapshot.cache_shared_hits) +
+        ",\"cacheSharedMisses\":" + std::to_string(snapshot.cache_shared_misses) +
+        ",\"cacheCorruptEntries\":" + std::to_string(snapshot.cache_corrupt_entries) +
+        ",\"cacheEvictions\":" + std::to_string(snapshot.cache_evictions) +
+        ",\"cacheHitRate\":" + std::to_string(snapshot.cache_hit_rate) +
         ",\"assets\":[";
     for (std::size_t index = 0; index < snapshot.assets.size(); ++index)
     {

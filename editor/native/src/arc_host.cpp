@@ -11,6 +11,7 @@
 #include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
+#include <arc/assets/cook.h>
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
 #include <arc/render/render.h>
@@ -1305,6 +1306,7 @@ struct arc_host::state
     runtime simulation;
     std::unique_ptr<io::async_file_service> asset_files;
     std::unique_ptr<arc::assets::asset_manager> asset_registry;
+    std::unique_ptr<arc::assets::derived_data_cache> derived_cache;
     std::uint64_t asset_event_cursor{};
     std::uint64_t runtime_revision{ 1 };
     std::uint64_t last_runtime_tick_event{};
@@ -1361,6 +1363,7 @@ arc_host::~arc_host()
             runtime_service_context context(state_->simulation.services());
             state_->asset_registry->on_shutdown(context);
             state_->asset_registry.reset();
+            state_->derived_cache.reset();
             state_->asset_files.reset();
         }
         state_->simulation.shutdown();
@@ -1381,6 +1384,10 @@ host_response arc_host::open_project(
         state_->asset_registry->on_shutdown(context);
     }
     state_->asset_registry.reset();
+    state_->derived_cache = std::make_unique<arc::assets::derived_data_cache>(
+        arc::assets::derived_data_cache_config{
+            .root = command.root / ".arc" / "cache"
+        });
     state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
     state_->asset_registry = std::make_unique<arc::assets::asset_manager>(
         arc::assets::asset_manager_config{
@@ -1499,6 +1506,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 runtime_service_context context(state_->simulation.services());
                 state_->asset_registry->on_shutdown(context);
                 state_->asset_registry.reset();
+                state_->derived_cache.reset();
                 state_->asset_files.reset();
             }
             state_->scene = {};
@@ -3419,6 +3427,19 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
     snapshot.default_mesh_path = state_->assets.default_mesh_path.generic_string();
     snapshot.default_mesh_loaded = state_->assets.default_mesh_loaded;
     snapshot.default_mesh_message = state_->assets.default_mesh_message;
+    if (state_->derived_cache)
+    {
+        const auto cache = state_->derived_cache->statistics();
+        snapshot.cache_root = state_->derived_cache->config().root;
+        snapshot.cache_local_bytes = cache.local_bytes;
+        snapshot.cache_local_hits = cache.local_hits;
+        snapshot.cache_local_misses = cache.local_misses;
+        snapshot.cache_shared_hits = cache.shared_hits;
+        snapshot.cache_shared_misses = cache.shared_misses;
+        snapshot.cache_corrupt_entries = cache.corrupt_entries;
+        snapshot.cache_evictions = cache.evictions;
+        snapshot.cache_hit_rate = cache.hit_rate();
+    }
     if (state_->asset_registry)
     {
         const auto state_name = [](arc::assets::asset_state value) {

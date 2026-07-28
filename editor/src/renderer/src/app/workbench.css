@@ -656,6 +656,23 @@
   text-align: center;
 }
 
+.asset-cache-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  background: rgba(9, 15, 20, 0.52);
+  color: var(--arc-color-text-muted);
+  font-size: 11px;
+}
+
+.asset-cache-summary b {
+  color: var(--arc-color-text);
+  font-weight: 600;
+}
+
 .asset-card-foundation .asset-thumbnail {
   width: 72px;
 }

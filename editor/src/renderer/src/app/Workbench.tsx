@@ -107,6 +107,15 @@ type HostProjectAssetsSnapshot = {
   projectName: string;
   projectRoot: string;
   assetRoot: string;
+  cacheRoot: string;
+  cacheLocalBytes: number;
+  cacheLocalHits: number;
+  cacheLocalMisses: number;
+  cacheSharedHits: number;
+  cacheSharedMisses: number;
+  cacheCorruptEntries: number;
+  cacheEvictions: number;
+  cacheHitRate: number;
   assets: HostAssetSnapshot[];
 };
 
@@ -319,6 +328,7 @@ export function Workbench() {
   const [selectedEntityId, setSelectedEntityId] = useState('camera-main');
   const selectedEntityIdRef = useRef(selectedEntityId);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>('asset-scene-demo');
+  const [assetCache, setAssetCache] = useState<HostProjectAssetsSnapshot | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<InspectorEntitySnapshot | null>(null);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
   const selectedSnapshotRevision = useRef(0);
@@ -679,6 +689,7 @@ export function Workbench() {
     setDocumentState(nextDocumentState);
 
     const hostAssets = assetsResponse.succeeded && assetsResponse.payload ? assetsResponse.payload : null;
+    setAssetCache(hostAssets);
     const assets = hostAssets?.assets.map((asset): AssetItem => ({
       id: asset.guid || asset.path,
       name: assetNameFromPath(asset.path),
@@ -1052,7 +1063,7 @@ export function Workbench() {
 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'contentBrowser') {
-      return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
+      return <ContentBrowserPanel project={project} cache={assetCache} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
         onCommand={runCommand} onInstantiatePrefab={(path) => void instantiatePrefab(path)}
         onAssetAction={async (type, guid) => {
           const response = await window.arc.host.command(type, { guid }) as HostResponse;
@@ -1086,7 +1097,7 @@ export function Workbench() {
         onUndoLastEdit={() => void window.arc.aiGateway.undoLastEdit()} />;
     }
 
-    return <ContentBrowserPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
+    return <ContentBrowserPanel project={project} cache={assetCache} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId}
       onCommand={runCommand} onInstantiatePrefab={(path) => void instantiatePrefab(path)}
       onAssetAction={async (type, guid) => {
         const response = await window.arc.host.command(type, { guid }) as HostResponse;
@@ -1354,8 +1365,9 @@ function LightingPanel() {
   );
 }
 
-function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onCommand, onInstantiatePrefab, onAssetAction, thumbnailProvider }: {
+function ContentBrowserPanel({ project, cache, selectedAssetId, onSelectAsset, onCommand, onInstantiatePrefab, onAssetAction, thumbnailProvider }: {
   project: ProjectSnapshot | null;
+  cache: HostProjectAssetsSnapshot | null;
   selectedAssetId: string | null;
   onSelectAsset: (assetId: string) => void;
   onCommand: (command: CommandId) => void;
@@ -1372,6 +1384,14 @@ function ContentBrowserPanel({ project, selectedAssetId, onSelectAsset, onComman
         <UiButton onClick={() => onCommand('assets.saveAll')} variant="toolbar">Save All</UiButton>
         <span>Assets / Environment / Props</span>
       </div>
+      {cache && <div className="asset-cache-summary">
+        <span>DDC <b>{(cache.cacheLocalBytes / (1024 * 1024)).toFixed(1)} MiB</b></span>
+        <span>Local {cache.cacheLocalHits}/{cache.cacheLocalHits + cache.cacheLocalMisses}</span>
+        <span>Shared {cache.cacheSharedHits}/{cache.cacheSharedHits + cache.cacheSharedMisses}</span>
+        <span>Hit {(cache.cacheHitRate * 100).toFixed(1)}%</span>
+        {(cache.cacheCorruptEntries > 0 || cache.cacheEvictions > 0) &&
+          <span className="asset-registry-diagnostic">Corrupt {cache.cacheCorruptEntries} · Evicted {cache.cacheEvictions}</span>}
+      </div>}
       <div className="asset-grid-foundation">
         {(project?.assets ?? []).map((asset) => <AssetCard key={asset.id} asset={asset} selected={asset.id === selectedAssetId}
           thumbnailProvider={thumbnailProvider} onSelect={() => onSelectAsset(asset.id)}
