@@ -2,7 +2,7 @@
   "format": "arc.cook-project",
   "version": 1,
   "roots": [
-    "assets/materials/default_phong.arcmat"
+    "assets/fixtures/persistence_fixture.arcscene"
   ],
   "profiles": {
     "windows-x64-vulkan": {

@@ -2,9 +2,11 @@
 #include <arc/framework/service.h>
 #include <arc/io/io.h>
 #include <arc/memory/memory.h>
+#include <arc/persistence/persistence.h>
 #include <arc/render/mesh.h>
 #include <arc/render/texture.h>
 #include <arc/render/virtual_mesh.h>
+#include <arc/scene/persistence.h>
 
 #include <nlohmann/json.hpp>
 
@@ -14,6 +16,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <type_traits>
 
 namespace
@@ -48,17 +51,24 @@ class document_processor final : public asset_cook_processor
 {
 public:
     document_processor(asset_type_id type, cook_processor_id id, artifact_schema_id schema,
-        std::string name, std::string extension)
+        std::string name, std::string extension,
+        std::optional<persistence::document_kind> document_kind = std::nullopt)
         : extension_(std::move(extension))
+        , document_kind_(document_kind)
     {
         descriptor_.id = id;
         descriptor_.name = std::move(name);
         descriptor_.schema = schema;
         descriptor_.input_types.push_back(type);
+        if (document_kind_)
+        {
+            descriptor_.version = 2;
+            descriptor_.schema_version = 2;
+        }
     }
 
     const asset_cook_processor_descriptor& descriptor() const noexcept override { return descriptor_; }
-    std::string toolchain_fingerprint() const override { return "arc.document-cooker/1"; }
+    std::string toolchain_fingerprint() const override { return "arc.document-cooker/2"; }
 
     asset_cook_result cook(const asset_cook_context& context) override
     {
@@ -70,6 +80,60 @@ public:
             return { .error = { .code = asset_error_code::import_failed,
                 .guid = context.asset.guid, .path = context.source.source_path,
                 .message = "Authored JSON document is invalid" } };
+        if (document_kind_)
+        {
+            persistence::component_persistence_registry components;
+            persistence::schema_migration_registry migrations;
+            std::string error;
+            if (!scene::register_persistence_components(components) ||
+                !scene::register_persistence_migrations(migrations, error))
+                return { .error = { .code = asset_error_code::import_failed,
+                    .guid = context.asset.guid, .path = context.source.source_path,
+                    .message = "Persistence registry initialization failed: " + error } };
+            const std::string_view source(
+                reinterpret_cast<const char*>(context.source.bytes.data()),
+                context.source.bytes.size());
+            auto archive = persistence::read_reflected_json(
+                source, components, &migrations);
+            if (!archive.succeeded() || archive.document.kind != *document_kind_)
+                return { .error = { .code = asset_error_code::import_failed,
+                    .guid = context.asset.guid, .path = context.source.source_path,
+                    .message = archive.error.empty()
+                        ? "Document kind does not match its asset type" : archive.error } };
+            for (const auto& dependency : archive.document.dependencies)
+            {
+                if (!dependency.required)
+                    continue;
+                const auto found = std::find_if(
+                    context.dependencies.begin(), context.dependencies.end(),
+                    [&](const asset_snapshot& candidate) {
+                        return candidate.guid == dependency.reference.guid;
+                    });
+                if (!dependency.reference.guid.valid() ||
+                    found == context.dependencies.end() ||
+                    (dependency.reference.expected_type.valid() &&
+                        found->type != dependency.reference.expected_type))
+                {
+                    return { .error = { .code = asset_error_code::dependency_failed,
+                        .guid = context.asset.guid, .path = context.source.source_path,
+                        .message = "Required document dependency is unresolved or has the wrong type: " +
+                            dependency.reference.path_hint } };
+                }
+            }
+            auto bytes = persistence::write_tagged_binary(
+                archive.document, canonical_cook_target(context.target), error);
+            if (!error.empty())
+                return { .error = { .code = asset_error_code::import_failed,
+                    .guid = context.asset.guid, .path = context.source.source_path,
+                    .message = std::move(error) } };
+            return { .artifacts = {{
+                .name = context.source.source_path.stem().string(),
+                .extension = extension_,
+                .schema = descriptor_.schema,
+                .schema_version = descriptor_.schema_version,
+                .bytes = std::move(bytes)
+            }} };
+        }
         const auto canonical = document.dump();
         std::vector<std::byte> bytes;
         append_string(bytes, "ARC_DOCUMENT_1");
@@ -86,6 +150,7 @@ public:
 private:
     asset_cook_processor_descriptor descriptor_;
     std::string extension_;
+    std::optional<persistence::document_kind> document_kind_;
 };
 
 class source_processor final : public asset_cook_processor
@@ -361,10 +426,10 @@ void register_processors(asset_cooker& cooker)
         "ARC Material", ".arcmatc"));
     cooker.register_processor(std::make_unique<document_processor>(
         asset_types::scene, cook_processor_ids::scene, artifact_schemas::scene,
-        "ARC Scene", ".arcscenec"));
+        "ARC Scene", ".arcscenec", persistence::document_kind::scene));
     cooker.register_processor(std::make_unique<document_processor>(
         asset_types::prefab, cook_processor_ids::scene, artifact_schemas::scene,
-        "ARC Prefab", ".arcprefabc"));
+        "ARC Prefab", ".arcprefabc", persistence::document_kind::prefab));
     cooker.register_processor(std::make_unique<unsupported_processor>(
         asset_types::animation_clip, cook_processor_ids::animation, "Animation compression"));
     cooker.register_processor(std::make_unique<unsupported_processor>(

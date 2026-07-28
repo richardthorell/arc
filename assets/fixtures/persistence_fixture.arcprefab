@@ -1,0 +1,111 @@
+{
+  "format": "arc.prefab",
+  "formatVersion": 2,
+  "prefab": {
+    "id": "d499b8de-bb46-4cb7-b58f-0dc6f53e0102",
+    "name": "Persistence Fixture Prop",
+    "root": "b60e59c7-2781-4cf8-99a9-ff70193c1001"
+  },
+  "entities": [
+    {
+      "id": "b60e59c7-2781-4cf8-99a9-ff70193c1001",
+      "parent": null,
+      "order": 0,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Cooked Persistence Prop"
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0],
+          "futureEditorNote": "This unknown field must survive a round trip."
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 2,
+          "visible": true,
+          "baseColorTint": [1.0, 1.0, 1.0, 1.0],
+          "castShadows": true,
+          "receiveShadows": true,
+          "shadowLodBias": 0.0,
+          "maximumShadowDistance": 200.0
+        },
+        "FutureGameplay": {
+          "typeId": "f0010000000000010000000000000001",
+          "version": 7,
+          "opaqueState": {
+            "enabled": true,
+            "values": [1, 2, 3]
+          }
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "imported",
+        "source": {
+          "guid": "fa99c80b-dca6-4a36-a505-eb75c3c444ee",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000007",
+          "pathHint": "assets/models/UAL2_Standard.glb"
+        },
+        "subresource": "",
+        "material": {
+          "guid": "b36d1554-ddb0-4692-8a2c-a7dde15e0456",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/default_phong.arcmat"
+        }
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "guid": "fa99c80b-dca6-4a36-a505-eb75c3c444ee",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000007",
+      "pathHint": "assets/models/UAL2_Standard.glb",
+      "ownerEntity": "b60e59c7-2781-4cf8-99a9-ff70193c1001",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000001",
+      "required": true
+    },
+    {
+      "guid": "b36d1554-ddb0-4692-8a2c-a7dde15e0456",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/default_phong.arcmat",
+      "ownerEntity": "b60e59c7-2781-4cf8-99a9-ff70193c1001",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": true
+    },
+    {
+      "guid": "0b470f3a-4a79-4ac4-9070-8fa5d86c6273",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000005",
+      "pathHint": "assets/textures/terrain/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg",
+      "ownerEntity": "b60e59c7-2781-4cf8-99a9-ff70193c1001",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": true
+    },
+    {
+      "guid": "0e5f82b6-8cd2-49be-b824-bb1469bc619a",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000004",
+      "pathHint": "assets/shaders/default_phong.frag",
+      "ownerEntity": "b60e59c7-2781-4cf8-99a9-ff70193c1001",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": true
+    },
+    {
+      "guid": "9e69a203-0dcb-4969-bffc-83e43d38230d",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000006",
+      "pathHint": "assets/environments/autumn_field_puresky_1k.hdr",
+      "ownerEntity": "b60e59c7-2781-4cf8-99a9-ff70193c1001",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": true
+    }
+  ]
+}

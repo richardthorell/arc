@@ -1,0 +1,40 @@
+{
+  "format": "arc.scene",
+  "formatVersion": 3,
+  "scene": {
+    "id": "7dc8bf4e-a087-4789-b72f-eb18f4500101",
+    "name": "Persistence Clean Checkout Fixture"
+  },
+  "entities": [
+    {
+      "id": "657bce45-4f83-4453-8d08-fcb89e461001",
+      "parent": null,
+      "order": 0,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Fixture Root"
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [0.0, 0.0, 0.0],
+          "rotation": [0.0, 0.0, 0.0, 1.0],
+          "scale": [1.0, 1.0, 1.0]
+        }
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "guid": "d499b8de-bb46-4cb7-b58f-0dc6f53e0102",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000002",
+      "pathHint": "assets/fixtures/persistence_fixture.arcprefab",
+      "ownerEntity": "657bce45-4f83-4453-8d08-fcb89e461001",
+      "ownerComponent": "a7c00000000000000000000000000003",
+      "ownerField": "0000000000000002",
+      "required": true
+    }
+  ]
+}
