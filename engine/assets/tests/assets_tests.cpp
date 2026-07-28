@@ -1,9 +1,11 @@
 #include <arc/assets/assets.h>
+#include <arc/assets/cook.h>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 
 namespace
 {
@@ -63,6 +65,44 @@ struct asset_fixture
     arc::assets::asset_manager manager;
     arc::runtime_service_registry services;
     arc::runtime_service_context context;
+};
+
+class test_cook_processor final : public arc::assets::asset_cook_processor
+{
+public:
+    test_cook_processor(
+        arc::assets::asset_type_id type,
+        arc::assets::cook_processor_id id,
+        arc::assets::artifact_schema_id schema,
+        std::shared_ptr<std::size_t> runs)
+        : runs_(std::move(runs))
+    {
+        descriptor_.id = id;
+        descriptor_.name = "Test cook processor";
+        descriptor_.schema = schema;
+        descriptor_.input_types.push_back(type);
+    }
+
+    const arc::assets::asset_cook_processor_descriptor& descriptor() const noexcept override
+    {
+        return descriptor_;
+    }
+    std::string toolchain_fingerprint() const override { return "test-toolchain/1"; }
+    arc::assets::asset_cook_result cook(const arc::assets::asset_cook_context& context) override
+    {
+        ++*runs_;
+        return { .artifacts = {{
+            .name = "test",
+            .extension = ".test",
+            .schema = descriptor_.schema,
+            .schema_version = descriptor_.schema_version,
+            .bytes = context.source.bytes
+        }} };
+    }
+
+private:
+    arc::assets::asset_cook_processor_descriptor descriptor_;
+    std::shared_ptr<std::size_t> runs_;
 };
 
 }
@@ -309,4 +349,218 @@ TEST_CASE("asset handles pins cancellation and pressure eviction preserve reside
     }).get();
     REQUIRE_FALSE(cancelled_result.succeeded());
     REQUIRE(cancelled_result.error.code == asset_error_code::cancelled);
+}
+
+TEST_CASE("cook build keys include processor shader and platform identities")
+{
+    using namespace arc::assets;
+    constexpr std::string_view source_text = "source";
+    asset_build_key_desc description{
+        .source_hash = hash_bytes(std::as_bytes(std::span(source_text.data(), source_text.size()))),
+        .importer = importer_ids::shader,
+        .importer_version = 3,
+        .processor = cook_processor_ids::shader,
+        .processor_version = 4,
+        .schema = artifact_schemas::shader,
+        .schema_version = 2,
+        .canonical_settings = R"({"optimize":true})",
+        .toolchain_fingerprint = "arc-cook/test",
+        .shader_compiler_fingerprint = "compiler/1",
+        .shader_entry_point = "main",
+        .shader_defines = { "STANDARD=1" },
+        .target = windows_vulkan_cook_target()
+    };
+    const auto original = make_asset_build_key(description);
+    REQUIRE(original == make_asset_build_key(description));
+    description.processor_version++;
+    REQUIRE(original != make_asset_build_key(description));
+    description.processor_version--;
+    description.shader_compiler_fingerprint = "compiler/2";
+    REQUIRE(original != make_asset_build_key(description));
+    description.shader_compiler_fingerprint = "compiler/1";
+    description.target = linux_vulkan_cook_target();
+    REQUIRE(original != make_asset_build_key(description));
+}
+
+TEST_CASE("derived data cache verifies read-through and immutable actions")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    const auto local = project.root / "local";
+    const auto shared_root = project.root / "shared";
+    auto shared = std::make_shared<filesystem_shared_cache>(shared_root);
+    derived_data_cache writer({ .root = project.root / "writer", .shared = shared });
+    constexpr std::string_view text = "content-addressed-artifact";
+    const auto bytes = std::as_bytes(std::span(text.data(), text.size()));
+    const auto hash = hash_bytes(bytes);
+    const auto key = hash_bytes(std::as_bytes(std::span("action-key", 10)));
+    cache_error error;
+    REQUIRE(writer.put_blob(hash, bytes, error));
+    REQUIRE(writer.put_action({ .key = key, .artifacts = { hash }, .metadata = "[]" }, error));
+
+    derived_data_cache reader({ .root = local, .shared = shared });
+    const auto action = reader.get_action(key, error);
+    REQUIRE(action);
+    REQUIRE(action->artifacts == std::vector<asset_hash>{ hash });
+    const auto blob = reader.get_blob(hash, error);
+    REQUIRE(blob);
+    REQUIRE(blob->layer == cache_layer::shared);
+    REQUIRE(blob->bytes.size() == bytes.size());
+    REQUIRE(reader.statistics().shared_hits == 2);
+    REQUIRE(reader.verify() == 1);
+}
+
+TEST_CASE("incremental cooker reuses actions and packages mount without source state")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    project.write("textures/albedo.png", "texture");
+    project.write("materials/cooked.arcmat",
+        R"({"version":3,"textures":{"baseColor":"textures/albedo.png"}})");
+    asset_fixture fixture(project);
+    const auto material = fixture.manager.find("assets/materials/cooked.arcmat");
+    REQUIRE(material);
+
+    derived_data_cache cache({ .root = project.root / ".arc" / "cook-cache" });
+    const auto runs = std::make_shared<std::size_t>();
+    asset_cooker cooker(fixture.manager, cache);
+    REQUIRE(cooker.register_processor(std::make_unique<test_cook_processor>(
+        asset_types::texture_2d,
+        cook_processor_ids::texture,
+        artifact_schemas::texture,
+        runs)));
+    REQUIRE(cooker.register_processor(std::make_unique<test_cook_processor>(
+        asset_types::material,
+        cook_processor_ids::material,
+        artifact_schemas::material,
+        runs)));
+
+    const cook_request request{
+        .roots = { material->guid },
+        .target = windows_vulkan_cook_target(),
+        .output = project.root / "cooked"
+    };
+    const auto first = cooker.cook(request);
+    REQUIRE(first.succeeded());
+    REQUIRE(first.cooked == 2);
+    REQUIRE(first.cache_hits == 0);
+    REQUIRE(*runs == 2);
+
+    const auto second = cooker.cook(request);
+    REQUIRE(second.succeeded());
+    REQUIRE(second.cooked == 0);
+    REQUIRE(second.cache_hits == 2);
+    REQUIRE(*runs == 2);
+    REQUIRE(second.manifest.artifacts.size() == 2);
+
+    const auto package = build_asset_packages(second.manifest, cache, request.output);
+    REQUIRE(package.succeeded());
+    REQUIRE(package.chunks.size() == 1);
+    asset_package_mount mount;
+    std::string error;
+    REQUIRE(mount.mount(package.manifest_path, error));
+    for (const auto& artifact : mount.manifest().artifacts)
+    {
+        const auto loaded = mount.read(artifact.asset, artifact.schema, error);
+        REQUIRE(loaded);
+        REQUIRE(hash_bytes(*loaded) == artifact.hash);
+
+        arc::job_system jobs({ .run_inline = true });
+        arc::io::async_file_service files(jobs);
+        const auto async_loaded = mount.read_async(
+            artifact.asset, artifact.schema, files).get();
+        REQUIRE(async_loaded);
+        REQUIRE(hash_bytes(async_loaded.value()) == artifact.hash);
+    }
+
+    {
+        std::ofstream corrupt(package.chunks.front(), std::ios::binary | std::ios::trunc);
+        corrupt << "corrupt";
+    }
+    const auto repaired = build_asset_packages(second.manifest, cache, request.output);
+    REQUIRE(repaired.succeeded());
+    REQUIRE(repaired.chunks == package.chunks);
+    REQUIRE(std::ranges::any_of(
+        std::filesystem::directory_iterator(request.output),
+        [](const auto& entry) {
+            return entry.path().string().find(".corrupt-") != std::string::npos;
+        }));
+    REQUIRE(mount.mount(repaired.manifest_path, error));
+    for (const auto& artifact : mount.manifest().artifacts)
+        REQUIRE(mount.read(artifact.asset, artifact.schema, error));
+}
+
+TEST_CASE("cache pruning preserves pinned blobs")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    derived_data_cache cache({
+        .root = project.root / "cache",
+        .cleanup = {
+            .maximum_bytes = 8,
+            .prune_threshold = 0.5f,
+            .prune_target = 0.25f
+        }
+    });
+    const std::array<std::byte, 8> first{};
+    const std::array<std::byte, 8> second{ std::byte{ 1 } };
+    const auto first_hash = hash_bytes(first);
+    const auto second_hash = hash_bytes(second);
+    cache_error error;
+    REQUIRE(cache.put_blob(first_hash, first, error));
+    REQUIRE(cache.put_blob(second_hash, second, error));
+    REQUIRE(cache.pin(first_hash));
+    REQUIRE(cache.prune() == second.size());
+    REQUIRE(cache.get_blob(first_hash, error));
+    REQUIRE_FALSE(cache.get_blob(second_hash, error));
+}
+
+TEST_CASE("HTTP shared cache authenticates and verifies immutable blob responses")
+{
+    using namespace arc::assets;
+    constexpr std::string_view text = "remote-content";
+    const std::vector<std::byte> bytes(
+        std::as_bytes(std::span(text.data(), text.size())).begin(),
+        std::as_bytes(std::span(text.data(), text.size())).end());
+    const auto hash = hash_bytes(bytes);
+    std::vector<http_cache_request> requests;
+    http_shared_cache cache({
+        .endpoint = "https://cache.example/",
+        .bearer_token = "test-token",
+        .transport = [&](const http_cache_request& request) {
+            requests.push_back(request);
+            if (request.method == http_cache_method::get)
+                return http_cache_response{
+                    .status = 200,
+                    .headers = { { "etag", std::string("\"") + to_string(hash) + "\"" } },
+                    .body = bytes
+                };
+            return http_cache_response{ .status = 201 };
+        }
+    });
+    cache_error error;
+    const auto loaded = cache.get_blob(hash, error);
+    REQUIRE(loaded == bytes);
+    REQUIRE(requests.front().url ==
+        "https://cache.example/v1/blobs/sha256/" + to_string(hash));
+    REQUIRE(requests.front().headers == std::vector<std::pair<std::string, std::string>>{
+        { "authorization", "Bearer test-token" }
+    });
+    REQUIRE(cache.put_blob(hash, bytes, error));
+    REQUIRE(requests.back().method == http_cache_method::put);
+    REQUIRE(std::find(requests.back().headers.begin(), requests.back().headers.end(),
+        std::pair<std::string, std::string>{ "if-none-match", "*" }) != requests.back().headers.end());
+
+    http_shared_cache corrupt({
+        .endpoint = "https://cache.example",
+        .transport = [&](const http_cache_request&) {
+            return http_cache_response{
+                .status = 200,
+                .headers = { { "etag", to_string(hash) } },
+                .body = { std::byte{ 42 } }
+            };
+        }
+    });
+    REQUIRE_FALSE(corrupt.get_blob(hash, error));
+    REQUIRE(error);
 }

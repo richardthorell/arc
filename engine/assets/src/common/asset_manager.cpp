@@ -373,6 +373,18 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
         importer_ids::fbx, asset_types::imported_scene, "FBX", std::vector<std::string>{ ".fbx" }));
     result.push_back(std::make_unique<source_blob_importer>(
         importer_ids::binary, asset_types::binary_blob, "Binary source", std::vector<std::string>{ ".bin" }));
+    result.push_back(std::make_unique<source_blob_importer>(
+        importer_ids::animation, asset_types::animation_clip, "Animation",
+        std::vector<std::string>{ ".arcanim" }));
+    result.push_back(std::make_unique<source_blob_importer>(
+        importer_ids::collision, asset_types::collision, "Collision",
+        std::vector<std::string>{ ".arccollision" }));
+    result.push_back(std::make_unique<source_blob_importer>(
+        importer_ids::navigation, asset_types::navigation, "Navigation",
+        std::vector<std::string>{ ".arcnav" }));
+    result.push_back(std::make_unique<source_blob_importer>(
+        importer_ids::audio, asset_types::audio_clip, "Audio",
+        std::vector<std::string>{ ".wav", ".ogg", ".mp3", ".flac" }));
     return result;
 }
 

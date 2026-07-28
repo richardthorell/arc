@@ -107,6 +107,10 @@ inline constexpr asset_type_id environment{ 0xa7ca55e700000001ull, 0x00000000000
 inline constexpr asset_type_id imported_scene{ 0xa7ca55e700000001ull, 0x0000000000000007ull };
 inline constexpr asset_type_id static_mesh{ 0xa7ca55e700000001ull, 0x0000000000000008ull };
 inline constexpr asset_type_id binary_blob{ 0xa7ca55e700000001ull, 0x0000000000000009ull };
+inline constexpr asset_type_id animation_clip{ 0xa7ca55e700000001ull, 0x000000000000000aull };
+inline constexpr asset_type_id collision{ 0xa7ca55e700000001ull, 0x000000000000000bull };
+inline constexpr asset_type_id navigation{ 0xa7ca55e700000001ull, 0x000000000000000cull };
+inline constexpr asset_type_id audio_clip{ 0xa7ca55e700000001ull, 0x000000000000000dull };
 inline constexpr asset_type_id unknown{ 0xa7ca55e700000001ull, 0xffffffffffffffffull };
 }
 
@@ -121,6 +125,10 @@ inline constexpr asset_importer_id environment{ 0xa7ca55e700000002ull, 0x0000000
 inline constexpr asset_importer_id gltf{ 0xa7ca55e700000002ull, 0x0000000000000007ull };
 inline constexpr asset_importer_id fbx{ 0xa7ca55e700000002ull, 0x0000000000000008ull };
 inline constexpr asset_importer_id binary{ 0xa7ca55e700000002ull, 0x0000000000000009ull };
+inline constexpr asset_importer_id animation{ 0xa7ca55e700000002ull, 0x000000000000000aull };
+inline constexpr asset_importer_id collision{ 0xa7ca55e700000002ull, 0x000000000000000bull };
+inline constexpr asset_importer_id navigation{ 0xa7ca55e700000002ull, 0x000000000000000cull };
+inline constexpr asset_importer_id audio{ 0xa7ca55e700000002ull, 0x000000000000000dull };
 }
 
 namespace fallback_assets

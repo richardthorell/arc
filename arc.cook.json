@@ -1,0 +1,33 @@
+{
+  "format": "arc.cook-project",
+  "version": 1,
+  "roots": [
+    "assets/materials/default_phong.arcmat"
+  ],
+  "profiles": {
+    "windows-x64-vulkan": {
+      "platform": "windows",
+      "architecture": "x86_64",
+      "renderer": "vulkan",
+      "api": "1.2",
+      "textureFamily": "bc",
+      "configuration": "shipping"
+    },
+    "linux-x64-vulkan": {
+      "platform": "linux",
+      "architecture": "x86_64",
+      "renderer": "vulkan",
+      "api": "1.2",
+      "textureFamily": "bc",
+      "configuration": "shipping"
+    }
+  },
+  "chunks": {
+    "boot": ["shader", "fallback"],
+    "startup": ["root", "dependency"],
+    "regions": true
+  },
+  "cache": {
+    "sharedUrl": ""
+  }
+}

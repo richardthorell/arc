@@ -255,6 +255,15 @@ std::optional<std::pair<asset_type_id, asset_importer_id>> classify_asset_path(
         return std::pair{ asset_types::imported_scene, importer_ids::fbx };
     if (extension == ".bin")
         return std::pair{ asset_types::binary_blob, importer_ids::binary };
+    if (extension == ".arcanim")
+        return std::pair{ asset_types::animation_clip, importer_ids::animation };
+    if (extension == ".arccollision")
+        return std::pair{ asset_types::collision, importer_ids::collision };
+    if (extension == ".arcnav")
+        return std::pair{ asset_types::navigation, importer_ids::navigation };
+    if (extension == ".wav" || extension == ".ogg" || extension == ".mp3" ||
+        extension == ".flac")
+        return std::pair{ asset_types::audio_clip, importer_ids::audio };
     return std::nullopt;
 }
 
