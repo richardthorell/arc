@@ -195,8 +195,9 @@ cause.
 2. Call `edit.request` with a concrete label describing the intended change.
 3. The user approves or denies the request in the editor. Do not spam repeated
    requests while one is pending.
-4. Confirm approval through status, then call `edit.begin` with the latest
-   `expectedSceneRevision`.
+4. After the user or editor indicates approval, call `edit.begin` with the
+   latest `expectedSceneRevision`. A missing pending request in public status is
+   not proof of approval because it may also have been denied or expired.
 5. Call `edit.apply` one or more times. After each success, replace the local
    expected revision with the returned `sceneRevision`.
 6. Read back the affected entities and, for visual changes, capture or debug the
@@ -516,7 +517,9 @@ other kinds, use `afterSequence` from status or a previous event.
 ```
 
 This creates a pending request for the user. It does not grant permission by
-itself.
+itself. Public status lists pending requests but intentionally does not expose
+approved client scopes, so wait for the user/editor approval signal before
+beginning an edit.
 
 #### `edit.begin`
 
