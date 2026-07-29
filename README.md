@@ -105,6 +105,54 @@ python run_editor.py --no-vulkan-render
 
 CMake presets write generated files under `out/build/...` so the repository root stays clear of configuration-specific build folders.
 
+ARC has three supported product configurations:
+
+- `Debug` enables assertions and developer diagnostics without optimization.
+- `RelWithDebInfo` enables optimization, symbols, and development tooling.
+- `Shipping` enables LTO and runtime-only features while disabling tests, the
+  editor, source monitoring, and source import/cooking.
+
+The matching `debug`, `relwithdebinfo`, and `shipping` configure/build presets
+work for both single- and multi-configuration generators. Clang sanitizer
+presets are also available:
+
+```bash
+cmake --preset sanitize-address-undefined
+cmake --build --preset sanitize-address-undefined --parallel
+ctest --preset sanitize-address-undefined
+
+cmake --preset sanitize-thread
+cmake --build --preset sanitize-thread --parallel
+ctest --preset sanitize-thread
+```
+
+Electron dependencies are immutable. Use `npm ci` rather than `npm install`:
+
+```bash
+cd editor
+npm ci
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+```
+
+Validate the dependency policy and every discovered built-in shader with:
+
+```bash
+python3 tools/check_dependencies.py
+cmake --build --preset render-vulkan --target arc-shaders-check
+```
+
+CPU-side regression benchmarks are dependency-free and calibrated against a
+stable integer workload:
+
+```bash
+cmake -S . -B out/build/benchmarks -DARC_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build out/build/benchmarks --target arc-benchmarks
+cmake --build out/build/benchmarks --target arc-benchmarks-check
+```
+
 Generate an optional Clang/LLVM coverage report (requires Ninja, Clang, and LLVM coverage tools):
 
 ```bash
@@ -117,10 +165,15 @@ Reports are written under `out/coverage`; coverage CI publishes them as an artif
 
 ## CI
 
-arc is built continuously across multiple compiler toolchains:
+arc is built continuously across pinned runner and compiler families:
 
-- Clang on Ubuntu
-- GCC on Ubuntu
-- MSVC on Windows
+- Clang 18 on Ubuntu 24.04, including ASan/UBSan and TSan jobs
+- GCC 14 on Ubuntu 24.04 with Vulkan compile coverage
+- MSVC on Windows Server 2022 with the native editor, Vulkan, Electron package,
+  clean launch smokes, and Shipping artifacts
+
+CI also compiles all shaders with Vulkan SDK 1.4.350.0, runs static analysis and
+format gates, and compares deterministic subsystem benchmarks against calibrated
+normalized baselines.
 
 Each compiler has its own workflow so build status can be tracked independently.
