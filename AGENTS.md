@@ -124,6 +124,20 @@ into an embedded viewport. When changing editor code:
 - Treat the viewport as an engine-rendered surface embedded in tooling UI.
 - Prefer simple, inspectable UI state over complex framework abstractions.
 
+## Live Editor Agent Gateway
+
+When a task requires interacting with a running editor, inspecting live scene
+state, debugging rendered output, controlling the viewport, or applying an
+in-memory scene edit, load and follow:
+
+```text
+.agents/skills/arc-editor-gateway/SKILL.md
+```
+
+Use the authenticated AI Gateway rather than bypassing it through native host
+IPC or editor internals. The skill contains discovery, transport, API, revision,
+approval, transaction, debugging, and failure-handling guidance.
+
 ## Dependency Guidelines
 
 - Keep third-party integrations centralized through `third_party/` and CMake options.
