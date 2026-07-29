@@ -21,7 +21,7 @@ std::string platform_name(cook_platform value)
     switch (value)
     {
     case cook_platform::windows: return "windows";
-    case cook_platform::linux: return "linux";
+    case cook_platform::linux_os: return "linux";
     case cook_platform::macos: return "macos";
     }
     return "windows";
@@ -77,7 +77,7 @@ bool parse_target(const json& value, cook_target& target)
         return false;
     target.name = value.value("name", "windows-x64-vulkan");
     const auto platform = value.value("platform", "windows");
-    target.platform = platform == "linux" ? cook_platform::linux :
+    target.platform = platform == "linux" ? cook_platform::linux_os :
         platform == "macos" ? cook_platform::macos : cook_platform::windows;
     target.architecture = value.value("architecture", "x86_64") == "arm64"
         ? cook_architecture::arm64 : cook_architecture::x86_64;

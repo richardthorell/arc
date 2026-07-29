@@ -199,7 +199,7 @@ cook_target linux_vulkan_cook_target()
 {
     auto result = windows_vulkan_cook_target();
     result.name = "linux-x64-vulkan";
-    result.platform = cook_platform::linux;
+    result.platform = cook_platform::linux_os;
     return result;
 }
 

@@ -66,7 +66,7 @@ inline constexpr artifact_schema_id scene{ 0xa7ca55e700000004ull, 0x000000000000
 inline constexpr artifact_schema_id package_manifest{ 0xa7ca55e700000004ull, 0x0000000000000007ull };
 }
 
-enum class cook_platform : std::uint8_t { windows, linux, macos };
+enum class cook_platform : std::uint8_t { windows, linux_os, macos };
 enum class cook_architecture : std::uint8_t { x86_64, arm64 };
 enum class cook_renderer : std::uint8_t { vulkan, direct3d12, metal };
 enum class cook_texture_family : std::uint8_t { bc, astc, etc2, portable };

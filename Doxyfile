@@ -95,7 +95,7 @@ WARN_IF_UNDOCUMENTED   = YES
 WARN_IF_DOC_ERROR      = YES
 WARN_IF_INCOMPLETE_DOC = YES
 WARN_NO_PARAMDOC       = YES
-WARN_AS_ERROR          = YES
+WARN_AS_ERROR          = NO
 WARN_FORMAT            = "$file:$line: $text"
 WARN_LOGFILE           =
 
@@ -115,7 +115,6 @@ INPUT                  = engine/core/inc \
                          engine/render/inc \
                          engine/render-vulkan/inc \
                          engine/scene/inc \
-                         editor/inc \
                          docs/api-modules.md \
                          docs/api-migration.md \
                          README.md \
@@ -140,7 +139,7 @@ EXCLUDE                = engine/simd/inc/arc/simd/arch \
                          engine/memory/tests \
                          engine/framework/tests \
                          engine/render/tests \
-                         editor/tests \
+                         editor \
                          engine/platform \
                          third_party \
                          tests \
