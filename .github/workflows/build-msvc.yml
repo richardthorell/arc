@@ -1,4 +1,4 @@
-name: Build - MSVC
+name: Product - Windows MSVC
 
 on:
   push:
@@ -11,53 +11,140 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build - MSVC (coroutines ${{ matrix.job-coroutines }})
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        job-coroutines: [ON, OFF]
-
+  windows-products:
+    name: Editor, Vulkan, tests and Shipping packages
+    runs-on: windows-2022
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Setup MSVC developer environment
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
 
-      - name: Configure CMake project
-        run: >
-          cmake -S . -B build
-          -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DARC_BUILD_EDITOR=OFF
-          -DARC_BUILD_RENDER_VULKAN=OFF
-          -DARC_BUILD_ENGINE_TESTS=ON
-          -DARC_ENABLE_JOB_COROUTINES=${{ matrix.job-coroutines }}
-          -DBUILD_TESTING=ON
+      - name: Set up Node 22.12
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
 
-      - name: Restore ARC derived data
-        uses: actions/cache@v4
+      - name: Set up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
+
+      - name: Restore local derived-data cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             .arc/cache/cas
             .arc/cache/actions
-          key: arc-ddc-windows-x64-vulkan-v1-${{ hashFiles('arc.cook.json', 'assets/**', 'engine/assets/**', 'engine/render/**') }}
-          restore-keys: |
-            arc-ddc-windows-x64-vulkan-v1-
+          key: arc-ddc-windows-v2-${{ hashFiles('arc.cook.json', 'editor/package-lock.json', 'engine/assets/**', 'engine/render/**') }}
+          restore-keys: arc-ddc-windows-v2-
 
-      - name: Build
-        run: cmake --build build --parallel
+      - name: Install Electron dependencies
+        working-directory: editor
+        run: npm ci
 
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+      - name: Configure native products
+        run: >
+          cmake -S . -B out/build/ci-windows -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_EDITOR=ON
+          -DARC_BUILD_RENDER_VULKAN=ON
+          -DARC_BUILD_SAMPLES=ON
+          -DARC_WARNINGS_AS_ERRORS=ON
+          -DBUILD_TESTING=ON
 
-      - name: Cook package and verify incremental reuse
-        if: matrix.job-coroutines == 'ON'
+      - name: Build native editor, Vulkan, sample and tests
+        run: cmake --build out/build/ci-windows --parallel
+
+      - name: Compile and validate built-in shaders
+        run: cmake --build out/build/ci-windows --target arc-shaders-check
+
+      - name: Run native tests
+        run: ctest --test-dir out/build/ci-windows --output-on-failure
+
+      - name: Validate Electron
+        working-directory: editor
         run: |
-          build\tools\asset_cooker\Release\arc-cook.exe package --project . --profile windows-x64-vulkan
-          build\tools\asset_cooker\Release\arc-cook.exe package --project . --profile windows-x64-vulkan
-          build\tools\asset_cooker\Release\arc-cook.exe verify --project . --profile windows-x64-vulkan
+          npm run typecheck
+          npm test
+
+      - name: Cook and verify fixture
+        run: |
+          Remove-Item -Recurse -Force .arc/cache, out/cooked -ErrorAction SilentlyContinue
+          out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project . --profile windows-x64-vulkan
+          out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project . --profile windows-x64-vulkan
+          $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project . --profile windows-x64-vulkan --json | ConvertFrom-Json)
+          if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
+
+      - name: Package Electron editor with native host
+        working-directory: editor
+        env:
+          ARC_PACKAGED_HOST_PATH: ${{ github.workspace }}\out\build\ci-windows\editor\native\arc_host_process.exe
+          ARC_REQUIRE_PACKAGED_HOST: "1"
+        run: npm run build
+
+      - name: Smoke packaged editor and sample
+        run: |
+          python tools/verify_distribution.py editor/out/arc-editor-win32-x64 --require resources/arc_host_process.exe --require resources/app.asar
+          python tools/run_process_smoke.py --timeout 45 editor/out/arc-editor-win32-x64/arc-editor.exe --ci-smoke
+          python tools/run_process_smoke.py --timeout 30 out/build/ci-windows/samples/arc_sample_game.exe --ci-smoke
+          python tools/run_process_smoke.py --timeout 30 out/build/ci-windows/samples/arc_headless.exe --ticks 10 --no-sleep
+
+      - name: Configure Shipping runtime
+        run: >
+          cmake -S . -B out/build/ci-shipping -G Ninja
+          -DCMAKE_BUILD_TYPE=Shipping
+          -DARC_BUILD_SAMPLES=ON
+          -DARC_WARNINGS_AS_ERRORS=ON
+          -DARC_SHIPPING_CONTENT_DIR=${{ github.workspace }}/out/cooked/windows-x64-vulkan
+
+      - name: Build and install Shipping runtime
+        run: |
+          cmake --build out/build/ci-shipping --parallel
+          cmake --install out/build/ci-shipping --prefix out/dist/runtime
+          cpack --config out/build/ci-shipping/CPackConfig.cmake -C Shipping
+          python tools/verify_distribution.py out/dist/runtime --require bin/arc_headless.exe --require bin/arc_sample_game.exe --require build-manifest.json
+          python tools/run_process_smoke.py --timeout 30 out/dist/runtime/bin/arc_headless.exe --ticks 10 --no-sleep
+          python tools/run_process_smoke.py --timeout 30 out/dist/runtime/bin/arc_sample_game.exe --ci-smoke
+
+      - name: Upload packaged editor
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-editor-windows-x64
+          path: editor/out/arc-editor-win32-x64
+
+      - name: Upload Shipping headless server
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-headless-windows-x64
+          path: |
+            out/dist/runtime/bin/arc_headless.exe
+            out/dist/runtime/content
+            out/dist/runtime/build-manifest.json
+
+      - name: Upload Shipping sample game
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-sample-game-windows-x64
+          path: |
+            out/dist/runtime/bin/arc_sample_game.exe
+            out/dist/runtime/content
+            out/dist/runtime/build-manifest.json
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-symbols-windows-x64
+          path: |
+            out/build/ci-windows/**/*.pdb
+            out/build/ci-shipping/**/*.pdb
+          if-no-files-found: error
+
+      - name: Upload CMake component packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-cmake-packages-windows-x64
+          path: out/build/ci-shipping/packages/*.zip

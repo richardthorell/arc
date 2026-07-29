@@ -1,0 +1,55 @@
+name: Benchmark Regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-benchmarks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B out/build/benchmarks -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_BENCHMARKS=ON
+          -DARC_BUILD_ASSET_COOKER=OFF
+          -DBUILD_TESTING=OFF
+      - run: cmake --build out/build/benchmarks --target arc-benchmarks --parallel
+      - name: Run calibrated regression gate
+        run: >
+          out/build/benchmarks/benchmarks/arc-benchmarks
+          --baseline benchmarks/baselines.json
+          --output out/build/benchmarks/benchmark-results.json
+          --minimum-sample-ms 250
+          --warmups 2
+          --samples 7
+          --threshold 0.20
+      - name: Record environment
+        run: |
+          uname -a > out/build/benchmarks/environment.txt
+          clang++-18 --version >> out/build/benchmarks/environment.txt
+          lscpu >> out/build/benchmarks/environment.txt
+          jq --arg commit "$GITHUB_SHA" \
+            '. + {commit: $commit, runner: "ubuntu-24.04", compiler: "clang-18"}' \
+            out/build/benchmarks/benchmark-results.json \
+            > out/build/benchmarks/benchmark-trend.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-benchmark-results
+          path: |
+            out/build/benchmarks/benchmark-results.json
+            out/build/benchmarks/benchmark-trend.json
+            out/build/benchmarks/environment.txt

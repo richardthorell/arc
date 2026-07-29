@@ -1,4 +1,4 @@
-name: Build - Clang
+name: Product - Linux Clang
 
 on:
   push:
@@ -11,48 +11,112 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build - Clang
-    runs-on: ubuntu-latest
-
+  clang-vulkan:
+    name: Clang 18 Vulkan and native host compile
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install build tools
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install pinned toolchain family
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang ninja-build
-
-      - name: Configure CMake project
+          sudo apt-get install -y clang-18 ninja-build
+      - name: Set up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
+      - name: Configure
         run: >
-          cmake -S . -B build
-          -G Ninja
-          -DCMAKE_CXX_COMPILER=clang++
-          -DCMAKE_BUILD_TYPE=Release
-          -DARC_BUILD_EDITOR=OFF
-          -DARC_BUILD_RENDER_VULKAN=OFF
-          -DARC_BUILD_ENGINE_TESTS=ON
+          cmake -S . -B out/build/clang-vulkan -G Ninja
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_EDITOR=ON
+          -DARC_BUILD_RENDER_VULKAN=ON
+          -DARC_BUILD_SAMPLES=ON
+          -DARC_WARNINGS_AS_ERRORS=ON
           -DBUILD_TESTING=ON
-
-      - name: Restore ARC derived data
-        uses: actions/cache@v4
-        with:
-          path: |
-            .arc/cache/cas
-            .arc/cache/actions
-          key: arc-ddc-linux-x64-vulkan-v1-clang-${{ hashFiles('arc.cook.json', 'assets/**', 'engine/assets/**', 'engine/render/**') }}
-          restore-keys: |
-            arc-ddc-linux-x64-vulkan-v1-clang-
-
       - name: Build
-        run: cmake --build build --parallel
-
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure
-
-      - name: Cook package and verify incremental reuse
+        run: cmake --build out/build/clang-vulkan --parallel
+      - name: Validate shaders
+        run: cmake --build out/build/clang-vulkan --target arc-shaders-check
+      - name: Test
+        run: ctest --test-dir out/build/clang-vulkan --output-on-failure
+      - name: Package and smoke headless runtime
         run: |
-          build/tools/asset_cooker/arc-cook package --project . --profile linux-x64-vulkan
-          build/tools/asset_cooker/arc-cook package --project . --profile linux-x64-vulkan
-          build/tools/asset_cooker/arc-cook verify --project . --profile linux-x64-vulkan
+          cmake --install out/build/clang-vulkan --prefix out/dist/linux
+          cpack --config out/build/clang-vulkan/CPackConfig.cmake -C RelWithDebInfo
+          python3 tools/run_process_smoke.py out/dist/linux/bin/arc_headless --ticks 10 --no-sleep
+          python3 tools/verify_distribution.py out/dist/linux --require bin/arc_headless --require build-manifest.json
+      - name: Upload headless package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-headless-linux-x64
+          path: |
+            out/dist/linux
+            out/build/clang-vulkan/packages/*.tar.gz
+
+  address-undefined:
+    name: Clang 18 ASan and UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B out/build/asan -G Ninja
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_BUILD_TYPE=Debug
+          -DARC_ENABLE_ADDRESS_SANITIZER=ON
+          -DARC_ENABLE_UNDEFINED_SANITIZER=ON
+          -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_BUILD_EDITOR=OFF
+          -DBUILD_TESTING=ON
+      - run: cmake --build out/build/asan --parallel
+      - name: Test under sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir out/build/asan --output-on-failure
+
+  thread:
+    name: Clang 18 ThreadSanitizer
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build
+      - name: Configure
+        run: >
+          cmake -S . -B out/build/tsan -G Ninja
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_ENABLE_THREAD_SANITIZER=ON
+          -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_BUILD_EDITOR=OFF
+          -DBUILD_TESTING=ON
+      - run: cmake --build out/build/tsan --parallel
+      - name: Test under ThreadSanitizer
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: ctest --test-dir out/build/tsan --output-on-failure
+
+  no-coroutines:
+    name: Coroutine-disabled engine
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build
+      - run: >
+          cmake -S . -B out/build/no-coroutines -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_ENABLE_JOB_COROUTINES=OFF
+          -DARC_BUILD_ASSET_COOKER=OFF
+          -DBUILD_TESTING=ON
+      - run: cmake --build out/build/no-coroutines --parallel
+      - run: ctest --test-dir out/build/no-coroutines --output-on-failure

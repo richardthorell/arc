@@ -1,0 +1,44 @@
+name: Set up pinned Vulkan SDK
+description: Install the exact Vulkan shader toolchain used by ARC.
+inputs:
+  version:
+    description: LunarG Vulkan SDK version.
+    required: false
+    default: 1.4.350.0
+  windows-sha256:
+    description: SHA-256 of the Windows SDK installer.
+    required: false
+    default: 855b27ba05d2d8119c5114c5d4ff870ca38f2c632b11e1bb9923b9b7e6ecfe7b
+  linux-sha256:
+    description: SHA-256 of the Linux SDK archive.
+    required: false
+    default: b65f068ab36263559da49d7cacd7e7b9df23824ca8b68ccc522a2b06f5725df2
+runs:
+  using: composite
+  steps:
+    - name: Install Vulkan SDK
+      shell: bash
+      run: |
+        set -euo pipefail
+        version='${{ inputs.version }}'
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          curl --fail --location --retry 3 \
+            "https://sdk.lunarg.com/sdk/download/${version}/windows/vulkansdk-windows-X64-${version}.exe" \
+            --output vulkan-sdk.exe
+          echo '${{ inputs.windows-sha256 }}  vulkan-sdk.exe' | sha256sum --check -
+          ./vulkan-sdk.exe --root 'C:\VulkanSDK' --accept-licenses --default-answer --confirm-command install
+          echo 'VULKAN_SDK=C:\VulkanSDK' >> "$GITHUB_ENV"
+          echo 'C:\VulkanSDK\Bin' >> "$GITHUB_PATH"
+        else
+          root="$RUNNER_TEMP/VulkanSDK"
+          curl --fail --location --retry 3 \
+            "https://sdk.lunarg.com/sdk/download/${version}/linux/vulkan-sdk.tar.gz" \
+            --output vulkan-sdk.tar.gz
+          echo '${{ inputs.linux-sha256 }}  vulkan-sdk.tar.gz' | sha256sum --check -
+          mkdir -p "$root"
+          tar -xf vulkan-sdk.tar.gz -C "$root"
+          sdk="$root/$version/x86_64"
+          echo "VULKAN_SDK=$sdk" >> "$GITHUB_ENV"
+          echo "$sdk/bin" >> "$GITHUB_PATH"
+        fi
+        echo "ARC_VULKAN_SDK_VERSION=$version" >> "$GITHUB_ENV"

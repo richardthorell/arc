@@ -1,4 +1,4 @@
-name: Build - GCC
+name: Product - Linux GCC
 
 on:
   push:
@@ -11,48 +11,27 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build - GCC
-    runs-on: ubuntu-latest
-
+  gcc-portability:
+    name: GCC 14 engine and Vulkan portability
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install build tools
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install GCC 14 and shader tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ ninja-build
-
-      - name: Configure CMake project
+          sudo apt-get install -y gcc-14 g++-14 ninja-build
+      - name: Set up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
+      - name: Configure
         run: >
-          cmake -S . -B build
-          -G Ninja
-          -DCMAKE_CXX_COMPILER=g++
-          -DCMAKE_BUILD_TYPE=Release
-          -DARC_BUILD_EDITOR=OFF
-          -DARC_BUILD_RENDER_VULKAN=OFF
-          -DARC_BUILD_ENGINE_TESTS=ON
+          cmake -S . -B out/build/gcc -G Ninja
+          -DCMAKE_C_COMPILER=gcc-14
+          -DCMAKE_CXX_COMPILER=g++-14
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_EDITOR=ON
+          -DARC_BUILD_RENDER_VULKAN=ON
+          -DARC_WARNINGS_AS_ERRORS=ON
           -DBUILD_TESTING=ON
-
-      - name: Restore ARC derived data
-        uses: actions/cache@v4
-        with:
-          path: |
-            .arc/cache/cas
-            .arc/cache/actions
-          key: arc-ddc-linux-x64-vulkan-v1-gcc-${{ hashFiles('arc.cook.json', 'assets/**', 'engine/assets/**', 'engine/render/**') }}
-          restore-keys: |
-            arc-ddc-linux-x64-vulkan-v1-gcc-
-
-      - name: Build
-        run: cmake --build build --parallel
-
-      - name: Run tests
-        run: ctest --test-dir build --output-on-failure
-
-      - name: Cook package and verify incremental reuse
-        run: |
-          build/tools/asset_cooker/arc-cook package --project . --profile linux-x64-vulkan
-          build/tools/asset_cooker/arc-cook package --project . --profile linux-x64-vulkan
-          build/tools/asset_cooker/arc-cook verify --project . --profile linux-x64-vulkan
+      - run: cmake --build out/build/gcc --parallel
+      - run: cmake --build out/build/gcc --target arc-shaders-check
+      - run: ctest --test-dir out/build/gcc --output-on-failure
