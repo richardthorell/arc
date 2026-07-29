@@ -9,7 +9,9 @@ type UiButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 export function UiButton({ active = false, children, className, variant = 'default', ...props }: UiButtonProps) {
-  const classes = ['ui-button', `ui-button-${variant}`, active ? 'is-active active' : '', className].filter(Boolean).join(' ');
+  const classes = ['ui-button', `ui-button-${variant}`, active ? 'is-active active' : '', className]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <button className={classes} {...props}>

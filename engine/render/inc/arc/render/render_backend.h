@@ -56,67 +56,61 @@ inline constexpr std::uint32_t dynamic_resolution_under_budget_frames = 8;
 /** @brief Immutable renderer limits associated with one implemented quality tier. */
 struct render_quality_profile
 {
-    render_quality_tier quality{ render_quality_tier::medium };
-    render_path default_path{ render_path::deferred };
-    float minimum_render_scale{ 0.67f };
-    float maximum_render_scale{ 1.0f };
-    std::uint32_t max_point_lights{ 64 };
-    std::uint32_t max_spot_lights{ 64 };
-    std::uint32_t directional_shadow_cascades{ 4 };
-    std::uint32_t directional_shadow_resolution{ 2048 };
-    float directional_shadow_distance{ 200.0f };
-    std::uint32_t local_shadow_atlas_resolution{ 4096 };
-    std::uint32_t max_shadowed_point_lights{ 4 };
-    std::uint32_t max_shadowed_spot_lights{ 8 };
-    std::uint32_t max_local_shadow_resolution{ 1024 };
-    bool screen_space_shadows{ true };
-    float screen_space_shadow_scale{ 0.5f };
+    render_quality_tier quality{render_quality_tier::medium};
+    render_path default_path{render_path::deferred};
+    float minimum_render_scale{0.67f};
+    float maximum_render_scale{1.0f};
+    std::uint32_t max_point_lights{64};
+    std::uint32_t max_spot_lights{64};
+    std::uint32_t directional_shadow_cascades{4};
+    std::uint32_t directional_shadow_resolution{2048};
+    float directional_shadow_distance{200.0f};
+    std::uint32_t local_shadow_atlas_resolution{4096};
+    std::uint32_t max_shadowed_point_lights{4};
+    std::uint32_t max_shadowed_spot_lights{8};
+    std::uint32_t max_local_shadow_resolution{1024};
+    bool screen_space_shadows{true};
+    float screen_space_shadow_scale{0.5f};
 };
 
-inline constexpr render_quality_profile low_render_quality_profile{
-    .quality = render_quality_tier::low,
-    .default_path = render_path::forward_plus,
-    .minimum_render_scale = 0.5f,
-    .maximum_render_scale = 1.0f,
-    .max_point_lights = 32,
-    .max_spot_lights = 32,
-    .directional_shadow_cascades = 2,
-    .directional_shadow_resolution = 1024,
-    .directional_shadow_distance = 80.0f,
-    .local_shadow_atlas_resolution = 2048,
-    .max_shadowed_point_lights = 0,
-    .max_shadowed_spot_lights = 2,
-    .max_local_shadow_resolution = 512,
-    .screen_space_shadows = false,
-    .screen_space_shadow_scale = 0.0f
-};
+inline constexpr render_quality_profile low_render_quality_profile{.quality = render_quality_tier::low,
+                                                                   .default_path = render_path::forward_plus,
+                                                                   .minimum_render_scale = 0.5f,
+                                                                   .maximum_render_scale = 1.0f,
+                                                                   .max_point_lights = 32,
+                                                                   .max_spot_lights = 32,
+                                                                   .directional_shadow_cascades = 2,
+                                                                   .directional_shadow_resolution = 1024,
+                                                                   .directional_shadow_distance = 80.0f,
+                                                                   .local_shadow_atlas_resolution = 2048,
+                                                                   .max_shadowed_point_lights = 0,
+                                                                   .max_shadowed_spot_lights = 2,
+                                                                   .max_local_shadow_resolution = 512,
+                                                                   .screen_space_shadows = false,
+                                                                   .screen_space_shadow_scale = 0.0f};
 
 inline constexpr render_quality_profile standard_render_quality_profile{};
 
-inline constexpr render_quality_profile high_render_quality_profile{
-    .quality = render_quality_tier::high,
-    .default_path = render_path::deferred,
-    .minimum_render_scale = 0.67f,
-    .maximum_render_scale = 1.0f,
-    .max_point_lights = 64,
-    .max_spot_lights = 64,
-    .directional_shadow_cascades = 4,
-    .directional_shadow_resolution = 4096,
-    .directional_shadow_distance = 300.0f,
-    .local_shadow_atlas_resolution = 8192,
-    .max_shadowed_point_lights = 8,
-    .max_shadowed_spot_lights = 16,
-    .max_local_shadow_resolution = 2048,
-    .screen_space_shadows = true,
-    .screen_space_shadow_scale = 1.0f
-};
+inline constexpr render_quality_profile high_render_quality_profile{.quality = render_quality_tier::high,
+                                                                    .default_path = render_path::deferred,
+                                                                    .minimum_render_scale = 0.67f,
+                                                                    .maximum_render_scale = 1.0f,
+                                                                    .max_point_lights = 64,
+                                                                    .max_spot_lights = 64,
+                                                                    .directional_shadow_cascades = 4,
+                                                                    .directional_shadow_resolution = 4096,
+                                                                    .directional_shadow_distance = 300.0f,
+                                                                    .local_shadow_atlas_resolution = 8192,
+                                                                    .max_shadowed_point_lights = 8,
+                                                                    .max_shadowed_spot_lights = 16,
+                                                                    .max_local_shadow_resolution = 2048,
+                                                                    .screen_space_shadows = true,
+                                                                    .screen_space_shadow_scale = 1.0f};
 
 [[nodiscard]] constexpr const render_quality_profile& quality_profile(render_quality_tier quality) noexcept
 {
-    if (quality == render_quality_tier::low)
-        return low_render_quality_profile;
-    if (quality == render_quality_tier::high)
-        return high_render_quality_profile;
+    if (quality == render_quality_tier::low) return low_render_quality_profile;
+    if (quality == render_quality_tier::high) return high_render_quality_profile;
     return standard_render_quality_profile;
 }
 
@@ -125,7 +119,7 @@ inline constexpr render_quality_profile high_render_quality_profile{
  */
 struct render_capabilities
 {
-    render_backend_type backend{ render_backend_type::vulkan };
+    render_backend_type backend{render_backend_type::vulkan};
     std::uint32_t api_major{};
     std::uint32_t api_minor{};
     std::string adapter_name;
@@ -189,26 +183,26 @@ struct render_feature_set
  */
 struct resolved_render_config
 {
-    render_quality_tier requested_quality{ render_quality_tier::auto_select };
-    render_quality_tier quality{ render_quality_tier::medium };
-    render_path requested_path{ render_path::auto_select };
-    render_path path{ render_path::deferred };
+    render_quality_tier requested_quality{render_quality_tier::auto_select};
+    render_quality_tier quality{render_quality_tier::medium};
+    render_path requested_path{render_path::auto_select};
+    render_path path{render_path::deferred};
     render_feature_set features{};
-    float target_frame_time_ms{ default_target_frame_time_ms };
-    float minimum_render_scale{ standard_render_quality_profile.minimum_render_scale };
-    float maximum_render_scale{ standard_render_quality_profile.maximum_render_scale };
-    float render_scale{ 1.0f };
-    std::uint32_t max_point_lights{ standard_render_quality_profile.max_point_lights };
-    std::uint32_t max_spot_lights{ standard_render_quality_profile.max_spot_lights };
-    std::uint32_t directional_shadow_cascades{ standard_render_quality_profile.directional_shadow_cascades };
-    std::uint32_t directional_shadow_resolution{ standard_render_quality_profile.directional_shadow_resolution };
-    float directional_shadow_distance{ standard_render_quality_profile.directional_shadow_distance };
-    std::uint32_t local_shadow_atlas_resolution{ standard_render_quality_profile.local_shadow_atlas_resolution };
-    std::uint32_t max_shadowed_point_lights{ standard_render_quality_profile.max_shadowed_point_lights };
-    std::uint32_t max_shadowed_spot_lights{ standard_render_quality_profile.max_shadowed_spot_lights };
-    std::uint32_t max_local_shadow_resolution{ standard_render_quality_profile.max_local_shadow_resolution };
-    bool screen_space_shadows{ standard_render_quality_profile.screen_space_shadows };
-    float screen_space_shadow_scale{ standard_render_quality_profile.screen_space_shadow_scale };
+    float target_frame_time_ms{default_target_frame_time_ms};
+    float minimum_render_scale{standard_render_quality_profile.minimum_render_scale};
+    float maximum_render_scale{standard_render_quality_profile.maximum_render_scale};
+    float render_scale{1.0f};
+    std::uint32_t max_point_lights{standard_render_quality_profile.max_point_lights};
+    std::uint32_t max_spot_lights{standard_render_quality_profile.max_spot_lights};
+    std::uint32_t directional_shadow_cascades{standard_render_quality_profile.directional_shadow_cascades};
+    std::uint32_t directional_shadow_resolution{standard_render_quality_profile.directional_shadow_resolution};
+    float directional_shadow_distance{standard_render_quality_profile.directional_shadow_distance};
+    std::uint32_t local_shadow_atlas_resolution{standard_render_quality_profile.local_shadow_atlas_resolution};
+    std::uint32_t max_shadowed_point_lights{standard_render_quality_profile.max_shadowed_point_lights};
+    std::uint32_t max_shadowed_spot_lights{standard_render_quality_profile.max_shadowed_spot_lights};
+    std::uint32_t max_local_shadow_resolution{standard_render_quality_profile.max_local_shadow_resolution};
+    bool screen_space_shadows{standard_render_quality_profile.screen_space_shadows};
+    float screen_space_shadow_scale{standard_render_quality_profile.screen_space_shadow_scale};
     std::vector<std::string> fallback_reasons;
 };
 
@@ -300,7 +294,7 @@ enum class render_submit_error_code : std::uint8_t
 /** @brief Recoverable error returned when a backend cannot submit a frame. */
 struct render_submit_error
 {
-    render_submit_error_code code{ render_submit_error_code::backend_failure };
+    render_submit_error_code code{render_submit_error_code::backend_failure};
     std::string message;
 };
 
@@ -324,7 +318,7 @@ enum class surface_frame_error_code : std::uint8_t
  */
 struct surface_frame_error
 {
-    surface_frame_error_code code{ surface_frame_error_code::backend_failure };
+    surface_frame_error_code code{surface_frame_error_code::backend_failure};
     std::string message;
 };
 
@@ -345,10 +339,10 @@ struct render_pass_timing
  */
 struct clustered_light_grid_profile
 {
-    std::uint32_t tile_size_pixels{ 32 };
+    std::uint32_t tile_size_pixels{32};
     std::uint32_t tiles_x{};
     std::uint32_t tiles_y{};
-    std::uint32_t depth_slices{ 16 };
+    std::uint32_t depth_slices{16};
     std::uint32_t cluster_count{};
     std::uint32_t point_light_references{};
     std::uint32_t spot_light_references{};
@@ -459,13 +453,13 @@ enum class render_capture_format : std::uint8_t
 struct render_frame_capture_request
 {
     std::uint64_t capture_id{};
-    std::vector<render_capture_channel> channels{ render_capture_channel::output_color };
+    std::vector<render_capture_channel> channels{render_capture_channel::output_color};
 };
 
 struct render_capture_image
 {
-    render_capture_channel channel{ render_capture_channel::output_color };
-    render_capture_format format{ render_capture_format::rgba8_unorm };
+    render_capture_channel channel{render_capture_channel::output_color};
+    render_capture_format format{render_capture_format::rgba8_unorm};
     std::uint32_t width{};
     std::uint32_t height{};
     std::vector<std::byte> data;
@@ -479,14 +473,14 @@ struct render_capture_object
 
 struct render_capture_camera_state
 {
-    math::matrix4f view_projection{ math::identity<float, 4>() };
-    math::matrix4f inverse_view_projection{ math::identity<float, 4>() };
-    math::matrix4f projection{ math::identity<float, 4>() };
+    math::matrix4f view_projection{math::identity<float, 4>()};
+    math::matrix4f inverse_view_projection{math::identity<float, 4>()};
+    math::matrix4f projection{math::identity<float, 4>()};
     math::vector3f position{};
-    math::vector3f forward{ 0.0f, 0.0f, -1.0f };
-    math::vector3f up{ 0.0f, 1.0f, 0.0f };
-    float near_plane{ 0.01f };
-    float far_plane{ 1000.0f };
+    math::vector3f forward{0.0f, 0.0f, -1.0f};
+    math::vector3f up{0.0f, 1.0f, 0.0f};
+    float near_plane{0.01f};
+    float far_plane{1000.0f};
     std::uint32_t render_width{};
     std::uint32_t render_height{};
     std::uint32_t output_width{};
@@ -553,14 +547,14 @@ public:
 
     /**
      * @brief Present the latest submitted frame to the backend-owned surface.
-     * @param width Output width in physical pixels.
+     * @param width Output width
+     * in physical pixels.
      * @param height Output height in physical pixels.
-     * @return Success, or a structured recoverable presentation error.
+     * @return Success, or a
+     * structured recoverable presentation error.
      * @note Must be called from the backend's render thread.
      */
-    [[nodiscard]] virtual surface_frame_result present_surface_frame(
-        std::uint32_t width,
-        std::uint32_t height);
+    [[nodiscard]] virtual surface_frame_result present_surface_frame(std::uint32_t width, std::uint32_t height);
 
     /**
      * @brief Resize the backend-owned editor/game viewport target.
@@ -618,14 +612,11 @@ enum class render_backend_create_error_code : std::uint8_t
 /** @brief Structured failure returned by a render-backend factory. */
 struct render_backend_create_error
 {
-    render_backend_create_error_code code{
-        render_backend_create_error_code::device_creation_failed
-    };
+    render_backend_create_error_code code{render_backend_create_error_code::device_creation_failed};
     std::string message;
 };
 
 /** @brief Value-or-error result returned by a render-backend factory. */
-using render_backend_create_result =
-    core::result<std::unique_ptr<render_backend>, render_backend_create_error>;
+using render_backend_create_result = core::result<std::unique_ptr<render_backend>, render_backend_create_error>;
 
 } // namespace arc::render

@@ -10,31 +10,23 @@ namespace
 std::uint64_t key_for(input_binding binding)
 {
     const auto device = static_cast<std::uint64_t>(binding.device);
-    return (static_cast<std::uint64_t>(binding.player) << 40U)
-        | (device << 32U)
-        | static_cast<std::uint32_t>(binding.code);
+    return (static_cast<std::uint64_t>(binding.player) << 40U) | (device << 32U) |
+           static_cast<std::uint32_t>(binding.code);
 }
 
 input_binding binding_from_event(const framework::event& event)
 {
     switch (event.type)
     {
-    case framework::event_type::key_down:
-    case framework::event_type::key_up:
-        return input_binding{
-            .device = input_device_type::keyboard,
-            .code = event.key_code,
-            .player = 0
-        };
-    case framework::event_type::mouse_button_down:
-    case framework::event_type::mouse_button_up:
-        return input_binding{
-            .device = input_device_type::mouse,
-            .code = static_cast<int>(event.button),
-            .player = 0
-        };
-    default:
-        return {};
+        case framework::event_type::key_down:
+        case framework::event_type::key_up:
+            return input_binding{.device = input_device_type::keyboard, .code = event.key_code, .player = 0};
+        case framework::event_type::mouse_button_down:
+        case framework::event_type::mouse_button_up:
+            return input_binding{
+                .device = input_device_type::mouse, .code = static_cast<int>(event.button), .player = 0};
+        default:
+            return {};
     }
 }
 
@@ -48,27 +40,22 @@ void input_manager::begin_frame()
 
 void input_manager::process_event(const framework::event& event)
 {
-    if (event.type != framework::event_type::key_down
-        && event.type != framework::event_type::key_up
-        && event.type != framework::event_type::mouse_button_down
-        && event.type != framework::event_type::mouse_button_up)
+    if (event.type != framework::event_type::key_down && event.type != framework::event_type::key_up &&
+        event.type != framework::event_type::mouse_button_down && event.type != framework::event_type::mouse_button_up)
     {
         return;
     }
 
     const auto key = key_for(binding_from_event(event));
-    if (event.type == framework::event_type::key_down ||
-        event.type == framework::event_type::mouse_button_down)
+    if (event.type == framework::event_type::key_down || event.type == framework::event_type::mouse_button_down)
     {
         const auto [_, inserted] = held_.insert(key);
-        if (inserted && !event.repeat)
-            pressed_.insert(key);
+        if (inserted && !event.repeat) pressed_.insert(key);
         return;
     }
 
     const auto erased = held_.erase(key);
-    if (erased > 0)
-        released_.insert(key);
+    if (erased > 0) released_.insert(key);
 }
 
 input_action_id input_manager::bind_action(std::string_view name, input_binding binding)
@@ -77,23 +64,22 @@ input_action_id input_manager::bind_action(std::string_view name, input_binding 
     return next_action_id_++;
 }
 
-input_axis_id input_manager::bind_axis(std::string_view name, input_binding positive_binding, input_binding negative_binding)
+input_axis_id input_manager::bind_axis(std::string_view name, input_binding positive_binding,
+                                       input_binding negative_binding)
 {
-    axes_[std::string(name)] = axis_bindings{ .positive = positive_binding, .negative = negative_binding };
+    axes_[std::string(name)] = axis_bindings{.positive = positive_binding, .negative = negative_binding};
     return next_axis_id_++;
 }
 
 bool input_manager::pressed(std::string_view name, player_id player) const
 {
     const auto found = actions_.find(std::string(name));
-    if (found == actions_.end())
-        return false;
+    if (found == actions_.end()) return false;
 
     for (auto binding : found->second)
     {
         binding.player = player;
-        if (pressed_.contains(key_for(binding)))
-            return true;
+        if (pressed_.contains(key_for(binding))) return true;
     }
     return false;
 }
@@ -101,14 +87,12 @@ bool input_manager::pressed(std::string_view name, player_id player) const
 bool input_manager::released(std::string_view name, player_id player) const
 {
     const auto found = actions_.find(std::string(name));
-    if (found == actions_.end())
-        return false;
+    if (found == actions_.end()) return false;
 
     for (auto binding : found->second)
     {
         binding.player = player;
-        if (released_.contains(key_for(binding)))
-            return true;
+        if (released_.contains(key_for(binding))) return true;
     }
     return false;
 }
@@ -116,14 +100,12 @@ bool input_manager::released(std::string_view name, player_id player) const
 bool input_manager::down(std::string_view name, player_id player) const
 {
     const auto found = actions_.find(std::string(name));
-    if (found == actions_.end())
-        return false;
+    if (found == actions_.end()) return false;
 
     for (auto binding : found->second)
     {
         binding.player = player;
-        if (held_.contains(key_for(binding)))
-            return true;
+        if (held_.contains(key_for(binding))) return true;
     }
     return false;
 }
@@ -131,8 +113,7 @@ bool input_manager::down(std::string_view name, player_id player) const
 float input_manager::axis(std::string_view name, player_id player) const
 {
     const auto found = axes_.find(std::string(name));
-    if (found == axes_.end())
-        return 0.0f;
+    if (found == axes_.end()) return 0.0f;
 
     auto positive = found->second.positive;
     auto negative = found->second.negative;
@@ -140,10 +121,8 @@ float input_manager::axis(std::string_view name, player_id player) const
     negative.player = player;
 
     float value = 0.0f;
-    if (held_.contains(key_for(positive)))
-        value += 1.0f;
-    if (held_.contains(key_for(negative)))
-        value -= 1.0f;
+    if (held_.contains(key_for(positive))) value += 1.0f;
+    if (held_.contains(key_for(negative))) value -= 1.0f;
     return value;
 }
 

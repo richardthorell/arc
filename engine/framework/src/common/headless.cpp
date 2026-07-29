@@ -31,15 +31,12 @@ headless_runtime_result run_headless(application& app, headless_runtime_options 
         using clock = std::chrono::steady_clock;
         auto deadline = clock::now();
 
-        while (host.running() &&
-            (options.maximum_ticks == 0 ||
-                host.current_tick().id.value < options.maximum_ticks))
+        while (host.running() && (options.maximum_ticks == 0 || host.current_tick().id.value < options.maximum_ticks))
         {
             host.advance(fixed_delta);
             if (options.sleep_to_clock)
             {
-                deadline += std::chrono::duration_cast<clock::duration>(
-                    std::chrono::duration<double>(fixed_delta));
+                deadline += std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(fixed_delta));
                 std::this_thread::sleep_until(deadline);
             }
         }
@@ -56,11 +53,7 @@ headless_runtime_result run_headless(application& app, headless_runtime_options 
             }
         }
         host.shutdown();
-        return {
-            .succeeded = world_failure.empty(),
-            .completed_ticks = completed,
-            .error = std::move(world_failure)
-        };
+        return {.succeeded = world_failure.empty(), .completed_ticks = completed, .error = std::move(world_failure)};
     }
     catch (const std::exception& error)
     {
@@ -74,7 +67,7 @@ headless_runtime_result run_headless(application& app, headless_runtime_options 
         {
             // Preserve the failure that stopped the headless loop.
         }
-        return { false, completed, message };
+        return {false, completed, message};
     }
     catch (...)
     {
@@ -86,7 +79,7 @@ headless_runtime_result run_headless(application& app, headless_runtime_options 
         catch (...)
         {
         }
-        return { false, completed, "unknown headless runtime failure" };
+        return {false, completed, "unknown headless runtime failure"};
     }
 }
 

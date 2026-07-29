@@ -13,7 +13,10 @@ type ActivityBarProps = {
 
 export function ActivityBar({ activeActivity, expanded, onExpandedChange, onSelectActivity }: ActivityBarProps) {
   return (
-    <aside className={expanded ? 'activity-bar activity-bar-expanded' : 'activity-bar'} aria-label="Editor activity bar">
+    <aside
+      className={expanded ? 'activity-bar activity-bar-expanded' : 'activity-bar'}
+      aria-label="Editor activity bar"
+    >
       <div className="activity-items">
         {activityRegistry.map((activity) => {
           const Icon = activity.icon;

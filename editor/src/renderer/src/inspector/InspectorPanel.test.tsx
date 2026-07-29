@@ -183,16 +183,21 @@ describe('data-driven InspectorPanel', () => {
     await userEvent.selectOptions(screen.getByLabelText('Projection'), 'orthographic');
     expect(screen.getByLabelText('Ortho Size')).toBeInTheDocument();
     expect(screen.queryByLabelText('Field of View')).not.toBeInTheDocument();
-    expect(command).toHaveBeenCalledWith('entity.setCamera', expect.objectContaining({
-      entity: { index: 3, generation: 1 },
-      camera: expect.objectContaining({ projection: 'orthographic' }),
-    }));
+    expect(command).toHaveBeenCalledWith(
+      'entity.setCamera',
+      expect.objectContaining({
+        entity: { index: 3, generation: 1 },
+        camera: expect.objectContaining({ projection: 'orthographic' }),
+      }),
+    );
   });
 
   it('renders persistent terrain fields without transient brush controls', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     const assets = [{ id: 'sand', name: 'Sand', path: 'textures/sand.jpg', kind: 'texture', status: 'ready' as const }];
-    render(<InspectorPanel snapshot={terrainSnapshot()} command={command} refresh={async () => undefined} assets={assets} />);
+    render(
+      <InspectorPanel snapshot={terrainSnapshot()} command={command} refresh={async () => undefined} assets={assets} />,
+    );
 
     expect(screen.getByLabelText('Collapse Terrain')).toBeInTheDocument();
     expect(screen.queryByLabelText('Collapse Terrain Brush')).not.toBeInTheDocument();
@@ -201,7 +206,12 @@ describe('data-driven InspectorPanel', () => {
 
     await userEvent.click(screen.getByLabelText('Choose Sand Layer asset'));
     await userEvent.click(screen.getByLabelText('Select Sand'));
-    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.assignLayer', expect.objectContaining({ layer: 3, path: 'textures/sand.jpg' })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'terrain.assignLayer',
+        expect.objectContaining({ layer: 3, path: 'textures/sand.jpg' }),
+      ),
+    );
   });
 
   it('renders physical area-light controls and sends one typed light snapshot', async () => {
@@ -213,14 +223,25 @@ describe('data-driven InspectorPanel', () => {
     expect(screen.getByLabelText('Height')).toHaveValue('1.00');
     expect(screen.queryByRole('option', { name: 'Candela (cd)' })).not.toBeInTheDocument();
     await userEvent.selectOptions(screen.getByLabelText('Shape'), 'disk');
-    await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setLight', expect.objectContaining({
-      light: expect.objectContaining({ kind: 'disk', unit: 'lumens', color: [1, 0.8, 0.6] }),
-    })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'entity.setLight',
+        expect.objectContaining({
+          light: expect.objectContaining({ kind: 'disk', unit: 'lumens', color: [1, 0.8, 0.6] }),
+        }),
+      ),
+    );
     expect(screen.queryByLabelText('Height')).not.toBeInTheDocument();
   });
 
   it('filters, collapses, and restores component content', async () => {
-    render(<InspectorPanel snapshot={cameraSnapshot()} command={vi.fn().mockResolvedValue({ succeeded: true })} refresh={async () => undefined} />);
+    render(
+      <InspectorPanel
+        snapshot={cameraSnapshot()}
+        command={vi.fn().mockResolvedValue({ succeeded: true })}
+        refresh={async () => undefined}
+      />,
+    );
     await userEvent.type(screen.getByLabelText('Search components'), 'camera');
     expect(screen.queryByText('Transform')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Collapse Camera')).toBeInTheDocument();
@@ -251,14 +272,12 @@ describe('data-driven InspectorPanel', () => {
     expect(command).toHaveBeenCalledWith('entity.setTag', expect.objectContaining({ tag: 'Environment' }));
     expect(command).toHaveBeenCalledWith('entity.setRenderLayer', expect.objectContaining({ renderLayerMask: 2 }));
     expect(command).toHaveBeenCalledWith('entity.rename', expect.objectContaining({ name: 'Gameplay Camera' }));
-    expect(command).toHaveBeenCalledWith(
-      'entity.setMobility',
-      expect.objectContaining({ mobility: 'static' }),
-    );
+    expect(command).toHaveBeenCalledWith('entity.setMobility', expect.objectContaining({ mobility: 'static' }));
   });
 
   it('commits typed numbers, supports arrow steps, and rolls back rejected edits', async () => {
-    const command = vi.fn()
+    const command = vi
+      .fn()
       .mockResolvedValueOnce({ succeeded: true })
       .mockResolvedValueOnce({ succeeded: false, error: 'Rejected by host' });
     render(<InspectorPanel snapshot={cameraSnapshot()} command={command} refresh={async () => undefined} />);
@@ -266,9 +285,12 @@ describe('data-driven InspectorPanel', () => {
     fireEvent.change(locationX, { target: { value: '12.5' } });
     fireEvent.keyDown(locationX, { key: 'Enter' });
     await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
-    expect(command).toHaveBeenLastCalledWith('entity.setTransform', expect.objectContaining({
-      transform: expect.objectContaining({ position: [12.5, 2, 3] }),
-    }));
+    expect(command).toHaveBeenLastCalledWith(
+      'entity.setTransform',
+      expect.objectContaining({
+        transform: expect.objectContaining({ position: [12.5, 2, 3] }),
+      }),
+    );
 
     const near = screen.getByLabelText('Near Clip');
     fireEvent.keyDown(near, { key: 'ArrowUp' });
@@ -284,9 +306,12 @@ describe('data-driven InspectorPanel', () => {
     fireEvent.change(scaleX, { target: { value: '2' } });
     fireEvent.keyDown(scaleX, { key: 'Enter' });
     await waitFor(() => expect(command).toHaveBeenCalled());
-    expect(command).toHaveBeenLastCalledWith('entity.setTransform', expect.objectContaining({
-      transform: expect.objectContaining({ scale: [2, 2, 2] }),
-    }));
+    expect(command).toHaveBeenLastCalledWith(
+      'entity.setTransform',
+      expect.objectContaining({
+        transform: expect.objectContaining({ scale: [2, 2, 2] }),
+      }),
+    );
   });
 
   it('throttles drag scrubbing and sends a final transform value', async () => {
@@ -302,18 +327,22 @@ describe('data-driven InspectorPanel', () => {
     fireEvent.pointerUp(window);
     await vi.runAllTimersAsync();
     expect(command).toHaveBeenCalledTimes(2);
-    expect(command).toHaveBeenLastCalledWith('entity.setTransform', expect.objectContaining({
-      transform: expect.objectContaining({ position: [1.4, 2, 3] }),
-    }), expect.objectContaining({ phase: 'commit', label: 'Transform Entity' }));
+    expect(command).toHaveBeenLastCalledWith(
+      'entity.setTransform',
+      expect.objectContaining({
+        transform: expect.objectContaining({ position: [1.4, 2, 3] }),
+      }),
+      expect.objectContaining({ phase: 'commit', label: 'Transform Entity' }),
+    );
     vi.useRealTimers();
   });
 
   it('ignores stale rejected responses after a newer successful edit', async () => {
     let rejectOld: ((value: { succeeded: boolean; error: string }) => void) | undefined;
-    const oldResponse = new Promise<{ succeeded: boolean; error: string }>((resolve) => { rejectOld = resolve; });
-    const command = vi.fn()
-      .mockReturnValueOnce(oldResponse)
-      .mockResolvedValueOnce({ succeeded: true });
+    const oldResponse = new Promise<{ succeeded: boolean; error: string }>((resolve) => {
+      rejectOld = resolve;
+    });
+    const command = vi.fn().mockReturnValueOnce(oldResponse).mockResolvedValueOnce({ succeeded: true });
     render(<InspectorPanel snapshot={cameraSnapshot()} command={command} refresh={async () => undefined} />);
     fireEvent.click(screen.getByLabelText('Entity active'));
     fireEvent.change(screen.getByLabelText('Layer'), { target: { value: '2' } });
@@ -338,9 +367,14 @@ describe('data-driven InspectorPanel', () => {
     const hex = screen.getByLabelText('Hex sRGB');
     await userEvent.clear(hex);
     await userEvent.type(hex, '#FF000080{Enter}');
-    await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setCamera', expect.objectContaining({
-      camera: expect.objectContaining({ clearColor: expect.arrayContaining([1, 0, 0]) }),
-    })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'entity.setCamera',
+        expect.objectContaining({
+          camera: expect.objectContaining({ clearColor: expect.arrayContaining([1, 0, 0]) }),
+        }),
+      ),
+    );
     const clearColor = command.mock.calls.at(-1)?.[1]?.camera?.clearColor as number[];
     expect(clearColor[3]).toBeCloseTo(128 / 255, 6);
 
@@ -352,13 +386,25 @@ describe('data-driven InspectorPanel', () => {
   it('renders the Mesh Renderer material preview and assigns a material asset', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     const thumbnailProvider = vi.fn().mockResolvedValue('data:image/bmp;base64,Qkpreview');
-    render(<InspectorPanel snapshot={meshSnapshot()} command={command} refresh={async () => undefined}
-      assets={[
-        { id: 'mountain', name: 'Mountain Landscape', path: 'materials/mountain_landscape.arcmat', kind: 'material', status: 'ready' },
-        { id: 'bronze', name: 'Bronze', path: 'materials/bronze.arcmat', kind: 'material', status: 'ready' },
-        { id: 'rock', name: 'Rock Albedo', path: 'textures/rock.png', kind: 'texture', status: 'ready' },
-      ]}
-      thumbnailProvider={thumbnailProvider} />);
+    render(
+      <InspectorPanel
+        snapshot={meshSnapshot()}
+        command={command}
+        refresh={async () => undefined}
+        assets={[
+          {
+            id: 'mountain',
+            name: 'Mountain Landscape',
+            path: 'materials/mountain_landscape.arcmat',
+            kind: 'material',
+            status: 'ready',
+          },
+          { id: 'bronze', name: 'Bronze', path: 'materials/bronze.arcmat', kind: 'material', status: 'ready' },
+          { id: 'rock', name: 'Rock Albedo', path: 'textures/rock.png', kind: 'texture', status: 'ready' },
+        ]}
+        thumbnailProvider={thumbnailProvider}
+      />,
+    );
 
     expect(screen.getByLabelText('Material Preview')).toBeInTheDocument();
     expect(screen.getAllByText('Mountain Landscape')).toHaveLength(2);
@@ -366,14 +412,23 @@ describe('data-driven InspectorPanel', () => {
     expect(screen.getByRole('dialog', { name: 'Material asset picker' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Select Rock Albedo')).not.toBeInTheDocument();
     await userEvent.click(screen.getByLabelText('Select Bronze'));
-    await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setMaterial', {
-      entity: { index: 3, generation: 1 }, path: 'materials/bronze.arcmat',
-    }));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('entity.setMaterial', {
+        entity: { index: 3, generation: 1 },
+        path: 'materials/bronze.arcmat',
+      }),
+    );
 
     await userEvent.click(screen.getByLabelText('Visible'));
-    await waitFor(() => expect(command).toHaveBeenCalledWith('entity.setMeshRenderer', expect.objectContaining({
-      visible: false, baseColorTint: [1, 1, 1, 1],
-    })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'entity.setMeshRenderer',
+        expect.objectContaining({
+          visible: false,
+          baseColorTint: [1, 1, 1, 1],
+        }),
+      ),
+    );
   });
 
   it('renders prefab override state and invokes instance actions', async () => {
@@ -384,13 +439,17 @@ describe('data-driven InspectorPanel', () => {
     expect(screen.getByText('Connected')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
-    await waitFor(() => expect(command).toHaveBeenCalledWith('prefab.apply', {
-      entity: { index: 3, generation: 1 },
-    }));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('prefab.apply', {
+        entity: { index: 3, generation: 1 },
+      }),
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Unpack' }));
-    await waitFor(() => expect(command).toHaveBeenCalledWith('prefab.unpack', {
-      entity: { index: 3, generation: 1 },
-    }));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('prefab.unpack', {
+        entity: { index: 3, generation: 1 },
+      }),
+    );
     expect(refresh).toHaveBeenCalled();
   });
 });

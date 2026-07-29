@@ -23,15 +23,13 @@ constexpr simd<T, N> zip_hi_impl(const simd<T, N>& a, const simd<T, N>& b, std::
 
 } // namespace detail
 
-template <class T, std::size_t N>
-constexpr simd<T, N> zip_lo(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd<T, N> zip_lo(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     static_assert(N % 2 == 0, "zip_lo requires an even lane count");
     return detail::zip_lo_impl(a, b, std::make_index_sequence<N>{});
 }
 
-template <class T, std::size_t N>
-constexpr simd<T, N> zip_hi(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd<T, N> zip_hi(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     static_assert(N % 2 == 0, "zip_hi requires an even lane count");
     return detail::zip_hi_impl(a, b, std::make_index_sequence<N>{});

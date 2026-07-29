@@ -78,18 +78,28 @@
   background: transparent;
   font-size: var(--arc-text-sm);
   font-weight: 400;
-  font-family: WindowsSystemFont, -apple-system, system-ui, BlinkMacSystemFont, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+  font-family:
+    WindowsSystemFont,
+    -apple-system,
+    system-ui,
+    BlinkMacSystemFont,
+    Segoe UI,
+    Roboto,
+    Ubuntu,
+    Cantarell,
+    Noto Sans,
+    sans-serif;
   letter-spacing: 0.2px;
 }
 
 .menu-bar button:hover {
   color: var(--arc-color-text-strong);
-  background: rgba(255,255,255,0.075);
+  background: rgba(255, 255, 255, 0.075);
 }
 
-.menu-bar button[aria-expanded="true"] {
+.menu-bar button[aria-expanded='true'] {
   color: var(--arc-color-text-strong);
-  background: rgba(255,255,255,0.11);
+  background: rgba(255, 255, 255, 0.11);
 }
 
 .menu-dropdown {
@@ -115,9 +125,16 @@
   border-radius: 3px;
 }
 
-.menu-dropdown button span { flex: 1; }
-.menu-dropdown button small { margin-left: 24px; color: var(--arc-color-text-subtle); }
-.menu-dropdown button:disabled { opacity: 0.42; }
+.menu-dropdown button span {
+  flex: 1;
+}
+.menu-dropdown button small {
+  margin-left: 24px;
+  color: var(--arc-color-text-subtle);
+}
+.menu-dropdown button:disabled {
+  opacity: 0.42;
+}
 
 .menu-dropdown button:hover {
   background: var(--arc-color-bg-selected-strong);
@@ -134,7 +151,17 @@
   color: var(--arc-color-text-muted);
   font-size: var(--arc-text-sm);
   font-weight: 400;
-  font-family: WindowsSystemFont, -apple-system, system-ui, BlinkMacSystemFont, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+  font-family:
+    WindowsSystemFont,
+    -apple-system,
+    system-ui,
+    BlinkMacSystemFont,
+    Segoe UI,
+    Roboto,
+    Ubuntu,
+    Cantarell,
+    Noto Sans,
+    sans-serif;
   letter-spacing: 0.2px;
   line-height: 1;
   transform: translate(-50%, -50%);
@@ -154,7 +181,7 @@
   border-right: 1px solid currentColor;
   border-bottom: 1px solid currentColor;
   transform: translateY(-1px) rotate(45deg);
-  content: "";
+  content: '';
 }
 
 .command-center {
@@ -205,14 +232,14 @@
   top: 8px;
   height: 1px;
   background: currentColor;
-  content: "";
+  content: '';
 }
 
 .window-control-maximize::before {
   position: absolute;
   inset: 1px;
   border: 1px solid currentColor;
-  content: "";
+  content: '';
 }
 
 .window-control-restore::before,
@@ -221,7 +248,7 @@
   width: 8px;
   height: 8px;
   border: 1px solid currentColor;
-  content: "";
+  content: '';
 }
 
 .window-control-restore::before {
@@ -243,7 +270,7 @@
   width: 12px;
   height: 1px;
   background: currentColor;
-  content: "";
+  content: '';
 }
 
 .window-control-close::before {

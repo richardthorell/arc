@@ -14,7 +14,10 @@ namespace arc::ecs
 struct world_region_id
 {
     entity_guid value{};
-    constexpr bool valid() const noexcept { return value.valid(); }
+    constexpr bool valid() const noexcept
+    {
+        return value.valid();
+    }
     friend constexpr bool operator==(world_region_id, world_region_id) noexcept = default;
 };
 
@@ -47,7 +50,7 @@ struct world_region_descriptor
     std::string name;
     std::string content_path;
     world_region_bounds bounds{};
-    world_region_state state{ world_region_state::unloaded };
+    world_region_state state{world_region_state::unloaded};
     bool always_loaded{};
 };
 
@@ -56,20 +59,17 @@ struct world_region_component
     world_region_id region{};
 };
 
-template <>
-struct component_traits<world_region_component>
+template <> struct component_traits<world_region_component>
 {
     static constexpr bool reflected = true;
     static constexpr std::string_view canonical_name = "arc.ecs.world_region";
-    static constexpr component_type_id id{ 0xa7c0000000000000ull, 0x0000000000000004ull };
-    static constexpr std::array<component_field_descriptor, 1> fields{{
-        { 1, "region", "Region", reflected_field_kind::structure,
-            reflected_field_flags::serialized | reflected_field_flags::editable }
-    }};
+    static constexpr component_type_id id{0xa7c0000000000000ull, 0x0000000000000004ull};
+    static constexpr std::array<component_field_descriptor, 1> fields{
+        {{1, "region", "Region", reflected_field_kind::structure,
+          reflected_field_flags::serialized | reflected_field_flags::editable}}};
     static constexpr component_descriptor descriptor{
-        id, canonical_name, "World Region", 1, sizeof(world_region_component),
-        alignof(world_region_component), fields, true, false
-    };
+        id,     canonical_name, "World Region", 1, sizeof(world_region_component), alignof(world_region_component),
+        fields, true,           false};
 };
 
 struct [[nodiscard]] region_load_result
@@ -83,12 +83,10 @@ class world_partition_provider
 {
 public:
     virtual ~world_partition_provider() = default;
-    virtual jobs::job_future<region_load_result> request_load(
-        const world_region_descriptor& region,
-        jobs::cancellation_token cancellation = {}) = 0;
-    virtual jobs::job_future<region_load_result> request_unload(
-        const world_region_descriptor& region,
-        jobs::cancellation_token cancellation = {}) = 0;
+    virtual jobs::job_future<region_load_result> request_load(const world_region_descriptor& region,
+                                                              jobs::cancellation_token cancellation = {}) = 0;
+    virtual jobs::job_future<region_load_result> request_unload(const world_region_descriptor& region,
+                                                                jobs::cancellation_token cancellation = {}) = 0;
 };
 
 class world_partition
@@ -96,8 +94,7 @@ class world_partition
 public:
     bool add_region(world_region_descriptor descriptor)
     {
-        if (!descriptor.id.valid() || regions_.contains(descriptor.id))
-            return false;
+        if (!descriptor.id.valid() || regions_.contains(descriptor.id)) return false;
         regions_.emplace(descriptor.id, std::move(descriptor));
         return true;
     }
@@ -117,8 +114,7 @@ public:
     bool assign(world& owner, entity value, world_region_id region)
     {
         const auto* descriptor = find(region);
-        if (!owner.alive(value) || !descriptor || descriptor->state != world_region_state::loaded)
-            return false;
+        if (!owner.alive(value) || !descriptor || descriptor->state != world_region_state::loaded) return false;
         if (owner.has<world_region_component>(value))
             owner.get<world_region_component>(value).region = region;
         else
@@ -128,11 +124,9 @@ public:
 
     bool migrate_subtree(world& owner, entity root, world_region_id region)
     {
-        if (!assign(owner, root, region))
-            return false;
+        if (!assign(owner, root, region)) return false;
         for (const entity child : children(owner, root))
-            if (!migrate_subtree(owner, child, region))
-                return false;
+            if (!migrate_subtree(owner, child, region)) return false;
         return true;
     }
 

@@ -11,7 +11,36 @@
       "displayName": "Default engine build",
       "binaryDir": "${sourceDir}/out/build/default",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug engine build",
+      "binaryDir": "${sourceDir}/out/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "displayName": "RelWithDebInfo engine build",
+      "binaryDir": "${sourceDir}/out/build/relwithdebinfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "shipping",
+      "displayName": "Shipping runtime build",
+      "binaryDir": "${sourceDir}/out/build/shipping",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Shipping",
+        "BUILD_TESTING": "OFF",
+        "ARC_BUILD_ENGINE_TESTS": "OFF",
+        "ARC_BUILD_EDITOR": "OFF",
+        "ARC_BUILD_ASSET_COOKER": "OFF",
+        "ARC_BUILD_SAMPLES": "ON"
       }
     },
     {
@@ -19,7 +48,7 @@
       "displayName": "Default engine build without job coroutines",
       "binaryDir": "${sourceDir}/out/build/default-no-coroutines",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "ARC_ENABLE_JOB_COROUTINES": "OFF"
       }
     },
@@ -28,7 +57,7 @@
       "displayName": "Editor with Vulkan renderer",
       "binaryDir": "${sourceDir}/out/build/editor-vulkan",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "ARC_BUILD_EDITOR": "ON",
         "ARC_BUILD_RENDER_VULKAN": "ON"
       }
@@ -38,7 +67,7 @@
       "displayName": "Editor without Vulkan renderer",
       "binaryDir": "${sourceDir}/out/build/editor-no-vulkan",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "ARC_BUILD_EDITOR": "ON",
         "ARC_BUILD_RENDER_VULKAN": "OFF"
       }
@@ -48,7 +77,7 @@
       "displayName": "Engine with Vulkan renderer",
       "binaryDir": "${sourceDir}/out/build/render-vulkan",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "ARC_BUILD_RENDER_VULKAN": "ON"
       }
     },
@@ -59,9 +88,38 @@
       "binaryDir": "${sourceDir}/out/build/coverage-clang",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "clang",
-        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
         "ARC_ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "sanitize-address-undefined",
+      "displayName": "Clang AddressSanitizer and UndefinedBehaviorSanitizer",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/sanitize-address-undefined",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
+        "ARC_ENABLE_ADDRESS_SANITIZER": "ON",
+        "ARC_ENABLE_UNDEFINED_SANITIZER": "ON",
+        "ARC_BUILD_RENDER_VULKAN": "OFF",
+        "ARC_BUILD_EDITOR": "OFF"
+      }
+    },
+    {
+      "name": "sanitize-thread",
+      "displayName": "Clang ThreadSanitizer",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/sanitize-thread",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
+        "ARC_ENABLE_THREAD_SANITIZER": "ON",
+        "ARC_BUILD_RENDER_VULKAN": "OFF",
+        "ARC_BUILD_EDITOR": "OFF"
       }
     }
   ],
@@ -69,38 +127,77 @@
     {
       "name": "default",
       "configurePreset": "default",
-      "configuration": "Release"
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug"
+    },
+    {
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "shipping",
+      "configurePreset": "shipping",
+      "configuration": "Shipping"
     },
     {
       "name": "default-no-coroutines",
       "configurePreset": "default-no-coroutines",
-      "configuration": "Release"
+      "configuration": "RelWithDebInfo"
     },
     {
       "name": "editor-vulkan",
       "configurePreset": "editor-vulkan",
-      "configuration": "Release"
+      "configuration": "RelWithDebInfo"
     },
     {
       "name": "editor-no-vulkan",
       "configurePreset": "editor-no-vulkan",
-      "configuration": "Release"
+      "configuration": "RelWithDebInfo"
     },
     {
       "name": "render-vulkan",
       "configurePreset": "render-vulkan",
-      "configuration": "Release"
+      "configuration": "RelWithDebInfo"
     },
     {
       "name": "coverage-clang",
       "configurePreset": "coverage-clang"
+    },
+    {
+      "name": "sanitize-address-undefined",
+      "configurePreset": "sanitize-address-undefined"
+    },
+    {
+      "name": "sanitize-thread",
+      "configurePreset": "sanitize-thread"
     }
   ],
   "testPresets": [
     {
       "name": "default",
       "configurePreset": "default",
-      "configuration": "Release",
+      "configuration": "RelWithDebInfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo",
+      "configuration": "RelWithDebInfo",
       "output": {
         "outputOnFailure": true
       }
@@ -108,7 +205,7 @@
     {
       "name": "default-no-coroutines",
       "configurePreset": "default-no-coroutines",
-      "configuration": "Release",
+      "configuration": "RelWithDebInfo",
       "output": {
         "outputOnFailure": true
       }
@@ -116,7 +213,7 @@
     {
       "name": "editor-vulkan",
       "configurePreset": "editor-vulkan",
-      "configuration": "Release",
+      "configuration": "RelWithDebInfo",
       "output": {
         "outputOnFailure": true
       }
@@ -126,6 +223,27 @@
       "configurePreset": "coverage-clang",
       "output": {
         "outputOnFailure": true
+      }
+    },
+    {
+      "name": "sanitize-address-undefined",
+      "configurePreset": "sanitize-address-undefined",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1:strict_string_checks=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      }
+    },
+    {
+      "name": "sanitize-thread",
+      "configurePreset": "sanitize-thread",
+      "output": {
+        "outputOnFailure": true
+      },
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
       }
     }
   ]

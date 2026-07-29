@@ -1,0 +1,19 @@
+{
+  "format": "arc-benchmark-baselines",
+  "version": 1,
+  "calibration": "integer-mix-v1",
+  "seedRuns": 10,
+  "baselines": {
+    "ecs.prepared-query": 9.22471,
+    "ecs.command-flush": 8.70608,
+    "jobs.dispatch": 17.6975,
+    "jobs.dependencies": 5.85593,
+    "assets.sha256": 91.9823,
+    "assets.registry-lookup": 34.2915,
+    "assets.cas-hit": 146.431,
+    "persistence.json": 443.703,
+    "persistence.binary": 98.3598,
+    "render.scene-extraction": 485.59,
+    "render.graph-compile": 2.96579
+  }
+}

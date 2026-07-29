@@ -12,11 +12,10 @@ namespace arc::simd::detail
 template <class T, std::size_t N, std::size_t... I>
 constexpr std::array<T, N> simd_to_array_impl(const simd<T, N>& value, std::index_sequence<I...>) noexcept
 {
-    return { extract<I>(value)... };
+    return {extract<I>(value)...};
 }
 
-template <class T, std::size_t N>
-constexpr std::array<T, N> simd_to_array(const simd<T, N>& value) noexcept
+template <class T, std::size_t N> constexpr std::array<T, N> simd_to_array(const simd<T, N>& value) noexcept
 {
     return simd_to_array_impl(value, std::make_index_sequence<N>{});
 }
@@ -29,14 +28,12 @@ constexpr simd<T, N> simd_from_array_impl(const std::array<T, N>& values, std::i
     return result;
 }
 
-template <class T, std::size_t N>
-constexpr simd<T, N> simd_from_array(const std::array<T, N>& values) noexcept
+template <class T, std::size_t N> constexpr simd<T, N> simd_from_array(const std::array<T, N>& values) noexcept
 {
     return simd_from_array_impl<T, N>(values, std::make_index_sequence<N>{});
 }
 
-template <class T, std::size_t N, class Op>
-constexpr simd<T, N> simd_map(const simd<T, N>& value, Op op) noexcept
+template <class T, std::size_t N, class Op> constexpr simd<T, N> simd_map(const simd<T, N>& value, Op op) noexcept
 {
     auto values = simd_to_array(value);
     for (auto& lane : values)

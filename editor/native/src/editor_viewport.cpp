@@ -65,10 +65,8 @@ float editor_viewport::screen_y() const noexcept
 
 bool editor_viewport::contains_screen_point(float x, float y) const noexcept
 {
-    return x >= screen_x_ &&
-        y >= screen_y_ &&
-        x < screen_x_ + static_cast<float>(width_) &&
-        y < screen_y_ + static_cast<float>(height_);
+    return x >= screen_x_ && y >= screen_y_ && x < screen_x_ + static_cast<float>(width_) &&
+           y < screen_y_ + static_cast<float>(height_);
 }
 
 float editor_viewport::local_x(float screen_x) const noexcept

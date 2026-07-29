@@ -9,15 +9,20 @@ type Discovery = {
 };
 
 const discoveryArgumentIndex = process.argv.indexOf('--discovery');
-const discoveryArgument = discoveryArgumentIndex >= 0 ? process.argv[discoveryArgumentIndex + 1] ?? '' : '';
-const discoveryCandidates = (): string[] => [
-  discoveryArgument,
-  process.env.ARC_AI_GATEWAY_DISCOVERY ?? '',
-  process.platform === 'win32'
-    ? path.join(process.env.APPDATA ?? '', 'arc-editor', 'ai-gateway', 'active.json')
-    : path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'),
-      'arc-editor', 'ai-gateway', 'active.json'),
-].filter(Boolean);
+const discoveryArgument = discoveryArgumentIndex >= 0 ? (process.argv[discoveryArgumentIndex + 1] ?? '') : '';
+const discoveryCandidates = (): string[] =>
+  [
+    discoveryArgument,
+    process.env.ARC_AI_GATEWAY_DISCOVERY ?? '',
+    process.platform === 'win32'
+      ? path.join(process.env.APPDATA ?? '', 'arc-editor', 'ai-gateway', 'active.json')
+      : path.join(
+          process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), '.config'),
+          'arc-editor',
+          'ai-gateway',
+          'active.json',
+        ),
+  ].filter(Boolean);
 
 const forward = async (line: string, discovery: Discovery): Promise<void> => {
   if (!line.trim()) return;

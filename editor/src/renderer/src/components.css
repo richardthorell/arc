@@ -200,9 +200,7 @@
 
 .ui-search-input {
   padding-left: 30px;
-  background:
-    linear-gradient(transparent, transparent),
-    var(--arc-color-bg-field);
+  background: linear-gradient(transparent, transparent), var(--arc-color-bg-field);
 }
 
 .ui-property-row {

@@ -5,16 +5,25 @@ namespace arc::editor
 namespace
 {
 
-host_vec3 to_host(const math::vector3f& value) noexcept { return { value[0], value[1], value[2] }; }
-math::vector3f to_scene(host_vec3 value) noexcept { return { value.x, value.y, value.z }; }
+host_vec3 to_host(const math::vector3f& value) noexcept
+{
+    return {value[0], value[1], value[2]};
+}
+math::vector3f to_scene(host_vec3 value) noexcept
+{
+    return {value.x, value.y, value.z};
+}
 
 host_sky_source to_host(scene::sky_source value) noexcept
 {
     switch (value)
     {
-    case scene::sky_source::hdri: return host_sky_source::hdri;
-    case scene::sky_source::solid_color: return host_sky_source::solid_color;
-    case scene::sky_source::physical_atmosphere: break;
+        case scene::sky_source::hdri:
+            return host_sky_source::hdri;
+        case scene::sky_source::solid_color:
+            return host_sky_source::solid_color;
+        case scene::sky_source::physical_atmosphere:
+            break;
     }
     return host_sky_source::physical_atmosphere;
 }
@@ -23,34 +32,38 @@ scene::sky_source to_scene(host_sky_source value) noexcept
 {
     switch (value)
     {
-    case host_sky_source::hdri: return scene::sky_source::hdri;
-    case host_sky_source::solid_color: return scene::sky_source::solid_color;
-    case host_sky_source::physical_atmosphere: break;
+        case host_sky_source::hdri:
+            return scene::sky_source::hdri;
+        case host_sky_source::solid_color:
+            return scene::sky_source::solid_color;
+        case host_sky_source::physical_atmosphere:
+            break;
     }
     return scene::sky_source::physical_atmosphere;
 }
 
 host_sun_position_mode to_host(scene::sun_position_mode value) noexcept
 {
-    return value == scene::sun_position_mode::geographic
-        ? host_sun_position_mode::geographic
-        : host_sun_position_mode::manual_light;
+    return value == scene::sun_position_mode::geographic ? host_sun_position_mode::geographic
+                                                         : host_sun_position_mode::manual_light;
 }
 
 scene::sun_position_mode to_scene(host_sun_position_mode value) noexcept
 {
-    return value == host_sun_position_mode::geographic
-        ? scene::sun_position_mode::geographic
-        : scene::sun_position_mode::manual_light;
+    return value == host_sun_position_mode::geographic ? scene::sun_position_mode::geographic
+                                                       : scene::sun_position_mode::manual_light;
 }
 
 host_celestial_time_mode to_host(scene::celestial_time_mode value) noexcept
 {
     switch (value)
     {
-    case scene::celestial_time_mode::simulated: return host_celestial_time_mode::simulated;
-    case scene::celestial_time_mode::system_clock: return host_celestial_time_mode::system_clock;
-    case scene::celestial_time_mode::fixed: break;
+        case scene::celestial_time_mode::simulated:
+            return host_celestial_time_mode::simulated;
+        case scene::celestial_time_mode::system_clock:
+            return host_celestial_time_mode::system_clock;
+        case scene::celestial_time_mode::fixed:
+            break;
     }
     return host_celestial_time_mode::fixed;
 }
@@ -59,9 +72,12 @@ scene::celestial_time_mode to_scene(host_celestial_time_mode value) noexcept
 {
     switch (value)
     {
-    case host_celestial_time_mode::simulated: return scene::celestial_time_mode::simulated;
-    case host_celestial_time_mode::system_clock: return scene::celestial_time_mode::system_clock;
-    case host_celestial_time_mode::fixed: break;
+        case host_celestial_time_mode::simulated:
+            return scene::celestial_time_mode::simulated;
+        case host_celestial_time_mode::system_clock:
+            return scene::celestial_time_mode::system_clock;
+        case host_celestial_time_mode::fixed:
+            break;
     }
     return scene::celestial_time_mode::fixed;
 }
@@ -70,9 +86,12 @@ host_environment_lighting_source to_host(scene::environment_lighting_source valu
 {
     switch (value)
     {
-    case scene::environment_lighting_source::hdri: return host_environment_lighting_source::hdri;
-    case scene::environment_lighting_source::constant_color: return host_environment_lighting_source::constant_color;
-    case scene::environment_lighting_source::follow_sky: break;
+        case scene::environment_lighting_source::hdri:
+            return host_environment_lighting_source::hdri;
+        case scene::environment_lighting_source::constant_color:
+            return host_environment_lighting_source::constant_color;
+        case scene::environment_lighting_source::follow_sky:
+            break;
     }
     return host_environment_lighting_source::follow_sky;
 }
@@ -81,33 +100,46 @@ scene::environment_lighting_source to_scene(host_environment_lighting_source val
 {
     switch (value)
     {
-    case host_environment_lighting_source::hdri: return scene::environment_lighting_source::hdri;
-    case host_environment_lighting_source::constant_color: return scene::environment_lighting_source::constant_color;
-    case host_environment_lighting_source::follow_sky: break;
+        case host_environment_lighting_source::hdri:
+            return scene::environment_lighting_source::hdri;
+        case host_environment_lighting_source::constant_color:
+            return scene::environment_lighting_source::constant_color;
+        case host_environment_lighting_source::follow_sky:
+            break;
     }
     return scene::environment_lighting_source::follow_sky;
 }
 
 host_cloud_layer to_host(const scene::cloud_layer_settings& layer) noexcept
 {
-    return { layer.enabled, layer.coverage, layer.density, layer.altitude, layer.thickness,
-        layer.scale, layer.detail, layer.softness, layer.wind_direction[0], layer.wind_direction[1],
-        layer.wind_speed, layer.lighting_strength, layer.silver_lining };
+    return {layer.enabled,
+            layer.coverage,
+            layer.density,
+            layer.altitude,
+            layer.thickness,
+            layer.scale,
+            layer.detail,
+            layer.softness,
+            layer.wind_direction[0],
+            layer.wind_direction[1],
+            layer.wind_speed,
+            layer.lighting_strength,
+            layer.silver_lining};
 }
 
 scene::cloud_layer_settings to_scene(const host_cloud_layer& layer) noexcept
 {
-    return { layer.enabled, layer.coverage, layer.density, layer.altitude, layer.thickness,
-        layer.scale, layer.detail, layer.softness, { layer.wind_x, layer.wind_y },
-        layer.wind_speed, layer.lighting_strength, layer.silver_lining };
+    return {layer.enabled,    layer.coverage,          layer.density,
+            layer.altitude,   layer.thickness,         layer.scale,
+            layer.detail,     layer.softness,          {layer.wind_x, layer.wind_y},
+            layer.wind_speed, layer.lighting_strength, layer.silver_lining};
 }
 
 } // namespace
 
-host_world_environment_snapshot to_host_world_environment_snapshot(
-    host_entity_id entity,
-    const scene::world_environment_settings& settings,
-    const std::filesystem::path& hdri_path)
+host_world_environment_snapshot to_host_world_environment_snapshot(host_entity_id entity,
+                                                                   const scene::world_environment_settings& settings,
+                                                                   const std::filesystem::path& hdri_path)
 {
     const auto& world = settings.world;
     const auto& atmosphere = settings.atmosphere;
@@ -183,9 +215,9 @@ host_world_environment_snapshot to_host_world_environment_snapshot(
     return result;
 }
 
-scene::world_environment_settings apply_host_world_environment_snapshot(
-    const host_world_environment_snapshot& snapshot,
-    const scene::world_environment_settings& current)
+scene::world_environment_settings
+apply_host_world_environment_snapshot(const host_world_environment_snapshot& snapshot,
+                                      const scene::world_environment_settings& current)
 {
     auto result = current;
     auto& world = result.world;

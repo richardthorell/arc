@@ -15,25 +15,47 @@ afterEach(cleanup);
 describe('ConsolePanel', () => {
   it('clears currently displayed events while retaining controls', () => {
     const onClear = vi.fn();
-    const { rerender } = render(<ConsolePanel clearedIds={new Set()} events={events} locked
-      onClear={onClear} onLockedChange={() => undefined} />);
+    const { rerender } = render(
+      <ConsolePanel clearedIds={new Set()} events={events} locked onClear={onClear} onLockedChange={() => undefined} />,
+    );
     fireEvent.click(screen.getByLabelText('Clear console'));
     expect(onClear).toHaveBeenCalledWith(events);
 
-    rerender(<ConsolePanel clearedIds={new Set(events.map((event) => event.id))} events={events} locked
-      onClear={onClear} onLockedChange={() => undefined} />);
+    rerender(
+      <ConsolePanel
+        clearedIds={new Set(events.map((event) => event.id))}
+        events={events}
+        locked
+        onClear={onClear}
+        onLockedChange={() => undefined}
+      />,
+    );
     expect(screen.getByText(/Console is clear/)).toBeInTheDocument();
     expect(screen.queryByText(/First/)).not.toBeInTheDocument();
   });
 
   it('follows new messages while locked and manual scrolling disables lock', () => {
     const onLockedChange = vi.fn();
-    const { rerender } = render(<ConsolePanel clearedIds={new Set()} events={events.slice(0, 1)} locked
-      onClear={() => undefined} onLockedChange={onLockedChange} />);
+    const { rerender } = render(
+      <ConsolePanel
+        clearedIds={new Set()}
+        events={events.slice(0, 1)}
+        locked
+        onClear={() => undefined}
+        onLockedChange={onLockedChange}
+      />,
+    );
     const content = screen.getByText(/First/).parentElement!;
     Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 320 });
-    rerender(<ConsolePanel clearedIds={new Set()} events={events} locked
-      onClear={() => undefined} onLockedChange={onLockedChange} />);
+    rerender(
+      <ConsolePanel
+        clearedIds={new Set()}
+        events={events}
+        locked
+        onClear={() => undefined}
+        onLockedChange={onLockedChange}
+      />,
+    );
     expect(content.scrollTop).toBe(320);
 
     fireEvent.wheel(content);
@@ -42,8 +64,15 @@ describe('ConsolePanel', () => {
 
   it('enabling lock is explicit and visually active', () => {
     const onLockedChange = vi.fn();
-    render(<ConsolePanel clearedIds={new Set()} events={events} locked={false}
-      onClear={() => undefined} onLockedChange={onLockedChange} />);
+    render(
+      <ConsolePanel
+        clearedIds={new Set()}
+        events={events}
+        locked={false}
+        onClear={() => undefined}
+        onLockedChange={onLockedChange}
+      />,
+    );
     fireEvent.click(screen.getByLabelText('Enable console scroll lock'));
     expect(onLockedChange).toHaveBeenCalledWith(true);
   });

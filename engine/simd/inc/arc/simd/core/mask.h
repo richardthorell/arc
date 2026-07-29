@@ -7,11 +7,10 @@ namespace arc::simd
 
 /**
  * @brief SIMD mask type.
- * 
+ *
  * @tparam N The total number of lanes in the SIMD mask.
  */
-template <std::size_t N>
-struct simd_mask
+template <std::size_t N> struct simd_mask
 {
     /**
      * @brief The base data type.
@@ -30,28 +29,25 @@ struct simd_mask
 
     /**
      * @brief Construct a SIMD mask from a SIMD vector.
-     * 
+     *
      * @param value The SIMD vector to convert to a mask.
      */
-    constexpr explicit simd_mask(const simd_type& value)
-        : data{value.data}
-    {
-    }
+    constexpr explicit simd_mask(const simd_type& value) : data{value.data} {}
 
     /**
      * @brief Construct a SIMD mask with all lanes set to the given value.
-     * 
+     *
      * @param value The value to set in all lanes (true or false).
      */
     constexpr explicit simd_mask(bool value) noexcept
-        : simd_mask(std::make_index_sequence<blocks()>{}, [lanes = value ? 0xFFFFFFFF : 0](std::size_t) { return op_type::fill(lanes); })
+        : simd_mask(std::make_index_sequence<blocks()>{},
+                    [lanes = value ? 0xFFFFFFFF : 0](std::size_t) { return op_type::fill(lanes); })
     {
-
     }
 
     /**
      * @brief Get the total number of lanes in the SIMD mask.
-     * 
+     *
      * @return The number of lanes.
      */
     static constexpr std::size_t size() noexcept
@@ -61,7 +57,7 @@ struct simd_mask
 
     /**
      * @brief Get the number of SIMD register blocks in the SIMD mask.
-     * 
+     *
      * @return The number of blocks.
      */
     static constexpr std::size_t blocks() noexcept
@@ -88,16 +84,11 @@ private:
     friend struct detail::simd_access;
 
     template <std::size_t... Index, class Op>
-    constexpr explicit simd_mask(std::index_sequence<Index...>, Op op) noexcept
-        : data{ op(Index)... }
+    constexpr explicit simd_mask(std::index_sequence<Index...>, Op op) noexcept : data{op(Index)...}
     {
     }
 
-    template <class... Blocks>
-    constexpr explicit simd_mask(Blocks... blocks) noexcept
-        : data{ blocks... }
-    {
-    }
+    template <class... Blocks> constexpr explicit simd_mask(Blocks... blocks) noexcept : data{blocks...} {}
 
     data_type data;
 };

@@ -19,28 +19,16 @@ namespace
 
 std::wstring widen(const std::string& value)
 {
-    if (value.empty())
-        return L"ARC Application";
+    if (value.empty()) return L"ARC Application";
 
-    const int required = MultiByteToWideChar(
-        CP_UTF8,
-        MB_ERR_INVALID_CHARS,
-        value.data(),
-        static_cast<int>(value.size()),
-        nullptr,
-        0);
+    const int required =
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
 
-    if (required <= 0)
-        return std::wstring(value.begin(), value.end());
+    if (required <= 0) return std::wstring(value.begin(), value.end());
 
     std::wstring result(static_cast<std::size_t>(required), L'\0');
-    MultiByteToWideChar(
-        CP_UTF8,
-        MB_ERR_INVALID_CHARS,
-        value.data(),
-        static_cast<int>(value.size()),
-        result.data(),
-        required);
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), result.data(),
+                        required);
     return result;
 }
 
@@ -48,20 +36,20 @@ arc::framework::mouse_button translate_mouse_button(UINT message, WPARAM wparam)
 {
     switch (message)
     {
-    case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
-        return arc::framework::mouse_button::left;
-    case WM_RBUTTONDOWN:
-    case WM_RBUTTONUP:
-        return arc::framework::mouse_button::right;
-    case WM_MBUTTONDOWN:
-    case WM_MBUTTONUP:
-        return arc::framework::mouse_button::middle;
-    case WM_XBUTTONDOWN:
-    case WM_XBUTTONUP:
-        return HIWORD(wparam) == XBUTTON1 ? arc::framework::mouse_button::x1 : arc::framework::mouse_button::x2;
-    default:
-        return arc::framework::mouse_button::unknown;
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+            return arc::framework::mouse_button::left;
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+            return arc::framework::mouse_button::right;
+        case WM_MBUTTONDOWN:
+        case WM_MBUTTONUP:
+            return arc::framework::mouse_button::middle;
+        case WM_XBUTTONDOWN:
+        case WM_XBUTTONUP:
+            return HIWORD(wparam) == XBUTTON1 ? arc::framework::mouse_button::x1 : arc::framework::mouse_button::x2;
+        default:
+            return arc::framework::mouse_button::unknown;
     }
 }
 
@@ -82,109 +70,111 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
 
     switch (message)
     {
-    case WM_CLOSE:
-        if (runtime)
-        {
-            arc::framework::event event{};
-            event.type = arc::framework::event_type::close_requested;
-            runtime->dispatch(event);
-        }
-        DestroyWindow(window);
-        return 0;
+        case WM_CLOSE:
+            if (runtime)
+            {
+                arc::framework::event event{};
+                event.type = arc::framework::event_type::close_requested;
+                runtime->dispatch(event);
+            }
+            DestroyWindow(window);
+            return 0;
 
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        return 0;
+        case WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
 
-    case WM_SIZE:
-        if (runtime)
-        {
-            arc::framework::event event{};
-            event.type = arc::framework::event_type::resized;
-            event.width = static_cast<std::uint32_t>(LOWORD(lparam));
-            event.height = static_cast<std::uint32_t>(HIWORD(lparam));
-            runtime->dispatch(event);
-        }
-        return 0;
+        case WM_SIZE:
+            if (runtime)
+            {
+                arc::framework::event event{};
+                event.type = arc::framework::event_type::resized;
+                event.width = static_cast<std::uint32_t>(LOWORD(lparam));
+                event.height = static_cast<std::uint32_t>(HIWORD(lparam));
+                runtime->dispatch(event);
+            }
+            return 0;
 
-    case WM_SETFOCUS:
-    case WM_KILLFOCUS:
-        if (runtime)
-        {
-            arc::framework::event event{};
-            event.type = message == WM_SETFOCUS ? arc::framework::event_type::focus_gained : arc::framework::event_type::focus_lost;
-            runtime->dispatch(event);
-        }
-        return 0;
+        case WM_SETFOCUS:
+        case WM_KILLFOCUS:
+            if (runtime)
+            {
+                arc::framework::event event{};
+                event.type = message == WM_SETFOCUS ? arc::framework::event_type::focus_gained
+                                                    : arc::framework::event_type::focus_lost;
+                runtime->dispatch(event);
+            }
+            return 0;
 
-    case WM_KEYDOWN:
-    case WM_SYSKEYDOWN:
-    case WM_KEYUP:
-    case WM_SYSKEYUP:
-        if (runtime)
-        {
-            arc::framework::event event{};
-            event.type = (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) ? arc::framework::event_type::key_down : arc::framework::event_type::key_up;
-            event.key_code = static_cast<int>(wparam);
-            event.repeat = (lparam & (1 << 30)) != 0;
-            runtime->dispatch(event);
-        }
-        return 0;
+        case WM_KEYDOWN:
+        case WM_SYSKEYDOWN:
+        case WM_KEYUP:
+        case WM_SYSKEYUP:
+            if (runtime)
+            {
+                arc::framework::event event{};
+                event.type = (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) ? arc::framework::event_type::key_down
+                                                                                 : arc::framework::event_type::key_up;
+                event.key_code = static_cast<int>(wparam);
+                event.repeat = (lparam & (1 << 30)) != 0;
+                runtime->dispatch(event);
+            }
+            return 0;
 
-    case WM_MOUSEMOVE:
-        if (runtime)
-        {
-            arc::framework::event event{};
-            event.type = arc::framework::event_type::mouse_moved;
-            event.x = GET_X_LPARAM(lparam);
-            event.y = GET_Y_LPARAM(lparam);
-            runtime->dispatch(event);
-        }
-        return 0;
+        case WM_MOUSEMOVE:
+            if (runtime)
+            {
+                arc::framework::event event{};
+                event.type = arc::framework::event_type::mouse_moved;
+                event.x = GET_X_LPARAM(lparam);
+                event.y = GET_Y_LPARAM(lparam);
+                runtime->dispatch(event);
+            }
+            return 0;
 
-    case WM_LBUTTONDOWN:
-    case WM_RBUTTONDOWN:
-    case WM_MBUTTONDOWN:
-    case WM_XBUTTONDOWN:
-    case WM_LBUTTONUP:
-    case WM_RBUTTONUP:
-    case WM_MBUTTONUP:
-    case WM_XBUTTONUP:
-        if (runtime)
-        {
-            arc::framework::event event{};
-            event.type =
-                (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN)
-                    ? arc::framework::event_type::mouse_button_down
-                    : arc::framework::event_type::mouse_button_up;
-            event.button = translate_mouse_button(message, wparam);
-            event.x = GET_X_LPARAM(lparam);
-            event.y = GET_Y_LPARAM(lparam);
-            runtime->dispatch(event);
-        }
-        return 0;
+        case WM_LBUTTONDOWN:
+        case WM_RBUTTONDOWN:
+        case WM_MBUTTONDOWN:
+        case WM_XBUTTONDOWN:
+        case WM_LBUTTONUP:
+        case WM_RBUTTONUP:
+        case WM_MBUTTONUP:
+        case WM_XBUTTONUP:
+            if (runtime)
+            {
+                arc::framework::event event{};
+                event.type = (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN ||
+                              message == WM_XBUTTONDOWN)
+                                 ? arc::framework::event_type::mouse_button_down
+                                 : arc::framework::event_type::mouse_button_up;
+                event.button = translate_mouse_button(message, wparam);
+                event.x = GET_X_LPARAM(lparam);
+                event.y = GET_Y_LPARAM(lparam);
+                runtime->dispatch(event);
+            }
+            return 0;
 
-    case WM_MOUSEWHEEL:
-        if (runtime)
-        {
-            arc::framework::event event{};
-            event.type = arc::framework::event_type::mouse_wheel;
-            event.wheel_delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / static_cast<float>(WHEEL_DELTA);
-            event.x = GET_X_LPARAM(lparam);
-            event.y = GET_Y_LPARAM(lparam);
-            runtime->dispatch(event);
-        }
-        return 0;
+        case WM_MOUSEWHEEL:
+            if (runtime)
+            {
+                arc::framework::event event{};
+                event.type = arc::framework::event_type::mouse_wheel;
+                event.wheel_delta =
+                    static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / static_cast<float>(WHEEL_DELTA);
+                event.x = GET_X_LPARAM(lparam);
+                event.y = GET_Y_LPARAM(lparam);
+                runtime->dispatch(event);
+            }
+            return 0;
 
-    default:
-        return DefWindowProcW(window, message, wparam, lparam);
+        default:
+            return DefWindowProcW(window, message, wparam, lparam);
     }
 }
 
 DWORD window_style(const arc::framework::application_config& config)
 {
-    if (config.resizable)
-        return WS_OVERLAPPEDWINDOW;
+    if (config.resizable) return WS_OVERLAPPEDWINDOW;
 
     return WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
 }
@@ -194,8 +184,7 @@ DWORD window_style(const arc::framework::application_config& config)
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 {
     std::unique_ptr<arc::framework::application> app = arc::framework::create_application();
-    if (!app)
-        return -1;
+    if (!app) return -1;
 
     arc::framework::runtime runtime(*app);
     const arc::framework::application_config& config = runtime.config();
@@ -210,8 +199,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     window_class.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
     window_class.lpszClassName = class_name.c_str();
 
-    if (!RegisterClassExW(&window_class))
-        return -2;
+    if (!RegisterClassExW(&window_class)) return -2;
 
     RECT rect{};
     rect.right = static_cast<LONG>(config.initial_width);
@@ -219,22 +207,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     const DWORD style = window_style(config);
     AdjustWindowRect(&rect, style, FALSE);
 
-    HWND window = CreateWindowExW(
-        0,
-        class_name.c_str(),
-        title.c_str(),
-        style,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        rect.right - rect.left,
-        rect.bottom - rect.top,
-        nullptr,
-        nullptr,
-        instance,
-        &runtime);
+    HWND window = CreateWindowExW(0, class_name.c_str(), title.c_str(), style, CW_USEDEFAULT, CW_USEDEFAULT,
+                                  rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr, instance, &runtime);
 
-    if (!window)
-        return -3;
+    if (!window) return -3;
 
     runtime.start();
 
@@ -242,8 +218,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     {
         ShowWindow(window, config.maximized ? SW_SHOWMAXIMIZED : show_command);
         UpdateWindow(window);
-        if (config.start_focused)
-            SetForegroundWindow(window);
+        if (config.start_focused) SetForegroundWindow(window);
     }
 
     MSG message{};
@@ -261,8 +236,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
             DispatchMessageW(&message);
         }
 
-        if (runtime.running())
-            runtime.tick();
+        if (runtime.running()) runtime.tick();
     }
 
     runtime.shutdown();

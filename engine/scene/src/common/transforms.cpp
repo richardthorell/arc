@@ -47,8 +47,7 @@ bool inverse_affine(const math::matrix4f& value, math::matrix4f& result) noexcep
     const float c01 = a02 * a21 - a01 * a22;
     const float c02 = a01 * a12 - a02 * a11;
     const float determinant = a00 * c00 + a10 * c01 + a20 * c02;
-    if (std::abs(determinant) <= 1.0e-8f)
-        return false;
+    if (std::abs(determinant) <= 1.0e-8f) return false;
     const float d = 1.0f / determinant;
     result = math::identity<float, 4>();
     result(0, 0) = c00 * d;
@@ -60,8 +59,8 @@ bool inverse_affine(const math::matrix4f& value, math::matrix4f& result) noexcep
     result(2, 0) = (a10 * a21 - a11 * a20) * d;
     result(2, 1) = (a01 * a20 - a00 * a21) * d;
     result(2, 2) = (a00 * a11 - a01 * a10) * d;
-    const auto inverse_translation = math::transform_vector(
-        result, math::vector3f{ value(0, 3), value(1, 3), value(2, 3) });
+    const auto inverse_translation =
+        math::transform_vector(result, math::vector3f{value(0, 3), value(1, 3), value(2, 3)});
     result(0, 3) = -inverse_translation[0];
     result(1, 3) = -inverse_translation[1];
     result(2, 3) = -inverse_translation[2];
@@ -70,19 +69,16 @@ bool inverse_affine(const math::matrix4f& value, math::matrix4f& result) noexcep
 
 bool decompose_trs(const math::matrix4f& matrix, transform_component& transform) noexcept
 {
-    transform.position = { matrix(0, 3), matrix(1, 3), matrix(2, 3) };
+    transform.position = {matrix(0, 3), matrix(1, 3), matrix(2, 3)};
     transform.scale = {
         std::sqrt(matrix(0, 0) * matrix(0, 0) + matrix(1, 0) * matrix(1, 0) + matrix(2, 0) * matrix(2, 0)),
         std::sqrt(matrix(0, 1) * matrix(0, 1) + matrix(1, 1) * matrix(1, 1) + matrix(2, 1) * matrix(2, 1)),
-        std::sqrt(matrix(0, 2) * matrix(0, 2) + matrix(1, 2) * matrix(1, 2) + matrix(2, 2) * matrix(2, 2)) };
-    if (transform.scale[0] <= 1.0e-8f || transform.scale[1] <= 1.0e-8f || transform.scale[2] <= 1.0e-8f)
-        return false;
-    const float determinant =
-        matrix(0, 0) * (matrix(1, 1) * matrix(2, 2) - matrix(1, 2) * matrix(2, 1)) -
-        matrix(0, 1) * (matrix(1, 0) * matrix(2, 2) - matrix(1, 2) * matrix(2, 0)) +
-        matrix(0, 2) * (matrix(1, 0) * matrix(2, 1) - matrix(1, 1) * matrix(2, 0));
-    if (determinant < 0.0f)
-        transform.scale[0] = -transform.scale[0];
+        std::sqrt(matrix(0, 2) * matrix(0, 2) + matrix(1, 2) * matrix(1, 2) + matrix(2, 2) * matrix(2, 2))};
+    if (transform.scale[0] <= 1.0e-8f || transform.scale[1] <= 1.0e-8f || transform.scale[2] <= 1.0e-8f) return false;
+    const float determinant = matrix(0, 0) * (matrix(1, 1) * matrix(2, 2) - matrix(1, 2) * matrix(2, 1)) -
+                              matrix(0, 1) * (matrix(1, 0) * matrix(2, 2) - matrix(1, 2) * matrix(2, 0)) +
+                              matrix(0, 2) * (matrix(1, 0) * matrix(2, 1) - matrix(1, 1) * matrix(2, 0));
+    if (determinant < 0.0f) transform.scale[0] = -transform.scale[0];
     math::matrix4f rotation = matrix;
     for (std::size_t column = 0; column < 3; ++column)
         for (std::size_t row = 0; row < 3; ++row)
@@ -93,26 +89,26 @@ bool decompose_trs(const math::matrix4f& matrix, transform_component& transform)
     if (trace > 0.0f)
     {
         const float s = std::sqrt(trace + 1.0f) * 2.0f;
-        quaternion = { (rotation(2, 1) - rotation(1, 2)) / s, (rotation(0, 2) - rotation(2, 0)) / s,
-            (rotation(1, 0) - rotation(0, 1)) / s, 0.25f * s };
+        quaternion = {(rotation(2, 1) - rotation(1, 2)) / s, (rotation(0, 2) - rotation(2, 0)) / s,
+                      (rotation(1, 0) - rotation(0, 1)) / s, 0.25f * s};
     }
     else if (rotation(0, 0) > rotation(1, 1) && rotation(0, 0) > rotation(2, 2))
     {
         const float s = std::sqrt(1.0f + rotation(0, 0) - rotation(1, 1) - rotation(2, 2)) * 2.0f;
-        quaternion = { 0.25f * s, (rotation(0, 1) + rotation(1, 0)) / s,
-            (rotation(0, 2) + rotation(2, 0)) / s, (rotation(2, 1) - rotation(1, 2)) / s };
+        quaternion = {0.25f * s, (rotation(0, 1) + rotation(1, 0)) / s, (rotation(0, 2) + rotation(2, 0)) / s,
+                      (rotation(2, 1) - rotation(1, 2)) / s};
     }
     else if (rotation(1, 1) > rotation(2, 2))
     {
         const float s = std::sqrt(1.0f + rotation(1, 1) - rotation(0, 0) - rotation(2, 2)) * 2.0f;
-        quaternion = { (rotation(0, 1) + rotation(1, 0)) / s, 0.25f * s,
-            (rotation(1, 2) + rotation(2, 1)) / s, (rotation(0, 2) - rotation(2, 0)) / s };
+        quaternion = {(rotation(0, 1) + rotation(1, 0)) / s, 0.25f * s, (rotation(1, 2) + rotation(2, 1)) / s,
+                      (rotation(0, 2) - rotation(2, 0)) / s};
     }
     else
     {
         const float s = std::sqrt(1.0f + rotation(2, 2) - rotation(0, 0) - rotation(1, 1)) * 2.0f;
-        quaternion = { (rotation(0, 2) + rotation(2, 0)) / s, (rotation(1, 2) + rotation(2, 1)) / s,
-            0.25f * s, (rotation(1, 0) - rotation(0, 1)) / s };
+        quaternion = {(rotation(0, 2) + rotation(2, 0)) / s, (rotation(1, 2) + rotation(2, 1)) / s, 0.25f * s,
+                      (rotation(1, 0) - rotation(0, 1)) / s};
     }
     transform.rotation = math::normalize(quaternion);
     transform.mark_dirty();
@@ -129,44 +125,40 @@ math::matrix4f world_view_matrix(const transform_component& transform) noexcept
 math::vector3f world_position(const transform_component& transform) noexcept
 {
     const auto world = transform.dirty ? local_matrix(transform) : transform.world;
-    return { world(0, 3), world(1, 3), world(2, 3) };
+    return {world(0, 3), world(1, 3), world(2, 3)};
 }
 
 math::vector3f world_forward_direction(const transform_component& transform) noexcept
 {
     const auto world = transform.dirty ? local_matrix(transform) : transform.world;
-    return math::normalize(math::transform_vector(world, math::vector3f{ 0.0f, 0.0f, -1.0f }));
+    return math::normalize(math::transform_vector(world, math::vector3f{0.0f, 0.0f, -1.0f}));
 }
 
 math::vector3f world_up_direction(const transform_component& transform) noexcept
 {
     const auto world = transform.dirty ? local_matrix(transform) : transform.world;
-    return math::normalize(math::transform_vector(world, math::vector3f{ 0.0f, 1.0f, 0.0f }));
+    return math::normalize(math::transform_vector(world, math::vector3f{0.0f, 1.0f, 0.0f}));
 }
 
 math::matrix4f view_matrix(const transform_component& transform) noexcept
 {
     const auto inverse_rotation = math::conjugate(math::normalize(transform.rotation));
     const auto rotation = rotation_matrix(inverse_rotation);
-    const math::vector3f inverse_position{
-        -transform.position[0],
-        -transform.position[1],
-        -transform.position[2]
-    };
+    const math::vector3f inverse_position{-transform.position[0], -transform.position[1], -transform.position[2]};
     return math::matmul(rotation, math::translation(inverse_position));
 }
 
 math::vector3f forward_direction(const transform_component& transform) noexcept
 {
     const auto rotation = rotation_matrix(transform.rotation);
-    const math::vector3f local_forward{ 0.0f, 0.0f, -1.0f };
+    const math::vector3f local_forward{0.0f, 0.0f, -1.0f};
     return math::normalize(math::transform_vector(rotation, local_forward));
 }
 
 math::vector3f up_direction(const transform_component& transform) noexcept
 {
     const auto rotation = rotation_matrix(transform.rotation);
-    const math::vector3f local_up{ 0.0f, 1.0f, 0.0f };
+    const math::vector3f local_up{0.0f, 1.0f, 0.0f};
     return math::normalize(math::transform_vector(rotation, local_up));
 }
 
@@ -201,15 +193,13 @@ math::matrix4f orthographic_rh_zo(float height, float aspect, float near_plane, 
     return result;
 }
 
-math::matrix4f view_projection(
-    const camera_component& camera,
-    const transform_component& transform,
-    float aspect) noexcept
+math::matrix4f view_projection(const camera_component& camera, const transform_component& transform,
+                               float aspect) noexcept
 {
     const math::matrix4f projection =
         camera.projection == camera_projection::orthographic
-        ? orthographic_rh_zo(camera.orthographic_height, aspect, camera.near_plane, camera.far_plane)
-        : perspective_rh_zo(camera.fov_y_radians, aspect, camera.near_plane, camera.far_plane);
+            ? orthographic_rh_zo(camera.orthographic_height, aspect, camera.near_plane, camera.far_plane)
+            : perspective_rh_zo(camera.fov_y_radians, aspect, camera.near_plane, camera.far_plane);
     return math::matmul(projection, view_matrix(transform));
 }
 

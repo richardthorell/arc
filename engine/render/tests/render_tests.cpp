@@ -40,9 +40,8 @@ public:
         configured = config;
     }
 
-    arc::render::render_submit_result submit(
-        const arc::render::render_frame_packet& packet,
-        const arc::render::compiled_render_graph& graph) override
+    arc::render::render_submit_result submit(const arc::render::render_frame_packet& packet,
+                                             const arc::render::compiled_render_graph& graph) override
     {
         last_frame = packet.frame_index;
         last_event_count = packet.events.size();
@@ -50,17 +49,15 @@ public:
         profile.frame_index = packet.frame_index;
         profile.graph = graph;
         profile.summary = "recorded";
-        profile.clustered_lights = {
-            .tile_size_pixels = 32,
-            .tiles_x = 2,
-            .tiles_y = 3,
-            .depth_slices = 16,
-            .cluster_count = 96,
-            .point_light_references = 4,
-            .spot_light_references = 2,
-            .overflow_count = 1,
-            .available = true
-        };
+        profile.clustered_lights = {.tile_size_pixels = 32,
+                                    .tiles_x = 2,
+                                    .tiles_y = 3,
+                                    .depth_slices = 16,
+                                    .cluster_count = 96,
+                                    .point_light_references = 4,
+                                    .spot_light_references = 2,
+                                    .overflow_count = 1,
+                                    .available = true};
         return arc::render::render_submit_result::success();
     }
 
@@ -72,7 +69,7 @@ public:
 
     arc::render::render_viewport_texture viewport_texture() const noexcept override
     {
-        return { .id = texture_id, .width = viewport_width, .height = viewport_height };
+        return {.id = texture_id, .width = viewport_width, .height = viewport_height};
     }
 
     arc::render::render_backend_frame_profile last_frame_profile() const override
@@ -104,7 +101,7 @@ public:
     std::uint64_t last_frame{};
     std::size_t last_event_count{};
     std::size_t last_pass_count{};
-    std::uint64_t texture_id{ 99 };
+    std::uint64_t texture_id{99};
     std::uint32_t viewport_width{};
     std::uint32_t viewport_height{};
     bool pick_requested{};
@@ -150,17 +147,10 @@ void write_u32_at(std::vector<std::byte>& bytes, std::size_t offset, std::uint32
     std::memcpy(bytes.data() + offset, &value, sizeof(value));
 }
 
-std::vector<std::byte> make_dds_header(
-    std::uint32_t width,
-    std::uint32_t height,
-    std::uint32_t mip_count,
-    std::uint32_t pixel_flags,
-    std::uint32_t four_cc,
-    std::uint32_t rgb_bit_count = 0,
-    std::uint32_t r_mask = 0,
-    std::uint32_t g_mask = 0,
-    std::uint32_t b_mask = 0,
-    std::uint32_t a_mask = 0)
+std::vector<std::byte> make_dds_header(std::uint32_t width, std::uint32_t height, std::uint32_t mip_count,
+                                       std::uint32_t pixel_flags, std::uint32_t four_cc,
+                                       std::uint32_t rgb_bit_count = 0, std::uint32_t r_mask = 0,
+                                       std::uint32_t g_mask = 0, std::uint32_t b_mask = 0, std::uint32_t a_mask = 0)
 {
     std::vector<std::byte> bytes(128);
     write_u32_at(bytes, 0, 0x20534444);
@@ -202,7 +192,7 @@ std::filesystem::path write_triangle_glb()
 {
     std::vector<std::byte> bin;
     const std::size_t position_offset = bin.size();
-    for (const float value : { 0.0f, 0.5f, 0.0f, -0.5f, -0.5f, 0.0f, 0.5f, -0.5f, 0.0f })
+    for (const float value : {0.0f, 0.5f, 0.0f, -0.5f, -0.5f, 0.0f, 0.5f, -0.5f, 0.0f})
         append_f32(bin, value);
     const std::size_t normal_offset = bin.size();
     for (int index = 0; index < 3; ++index)
@@ -212,44 +202,57 @@ std::filesystem::path write_triangle_glb()
         append_f32(bin, 1.0f);
     }
     const std::size_t uv_offset = bin.size();
-    for (const float value : { 0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f })
+    for (const float value : {0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f})
         append_f32(bin, value);
     const std::size_t index_offset = bin.size();
     append_u16(bin, 0);
     append_u16(bin, 1);
     append_u16(bin, 2);
     const std::size_t image_offset = bin.size();
-    for (const std::byte value : { std::byte{ 0x89 }, std::byte{ 0x50 }, std::byte{ 0x4e }, std::byte{ 0x47 } })
+    for (const std::byte value : {std::byte{0x89}, std::byte{0x50}, std::byte{0x4e}, std::byte{0x47}})
         bin.push_back(value);
-    pad4(bin, std::byte{ 0 });
+    pad4(bin, std::byte{0});
 
-    const std::string json =
-        "{\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"byteLength\":" + std::to_string(bin.size()) + "}],"
-        "\"bufferViews\":["
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(position_offset) + ",\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(normal_offset) + ",\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(uv_offset) + ",\"byteLength\":24},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(index_offset) + ",\"byteLength\":6},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(image_offset) + ",\"byteLength\":4}],"
-        "\"accessors\":["
-        "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
-        "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
-        "\"images\":[{\"name\":\"BaseColor\",\"mimeType\":\"image/png\",\"bufferView\":4}],"
-        "\"textures\":[{\"source\":0}],"
-        "\"materials\":[{\"name\":\"TestMaterial\",\"alphaMode\":\"MASK\",\"alphaCutoff\":0.35,"
-        "\"doubleSided\":true,"
-        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.25,0.5,0.75,0.9],"
-        "\"metallicFactor\":0.2,\"roughnessFactor\":0.7,\"baseColorTexture\":{\"index\":0}},"
-        "\"normalTexture\":{\"index\":0,\"scale\":0.8},"
-        "\"occlusionTexture\":{\"index\":0,\"strength\":0.6},"
-        "\"emissiveTexture\":{\"index\":0},\"emissiveFactor\":[0.1,0.2,0.3]}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2},\"indices\":3,\"material\":0}]}]}";
+    const std::string json = "{\"asset\":{\"version\":\"2.0\"},"
+                             "\"buffers\":[{\"byteLength\":" +
+                             std::to_string(bin.size()) +
+                             "}],"
+                             "\"bufferViews\":["
+                             "{\"buffer\":0,\"byteOffset\":" +
+                             std::to_string(position_offset) +
+                             ",\"byteLength\":36},"
+                             "{\"buffer\":0,\"byteOffset\":" +
+                             std::to_string(normal_offset) +
+                             ",\"byteLength\":36},"
+                             "{\"buffer\":0,\"byteOffset\":" +
+                             std::to_string(uv_offset) +
+                             ",\"byteLength\":24},"
+                             "{\"buffer\":0,\"byteOffset\":" +
+                             std::to_string(index_offset) +
+                             ",\"byteLength\":6},"
+                             "{\"buffer\":0,\"byteOffset\":" +
+                             std::to_string(image_offset) +
+                             ",\"byteLength\":4}],"
+                             "\"accessors\":["
+                             "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+                             "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+                             "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+                             "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+                             "\"images\":[{\"name\":\"BaseColor\",\"mimeType\":\"image/png\",\"bufferView\":4}],"
+                             "\"textures\":[{\"source\":0}],"
+                             "\"materials\":[{\"name\":\"TestMaterial\",\"alphaMode\":\"MASK\",\"alphaCutoff\":0.35,"
+                             "\"doubleSided\":true,"
+                             "\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.25,0.5,0.75,0.9],"
+                             "\"metallicFactor\":0.2,\"roughnessFactor\":0.7,\"baseColorTexture\":{\"index\":0}},"
+                             "\"normalTexture\":{\"index\":0,\"scale\":0.8},"
+                             "\"occlusionTexture\":{\"index\":0,\"strength\":0.6},"
+                             "\"emissiveTexture\":{\"index\":0},\"emissiveFactor\":[0.1,0.2,0.3]}],"
+                             "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":"
+                             "2},\"indices\":3,\"material\":0}]}]}";
 
-    std::vector<std::byte> json_bytes(reinterpret_cast<const std::byte*>(json.data()), reinterpret_cast<const std::byte*>(json.data() + json.size()));
-    pad4(json_bytes, std::byte{ ' ' });
+    std::vector<std::byte> json_bytes(reinterpret_cast<const std::byte*>(json.data()),
+                                      reinterpret_cast<const std::byte*>(json.data() + json.size()));
+    pad4(json_bytes, std::byte{' '});
 
     std::vector<std::byte> glb;
     append_u32(glb, 0x46546C67);
@@ -320,9 +323,9 @@ TEST_CASE("render event writer emits mesh upload and draw events")
 {
     arc::render::render_event_buffer buffer;
     arc::render::render_event_writer writer(buffer);
-    arc::render::mesh_handle mesh{ .index = 4, .generation = 2 };
-    arc::render::texture_handle texture{ .index = 5, .generation = 1 };
-    arc::render::material_handle material{ .index = 6, .generation = 1 };
+    arc::render::mesh_handle mesh{.index = 4, .generation = 2};
+    arc::render::texture_handle texture{.index = 5, .generation = 1};
+    arc::render::material_handle material{.index = 6, .generation = 1};
     auto mesh_data = std::make_shared<arc::render::mesh_data>();
     mesh_data->name = "triangle";
     auto texture_data = std::make_shared<arc::render::texture_data>();
@@ -333,28 +336,13 @@ TEST_CASE("render event writer emits mesh upload and draw events")
     writer.mesh_upload(mesh, mesh_data, "triangle");
     writer.texture_upload(texture, texture_data, "white");
     writer.material_upload(material, material_data, "default");
-    writer.draw_mesh(
-        mesh,
-        material,
-        arc::math::identity<float, 4>(),
-        arc::math::identity<float, 4>(),
-        arc::render::render_mode::wireframe,
-        arc::render::mesh_visualization_mode::world_normal,
-        true,
-        arc::math::vector4f{ 1.0f, 0.5f, 0.0f, 1.0f },
-        "triangle");
-    writer.draw_mesh_tinted(
-        mesh,
-        material,
-        arc::math::identity<float, 4>(),
-        arc::math::identity<float, 4>(),
-        arc::render::render_mode::shaded,
-        arc::render::mesh_visualization_mode::standard,
-        false,
-        arc::math::vector4f{ 0.25f, 0.5f, 0.75f, 1.0f },
-        arc::math::vector4f::one,
-        "tinted");
-    writer.directional_light({ 0.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f }, 3.0f, true, "Sun");
+    writer.draw_mesh(mesh, material, arc::math::identity<float, 4>(), arc::math::identity<float, 4>(),
+                     arc::render::render_mode::wireframe, arc::render::mesh_visualization_mode::world_normal, true,
+                     arc::math::vector4f{1.0f, 0.5f, 0.0f, 1.0f}, "triangle");
+    writer.draw_mesh_tinted(mesh, material, arc::math::identity<float, 4>(), arc::math::identity<float, 4>(),
+                            arc::render::render_mode::shaded, arc::render::mesh_visualization_mode::standard, false,
+                            arc::math::vector4f{0.25f, 0.5f, 0.75f, 1.0f}, arc::math::vector4f::one, "tinted");
+    writer.directional_light({0.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, 3.0f, true, "Sun");
 
     REQUIRE(buffer.events().size() == 6);
     REQUIRE(buffer.events()[0].type() == arc::render::render_event_type::mesh_upload);
@@ -384,18 +372,20 @@ TEST_CASE("render event writer emits mesh upload and draw events")
 TEST_CASE("render frame queue accepts producer buffers from multiple threads")
 {
     arc::render::render_frame_queue queue;
-    std::atomic<int> ready{ 0 };
+    std::atomic<int> ready{0};
     std::vector<std::thread> threads;
 
     for (int index = 0; index < 4; ++index)
     {
-        threads.emplace_back([&, index]() {
-            arc::render::render_event_buffer buffer;
-            arc::render::render_event_writer writer(buffer);
-            writer.debug_marker("producer " + std::to_string(index));
-            ready.fetch_add(1);
-            queue.submit(std::move(buffer));
-        });
+        threads.emplace_back(
+            [&, index]()
+            {
+                arc::render::render_event_buffer buffer;
+                arc::render::render_event_writer writer(buffer);
+                writer.debug_marker("producer " + std::to_string(index));
+                ready.fetch_add(1);
+                queue.submit(std::move(buffer));
+            });
     }
 
     for (auto& thread : threads)
@@ -409,23 +399,20 @@ TEST_CASE("render frame queue accepts producer buffers from multiple threads")
 TEST_CASE("render graph orders passes by declared resources")
 {
     arc::render::render_graph graph;
-    const auto backbuffer = graph.add_resource({
-        .name = "backbuffer",
-        .kind = arc::render::render_resource_kind::color_texture,
-        .format = arc::render::render_format::rgba8_unorm
-    });
-    graph.add_pass({
-        .name = "clear",
-        .kind = arc::render::render_pass_kind::clear,
-        .writes = { { .handle = backbuffer, .kind = arc::render::render_resource_kind::color_texture,
-            .usage = arc::render::render_resource_usage::color_attachment, .write = true } }
-    });
-    graph.add_pass({
-        .name = "present",
-        .kind = arc::render::render_pass_kind::present,
-        .reads = { { .handle = backbuffer, .kind = arc::render::render_resource_kind::color_texture,
-            .usage = arc::render::render_resource_usage::sampled } }
-    });
+    const auto backbuffer = graph.add_resource({.name = "backbuffer",
+                                                .kind = arc::render::render_resource_kind::color_texture,
+                                                .format = arc::render::render_format::rgba8_unorm});
+    graph.add_pass({.name = "clear",
+                    .kind = arc::render::render_pass_kind::clear,
+                    .writes = {{.handle = backbuffer,
+                                .kind = arc::render::render_resource_kind::color_texture,
+                                .usage = arc::render::render_resource_usage::color_attachment,
+                                .write = true}}});
+    graph.add_pass({.name = "present",
+                    .kind = arc::render::render_pass_kind::present,
+                    .reads = {{.handle = backbuffer,
+                               .kind = arc::render::render_resource_kind::color_texture,
+                               .usage = arc::render::render_resource_usage::sampled}}});
 
     const auto compiled = graph.compile();
     REQUIRE(compiled.passes.size() == 2);
@@ -436,34 +423,24 @@ TEST_CASE("render graph orders passes by declared resources")
 TEST_CASE("render graph compiles typed resources and transitions")
 {
     arc::render::render_graph graph;
-    graph.add_resource({
-        .name = "viewport",
-        .kind = arc::render::render_resource_kind::color_texture,
-        .extent = { .width = 1280, .height = 720 },
-        .format = arc::render::render_format::rgba8_unorm,
-        .persistent = true
-    });
+    graph.add_resource({.name = "viewport",
+                        .kind = arc::render::render_resource_kind::color_texture,
+                        .extent = {.width = 1280, .height = 720},
+                        .format = arc::render::render_format::rgba8_unorm,
+                        .persistent = true});
 
-    graph.add_pass({
-        .name = "viewport clear",
-        .kind = arc::render::render_pass_kind::clear,
-        .writes = { {
-            .resource = "viewport",
-            .kind = arc::render::render_resource_kind::color_texture,
-            .usage = arc::render::render_resource_usage::color_attachment,
-            .write = true,
-            .load_op = arc::render::render_load_op::clear
-        } }
-    });
-    graph.add_pass({
-        .name = "imgui sample",
-        .kind = arc::render::render_pass_kind::imgui,
-        .reads = { {
-            .resource = "viewport",
-            .kind = arc::render::render_resource_kind::color_texture,
-            .usage = arc::render::render_resource_usage::sampled
-        } }
-    });
+    graph.add_pass({.name = "viewport clear",
+                    .kind = arc::render::render_pass_kind::clear,
+                    .writes = {{.resource = "viewport",
+                                .kind = arc::render::render_resource_kind::color_texture,
+                                .usage = arc::render::render_resource_usage::color_attachment,
+                                .write = true,
+                                .load_op = arc::render::render_load_op::clear}}});
+    graph.add_pass({.name = "imgui sample",
+                    .kind = arc::render::render_pass_kind::imgui,
+                    .reads = {{.resource = "viewport",
+                               .kind = arc::render::render_resource_kind::color_texture,
+                               .usage = arc::render::render_resource_usage::sampled}}});
 
     const auto compiled = graph.compile();
     REQUIRE(compiled.resources.size() == 1);
@@ -480,32 +457,29 @@ TEST_CASE("render graph compiles typed resources and transitions")
 TEST_CASE("compiled render graph executes passes and barriers through a command encoder")
 {
     arc::render::render_graph graph;
-    const auto target = graph.add_resource({
-        .name = "target",
-        .kind = arc::render::render_resource_kind::color_texture,
-        .format = arc::render::render_format::rgba8_unorm
-    });
+    const auto target = graph.add_resource({.name = "target",
+                                            .kind = arc::render::render_resource_kind::color_texture,
+                                            .format = arc::render::render_format::rgba8_unorm});
     std::uint32_t recorded{};
-    graph.add_pass({
-        .name = "produce",
-        .writes = { { .handle = target, .kind = arc::render::render_resource_kind::color_texture,
-            .usage = arc::render::render_resource_usage::color_attachment, .write = true } },
-        .record = count_recorded_pass,
-        .user_data = &recorded
-    });
-    graph.add_pass({
-        .name = "consume",
-        .reads = { { .handle = target, .kind = arc::render::render_resource_kind::color_texture,
-            .usage = arc::render::render_resource_usage::sampled } },
-        .record = count_recorded_pass,
-        .user_data = &recorded
-    });
+    graph.add_pass({.name = "produce",
+                    .writes = {{.handle = target,
+                                .kind = arc::render::render_resource_kind::color_texture,
+                                .usage = arc::render::render_resource_usage::color_attachment,
+                                .write = true}},
+                    .record = count_recorded_pass,
+                    .user_data = &recorded});
+    graph.add_pass({.name = "consume",
+                    .reads = {{.handle = target,
+                               .kind = arc::render::render_resource_kind::color_texture,
+                               .usage = arc::render::render_resource_usage::sampled}},
+                    .record = count_recorded_pass,
+                    .user_data = &recorded});
 
     recording_command_encoder encoder;
     arc::render::execute_render_graph(graph.compile(), encoder);
 
-    REQUIRE(encoder.passes == std::vector<std::string>{ "produce", "consume" });
-    REQUIRE(encoder.barriers == std::vector<std::string>{ "target" });
+    REQUIRE(encoder.passes == std::vector<std::string>{"produce", "consume"});
+    REQUIRE(encoder.barriers == std::vector<std::string>{"target"});
     REQUIRE(encoder.ended_passes == 2);
     REQUIRE(recorded == 2);
 }
@@ -513,36 +487,29 @@ TEST_CASE("compiled render graph executes passes and barriers through a command 
 TEST_CASE("render graph rejects invalid resource declarations and internal reads")
 {
     arc::render::render_graph undeclared;
-    undeclared.add_pass({
-        .name = "bad read",
-        .reads = { { .resource = "missing", .usage = arc::render::render_resource_usage::sampled } }
-    });
+    undeclared.add_pass(
+        {.name = "bad read", .reads = {{.resource = "missing", .usage = arc::render::render_resource_usage::sampled}}});
     REQUIRE_THROWS_AS(undeclared.compile(), std::invalid_argument);
 
     arc::render::render_graph read_before_write;
-    const auto transient = read_before_write.add_resource({
-        .name = "transient",
-        .kind = arc::render::render_resource_kind::color_texture,
-        .format = arc::render::render_format::rgba8_unorm
-    });
-    read_before_write.add_pass({
-        .name = "bad read",
-        .reads = { { .handle = transient, .kind = arc::render::render_resource_kind::color_texture,
-            .usage = arc::render::render_resource_usage::sampled } }
-    });
+    const auto transient = read_before_write.add_resource({.name = "transient",
+                                                           .kind = arc::render::render_resource_kind::color_texture,
+                                                           .format = arc::render::render_format::rgba8_unorm});
+    read_before_write.add_pass({.name = "bad read",
+                                .reads = {{.handle = transient,
+                                           .kind = arc::render::render_resource_kind::color_texture,
+                                           .usage = arc::render::render_resource_usage::sampled}}});
     REQUIRE_THROWS_AS(read_before_write.compile(), std::invalid_argument);
 
     arc::render::render_graph incompatible;
-    const auto depth = incompatible.add_resource({
-        .name = "depth",
-        .kind = arc::render::render_resource_kind::depth_texture,
-        .format = arc::render::render_format::d32_float
-    });
-    incompatible.add_pass({
-        .name = "bad attachment",
-        .writes = { { .handle = depth, .kind = arc::render::render_resource_kind::depth_texture,
-            .usage = arc::render::render_resource_usage::color_attachment, .write = true } }
-    });
+    const auto depth = incompatible.add_resource({.name = "depth",
+                                                  .kind = arc::render::render_resource_kind::depth_texture,
+                                                  .format = arc::render::render_format::d32_float});
+    incompatible.add_pass({.name = "bad attachment",
+                           .writes = {{.handle = depth,
+                                       .kind = arc::render::render_resource_kind::depth_texture,
+                                       .usage = arc::render::render_resource_usage::color_attachment,
+                                       .write = true}}});
     REQUIRE_THROWS_AS(incompatible.compile(), std::invalid_argument);
 }
 
@@ -564,11 +531,11 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     const auto compiled = graph.compile();
 
     REQUIRE(compiled.passes.size() >= 19);
-    const auto pass_index = [&](std::string_view name) {
+    const auto pass_index = [&](std::string_view name)
+    {
         for (std::size_t index = 0; index < compiled.passes.size(); ++index)
         {
-            if (compiled.passes[index].name == name)
-                return index;
+            if (compiled.passes[index].name == name) return index;
         }
         return compiled.passes.size();
     };
@@ -590,27 +557,27 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     REQUIRE(sky_index < deferred_index);
     REQUIRE(deferred_index < transparent_index);
     REQUIRE(compiled.passes[compiled.passes.size() - 4].builtin == arc::render::builtin_render_pass::debug_overlay);
-    REQUIRE(compiled.passes[compiled.passes.size() - 3].builtin == arc::render::builtin_render_pass::luminance_histogram);
+    REQUIRE(compiled.passes[compiled.passes.size() - 3].builtin ==
+            arc::render::builtin_render_pass::luminance_histogram);
     REQUIRE(compiled.passes[compiled.passes.size() - 2].builtin == arc::render::builtin_render_pass::exposure_resolve);
     REQUIRE(compiled.passes.back().builtin == arc::render::builtin_render_pass::output_transform);
     REQUIRE(compiled.resources.size() >= 18);
-    REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource) {
-        return resource.name == "gbuffer_albedo" && resource.format == arc::render::render_format::rgba8_srgb;
-    }));
+    REQUIRE(std::any_of(
+        compiled.resources.begin(), compiled.resources.end(), [](const auto& resource)
+        { return resource.name == "gbuffer_albedo" && resource.format == arc::render::render_format::rgba8_srgb; }));
     REQUIRE(compiled.lifetimes.size() == compiled.resources.size());
     REQUIRE_FALSE(compiled.transitions.empty());
 }
 
 TEST_CASE("scene draw graph provides a compact forward plus fallback")
 {
-    const auto compiled = arc::render::make_scene_draw_graph(
-        "viewport", arc::render::render_path::forward_plus, false).compile();
+    const auto compiled =
+        arc::render::make_scene_draw_graph("viewport", arc::render::render_path::forward_plus, false).compile();
 
     REQUIRE(compiled.passes.size() >= 11);
     REQUIRE(compiled.resources.size() >= 8);
-    REQUIRE(std::any_of(compiled.passes.begin(), compiled.passes.end(), [](const auto& pass) {
-        return pass.name == "forward opaque";
-    }));
+    REQUIRE(std::any_of(compiled.passes.begin(), compiled.passes.end(),
+                        [](const auto& pass) { return pass.name == "forward opaque"; }));
     for (const auto& pass : compiled.passes)
         REQUIRE(pass.name != "gbuffer pass");
 }
@@ -628,11 +595,11 @@ TEST_CASE("environment lighting graph schedules scalable IBL generation")
     environment.lighting.enabled = true;
     environment.lighting.source = arc::render::environment_lighting_source_mode::follow_sky;
 
-    const auto compiled = arc::render::make_scene_draw_graph(
-        "viewport", config, true, environment).compile();
-    const auto contains = [&](arc::render::builtin_render_pass expected) {
+    const auto compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    const auto contains = [&](arc::render::builtin_render_pass expected)
+    {
         return std::any_of(compiled.passes.begin(), compiled.passes.end(),
-            [expected](const auto& pass) { return pass.builtin == expected; });
+                           [expected](const auto& pass) { return pass.builtin == expected; });
     };
     REQUIRE(contains(arc::render::builtin_render_pass::environment_equirect_to_cube));
     REQUIRE(contains(arc::render::builtin_render_pass::environment_irradiance));
@@ -641,12 +608,12 @@ TEST_CASE("environment lighting graph schedules scalable IBL generation")
     REQUIRE(contains(arc::render::builtin_render_pass::luminance_histogram));
     REQUIRE(contains(arc::render::builtin_render_pass::exposure_resolve));
     REQUIRE(contains(arc::render::builtin_render_pass::output_transform));
-    REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(), [](const auto& resource) {
-        return resource.name == "environment_specular" &&
-            resource.extent.width == 256 &&
-            resource.array_layers == 6 &&
-            resource.mip_levels == 9;
-    }));
+    REQUIRE(std::any_of(compiled.resources.begin(), compiled.resources.end(),
+                        [](const auto& resource)
+                        {
+                            return resource.name == "environment_specular" && resource.extent.width == 256 &&
+                                   resource.array_layers == 6 && resource.mip_levels == 9;
+                        }));
 }
 
 TEST_CASE("world environment graph selects scalable atmosphere and cloud passes")
@@ -663,9 +630,10 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
     environment.clouds.cast_shadows = true;
 
     const auto compiled = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile();
-    const auto contains = [&](arc::render::builtin_render_pass expected) {
+    const auto contains = [&](arc::render::builtin_render_pass expected)
+    {
         return std::any_of(compiled.passes.begin(), compiled.passes.end(),
-            [expected](const auto& pass) { return pass.builtin == expected; });
+                           [expected](const auto& pass) { return pass.builtin == expected; });
     };
     REQUIRE(contains(arc::render::builtin_render_pass::atmosphere_transmittance));
     REQUIRE(contains(arc::render::builtin_render_pass::atmosphere_multi_scattering));
@@ -677,16 +645,16 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
     standard.quality = arc::render::render_quality_tier::low;
     standard.path = arc::render::render_path::forward_plus;
     const auto low = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile();
-    REQUIRE(std::none_of(low.passes.begin(), low.passes.end(), [](const auto& pass) {
-        return pass.builtin == arc::render::builtin_render_pass::atmosphere_transmittance ||
-            pass.builtin == arc::render::builtin_render_pass::cloud_shadow;
-    }));
-    REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass) {
-        return pass.builtin == arc::render::builtin_render_pass::sky_composite;
-    }));
-    REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass) {
-        return pass.builtin == arc::render::builtin_render_pass::debug_overlay;
-    }));
+    REQUIRE(std::none_of(low.passes.begin(), low.passes.end(),
+                         [](const auto& pass)
+                         {
+                             return pass.builtin == arc::render::builtin_render_pass::atmosphere_transmittance ||
+                                    pass.builtin == arc::render::builtin_render_pass::cloud_shadow;
+                         }));
+    REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass)
+                        { return pass.builtin == arc::render::builtin_render_pass::sky_composite; }));
+    REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass)
+                        { return pass.builtin == arc::render::builtin_render_pass::debug_overlay; }));
 }
 
 TEST_CASE("world environment graph selects off solid and HDRI sky paths without atmosphere LUTs")
@@ -694,9 +662,10 @@ TEST_CASE("world environment graph selects off solid and HDRI sky paths without 
     arc::render::resolved_render_config config;
     config.quality = arc::render::render_quality_tier::medium;
     config.path = arc::render::render_path::deferred;
-    const auto contains = [](const auto& graph, arc::render::builtin_render_pass expected) {
+    const auto contains = [](const auto& graph, arc::render::builtin_render_pass expected)
+    {
         return std::any_of(graph.passes.begin(), graph.passes.end(),
-            [expected](const auto& pass) { return pass.builtin == expected; });
+                           [expected](const auto& pass) { return pass.builtin == expected; });
     };
 
     arc::render::world_environment_data environment;
@@ -743,16 +712,8 @@ TEST_CASE("stable directional shadow fitting produces ordered blended cascades")
     settings.maximum_distance = 200.0f;
     settings.blend_fraction = 0.1f;
 
-    const auto first = arc::render::fit_directional_shadow_cascades(
-        camera,
-        { 0.35f, -0.85f, -0.4f },
-        settings,
-        2048);
-    const auto second = arc::render::fit_directional_shadow_cascades(
-        camera,
-        { 0.35f, -0.85f, -0.4f },
-        settings,
-        2048);
+    const auto first = arc::render::fit_directional_shadow_cascades(camera, {0.35f, -0.85f, -0.4f}, settings, 2048);
+    const auto second = arc::render::fit_directional_shadow_cascades(camera, {0.35f, -0.85f, -0.4f}, settings, 2048);
 
     REQUIRE(first.cascade_count == 4);
     REQUIRE(first.cascades[3].split_depth == Catch::Approx(200.0f));
@@ -762,23 +723,16 @@ TEST_CASE("stable directional shadow fitting produces ordered blended cascades")
         REQUIRE(cascade.radius > 0.0f);
         REQUIRE(cascade.texel_world_size > 0.0f);
         REQUIRE(cascade.blend_start_depth < cascade.split_depth);
-        REQUIRE(std::memcmp(
-            cascade.light_view_projection.data(),
-            second.cascades[index].light_view_projection.data(),
-            sizeof(float) * 16u) == 0);
-        if (index > 0)
-            REQUIRE(cascade.split_depth > first.cascades[index - 1].split_depth);
+        REQUIRE(std::memcmp(cascade.light_view_projection.data(), second.cascades[index].light_view_projection.data(),
+                            sizeof(float) * 16u) == 0);
+        if (index > 0) REQUIRE(cascade.split_depth > first.cascades[index - 1].split_depth);
 
-        const auto light_direction = arc::math::normalize(
-            arc::math::vector3f{ 0.35f, -0.85f, -0.4f });
-        const auto light_right = arc::math::normalize(arc::math::cross(
-            light_direction,
-            arc::math::vector3f{ 0.0f, 1.0f, 0.0f }));
+        const auto light_direction = arc::math::normalize(arc::math::vector3f{0.35f, -0.85f, -0.4f});
+        const auto light_right =
+            arc::math::normalize(arc::math::cross(light_direction, arc::math::vector3f{0.0f, 1.0f, 0.0f}));
         const auto light_up = arc::math::cross(light_right, light_direction);
-        const float snapped_x =
-            arc::math::dot(light_right, cascade.center) / cascade.texel_world_size;
-        const float snapped_y =
-            arc::math::dot(light_up, cascade.center) / cascade.texel_world_size;
+        const float snapped_x = arc::math::dot(light_right, cascade.center) / cascade.texel_world_size;
+        const float snapped_y = arc::math::dot(light_up, cascade.center) / cascade.texel_world_size;
         REQUIRE(snapped_x == Catch::Approx(std::round(snapped_x)).margin(0.0001f));
         REQUIRE(snapped_y == Catch::Approx(std::round(snapped_y)).margin(0.0001f));
     }
@@ -787,14 +741,12 @@ TEST_CASE("stable directional shadow fitting produces ordered blended cascades")
 TEST_CASE("shadow atlas allocates point faces atomically and invalidates released handles")
 {
     arc::render::shadow_atlas_allocator atlas(2048, 128, 2);
-    const auto point = atlas.allocate({
-        .kind = arc::render::shadow_light_kind::point,
-        .light_key = 42,
-        .requested_resolution = 512,
-        .minimum_resolution = 256,
-        .priority = 200,
-        .frame_index = 1
-    });
+    const auto point = atlas.allocate({.kind = arc::render::shadow_light_kind::point,
+                                       .light_key = 42,
+                                       .requested_resolution = 512,
+                                       .minimum_resolution = 256,
+                                       .priority = 200,
+                                       .frame_index = 1});
     REQUIRE(point);
     REQUIRE(point->face_count == arc::render::point_shadow_face_count);
     REQUIRE(point->resolved_resolution == 512);
@@ -813,23 +765,19 @@ TEST_CASE("shadow atlas reduces resolution and evicts lower priority allocations
     arc::render::shadow_atlas_allocator atlas(512, 128, 2);
     for (std::uint64_t light = 1; light <= 4; ++light)
     {
-        REQUIRE(atlas.allocate({
-            .kind = arc::render::shadow_light_kind::spot,
-            .light_key = light,
-            .requested_resolution = 240,
-            .minimum_resolution = 120,
-            .priority = 10,
-            .frame_index = light
-        }));
+        REQUIRE(atlas.allocate({.kind = arc::render::shadow_light_kind::spot,
+                                .light_key = light,
+                                .requested_resolution = 240,
+                                .minimum_resolution = 120,
+                                .priority = 10,
+                                .frame_index = light}));
     }
-    const auto important = atlas.allocate({
-        .kind = arc::render::shadow_light_kind::spot,
-        .light_key = 99,
-        .requested_resolution = 240,
-        .minimum_resolution = 120,
-        .priority = 250,
-        .frame_index = 10
-    });
+    const auto important = atlas.allocate({.kind = arc::render::shadow_light_kind::spot,
+                                           .light_key = 99,
+                                           .requested_resolution = 240,
+                                           .minimum_resolution = 120,
+                                           .priority = 250,
+                                           .frame_index = 10});
     REQUIRE(important);
     REQUIRE(atlas.statistics().eviction_count >= 1);
 }
@@ -838,30 +786,21 @@ TEST_CASE("render world preparation culls sorts batches and emits indirect comma
 {
     arc::render::render_world_packet packet;
     packet.camera.view_projection = arc::math::identity<float, 4>();
-    packet.items.push_back({
-        .mesh = { .index = 1, .generation = 1 },
-        .material = { .index = 2, .generation = 1 },
-        .world_bounds = arc::geometric::box3f{
-            arc::geometric::point3f{ -0.5f, -0.5f, -0.5f },
-            arc::geometric::point3f{ 0.5f, 0.5f, 0.5f } },
-        .label = "A"
-    });
-    packet.items.push_back({
-        .mesh = { .index = 1, .generation = 1 },
-        .material = { .index = 2, .generation = 1 },
-        .world_bounds = arc::geometric::box3f{
-            arc::geometric::point3f{ -0.25f, -0.25f, -0.25f },
-            arc::geometric::point3f{ 0.25f, 0.25f, 0.25f } },
-        .label = "B"
-    });
-    packet.items.push_back({
-        .mesh = { .index = 5, .generation = 1 },
-        .material = { .index = 7, .generation = 1 },
-        .world_bounds = arc::geometric::box3f{
-            arc::geometric::point3f{ 4.0f, 4.0f, 4.0f },
-            arc::geometric::point3f{ 5.0f, 5.0f, 5.0f } },
-        .label = "culled"
-    });
+    packet.items.push_back({.mesh = {.index = 1, .generation = 1},
+                            .material = {.index = 2, .generation = 1},
+                            .world_bounds = arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f},
+                                                                  arc::geometric::point3f{0.5f, 0.5f, 0.5f}},
+                            .label = "A"});
+    packet.items.push_back({.mesh = {.index = 1, .generation = 1},
+                            .material = {.index = 2, .generation = 1},
+                            .world_bounds = arc::geometric::box3f{arc::geometric::point3f{-0.25f, -0.25f, -0.25f},
+                                                                  arc::geometric::point3f{0.25f, 0.25f, 0.25f}},
+                            .label = "B"});
+    packet.items.push_back({.mesh = {.index = 5, .generation = 1},
+                            .material = {.index = 7, .generation = 1},
+                            .world_bounds = arc::geometric::box3f{arc::geometric::point3f{4.0f, 4.0f, 4.0f},
+                                                                  arc::geometric::point3f{5.0f, 5.0f, 5.0f}},
+                            .label = "culled"});
 
     arc::render::prepare_render_world(packet);
 
@@ -967,10 +906,9 @@ TEST_CASE("renderer applies resolved configuration when attaching a backend")
 TEST_CASE("dynamic resolution uses smoothed hysteresis and sixteenth steps")
 {
     arc::render::dynamic_resolution_controller controller;
-    controller.reset(
-        arc::render::default_target_frame_time_ms,
-        arc::render::low_render_quality_profile.minimum_render_scale,
-        arc::render::low_render_quality_profile.maximum_render_scale);
+    controller.reset(arc::render::default_target_frame_time_ms,
+                     arc::render::low_render_quality_profile.minimum_render_scale,
+                     arc::render::low_render_quality_profile.maximum_render_scale);
 
     for (std::uint32_t index = 0; index < 12; ++index)
         controller.update(30.0f);
@@ -978,7 +916,7 @@ TEST_CASE("dynamic resolution uses smoothed hysteresis and sixteenth steps")
     REQUIRE(reduced < 1.0f);
     REQUIRE(reduced >= 0.5f);
     REQUIRE(std::round(reduced / arc::render::dynamic_resolution_scale_step) ==
-        Catch::Approx(reduced / arc::render::dynamic_resolution_scale_step));
+            Catch::Approx(reduced / arc::render::dynamic_resolution_scale_step));
 
     for (std::uint32_t index = 0; index < 48; ++index)
         controller.update(5.0f);
@@ -1031,13 +969,9 @@ TEST_CASE("renderer forwards coherent asynchronous frame capture requests")
     arc::render::renderer renderer;
     renderer.set_backend(std::move(backend));
 
-    renderer.request_frame_capture({
-        .capture_id = 31,
-        .channels = {
-            arc::render::render_capture_channel::output_color,
-            arc::render::render_capture_channel::object_id
-        }
-    });
+    renderer.request_frame_capture({.capture_id = 31,
+                                    .channels = {arc::render::render_capture_channel::output_color,
+                                                 arc::render::render_capture_channel::object_id}});
 
     REQUIRE(backend_ptr->capture_requested);
     REQUIRE(backend_ptr->capture_request.capture_id == 31);
@@ -1070,7 +1004,7 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     arc::render::mesh_data mesh;
     mesh.name = "triangle";
     mesh.vertices.resize(3);
-    mesh.indices = { 0, 1, 2 };
+    mesh.indices = {0, 1, 2};
 
     const auto handle = renderer.create_mesh(std::move(mesh));
     REQUIRE(renderer.mesh_alive(handle));
@@ -1091,7 +1025,7 @@ TEST_CASE("renderer updates mesh vertices and retires stale handles")
     mesh.name = "dynamic terrain chunk";
     mesh.usage = arc::render::mesh_usage::dynamic_per_frame;
     mesh.vertices.resize(4);
-    mesh.indices = { 0, 1, 2, 0, 2, 3 };
+    mesh.indices = {0, 1, 2, 0, 2, 3};
     const auto handle = renderer.create_mesh(std::move(mesh));
     renderer.frame_queue().commit(1);
 
@@ -1103,7 +1037,7 @@ TEST_CASE("renderer updates mesh vertices and retires stale handles")
     REQUIRE(update.events[0].type() == arc::render::render_event_type::mesh_upload);
     REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->indices.size() == 6);
     REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->usage ==
-        arc::render::mesh_usage::dynamic_per_frame);
+            arc::render::mesh_usage::dynamic_per_frame);
     REQUIRE(std::get<arc::render::mesh_upload_event>(update.events[0].payload).mesh->vertices[0].position[1] == 3.0f);
 
     REQUIRE(renderer.destroy_mesh(handle));
@@ -1119,14 +1053,9 @@ TEST_CASE("renderer create virtual mesh enqueues typed upload and keeps CPU clus
     arc::render::renderer renderer;
     arc::render::virtual_mesh_data mesh;
     mesh.vertices.resize(3);
-    mesh.indices = { 0, 1, 2 };
-    mesh.clusters.push_back({
-        .first_index = 0,
-        .index_count = 3,
-        .triangle_count = 1,
-        .vertex_count = 3,
-        .material_index = 2
-    });
+    mesh.indices = {0, 1, 2};
+    mesh.clusters.push_back(
+        {.first_index = 0, .index_count = 3, .triangle_count = 1, .vertex_count = 3, .material_index = 2});
 
     const auto handle = renderer.create_virtual_mesh(std::move(mesh));
     REQUIRE(renderer.virtual_mesh_alive(handle));
@@ -1150,7 +1079,7 @@ TEST_CASE("renderer creates texture and material resources")
     arc::render::texture_data texture;
     texture.name = "encoded";
     texture.mime_type = "image/png";
-    texture.encoded = { std::byte{ 1 }, std::byte{ 2 } };
+    texture.encoded = {std::byte{1}, std::byte{2}};
 
     const auto texture_handle = renderer.create_texture(std::move(texture));
     REQUIRE(renderer.texture_alive(texture_handle));
@@ -1178,7 +1107,7 @@ TEST_CASE("renderer creates texture and material resources")
     auto updated = material;
     updated.name = "pbr_updated";
     updated.roughness = 0.35f;
-    updated.base_color = { 0.25f, 0.5f, 0.75f, 1.0f };
+    updated.base_color = {0.25f, 0.5f, 0.75f, 1.0f};
 
     REQUIRE(renderer.update_material(material_handle, updated));
     const auto update_packet = renderer.frame_queue().commit(2);
@@ -1202,8 +1131,8 @@ TEST_CASE("renderer creates texture and material resources")
     REQUIRE(texture_update.handle == texture_handle);
     REQUIRE(texture_update.texture->width == 2);
 
-    REQUIRE_FALSE(renderer.update_material({ .index = 999, .generation = 1 }, updated));
-    REQUIRE_FALSE(renderer.update_texture({ .index = 999, .generation = 1 }, replacement));
+    REQUIRE_FALSE(renderer.update_material({.index = 999, .generation = 1}, updated));
+    REQUIRE_FALSE(renderer.update_texture({.index = 999, .generation = 1}, replacement));
 }
 
 TEST_CASE("renderer creates environment resources")
@@ -1211,7 +1140,7 @@ TEST_CASE("renderer creates environment resources")
     arc::render::renderer renderer;
     arc::render::environment_descriptor environment;
     environment.name = "studio";
-    environment.fallback_color = { 0.20f, 0.22f, 0.25f };
+    environment.fallback_color = {0.20f, 0.22f, 0.25f};
     environment.intensity = 1.5f;
 
     const auto handle = renderer.create_environment(environment);
@@ -1242,24 +1171,30 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     std::vector<arc::render::directional_light_event> directional;
     for (std::uint32_t index = 0; index < arc::render::max_directional_lights + 2; ++index)
     {
-        directional.push_back({
-            .direction = { 0.0f, -1.0f, 0.0f },
-            .color = { 1.0f, 1.0f, 1.0f },
-            .intensity = static_cast<float>(index + 1),
-            .label = "sun"
-        });
+        directional.push_back({.direction = {0.0f, -1.0f, 0.0f},
+                               .color = {1.0f, 1.0f, 1.0f},
+                               .intensity = static_cast<float>(index + 1),
+                               .label = "sun"});
     }
 
     std::vector<arc::render::point_light_event> points{
-        { .object_id = { .index = 17, .generation = 3 }, .position = { 1.0f, 2.0f, 3.0f }, .color = { 1.0f, 0.5f, 0.25f }, .intensity = 80.0f, .range = 4.0f, .intensity_unit = arc::render::light_intensity_unit::lumen },
-        { .position = { 0.0f, 0.0f, 0.0f }, .color = { 1.0f, 1.0f, 1.0f }, .intensity = 2.0f, .range = 8.0f }
-    };
-    std::vector<arc::render::spot_light_event> spots{
-        { .position = { 0.0f, 1.0f, 0.0f }, .direction = { 0.0f, -1.0f, 0.0f }, .color = { 0.8f, 0.9f, 1.0f }, .intensity = 3.0f, .range = 10.0f, .inner_angle = 0.2f, .outer_angle = 0.7f }
-    };
+        {.object_id = {.index = 17, .generation = 3},
+         .position = {1.0f, 2.0f, 3.0f},
+         .color = {1.0f, 0.5f, 0.25f},
+         .intensity = 80.0f,
+         .range = 4.0f,
+         .intensity_unit = arc::render::light_intensity_unit::lumen},
+        {.position = {0.0f, 0.0f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}, .intensity = 2.0f, .range = 8.0f}};
+    std::vector<arc::render::spot_light_event> spots{{.position = {0.0f, 1.0f, 0.0f},
+                                                      .direction = {0.0f, -1.0f, 0.0f},
+                                                      .color = {0.8f, 0.9f, 1.0f},
+                                                      .intensity = 3.0f,
+                                                      .range = 10.0f,
+                                                      .inner_angle = 0.2f,
+                                                      .outer_angle = 0.7f}};
 
     arc::render::environment_descriptor environment;
-    environment.fallback_color = { 0.1f, 0.2f, 0.3f };
+    environment.fallback_color = {0.1f, 0.2f, 0.3f};
     environment.intensity = 1.25f;
 
     const auto data = arc::render::pack_scene_lighting(directional, points, spots, &environment);
@@ -1278,7 +1213,7 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     STATIC_REQUIRE(arc::render::max_local_shadow_faces == 144);
 
     environment.prefiltered = true;
-    environment.diffuse_irradiance = { 0.4f, 0.5f, 0.6f };
+    environment.diffuse_irradiance = {0.4f, 0.5f, 0.6f};
     environment.diffuse_intensity = 0.75f;
     const auto prefiltered = arc::render::pack_scene_lighting({}, {}, {}, &environment);
     REQUIRE(prefiltered.ambient_color_intensity[0] == Catch::Approx(0.4f));
@@ -1288,10 +1223,14 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
 
 TEST_CASE("light unit and temperature helpers provide stable defaults")
 {
-    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::unitless, 2.0f, 4.0f) == Catch::Approx(2.0f));
-    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::candela, 5.0f, 2.0f) == Catch::Approx(5.0f));
-    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lux, 3.0f, 2.0f) == Catch::Approx(3.0f));
-    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lumen, 4.0f * arc::math::pi<float>) == Catch::Approx(1.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::unitless, 2.0f, 4.0f) ==
+            Catch::Approx(2.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::candela, 5.0f, 2.0f) ==
+            Catch::Approx(5.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lux, 3.0f, 2.0f) ==
+            Catch::Approx(3.0f));
+    REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::lumen, 4.0f * arc::math::pi<float>) ==
+            Catch::Approx(1.0f));
     const auto warm = arc::render::color_temperature_rgb(3000.0f);
     const auto cool = arc::render::color_temperature_rgb(9000.0f);
     REQUIRE(warm[0] >= warm[2]);
@@ -1300,23 +1239,21 @@ TEST_CASE("light unit and temperature helpers provide stable defaults")
 
 TEST_CASE("PBR color transfer and material texture semantics are explicit")
 {
-    const arc::math::vector3f srgb{ 0.0f, 0.5f, 1.0f };
+    const arc::math::vector3f srgb{0.0f, 0.5f, 1.0f};
     const auto linear = arc::render::srgb_to_linear(srgb);
     const auto round_trip = arc::render::linear_to_srgb(linear);
     REQUIRE(round_trip[0] == Catch::Approx(srgb[0]).margin(1.0e-6f));
     REQUIRE(round_trip[1] == Catch::Approx(srgb[1]).margin(1.0e-5f));
     REQUIRE(round_trip[2] == Catch::Approx(srgb[2]).margin(1.0e-6f));
-    REQUIRE(arc::render::texture_semantic_accepts(
-        arc::render::texture_semantic::base_color,
-        arc::render::texture_color_space::srgb));
-    REQUIRE_FALSE(arc::render::texture_semantic_accepts(
-        arc::render::texture_semantic::normal,
-        arc::render::texture_color_space::srgb));
+    REQUIRE(arc::render::texture_semantic_accepts(arc::render::texture_semantic::base_color,
+                                                  arc::render::texture_color_space::srgb));
+    REQUIRE_FALSE(arc::render::texture_semantic_accepts(arc::render::texture_semantic::normal,
+                                                        arc::render::texture_color_space::srgb));
 }
 
 TEST_CASE("PBR reference functions stay finite and preserve physical limits")
 {
-    for (const float roughness : { 0.04f, 0.25f, 0.6f, 1.0f })
+    for (const float roughness : {0.04f, 0.25f, 0.6f, 1.0f})
     {
         const float distribution = arc::render::ggx_distribution(0.75f, roughness);
         const float visibility = arc::render::smith_ggx_correlated(0.6f, 0.7f, roughness);
@@ -1325,10 +1262,9 @@ TEST_CASE("PBR reference functions stay finite and preserve physical limits")
         REQUIRE(distribution >= 0.0f);
         REQUIRE(visibility >= 0.0f);
     }
-    const auto fresnel = arc::render::fresnel_schlick(0.0f, { 0.04f, 0.04f, 0.04f });
+    const auto fresnel = arc::render::fresnel_schlick(0.0f, {0.04f, 0.04f, 0.04f});
     REQUIRE(fresnel[0] == Catch::Approx(1.0f));
-    const auto absorption = arc::render::beer_lambert_attenuation(
-        { 0.5f, 0.25f, 1.0f }, 2.0f, 2.0f);
+    const auto absorption = arc::render::beer_lambert_attenuation({0.5f, 0.25f, 1.0f}, 2.0f, 2.0f);
     REQUIRE(absorption[0] == Catch::Approx(0.5f));
     REQUIRE(absorption[1] == Catch::Approx(0.25f));
     REQUIRE(absorption[2] == Catch::Approx(1.0f));
@@ -1338,8 +1274,7 @@ TEST_CASE("physical attenuation exposure and area light packing are stable")
 {
     REQUIRE(arc::render::inverse_square_attenuation(2.0f, 0.0f) == Catch::Approx(0.25f));
     REQUIRE(arc::render::inverse_square_attenuation(10.0f, 5.0f) == Catch::Approx(0.0f));
-    REQUIRE(arc::render::cone_solid_angle(arc::math::pi<float> * 0.5f) ==
-        Catch::Approx(2.0f * arc::math::pi<float>));
+    REQUIRE(arc::render::cone_solid_angle(arc::math::pi<float> * 0.5f) == Catch::Approx(2.0f * arc::math::pi<float>));
 
     arc::render::exposure_settings settings;
     settings.mode = arc::render::exposure_mode::automatic;
@@ -1352,19 +1287,14 @@ TEST_CASE("physical attenuation exposure and area light packing are stable")
     REQUIRE(adapted.ev100 > state.ev100);
     REQUIRE(adapted.ev100 < 8.0f);
 
-    std::vector<arc::render::area_light_event> areas{
-        {
-            .intensity = 1000.0f,
-            .width = 2.0f,
-            .height = 1.0f,
-            .shape = arc::render::area_light_shape::rectangle,
-            .intensity_unit = arc::render::light_intensity_unit::lumen
-        }
-    };
+    std::vector<arc::render::area_light_event> areas{{.intensity = 1000.0f,
+                                                      .width = 2.0f,
+                                                      .height = 1.0f,
+                                                      .shape = arc::render::area_light_shape::rectangle,
+                                                      .intensity_unit = arc::render::light_intensity_unit::lumen}};
     const auto lighting = arc::render::pack_scene_lighting({}, {}, {}, nullptr, 0, 0, areas);
     REQUIRE(lighting.area_count == 1);
-    REQUIRE(lighting.area_lights[0].color_intensity[3] ==
-        Catch::Approx(1000.0f / (2.0f * arc::math::pi<float>)));
+    REQUIRE(lighting.area_lights[0].color_intensity[3] == Catch::Approx(1000.0f / (2.0f * arc::math::pi<float>)));
 }
 
 TEST_CASE("descriptor slots reject stale generations")
@@ -1449,8 +1379,8 @@ TEST_CASE("GPU upload arena can suballocate persistently mapped backend storage"
     REQUIRE(allocation);
     REQUIRE(allocation.offset % 32 == 0);
     REQUIRE(allocation.bytes.data() == mapped.data() + allocation.offset);
-    allocation.bytes.front() = std::byte{ 0x5a };
-    REQUIRE(mapped[allocation.offset] == std::byte{ 0x5a });
+    allocation.bytes.front() = std::byte{0x5a};
+    REQUIRE(mapped[allocation.offset] == std::byte{0x5a});
 
     REQUIRE(arena.retire_completed(8) == 0);
     REQUIRE(arena.retire_completed(9) == 1);
@@ -1460,16 +1390,14 @@ TEST_CASE("GPU upload arena can suballocate persistently mapped backend storage"
 TEST_CASE("pipeline handle cache reuses equivalent keys")
 {
     arc::render::pipeline_handle_cache cache;
-    arc::render::graphics_pipeline_key key{
-        .vertex_shader = { .index = 1, .generation = 1 },
-        .fragment_shader = { .index = 2, .generation = 1 },
-        .vertex_layout = "pnu",
-        .color_format = "rgba16f",
-        .depth_format = "d32",
-        .depth_test = true,
-        .depth_write = true
-    };
-    arc::render::pipeline_handle pipeline{ .index = 9, .generation = 3 };
+    arc::render::graphics_pipeline_key key{.vertex_shader = {.index = 1, .generation = 1},
+                                           .fragment_shader = {.index = 2, .generation = 1},
+                                           .vertex_layout = "pnu",
+                                           .color_format = "rgba16f",
+                                           .depth_format = "d32",
+                                           .depth_test = true,
+                                           .depth_write = true};
+    arc::render::pipeline_handle pipeline{.index = 9, .generation = 3};
 
     REQUIRE_FALSE(cache.find(key).valid());
     cache.insert(key, pipeline);
@@ -1485,8 +1413,8 @@ TEST_CASE("shader permutation keys capture material features")
 {
     arc::render::material_descriptor material;
     material.alpha_mode = arc::render::material_alpha_mode::blend;
-    material.normal_texture = { .index = 1, .generation = 1 };
-    material.emissive_texture = { .index = 2, .generation = 1 };
+    material.normal_texture = {.index = 1, .generation = 1};
+    material.emissive_texture = {.index = 2, .generation = 1};
     material.clear_coat_factor = 0.5f;
 
     const auto key = arc::render::make_shader_permutation_key(material, 3, true);
@@ -1511,10 +1439,8 @@ public:
     arc::render::shader_compile_result compile(const arc::render::shader_compile_request& request) override
     {
         ++count;
-        return arc::render::shader_compile_result::success({
-            .bytecode = { std::uint8_t(count) },
-            .reflection = { .entry_points = { request.entry_point } }
-        });
+        return arc::render::shader_compile_result::success(
+            {.bytecode = {std::uint8_t(count)}, .reflection = {.entry_points = {request.entry_point}}});
     }
 
     int count{};
@@ -1532,12 +1458,10 @@ TEST_CASE("shader library cache reuses unchanged source requests")
 
     counting_shader_compiler compiler;
     arc::render::shader_library_cache cache;
-    arc::render::shader_compile_request request{
-        .source_path = path.string(),
-        .entry_point = "main",
-        .profile = "fragment",
-        .target = arc::render::shader_target::spirv
-    };
+    arc::render::shader_compile_request request{.source_path = path.string(),
+                                                .entry_point = "main",
+                                                .profile = "fragment",
+                                                .target = arc::render::shader_target::spirv};
 
     const auto first = cache.compile_or_get(compiler, request);
     const auto second = cache.compile_or_get(compiler, request);
@@ -1558,7 +1482,7 @@ TEST_CASE("GLB mesh loader reads static triangle geometry")
 
     REQUIRE(result.succeeded());
     REQUIRE(result.mesh.vertices.size() == 3);
-    REQUIRE(result.mesh.indices == std::vector<std::uint32_t>{ 0, 1, 2 });
+    REQUIRE(result.mesh.indices == std::vector<std::uint32_t>{0, 1, 2});
     REQUIRE(result.mesh.vertices[0].position[1] == 0.5f);
     REQUIRE(result.mesh.vertices[0].normal[2] == 1.0f);
     REQUIRE(result.mesh.vertices[0].tangent[0] == Catch::Approx(1.0f));
@@ -1608,17 +1532,7 @@ TEST_CASE("DDS loader parses BC1 texture metadata")
 
 TEST_CASE("DDS loader parses uncompressed RGBA8 texture metadata")
 {
-    auto bytes = make_dds_header(
-        2,
-        2,
-        1,
-        0x00000041u,
-        0,
-        32,
-        0x000000ff,
-        0x0000ff00,
-        0x00ff0000,
-        0xff000000);
+    auto bytes = make_dds_header(2, 2, 1, 0x00000041u, 0, 32, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
     bytes.resize(bytes.size() + 16);
 
     const auto result = arc::render::parse_dds_texture(bytes, "rgba.dds");
@@ -1662,8 +1576,8 @@ TEST_CASE("texture loader infers material texture color space from file names")
 
 TEST_CASE("texture loader prepares checked-in landscape maps for GPU upload")
 {
-    const auto path = std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT) /
-        "textures" / "terrain" / "aerial_grass_rock" / "aerial_grass_rock_diff_1k.jpg";
+    const auto path = std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT) / "textures" / "terrain" / "aerial_grass_rock" /
+                      "aerial_grass_rock_diff_1k.jpg";
     const auto result = arc::render::load_texture_asset(path);
 
     INFO(result.message);
@@ -1726,10 +1640,12 @@ TEST_CASE("scene asset loader imports static FBX meshes with ufbx")
     options.import_directory = temp_root / "imported" / "nested_meshes";
 
     std::vector<arc::render::scene_import_progress> progress;
-    const auto result = arc::render::load_scene_asset(fixture, options, [&](const arc::render::scene_import_progress& value) {
-        progress.push_back(value);
-        return true;
-    });
+    const auto result = arc::render::load_scene_asset(fixture, options,
+                                                      [&](const arc::render::scene_import_progress& value)
+                                                      {
+                                                          progress.push_back(value);
+                                                          return true;
+                                                      });
 
     INFO(result.message);
     for (const auto& diagnostic : result.diagnostics)
@@ -1782,7 +1698,7 @@ TEST_CASE("primitive mesh builders create renderable geometry")
     const auto plane = arc::render::make_plane_mesh(2.0f);
     REQUIRE(plane.name == "Plane");
     REQUIRE(plane.vertices.size() == 4);
-    REQUIRE(plane.indices == std::vector<std::uint32_t>{ 0, 1, 2, 0, 2, 3 });
+    REQUIRE(plane.indices == std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3});
     REQUIRE(plane.vertices[0].normal[1] == Catch::Approx(1.0f));
 
     const auto cube = arc::render::make_cube_mesh();
@@ -1809,9 +1725,9 @@ TEST_CASE("primitive mesh builders create renderable geometry")
         has_height_variation = has_height_variation || std::abs(vertex.position[1]) > 0.01f;
         has_tilted_normal = has_tilted_normal || vertex.normal[1] < 0.995f;
         has_color_variation = has_color_variation ||
-            std::abs(vertex.color[0] - terrain.vertices.front().color[0]) > 0.01f ||
-            std::abs(vertex.color[1] - terrain.vertices.front().color[1]) > 0.01f ||
-            std::abs(vertex.color[2] - terrain.vertices.front().color[2]) > 0.01f;
+                              std::abs(vertex.color[0] - terrain.vertices.front().color[0]) > 0.01f ||
+                              std::abs(vertex.color[1] - terrain.vertices.front().color[1]) > 0.01f ||
+                              std::abs(vertex.color[2] - terrain.vertices.front().color[2]) > 0.01f;
     }
     REQUIRE(has_height_variation);
     REQUIRE(has_tilted_normal);
@@ -1852,7 +1768,7 @@ TEST_CASE("virtual mesh builder creates one bounded cluster for a triangle")
     source.vertices[2].position[0] = 0.0f;
     source.vertices[2].position[1] = 2.0f;
     source.vertices[2].position[2] = 0.0f;
-    source.indices = { 0, 1, 2 };
+    source.indices = {0, 1, 2};
 
     const auto virtual_mesh = arc::render::build_virtual_mesh(source);
 
@@ -1891,7 +1807,7 @@ TEST_CASE("virtual mesh builder splits fixed-size clusters deterministically")
         source.vertices[base + 1].position[1] = 1.0f;
         source.vertices[base + 2].position[0] = static_cast<float>(triangle);
         source.vertices[base + 2].position[2] = 1.0f;
-        source.indices.insert(source.indices.end(), { base, base + 1, base + 2 });
+        source.indices.insert(source.indices.end(), {base, base + 1, base + 2});
     }
 
     const auto first = arc::render::build_virtual_mesh(source);
@@ -1920,16 +1836,11 @@ TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid tri
     source.vertices.resize(6);
     for (std::uint32_t index = 0; index < source.vertices.size(); ++index)
         source.vertices[index].position[0] = static_cast<float>(index);
-    source.indices = {
-        0, 1, 2,
-        3, 4, 5,
-        0, 99, 1,
-        2
-    };
+    source.indices = {0, 1, 2, 3, 4, 5, 0, 99, 1, 2};
 
-    const auto virtual_mesh = arc::render::build_virtual_mesh(source, { .max_triangles_per_cluster = 1 });
+    const auto virtual_mesh = arc::render::build_virtual_mesh(source, {.max_triangles_per_cluster = 1});
 
-    REQUIRE(virtual_mesh.indices == std::vector<std::uint32_t>{ 0, 1, 2, 3, 4, 5 });
+    REQUIRE(virtual_mesh.indices == std::vector<std::uint32_t>{0, 1, 2, 3, 4, 5});
     REQUIRE(virtual_mesh.clusters.size() == 2);
     REQUIRE(virtual_mesh.clusters[0].triangle_count == 1);
     REQUIRE(virtual_mesh.clusters[1].triangle_count == 1);
@@ -1943,7 +1854,8 @@ TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid tri
 
 TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")
 {
-    const std::filesystem::path path = std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT) / "models" / "UAL2_Standard.glb";
+    const std::filesystem::path path =
+        std::filesystem::path(ARC_RENDER_TEST_ASSET_ROOT) / "models" / "UAL2_Standard.glb";
     REQUIRE(std::filesystem::exists(path));
 
     const auto result = arc::render::load_gltf_mesh(path);

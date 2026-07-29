@@ -16,24 +16,18 @@ namespace arc::persistence
 namespace
 {
 
-constexpr std::array<char, 8> binary_magic{ 'A', 'R', 'C', 'P', 'B', 'I', 'N', '1' };
+constexpr std::array<char, 8> binary_magic{'A', 'R', 'C', 'P', 'B', 'I', 'N', '1'};
 constexpr std::uint32_t binary_format_version = 1;
 
-const ecs::component_field_descriptor* find_field(
-    const ecs::component_descriptor& component,
-    ecs::component_field_id id) noexcept
+const ecs::component_field_descriptor* find_field(const ecs::component_descriptor& component,
+                                                  ecs::component_field_id id) noexcept
 {
-    const auto iterator = std::find_if(
-        component.fields.begin(), component.fields.end(),
-        [id](const ecs::component_field_descriptor& field)
-        {
-            return field.id == id;
-        });
+    const auto iterator = std::find_if(component.fields.begin(), component.fields.end(),
+                                       [id](const ecs::component_field_descriptor& field) { return field.id == id; });
     return iterator == component.fields.end() ? nullptr : &*iterator;
 }
 
-template <class Integer>
-void write_integer(std::vector<std::byte>& output, Integer value)
+template <class Integer> void write_integer(std::vector<std::byte>& output, Integer value)
 {
     using unsigned_type = std::make_unsigned_t<Integer>;
     const auto converted = static_cast<unsigned_type>(value);
@@ -44,9 +38,8 @@ void write_integer(std::vector<std::byte>& output, Integer value)
 void write_string(std::vector<std::byte>& output, std::string_view value)
 {
     write_integer(output, static_cast<std::uint64_t>(value.size()));
-    output.insert(output.end(),
-        reinterpret_cast<const std::byte*>(value.data()),
-        reinterpret_cast<const std::byte*>(value.data() + value.size()));
+    output.insert(output.end(), reinterpret_cast<const std::byte*>(value.data()),
+                  reinterpret_cast<const std::byte*>(value.data() + value.size()));
 }
 
 void write_guid(std::vector<std::byte>& output, ecs::entity_guid value)
@@ -88,39 +81,40 @@ void write_value_payload(std::vector<std::byte>& output, const archive_value& va
 {
     switch (value.kind)
     {
-    case archive_value_kind::null: break;
-    case archive_value_kind::boolean:
-        output.push_back(value.boolean ? std::byte{ 1 } : std::byte{});
-        break;
-    case archive_value_kind::signed_integer:
-        write_integer(output, value.signed_integer);
-        break;
-    case archive_value_kind::unsigned_integer:
-        write_integer(output, value.unsigned_integer);
-        break;
-    case archive_value_kind::floating_point:
-        write_integer(output, std::bit_cast<std::uint64_t>(value.floating_point));
-        break;
-    case archive_value_kind::string:
-        write_string(output, value.string);
-        break;
-    case archive_value_kind::bytes:
-        write_integer(output, static_cast<std::uint64_t>(value.bytes.size()));
-        output.insert(output.end(), value.bytes.begin(), value.bytes.end());
-        break;
-    case archive_value_kind::array:
-        write_integer(output, static_cast<std::uint64_t>(value.array.size()));
-        for (const auto& item : value.array)
-            write_embedded_value(output, item);
-        break;
-    case archive_value_kind::object:
-        write_integer(output, static_cast<std::uint64_t>(value.object.size()));
-        for (const auto& [name, item] : value.object)
-        {
-            write_string(output, name);
-            write_embedded_value(output, item);
-        }
-        break;
+        case archive_value_kind::null:
+            break;
+        case archive_value_kind::boolean:
+            output.push_back(value.boolean ? std::byte{1} : std::byte{});
+            break;
+        case archive_value_kind::signed_integer:
+            write_integer(output, value.signed_integer);
+            break;
+        case archive_value_kind::unsigned_integer:
+            write_integer(output, value.unsigned_integer);
+            break;
+        case archive_value_kind::floating_point:
+            write_integer(output, std::bit_cast<std::uint64_t>(value.floating_point));
+            break;
+        case archive_value_kind::string:
+            write_string(output, value.string);
+            break;
+        case archive_value_kind::bytes:
+            write_integer(output, static_cast<std::uint64_t>(value.bytes.size()));
+            output.insert(output.end(), value.bytes.begin(), value.bytes.end());
+            break;
+        case archive_value_kind::array:
+            write_integer(output, static_cast<std::uint64_t>(value.array.size()));
+            for (const auto& item : value.array)
+                write_embedded_value(output, item);
+            break;
+        case archive_value_kind::object:
+            write_integer(output, static_cast<std::uint64_t>(value.object.size()));
+            for (const auto& [name, item] : value.object)
+            {
+                write_string(output, name);
+                write_embedded_value(output, item);
+            }
+            break;
     }
 }
 
@@ -129,15 +123,14 @@ class binary_reader
 public:
     explicit binary_reader(std::span<const std::byte> bytes) : bytes_(bytes) {}
 
-    template <class Integer>
-    bool integer(Integer& value)
+    template <class Integer> bool integer(Integer& value)
     {
         if (remaining() < sizeof(Integer)) return false;
         using unsigned_type = std::make_unsigned_t<Integer>;
         unsigned_type result{};
         for (std::size_t index = 0; index < sizeof(Integer); ++index)
-            result |= static_cast<unsigned_type>(
-                std::to_integer<std::uint8_t>(bytes_[offset_ + index])) << (index * 8u);
+            result |= static_cast<unsigned_type>(std::to_integer<std::uint8_t>(bytes_[offset_ + index]))
+                      << (index * 8u);
         value = static_cast<Integer>(result);
         offset_ += sizeof(Integer);
         return true;
@@ -154,9 +147,7 @@ public:
     {
         std::uint64_t size{};
         if (!integer(size) || size > maximum || size > remaining()) return false;
-        value.assign(
-            reinterpret_cast<const char*>(bytes_.data() + offset_),
-            static_cast<std::size_t>(size));
+        value.assign(reinterpret_cast<const char*>(bytes_.data() + offset_), static_cast<std::size_t>(size));
         offset_ += static_cast<std::size_t>(size);
         return true;
     }
@@ -189,30 +180,28 @@ public:
         return result;
     }
 
-    std::size_t remaining() const noexcept { return bytes_.size() - offset_; }
-    bool complete() const noexcept { return offset_ == bytes_.size(); }
+    std::size_t remaining() const noexcept
+    {
+        return bytes_.size() - offset_;
+    }
+    bool complete() const noexcept
+    {
+        return offset_ == bytes_.size();
+    }
 
 private:
     std::span<const std::byte> bytes_;
     std::size_t offset_{};
 };
 
-bool read_value_payload(
-    binary_reader& reader,
-    archive_value& value,
-    std::size_t depth,
-    const archive_limits& limits);
+bool read_value_payload(binary_reader& reader, archive_value& value, std::size_t depth, const archive_limits& limits);
 
-bool read_embedded_value(
-    binary_reader& reader,
-    archive_value& value,
-    std::size_t depth,
-    const archive_limits& limits)
+bool read_embedded_value(binary_reader& reader, archive_value& value, std::size_t depth, const archive_limits& limits)
 {
     std::uint8_t kind{};
     std::uint64_t size{};
-    if (!reader.byte(kind) || kind > static_cast<std::uint8_t>(archive_value_kind::object) ||
-        !reader.integer(size) || size > reader.remaining())
+    if (!reader.byte(kind) || kind > static_cast<std::uint8_t>(archive_value_kind::object) || !reader.integer(size) ||
+        size > reader.remaining())
         return false;
     value.kind = static_cast<archive_value_kind>(kind);
     const auto bytes = reader.take(static_cast<std::size_t>(size));
@@ -221,118 +210,105 @@ bool read_embedded_value(
     return read_value_payload(payload, value, depth, limits) && payload.complete();
 }
 
-bool read_value_payload(
-    binary_reader& reader,
-    archive_value& value,
-    std::size_t depth,
-    const archive_limits& limits)
+bool read_value_payload(binary_reader& reader, archive_value& value, std::size_t depth, const archive_limits& limits)
 {
     if (depth > limits.maximum_nesting) return false;
     switch (value.kind)
     {
-    case archive_value_kind::null: return true;
-    case archive_value_kind::boolean:
-    {
-        std::uint8_t result{};
-        if (!reader.byte(result) || result > 1) return false;
-        value.boolean = result != 0;
-        return true;
-    }
-    case archive_value_kind::signed_integer:
-        return reader.integer(value.signed_integer);
-    case archive_value_kind::unsigned_integer:
-        return reader.integer(value.unsigned_integer);
-    case archive_value_kind::floating_point:
-    {
-        std::uint64_t bits{};
-        if (!reader.integer(bits)) return false;
-        value.floating_point = std::bit_cast<double>(bits);
-        return std::isfinite(value.floating_point);
-    }
-    case archive_value_kind::string:
-        return reader.string(value.string, limits.maximum_document_bytes);
-    case archive_value_kind::bytes:
-    {
-        std::uint64_t size{};
-        if (!reader.integer(size) || size > reader.remaining()) return false;
-        const auto bytes = reader.take(static_cast<std::size_t>(size));
-        if (!bytes) return false;
-        value.bytes.assign(bytes->begin(), bytes->end());
-        return true;
-    }
-    case archive_value_kind::array:
-    {
-        std::uint64_t count{};
-        if (!reader.integer(count) || count > limits.maximum_fields_per_component * 16ull)
-            return false;
-        value.array.reserve(static_cast<std::size_t>(count));
-        for (std::uint64_t index = 0; index < count; ++index)
+        case archive_value_kind::null:
+            return true;
+        case archive_value_kind::boolean:
         {
-            archive_value child;
-            if (!read_embedded_value(reader, child, depth + 1, limits)) return false;
-            value.array.push_back(std::move(child));
+            std::uint8_t result{};
+            if (!reader.byte(result) || result > 1) return false;
+            value.boolean = result != 0;
+            return true;
         }
-        return true;
-    }
-    case archive_value_kind::object:
-    {
-        std::uint64_t count{};
-        if (!reader.integer(count) || count > limits.maximum_fields_per_component * 16ull)
-            return false;
-        value.object.reserve(static_cast<std::size_t>(count));
-        for (std::uint64_t index = 0; index < count; ++index)
+        case archive_value_kind::signed_integer:
+            return reader.integer(value.signed_integer);
+        case archive_value_kind::unsigned_integer:
+            return reader.integer(value.unsigned_integer);
+        case archive_value_kind::floating_point:
         {
-            std::string name;
-            archive_value child;
-            if (!reader.string(name, 1024u * 1024u) ||
-                !read_embedded_value(reader, child, depth + 1, limits))
-                return false;
-            value.object.emplace_back(std::move(name), std::move(child));
+            std::uint64_t bits{};
+            if (!reader.integer(bits)) return false;
+            value.floating_point = std::bit_cast<double>(bits);
+            return std::isfinite(value.floating_point);
         }
-        return true;
-    }
+        case archive_value_kind::string:
+            return reader.string(value.string, limits.maximum_document_bytes);
+        case archive_value_kind::bytes:
+        {
+            std::uint64_t size{};
+            if (!reader.integer(size) || size > reader.remaining()) return false;
+            const auto bytes = reader.take(static_cast<std::size_t>(size));
+            if (!bytes) return false;
+            value.bytes.assign(bytes->begin(), bytes->end());
+            return true;
+        }
+        case archive_value_kind::array:
+        {
+            std::uint64_t count{};
+            if (!reader.integer(count) || count > limits.maximum_fields_per_component * 16ull) return false;
+            value.array.reserve(static_cast<std::size_t>(count));
+            for (std::uint64_t index = 0; index < count; ++index)
+            {
+                archive_value child;
+                if (!read_embedded_value(reader, child, depth + 1, limits)) return false;
+                value.array.push_back(std::move(child));
+            }
+            return true;
+        }
+        case archive_value_kind::object:
+        {
+            std::uint64_t count{};
+            if (!reader.integer(count) || count > limits.maximum_fields_per_component * 16ull) return false;
+            value.object.reserve(static_cast<std::size_t>(count));
+            for (std::uint64_t index = 0; index < count; ++index)
+            {
+                std::string name;
+                archive_value child;
+                if (!reader.string(name, 1024u * 1024u) || !read_embedded_value(reader, child, depth + 1, limits))
+                    return false;
+                value.object.emplace_back(std::move(name), std::move(child));
+            }
+            return true;
+        }
     }
     return false;
 }
 
 void sort_document(archive_document& document)
 {
-    std::sort(document.dependencies.begin(), document.dependencies.end(), [](const auto& lhs, const auto& rhs) {
-        if (lhs.reference.guid != rhs.reference.guid) return lhs.reference.guid < rhs.reference.guid;
-        if (lhs.owner_entity != rhs.owner_entity)
-            return std::tie(lhs.owner_entity.high, lhs.owner_entity.low) <
-                std::tie(rhs.owner_entity.high, rhs.owner_entity.low);
-        if (lhs.owner_component != rhs.owner_component) return lhs.owner_component < rhs.owner_component;
-        return lhs.owner_field < rhs.owner_field;
-    });
-    std::sort(document.entities.begin(), document.entities.end(),
-        [](const auto& lhs, const auto& rhs)
-        {
-            return std::tie(lhs.id.high, lhs.id.low) < std::tie(rhs.id.high, rhs.id.low);
-        });
+    std::sort(document.dependencies.begin(), document.dependencies.end(),
+              [](const auto& lhs, const auto& rhs)
+              {
+                  if (lhs.reference.guid != rhs.reference.guid) return lhs.reference.guid < rhs.reference.guid;
+                  if (lhs.owner_entity != rhs.owner_entity)
+                      return std::tie(lhs.owner_entity.high, lhs.owner_entity.low) <
+                             std::tie(rhs.owner_entity.high, rhs.owner_entity.low);
+                  if (lhs.owner_component != rhs.owner_component) return lhs.owner_component < rhs.owner_component;
+                  return lhs.owner_field < rhs.owner_field;
+              });
+    std::sort(document.entities.begin(), document.entities.end(), [](const auto& lhs, const auto& rhs)
+              { return std::tie(lhs.id.high, lhs.id.low) < std::tie(rhs.id.high, rhs.id.low); });
     for (auto& entity : document.entities)
     {
         std::sort(entity.components.begin(), entity.components.end(),
-            [](const auto& lhs, const auto& rhs) { return lhs.type < rhs.type; });
+                  [](const auto& lhs, const auto& rhs) { return lhs.type < rhs.type; });
         for (auto& component : entity.components)
-            std::sort(component.fields.begin(), component.fields.end(),
-                [](const auto& lhs, const auto& rhs) {
-                    return lhs.id != rhs.id ? lhs.id < rhs.id : lhs.name < rhs.name;
-                });
+            std::sort(component.fields.begin(), component.fields.end(), [](const auto& lhs, const auto& rhs)
+                      { return lhs.id != rhs.id ? lhs.id < rhs.id : lhs.name < rhs.name; });
     }
 }
 
-}
+} // namespace
 
-binary_archive_result write_tagged_binary(
-    const archive_document& source,
-    std::string_view target_identity)
+binary_archive_result write_tagged_binary(const archive_document& source, std::string_view target_identity)
 {
     if (!source.id.valid())
-        return binary_archive_result::failure({
-            .code = persistence_error_code::invalid_argument,
-            .message = "persistence document has no valid identity"
-        });
+        return binary_archive_result::failure({.code = persistence_error_code::invalid_argument,
+                                               .message = "persistence document has no valid identity"});
     archive_document document = source;
     sort_document(document);
     std::vector<std::byte> payload;
@@ -351,7 +327,7 @@ binary_archive_result write_tagged_binary(
         write_guid(payload, dependency.owner_entity);
         write_component_id(payload, dependency.owner_component);
         write_integer(payload, dependency.owner_field);
-        payload.push_back(dependency.required ? std::byte{ 1 } : std::byte{});
+        payload.push_back(dependency.required ? std::byte{1} : std::byte{});
     }
 
     write_integer(payload, static_cast<std::uint64_t>(document.entities.size()));
@@ -368,19 +344,18 @@ binary_archive_result write_tagged_binary(
             write_component_id(component_payload, component.type);
             write_integer(component_payload, component.schema_version);
             write_string(component_payload, component.name);
-            component_payload.push_back(component.known ? std::byte{ 1 } : std::byte{});
+            component_payload.push_back(component.known ? std::byte{1} : std::byte{});
             write_integer(component_payload, static_cast<std::uint64_t>(component.fields.size()));
             for (const auto& field : component.fields)
             {
                 std::vector<std::byte> field_payload;
                 write_string(field_payload, field.name);
-                field_payload.push_back(field.known ? std::byte{ 1 } : std::byte{});
+                field_payload.push_back(field.known ? std::byte{1} : std::byte{});
                 write_value_payload(field_payload, field.value);
                 write_integer(component_payload, field.id);
                 component_payload.push_back(static_cast<std::byte>(field.value.kind));
                 write_integer(component_payload, static_cast<std::uint64_t>(field_payload.size()));
-                component_payload.insert(
-                    component_payload.end(), field_payload.begin(), field_payload.end());
+                component_payload.insert(component_payload.end(), field_payload.begin(), field_payload.end());
             }
             write_integer(payload, static_cast<std::uint64_t>(component_payload.size()));
             write_integer(payload, crc32c(component_payload));
@@ -391,9 +366,8 @@ binary_archive_result write_tagged_binary(
     write_embedded_value(payload, document.extensions);
 
     const auto payload_hash = assets::hash_bytes(payload);
-    std::vector<std::byte> output(
-        reinterpret_cast<const std::byte*>(binary_magic.data()),
-        reinterpret_cast<const std::byte*>(binary_magic.data() + binary_magic.size()));
+    std::vector<std::byte> output(reinterpret_cast<const std::byte*>(binary_magic.data()),
+                                  reinterpret_cast<const std::byte*>(binary_magic.data() + binary_magic.size()));
     write_integer(output, binary_format_version);
     output.push_back(static_cast<std::byte>(document.kind));
     output.insert(output.end(), 3, std::byte{});
@@ -403,11 +377,8 @@ binary_archive_result write_tagged_binary(
     return binary_archive_result::success(std::move(output));
 }
 
-archive_result read_tagged_binary(
-    std::span<const std::byte> bytes,
-    const component_persistence_registry& components,
-    const schema_migration_registry* migrations,
-    archive_limits limits)
+archive_result read_tagged_binary(std::span<const std::byte> bytes, const component_persistence_registry& components,
+                                  const schema_migration_registry* migrations, archive_limits limits)
 {
     archive_result result;
     constexpr std::size_t header_size = 8u + 4u + 4u + 32u + 8u;
@@ -428,8 +399,7 @@ archive_result read_tagged_binary(
     }
     const auto expected_hash = header.take(32);
     std::uint64_t payload_size{};
-    if (!expected_hash || !header.integer(payload_size) ||
-        payload_size != header.remaining())
+    if (!expected_hash || !header.integer(payload_size) || payload_size != header.remaining())
     {
         result.error = "tagged archive payload size is invalid";
         return result;
@@ -449,21 +419,17 @@ archive_result read_tagged_binary(
     result.integrity_verified = true;
     result.document.kind = static_cast<document_kind>(kind);
     binary_reader reader(*payload);
-    if (!reader.string(result.target_identity, 4096) ||
-        !reader.integer(result.document.format_version) ||
-        !reader.guid(result.document.id) ||
-        !reader.guid(result.document.root) ||
+    if (!reader.string(result.target_identity, 4096) || !reader.integer(result.document.format_version) ||
+        !reader.guid(result.document.id) || !reader.guid(result.document.root) ||
         !reader.string(result.document.name, 1024u * 1024u))
     {
         result.error = "tagged archive metadata is malformed";
         return result;
     }
-    const auto supported_document_version =
-        result.document.kind == document_kind::scene
-        ? archive_document::current_scene_version
-        : archive_document::current_prefab_version;
-    if (result.document.format_version == 0u ||
-        result.document.format_version > supported_document_version)
+    const auto supported_document_version = result.document.kind == document_kind::scene
+                                                ? archive_document::current_scene_version
+                                                : archive_document::current_prefab_version;
+    if (result.document.format_version == 0u || result.document.format_version > supported_document_version)
     {
         result.error = "tagged archive document version is unsupported";
         return result;
@@ -478,13 +444,10 @@ archive_result read_tagged_binary(
     {
         dependency_manifest_entry dependency;
         std::uint8_t required{};
-        if (!reader.asset_guid(dependency.reference.guid) ||
-            !reader.asset_type(dependency.reference.expected_type) ||
+        if (!reader.asset_guid(dependency.reference.guid) || !reader.asset_type(dependency.reference.expected_type) ||
             !reader.string(dependency.reference.path_hint, limits.maximum_document_bytes) ||
-            !reader.guid(dependency.owner_entity) ||
-            !reader.component_id(dependency.owner_component) ||
-            !reader.integer(dependency.owner_field) ||
-            !reader.byte(required) || required > 1)
+            !reader.guid(dependency.owner_entity) || !reader.component_id(dependency.owner_component) ||
+            !reader.integer(dependency.owner_field) || !reader.byte(required) || required > 1)
         {
             result.error = "tagged archive dependency record is malformed";
             return result;
@@ -504,13 +467,9 @@ archive_result read_tagged_binary(
     {
         archive_entity_record entity;
         std::uint64_t component_count{};
-        if (!reader.guid(entity.id) || !entity.id.valid() ||
-            !entity_ids.insert(entity.id).second ||
-            !reader.guid(entity.parent) ||
-            !reader.integer(entity.sibling_order) ||
-            !reader.guid(entity.region) ||
-            !reader.integer(component_count) ||
-            component_count > limits.maximum_components_per_entity)
+        if (!reader.guid(entity.id) || !entity.id.valid() || !entity_ids.insert(entity.id).second ||
+            !reader.guid(entity.parent) || !reader.integer(entity.sibling_order) || !reader.guid(entity.region) ||
+            !reader.integer(component_count) || component_count > limits.maximum_components_per_entity)
         {
             result.error = "tagged archive entity record is malformed";
             return result;
@@ -519,8 +478,7 @@ archive_result read_tagged_binary(
         {
             std::uint64_t component_size{};
             std::uint32_t expected_crc{};
-            if (!reader.integer(component_size) || !reader.integer(expected_crc) ||
-                component_size > reader.remaining())
+            if (!reader.integer(component_size) || !reader.integer(expected_crc) || component_size > reader.remaining())
             {
                 result.error = "tagged component range is invalid";
                 return result;
@@ -535,12 +493,9 @@ archive_result read_tagged_binary(
             archive_component_record component;
             std::uint8_t known{};
             std::uint64_t field_count{};
-            if (!component_reader.component_id(component.type) ||
-                !component_reader.integer(component.schema_version) ||
-                !component_reader.string(component.name, 1024u * 1024u) ||
-                !component_reader.byte(known) ||
-                !component_reader.integer(field_count) ||
-                field_count > limits.maximum_fields_per_component)
+            if (!component_reader.component_id(component.type) || !component_reader.integer(component.schema_version) ||
+                !component_reader.string(component.name, 1024u * 1024u) || !component_reader.byte(known) ||
+                !component_reader.integer(field_count) || field_count > limits.maximum_fields_per_component)
             {
                 result.error = "tagged component record is malformed";
                 return result;
@@ -552,11 +507,9 @@ archive_result read_tagged_binary(
                 archive_field_record field;
                 std::uint8_t kind_value{};
                 std::uint64_t field_size{};
-                if (!component_reader.integer(field.id) ||
-                    !component_reader.byte(kind_value) ||
+                if (!component_reader.integer(field.id) || !component_reader.byte(kind_value) ||
                     kind_value > static_cast<std::uint8_t>(archive_value_kind::object) ||
-                    !component_reader.integer(field_size) ||
-                    field_size > component_reader.remaining())
+                    !component_reader.integer(field_size) || field_size > component_reader.remaining())
                 {
                     result.error = "tagged field range is invalid";
                     return result;
@@ -564,21 +517,18 @@ archive_result read_tagged_binary(
                 const auto field_bytes = component_reader.take(static_cast<std::size_t>(field_size));
                 binary_reader field_reader(*field_bytes);
                 std::uint8_t field_known{};
-                if (!field_reader.string(field.name, 1024u * 1024u) ||
-                    !field_reader.byte(field_known))
+                if (!field_reader.string(field.name, 1024u * 1024u) || !field_reader.byte(field_known))
                 {
                     result.error = "tagged field metadata is malformed";
                     return result;
                 }
                 field.value.kind = static_cast<archive_value_kind>(kind_value);
-                if (!read_value_payload(field_reader, field.value, 0, limits) ||
-                    !field_reader.complete())
+                if (!read_value_payload(field_reader, field.value, 0, limits) || !field_reader.complete())
                 {
                     result.error = "tagged field payload is malformed";
                     return result;
                 }
-                field.known = registered && find_field(*registered->component, field.id) &&
-                    field_known != 0;
+                field.known = registered && find_field(*registered->component, field.id) && field_known != 0;
                 component.fields.push_back(std::move(field));
             }
             if (!component_reader.complete())
@@ -586,11 +536,9 @@ archive_result read_tagged_binary(
                 result.error = "tagged component contains trailing bytes";
                 return result;
             }
-            if (registered && migrations &&
-                component.schema_version < registered->component->schema_version)
+            if (registered && migrations && component.schema_version < registered->component->schema_version)
             {
-                auto migrated = migrations->migrate(
-                    component, registered->component->schema_version);
+                auto migrated = migrations->migrate(component, registered->component->schema_version);
                 if (!migrated)
                 {
                     result.error = migrated.error().message;
@@ -607,8 +555,7 @@ archive_result read_tagged_binary(
         }
         result.document.entities.push_back(std::move(entity));
     }
-    if (!read_embedded_value(reader, result.document.extensions, 0, limits) ||
-        !reader.complete())
+    if (!read_embedded_value(reader, result.document.extensions, 0, limits) || !reader.complete())
     {
         result.error = "tagged archive extension or trailing data is malformed";
         return result;
@@ -637,29 +584,26 @@ archive_result read_tagged_binary(
             current = found != parents.end() ? found->second : ecs::entity_guid{};
         }
     }
-    if (result.document.kind == document_kind::prefab &&
-        !entity_ids.contains(result.document.root))
+    if (result.document.kind == document_kind::prefab && !entity_ids.contains(result.document.root))
     {
         result.error = "tagged prefab root is unresolved";
         return result;
     }
     for (const auto& dependency : result.document.dependencies)
     {
-        if (dependency.owner_entity.valid() &&
-            !entity_ids.contains(dependency.owner_entity))
+        if (dependency.owner_entity.valid() && !entity_ids.contains(dependency.owner_entity))
         {
             result.error = "tagged dependency owner is unresolved";
             return result;
         }
-        if (dependency.required && !dependency.reference.guid.valid() &&
-            dependency.reference.path_hint.empty())
+        if (dependency.required && !dependency.reference.guid.valid() && dependency.reference.path_hint.empty())
         {
             result.error = "tagged required dependency has no identity";
             return result;
         }
     }
-    const auto target_version = result.document.kind == document_kind::scene
-        ? archive_document::current_scene_version : archive_document::current_prefab_version;
+    const auto target_version = result.document.kind == document_kind::scene ? archive_document::current_scene_version
+                                                                             : archive_document::current_prefab_version;
     if (migrations && result.document.format_version < target_version)
     {
         auto migrated = migrations->migrate(result.document, target_version);

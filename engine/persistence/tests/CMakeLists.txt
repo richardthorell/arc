@@ -20,6 +20,7 @@ FetchContent_GetProperties(Catch2 SOURCE_DIR catch2_SOURCE_DIR)
 list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 
 add_executable(arc_persistence_tests persistence_tests.cpp)
+arc_configure_first_party_target(arc_persistence_tests)
 target_link_libraries(arc_persistence_tests PRIVATE arc-persistence Catch2::Catch2WithMain)
 
 include(Catch)

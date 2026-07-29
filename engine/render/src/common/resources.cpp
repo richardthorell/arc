@@ -27,13 +27,12 @@ descriptor_slot descriptor_slot_pool::allocate(descriptor_resource_type type)
     slot.type = type;
     slot.alive = true;
     ++live_count_;
-    return { .type = type, .index = index, .generation = slot.generation };
+    return {.type = type, .index = index, .generation = slot.generation};
 }
 
 bool descriptor_slot_pool::release(descriptor_slot slot)
 {
-    if (!alive(slot))
-        return false;
+    if (!alive(slot)) return false;
 
     auto& state = slots_[slot.index];
     state.alive = false;
@@ -45,8 +44,7 @@ bool descriptor_slot_pool::release(descriptor_slot slot)
 
 bool descriptor_slot_pool::alive(descriptor_slot slot) const
 {
-    if (!slot.valid() || slot.index >= slots_.size())
-        return false;
+    if (!slot.valid() || slot.index >= slots_.size()) return false;
 
     const auto& state = slots_[slot.index];
     return state.alive && state.generation == slot.generation && state.type == slot.type;
@@ -59,9 +57,8 @@ std::uint32_t descriptor_slot_pool::live_count() const noexcept
 
 void deferred_resource_releaser::defer(std::uint64_t retire_after_frame, release_fn release)
 {
-    if (!release)
-        return;
-    pending_.push_back({ .retire_after_frame = retire_after_frame, .release = std::move(release) });
+    if (!release) return;
+    pending_.push_back({.retire_after_frame = retire_after_frame, .release = std::move(release)});
 }
 
 std::size_t deferred_resource_releaser::collect(std::uint64_t completed_frame)
@@ -89,10 +86,7 @@ std::size_t deferred_resource_releaser::pending_count() const noexcept
     return pending_.size();
 }
 
-frame_allocator::frame_allocator(std::size_t capacity)
-    : arena_(capacity)
-{
-}
+frame_allocator::frame_allocator(std::size_t capacity) : arena_(capacity) {}
 
 void* frame_allocator::allocate(std::size_t size, std::size_t alignment)
 {
@@ -114,16 +108,9 @@ std::size_t frame_allocator::capacity() const noexcept
     return arena_.capacity();
 }
 
-gpu_upload_arena::gpu_upload_arena(std::size_t capacity)
-    : storage_(capacity)
-    , bytes_(storage_)
-{
-}
+gpu_upload_arena::gpu_upload_arena(std::size_t capacity) : storage_(capacity), bytes_(storage_) {}
 
-gpu_upload_arena::gpu_upload_arena(std::span<std::byte> mapped_storage) noexcept
-    : bytes_(mapped_storage)
-{
-}
+gpu_upload_arena::gpu_upload_arena(std::span<std::byte> mapped_storage) noexcept : bytes_(mapped_storage) {}
 
 void gpu_upload_arena::begin_frame(std::uint64_t frame) noexcept
 {
@@ -132,31 +119,20 @@ void gpu_upload_arena::begin_frame(std::uint64_t frame) noexcept
 
 upload_allocation gpu_upload_arena::try_allocate(std::size_t bytes, std::size_t alignment) noexcept
 {
-    if (bytes == 0 || bytes > bytes_.size() || alignment == 0 || (alignment & (alignment - 1)) != 0)
-        return {};
-    if (!ranges_.empty() && head_ == ranges_.front().begin)
-        return {};
+    if (bytes == 0 || bytes > bytes_.size() || alignment == 0 || (alignment & (alignment - 1)) != 0) return {};
+    if (!ranges_.empty() && head_ == ranges_.front().begin) return {};
 
-    auto attempt = [&](std::size_t begin, std::size_t end) -> upload_allocation {
+    auto attempt = [&](std::size_t begin, std::size_t end) -> upload_allocation
+    {
         const auto aligned = (begin + alignment - 1) & ~(alignment - 1);
-        if (aligned > end || bytes > end - aligned)
-            return {};
+        if (aligned > end || bytes > end - aligned) return {};
         const auto allocation_end = aligned + bytes;
         const auto consumed = allocation_end - begin;
-        ranges_.push_back({
-            .begin = aligned,
-            .end = allocation_end,
-            .consumed = consumed,
-            .frame = current_frame_
-        });
+        ranges_.push_back({.begin = aligned, .end = allocation_end, .consumed = consumed, .frame = current_frame_});
         head_ = allocation_end == bytes_.size() ? 0 : allocation_end;
         used_ += consumed;
         peak_used_ = std::max(peak_used_, used_);
-        return {
-            .bytes = bytes_.subspan(aligned, bytes),
-            .offset = aligned,
-            .frame = current_frame_
-        };
+        return {.bytes = bytes_.subspan(aligned, bytes), .offset = aligned, .frame = current_frame_};
     };
 
     if (ranges_.empty())
@@ -166,12 +142,9 @@ upload_allocation gpu_upload_arena::try_allocate(std::size_t bytes, std::size_t 
     }
 
     const auto tail = ranges_.front().begin;
-    if (head_ < tail)
-        return attempt(head_, tail);
-    if (auto result = attempt(head_, bytes_.size()))
-        return result;
-    if (tail != 0)
-        return attempt(0, tail);
+    if (head_ < tail) return attempt(head_, tail);
+    if (auto result = attempt(head_, bytes_.size())) return result;
+    if (tail != 0) return attempt(0, tail);
     return {};
 }
 
@@ -214,23 +187,17 @@ std::uint64_t gpu_upload_arena::current_frame() const noexcept
 
 bool operator==(const graphics_pipeline_key& lhs, const graphics_pipeline_key& rhs) noexcept
 {
-    return lhs.vertex_shader == rhs.vertex_shader &&
-        lhs.fragment_shader == rhs.fragment_shader &&
-        lhs.vertex_layout == rhs.vertex_layout &&
-        lhs.color_format == rhs.color_format &&
-        lhs.depth_format == rhs.depth_format &&
-        lhs.depth_test == rhs.depth_test &&
-        lhs.depth_write == rhs.depth_write &&
-        lhs.wireframe == rhs.wireframe &&
-        lhs.alpha_blend == rhs.alpha_blend &&
-        lhs.permutation == rhs.permutation;
+    return lhs.vertex_shader == rhs.vertex_shader && lhs.fragment_shader == rhs.fragment_shader &&
+           lhs.vertex_layout == rhs.vertex_layout && lhs.color_format == rhs.color_format &&
+           lhs.depth_format == rhs.depth_format && lhs.depth_test == rhs.depth_test &&
+           lhs.depth_write == rhs.depth_write && lhs.wireframe == rhs.wireframe && lhs.alpha_blend == rhs.alpha_blend &&
+           lhs.permutation == rhs.permutation;
 }
 
 std::size_t pipeline_handle_cache::key_hash::operator()(const graphics_pipeline_key& key) const noexcept
 {
-    auto combine = [](std::size_t seed, std::size_t value) {
-        return seed ^ (value + 0x9e3779b97f4a7c15ull + (seed << 6u) + (seed >> 2u));
-    };
+    auto combine = [](std::size_t seed, std::size_t value)
+    { return seed ^ (value + 0x9e3779b97f4a7c15ull + (seed << 6u) + (seed >> 2u)); };
 
     std::size_t seed = 0;
     seed = combine(seed, std::hash<std::uint32_t>{}(key.vertex_shader.index));
@@ -251,8 +218,7 @@ std::size_t pipeline_handle_cache::key_hash::operator()(const graphics_pipeline_
 pipeline_handle pipeline_handle_cache::find(const graphics_pipeline_key& key) const
 {
     const auto found = cache_.find(key);
-    if (found == cache_.end())
-        return {};
+    if (found == cache_.end()) return {};
     return found->second;
 }
 

@@ -151,6 +151,7 @@ function(arc_add_module)
 
     if(ARC_TYPE STREQUAL "INTERFACE")
         add_library(${ARC_NAME} INTERFACE)
+        arc_configure_first_party_target(${ARC_NAME})
 
         target_include_directories(${ARC_NAME}
             INTERFACE
@@ -184,6 +185,7 @@ function(arc_add_module)
             ${_private_headers}
             ${_sources}
         )
+        arc_configure_first_party_target(${ARC_NAME})
 
         target_include_directories(${ARC_NAME}
             PUBLIC

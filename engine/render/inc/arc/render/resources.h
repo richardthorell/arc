@@ -33,8 +33,8 @@ enum class descriptor_resource_type : std::uint8_t
  */
 struct descriptor_slot
 {
-    descriptor_resource_type type{ descriptor_resource_type::sampled_image };
-    std::uint32_t index{ resource_handle::invalid_index };
+    descriptor_resource_type type{descriptor_resource_type::sampled_image};
+    std::uint32_t index{resource_handle::invalid_index};
     std::uint32_t generation{};
 
     /**
@@ -75,8 +75,8 @@ public:
 private:
     struct slot_state
     {
-        descriptor_resource_type type{ descriptor_resource_type::sampled_image };
-        std::uint32_t generation{ 1 };
+        descriptor_resource_type type{descriptor_resource_type::sampled_image};
+        std::uint32_t generation{1};
         bool alive{};
     };
 
@@ -129,9 +129,7 @@ public:
     /**
      * @brief Allocate aligned bytes from the frame arena.
      */
-    [[nodiscard]] void* allocate(
-        std::size_t size,
-        std::size_t alignment = alignof(std::max_align_t));
+    [[nodiscard]] void* allocate(std::size_t size, std::size_t alignment = alignof(std::max_align_t));
 
     /**
      * @brief Reset all transient allocations.
@@ -158,7 +156,10 @@ struct upload_allocation
     std::size_t offset{};
     std::uint64_t frame{};
 
-    explicit operator bool() const noexcept { return !bytes.empty(); }
+    explicit operator bool() const noexcept
+    {
+        return !bytes.empty();
+    }
 };
 
 /**
@@ -177,9 +178,7 @@ public:
     gpu_upload_arena& operator=(gpu_upload_arena&&) = delete;
 
     void begin_frame(std::uint64_t frame) noexcept;
-    upload_allocation try_allocate(
-        std::size_t bytes,
-        std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    upload_allocation try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
     std::size_t retire_completed(std::uint64_t completed_frame) noexcept;
 
     std::size_t capacity() const noexcept;

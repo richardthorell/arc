@@ -18,24 +18,45 @@ const status: ArcAiGatewayStatus = {
   frameRevision: 42,
   eventSequence: 3,
   clients: [{ id: 'codex', name: 'Codex', connectedAt: '2026-01-01T00:00:00Z', lastSeenAt: '2026-01-01T00:00:01Z' }],
-  pendingEditRequests: [{
-    id: 'request', clientId: 'codex', clientName: 'Codex', label: 'Fix scene',
-    requestedAt: '2026-01-01T00:00:00Z', state: 'pending',
-  }],
+  pendingEditRequests: [
+    {
+      id: 'request',
+      clientId: 'codex',
+      clientName: 'Codex',
+      label: 'Fix scene',
+      requestedAt: '2026-01-01T00:00:00Z',
+      state: 'pending',
+    },
+  ],
   activeEditSession: null,
   lastCommittedEdit: null,
   viewportLease: { clientId: 'codex', expiresAt: '2026-01-01T00:01:00Z' },
-  audit: [{
-    sequence: 1, timestamp: '2026-01-01T00:00:00Z', clientId: 'codex',
-    category: 'read', operation: 'scene.overview', succeeded: true, detail: '',
-  }],
+  audit: [
+    {
+      sequence: 1,
+      timestamp: '2026-01-01T00:00:00Z',
+      clientId: 'codex',
+      category: 'read',
+      operation: 'scene.overview',
+      succeeded: true,
+      detail: '',
+    },
+  ],
 };
 
 describe('AiGatewayPanel', () => {
   it('shows endpoint, client, lease, approvals, and audit state', () => {
     const approve = vi.fn();
-    render(<AiGatewayPanel status={status} onApprove={approve} onDeny={() => undefined}
-      onRevoke={() => undefined} onCancelEdit={() => undefined} onUndoLastEdit={() => undefined} />);
+    render(
+      <AiGatewayPanel
+        status={status}
+        onApprove={approve}
+        onDeny={() => undefined}
+        onRevoke={() => undefined}
+        onCancelEdit={() => undefined}
+        onUndoLastEdit={() => undefined}
+      />,
+    );
     expect(screen.getByText(status.endpoint)).toBeInTheDocument();
     expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
     expect(screen.getByText(/Viewport control/)).toBeInTheDocument();
@@ -48,20 +69,33 @@ describe('AiGatewayPanel', () => {
     const revoke = vi.fn();
     const cancel = vi.fn();
     const undo = vi.fn();
-    render(<AiGatewayPanel status={{
-      ...status,
-      pendingEditRequests: [],
-      activeEditSession: {
-        id: 'edit', clientId: 'codex', label: 'Adjust light',
-        startedAt: '2026-01-01T00:00:00Z', lastActivityAt: '2026-01-01T00:00:00Z',
-        expectedSceneRevision: 9,
-      },
-      lastCommittedEdit: {
-        clientId: 'codex', label: 'Previous light edit', sceneRevision: 8,
-        committedAt: '2026-01-01T00:00:00Z',
-      },
-    }} onApprove={() => undefined} onDeny={() => undefined} onRevoke={revoke}
-      onCancelEdit={cancel} onUndoLastEdit={undo} />);
+    render(
+      <AiGatewayPanel
+        status={{
+          ...status,
+          pendingEditRequests: [],
+          activeEditSession: {
+            id: 'edit',
+            clientId: 'codex',
+            label: 'Adjust light',
+            startedAt: '2026-01-01T00:00:00Z',
+            lastActivityAt: '2026-01-01T00:00:00Z',
+            expectedSceneRevision: 9,
+          },
+          lastCommittedEdit: {
+            clientId: 'codex',
+            label: 'Previous light edit',
+            sceneRevision: 8,
+            committedAt: '2026-01-01T00:00:00Z',
+          },
+        }}
+        onApprove={() => undefined}
+        onDeny={() => undefined}
+        onRevoke={revoke}
+        onCancelEdit={cancel}
+        onUndoLastEdit={undo}
+      />,
+    );
     fireEvent.click(screen.getByLabelText('Revoke Codex'));
     fireEvent.click(screen.getByText('Cancel'));
     fireEvent.click(screen.getByText('Undo'));
@@ -74,8 +108,7 @@ describe('AiGatewayPanel', () => {
     const approve = vi.fn();
     const deny = vi.fn();
     const open = vi.fn();
-    render(<AiGatewayApprovalPrompt status={status} onApprove={approve} onDeny={deny}
-      onOpenGateway={open} />);
+    render(<AiGatewayApprovalPrompt status={status} onApprove={approve} onDeny={deny} onOpenGateway={open} />);
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Codex requests scene edit access');
     fireEvent.click(screen.getByText('Allow'));
     fireEvent.click(screen.getByText('Deny'));

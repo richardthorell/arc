@@ -12,46 +12,39 @@
 namespace arc::simd
 {
 
-template <std::size_t N>
-constexpr std::uint64_t mask_to_bits(const simd_mask<N>& mask) noexcept
+template <std::size_t N> constexpr std::uint64_t mask_to_bits(const simd_mask<N>& mask) noexcept
 {
     static_assert(N <= 64, "mask_to_bits supports up to 64 lanes");
 
     std::uint64_t bits = 0;
     for (std::size_t i = 0; i < N; ++i)
     {
-        if (any(bitwise_and(mask, range_mask<N>(i, i + 1))))
-            bits |= std::uint64_t{ 1 } << i;
+        if (any(bitwise_and(mask, range_mask<N>(i, i + 1)))) bits |= std::uint64_t{1} << i;
     }
     return bits;
 }
 
-template <std::size_t N>
-constexpr simd_mask<N> bits_to_mask(std::uint64_t bits) noexcept
+template <std::size_t N> constexpr simd_mask<N> bits_to_mask(std::uint64_t bits) noexcept
 {
     static_assert(N <= 64, "bits_to_mask supports up to 64 lanes");
 
     auto mask = simd_mask<N>(false);
     for (std::size_t i = 0; i < N; ++i)
     {
-        if ((bits & (std::uint64_t{ 1 } << i)) != 0)
-            mask = bitwise_or(mask, range_mask<N>(i, i + 1));
+        if ((bits & (std::uint64_t{1} << i)) != 0) mask = bitwise_or(mask, range_mask<N>(i, i + 1));
     }
     return mask;
 }
 
-template <std::size_t N>
-constexpr int popcount(const simd_mask<N>& mask) noexcept
+template <std::size_t N> constexpr int popcount(const simd_mask<N>& mask) noexcept
 {
     return std::popcount(mask_to_bits(mask));
 }
 
-template <std::size_t N>
-constexpr int first_active_lane(const simd_mask<N>& mask) noexcept
+template <std::size_t N> constexpr int first_active_lane(const simd_mask<N>& mask) noexcept
 {
     const auto bits = mask_to_bits(mask);
-    if (bits == 0)
-        return -1;
+    if (bits == 0) return -1;
     return std::countr_zero(bits);
 }
 
@@ -66,8 +59,7 @@ constexpr simd<T, N> compress(const simd<T, N>& value, const simd_mask<N>& mask,
     const auto bits = mask_to_bits(mask);
     for (std::size_t i = 0; i < N; ++i)
     {
-        if ((bits & (std::uint64_t{ 1 } << i)) != 0)
-            result[out++] = lanes[i];
+        if ((bits & (std::uint64_t{1} << i)) != 0) result[out++] = lanes[i];
     }
 
     return detail::simd_from_array<T, N>(result);
@@ -84,8 +76,7 @@ constexpr simd<T, N> expand(const simd<T, N>& compacted, const simd_mask<N>& mas
     const auto bits = mask_to_bits(mask);
     for (std::size_t i = 0; i < N; ++i)
     {
-        if ((bits & (std::uint64_t{ 1 } << i)) != 0)
-            result[i] = lanes[in++];
+        if ((bits & (std::uint64_t{1} << i)) != 0) result[i] = lanes[in++];
     }
 
     return detail::simd_from_array<T, N>(result);

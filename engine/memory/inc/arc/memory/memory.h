@@ -38,18 +38,30 @@ constexpr std::string_view to_string(memory_domain domain) noexcept
 {
     switch (domain)
     {
-    case memory_domain::general: return "general";
-    case memory_domain::jobs: return "jobs";
-    case memory_domain::frame: return "frame";
-    case memory_domain::tick: return "tick";
-    case memory_domain::world: return "world";
-    case memory_domain::components: return "components";
-    case memory_domain::network: return "network";
-    case memory_domain::assets: return "assets";
-    case memory_domain::streaming: return "streaming";
-    case memory_domain::gpu_upload: return "gpu_upload";
-    case memory_domain::editor: return "editor";
-    case memory_domain::count: break;
+        case memory_domain::general:
+            return "general";
+        case memory_domain::jobs:
+            return "jobs";
+        case memory_domain::frame:
+            return "frame";
+        case memory_domain::tick:
+            return "tick";
+        case memory_domain::world:
+            return "world";
+        case memory_domain::components:
+            return "components";
+        case memory_domain::network:
+            return "network";
+        case memory_domain::assets:
+            return "assets";
+        case memory_domain::streaming:
+            return "streaming";
+        case memory_domain::gpu_upload:
+            return "gpu_upload";
+        case memory_domain::editor:
+            return "editor";
+        case memory_domain::count:
+            break;
     }
     return "unknown";
 }
@@ -57,7 +69,7 @@ constexpr std::string_view to_string(memory_domain domain) noexcept
 struct memory_tag
 {
     std::uint32_t id{};
-    std::string_view name{ "untagged" };
+    std::string_view name{"untagged"};
 
     friend constexpr bool operator==(memory_tag, memory_tag) noexcept = default;
 };
@@ -97,7 +109,7 @@ struct memory_budget
 
 struct memory_domain_snapshot
 {
-    memory_domain domain{ memory_domain::general };
+    memory_domain domain{memory_domain::general};
     memory_stats stats{};
     memory_budget budget{};
     bool soft_limit_exceeded{};
@@ -106,14 +118,14 @@ struct memory_domain_snapshot
 struct memory_tag_snapshot
 {
     memory_tag tag{};
-    memory_domain domain{ memory_domain::general };
+    memory_domain domain{memory_domain::general};
     std::size_t allocation_count{};
     std::size_t bytes_outstanding{};
 };
 
 struct memory_allocation_group_snapshot
 {
-    memory_domain domain{ memory_domain::general };
+    memory_domain domain{memory_domain::general};
     memory_tag tag{};
     std::uint64_t world_id{};
     std::uint64_t thread_id{};
@@ -127,7 +139,7 @@ struct memory_leak_record
     std::uintptr_t address{};
     std::size_t bytes{};
     std::size_t alignment{};
-    memory_domain domain{ memory_domain::general };
+    memory_domain domain{memory_domain::general};
     memory_tag tag{};
     std::uint64_t world_id{};
     std::uint64_t thread_id{};
@@ -151,8 +163,8 @@ struct memory_snapshot
 struct memory_system_config
 {
     std::size_t physical_memory_override{};
-    float cpu_soft_budget_fraction{ 0.75f };
-    float cpu_hard_budget_fraction{ 0.90f };
+    float cpu_soft_budget_fraction{0.75f};
+    float cpu_hard_budget_fraction{0.90f};
     bool track_live_allocations{
 #if !defined(NDEBUG)
         true
@@ -167,9 +179,9 @@ struct memory_system_config
         false
 #endif
     };
-    std::size_t stack_capture_threshold{ 64u * 1024u };
-    std::uint32_t small_allocation_sample_rate{ 256 };
-    std::uint32_t maximum_stack_frames{ 32 };
+    std::size_t stack_capture_threshold{64u * 1024u};
+    std::uint32_t small_allocation_sample_rate{256};
+    std::uint32_t maximum_stack_frames{32};
 };
 
 enum class memory_pressure_level : std::uint8_t
@@ -192,45 +204,34 @@ enum class allocation_error : std::uint8_t
 struct [[nodiscard]] allocation_result
 {
     void* pointer{};
-    allocation_error error{ allocation_error::none };
+    allocation_error error{allocation_error::none};
 
-    explicit operator bool() const noexcept { return pointer != nullptr; }
+    explicit operator bool() const noexcept
+    {
+        return pointer != nullptr;
+    }
 };
 
 class memory_system
 {
 public:
-    explicit memory_system(
-        memory_system_config config = {},
-        std::pmr::memory_resource* upstream = std::pmr::new_delete_resource());
+    explicit memory_system(memory_system_config config = {},
+                           std::pmr::memory_resource* upstream = std::pmr::new_delete_resource());
     ~memory_system();
 
     memory_system(const memory_system&) = delete;
     memory_system& operator=(const memory_system&) = delete;
 
-    void* try_allocate(
-        std::size_t bytes,
-        std::size_t alignment = alignof(std::max_align_t),
-        memory_domain domain = memory_domain::general,
-        memory_tag tag = {},
-        std::uint64_t world_id = 0) noexcept;
-    allocation_result try_allocate_result(
-        std::size_t bytes,
-        std::size_t alignment = alignof(std::max_align_t),
-        memory_domain domain = memory_domain::general,
-        memory_tag tag = {},
-        std::uint64_t world_id = 0) noexcept;
-    void* allocate(
-        std::size_t bytes,
-        std::size_t alignment = alignof(std::max_align_t),
-        memory_domain domain = memory_domain::general,
-        memory_tag tag = {},
-        std::uint64_t world_id = 0);
-    void deallocate(
-        void* pointer,
-        std::size_t bytes,
-        std::size_t alignment,
-        memory_domain domain = memory_domain::general) noexcept;
+    void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t),
+                       memory_domain domain = memory_domain::general, memory_tag tag = {},
+                       std::uint64_t world_id = 0) noexcept;
+    allocation_result try_allocate_result(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t),
+                                          memory_domain domain = memory_domain::general, memory_tag tag = {},
+                                          std::uint64_t world_id = 0) noexcept;
+    void* allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t),
+                   memory_domain domain = memory_domain::general, memory_tag tag = {}, std::uint64_t world_id = 0);
+    void deallocate(void* pointer, std::size_t bytes, std::size_t alignment,
+                    memory_domain domain = memory_domain::general) noexcept;
 
     void set_budget(memory_domain domain, memory_budget budget);
     memory_budget budget(memory_domain domain) const noexcept;
@@ -253,11 +254,8 @@ memory_system& default_memory_system();
 class system_memory_resource final : public std::pmr::memory_resource
 {
 public:
-    explicit system_memory_resource(
-        memory_system& system,
-        memory_domain domain = memory_domain::general,
-        memory_tag tag = {},
-        std::uint64_t world_id = 0) noexcept;
+    explicit system_memory_resource(memory_system& system, memory_domain domain = memory_domain::general,
+                                    memory_tag tag = {}, std::uint64_t world_id = 0) noexcept;
 
     memory_domain domain() const noexcept;
     std::uint64_t world_id() const noexcept;
@@ -268,7 +266,7 @@ private:
     bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override;
 
     memory_system* system_{};
-    memory_domain domain_{ memory_domain::general };
+    memory_domain domain_{memory_domain::general};
     memory_tag tag_{};
     std::uint64_t world_id_{};
 };
@@ -279,9 +277,8 @@ private:
 class tracked_memory_resource final : public std::pmr::memory_resource
 {
 public:
-    explicit tracked_memory_resource(
-        std::string category = "general",
-        std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
+    explicit tracked_memory_resource(std::string category = "general",
+                                     std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
 
     std::string_view category() const noexcept;
     memory_stats stats() const noexcept;
@@ -319,9 +316,8 @@ struct arena_mark
 class linear_arena : public std::pmr::memory_resource
 {
 public:
-    explicit linear_arena(
-        std::size_t initial_capacity = 256u * 1024u,
-        std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
+    explicit linear_arena(std::size_t initial_capacity = 256u * 1024u,
+                          std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
     ~linear_arena() override;
 
     linear_arena(const linear_arena&) = delete;
@@ -353,7 +349,7 @@ private:
     std::size_t active_block_{};
     std::size_t used_{};
     std::size_t peak_used_{};
-    std::uint64_t generation_{ 1 };
+    std::uint64_t generation_{1};
 };
 
 class frame_arena final : public linear_arena
@@ -374,10 +370,8 @@ public:
 class fixed_block_pool
 {
 public:
-    explicit fixed_block_pool(
-        std::span<const std::size_t> size_classes,
-        std::size_t blocks_per_slab = 64,
-        std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
+    explicit fixed_block_pool(std::span<const std::size_t> size_classes, std::size_t blocks_per_slab = 64,
+                              std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
     ~fixed_block_pool();
 
     fixed_block_pool(const fixed_block_pool&) = delete;
@@ -409,10 +403,8 @@ private:
 class world_memory_context
 {
 public:
-    explicit world_memory_context(
-        memory_system& system = default_memory_system(),
-        std::uint64_t world_id = 0,
-        memory_budget budget = {});
+    explicit world_memory_context(memory_system& system = default_memory_system(), std::uint64_t world_id = 0,
+                                  memory_budget budget = {});
     ~world_memory_context();
 
     std::uint64_t world_id() const noexcept;
@@ -433,10 +425,8 @@ private:
 class streaming_heap final : public std::pmr::memory_resource
 {
 public:
-    explicit streaming_heap(
-        memory_system& memory,
-        std::size_t capacity,
-        memory_tag tag = make_memory_tag("assets.streaming"));
+    explicit streaming_heap(memory_system& memory, std::size_t capacity,
+                            memory_tag tag = make_memory_tag("assets.streaming"));
     ~streaming_heap() override;
 
     streaming_heap(const streaming_heap&) = delete;

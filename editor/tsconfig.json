@@ -14,5 +14,12 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["forge.config.ts", "vite.main.config.ts", "vite.mcp.config.ts", "vite.preload.config.ts", "vite.renderer.config.ts", "src"]
+  "include": [
+    "forge.config.ts",
+    "vite.main.config.ts",
+    "vite.mcp.config.ts",
+    "vite.preload.config.ts",
+    "vite.renderer.config.ts",
+    "src"
+  ]
 }

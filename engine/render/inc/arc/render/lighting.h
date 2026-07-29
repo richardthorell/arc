@@ -21,8 +21,7 @@ inline constexpr std::uint32_t max_point_lights = 64;
 inline constexpr std::uint32_t max_spot_lights = 64;
 inline constexpr std::uint32_t max_area_lights = 32;
 inline constexpr std::uint32_t max_local_shadow_lights = 24;
-inline constexpr std::uint32_t max_local_shadow_faces =
-    max_local_shadow_lights * point_shadow_face_count;
+inline constexpr std::uint32_t max_local_shadow_faces = max_local_shadow_lights * point_shadow_face_count;
 inline constexpr std::uint32_t directional_shadow_cascade_count = 4;
 
 /**
@@ -61,10 +60,10 @@ struct environment_descriptor
     environment_handle handle{};
     std::string name;
     texture_handle equirectangular_texture{};
-    math::vector3f fallback_color{ 0.12f, 0.12f, 0.12f };
-    float intensity{ 1.0f };
-    math::vector3f diffuse_irradiance{ 0.12f, 0.12f, 0.12f };
-    float diffuse_intensity{ 1.0f };
+    math::vector3f fallback_color{0.12f, 0.12f, 0.12f};
+    float intensity{1.0f};
+    math::vector3f diffuse_irradiance{0.12f, 0.12f, 0.12f};
+    float diffuse_intensity{1.0f};
     texture_handle irradiance_texture{};
     texture_handle prefiltered_specular_texture{};
     texture_handle brdf_integration_lut{};
@@ -75,7 +74,7 @@ struct environment_descriptor
     std::uint32_t prefiltered_mip_count{};
     std::string cache_key;
     std::string fallback_reason;
-    environment_generation_state generation_state{ environment_generation_state::missing };
+    environment_generation_state generation_state{environment_generation_state::missing};
     bool prefiltered{};
 };
 
@@ -84,8 +83,8 @@ struct environment_descriptor
  */
 struct directional_light_data
 {
-    math::vector4f direction_intensity{ 0.0f, -1.0f, 0.0f, 0.0f };
-    math::vector4f color_flags{ 1.0f, 1.0f, 1.0f, 0.0f };
+    math::vector4f direction_intensity{0.0f, -1.0f, 0.0f, 0.0f};
+    math::vector4f color_flags{1.0f, 1.0f, 1.0f, 0.0f};
 };
 
 /**
@@ -93,10 +92,10 @@ struct directional_light_data
  */
 struct point_light_data
 {
-    math::vector4f position_range{ 0.0f, 0.0f, 0.0f, 1.0f };
-    math::vector4f color_intensity{ 1.0f, 1.0f, 1.0f, 0.0f };
-    math::vector4f object_id_shadow{ 0.0f, 0.0f, -1.0f, 0.0f };
-    math::vector4f shadow_parameters{ -1.0f, 0.0f, 0.0f, 0.0f };
+    math::vector4f position_range{0.0f, 0.0f, 0.0f, 1.0f};
+    math::vector4f color_intensity{1.0f, 1.0f, 1.0f, 0.0f};
+    math::vector4f object_id_shadow{0.0f, 0.0f, -1.0f, 0.0f};
+    math::vector4f shadow_parameters{-1.0f, 0.0f, 0.0f, 0.0f};
 };
 
 /**
@@ -104,18 +103,18 @@ struct point_light_data
  */
 struct spot_light_data
 {
-    math::vector4f position_range{ 0.0f, 0.0f, 0.0f, 1.0f };
-    math::vector4f direction_inner_angle{ 0.0f, -1.0f, 0.0f, 0.35f };
-    math::vector4f color_intensity{ 1.0f, 1.0f, 1.0f, 0.0f };
-    math::vector4f params{ 0.75f, 0.0f, 0.0f, 0.0f };
-    math::vector4f object_id_shadow{ 0.0f, 0.0f, -1.0f, 0.0f };
-    math::vector4f shadow_parameters{ -1.0f, 0.0f, 0.0f, 0.0f };
+    math::vector4f position_range{0.0f, 0.0f, 0.0f, 1.0f};
+    math::vector4f direction_inner_angle{0.0f, -1.0f, 0.0f, 0.35f};
+    math::vector4f color_intensity{1.0f, 1.0f, 1.0f, 0.0f};
+    math::vector4f params{0.75f, 0.0f, 0.0f, 0.0f};
+    math::vector4f object_id_shadow{0.0f, 0.0f, -1.0f, 0.0f};
+    math::vector4f shadow_parameters{-1.0f, 0.0f, 0.0f, 0.0f};
 };
 
 /** @brief One point face or spotlight projection packed for local-shadow sampling. */
 struct local_shadow_face_data
 {
-    math::matrix4f light_view_projection{ math::identity<float, 4>() };
+    math::matrix4f light_view_projection{math::identity<float, 4>()};
     math::vector4f atlas_rect{};
     math::vector4f parameters{};
 };
@@ -126,10 +125,10 @@ struct local_shadow_face_data
 struct area_light_data
 {
     math::vector4f position_shape{};
-    math::vector4f direction_two_sided{ 0.0f, -1.0f, 0.0f, 0.0f };
-    math::vector4f tangent_width{ 1.0f, 0.0f, 0.0f, 1.0f };
-    math::vector4f color_intensity{ 1.0f, 1.0f, 1.0f, 0.0f };
-    math::vector4f dimensions_shadow{ 1.0f, 1.0f, 0.0f, 0.0f };
+    math::vector4f direction_two_sided{0.0f, -1.0f, 0.0f, 0.0f};
+    math::vector4f tangent_width{1.0f, 0.0f, 0.0f, 1.0f};
+    math::vector4f color_intensity{1.0f, 1.0f, 1.0f, 0.0f};
+    math::vector4f dimensions_shadow{1.0f, 1.0f, 0.0f, 0.0f};
 };
 
 /**
@@ -142,7 +141,7 @@ struct scene_lighting_data
     std::array<spot_light_data, max_spot_lights> spot_lights{};
     std::array<area_light_data, max_area_lights> area_lights{};
     std::array<local_shadow_face_data, max_local_shadow_faces> local_shadow_faces{};
-    math::vector4f ambient_color_intensity{ 0.12f, 0.12f, 0.12f, 1.0f };
+    math::vector4f ambient_color_intensity{0.12f, 0.12f, 0.12f, 1.0f};
     std::uint32_t directional_count{};
     std::uint32_t point_count{};
     std::uint32_t spot_count{};
@@ -160,7 +159,7 @@ struct scene_lighting_data
  */
 struct directional_shadow_cascade_data
 {
-    math::matrix4f light_view_projection{ math::identity<float, 4>() };
+    math::matrix4f light_view_projection{math::identity<float, 4>()};
     float split_depth{};
 };
 
@@ -181,9 +180,10 @@ struct directional_shadow_cache_key
 {
     std::uint32_t light_index{};
     std::uint32_t resolution{};
-    shadow_filter filter{ shadow_filter::pcf_3x3 };
+    shadow_filter filter{shadow_filter::pcf_3x3};
 
-    friend constexpr bool operator==(const directional_shadow_cache_key&, const directional_shadow_cache_key&) noexcept = default;
+    friend constexpr bool operator==(const directional_shadow_cache_key&,
+                                     const directional_shadow_cache_key&) noexcept = default;
 };
 
 /**
@@ -211,7 +211,8 @@ struct spot_shadow_cache_key
 /**
  * @brief Return deterministic cascade split depths.
  */
-std::array<float, directional_shadow_cascade_count> cascade_splits(float near_plane, float far_plane, float split_lambda = 0.65f) noexcept;
+std::array<float, directional_shadow_cascade_count> cascade_splits(float near_plane, float far_plane,
+                                                                   float split_lambda = 0.65f) noexcept;
 
 /**
  * @brief Convert a color temperature in Kelvin to linear RGB approximation.
@@ -233,12 +234,8 @@ float cone_solid_angle(float half_angle_radians) noexcept;
 float exposure_multiplier(float ev100, float compensation_ev = 0.0f) noexcept;
 
 /** @brief Advance one exposure value toward a metered target without overshoot. */
-exposure_state adapt_exposure(
-    exposure_state current,
-    const exposure_settings& settings,
-    float metered_ev100,
-    float delta_seconds,
-    bool camera_cut = false) noexcept;
+exposure_state adapt_exposure(exposure_state current, const exposure_settings& settings, float metered_ev100,
+                              float delta_seconds, bool camera_cut = false) noexcept;
 
 /**
  * @brief Estimate light importance for v1 capping/sorting.
@@ -251,13 +248,10 @@ float estimate_light_contribution(const area_light_event& light) noexcept;
 /**
  * @brief Pack extracted render lights into capped GPU-ready arrays.
  */
-scene_lighting_data pack_scene_lighting(
-    const std::vector<directional_light_event>& directional,
-    const std::vector<point_light_event>& point,
-    const std::vector<spot_light_event>& spot,
-    const environment_descriptor* environment = nullptr,
-    std::uint32_t point_limit = max_point_lights,
-    std::uint32_t spot_limit = max_spot_lights,
-    const std::vector<area_light_event>& area = {});
+scene_lighting_data
+pack_scene_lighting(const std::vector<directional_light_event>& directional,
+                    const std::vector<point_light_event>& point, const std::vector<spot_light_event>& spot,
+                    const environment_descriptor* environment = nullptr, std::uint32_t point_limit = max_point_lights,
+                    std::uint32_t spot_limit = max_spot_lights, const std::vector<area_light_event>& area = {});
 
 } // namespace arc::render

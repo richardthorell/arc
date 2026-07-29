@@ -45,6 +45,10 @@ build/
 build-*/
 out/
 
+# Python tooling caches
+__pycache__/
+*.py[cod]
+
 # Node / Electron editor
 editor/node_modules/
 editor/.vite/

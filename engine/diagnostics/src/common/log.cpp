@@ -14,8 +14,7 @@ public:
     void write(const log_record& record) override
     {
         std::clog << '[' << to_string(record.level) << ']';
-        if (!record.category.empty())
-            std::clog << '[' << record.category << ']';
+        if (!record.category.empty()) std::clog << '[' << record.category << ']';
         std::clog << ' ' << record.message << '\n';
     }
 };
@@ -70,8 +69,7 @@ log_level logger::min_level() const noexcept
 
 void logger::add_sink(std::shared_ptr<log_sink> sink)
 {
-    if (!sink)
-        return;
+    if (!sink) return;
 
     std::lock_guard lock(mutex_);
     sinks_.push_back(std::move(sink));
@@ -94,8 +92,7 @@ void logger::write(const log_record& record)
     std::vector<std::shared_ptr<log_sink>> sinks;
     {
         std::lock_guard lock(mutex_);
-        if (!should_log(record.level, min_level_))
-            return;
+        if (!should_log(record.level, min_level_)) return;
         sinks = sinks_;
     }
 
@@ -117,8 +114,7 @@ void set_logger(std::shared_ptr<logger> value)
 std::shared_ptr<logger> get_logger()
 {
     std::lock_guard lock(active_logger_mutex());
-    if (auto current = active_logger_storage())
-        return current;
+    if (auto current = active_logger_storage()) return current;
     return default_logger_storage();
 }
 
@@ -148,18 +144,18 @@ std::string_view to_string(log_level level) noexcept
 {
     switch (level)
     {
-    case log_level::trace:
-        return "trace";
-    case log_level::debug:
-        return "debug";
-    case log_level::info:
-        return "info";
-    case log_level::warn:
-        return "warn";
-    case log_level::error:
-        return "error";
-    case log_level::fatal:
-        return "fatal";
+        case log_level::trace:
+            return "trace";
+        case log_level::debug:
+            return "debug";
+        case log_level::info:
+            return "info";
+        case log_level::warn:
+            return "warn";
+        case log_level::error:
+            return "error";
+        case log_level::fatal:
+            return "fatal";
     }
 
     return "unknown";

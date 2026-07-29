@@ -31,10 +31,8 @@ constexpr simd<T, N> saturating_add(const simd<T, N>& a, const simd<T, N>& b) no
         {
             using wide_t = std::conditional_t<(sizeof(T) < sizeof(int64_t)), int64_t, long long>;
             const auto sum = static_cast<wide_t>(av[i]) + static_cast<wide_t>(bv[i]);
-            result[i] = static_cast<T>(std::clamp<wide_t>(
-                sum,
-                std::numeric_limits<T>::min(),
-                std::numeric_limits<T>::max()));
+            result[i] =
+                static_cast<T>(std::clamp<wide_t>(sum, std::numeric_limits<T>::min(), std::numeric_limits<T>::max()));
         }
     }
 
@@ -59,10 +57,8 @@ constexpr simd<T, N> saturating_sub(const simd<T, N>& a, const simd<T, N>& b) no
         {
             using wide_t = std::conditional_t<(sizeof(T) < sizeof(int64_t)), int64_t, long long>;
             const auto diff = static_cast<wide_t>(av[i]) - static_cast<wide_t>(bv[i]);
-            result[i] = static_cast<T>(std::clamp<wide_t>(
-                diff,
-                std::numeric_limits<T>::min(),
-                std::numeric_limits<T>::max()));
+            result[i] =
+                static_cast<T>(std::clamp<wide_t>(diff, std::numeric_limits<T>::min(), std::numeric_limits<T>::max()));
         }
     }
 
@@ -77,10 +73,8 @@ constexpr simd<To, N> narrow(const simd<From, N>& value) noexcept
     std::array<To, N> result{};
     for (std::size_t i = 0; i < N; ++i)
     {
-        const auto clamped = std::clamp(
-            lanes[i],
-            static_cast<From>(std::numeric_limits<To>::lowest()),
-            static_cast<From>(std::numeric_limits<To>::max()));
+        const auto clamped = std::clamp(lanes[i], static_cast<From>(std::numeric_limits<To>::lowest()),
+                                        static_cast<From>(std::numeric_limits<To>::max()));
         result[i] = static_cast<To>(clamped);
     }
     return detail::simd_from_array<To, N>(result);

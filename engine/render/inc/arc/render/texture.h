@@ -30,9 +30,7 @@ struct [[nodiscard]] texture_load_result
 /**
  * @brief Parse DDS bytes and preserve compressed/uncompressed mip payloads.
  */
-texture_load_result parse_dds_texture(
-    const std::vector<std::byte>& bytes,
-    std::string name = {});
+texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::string name = {});
 
 /**
  * @brief Load a texture asset by extension.
@@ -47,17 +45,14 @@ texture_load_result load_texture_asset(const std::filesystem::path& path);
 /**
  * @brief Decode texture bytes already supplied by an async or streaming source.
  */
-texture_load_result load_texture_asset_bytes(
-    std::vector<std::byte> bytes,
-    const std::filesystem::path& source_path);
+texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const std::filesystem::path& source_path);
 
 /**
  * @brief Read and decode a texture without blocking the submitting thread.
  */
-jobs::job_future<texture_load_result> load_texture_asset_async(
-    io::async_file_service& files,
-    std::filesystem::path path,
-    jobs::cancellation_token cancellation = {});
+jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_service& files,
+                                                               std::filesystem::path path,
+                                                               jobs::cancellation_token cancellation = {});
 
 /**
  * @brief Return whether an extension is accepted by the renderer texture loader.

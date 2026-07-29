@@ -28,9 +28,9 @@ enum class shader_target : std::uint8_t
 struct shader_compile_request
 {
     std::string source_path;
-    std::string entry_point{ "main" };
+    std::string entry_point{"main"};
     std::string profile;
-    shader_target target{ shader_target::spirv };
+    shader_target target{shader_target::spirv};
     std::vector<std::string> defines;
 };
 
@@ -66,14 +66,13 @@ enum class shader_compile_error_code : std::uint8_t
 /** @brief Structured shader compilation failure. */
 struct shader_compile_error
 {
-    shader_compile_error_code code{ shader_compile_error_code::compilation_failed };
+    shader_compile_error_code code{shader_compile_error_code::compilation_failed};
     std::string source_path;
     std::string diagnostics;
 };
 
 /** @brief Value-or-error shader compilation result. */
-using shader_compile_result =
-    core::result<shader_compile_output, shader_compile_error>;
+using shader_compile_result = core::result<shader_compile_output, shader_compile_error>;
 
 /**
  * @brief Cached shader source metadata used for hot reload checks.
@@ -101,8 +100,7 @@ public:
     /**
      * @brief Compile one shader request into backend bytecode.
      */
-    [[nodiscard]] virtual shader_compile_result compile(
-        const shader_compile_request& request) = 0;
+    [[nodiscard]] virtual shader_compile_result compile(const shader_compile_request& request) = 0;
 };
 
 /**
@@ -114,9 +112,8 @@ public:
     /**
      * @brief Compile or return a cached result for the request.
      */
-    [[nodiscard]] shader_compile_result compile_or_get(
-        shader_compiler& compiler,
-        const shader_compile_request& request);
+    [[nodiscard]] shader_compile_result compile_or_get(shader_compiler& compiler,
+                                                       const shader_compile_request& request);
 
     /**
      * @brief Return whether the source file for a request has changed since caching.

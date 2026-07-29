@@ -43,12 +43,12 @@ enum class mouse_button : std::uint8_t
  */
 struct event
 {
-    event_type type{ event_type::none };
+    event_type type{event_type::none};
     std::uint32_t width{};
     std::uint32_t height{};
     int key_code{};
     std::uint32_t modifiers{};
-    mouse_button button{ mouse_button::unknown };
+    mouse_button button{mouse_button::unknown};
     int x{};
     int y{};
     float wheel_delta{};

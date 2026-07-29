@@ -28,10 +28,8 @@ public:
 
     host_response execute(const host_command_envelope& command);
     host_response execute(host_command_payload command);
-    host_response open_project(
-        const host_open_project_command& command,
-        const editor_asset_state& assets,
-        std::uint64_t request_id = 0);
+    host_response open_project(const host_open_project_command& command, const editor_asset_state& assets,
+                               std::uint64_t request_id = 0);
     host_response query(const host_query_envelope& query) const;
 
     host_scene_snapshot scene_snapshot() const;
@@ -41,7 +39,8 @@ public:
     host_project_assets_snapshot project_assets_snapshot() const;
     host_runtime_snapshot runtime_snapshot() const;
     host_terrain_tool_snapshot terrain_tool_snapshot() const;
-    std::optional<host_asset_thumbnail_snapshot> asset_thumbnail(std::string_view path, std::uint32_t max_size = 96) const;
+    std::optional<host_asset_thumbnail_snapshot> asset_thumbnail(std::string_view path,
+                                                                 std::uint32_t max_size = 96) const;
     std::optional<host_world_environment_snapshot> world_environment_snapshot(host_entity_id entity) const;
     std::vector<host_event> poll_events();
 

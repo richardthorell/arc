@@ -13,7 +13,11 @@
 namespace arc::render
 {
 
-enum class material_domain : std::uint8_t { surface, terrain };
+enum class material_domain : std::uint8_t
+{
+    surface,
+    terrain
+};
 
 /**
  * @brief Physically based surface model selected by an authored material.
@@ -60,8 +64,8 @@ struct terrain_layer_descriptor
     texture_handle normal_texture{};
     texture_handle packed_surface_texture{};
     math::vector4f tint = math::vector4f::one;
-    float world_scale{ 4.0f };
-    float roughness{ 0.8f };
+    float world_scale{4.0f};
+    float roughness{0.8f};
 };
 
 /**
@@ -129,17 +133,17 @@ struct texture_data
     std::filesystem::path source_path;
     std::uint32_t width{};
     std::uint32_t height{};
-    std::uint32_t depth{ 1 };
-    texture_dimension dimension{ texture_dimension::texture_2d };
-    texture_format format{ texture_format::rgba8_srgb };
-    texture_color_space color_space{ texture_color_space::srgb };
-    texture_semantic semantic{ texture_semantic::generic_color };
+    std::uint32_t depth{1};
+    texture_dimension dimension{texture_dimension::texture_2d};
+    texture_format format{texture_format::rgba8_srgb};
+    texture_color_space color_space{texture_color_space::srgb};
+    texture_semantic semantic{texture_semantic::generic_color};
     std::vector<std::byte> pixels;
     std::vector<std::byte> encoded;
     std::vector<texture_mip_data> mips;
     std::string mime_type;
-    std::uint32_t array_layers{ 1 };
-    std::uint32_t mip_levels{ 1 };
+    std::uint32_t array_layers{1};
+    std::uint32_t mip_levels{1};
     bool compressed{};
     bool dds{};
 
@@ -168,12 +172,12 @@ struct texture_descriptor
     std::string name;
     std::uint32_t width{};
     std::uint32_t height{};
-    std::uint32_t depth{ 1 };
-    texture_dimension dimension{ texture_dimension::texture_2d };
-    std::uint32_t mip_levels{ 1 };
-    texture_format format{ texture_format::rgba8_srgb };
-    texture_color_space color_space{ texture_color_space::srgb };
-    texture_semantic semantic{ texture_semantic::generic_color };
+    std::uint32_t depth{1};
+    texture_dimension dimension{texture_dimension::texture_2d};
+    std::uint32_t mip_levels{1};
+    texture_format format{texture_format::rgba8_srgb};
+    texture_color_space color_space{texture_color_space::srgb};
+    texture_semantic semantic{texture_semantic::generic_color};
 };
 
 /**
@@ -193,14 +197,14 @@ struct material_descriptor
 {
     material_handle handle{};
     std::string name;
-    material_domain domain{ material_domain::surface };
-    material_shading_model shading_model{ material_shading_model::standard };
+    material_domain domain{material_domain::surface};
+    material_shading_model shading_model{material_shading_model::standard};
 
     math::vector4f base_color = math::vector4f::one;
     float metallic{};
-    float roughness{ 0.6f };
-    float alpha_cutoff{ 0.5f };
-    material_alpha_mode alpha_mode{ material_alpha_mode::opaque };
+    float roughness{0.6f};
+    float alpha_cutoff{0.5f};
+    material_alpha_mode alpha_mode{material_alpha_mode::opaque};
     bool double_sided{};
 
     texture_handle base_color_texture{};
@@ -216,29 +220,29 @@ struct material_descriptor
     texture_handle thickness_texture{};
     texture_handle transmission_texture{};
 
-    float normal_scale{ 1.0f };
-    float occlusion_strength{ 1.0f };
+    float normal_scale{1.0f};
+    float occlusion_strength{1.0f};
     math::vector3f emissive_factor{};
-    float emissive_strength{ 1.0f };
+    float emissive_strength{1.0f};
     float emissive_luminance_nits{};
 
     float clear_coat_factor{};
     float clear_coat_roughness{};
-    float clear_coat_normal_scale{ 1.0f };
+    float clear_coat_normal_scale{1.0f};
     float sheen_factor{};
     math::vector3f sheen_color{};
     float transmission_factor{};
-    float index_of_refraction{ 1.5f };
+    float index_of_refraction{1.5f};
     float thickness_factor{};
     math::vector3f attenuation_color = math::vector3f::one;
-    float attenuation_distance{ 1.0f };
+    float attenuation_distance{1.0f};
     float subsurface_factor{};
-    math::vector3f subsurface_color{ 1.0f, 0.35f, 0.2f };
-    math::vector3f subsurface_radius{ 1.0f, 0.35f, 0.2f };
+    math::vector3f subsurface_color{1.0f, 0.35f, 0.2f};
+    math::vector3f subsurface_radius{1.0f, 0.35f, 0.2f};
     float anisotropy_factor{};
     float anisotropy_rotation{};
     float parallax_height_scale{};
-    material_displacement_mode displacement_mode{ material_displacement_mode::none };
+    material_displacement_mode displacement_mode{material_displacement_mode::none};
 
     resource_handle material_graph{};
     std::array<terrain_layer_descriptor, 4> terrain_layers{};
@@ -249,7 +253,7 @@ struct material_descriptor
  */
 struct shader_permutation_key
 {
-    material_alpha_mode alpha_mode{ material_alpha_mode::opaque };
+    material_alpha_mode alpha_mode{material_alpha_mode::opaque};
     std::uint8_t debug_view{};
     bool has_base_color_texture{};
     bool has_metallic_roughness_texture{};
@@ -278,10 +282,8 @@ struct shader_permutation_key
 /**
  * @brief Build a shader permutation key from a material and viewport mode.
  */
-shader_permutation_key make_shader_permutation_key(
-    const material_descriptor& material,
-    std::uint8_t debug_view = 0,
-    bool wireframe = false) noexcept;
+shader_permutation_key make_shader_permutation_key(const material_descriptor& material, std::uint8_t debug_view = 0,
+                                                   bool wireframe = false) noexcept;
 
 /**
  * @brief Return a stable hash for a shader permutation key.
@@ -292,9 +294,9 @@ std::size_t hash_shader_permutation_key(const shader_permutation_key& key) noexc
 constexpr texture_color_space required_color_space(texture_semantic semantic) noexcept
 {
     return semantic == texture_semantic::base_color || semantic == texture_semantic::emissive ||
-            semantic == texture_semantic::generic_color
-        ? texture_color_space::srgb
-        : texture_color_space::linear;
+                   semantic == texture_semantic::generic_color
+               ? texture_color_space::srgb
+               : texture_color_space::linear;
 }
 
 /** @brief Return whether a texture declaration matches its semantic. */
@@ -317,15 +319,11 @@ math::vector3f linear_to_srgb(const math::vector3f& value) noexcept;
 float ggx_distribution(float n_dot_h, float roughness) noexcept;
 float smith_ggx_correlated(float n_dot_v, float n_dot_l, float roughness) noexcept;
 math::vector3f fresnel_schlick(float cos_theta, const math::vector3f& f0) noexcept;
-math::vector3f beer_lambert_attenuation(
-    const math::vector3f& attenuation_color,
-    float attenuation_distance,
-    float thickness) noexcept;
+math::vector3f beer_lambert_attenuation(const math::vector3f& attenuation_color, float attenuation_distance,
+                                        float thickness) noexcept;
 
-inline math::vector3f beer_lambert(
-    const math::vector3f& attenuation_color,
-    float attenuation_distance,
-    float thickness) noexcept
+inline math::vector3f beer_lambert(const math::vector3f& attenuation_color, float attenuation_distance,
+                                   float thickness) noexcept
 {
     return beer_lambert_attenuation(attenuation_color, attenuation_distance, thickness);
 }

@@ -26,23 +26,27 @@ bool runtime_service_registry::add(std::unique_ptr<runtime_service> service)
 void runtime_service_registry::resolve_order()
 {
     order_.clear();
-    enum class visit : std::uint8_t { none, active, complete };
+    enum class visit : std::uint8_t
+    {
+        none,
+        active,
+        complete
+    };
     std::vector<visit> states(services_.size());
 
-    const auto inspect = [&](auto&& self, std::size_t index) -> void {
+    const auto inspect = [&](auto&& self, std::size_t index) -> void
+    {
         if (states[index] == visit::active)
             throw std::invalid_argument("runtime service dependency graph contains a cycle");
-        if (states[index] == visit::complete)
-            return;
+        if (states[index] == visit::complete) return;
 
         states[index] = visit::active;
         for (const runtime_service_id dependency : services_[index]->dependencies())
         {
             const auto found = index_.find(dependency.value);
             if (found == index_.end())
-                throw std::invalid_argument(
-                    "runtime service '" + std::string(services_[index]->name()) +
-                    "' depends on an unknown service");
+                throw std::invalid_argument("runtime service '" + std::string(services_[index]->name()) +
+                                            "' depends on an unknown service");
             self(self, found->second);
         }
         states[index] = visit::complete;
@@ -55,8 +59,7 @@ void runtime_service_registry::resolve_order()
 
 void runtime_service_registry::start()
 {
-    if (started_)
-        return;
+    if (started_) return;
     resolve_order();
     runtime_service_context context(*this);
     started_count_ = 0;
@@ -82,8 +85,7 @@ void runtime_service_registry::start()
 
 void runtime_service_registry::shutdown() noexcept
 {
-    if (!started_ && started_count_ == 0)
-        return;
+    if (!started_ && started_count_ == 0) return;
 
     runtime_service_context context(*this);
     while (started_count_ > 0)
@@ -106,26 +108,20 @@ const void* runtime_service_registry::find_service(runtime_service_id id) const 
     return found == index_.end() ? nullptr : services_[found->second].get();
 }
 
-runtime_service_capture_result runtime_service_registry::capture_deterministic_state(
-    std::uint64_t world) const
+runtime_service_capture_result runtime_service_registry::capture_deterministic_state(std::uint64_t world) const
 {
     std::vector<runtime_service_snapshot> snapshots;
     for (const std::size_t index : order_)
     {
         const runtime_service& service = *services_[index];
-        if (!service.has_deterministic_state())
-            continue;
-        runtime_service_snapshot snapshot{
-            .service = service.id(),
-            .version = service.snapshot_version()
-        };
+        if (!service.has_deterministic_state()) continue;
+        runtime_service_snapshot snapshot{.service = service.id(), .version = service.snapshot_version()};
         auto captured = service.capture_deterministic_state(world);
         if (!captured)
         {
             auto error = captured.error();
             if (error.message.empty())
-                error.message = "runtime service '" + std::string(service.name()) +
-                    "' rejected snapshot capture";
+                error.message = "runtime service '" + std::string(service.name()) + "' rejected snapshot capture";
             return runtime_service_capture_result::failure(std::move(error));
         }
         snapshot.bytes = std::move(captured).value();
@@ -134,30 +130,25 @@ runtime_service_capture_result runtime_service_registry::capture_deterministic_s
     return runtime_service_capture_result::success(std::move(snapshots));
 }
 
-runtime_service_status runtime_service_registry::validate_deterministic_state(
-    std::uint64_t world,
-    const std::vector<runtime_service_snapshot>& snapshots) const
+runtime_service_status
+runtime_service_registry::validate_deterministic_state(std::uint64_t world,
+                                                       const std::vector<runtime_service_snapshot>& snapshots) const
 {
     for (const std::size_t index : order_)
     {
         const runtime_service& service = *services_[index];
-        if (!service.has_deterministic_state())
-            continue;
-        const auto captured = std::find_if(
-            snapshots.begin(),
-            snapshots.end(),
-            [&service](const runtime_service_snapshot& snapshot) {
-                return snapshot.service == service.id();
-            });
+        if (!service.has_deterministic_state()) continue;
+        const auto captured =
+            std::find_if(snapshots.begin(), snapshots.end(), [&service](const runtime_service_snapshot& snapshot)
+                         { return snapshot.service == service.id(); });
         if (captured == snapshots.end())
         {
-            return runtime_service_status::failure({
-                .code = runtime_service_error_code::service_missing,
-                .service = service.id(),
-                .world = world,
-                .message = "snapshot is missing deterministic state for runtime service '" +
-                    std::string(service.name()) + "'"
-            });
+            return runtime_service_status::failure(
+                {.code = runtime_service_error_code::service_missing,
+                 .service = service.id(),
+                 .world = world,
+                 .message = "snapshot is missing deterministic state for runtime service '" +
+                            std::string(service.name()) + "'"});
         }
     }
 
@@ -166,27 +157,23 @@ runtime_service_status runtime_service_registry::validate_deterministic_state(
         const auto found = index_.find(snapshot.service.value);
         if (found == index_.end())
         {
-            return runtime_service_status::failure({
-                .code = runtime_service_error_code::service_missing,
-                .service = snapshot.service,
-                .world = world,
-                .message = "snapshot references an unavailable deterministic runtime service"
-            });
+            return runtime_service_status::failure(
+                {.code = runtime_service_error_code::service_missing,
+                 .service = snapshot.service,
+                 .world = world,
+                 .message = "snapshot references an unavailable deterministic runtime service"});
         }
         const runtime_service& service = *services_[found->second];
-        auto validated = service.validate_deterministic_state(
-            world, snapshot.version, snapshot.bytes);
+        auto validated = service.validate_deterministic_state(world, snapshot.version, snapshot.bytes);
         if (!service.has_deterministic_state() || !validated)
         {
-            runtime_service_error error = validated
-                ? runtime_service_error{
-                    .code = runtime_service_error_code::validation_failed,
-                    .service = service.id(),
-                    .world = world }
-                : validated.error();
+            runtime_service_error error =
+                validated ? runtime_service_error{.code = runtime_service_error_code::validation_failed,
+                                                  .service = service.id(),
+                                                  .world = world}
+                          : validated.error();
             if (error.message.empty())
-                error.message = "runtime service '" + std::string(service.name()) +
-                    "' rejected snapshot restore";
+                error.message = "runtime service '" + std::string(service.name()) + "' rejected snapshot restore";
             return runtime_service_status::failure(std::move(error));
         }
     }
@@ -194,15 +181,13 @@ runtime_service_status runtime_service_registry::validate_deterministic_state(
 }
 
 void runtime_service_registry::restore_deterministic_state(
-    std::uint64_t world,
-    const std::vector<runtime_service_snapshot>& snapshots) noexcept
+    std::uint64_t world, const std::vector<runtime_service_snapshot>& snapshots) noexcept
 {
     for (const runtime_service_snapshot& snapshot : snapshots)
     {
         const auto found = index_.find(snapshot.service.value);
         if (found != index_.end())
-            services_[found->second]->restore_deterministic_state(
-                world, snapshot.version, snapshot.bytes);
+            services_[found->second]->restore_deterministic_state(world, snapshot.version, snapshot.bytes);
     }
 }
 

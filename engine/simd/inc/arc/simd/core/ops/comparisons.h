@@ -10,8 +10,7 @@
 namespace arc::simd
 {
 
-template <class T, std::size_t N>
-constexpr simd_mask<N> cmp_eq(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd_mask<N> cmp_eq(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     if constexpr (std::is_unsigned_v<T>)
     {
@@ -19,8 +18,7 @@ constexpr simd_mask<N> cmp_eq(const simd<T, N>& a, const simd<T, N>& b) noexcept
         auto bv = detail::simd_to_array(b);
         auto mask = simd_mask<N>(false);
         for (std::size_t i = 0; i < N; ++i)
-            if (av[i] == bv[i])
-                mask = bitwise_or(mask, range_mask<N>(i, i + 1));
+            if (av[i] == bv[i]) mask = bitwise_or(mask, range_mask<N>(i, i + 1));
         return mask;
     }
     else
@@ -29,8 +27,7 @@ constexpr simd_mask<N> cmp_eq(const simd<T, N>& a, const simd<T, N>& b) noexcept
     }
 }
 
-template <class T, std::size_t N>
-constexpr simd_mask<N> cmp_ne(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd_mask<N> cmp_ne(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     if constexpr (std::is_unsigned_v<T>)
         return bitwise_not(cmp_eq(a, b));
@@ -38,8 +35,7 @@ constexpr simd_mask<N> cmp_ne(const simd<T, N>& a, const simd<T, N>& b) noexcept
         return compare(a, b, ops_for<simd<T, N>>::cmp_ne);
 }
 
-template <class T, std::size_t N>
-constexpr simd_mask<N> cmp_lt(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd_mask<N> cmp_lt(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     if constexpr (std::is_unsigned_v<T>)
     {
@@ -47,8 +43,7 @@ constexpr simd_mask<N> cmp_lt(const simd<T, N>& a, const simd<T, N>& b) noexcept
         auto bv = detail::simd_to_array(b);
         auto mask = simd_mask<N>(false);
         for (std::size_t i = 0; i < N; ++i)
-            if (av[i] < bv[i])
-                mask = bitwise_or(mask, range_mask<N>(i, i + 1));
+            if (av[i] < bv[i]) mask = bitwise_or(mask, range_mask<N>(i, i + 1));
         return mask;
     }
     else
@@ -57,8 +52,7 @@ constexpr simd_mask<N> cmp_lt(const simd<T, N>& a, const simd<T, N>& b) noexcept
     }
 }
 
-template <class T, std::size_t N>
-constexpr simd_mask<N> cmp_le(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd_mask<N> cmp_le(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     if constexpr (std::is_unsigned_v<T>)
         return bitwise_or(cmp_lt(a, b), cmp_eq(a, b));
@@ -66,8 +60,7 @@ constexpr simd_mask<N> cmp_le(const simd<T, N>& a, const simd<T, N>& b) noexcept
         return compare(a, b, ops_for<simd<T, N>>::cmp_le);
 }
 
-template <class T, std::size_t N>
-constexpr simd_mask<N> cmp_gt(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd_mask<N> cmp_gt(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     if constexpr (std::is_unsigned_v<T>)
         return cmp_lt(b, a);
@@ -75,8 +68,7 @@ constexpr simd_mask<N> cmp_gt(const simd<T, N>& a, const simd<T, N>& b) noexcept
         return compare(a, b, ops_for<simd<T, N>>::cmp_gt);
 }
 
-template <class T, std::size_t N>
-constexpr simd_mask<N> cmp_ge(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd_mask<N> cmp_ge(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     if constexpr (std::is_unsigned_v<T>)
         return bitwise_or(cmp_gt(a, b), cmp_eq(a, b));

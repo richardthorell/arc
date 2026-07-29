@@ -21,31 +21,28 @@ std::uint64_t renderer_resource_key(resource_handle handle) noexcept
 
 } // namespace
 
-resolved_render_config resolve_render_config(
-    const renderer_config& config,
-    const render_capabilities& capabilities)
+resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities)
 {
     resolved_render_config result{};
     result.requested_quality = config.quality;
     result.requested_path = config.path;
-    result.target_frame_time_ms = config.target_frame_time_ms > 0.0f
-        ? config.target_frame_time_ms
-        : default_target_frame_time_ms;
+    result.target_frame_time_ms =
+        config.target_frame_time_ms > 0.0f ? config.target_frame_time_ms : default_target_frame_time_ms;
 
     if (config.quality == render_quality_tier::auto_select)
     {
-        const bool constrained_memory = capabilities.integrated_gpu ||
-            (capabilities.dedicated_video_memory != 0 &&
-                capabilities.dedicated_video_memory < 2ull * gibibyte);
+        const bool constrained_memory =
+            capabilities.integrated_gpu ||
+            (capabilities.dedicated_video_memory != 0 && capabilities.dedicated_video_memory < 2ull * gibibyte);
         result.quality = constrained_memory ? render_quality_tier::low : render_quality_tier::medium;
-        result.fallback_reasons.push_back(constrained_memory
-            ? "auto-selected low quality for an integrated or memory-constrained adapter"
-            : "auto-selected standard quality");
+        result.fallback_reasons.push_back(
+            constrained_memory ? "auto-selected low quality for an integrated or memory-constrained adapter"
+                               : "auto-selected standard quality");
     }
     else if (config.quality == render_quality_tier::high &&
-        ((capabilities.memory_budget != 0 && capabilities.memory_budget < 6ull * gibibyte) ||
-         (capabilities.memory_budget == 0 && capabilities.dedicated_video_memory != 0 &&
-          capabilities.dedicated_video_memory < 6ull * gibibyte)))
+             ((capabilities.memory_budget != 0 && capabilities.memory_budget < 6ull * gibibyte) ||
+              (capabilities.memory_budget == 0 && capabilities.dedicated_video_memory != 0 &&
+               capabilities.dedicated_video_memory < 6ull * gibibyte)))
     {
         result.quality = render_quality_tier::medium;
         result.fallback_reasons.push_back(
@@ -75,20 +72,18 @@ resolved_render_config resolve_render_config(
     result.screen_space_shadows = profile.screen_space_shadows;
     result.screen_space_shadow_scale = profile.screen_space_shadow_scale;
     const bool optional_features = !config.force_disable_optional_features;
-    result.features = {
-        .dynamic_rendering = optional_features && capabilities.dynamic_rendering,
-        .synchronization2 = optional_features && capabilities.synchronization2,
-        .timeline_semaphores = optional_features && capabilities.timeline_semaphores,
-        .descriptor_indexing = optional_features && capabilities.descriptor_indexing,
-        .descriptor_buffer = optional_features && capabilities.descriptor_buffer,
-        .draw_indirect = capabilities.draw_indirect,
-        .draw_indirect_count = optional_features && capabilities.draw_indirect_count,
-        .sampler_anisotropy = optional_features && capabilities.sampler_anisotropy,
-        .texture_compression_bc = capabilities.texture_compression_bc,
-        .mesh_shaders = optional_features && capabilities.mesh_shaders,
-        .ray_tracing = optional_features && capabilities.ray_tracing,
-        .variable_rate_shading = optional_features && capabilities.variable_rate_shading
-    };
+    result.features = {.dynamic_rendering = optional_features && capabilities.dynamic_rendering,
+                       .synchronization2 = optional_features && capabilities.synchronization2,
+                       .timeline_semaphores = optional_features && capabilities.timeline_semaphores,
+                       .descriptor_indexing = optional_features && capabilities.descriptor_indexing,
+                       .descriptor_buffer = optional_features && capabilities.descriptor_buffer,
+                       .draw_indirect = capabilities.draw_indirect,
+                       .draw_indirect_count = optional_features && capabilities.draw_indirect_count,
+                       .sampler_anisotropy = optional_features && capabilities.sampler_anisotropy,
+                       .texture_compression_bc = capabilities.texture_compression_bc,
+                       .mesh_shaders = optional_features && capabilities.mesh_shaders,
+                       .ray_tracing = optional_features && capabilities.ray_tracing,
+                       .variable_rate_shading = optional_features && capabilities.variable_rate_shading};
 
     if (config.force_disable_optional_features)
         result.fallback_reasons.push_back("optional GPU features were disabled by renderer configuration");
@@ -104,10 +99,7 @@ resolved_render_config resolve_render_config(
     return result;
 }
 
-void dynamic_resolution_controller::reset(
-    float target_frame_time_ms,
-    float minimum_scale,
-    float maximum_scale) noexcept
+void dynamic_resolution_controller::reset(float target_frame_time_ms, float minimum_scale, float maximum_scale) noexcept
 {
     target_frame_time_ms_ = std::max(1.0f, target_frame_time_ms);
     minimum_scale_ = std::clamp(minimum_scale, 0.25f, 1.0f);
@@ -120,8 +112,7 @@ void dynamic_resolution_controller::reset(
 
 float dynamic_resolution_controller::update(float gpu_frame_time_ms) noexcept
 {
-    if (!(gpu_frame_time_ms > 0.0f) || !std::isfinite(gpu_frame_time_ms))
-        return scale_;
+    if (!(gpu_frame_time_ms > 0.0f) || !std::isfinite(gpu_frame_time_ms)) return scale_;
 
     smoothed_frame_time_ms_ += (gpu_frame_time_ms - smoothed_frame_time_ms_) * dynamic_resolution_smoothing;
     if (smoothed_frame_time_ms_ > target_frame_time_ms_ * dynamic_resolution_over_budget_ratio)
@@ -157,20 +148,14 @@ float dynamic_resolution_controller::scale() const noexcept
     return scale_;
 }
 
-void render_backend::resize_viewport(std::uint32_t, std::uint32_t)
-{
-}
+void render_backend::resize_viewport(std::uint32_t, std::uint32_t) {}
 
-void render_backend::configure(const resolved_render_config&)
-{
-}
+void render_backend::configure(const resolved_render_config&) {}
 
 surface_frame_result render_backend::present_surface_frame(std::uint32_t, std::uint32_t)
 {
-    return surface_frame_result::failure({
-        .code = surface_frame_error_code::unsupported,
-        .message = "surface presentation is not supported by this backend"
-    });
+    return surface_frame_result::failure({.code = surface_frame_error_code::unsupported,
+                                          .message = "surface presentation is not supported by this backend"});
 }
 
 render_viewport_texture render_backend::viewport_texture() const noexcept
@@ -183,18 +168,14 @@ render_backend_frame_profile render_backend::last_frame_profile() const
     return {};
 }
 
-void render_backend::request_object_pick(render_object_pick_request)
-{
-}
+void render_backend::request_object_pick(render_object_pick_request) {}
 
 render_object_pick_result render_backend::last_object_pick() const
 {
     return {};
 }
 
-void render_backend::request_frame_capture(render_frame_capture_request)
-{
-}
+void render_backend::request_frame_capture(render_frame_capture_request) {}
 
 render_frame_capture_result render_backend::last_frame_capture() const
 {
@@ -207,22 +188,17 @@ void execute_render_graph(const compiled_render_graph& graph, command_encoder& e
     {
         for (const auto& transition : graph.transitions)
         {
-            if (transition.after_pass == pass_index)
-                encoder.resource_barrier(transition);
+            if (transition.after_pass == pass_index) encoder.resource_barrier(transition);
         }
 
         const auto& pass = graph.passes[pass_index];
         encoder.begin_pass(pass);
-        if (pass.record)
-            pass.record(encoder, pass.user_data);
+        if (pass.record) pass.record(encoder, pass.user_data);
         encoder.end_pass();
     }
 }
 
-renderer::renderer(renderer_config config)
-    : config_(config)
-{
-}
+renderer::renderer(renderer_config config) : config_(config) {}
 
 void renderer::set_backend(std::unique_ptr<render_backend> backend)
 {
@@ -230,10 +206,8 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
     if (backend_)
     {
         resolved_config_ = resolve_render_config(config_, backend_->capabilities());
-        dynamic_resolution_.reset(
-            resolved_config_.target_frame_time_ms,
-            resolved_config_.minimum_render_scale,
-            resolved_config_.maximum_render_scale);
+        dynamic_resolution_.reset(resolved_config_.target_frame_time_ms, resolved_config_.minimum_render_scale,
+                                  resolved_config_.maximum_render_scale);
         resolved_config_.render_scale = dynamic_resolution_.scale();
         backend_->configure(resolved_config_);
     }
@@ -279,11 +253,9 @@ mesh_handle renderer::create_mesh(mesh_data mesh)
 
 bool renderer::update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex> vertices)
 {
-    if (!mesh_handles_.alive(handle))
-        return false;
+    if (!mesh_handles_.alive(handle)) return false;
     const auto found = mesh_data_.find(renderer_resource_key(handle));
-    if (found == mesh_data_.end() || !found->second || found->second->vertices.size() != vertices.size())
-        return false;
+    if (found == mesh_data_.end() || !found->second || found->second->vertices.size() != vertices.size()) return false;
     auto replacement = std::make_shared<mesh_data>(*found->second);
     replacement->vertices = std::move(vertices);
     found->second = replacement;
@@ -296,8 +268,7 @@ bool renderer::update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex>
 
 bool renderer::destroy_mesh(mesh_handle handle)
 {
-    if (!mesh_handles_.release(handle))
-        return false;
+    if (!mesh_handles_.release(handle)) return false;
     mesh_data_.erase(renderer_resource_key(handle));
     render_event_buffer buffer;
     render_event_writer writer(buffer);
@@ -333,8 +304,7 @@ texture_handle renderer::create_texture(texture_data texture)
 
 bool renderer::update_texture(texture_handle handle, texture_data texture)
 {
-    if (!texture_handles_.alive(handle))
-        return false;
+    if (!texture_handles_.alive(handle)) return false;
 
     auto shared_texture = std::make_shared<texture_data>(std::move(texture));
     render_event_buffer buffer;
@@ -359,8 +329,7 @@ material_handle renderer::create_material(material_descriptor material)
 
 bool renderer::update_material(material_handle handle, material_descriptor material)
 {
-    if (!material_handles_.alive(handle))
-        return false;
+    if (!material_handles_.alive(handle)) return false;
 
     material.handle = handle;
     auto shared_material = std::make_shared<material_descriptor>(std::move(material));
@@ -387,8 +356,7 @@ environment_handle renderer::create_environment(environment_descriptor environme
 
 bool renderer::update_environment(environment_handle handle, environment_descriptor environment)
 {
-    if (!environment_handles_.alive(handle))
-        return false;
+    if (!environment_handles_.alive(handle)) return false;
     environment.handle = handle;
     auto shared_environment = std::make_shared<environment_descriptor>(std::move(environment));
     render_event_buffer buffer;
@@ -400,8 +368,7 @@ bool renderer::update_environment(environment_handle handle, environment_descrip
 
 bool renderer::destroy_environment(environment_handle handle)
 {
-    if (!environment_handles_.release(handle))
-        return false;
+    if (!environment_handles_.release(handle)) return false;
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.environment_destroy(handle);
@@ -416,8 +383,7 @@ bool renderer::mesh_alive(mesh_handle handle) const
 
 const mesh_data* renderer::mesh_data_for(mesh_handle handle) const
 {
-    if (!mesh_handles_.alive(handle))
-        return nullptr;
+    if (!mesh_handles_.alive(handle)) return nullptr;
     const auto found = mesh_data_.find(renderer_resource_key(handle));
     return found == mesh_data_.end() ? nullptr : found->second.get();
 }
@@ -429,8 +395,7 @@ bool renderer::virtual_mesh_alive(virtual_mesh_handle handle) const
 
 const virtual_mesh_data* renderer::virtual_mesh_data_for(virtual_mesh_handle handle) const
 {
-    if (!virtual_mesh_handles_.alive(handle))
-        return nullptr;
+    if (!virtual_mesh_handles_.alive(handle)) return nullptr;
     const auto found = virtual_mesh_data_.find(renderer_resource_key(handle));
     return found == virtual_mesh_data_.end() ? nullptr : found->second.get();
 }
@@ -454,47 +419,40 @@ void renderer::resize_viewport(std::uint32_t width, std::uint32_t height)
 {
     viewport_width_ = width;
     viewport_height_ = height;
-    if (backend_)
-        backend_->resize_viewport(width, height);
+    if (backend_) backend_->resize_viewport(width, height);
 }
 
 render_viewport_texture renderer::viewport_texture() const noexcept
 {
-    if (!backend_)
-        return {};
+    if (!backend_) return {};
     return backend_->viewport_texture();
 }
 
 render_backend_frame_profile renderer::last_frame_profile() const
 {
-    if (!backend_)
-        return {};
+    if (!backend_) return {};
     return backend_->last_frame_profile();
 }
 
 void renderer::request_object_pick(std::uint64_t request_id, std::uint32_t x, std::uint32_t y)
 {
-    if (backend_)
-        backend_->request_object_pick({ .request_id = request_id, .x = x, .y = y });
+    if (backend_) backend_->request_object_pick({.request_id = request_id, .x = x, .y = y});
 }
 
 render_object_pick_result renderer::last_object_pick() const
 {
-    if (!backend_)
-        return {};
+    if (!backend_) return {};
     return backend_->last_object_pick();
 }
 
 void renderer::request_frame_capture(render_frame_capture_request request)
 {
-    if (backend_)
-        backend_->request_frame_capture(std::move(request));
+    if (backend_) backend_->request_frame_capture(std::move(request));
 }
 
 render_frame_capture_result renderer::last_frame_capture() const
 {
-    if (!backend_)
-        return {};
+    if (!backend_) return {};
     return backend_->last_frame_capture();
 }
 
@@ -504,10 +462,8 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
     const auto compiled = graph.compile();
 
     if (!backend_)
-        return render_submit_result::failure({
-            render_submit_error_code::backend_unavailable,
-            "no render backend attached"
-        });
+        return render_submit_result::failure(
+            {render_submit_error_code::backend_unavailable, "no render backend attached"});
 
     if (config_.enable_dynamic_resolution)
     {
@@ -518,8 +474,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         {
             const float previous_scale = resolved_config_.render_scale;
             resolved_config_.render_scale = dynamic_resolution_.update(gpu_frame_time_ms);
-            if (resolved_config_.render_scale != previous_scale)
-                backend_->configure(resolved_config_);
+            if (resolved_config_.render_scale != previous_scale) backend_->configure(resolved_config_);
         }
     }
 
@@ -533,8 +488,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
 }
 
 renderer_module::renderer_module(renderer_config config)
-    : renderer_(config)
-    , graph_(make_clear_present_graph("viewport"))
+    : renderer_(config), graph_(make_clear_present_graph("viewport"))
 {
 }
 
@@ -566,8 +520,7 @@ void renderer_module::on_update(framework::module_context&, const framework::fra
     }
 
     const auto result = renderer_.render_frame(time.frame_index, graph_);
-    if (!result && !result.error().message.empty())
-        arc::diagnostics::debug("render", result.error().message);
+    if (!result && !result.error().message.empty()) arc::diagnostics::debug("render", result.error().message);
 }
 
 void renderer_module::on_shutdown(framework::module_context&)

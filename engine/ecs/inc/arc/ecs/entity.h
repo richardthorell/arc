@@ -9,12 +9,15 @@ namespace arc::ecs
 /** Transient, generation-checked entity handle. Persisted references use entity_guid. */
 struct entity
 {
-    std::uint32_t index{ invalid_index };
+    std::uint32_t index{invalid_index};
     std::uint32_t generation{};
 
     static constexpr std::uint32_t invalid_index = 0xffffffffu;
 
-    constexpr bool valid() const noexcept { return index != invalid_index; }
+    constexpr bool valid() const noexcept
+    {
+        return index != invalid_index;
+    }
     friend constexpr bool operator==(entity, entity) noexcept = default;
 };
 

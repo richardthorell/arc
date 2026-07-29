@@ -8,22 +8,24 @@ namespace
 {
 constexpr std::size_t max_history_entries = 256;
 constexpr std::size_t max_history_bytes = 64u * 1024u * 1024u;
-}
+} // namespace
 
 std::size_t editor_history::estimate(const editor_scene_state& scene) noexcept
 {
     std::size_t result = scene.scene.live_count() * 768u;
     for (const auto& binding : scene.asset_bindings)
         result += sizeof(binding) + binding.source_kind.size() + binding.source.path_hint.size() +
-            binding.subresource.size() + binding.material.path_hint.size();
+                  binding.subresource.size() + binding.material.path_hint.size();
     for (const auto& [_, unknown] : scene.unknown_component_records)
         result += unknown.size();
     for (const auto& preserved : scene.preserved_component_records)
         result += sizeof(preserved) + preserved.component_name.size() + preserved.json.size();
-    scene.scene.view<scene::terrain_component>().each([&](ecs::entity, const scene::terrain_component& terrain) {
-        result += terrain.heights.size() * sizeof(float) +
-            terrain.layer_weights.size() * sizeof(std::array<std::uint8_t, 4>);
-    });
+    scene.scene.view<scene::terrain_component>().each(
+        [&](ecs::entity, const scene::terrain_component& terrain)
+        {
+            result += terrain.heights.size() * sizeof(float) +
+                      terrain.layer_weights.size() * sizeof(std::array<std::uint8_t, 4>);
+        });
     return result;
 }
 
@@ -40,8 +42,7 @@ void editor_history::clear(const editor_scene_state&, bool mark_as_saved)
 
 void editor_history::record(std::string label, editor_scene_state before, const editor_scene_state& after)
 {
-    if (transaction_)
-        return;
+    if (transaction_) return;
     while (entries_.size() > cursor_)
     {
         bytes_ -= entries_.back().estimated_bytes;
@@ -74,17 +75,14 @@ void editor_history::enforce_limits()
 bool editor_history::undo(editor_scene_state& scene)
 {
     last_terrain_change_.reset();
-    if (transaction_ || cursor_ == 0)
-        return false;
+    if (transaction_ || cursor_ == 0) return false;
     const auto& value = entries_[cursor_ - 1];
     if (value.terrain)
     {
-        if (!apply_terrain_delta(scene, *value.terrain, false))
-            return false;
+        if (!apply_terrain_delta(scene, *value.terrain, false)) return false;
         last_terrain_change_ = editor_terrain_history_change{
             .entity = value.terrain->entity,
-            .region = { value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true }
-        };
+            .region = {value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true}};
     }
     else
     {
@@ -98,17 +96,14 @@ bool editor_history::undo(editor_scene_state& scene)
 bool editor_history::redo(editor_scene_state& scene)
 {
     last_terrain_change_.reset();
-    if (transaction_ || cursor_ >= entries_.size())
-        return false;
+    if (transaction_ || cursor_ >= entries_.size()) return false;
     const auto& value = entries_[cursor_];
     if (value.terrain)
     {
-        if (!apply_terrain_delta(scene, *value.terrain, true))
-            return false;
+        if (!apply_terrain_delta(scene, *value.terrain, true)) return false;
         last_terrain_change_ = editor_terrain_history_change{
             .entity = value.terrain->entity,
-            .region = { value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true }
-        };
+            .region = {value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true}};
     }
     else
     {
@@ -121,29 +116,24 @@ bool editor_history::redo(editor_scene_state& scene)
 
 bool editor_history::begin(std::uint64_t transaction_id, std::string label, const editor_scene_state& scene)
 {
-    if (transaction_id == 0 || transaction_)
-        return false;
-    transaction_ = transaction{ transaction_id, std::move(label), scene };
+    if (transaction_id == 0 || transaction_) return false;
+    transaction_ = transaction{transaction_id, std::move(label), scene};
     return true;
 }
 
 bool editor_history::commit(std::uint64_t transaction_id, const editor_scene_state& scene)
 {
-    if (!transaction_matches(transaction_id))
-        return false;
+    if (!transaction_matches(transaction_id)) return false;
     auto value = std::move(*transaction_);
     transaction_.reset();
     record(std::move(value.label), std::move(value.before), scene);
     return true;
 }
 
-bool editor_history::commit_terrain(
-    std::uint64_t transaction_id,
-    const editor_scene_state& current_scene,
-    ecs::entity_guid terrain_guid)
+bool editor_history::commit_terrain(std::uint64_t transaction_id, const editor_scene_state& current_scene,
+                                    ecs::entity_guid terrain_guid)
 {
-    if (!transaction_matches(transaction_id) || !terrain_guid.valid())
-        return false;
+    if (!transaction_matches(transaction_id) || !terrain_guid.valid()) return false;
 
     auto transaction = std::move(*transaction_);
     transaction_.reset();
@@ -169,8 +159,7 @@ bool editor_history::commit_terrain(
             bool differs = before->heights[sample] != after->heights[sample];
             for (std::size_t channel = 0; channel < 4u && !differs; ++channel)
                 differs = before->layer_weights[sample][channel] != after->layer_weights[sample][channel];
-            if (!differs)
-                continue;
+            if (!differs) continue;
             changed = true;
             min_x = std::min(min_x, x);
             min_z = std::min(min_z, z);
@@ -178,8 +167,7 @@ bool editor_history::commit_terrain(
             max_z = std::max(max_z, z);
         }
     }
-    if (!changed)
-        return true;
+    if (!changed) return true;
 
     entry value;
     value.label = std::move(transaction.label);
@@ -214,8 +202,8 @@ bool editor_history::commit_terrain(
         }
     }
     value.estimated_bytes = sizeof(value) + value.label.size() +
-        (delta.before_heights.size() + delta.after_heights.size()) * sizeof(float) +
-        delta.before_weights.size() + delta.after_weights.size();
+                            (delta.before_heights.size() + delta.after_heights.size()) * sizeof(float) +
+                            delta.before_weights.size() + delta.after_weights.size();
 
     while (entries_.size() > cursor_)
     {
@@ -230,16 +218,12 @@ bool editor_history::commit_terrain(
     return true;
 }
 
-bool editor_history::apply_terrain_delta(
-    editor_scene_state& scene_state,
-    const entry::terrain_delta& delta,
-    bool after)
+bool editor_history::apply_terrain_delta(editor_scene_state& scene_state, const entry::terrain_delta& delta, bool after)
 {
     const auto entity = find_entity_by_guid(scene_state, delta.entity);
     auto* terrain = scene_state.scene.try_get<scene::terrain_component>(entity);
     const auto resolution = terrain ? terrain->subdivisions + 1u : 0u;
-    if (!terrain || delta.max_x >= resolution || delta.max_z >= resolution)
-        return false;
+    if (!terrain || delta.max_x >= resolution || delta.max_z >= resolution) return false;
     const auto& heights = after ? delta.after_heights : delta.before_heights;
     const auto& weights = after ? delta.after_weights : delta.before_weights;
     const auto width = delta.max_x - delta.min_x + 1u;
@@ -264,8 +248,7 @@ bool editor_history::apply_terrain_delta(
 
 bool editor_history::cancel(std::uint64_t transaction_id, editor_scene_state& scene)
 {
-    if (!transaction_matches(transaction_id))
-        return false;
+    if (!transaction_matches(transaction_id)) return false;
     scene = transaction_->before;
     transaction_.reset();
     return true;
@@ -283,16 +266,14 @@ void editor_history::mark_saved() noexcept
 
 editor_history_snapshot editor_history::snapshot() const
 {
-    return {
-        .can_undo = !transaction_ && cursor_ > 0,
-        .can_redo = !transaction_ && cursor_ < entries_.size(),
-        .dirty = revision_ != saved_revision_,
-        .transaction_active = transaction_.has_value(),
-        .undo_label = cursor_ > 0 ? entries_[cursor_ - 1].label : std::string{},
-        .redo_label = cursor_ < entries_.size() ? entries_[cursor_].label : std::string{},
-        .revision = revision_,
-        .saved_revision = saved_revision_
-    };
+    return {.can_undo = !transaction_ && cursor_ > 0,
+            .can_redo = !transaction_ && cursor_ < entries_.size(),
+            .dirty = revision_ != saved_revision_,
+            .transaction_active = transaction_.has_value(),
+            .undo_label = cursor_ > 0 ? entries_[cursor_ - 1].label : std::string{},
+            .redo_label = cursor_ < entries_.size() ? entries_[cursor_].label : std::string{},
+            .revision = revision_,
+            .saved_revision = saved_revision_};
 }
 
 const std::optional<editor_terrain_history_change>& editor_history::last_terrain_change() const noexcept

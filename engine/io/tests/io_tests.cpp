@@ -14,17 +14,16 @@ std::filesystem::path test_path(std::string_view name)
     return std::filesystem::temp_directory_path() / ("arc_io_" + std::string(name));
 }
 
-}
+} // namespace
 
 TEST_CASE("async file service writes reads ranges and stats files")
 {
-    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false });
-    arc::io::async_file_service files(jobs, { .chunk_size = 4096 });
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service files(jobs, {.chunk_size = 4096});
     const auto path = test_path("roundtrip.bin");
-    const std::array<std::byte, 8> bytes{
-        std::byte{ 1 }, std::byte{ 2 }, std::byte{ 3 }, std::byte{ 4 },
-        std::byte{ 5 }, std::byte{ 6 }, std::byte{ 7 }, std::byte{ 8 }
-    };
+    const std::array<std::byte, 8> bytes{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4},
+                                         std::byte{5}, std::byte{6}, std::byte{7}, std::byte{8}};
 
     REQUIRE(files.write(path, bytes).get().succeeded());
     auto all = files.read_all(path).get();
@@ -34,7 +33,7 @@ TEST_CASE("async file service writes reads ranges and stats files")
     auto range = files.read_range(path, 2, 3).get();
     REQUIRE(range.succeeded());
     REQUIRE(range.value().size() == 3);
-    REQUIRE(range.value()[0] == std::byte{ 3 });
+    REQUIRE(range.value()[0] == std::byte{3});
 
     auto info = files.stat(path).get();
     REQUIRE(info.succeeded());
@@ -45,11 +44,12 @@ TEST_CASE("async file service writes reads ranges and stats files")
 
 TEST_CASE("atomic writes replace destinations without leaving temporary files")
 {
-    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     arc::io::async_file_service files(jobs);
     const auto path = test_path("atomic.bin");
-    const std::array<std::byte, 2> first{ std::byte{ 1 }, std::byte{ 2 } };
-    const std::array<std::byte, 3> second{ std::byte{ 3 }, std::byte{ 4 }, std::byte{ 5 } };
+    const std::array<std::byte, 2> first{std::byte{1}, std::byte{2}};
+    const std::array<std::byte, 3> second{std::byte{3}, std::byte{4}, std::byte{5}};
 
     REQUIRE(files.write_atomic(path, first).get().succeeded());
     REQUIRE(files.write_atomic(path, second).get().succeeded());
@@ -61,7 +61,8 @@ TEST_CASE("atomic writes replace destinations without leaving temporary files")
 
 TEST_CASE("async file service reports missing files and invalid ranges")
 {
-    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     arc::io::async_file_service files(jobs);
     const auto missing = test_path("missing.bin");
     std::filesystem::remove(missing);
@@ -83,7 +84,8 @@ TEST_CASE("async file service reports missing files and invalid ranges")
 
 TEST_CASE("cancelled async operations do not execute")
 {
-    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     arc::io::async_file_service files(jobs);
     arc::jobs::cancellation_source cancellation;
     cancellation.request_cancel();

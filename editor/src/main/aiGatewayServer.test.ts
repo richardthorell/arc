@@ -10,17 +10,24 @@ import { AiGatewayServer } from './aiGatewayServer';
 
 const temporaryDirectories: string[] = [];
 afterEach(() => {
-  for (const directory of temporaryDirectories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
+  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
 const reply = (payload: unknown = {}): GatewayHostResponse => ({
-  kind: 'response', requestId: 1, succeeded: true, error: '', payload,
-  sceneRevision: 3, worldEpoch: 1, frameRevision: 2,
+  kind: 'response',
+  requestId: 1,
+  succeeded: true,
+  error: '',
+  payload,
+  sceneRevision: 3,
+  worldEpoch: 1,
+  frameRevision: 2,
 });
 
 class ServerHost implements GatewayHostTransport {
-  async command(): Promise<GatewayHostResponse> { return reply(); }
+  async command(): Promise<GatewayHostResponse> {
+    return reply();
+  }
   async query(type: string): Promise<GatewayHostResponse> {
     return reply(type === 'gateway.sceneEntities' ? { entities: [] } : {});
   }
@@ -36,12 +43,20 @@ describe('AiGatewayServer security adapters', () => {
     try {
       const endpoint = core.status().endpoint;
       expect((await fetch(`${endpoint}/api/v1/status`)).status).toBe(401);
-      expect((await fetch(`${endpoint}/api/v1/status`, {
-        headers: { authorization: `Bearer ${core.token}`, origin: 'https://attacker.invalid' },
-      })).status).toBe(403);
-      expect((await fetch(`${endpoint}/api/v1/status`, {
-        headers: { authorization: `Bearer ${core.token}` },
-      })).status).toBe(200);
+      expect(
+        (
+          await fetch(`${endpoint}/api/v1/status`, {
+            headers: { authorization: `Bearer ${core.token}`, origin: 'https://attacker.invalid' },
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await fetch(`${endpoint}/api/v1/status`, {
+            headers: { authorization: `Bearer ${core.token}` },
+          })
+        ).status,
+      ).toBe(200);
 
       const save = await fetch(`${endpoint}/rpc/v1`, {
         method: 'POST',
@@ -52,7 +67,7 @@ describe('AiGatewayServer security adapters', () => {
         },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'scene.save', params: {} }),
       });
-      const saveBody = await save.json() as { error?: { message?: string } };
+      const saveBody = (await save.json()) as { error?: { message?: string } };
       expect(saveBody.error?.message).toMatch(/Unsupported gateway method/);
     } finally {
       await server.stop();
@@ -83,8 +98,7 @@ describe('AiGatewayServer security adapters', () => {
       requestInit: { headers },
       fetch: async (input, init) => {
         const response = await fetch(input, init);
-        if (!response.ok)
-          throw new Error(`MCP HTTP ${response.status}: ${await response.clone().text()}`);
+        if (!response.ok) throw new Error(`MCP HTTP ${response.status}: ${await response.clone().text()}`);
         return response;
       },
     });
@@ -106,11 +120,11 @@ describe('AiGatewayServer security adapters', () => {
         body: '{}',
       });
       expect(direct.status).toBe(200);
-      const directBody = await direct.json() as { result?: { entities?: unknown[] } };
+      const directBody = (await direct.json()) as { result?: { entities?: unknown[] } };
       expect(directBody.result?.entities).toEqual([]);
 
       const openApi = await fetch(`${endpoint}/openapi.json`, { headers });
-      const document = await openApi.json() as { paths?: Record<string, unknown> };
+      const document = (await openApi.json()) as { paths?: Record<string, unknown> };
       expect(document.paths?.['/api/v1/scene/overview']).toBeDefined();
     } finally {
       await client.close();

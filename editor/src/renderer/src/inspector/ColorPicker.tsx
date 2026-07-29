@@ -38,7 +38,11 @@ export const srgbToLinear = (value: number) => {
   return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
 };
 
-const byteHex = (value: number) => Math.round(clamp(value) * 255).toString(16).padStart(2, '0').toUpperCase();
+const byteHex = (value: number) =>
+  Math.round(clamp(value) * 255)
+    .toString(16)
+    .padStart(2, '0')
+    .toUpperCase();
 
 export const colorToHex = (value: Vec4, includeAlpha = true) => {
   const rgb = `${byteHex(linearToSrgb(value.x))}${byteHex(linearToSrgb(value.y))}${byteHex(linearToSrgb(value.z))}`;
@@ -78,7 +82,7 @@ export const hsvToLinearColor = (hsv: HsvColor, alpha: number): Vec4 => {
   const saturation = clamp(hsv.s);
   const value = clamp(hsv.v);
   const chroma = value * saturation;
-  const x = chroma * (1 - Math.abs((hue / 60) % 2 - 1));
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
   const match = value - chroma;
   let rgb: [number, number, number];
   if (hue < 60) rgb = [chroma, x, 0];
@@ -98,7 +102,15 @@ export const hsvToLinearColor = (hsv: HsvColor, alpha: number): Vec4 => {
 export const colorToCss = (value: Vec4) =>
   `rgba(${Math.round(linearToSrgb(value.x) * 255)}, ${Math.round(linearToSrgb(value.y) * 255)}, ${Math.round(linearToSrgb(value.z) * 255)}, ${clamp(value.w)})`;
 
-export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose, onCommit, onPreview }: ColorPickerProps) {
+export function ColorPicker({
+  anchorRef,
+  label,
+  value,
+  showAlpha = true,
+  onClose,
+  onCommit,
+  onPreview,
+}: ColorPickerProps) {
   const [draft, setDraft] = useState(value);
   const [mode, setMode] = useState<ColorMode>('rgb');
   const [space, setSpace] = useState<ColorSpace>('srgb');
@@ -119,7 +131,7 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
   useLayoutEffect(() => {
     const anchor = anchorRef.current?.getBoundingClientRect();
     if (!anchor) return;
-    let left = Math.min(anchor.left, window.innerWidth - pickerWidth - 8);
+    const left = Math.min(anchor.left, window.innerWidth - pickerWidth - 8);
     let top = anchor.bottom + 6;
     if (top + pickerEstimatedHeight > window.innerHeight) top = Math.max(8, anchor.top - pickerEstimatedHeight - 6);
     setPosition({ left: Math.max(8, left), top });
@@ -175,7 +187,8 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
     if (event.type === 'pointerdown') event.currentTarget.setPointerCapture(event.pointerId);
     if (event.type === 'pointermove' && !event.currentTarget.hasPointerCapture(event.pointerId)) return;
     updateSpectrum(event, final);
-    if (final && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (final && event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const setHue = (hue: number, final: boolean) => emit(hsvToLinearColor({ ...hsv, h: hue }, draft.w), final);
@@ -183,7 +196,7 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
   const currentCss = colorToCss(draft);
   const originalCss = colorToCss(original.current);
   const hueCss = colorToCss(hsvToLinearColor({ h: hsv.h, s: 1, v: 1 }, 1));
-  const swatchStyle = (color: string) => ({ '--arc-picker-color': color } as CSSProperties);
+  const swatchStyle = (color: string) => ({ '--arc-picker-color': color }) as CSSProperties;
 
   const commitChannels = (channels: number[]) => {
     const alpha = showAlpha ? channels[3] : draft.w;
@@ -195,18 +208,30 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
       emit({ x: channels[0], y: channels[1], z: channels[2], w: alpha }, true);
       return;
     }
-    emit({
-      x: srgbToLinear(channels[0] / 255), y: srgbToLinear(channels[1] / 255),
-      z: srgbToLinear(channels[2] / 255), w: alpha,
-    }, true);
+    emit(
+      {
+        x: srgbToLinear(channels[0] / 255),
+        y: srgbToLinear(channels[1] / 255),
+        z: srgbToLinear(channels[2] / 255),
+        w: alpha,
+      },
+      true,
+    );
   };
 
-  const channels = mode === 'hsv'
-    ? [hsv.h, hsv.s * 100, hsv.v * 100, ...(showAlpha ? [draft.w] : [])]
-    : space === 'linear'
-      ? [draft.x, draft.y, draft.z, ...(showAlpha ? [draft.w] : [])]
-      : [linearToSrgb(draft.x) * 255, linearToSrgb(draft.y) * 255, linearToSrgb(draft.z) * 255, ...(showAlpha ? [draft.w] : [])];
-  const channelLabels = mode === 'hsv' ? ['H', 'S', 'V', ...(showAlpha ? ['A'] : [])] : ['R', 'G', 'B', ...(showAlpha ? ['A'] : [])];
+  const channels =
+    mode === 'hsv'
+      ? [hsv.h, hsv.s * 100, hsv.v * 100, ...(showAlpha ? [draft.w] : [])]
+      : space === 'linear'
+        ? [draft.x, draft.y, draft.z, ...(showAlpha ? [draft.w] : [])]
+        : [
+            linearToSrgb(draft.x) * 255,
+            linearToSrgb(draft.y) * 255,
+            linearToSrgb(draft.z) * 255,
+            ...(showAlpha ? [draft.w] : []),
+          ];
+  const channelLabels =
+    mode === 'hsv' ? ['H', 'S', 'V', ...(showAlpha ? ['A'] : [])] : ['R', 'G', 'B', ...(showAlpha ? ['A'] : [])];
 
   return createPortal(
     <div
@@ -220,20 +245,35 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
       <header className="arc-color-picker-header">
         <strong>{label}</strong>
         <span>{showAlpha ? 'Linear RGBA' : 'Linear RGB'}</span>
-        <button aria-label="Close color picker" onClick={onClose} type="button"><X size={14} /></button>
+        <button aria-label="Close color picker" onClick={onClose} type="button">
+          <X size={14} />
+        </button>
       </header>
 
       <div className="arc-color-picker-preview-row">
-        <button aria-label={`Restore original ${label}`} className="arc-color-preview" onClick={() => emit(original.current, true)}
-          style={swatchStyle(originalCss)} type="button"><span /><small>Original</small></button>
-        <div className="arc-color-preview is-current" style={swatchStyle(currentCss)}><span /><small>Current</small></div>
+        <button
+          aria-label={`Restore original ${label}`}
+          className="arc-color-preview"
+          onClick={() => emit(original.current, true)}
+          style={swatchStyle(originalCss)}
+          type="button"
+        >
+          <span />
+          <small>Original</small>
+        </button>
+        <div className="arc-color-preview is-current" style={swatchStyle(currentCss)}>
+          <span />
+          <small>Current</small>
+        </div>
         <button
           aria-label="Copy color hex"
           className="arc-color-tool"
           onClick={() => void navigator.clipboard?.writeText(colorToHex(draft, showAlpha))}
           title="Copy sRGB hexadecimal value"
           type="button"
-        ><Copy size={14} /></button>
+        >
+          <Copy size={14} />
+        </button>
         <button
           aria-label="Pick color from screen"
           className="arc-color-tool"
@@ -247,7 +287,9 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
           }}
           title={eyeDropper ? 'Pick an sRGB color from the screen' : 'Screen eyedropper is unavailable'}
           type="button"
-        ><Pipette size={15} /></button>
+        >
+          <Pipette size={15} />
+        </button>
       </div>
 
       <div
@@ -261,24 +303,62 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
         <span className="arc-color-spectrum-cursor" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }} />
       </div>
 
-      <PickerRange label="Hue" className="arc-color-hue" min={0} max={360} step={0.1} value={hsv.h}
-        onChange={(next) => setHue(next, false)} onFinal={() => setHue(linearColorToHsv(latest.current).h, true)} />
-      {showAlpha && <PickerRange label="Alpha" className="arc-color-alpha" min={0} max={1} step={0.001} value={draft.w}
-        style={{ '--arc-picker-color': colorToCss({ ...draft, w: 1 }) } as CSSProperties}
-        onChange={(next) => setAlpha(next, false)} onFinal={() => setAlpha(latest.current.w, true)} />}
+      <PickerRange
+        label="Hue"
+        className="arc-color-hue"
+        min={0}
+        max={360}
+        step={0.1}
+        value={hsv.h}
+        onChange={(next) => setHue(next, false)}
+        onFinal={() => setHue(linearColorToHsv(latest.current).h, true)}
+      />
+      {showAlpha && (
+        <PickerRange
+          label="Alpha"
+          className="arc-color-alpha"
+          min={0}
+          max={1}
+          step={0.001}
+          value={draft.w}
+          style={{ '--arc-picker-color': colorToCss({ ...draft, w: 1 }) } as CSSProperties}
+          onChange={(next) => setAlpha(next, false)}
+          onFinal={() => setAlpha(latest.current.w, true)}
+        />
+      )}
 
       <div className="arc-color-picker-options">
         <div className="arc-color-segments" aria-label="Color model">
-          {(['rgb', 'hsv'] as const).map((option) => <button className={mode === option ? 'is-active' : ''} key={option}
-            onClick={() => setMode(option)} type="button">{option.toUpperCase()}</button>)}
+          {(['rgb', 'hsv'] as const).map((option) => (
+            <button
+              className={mode === option ? 'is-active' : ''}
+              key={option}
+              onClick={() => setMode(option)}
+              type="button"
+            >
+              {option.toUpperCase()}
+            </button>
+          ))}
         </div>
         <div className="arc-color-segments" aria-label="RGB color space">
-          {(['srgb', 'linear'] as const).map((option) => <button className={space === option ? 'is-active' : ''} disabled={mode === 'hsv'} key={option}
-            onClick={() => setSpace(option)} type="button">{option === 'srgb' ? 'sRGB' : 'Linear'}</button>)}
+          {(['srgb', 'linear'] as const).map((option) => (
+            <button
+              className={space === option ? 'is-active' : ''}
+              disabled={mode === 'hsv'}
+              key={option}
+              onClick={() => setSpace(option)}
+              type="button"
+            >
+              {option === 'srgb' ? 'sRGB' : 'Linear'}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="arc-color-channel-grid" style={{ gridTemplateColumns: `repeat(${channels.length}, minmax(0, 1fr))` }}>
+      <div
+        className="arc-color-channel-grid"
+        style={{ gridTemplateColumns: `repeat(${channels.length}, minmax(0, 1fr))` }}
+      >
         {channels.map((channel, index) => (
           <PickerNumberField
             key={`${mode}-${space}-${channelLabels[index]}`}
@@ -298,18 +378,34 @@ export function ColorPicker({ anchorRef, label, value, showAlpha = true, onClose
 
       <div className="arc-color-hex-row">
         <label htmlFor="arc-color-hex">Hex sRGB</label>
-        <PickerTextField id="arc-color-hex" value={colorToHex(draft, showAlpha)} onCommit={(hex) => {
-          const parsed = hexToLinearColor(hex, draft.w);
-          if (parsed) emit(parsed, true);
-        }} />
-        <span title="Values are converted to ARC's scene-linear color storage"><Check size={13} /> Linear storage</span>
+        <PickerTextField
+          id="arc-color-hex"
+          value={colorToHex(draft, showAlpha)}
+          onCommit={(hex) => {
+            const parsed = hexToLinearColor(hex, draft.w);
+            if (parsed) emit(parsed, true);
+          }}
+        />
+        <span title="Values are converted to ARC's scene-linear color storage">
+          <Check size={13} /> Linear storage
+        </span>
       </div>
     </div>,
     document.body,
   );
 }
 
-function PickerRange({ label, className, value, min, max, step, style, onChange, onFinal }: {
+function PickerRange({
+  label,
+  className,
+  value,
+  min,
+  max,
+  step,
+  style,
+  onChange,
+  onFinal,
+}: {
   label: string;
   className: string;
   value: number;
@@ -320,11 +416,34 @@ function PickerRange({ label, className, value, min, max, step, style, onChange,
   onChange: (value: number) => void;
   onFinal: () => void;
 }) {
-  return <label className="arc-color-range"><span>{label}</span><input aria-label={label} className={className} max={max} min={min}
-    onChange={(event) => onChange(event.target.valueAsNumber)} onKeyUp={onFinal} onPointerUp={onFinal} step={step} style={style} type="range" value={value} /></label>;
+  return (
+    <label className="arc-color-range">
+      <span>{label}</span>
+      <input
+        aria-label={label}
+        className={className}
+        max={max}
+        min={min}
+        onChange={(event) => onChange(event.target.valueAsNumber)}
+        onKeyUp={onFinal}
+        onPointerUp={onFinal}
+        step={step}
+        style={style}
+        type="range"
+        value={value}
+      />
+    </label>
+  );
 }
 
-function PickerNumberField({ label, value, precision, min, max, onCommit }: {
+function PickerNumberField({
+  label,
+  value,
+  precision,
+  min,
+  max,
+  onCommit,
+}: {
   label: string;
   value: number;
   precision: number;
@@ -339,20 +458,47 @@ function PickerNumberField({ label, value, precision, min, max, onCommit }: {
     if (!Number.isFinite(parsed)) return setText(value.toFixed(precision));
     onCommit(clamp(parsed, min, max));
   };
-  return <label><span>{label}</span><input aria-label={`Color ${label}`} inputMode="decimal" onBlur={commit}
-    onChange={(event) => setText(event.target.value)} onFocus={(event) => event.currentTarget.select()}
-    onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Enter') event.currentTarget.blur();
-      if (event.key === 'Escape') { setText(value.toFixed(precision)); event.currentTarget.blur(); }
-    }} value={text} /></label>;
+  return (
+    <label>
+      <span>{label}</span>
+      <input
+        aria-label={`Color ${label}`}
+        inputMode="decimal"
+        onBlur={commit}
+        onChange={(event) => setText(event.target.value)}
+        onFocus={(event) => event.currentTarget.select()}
+        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape') {
+            setText(value.toFixed(precision));
+            event.currentTarget.blur();
+          }
+        }}
+        value={text}
+      />
+    </label>
+  );
 }
 
 function PickerTextField({ id, value, onCommit }: { id: string; value: string; onCommit: (value: string) => void }) {
   const [text, setText] = useState(value);
   useEffect(() => setText(value), [value]);
-  return <input aria-label="Hex sRGB" id={id} onBlur={() => onCommit(text)} onChange={(event) => setText(event.target.value)}
-    onFocus={(event) => event.currentTarget.select()} onKeyDown={(event) => {
-      if (event.key === 'Enter') event.currentTarget.blur();
-      if (event.key === 'Escape') { setText(value); event.currentTarget.blur(); }
-    }} spellCheck={false} value={text} />;
+  return (
+    <input
+      aria-label="Hex sRGB"
+      id={id}
+      onBlur={() => onCommit(text)}
+      onChange={(event) => setText(event.target.value)}
+      onFocus={(event) => event.currentTarget.select()}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur();
+        if (event.key === 'Escape') {
+          setText(value);
+          event.currentTarget.blur();
+        }
+      }}
+      spellCheck={false}
+      value={text}
+    />
+  );
 }

@@ -29,9 +29,9 @@ struct mesh_vertex
 {
     float position[3]{};
     float normal[3]{};
-    float tangent[4]{ 1.0f, 0.0f, 0.0f, 1.0f };
+    float tangent[4]{1.0f, 0.0f, 0.0f, 1.0f};
     float texcoord[2]{};
-    float color[4]{ 1.0f, 1.0f, 1.0f, 1.0f };
+    float color[4]{1.0f, 1.0f, 1.0f, 1.0f};
 };
 
 /**
@@ -40,10 +40,10 @@ struct mesh_vertex
 struct mesh_data
 {
     std::string name;
-    mesh_usage usage{ mesh_usage::static_gpu };
+    mesh_usage usage{mesh_usage::static_gpu};
     std::vector<mesh_vertex> vertices;
     std::vector<std::uint32_t> indices;
-    std::size_t material_index{ std::numeric_limits<std::size_t>::max() };
+    std::size_t material_index{std::numeric_limits<std::size_t>::max()};
 };
 
 /**
@@ -53,17 +53,17 @@ struct material_texture_indices
 {
     static constexpr std::size_t invalid = std::numeric_limits<std::size_t>::max();
 
-    std::size_t base_color{ invalid };
-    std::size_t metallic_roughness{ invalid };
-    std::size_t normal{ invalid };
-    std::size_t occlusion{ invalid };
-    std::size_t emissive{ invalid };
-    std::size_t clear_coat{ invalid };
-    std::size_t clear_coat_roughness{ invalid };
-    std::size_t clear_coat_normal{ invalid };
-    std::size_t anisotropy{ invalid };
-    std::size_t thickness{ invalid };
-    std::size_t transmission{ invalid };
+    std::size_t base_color{invalid};
+    std::size_t metallic_roughness{invalid};
+    std::size_t normal{invalid};
+    std::size_t occlusion{invalid};
+    std::size_t emissive{invalid};
+    std::size_t clear_coat{invalid};
+    std::size_t clear_coat_roughness{invalid};
+    std::size_t clear_coat_normal{invalid};
+    std::size_t anisotropy{invalid};
+    std::size_t thickness{invalid};
+    std::size_t transmission{invalid};
 };
 
 /**
@@ -112,7 +112,7 @@ enum class scene_import_stage : std::uint8_t
  */
 struct scene_import_progress
 {
-    scene_import_stage stage{ scene_import_stage::loading };
+    scene_import_stage stage{scene_import_stage::loading};
     float progress{};
     std::string message;
 };
@@ -131,9 +131,9 @@ struct scene_import_options
 {
     std::filesystem::path asset_root;
     std::filesystem::path import_directory;
-    bool copy_assets{ true };
-    bool normalize_axes{ true };
-    bool normalize_units{ true };
+    bool copy_assets{true};
+    bool normalize_axes{true};
+    bool normalize_units{true};
     const std::atomic_bool* cancel_requested{};
 };
 
@@ -162,8 +162,8 @@ struct [[nodiscard]] mesh_load_result
 struct scene_import_node
 {
     std::string name;
-    std::size_t mesh_index{ std::numeric_limits<std::size_t>::max() };
-    std::size_t material_index{ std::numeric_limits<std::size_t>::max() };
+    std::size_t mesh_index{std::numeric_limits<std::size_t>::max()};
+    std::size_t material_index{std::numeric_limits<std::size_t>::max()};
     math::vector3f position{};
     math::quatf rotation{};
     math::vector3f scale = math::vector3f::one;
@@ -197,10 +197,8 @@ struct [[nodiscard]] scene_import_result
  */
 mesh_load_result load_gltf_mesh(const std::filesystem::path& path);
 
-jobs::job_future<mesh_load_result> load_gltf_mesh_async(
-    jobs::job_system& jobs,
-    std::filesystem::path path,
-    jobs::cancellation_token cancellation = {});
+jobs::job_future<mesh_load_result> load_gltf_mesh_async(jobs::job_system& jobs, std::filesystem::path path,
+                                                        jobs::cancellation_token cancellation = {});
 
 /**
  * @brief Load a supported static scene asset by extension.
@@ -209,21 +207,17 @@ jobs::job_future<mesh_load_result> load_gltf_mesh_async(
  * FBX files require the optional ufbx dependency; without it this returns a
  * clear unsupported-format diagnostic.
  */
-scene_import_result load_scene_asset(
-    const std::filesystem::path& path,
-    const scene_import_options& options,
-    scene_import_progress_callback progress = {});
+scene_import_result load_scene_asset(const std::filesystem::path& path, const scene_import_options& options,
+                                     scene_import_progress_callback progress = {});
 
 /**
  * @brief Load a supported static scene asset by extension with default options.
  */
 scene_import_result load_scene_asset(const std::filesystem::path& path);
 
-jobs::job_future<scene_import_result> load_scene_asset_async(
-    jobs::job_system& jobs,
-    std::filesystem::path path,
-    scene_import_options options = {},
-    scene_import_progress_callback progress = {},
-    jobs::cancellation_token cancellation = {});
+jobs::job_future<scene_import_result> load_scene_asset_async(jobs::job_system& jobs, std::filesystem::path path,
+                                                             scene_import_options options = {},
+                                                             scene_import_progress_callback progress = {},
+                                                             jobs::cancellation_token cancellation = {});
 
 } // namespace arc::render

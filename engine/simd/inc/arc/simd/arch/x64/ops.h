@@ -10,8 +10,7 @@ namespace arc::simd
 #if defined(ARC_SIMD_SSE)
 namespace simd_x64_detail
 {
-template <typename Operation>
-inline __m128 map(__m128 value, Operation operation) noexcept
+template <typename Operation> inline __m128 map(__m128 value, Operation operation) noexcept
 {
     alignas(16) float lanes[4];
     _mm_store_ps(lanes, value);
@@ -22,8 +21,7 @@ inline __m128 map(__m128 value, Operation operation) noexcept
     return _mm_load_ps(lanes);
 }
 
-template <typename Operation>
-inline __m128d map(__m128d value, Operation operation) noexcept
+template <typename Operation> inline __m128d map(__m128d value, Operation operation) noexcept
 {
     alignas(16) double lanes[2];
     _mm_store_pd(lanes, value);
@@ -52,8 +50,7 @@ inline __m128i blend(__m128i a, __m128i b, __m128i mask) noexcept
 }
 } // namespace simd_x64_detail
 
-template <>
-struct simd_op<__m128>
+template <> struct simd_op<__m128>
 {
     static inline __m128 load_aligned(const float* ptr) noexcept
     {
@@ -85,14 +82,12 @@ struct simd_op<__m128>
         _mm_storeu_ps(ptr, simd_x64_detail::blend(_mm_loadu_ps(ptr), value, mask));
     }
 
-    template <std::size_t I>
-    static inline float extract(__m128 value) noexcept
+    template <std::size_t I> static inline float extract(__m128 value) noexcept
     {
         return _mm_cvtss_f32(_mm_shuffle_ps(value, value, _MM_SHUFFLE(I, I, I, I)));
     }
 
-    template <std::size_t I>
-    static inline __m128 insert(__m128 value, float element) noexcept
+    template <std::size_t I> static inline __m128 insert(__m128 value, float element) noexcept
     {
 #if defined(ARC_SIMD_SSE41)
         return _mm_insert_ps(value, _mm_set_ss(element), I << 4);
@@ -287,9 +282,7 @@ struct simd_op<__m128>
     }
 };
 
-
-template <>
-struct simd_op<__m128d>
+template <> struct simd_op<__m128d>
 {
     static inline __m128d load_aligned(const double* ptr) noexcept
     {
@@ -321,14 +314,12 @@ struct simd_op<__m128d>
         _mm_storeu_pd(ptr, simd_x64_detail::blend(_mm_loadu_pd(ptr), value, mask));
     }
 
-    template <std::size_t I>
-    static inline double extract(__m128d value) noexcept
+    template <std::size_t I> static inline double extract(__m128d value) noexcept
     {
         return _mm_cvtsd_f64(_mm_shuffle_pd(value, value, I));
     }
 
-    template <std::size_t I>
-    static inline __m128d insert(__m128d value, double element) noexcept
+    template <std::size_t I> static inline __m128d insert(__m128d value, double element) noexcept
     {
 #if defined(ARC_SIMD_SSE41)
         return _mm_blend_pd(value, _mm_set1_pd(element), 1 << I);
@@ -524,9 +515,7 @@ struct simd_op<__m128d>
     }
 };
 
-
-template <>
-struct simd_op<__m128i>
+template <> struct simd_op<__m128i>
 {
     static inline __m128i load_aligned(const int32_t* ptr) noexcept
     {
@@ -575,17 +564,16 @@ struct simd_op<__m128i>
 
     static inline void masked_store(int32_t* ptr, __m128i value, __m128i mask) noexcept
     {
-        _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr), simd_x64_detail::blend(_mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), value, mask));
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(ptr),
+                         simd_x64_detail::blend(_mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr)), value, mask));
     }
 
-    template <std::size_t I>
-    static inline int32_t extract(__m128i value) noexcept
+    template <std::size_t I> static inline int32_t extract(__m128i value) noexcept
     {
         return _mm_cvtsi128_si32(_mm_shuffle_epi32(value, _MM_SHUFFLE(I, I, I, I)));
     }
 
-    template <std::size_t I>
-    static inline __m128i insert(__m128i value, int32_t element) noexcept
+    template <std::size_t I> static inline __m128i insert(__m128i value, int32_t element) noexcept
     {
 #if defined(ARC_SIMD_SSE41)
         return _mm_insert_epi32(value, element, I);
@@ -745,10 +733,8 @@ struct simd_op<__m128i>
 };
 #endif
 
-
 #if defined(ARC_SIMD_AVX)
-template <>
-struct simd_op<__m256>
+template <> struct simd_op<__m256>
 {
     static inline __m256 load_aligned(const float* ptr) noexcept
     {
@@ -780,14 +766,12 @@ struct simd_op<__m256>
         _mm256_storeu_ps(ptr, _mm256_blendv_ps(_mm256_loadu_ps(ptr), value, _mm256_castsi256_ps(mask)));
     }
 
-    template <std::size_t I>
-    static inline float extract(__m256 value) noexcept
+    template <std::size_t I> static inline float extract(__m256 value) noexcept
     {
         return _mm_cvtss_f32(_mm256_castps256_ps128(_mm256_permutevar8x32_ps(value, _mm256_set1_epi32(I))));
     }
 
-    template <std::size_t I>
-    static inline __m256 insert(__m256 value, float element) noexcept
+    template <std::size_t I> static inline __m256 insert(__m256 value, float element) noexcept
     {
         return _mm256_blend_ps(value, _mm256_set1_ps(element), 1 << I);
     }
@@ -948,9 +932,7 @@ struct simd_op<__m256>
     }
 };
 
-
-template <>
-struct simd_op<__m256d>
+template <> struct simd_op<__m256d>
 {
     static inline __m256d load_aligned(const double* ptr) noexcept
     {
@@ -982,14 +964,12 @@ struct simd_op<__m256d>
         _mm256_storeu_pd(ptr, _mm256_blendv_pd(_mm256_loadu_pd(ptr), value, _mm256_castsi256_pd(mask)));
     }
 
-    template <std::size_t I>
-    static inline double extract(__m256d value) noexcept
+    template <std::size_t I> static inline double extract(__m256d value) noexcept
     {
         return _mm_cvtsd_f64(_mm256_castpd256_pd128(_mm256_permutevar_pd(value, _mm256_set1_epi64x(I))));
     }
 
-    template <std::size_t I>
-    static inline __m256d insert(__m256d value, double element) noexcept
+    template <std::size_t I> static inline __m256d insert(__m256d value, double element) noexcept
     {
         return _mm256_blend_pd(value, _mm256_set1_pd(element), 1 << I);
     }
@@ -1131,7 +1111,7 @@ struct simd_op<__m256d>
 
     static inline double sum(__m256d a) noexcept
     {
-        return simd_op< __m128d>::sum(_mm_add_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
+        return simd_op<__m128d>::sum(_mm_add_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
     }
 
     static inline double dot(__m256d a, __m256d b) noexcept
@@ -1141,18 +1121,16 @@ struct simd_op<__m256d>
 
     static inline double min_element(__m256d a) noexcept
     {
-        return simd_op< __m128d>::min_element(_mm_min_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
+        return simd_op<__m128d>::min_element(_mm_min_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
     }
 
     static inline double max_element(__m256d a) noexcept
     {
-        return simd_op< __m128d>::max_element(_mm_max_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
+        return simd_op<__m128d>::max_element(_mm_max_pd(_mm256_castpd256_pd128(a), _mm256_extractf128_pd(a, 1)));
     }
 };
 
-
-template <>
-struct simd_op<__m256i>
+template <> struct simd_op<__m256i>
 {
     static inline __m256i load_aligned(const int32_t* ptr) noexcept
     {
@@ -1201,17 +1179,16 @@ struct simd_op<__m256i>
 
     static inline void masked_store(int32_t* ptr, __m256i value, __m256i mask) noexcept
     {
-        _mm256_storeu_si256(reinterpret_cast<__m256i*>(ptr), _mm256_blendv_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)), value, mask));
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(ptr),
+                            _mm256_blendv_epi8(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(ptr)), value, mask));
     }
 
-    template <std::size_t I>
-    static inline int32_t extract(__m256i value) noexcept
+    template <std::size_t I> static inline int32_t extract(__m256i value) noexcept
     {
         return _mm256_extract_epi32(value, I);
     }
 
-    template <std::size_t I>
-    static inline __m256i insert(__m256i value, int32_t element) noexcept
+    template <std::size_t I> static inline __m256i insert(__m256i value, int32_t element) noexcept
     {
         return _mm256_insert_epi32(value, element, I);
     }
@@ -1298,7 +1275,8 @@ struct simd_op<__m256i>
 
     static inline __m256i blend(__m256i a, __m256i b, __m256i mask) noexcept
     {
-        return _mm256_or_si256(_mm256_and_si256(a, _mm256_xor_si256(mask, _mm256_set1_epi32(-1))), _mm256_and_si256(b, mask));
+        return _mm256_or_si256(_mm256_and_si256(a, _mm256_xor_si256(mask, _mm256_set1_epi32(-1))),
+                               _mm256_and_si256(b, mask));
     }
 
     static inline bool any(__m256i a) noexcept
@@ -1333,10 +1311,8 @@ struct simd_op<__m256i>
 };
 #endif
 
-
 #if defined(ARC_SIMD_AVX512)
-template <>
-struct simd_op<__m512>
+template <> struct simd_op<__m512>
 {
     static inline __m512 load_aligned(const float* ptr) noexcept
     {
@@ -1368,14 +1344,12 @@ struct simd_op<__m512>
         _mm512_mask_storeu_ps(ptr, mask, value);
     }
 
-    template <std::size_t I>
-    static inline float extract(__m512 value) noexcept
+    template <std::size_t I> static inline float extract(__m512 value) noexcept
     {
         return _mm512_cvtss_f32(_mm512_permute_ps(value, _MM_SHUFFLE(I, I, I, I)));
     }
 
-    template <std::size_t I>
-    static inline __m512 insert(__m512 value, float element) noexcept
+    template <std::size_t I> static inline __m512 insert(__m512 value, float element) noexcept
     {
         return _mm512_mask_blend_ps(1 << I, value, _mm512_set1_ps(element));
     }
@@ -1516,9 +1490,7 @@ struct simd_op<__m512>
     }
 };
 
-
-template <>
-struct simd_op<__m512d>
+template <> struct simd_op<__m512d>
 {
     static inline __m512d load_aligned(const double* ptr) noexcept
     {
@@ -1550,14 +1522,12 @@ struct simd_op<__m512d>
         _mm512_mask_storeu_pd(ptr, mask, value);
     }
 
-    template <std::size_t I>
-    static inline double extract(__m512d value) noexcept
+    template <std::size_t I> static inline double extract(__m512d value) noexcept
     {
         return _mm512_cvtsd_f64(_mm512_permute_pd(value, 1 << I));
     }
 
-    template <std::size_t I>
-    static inline __m512d insert(__m512d value, double element) noexcept
+    template <std::size_t I> static inline __m512d insert(__m512d value, double element) noexcept
     {
         return _mm512_mask_blend_pd(1 << I, value, _mm512_set1_pd(element));
     }
@@ -1698,9 +1668,7 @@ struct simd_op<__m512d>
     }
 };
 
-
-template <>
-struct simd_op<__m512i>
+template <> struct simd_op<__m512i>
 {
     static inline __m512i load_aligned(const int32_t* ptr) noexcept
     {
@@ -1752,14 +1720,12 @@ struct simd_op<__m512i>
         _mm512_mask_storeu_epi32(reinterpret_cast<void*>(ptr), mask, value);
     }
 
-    template <std::size_t I>
-    static inline int32_t extract(__m512i value) noexcept
+    template <std::size_t I> static inline int32_t extract(__m512i value) noexcept
     {
         return _mm512_extract_epi32(value, I);
     }
 
-    template <std::size_t I>
-    static inline __m512i insert(__m512i value, int32_t element) noexcept
+    template <std::size_t I> static inline __m512i insert(__m512i value, int32_t element) noexcept
     {
         return _mm512_insert_epi32(value, element, I);
     }
@@ -1860,4 +1826,4 @@ struct simd_op<__m512i>
     }
 };
 #endif
-}
+} // namespace arc::simd

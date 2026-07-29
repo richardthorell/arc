@@ -153,7 +153,7 @@ export function ViewportPanel({ project, startupState, onCommand }: ViewportPane
     let cancelled = false;
     const pollStats = async () => {
       try {
-        const response = await window.arc.host.query('viewport.state') as HostResponse<ViewportStats>;
+        const response = (await window.arc.host.query('viewport.state')) as HostResponse<ViewportStats>;
         if (!cancelled && response?.succeeded && response.payload) {
           setViewportStats(response.payload);
           setViewportError('');
@@ -255,11 +255,17 @@ export function ViewportPanel({ project, startupState, onCommand }: ViewportPane
           <span className="arc-viewport-header-stat">{formatFrameTime(stats.frameTimeMs)} ms</span>
           <span className="arc-viewport-header-stat">{formatNumber(stats.drawCalls)} draws</span>
           {stats.width > 0 && stats.height > 0 && (
-            <span className="arc-viewport-header-stat">{stats.width}x{stats.height}</span>
+            <span className="arc-viewport-header-stat">
+              {stats.width}x{stats.height}
+            </span>
           )}
           <button title="Camera speed">Speed 4</button>
-          <button title="Realtime"><Eye size={13} /></button>
-          <button title="Maximize"><Maximize2 size={13} /></button>
+          <button title="Realtime">
+            <Eye size={13} />
+          </button>
+          <button title="Maximize">
+            <Maximize2 size={13} />
+          </button>
         </div>
       </header>
 
@@ -293,47 +299,93 @@ export function ViewportPanel({ project, startupState, onCommand }: ViewportPane
           </>
         )}
 
-        {!nativeActive && <aside className="arc-viewport-tool-strip">
-          <button title="Select" onClick={() => onCommand('viewport.select')}><MousePointer2 size={16} /></button>
-          <button title="Pan"><Hand size={16} /></button>
-          <button className="active" title="Translate" onClick={() => onCommand('viewport.translate')}><Move3D size={16} /></button>
-          <button title="Rotate" onClick={() => onCommand('viewport.rotate')}><RotateCw size={16} /></button>
-          <button title="Scale" onClick={() => onCommand('viewport.scale')}><Scaling size={16} /></button>
-          <button title="Frame selected" onClick={frameSelected}><Focus size={16} /></button>
-        </aside>}
+        {!nativeActive && (
+          <aside className="arc-viewport-tool-strip">
+            <button title="Select" onClick={() => onCommand('viewport.select')}>
+              <MousePointer2 size={16} />
+            </button>
+            <button title="Pan">
+              <Hand size={16} />
+            </button>
+            <button className="active" title="Translate" onClick={() => onCommand('viewport.translate')}>
+              <Move3D size={16} />
+            </button>
+            <button title="Rotate" onClick={() => onCommand('viewport.rotate')}>
+              <RotateCw size={16} />
+            </button>
+            <button title="Scale" onClick={() => onCommand('viewport.scale')}>
+              <Scaling size={16} />
+            </button>
+            <button title="Frame selected" onClick={frameSelected}>
+              <Focus size={16} />
+            </button>
+          </aside>
+        )}
 
-        {!nativeActive && <aside className="arc-viewport-stats">
-          <dl>
-            <div><dt>FPS</dt><dd>{formatFps(stats.fps)}</dd></div>
-            <div><dt>Frame</dt><dd>{formatFrameTime(stats.frameTimeMs)} ms</dd></div>
-            <div><dt>Draw Calls</dt><dd>{formatNumber(stats.drawCalls)}</dd></div>
-            <div><dt>Mode</dt><dd>Placeholder</dd></div>
-          </dl>
-        </aside>}
+        {!nativeActive && (
+          <aside className="arc-viewport-stats">
+            <dl>
+              <div>
+                <dt>FPS</dt>
+                <dd>{formatFps(stats.fps)}</dd>
+              </div>
+              <div>
+                <dt>Frame</dt>
+                <dd>{formatFrameTime(stats.frameTimeMs)} ms</dd>
+              </div>
+              <div>
+                <dt>Draw Calls</dt>
+                <dd>{formatNumber(stats.drawCalls)}</dd>
+              </div>
+              <div>
+                <dt>Mode</dt>
+                <dd>Placeholder</dd>
+              </div>
+            </dl>
+          </aside>
+        )}
 
-        {!nativeActive && <div className="arc-viewport-overlay-top-left">
-          <span><Grid3X3 size={13} /> Grid</span>
-          <span><Crosshair size={13} /> Snapping 0.25</span>
-          <span><Orbit size={13} /> Global</span>
-        </div>}
+        {!nativeActive && (
+          <div className="arc-viewport-overlay-top-left">
+            <span>
+              <Grid3X3 size={13} /> Grid
+            </span>
+            <span>
+              <Crosshair size={13} /> Snapping 0.25
+            </span>
+            <span>
+              <Orbit size={13} /> Global
+            </span>
+          </div>
+        )}
 
-        {!nativeActive && <div className="arc-viewport-breadcrumb">
-          <span>World</span>
-          <span>Buildings</span>
-          <span>Cabin_01</span>
-          <strong>SM_Cabin</strong>
-        </div>}
+        {!nativeActive && (
+          <div className="arc-viewport-breadcrumb">
+            <span>World</span>
+            <span>Buildings</span>
+            <span>Cabin_01</span>
+            <strong>SM_Cabin</strong>
+          </div>
+        )}
 
-        {!nativeActive && <div className="arc-axis-gizmo-large">
-          <span className="axis-label-y">Y</span>
-          <span className="axis-label-x">X</span>
-          <span className="axis-label-z">Z</span>
-        </div>}
+        {!nativeActive && (
+          <div className="arc-axis-gizmo-large">
+            <span className="axis-label-y">Y</span>
+            <span className="axis-label-x">X</span>
+            <span className="axis-label-z">Z</span>
+          </div>
+        )}
 
-        {(!nativeActive || viewportError || startupState?.hostError) && <div className="arc-viewport-note">
-          <Box size={18} />
-          <span>{viewportError || startupState?.hostError || 'Viewport shell only. Native engine rendering is not connected.'}</span>
-        </div>}
+        {(!nativeActive || viewportError || startupState?.hostError) && (
+          <div className="arc-viewport-note">
+            <Box size={18} />
+            <span>
+              {viewportError ||
+                startupState?.hostError ||
+                'Viewport shell only. Native engine rendering is not connected.'}
+            </span>
+          </div>
+        )}
       </div>
     </section>
   );

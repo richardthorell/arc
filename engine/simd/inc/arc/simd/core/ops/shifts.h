@@ -26,10 +26,7 @@ template <int Bits, class T, std::size_t N>
 constexpr simd<T, N> shift_right_logical(const simd<T, N>& value) noexcept
 {
     using unsigned_t = std::make_unsigned_t<T>;
-    return detail::simd_map(value, [](T lane)
-    {
-        return static_cast<T>(static_cast<unsigned_t>(lane) >> Bits);
-    });
+    return detail::simd_map(value, [](T lane) { return static_cast<T>(static_cast<unsigned_t>(lane) >> Bits); });
 }
 
 } // namespace arc::simd

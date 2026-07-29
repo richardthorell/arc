@@ -11,8 +11,7 @@ namespace arc::math
  * Quaternions default to the identity rotation `{0, 0, 0, 1}` and support
  * lazy elementwise arithmetic. Rotation helpers are provided as free functions.
  */
-template <class T>
-class quaternion final : public detail::quaternion_expr<quaternion<T>>
+template <class T> class quaternion final : public detail::quaternion_expr<quaternion<T>>
 {
 public:
     /// @brief Scalar component type.
@@ -21,22 +20,13 @@ public:
     static constexpr std::size_t size = 4;
 
     /// @brief Construct the identity quaternion.
-    constexpr quaternion() noexcept
-        : values_{ T{}, T{}, T{}, T{ 1 } }
-    {
-    }
+    constexpr quaternion() noexcept : values_{T{}, T{}, T{}, T{1}} {}
 
     /// @brief Fill all four components with the same scalar value.
-    constexpr explicit quaternion(T value) noexcept
-        : values_{ value, value, value, value }
-    {
-    }
+    constexpr explicit quaternion(T value) noexcept : values_{value, value, value, value} {}
 
     /// @brief Construct from explicit `(x, y, z, w)` components.
-    constexpr quaternion(T x, T y, T z, T w) noexcept
-        : values_{ x, y, z, w }
-    {
-    }
+    constexpr quaternion(T x, T y, T z, T w) noexcept : values_{x, y, z, w} {}
 
     /**
      * @brief Construct from exactly four initializer-list values.
@@ -44,8 +34,7 @@ public:
      */
     constexpr quaternion(std::initializer_list<T> values)
     {
-        if (values.size() != size)
-            throw std::length_error("quaternion initializer size mismatch");
+        if (values.size() != size) throw std::length_error("quaternion initializer size mismatch");
 
         std::size_t index = 0;
         for (const T& value : values)
@@ -92,26 +81,49 @@ public:
     }
 
     /// @brief Mutable X component accessor.
-    constexpr T& x() noexcept { return values_[0]; }
+    constexpr T& x() noexcept
+    {
+        return values_[0];
+    }
     /// @brief Mutable Y component accessor.
-    constexpr T& y() noexcept { return values_[1]; }
+    constexpr T& y() noexcept
+    {
+        return values_[1];
+    }
     /// @brief Mutable Z component accessor.
-    constexpr T& z() noexcept { return values_[2]; }
+    constexpr T& z() noexcept
+    {
+        return values_[2];
+    }
     /// @brief Mutable W component accessor.
-    constexpr T& w() noexcept { return values_[3]; }
+    constexpr T& w() noexcept
+    {
+        return values_[3];
+    }
 
     /// @brief Immutable X component accessor.
-    constexpr const T& x() const noexcept { return values_[0]; }
+    constexpr const T& x() const noexcept
+    {
+        return values_[0];
+    }
     /// @brief Immutable Y component accessor.
-    constexpr const T& y() const noexcept { return values_[1]; }
+    constexpr const T& y() const noexcept
+    {
+        return values_[1];
+    }
     /// @brief Immutable Z component accessor.
-    constexpr const T& z() const noexcept { return values_[2]; }
+    constexpr const T& z() const noexcept
+    {
+        return values_[2];
+    }
     /// @brief Immutable W component accessor.
-    constexpr const T& w() const noexcept { return values_[3]; }
+    constexpr const T& w() const noexcept
+    {
+        return values_[3];
+    }
 
 private:
-    template <detail::quaternion_expression Expr>
-    constexpr void assign(const Expr& expr) noexcept
+    template <detail::quaternion_expression Expr> constexpr void assign(const Expr& expr) noexcept
     {
         detail::assign_quaternion<T>(values_, expr);
     }
@@ -130,24 +142,21 @@ using quatd = quaternion<double>;
 namespace detail
 {
 
-template <class T>
-struct expr_traits<quaternion<T>>
+template <class T> struct expr_traits<quaternion<T>>
 {
     using value_type = T;
     static constexpr int kind = 2;
     static constexpr std::size_t size = 4;
 };
 
-template <class Op, class Lhs, class Rhs>
-struct expr_traits<quaternion_binary_expr<Op, Lhs, Rhs>>
+template <class Op, class Lhs, class Rhs> struct expr_traits<quaternion_binary_expr<Op, Lhs, Rhs>>
 {
     using value_type = typename quaternion_binary_expr<Op, Lhs, Rhs>::value_type;
     static constexpr int kind = 2;
     static constexpr std::size_t size = quaternion_binary_expr<Op, Lhs, Rhs>::size;
 };
 
-template <class Expr>
-struct expr_traits<quaternion_neg_expr<Expr>>
+template <class Expr> struct expr_traits<quaternion_neg_expr<Expr>>
 {
     using value_type = typename quaternion_neg_expr<Expr>::value_type;
     static constexpr int kind = 2;
@@ -169,42 +178,42 @@ template <detail::quaternion_expression Expr>
 constexpr auto eval(const Expr& expr) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
-    return quaternion<typename traits::value_type>{ expr };
+    return quaternion<typename traits::value_type>{expr};
 }
 
 template <detail::quaternion_expression Lhs, detail::quaternion_expression Rhs>
 /// @brief Build a lazy elementwise quaternion addition expression.
 constexpr auto add(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::quaternion_binary_expr<detail::add_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::quaternion_binary_expr<detail::add_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::quaternion_expression Lhs, detail::quaternion_expression Rhs>
 /// @brief Build a lazy elementwise quaternion subtraction expression.
 constexpr auto sub(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::quaternion_binary_expr<detail::sub_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::quaternion_binary_expr<detail::sub_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::quaternion_expression Lhs, detail::quaternion_expression Rhs>
 /// @brief Build a lazy elementwise quaternion multiplication expression.
 constexpr auto mul(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::quaternion_binary_expr<detail::mul_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::quaternion_binary_expr<detail::mul_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::quaternion_expression Lhs, detail::quaternion_expression Rhs>
 /// @brief Build a lazy elementwise quaternion division expression.
 constexpr auto div(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::quaternion_binary_expr<detail::div_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::quaternion_binary_expr<detail::div_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::quaternion_expression Expr>
 /// @brief Build a lazy quaternion negation expression.
 constexpr auto neg(Expr&& expr)
 {
-    return detail::quaternion_neg_expr<Expr>{ std::forward<Expr>(expr) };
+    return detail::quaternion_neg_expr<Expr>{std::forward<Expr>(expr)};
 }
 
 template <detail::quaternion_expression Expr, class Scalar>
@@ -212,7 +221,7 @@ template <detail::quaternion_expression Expr, class Scalar>
 /// @brief Build a lazy expression adding a scalar to every quaternion component.
 constexpr auto add(Expr&& expr, Scalar scalar)
 {
-    return detail::quaternion_scalar_expr<detail::add_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::add_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::quaternion_expression Expr>
@@ -220,7 +229,7 @@ template <class Scalar, detail::quaternion_expression Expr>
 /// @brief Build a lazy expression adding every quaternion component to a scalar.
 constexpr auto add(Scalar scalar, Expr&& expr)
 {
-    return detail::quaternion_scalar_expr<detail::add_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::add_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <detail::quaternion_expression Expr, class Scalar>
@@ -228,7 +237,7 @@ template <detail::quaternion_expression Expr, class Scalar>
 /// @brief Build a lazy expression subtracting a scalar from every quaternion component.
 constexpr auto sub(Expr&& expr, Scalar scalar)
 {
-    return detail::quaternion_scalar_expr<detail::sub_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::sub_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::quaternion_expression Expr>
@@ -236,7 +245,7 @@ template <class Scalar, detail::quaternion_expression Expr>
 /// @brief Build a lazy expression subtracting every quaternion component from a scalar.
 constexpr auto sub(Scalar scalar, Expr&& expr)
 {
-    return detail::quaternion_scalar_expr<detail::sub_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::sub_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <detail::quaternion_expression Expr, class Scalar>
@@ -244,7 +253,7 @@ template <detail::quaternion_expression Expr, class Scalar>
 /// @brief Build a lazy expression multiplying every quaternion component by a scalar.
 constexpr auto mul(Expr&& expr, Scalar scalar)
 {
-    return detail::quaternion_scalar_expr<detail::mul_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::mul_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::quaternion_expression Expr>
@@ -252,7 +261,7 @@ template <class Scalar, detail::quaternion_expression Expr>
 /// @brief Build a lazy expression multiplying a scalar by every quaternion component.
 constexpr auto mul(Scalar scalar, Expr&& expr)
 {
-    return detail::quaternion_scalar_expr<detail::mul_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::mul_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <detail::quaternion_expression Expr, class Scalar>
@@ -260,7 +269,7 @@ template <detail::quaternion_expression Expr, class Scalar>
 /// @brief Build a lazy expression dividing every quaternion component by a scalar.
 constexpr auto div(Expr&& expr, Scalar scalar)
 {
-    return detail::quaternion_scalar_expr<detail::div_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::div_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::quaternion_expression Expr>
@@ -268,7 +277,7 @@ template <class Scalar, detail::quaternion_expression Expr>
 /// @brief Build a lazy expression dividing a scalar by every quaternion component.
 constexpr auto div(Scalar scalar, Expr&& expr)
 {
-    return detail::quaternion_scalar_expr<detail::div_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::quaternion_scalar_expr<detail::div_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <detail::quaternion_expression Expr>
@@ -276,12 +285,8 @@ template <detail::quaternion_expression Expr>
 constexpr auto conjugate(const Expr& expr) noexcept
 {
     using value_type = detail::expr_value_t<Expr>;
-    return quaternion<value_type>{
-        static_cast<value_type>(-expr[0]),
-        static_cast<value_type>(-expr[1]),
-        static_cast<value_type>(-expr[2]),
-        static_cast<value_type>(expr[3])
-    };
+    return quaternion<value_type>{static_cast<value_type>(-expr[0]), static_cast<value_type>(-expr[1]),
+                                  static_cast<value_type>(-expr[2]), static_cast<value_type>(expr[3])};
 }
 
 template <detail::quaternion_expression Expr>
@@ -309,9 +314,8 @@ constexpr auto inverse(const Expr& expr) noexcept
 {
     using value_type = detail::expr_value_t<Expr>;
     const value_type len_sq = length_squared(expr);
-    if (len_sq == value_type{})
-        return quaternion<value_type>{ value_type{} };
-    return quaternion<value_type>{ div(conjugate(expr), len_sq) };
+    if (len_sq == value_type{}) return quaternion<value_type>{value_type{}};
+    return quaternion<value_type>{div(conjugate(expr), len_sq)};
 }
 
 template <detail::quaternion_expression Expr>
@@ -320,40 +324,35 @@ inline auto normalize(const Expr& expr) noexcept
 {
     using value_type = detail::expr_value_t<Expr>;
     const value_type len = length(expr);
-    if (len == value_type{})
-        return quaternion<value_type>{};
-    return quaternion<value_type>{ div(expr, len) };
+    if (len == value_type{}) return quaternion<value_type>{};
+    return quaternion<value_type>{div(expr, len)};
 }
 
 template <detail::vector_expression Axis>
-    requires (detail::expr_traits<std::remove_cvref_t<Axis>>::size == 3)
+    requires(detail::expr_traits<std::remove_cvref_t<Axis>>::size == 3)
 /// @brief Build a rotation quaternion from a 3D axis and angle in radians.
 inline auto from_axis_angle(const Axis& axis, detail::expr_value_t<Axis> radians) noexcept
 {
     using value_type = detail::expr_value_t<Axis>;
     const auto unit_axis = normalize(axis);
-    const value_type half = static_cast<value_type>(radians / value_type{ 2 });
+    const value_type half = static_cast<value_type>(radians / value_type{2});
     const value_type s = static_cast<value_type>(std::sin(half));
     const value_type c = static_cast<value_type>(std::cos(half));
-    return quaternion<value_type>{
-        static_cast<value_type>(unit_axis[0] * s),
-        static_cast<value_type>(unit_axis[1] * s),
-        static_cast<value_type>(unit_axis[2] * s),
-        c
-    };
+    return quaternion<value_type>{static_cast<value_type>(unit_axis[0] * s), static_cast<value_type>(unit_axis[1] * s),
+                                  static_cast<value_type>(unit_axis[2] * s), c};
 }
 
 template <detail::quaternion_expression Quat, detail::vector_expression Vec>
-    requires (detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
+    requires(detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
 /// @brief Rotate a 3D vector by a quaternion.
 inline auto rotate(const Quat& quat, const Vec& vec) noexcept
 {
     using value_type = std::common_type_t<detail::expr_value_t<Quat>, detail::expr_value_t<Vec>>;
     const auto q = normalize(quat);
-    const vector<value_type, 3> qvec{ q[0], q[1], q[2] };
-    const vector<value_type, 3> v{ vec };
-    const vector<value_type, 3> t = mul(cross(qvec, v), value_type{ 2 });
-    return vector<value_type, 3>{ add(add(v, mul(t, q[3])), cross(qvec, t)) };
+    const vector<value_type, 3> qvec{q[0], q[1], q[2]};
+    const vector<value_type, 3> v{vec};
+    const vector<value_type, 3> t = mul(cross(qvec, v), value_type{2});
+    return vector<value_type, 3>{add(add(v, mul(t, q[3])), cross(qvec, t))};
 }
 
 template <detail::quaternion_expression Lhs, detail::quaternion_expression Rhs>
@@ -380,8 +379,7 @@ constexpr auto operator/(Lhs&& lhs, Rhs&& rhs)
     return div(std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));
 }
 
-template <detail::quaternion_expression Expr>
-constexpr auto operator-(Expr&& expr)
+template <detail::quaternion_expression Expr> constexpr auto operator-(Expr&& expr)
 {
     return neg(std::forward<Expr>(expr));
 }

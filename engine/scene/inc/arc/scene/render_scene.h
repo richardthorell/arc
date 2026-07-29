@@ -49,12 +49,12 @@ struct [[nodiscard]] render_scene_result
  */
 struct scene_render_visibility
 {
-    bool sky{ true };
-    bool fog{ true };
-    bool terrain{ true };
-    bool water{ true };
-    bool vegetation{ true };
-    bool decals{ true };
+    bool sky{true};
+    bool fog{true};
+    bool terrain{true};
+    bool water{true};
+    bool vegetation{true};
+    bool decals{true};
 };
 
 /** Prewarm all extraction queries so subsequent frames perform no query allocation. */
@@ -63,18 +63,13 @@ void prepare_render_scene_queries(ecs::world& scene);
 /**
  * @brief Extract visible scene renderers into renderer frame events.
  */
-render_scene_result render_scene(
-    ecs::world& scene,
-    render::renderer& renderer,
-    std::uint32_t viewport_width,
-    std::uint32_t viewport_height,
-    render::render_mode mode = render::render_mode::shaded,
-    render::mesh_visualization_mode visualization = render::mesh_visualization_mode::standard,
-    render::editor_overlay_mode overlay = render::editor_overlay_mode::selected_wireframe,
-    bool shadows_enabled = true,
-    scene_render_visibility environment_visibility = {},
-    float delta_seconds = 0.0f,
-    render::debug_overlay_stream debug_overlay = {},
-    ecs::entity preferred_camera = {});
+render_scene_result
+render_scene(ecs::world& scene, render::renderer& renderer, std::uint32_t viewport_width, std::uint32_t viewport_height,
+             render::render_mode mode = render::render_mode::shaded,
+             render::mesh_visualization_mode visualization = render::mesh_visualization_mode::standard,
+             render::editor_overlay_mode overlay = render::editor_overlay_mode::selected_wireframe,
+             bool shadows_enabled = true, scene_render_visibility environment_visibility = {},
+             float delta_seconds = 0.0f, render::debug_overlay_stream debug_overlay = {},
+             ecs::entity preferred_camera = {});
 
 } // namespace arc::scene

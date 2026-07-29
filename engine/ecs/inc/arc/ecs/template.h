@@ -44,15 +44,11 @@ public:
         value_.name = std::move(name);
     }
 
-    template <class T>
-    entity_template_builder& component(T value = {})
+    template <class T> entity_template_builder& component(T value = {})
     {
-        value_.components.push_back({
-            component_type<T>(),
-            [value = std::move(value)](entity_command_buffer& commands, entity_target target) mutable {
-                commands.add<T>(target, value);
-            }
-        });
+        value_.components.push_back({component_type<T>(), [value = std::move(value)](entity_command_buffer& commands,
+                                                                                     entity_target target) mutable
+                                     { commands.add<T>(target, value); }});
         return *this;
     }
 
@@ -62,7 +58,10 @@ public:
         return *this;
     }
 
-    entity_template build() { return std::move(value_); }
+    entity_template build()
+    {
+        return std::move(value_);
+    }
 
 private:
     entity_template value_;

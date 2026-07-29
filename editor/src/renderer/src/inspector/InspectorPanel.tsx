@@ -3,10 +3,7 @@ import { Filter, MoreVertical, Search } from 'lucide-react';
 
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 
-import {
-  schemaForSnapshot,
-  setPathValue,
-} from './componentSchemas';
+import { schemaForSnapshot, setPathValue } from './componentSchemas';
 import type { InspectorComponentId } from './componentSchemas';
 import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
 import { cameraHostPayload, lightHostPayload, transformHostPayload } from './inspectorTypes';
@@ -15,7 +12,11 @@ import { SchemaComponentCard } from './SchemaComponents';
 import './inspector.css';
 
 export type InspectorEditTransaction = { id: number; phase: 'begin' | 'update' | 'commit' | 'cancel'; label?: string };
-export type InspectorCommand = (type: string, payload: Record<string, unknown>, edit?: InspectorEditTransaction) => Promise<HostResponse>;
+export type InspectorCommand = (
+  type: string,
+  payload: Record<string, unknown>,
+  edit?: InspectorEditTransaction,
+) => Promise<HostResponse>;
 
 export type InspectorPanelProps = {
   snapshot: InspectorEntitySnapshot | null;
@@ -35,7 +36,12 @@ function entityPayload(snapshot: InspectorEntitySnapshot) {
   return { entity: snapshot.entity };
 }
 
-function TextCommitInput({ ariaLabel, value, onCommit, list }: {
+function TextCommitInput({
+  ariaLabel,
+  value,
+  onCommit,
+  list,
+}: {
   ariaLabel: string;
   value: string;
   onCommit: (value: string) => void;
@@ -74,7 +80,15 @@ function TextCommitInput({ ariaLabel, value, onCommit, list }: {
   );
 }
 
-export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, assets = [], thumbnailProvider }: InspectorPanelProps) {
+export function InspectorPanel({
+  snapshot,
+  loading,
+  command,
+  refresh,
+  onStatus,
+  assets = [],
+  thumbnailProvider,
+}: InspectorPanelProps) {
   const [draft, setDraft] = useState(snapshot);
   const [filter, setFilter] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -139,54 +153,118 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
     void runMutation(next, type, { ...entityPayload(next), ...extra });
   };
 
-  const updateComponent = (component: InspectorComponentId, path: string, next: InspectorEntitySnapshot, settled: boolean) => {
+  const updateComponent = (
+    component: InspectorComponentId,
+    path: string,
+    next: InspectorEntitySnapshot,
+    settled: boolean,
+  ) => {
     const transactionKey = `${component}:${path}`;
-    const transactionLabel = component === 'transform' ? 'Transform Entity' : component === 'camera' ? 'Edit Camera' :
-      component.endsWith('Light') ? 'Edit Light' : component === 'meshRenderer' ? 'Edit Mesh Renderer' : 'Edit Terrain';
+    const transactionLabel =
+      component === 'transform'
+        ? 'Transform Entity'
+        : component === 'camera'
+          ? 'Edit Camera'
+          : component.endsWith('Light')
+            ? 'Edit Light'
+            : component === 'meshRenderer'
+              ? 'Edit Mesh Renderer'
+              : 'Edit Terrain';
     if (component === 'transform' && next.transform) {
-      void runMutation(next, 'entity.setTransform', {
-        ...entityPayload(next), transform: transformHostPayload(next.transform),
-      }, settled, transactionKey, transactionLabel);
+      void runMutation(
+        next,
+        'entity.setTransform',
+        {
+          ...entityPayload(next),
+          transform: transformHostPayload(next.transform),
+        },
+        settled,
+        transactionKey,
+        transactionLabel,
+      );
     } else if (component === 'camera' && next.camera) {
-      void runMutation(next, 'entity.setCamera', {
-        ...entityPayload(next), camera: cameraHostPayload(next.camera),
-      }, settled, transactionKey, transactionLabel);
+      void runMutation(
+        next,
+        'entity.setCamera',
+        {
+          ...entityPayload(next),
+          camera: cameraHostPayload(next.camera),
+        },
+        settled,
+        transactionKey,
+        transactionLabel,
+      );
     } else if (component.endsWith('Light') && next.light) {
-      void runMutation(next, 'entity.setLight', {
-        ...entityPayload(next), light: lightHostPayload(next.light),
-      }, settled, transactionKey, transactionLabel);
+      void runMutation(
+        next,
+        'entity.setLight',
+        {
+          ...entityPayload(next),
+          light: lightHostPayload(next.light),
+        },
+        settled,
+        transactionKey,
+        transactionLabel,
+      );
     } else if (component === 'meshRenderer' && next.meshRenderer) {
       if (path === 'meshRenderer.materialPath') {
-        void runMutation(next, 'entity.setMaterial', {
-          ...entityPayload(next), path: next.meshRenderer.materialPath,
-        }, true);
+        void runMutation(
+          next,
+          'entity.setMaterial',
+          {
+            ...entityPayload(next),
+            path: next.meshRenderer.materialPath,
+          },
+          true,
+        );
       } else {
         const tint = next.meshRenderer.baseColorTint;
-        void runMutation(next, 'entity.setMeshRenderer', {
-          ...entityPayload(next),
-          visible: next.meshRenderer.visible,
-          castsShadows: next.meshRenderer.castsShadows,
-          receivesShadows: next.meshRenderer.receivesShadows,
-          shadowLodBias: next.meshRenderer.shadowLodBias,
-          maximumShadowDistance: next.meshRenderer.maximumShadowDistance,
-          baseColorTint: [tint.x, tint.y, tint.z, tint.w],
-        }, settled, transactionKey, transactionLabel);
+        void runMutation(
+          next,
+          'entity.setMeshRenderer',
+          {
+            ...entityPayload(next),
+            visible: next.meshRenderer.visible,
+            castsShadows: next.meshRenderer.castsShadows,
+            receivesShadows: next.meshRenderer.receivesShadows,
+            shadowLodBias: next.meshRenderer.shadowLodBias,
+            maximumShadowDistance: next.meshRenderer.maximumShadowDistance,
+            baseColorTint: [tint.x, tint.y, tint.z, tint.w],
+          },
+          settled,
+          transactionKey,
+          transactionLabel,
+        );
       }
     } else if (component === 'terrain' && next.terrain) {
       const layerMatch = /^terrain\.layers\.(\d)\.baseColorPath$/.exec(path);
       if (layerMatch) {
-        void runMutation(next, 'terrain.assignLayer', {
-          ...entityPayload(next), layer: Number(layerMatch[1]), path: next.terrain.layers[Number(layerMatch[1])].baseColorPath,
-        }, true);
+        void runMutation(
+          next,
+          'terrain.assignLayer',
+          {
+            ...entityPayload(next),
+            layer: Number(layerMatch[1]),
+            path: next.terrain.layers[Number(layerMatch[1])].baseColorPath,
+          },
+          true,
+        );
       } else {
-        void runMutation(next, 'terrain.update', {
-          ...entityPayload(next),
-          enabled: next.terrain.enabled,
-          receiveShadows: next.terrain.receiveShadows,
-          castShadows: next.terrain.castShadows,
-          shadowLodBias: next.terrain.shadowLodBias,
-          maximumShadowDistance: next.terrain.maximumShadowDistance,
-        }, settled, transactionKey, transactionLabel);
+        void runMutation(
+          next,
+          'terrain.update',
+          {
+            ...entityPayload(next),
+            enabled: next.terrain.enabled,
+            receiveShadows: next.terrain.receiveShadows,
+            castShadows: next.terrain.castShadows,
+            shadowLodBias: next.terrain.shadowLodBias,
+            maximumShadowDistance: next.terrain.maximumShadowDistance,
+          },
+          settled,
+          transactionKey,
+          transactionLabel,
+        );
       }
     }
   };
@@ -194,19 +272,25 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
   const schemas = useMemo(() => {
     if (!draft) return [];
     const needle = filter.trim().toLocaleLowerCase();
-    return schemaForSnapshot(draft).filter((schema) => !needle ||
-      schema.title.toLocaleLowerCase().includes(needle) ||
-      schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle)));
+    return schemaForSnapshot(draft).filter(
+      (schema) =>
+        !needle ||
+        schema.title.toLocaleLowerCase().includes(needle) ||
+        schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle)),
+    );
   }, [draft, filter]);
 
   const runComponentAction = (component: InspectorComponentId, action: string) => {
-    if (!draft || component !== 'prefab')
-      return;
-    const commandType = action === 'apply' ? 'prefab.apply' :
-      action === 'revert' ? 'prefab.revert' :
-        action === 'unpack' ? 'prefab.unpack' : '';
-    if (!commandType)
-      return;
+    if (!draft || component !== 'prefab') return;
+    const commandType =
+      action === 'apply'
+        ? 'prefab.apply'
+        : action === 'revert'
+          ? 'prefab.revert'
+          : action === 'unpack'
+            ? 'prefab.unpack'
+            : '';
+    if (!commandType) return;
     void (async () => {
       setError(null);
       try {
@@ -230,12 +314,13 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
   if (loading && !draft) return <div className="inspector-state">Loading selection…</div>;
   if (!draft) return <div className="inspector-state">Select an entity to inspect its components.</div>;
 
-  const layerValue = draft.renderLayerMask === defaultLayerMask
-    ? String(defaultLayerMask)
-    : draft.renderLayerMask === environmentLayerMask ? String(environmentLayerMask) : `custom:${draft.renderLayerMask}`;
-  const tagOptions = knownTags.includes(draft.tag || 'Untagged')
-    ? knownTags
-    : [...knownTags, draft.tag];
+  const layerValue =
+    draft.renderLayerMask === defaultLayerMask
+      ? String(defaultLayerMask)
+      : draft.renderLayerMask === environmentLayerMask
+        ? String(environmentLayerMask)
+        : `custom:${draft.renderLayerMask}`;
+  const tagOptions = knownTags.includes(draft.tag || 'Untagged') ? knownTags : [...knownTags, draft.tag];
 
   return (
     <section className="data-inspector">
@@ -244,7 +329,11 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
           <input
             aria-label="Entity active"
             checked={draft.active}
-            onChange={(event) => updateHeader({ ...draft, active: event.target.checked }, 'entity.setActive', { active: event.target.checked })}
+            onChange={(event) =>
+              updateHeader({ ...draft, active: event.target.checked }, 'entity.setActive', {
+                active: event.target.checked,
+              })
+            }
             type="checkbox"
           />
           <TextCommitInput
@@ -256,7 +345,9 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
             <input
               aria-label="Static"
               checked={draft.mobility === 'static'}
-              ref={(input) => { if (input) input.indeterminate = draft.mobility === 'stationary'; }}
+              ref={(input) => {
+                if (input) input.indeterminate = draft.mobility === 'stationary';
+              }}
               onChange={(event) => {
                 const mobility = event.target.checked ? 'static' : 'movable';
                 updateHeader({ ...draft, mobility }, 'entity.setMobility', { mobility });
@@ -265,10 +356,13 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
             />
             <span>Static</span>
           </label>
-          <button aria-label="Entity actions" className="inspector-menu-button" type="button"><MoreVertical size={15} /></button>
+          <button aria-label="Entity actions" className="inspector-menu-button" type="button">
+            <MoreVertical size={15} />
+          </button>
         </div>
         <div className="inspector-entity-meta-row">
-          <label><span>Tag</span>
+          <label>
+            <span>Tag</span>
             <TextCommitInput
               ariaLabel="Tag"
               list="arc-inspector-tags"
@@ -279,10 +373,13 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
               }}
             />
             <datalist id="arc-inspector-tags">
-              {tagOptions.map((tag) => <option key={tag} value={tag} />)}
+              {tagOptions.map((tag) => (
+                <option key={tag} value={tag} />
+              ))}
             </datalist>
           </label>
-          <label><span>Layer</span>
+          <label>
+            <span>Layer</span>
             <select
               aria-label="Layer"
               value={layerValue}
@@ -294,7 +391,9 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
             >
               <option value={String(defaultLayerMask)}>Default</option>
               <option value={String(environmentLayerMask)}>Environment</option>
-              {layerValue.startsWith('custom:') && <option value={layerValue}>{`Custom (0x${draft.renderLayerMask.toString(16).toUpperCase()})`}</option>}
+              {layerValue.startsWith('custom:') && (
+                <option value={layerValue}>{`Custom (0x${draft.renderLayerMask.toString(16).toUpperCase()})`}</option>
+              )}
             </select>
           </label>
         </div>
@@ -310,10 +409,16 @@ export function InspectorPanel({ snapshot, loading, command, refresh, onStatus, 
             value={filter}
           />
         </label>
-        <button aria-label="Component filter options" type="button"><Filter size={17} /></button>
+        <button aria-label="Component filter options" type="button">
+          <Filter size={17} />
+        </button>
       </div>
 
-      {error && <div className="inspector-error" role="alert">{error}</div>}
+      {error && (
+        <div className="inspector-error" role="alert">
+          {error}
+        </div>
+      )}
       <div className="inspector-component-list">
         {schemas.map((schema) => (
           <SchemaComponentCard

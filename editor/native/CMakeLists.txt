@@ -15,6 +15,7 @@ add_library(arc-editor-host STATIC
     src/scene_document.cpp
     src/world_environment_host.cpp
 )
+arc_configure_first_party_target(arc-editor-host)
 
 target_compile_features(arc-editor-host
     PUBLIC
@@ -47,6 +48,7 @@ endif()
 add_executable(arc_host_process
     src/arc_host_process_main.cpp
 )
+arc_configure_first_party_target(arc_host_process)
 
 target_compile_features(arc_host_process
     PRIVATE
@@ -67,6 +69,17 @@ if(ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
         PRIVATE
             ARC_EDITOR_HOST_ENABLE_VULKAN_RENDER=1
     )
+endif()
+
+install(TARGETS arc_host_process
+    RUNTIME DESTINATION native
+    COMPONENT editor-host)
+if(MSVC)
+    install(FILES "$<TARGET_PDB_FILE:arc_host_process>"
+        DESTINATION symbols
+        COMPONENT debug-symbols
+        CONFIGURATIONS RelWithDebInfo Shipping
+        OPTIONAL)
 endif()
 
 if(BUILD_TESTING)

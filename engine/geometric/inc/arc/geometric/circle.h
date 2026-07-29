@@ -10,8 +10,7 @@ namespace arc::geometric
  *
  * Negative radius inputs are stored as their absolute value.
  */
-template <class T>
-struct circle
+template <class T> struct circle
 {
     /// @brief Scalar coordinate and radius type.
     using value_type = T;
@@ -25,8 +24,7 @@ struct circle
     constexpr circle() noexcept = default;
     /// @brief Construct from center and radius.
     constexpr circle(const point<T, 2>& center_value, T radius_value) noexcept
-        : center(center_value)
-        , radius(radius_value < T{} ? -radius_value : radius_value)
+        : center(center_value), radius(radius_value < T{} ? -radius_value : radius_value)
     {
     }
 };
@@ -36,8 +34,7 @@ struct circle
  *
  * Negative radius inputs are stored as their absolute value.
  */
-template <class T>
-struct sphere
+template <class T> struct sphere
 {
     /// @brief Scalar coordinate and radius type.
     using value_type = T;
@@ -51,8 +48,7 @@ struct sphere
     constexpr sphere() noexcept = default;
     /// @brief Construct from center and radius.
     constexpr sphere(const point<T, 3>& center_value, T radius_value) noexcept
-        : center(center_value)
-        , radius(radius_value < T{} ? -radius_value : radius_value)
+        : center(center_value), radius(radius_value < T{} ? -radius_value : radius_value)
     {
     }
 };
@@ -102,8 +98,8 @@ inline auto closest_point(const circle<T>& shape, const point<U, 2>& value) noex
     using value_type = std::common_type_t<T, U>;
     const auto direction = value - shape.center;
     if (arc::math::length_squared(direction) == value_type{})
-        return point<value_type, 2>{ shape.center + arc::math::vector<value_type, 2>{ shape.radius, value_type{} } };
-    return point<value_type, 2>{ shape.center + arc::math::mul(arc::math::normalize(direction), shape.radius) };
+        return point<value_type, 2>{shape.center + arc::math::vector<value_type, 2>{shape.radius, value_type{}}};
+    return point<value_type, 2>{shape.center + arc::math::mul(arc::math::normalize(direction), shape.radius)};
 }
 
 template <class T, class U>
@@ -113,8 +109,9 @@ inline auto closest_point(const sphere<T>& shape, const point<U, 3>& value) noex
     using value_type = std::common_type_t<T, U>;
     const auto direction = value - shape.center;
     if (arc::math::length_squared(direction) == value_type{})
-        return point<value_type, 3>{ shape.center + arc::math::vector<value_type, 3>{ shape.radius, value_type{}, value_type{} } };
-    return point<value_type, 3>{ shape.center + arc::math::mul(arc::math::normalize(direction), shape.radius) };
+        return point<value_type, 3>{shape.center +
+                                    arc::math::vector<value_type, 3>{shape.radius, value_type{}, value_type{}}};
+    return point<value_type, 3>{shape.center + arc::math::mul(arc::math::normalize(direction), shape.radius)};
 }
 
 } // namespace arc::geometric

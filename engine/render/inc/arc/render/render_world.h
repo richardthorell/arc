@@ -35,19 +35,19 @@ enum class scene_render_pass : std::uint8_t
  */
 struct render_camera
 {
-    math::matrix4f view{ math::identity<float, 4>() };
-    math::matrix4f projection{ math::identity<float, 4>() };
-    math::matrix4f view_projection{ math::identity<float, 4>() };
-    math::matrix4f previous_view_projection{ math::identity<float, 4>() };
-    math::matrix4f inverse_view_projection{ math::identity<float, 4>() };
+    math::matrix4f view{math::identity<float, 4>()};
+    math::matrix4f projection{math::identity<float, 4>()};
+    math::matrix4f view_projection{math::identity<float, 4>()};
+    math::matrix4f previous_view_projection{math::identity<float, 4>()};
+    math::matrix4f inverse_view_projection{math::identity<float, 4>()};
     math::vector2f jitter{};
     math::vector3f position{};
-    math::vector3f forward{ 0.0f, 0.0f, -1.0f };
-    math::vector3f up{ 0.0f, 1.0f, 0.0f };
-    math::vector4f clear_color{ 0.118f, 0.118f, 0.118f, 1.0f };
+    math::vector3f forward{0.0f, 0.0f, -1.0f};
+    math::vector3f up{0.0f, 1.0f, 0.0f};
+    math::vector4f clear_color{0.118f, 0.118f, 0.118f, 1.0f};
     exposure_settings exposure{};
-    float near_plane{ 0.01f };
-    float far_plane{ 1000.0f };
+    float near_plane{0.01f};
+    float far_plane{1000.0f};
     std::uint32_t render_width{};
     std::uint32_t render_height{};
     std::uint32_t output_width{};
@@ -71,22 +71,22 @@ struct render_item
     mesh_handle mesh{};
     material_handle material{};
     std::uint32_t submesh{};
-    math::matrix4f model{ math::identity<float, 4>() };
-    math::matrix4f previous_model{ math::identity<float, 4>() };
+    math::matrix4f model{math::identity<float, 4>()};
+    math::matrix4f previous_model{math::identity<float, 4>()};
     geometric::box3f world_bounds{};
-    std::uint32_t render_layer_mask{ 1u };
+    std::uint32_t render_layer_mask{1u};
     std::uint64_t sort_key{};
     render_object_id object_id{};
     buffer_handle skin_matrices{};
     std::uint32_t skin_joint_count{};
     std::uint32_t instance_start{};
-    std::uint32_t instance_count{ 1 };
-    bool visible{ true };
+    std::uint32_t instance_count{1};
+    bool visible{true};
     bool selected{};
     bool transparent{};
-    bool casts_shadows{ true };
-    bool receives_shadows{ true };
-    render_mobility mobility{ render_mobility::movable };
+    bool casts_shadows{true};
+    bool receives_shadows{true};
+    render_mobility mobility{render_mobility::movable};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
     math::vector4f base_color_tint = math::vector4f::one;
@@ -101,17 +101,17 @@ struct virtual_render_item
     virtual_mesh_handle mesh{};
     material_handle material{};
     std::uint32_t cluster_index{};
-    math::matrix4f model{ math::identity<float, 4>() };
-    math::matrix4f previous_model{ math::identity<float, 4>() };
+    math::matrix4f model{math::identity<float, 4>()};
+    math::matrix4f previous_model{math::identity<float, 4>()};
     geometric::box3f world_bounds{};
-    std::uint32_t render_layer_mask{ 1u };
+    std::uint32_t render_layer_mask{1u};
     std::uint64_t sort_key{};
     render_object_id object_id{};
-    bool visible{ true };
+    bool visible{true};
     bool selected{};
-    bool casts_shadows{ true };
-    bool receives_shadows{ true };
-    render_mobility mobility{ render_mobility::movable };
+    bool casts_shadows{true};
+    bool receives_shadows{true};
+    render_mobility mobility{render_mobility::movable};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
     math::vector4f base_color_tint = math::vector4f::one;
@@ -124,8 +124,8 @@ struct virtual_render_item
 struct reflection_probe_data
 {
     math::vector3f position{};
-    float radius{ 5.0f };
-    float intensity{ 1.0f };
+    float radius{5.0f};
+    float intensity{1.0f};
     std::string label;
 };
 
@@ -135,8 +135,8 @@ struct reflection_probe_data
 struct irradiance_probe_data
 {
     math::vector3f position{};
-    float radius{ 5.0f };
-    float intensity{ 1.0f };
+    float radius{5.0f};
+    float intensity{1.0f};
     std::string label;
 };
 
@@ -157,39 +157,39 @@ enum class environment_lighting_source_mode : std::uint8_t
 /** @brief Procedural atmosphere parameters extracted for one frame. */
 struct atmosphere_render_data
 {
-    bool enabled{ true };
-    float planet_radius{ 6360.0f };
-    float atmosphere_radius{ 6420.0f };
-    float rayleigh_strength{ 1.0f };
-    float mie_strength{ 0.35f };
-    float ozone_strength{ 0.15f };
-    math::vector3f tint{ 0.56f, 0.72f, 1.0f };
-    math::vector3f ground_albedo{ 0.18f, 0.18f, 0.18f };
-    float mie_anisotropy{ 0.8f };
-    float rayleigh_scale_height{ 8.0f };
-    float mie_scale_height{ 1.2f };
-    float multi_scattering_factor{ 1.0f };
-    float exposure{ 1.0f };
-    float sun_disk_size{ 0.025f };
-    float sun_disk_intensity{ 1.4f };
+    bool enabled{true};
+    float planet_radius{6360.0f};
+    float atmosphere_radius{6420.0f};
+    float rayleigh_strength{1.0f};
+    float mie_strength{0.35f};
+    float ozone_strength{0.15f};
+    math::vector3f tint{0.56f, 0.72f, 1.0f};
+    math::vector3f ground_albedo{0.18f, 0.18f, 0.18f};
+    float mie_anisotropy{0.8f};
+    float rayleigh_scale_height{8.0f};
+    float mie_scale_height{1.2f};
+    float multi_scattering_factor{1.0f};
+    float exposure{1.0f};
+    float sun_disk_size{0.025f};
+    float sun_disk_intensity{1.4f};
     std::string label;
 };
 
 struct celestial_sky_data
 {
-    bool enabled{ true };
-    math::vector3f sun_direction{ 0.35f, -0.85f, -0.40f };
-    math::vector3f moon_direction{ -0.35f, 0.85f, 0.40f };
-    float sun_angular_radius_degrees{ 0.2666f };
-    float sun_intensity{ 1.0f };
-    bool moon_enabled{ true };
-    float moon_phase{ 0.65f };
-    float moon_intensity{ 0.22f };
-    float moon_angular_radius_degrees{ 0.2725f };
-    bool stars_enabled{ true };
-    float star_density{ 0.42f };
-    float star_intensity{ 0.75f };
-    float star_twinkle{ 0.08f };
+    bool enabled{true};
+    math::vector3f sun_direction{0.35f, -0.85f, -0.40f};
+    math::vector3f moon_direction{-0.35f, 0.85f, 0.40f};
+    float sun_angular_radius_degrees{0.2666f};
+    float sun_intensity{1.0f};
+    bool moon_enabled{true};
+    float moon_phase{0.65f};
+    float moon_intensity{0.22f};
+    float moon_angular_radius_degrees{0.2725f};
+    bool stars_enabled{true};
+    float star_density{0.42f};
+    float star_intensity{0.75f};
+    float star_twinkle{0.08f};
     float time_seconds{};
 };
 
@@ -220,12 +220,12 @@ struct cloud_layers_data
 struct environment_lighting_data
 {
     bool enabled{};
-    environment_lighting_source_mode source{ environment_lighting_source_mode::follow_sky };
+    environment_lighting_source_mode source{environment_lighting_source_mode::follow_sky};
     environment_handle environment{};
     texture_handle hdri_texture{};
-    math::vector3f constant_color{ 0.12f, 0.12f, 0.12f };
-    float diffuse_intensity{ 1.0f };
-    float specular_intensity{ 1.0f };
+    math::vector3f constant_color{0.12f, 0.12f, 0.12f};
+    float diffuse_intensity{1.0f};
+    float specular_intensity{1.0f};
 };
 
 /**
@@ -234,12 +234,12 @@ struct environment_lighting_data
 struct height_fog_data
 {
     bool enabled{};
-    math::vector3f color{ 0.58f, 0.67f, 0.76f };
-    float density{ 0.035f };
-    float height_falloff{ 0.12f };
-    float start_distance{ 8.0f };
-    float max_opacity{ 0.55f };
-    float sun_scattering_strength{ 0.25f };
+    math::vector3f color{0.58f, 0.67f, 0.76f};
+    float density{0.035f};
+    float height_falloff{0.12f};
+    float start_distance{8.0f};
+    float max_opacity{0.55f};
+    float sun_scattering_strength{0.25f};
     std::string label;
 };
 
@@ -249,11 +249,11 @@ struct world_environment_data
     bool enabled{};
     bool sky_visible{};
     bool affect_lighting{};
-    sky_source_mode source{ sky_source_mode::physical_atmosphere };
-    math::vector3f solid_color{ 0.08f, 0.13f, 0.22f };
+    sky_source_mode source{sky_source_mode::physical_atmosphere};
+    math::vector3f solid_color{0.08f, 0.13f, 0.22f};
     texture_handle hdri_texture{};
     float hdri_rotation_degrees{};
-    float radiance_intensity{ 1.0f };
+    float radiance_intensity{1.0f};
     atmosphere_render_data atmosphere;
     celestial_sky_data celestial;
     cloud_layers_data clouds;
@@ -270,11 +270,11 @@ struct terrain_render_data
 {
     render_object_id object_id{};
     math::vector3f position{};
-    float size{ 1.0f };
+    float size{1.0f};
     std::uint32_t subdivisions{};
     float height_scale{};
-    bool receive_shadows{ true };
-    bool cast_shadows{ true };
+    bool receive_shadows{true};
+    bool cast_shadows{true};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
     std::string label;
@@ -287,12 +287,12 @@ struct water_render_data
 {
     render_object_id object_id{};
     math::vector3f position{};
-    float size{ 1.0f };
-    math::vector3f color{ 0.16f, 0.35f, 0.48f };
-    float roughness{ 0.18f };
-    float wave_scale{ 0.08f };
-    float wave_speed{ 0.45f };
-    float transparency{ 0.45f };
+    float size{1.0f};
+    math::vector3f color{0.16f, 0.35f, 0.48f};
+    float roughness{0.18f};
+    float wave_scale{0.08f};
+    float wave_speed{0.45f};
+    float transparency{0.45f};
     std::string label;
 };
 
@@ -304,13 +304,13 @@ struct vegetation_render_data
     render_object_id object_id{};
     math::vector3f position{};
     std::uint32_t density{};
-    float patch_size{ 1.0f };
-    math::vector3f color{ 0.22f, 0.46f, 0.18f };
-    float wind_strength{ 0.25f };
-    float wind_speed{ 0.8f };
-    bool cast_shadows{ true };
-    float shadow_lod_bias{ 1.0f };
-    float maximum_shadow_distance{ 120.0f };
+    float patch_size{1.0f};
+    math::vector3f color{0.22f, 0.46f, 0.18f};
+    float wind_strength{0.25f};
+    float wind_speed{0.8f};
+    bool cast_shadows{true};
+    float shadow_lod_bias{1.0f};
+    float maximum_shadow_distance{120.0f};
     std::string label;
 };
 
@@ -320,11 +320,11 @@ struct vegetation_render_data
 struct decal_render_data
 {
     render_object_id object_id{};
-    math::matrix4f model{ math::identity<float, 4>() };
+    math::matrix4f model{math::identity<float, 4>()};
     geometric::box3f world_bounds{};
-    math::vector4f color{ 1.0f, 1.0f, 1.0f, 0.75f };
+    math::vector4f color{1.0f, 1.0f, 1.0f, 0.75f};
     texture_handle texture{};
-    float opacity{ 0.75f };
+    float opacity{0.75f};
     std::string label;
 };
 
@@ -335,7 +335,7 @@ struct render_instance_batch
 {
     mesh_handle mesh{};
     material_handle material{};
-    scene_render_pass pass{ scene_render_pass::gbuffer };
+    scene_render_pass pass{scene_render_pass::gbuffer};
     std::uint32_t first_item{};
     std::uint32_t item_count{};
     std::uint64_t sort_key{};
@@ -347,7 +347,7 @@ struct render_instance_batch
 struct indirect_draw_command
 {
     std::uint32_t index_count{};
-    std::uint32_t instance_count{ 1 };
+    std::uint32_t instance_count{1};
     std::uint32_t first_index{};
     std::int32_t vertex_offset{};
     std::uint32_t first_instance{};
@@ -382,7 +382,7 @@ struct debug_overlay_line
     math::vector3f start{};
     math::vector3f end{};
     math::vector4f color = math::vector4f::one;
-    debug_overlay_depth_mode depth{ debug_overlay_depth_mode::tested };
+    debug_overlay_depth_mode depth{debug_overlay_depth_mode::tested};
 };
 
 /** Backend-neutral transient stream for gizmos, bounds, grids, and diagnostics. */
@@ -397,10 +397,10 @@ struct debug_overlay_stream
 struct render_world_packet
 {
     render_camera camera;
-    render_mode mode{ render_mode::shaded };
-    mesh_visualization_mode visualization{ mesh_visualization_mode::standard };
-    editor_overlay_mode overlay{ editor_overlay_mode::selected_wireframe };
-    bool shadows_enabled{ true };
+    render_mode mode{render_mode::shaded};
+    mesh_visualization_mode visualization{mesh_visualization_mode::standard};
+    editor_overlay_mode overlay{editor_overlay_mode::selected_wireframe};
+    bool shadows_enabled{true};
     std::vector<directional_light_event> directional_lights;
     std::vector<point_light_event> point_lights;
     std::vector<spot_light_event> spot_lights;
@@ -430,10 +430,10 @@ struct render_world_packet
  */
 struct render_world_prepare_options
 {
-    bool enable_frustum_culling{ true };
-    bool enable_instancing{ true };
-    bool enable_indirect_draws{ true };
-    std::uint32_t render_layer_mask{ 0xffffffffu };
+    bool enable_frustum_culling{true};
+    bool enable_instancing{true};
+    bool enable_indirect_draws{true};
+    std::uint32_t render_layer_mask{0xffffffffu};
 };
 
 /**
@@ -441,7 +441,7 @@ struct render_world_prepare_options
  */
 constexpr render_object_id make_render_object_id(std::uint32_t index, std::uint32_t generation) noexcept
 {
-    return { .index = index, .generation = generation };
+    return {.index = index, .generation = generation};
 }
 
 /**
@@ -467,20 +467,13 @@ void prepare_render_world(render_world_packet& packet, const render_world_prepar
 /**
  * @brief Create the standard scene draw graph for viewport rendering.
  */
-render_graph make_scene_draw_graph(
-    std::string_view target_name,
-    render_path path = render_path::deferred,
-    bool editor_view = true);
+render_graph make_scene_draw_graph(std::string_view target_name, render_path path = render_path::deferred,
+                                   bool editor_view = true);
 
-render_graph make_scene_draw_graph(
-    std::string_view target_name,
-    const resolved_render_config& config,
-    bool editor_view = true);
+render_graph make_scene_draw_graph(std::string_view target_name, const resolved_render_config& config,
+                                   bool editor_view = true);
 
-render_graph make_scene_draw_graph(
-    std::string_view target_name,
-    const resolved_render_config& config,
-    bool editor_view,
-    const world_environment_data& environment);
+render_graph make_scene_draw_graph(std::string_view target_name, const resolved_render_config& config, bool editor_view,
+                                   const world_environment_data& environment);
 
 } // namespace arc::render

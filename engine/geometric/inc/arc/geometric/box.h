@@ -11,8 +11,7 @@ namespace arc::geometric
  * The constructor normalizes `min` and `max` per coordinate so bounds remain
  * ordered even when inputs are reversed.
  */
-template <class T, std::size_t N>
-struct box
+template <class T, std::size_t N> struct box
 {
     /// @brief Scalar coordinate type.
     using value_type = T;
@@ -28,9 +27,7 @@ struct box
     constexpr box() noexcept = default;
 
     /// @brief Construct from minimum and maximum corners, normalizing reversed coordinates.
-    constexpr box(const point<T, N>& minimum, const point<T, N>& maximum) noexcept
-        : min(minimum)
-        , max(maximum)
+    constexpr box(const point<T, N>& minimum, const point<T, N>& maximum) noexcept : min(minimum), max(maximum)
     {
         for (std::size_t i = 0; i < N; ++i)
         {
@@ -63,7 +60,7 @@ template <class T, std::size_t N>
 /// @brief Return half side lengths of a box.
 constexpr auto extents(const box<T, N>& value) noexcept
 {
-    return arc::math::mul(size(value), T{ 0.5 });
+    return arc::math::mul(size(value), T{0.5});
 }
 
 template <class T, std::size_t N>
@@ -79,8 +76,7 @@ constexpr bool contains(const box<T, N>& bounds, const point<U, N>& value) noexc
 {
     for (std::size_t i = 0; i < N; ++i)
     {
-        if (value[i] < bounds.min[i] || bounds.max[i] < value[i])
-            return false;
+        if (value[i] < bounds.min[i] || bounds.max[i] < value[i]) return false;
     }
     return true;
 }
@@ -91,8 +87,7 @@ constexpr bool intersects(const box<T, N>& lhs, const box<U, N>& rhs) noexcept
 {
     for (std::size_t i = 0; i < N; ++i)
     {
-        if (lhs.max[i] < rhs.min[i] || rhs.max[i] < lhs.min[i])
-            return false;
+        if (lhs.max[i] < rhs.min[i] || rhs.max[i] < lhs.min[i]) return false;
     }
     return true;
 }
@@ -128,7 +123,7 @@ constexpr auto expand(const box<T, N>& bounds, const point<U, N>& value) noexcep
         minimum[i] = current < min_value ? current : min_value;
         maximum[i] = max_value < current ? current : max_value;
     }
-    return box<value_type, N>{ minimum, maximum };
+    return box<value_type, N>{minimum, maximum};
 }
 
 template <class T, std::size_t N>
@@ -136,7 +131,7 @@ template <class T, std::size_t N>
 constexpr auto expand(const box<T, N>& bounds, T amount) noexcept
 {
     arc::math::vector<T, N> offset(amount);
-    return box<T, N>{ bounds.min - offset, bounds.max + offset };
+    return box<T, N>{bounds.min - offset, bounds.max + offset};
 }
 
 } // namespace arc::geometric

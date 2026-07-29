@@ -11,8 +11,7 @@
 namespace arc::simd
 {
 
-template <class T, std::size_t N>
-constexpr simd<T, N> andnot(const simd<T, N>& a, const simd<T, N>& b) noexcept
+template <class T, std::size_t N> constexpr simd<T, N> andnot(const simd<T, N>& a, const simd<T, N>& b) noexcept
 {
     return bitwise_and(bitwise_not(a), b);
 }

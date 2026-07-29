@@ -4,8 +4,14 @@ import { buildSceneTree, classifyHostEventRefresh, filterSceneTree } from './Wor
 import type { HostSceneEntity } from './Workbench';
 
 const entity = (index: number, guid: string, parentGuid = '', siblingOrder = 0, name = guid): HostSceneEntity => ({
-  entity: { index, generation: 1 }, guid, parentGuid, siblingOrder, name,
-  kind: 'mesh', active: true, selected: false,
+  entity: { index, generation: 1 },
+  guid,
+  parentGuid,
+  siblingOrder,
+  name,
+  kind: 'mesh',
+  active: true,
+  selected: false,
 });
 
 describe('host scene hierarchy reconstruction', () => {
@@ -36,13 +42,27 @@ describe('host scene hierarchy reconstruction', () => {
 
   it('ignores repeated selection and routes only relevant host refreshes', () => {
     const selected = '7:1';
-    expect(classifyHostEventRefresh({ type: 'entity.selected', entity: { index: 7, generation: 1 } }, selected)).toBe('none');
-    expect(classifyHostEventRefresh({ type: 'entity.selected', entity: { index: 8, generation: 1 } }, selected)).toBe('selection');
-    expect(classifyHostEventRefresh({ type: 'component.changed', entity: { index: 7, generation: 1 } }, selected)).toBe('selected');
-    expect(classifyHostEventRefresh({ type: 'component.changed', entity: { index: 3, generation: 1 } }, selected)).toBe('hierarchy');
-    expect(classifyHostEventRefresh({ type: 'component.changed', entity: { index: 0xffffffff, generation: 0 } }, selected)).toBe('none');
-    expect(classifyHostEventRefresh({ type: 'terrain.toolChanged', entity: { index: 7, generation: 1 } }, selected)).toBe('none');
-    expect(classifyHostEventRefresh({ type: 'terrain.strokeCommitted', entity: { index: 7, generation: 1 } }, selected)).toBe('selected');
+    expect(classifyHostEventRefresh({ type: 'entity.selected', entity: { index: 7, generation: 1 } }, selected)).toBe(
+      'none',
+    );
+    expect(classifyHostEventRefresh({ type: 'entity.selected', entity: { index: 8, generation: 1 } }, selected)).toBe(
+      'selection',
+    );
+    expect(classifyHostEventRefresh({ type: 'component.changed', entity: { index: 7, generation: 1 } }, selected)).toBe(
+      'selected',
+    );
+    expect(classifyHostEventRefresh({ type: 'component.changed', entity: { index: 3, generation: 1 } }, selected)).toBe(
+      'hierarchy',
+    );
+    expect(
+      classifyHostEventRefresh({ type: 'component.changed', entity: { index: 0xffffffff, generation: 0 } }, selected),
+    ).toBe('none');
+    expect(
+      classifyHostEventRefresh({ type: 'terrain.toolChanged', entity: { index: 7, generation: 1 } }, selected),
+    ).toBe('none');
+    expect(
+      classifyHostEventRefresh({ type: 'terrain.strokeCommitted', entity: { index: 7, generation: 1 } }, selected),
+    ).toBe('selected');
     expect(classifyHostEventRefresh({ type: 'scene.changed' }, selected)).toBe('all');
     expect(classifyHostEventRefresh({ type: 'asset.changed' }, selected)).toBe('all');
     expect(classifyHostEventRefresh({ type: 'viewport.error' }, selected)).toBe('none');

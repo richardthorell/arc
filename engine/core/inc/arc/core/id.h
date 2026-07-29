@@ -25,8 +25,7 @@ enum class uuid_text_format
 
 /// @brief A type-safe 128-bit universally unique identifier.
 /// @tparam Tag Empty tag type that prevents IDs from unrelated domains from mixing.
-template <class Tag>
-struct uuid
+template <class Tag> struct uuid
 {
     /// Most-significant 64 serialized bits.
     std::uint64_t high{};
@@ -44,14 +43,12 @@ struct uuid
 
 /// @brief Hash a tagged UUID without erasing its type.
 /// @tparam Tag UUID domain tag.
-template <class Tag>
-struct uuid_hash
+template <class Tag> struct uuid_hash
 {
     /// @brief Return a stable in-process hash for an identifier.
     [[nodiscard]] constexpr std::size_t operator()(uuid<Tag> value) const noexcept
     {
-        const auto mixed = value.high ^ (value.low + 0x9e3779b97f4a7c15ull +
-            (value.high << 6u) + (value.high >> 2u));
+        const auto mixed = value.high ^ (value.low + 0x9e3779b97f4a7c15ull + (value.high << 6u) + (value.high >> 2u));
         return static_cast<std::size_t>(mixed);
     }
 };
@@ -62,9 +59,7 @@ struct uuid_hash
 /// @param format Compact or hyphenated output layout.
 /// @return Canonical text for the requested layout.
 template <class Tag>
-[[nodiscard]] inline std::string to_string(
-    uuid<Tag> value,
-    uuid_text_format format = uuid_text_format::compact)
+[[nodiscard]] inline std::string to_string(uuid<Tag> value, uuid_text_format format = uuid_text_format::compact)
 {
     constexpr char digits[] = "0123456789abcdef";
     const bool hyphenated = format == uuid_text_format::hyphenated;
@@ -72,8 +67,7 @@ template <class Tag>
     output.reserve(hyphenated ? 36 : 32);
     for (std::size_t byte_index = 0; byte_index < 16; ++byte_index)
     {
-        if (hyphenated &&
-            (byte_index == 4 || byte_index == 6 || byte_index == 8 || byte_index == 10))
+        if (hyphenated && (byte_index == 4 || byte_index == 6 || byte_index == 8 || byte_index == 10))
             output.push_back('-');
         const std::uint64_t half = byte_index < 8 ? value.high : value.low;
         const auto half_index = byte_index < 8 ? byte_index : byte_index - 8;
@@ -88,8 +82,7 @@ template <class Tag>
 /// @tparam Tag UUID domain tag.
 /// @param text Canonical 32-character compact or 36-character hyphenated representation.
 /// @return Parsed non-null identifier, or an empty optional for malformed/null input.
-template <class Tag>
-[[nodiscard]] inline std::optional<uuid<Tag>> parse_uuid(std::string_view text) noexcept
+template <class Tag> [[nodiscard]] inline std::optional<uuid<Tag>> parse_uuid(std::string_view text) noexcept
 {
     std::array<char, 32> compact{};
     if (text.size() == 32)
@@ -97,13 +90,11 @@ template <class Tag>
         for (std::size_t index = 0; index < text.size(); ++index)
             compact[index] = text[index];
     }
-    else if (text.size() == 36 &&
-        text[8] == '-' && text[13] == '-' && text[18] == '-' && text[23] == '-')
+    else if (text.size() == 36 && text[8] == '-' && text[13] == '-' && text[18] == '-' && text[23] == '-')
     {
         std::size_t output{};
         for (char character : text)
-            if (character != '-')
-                compact[output++] = character;
+            if (character != '-') compact[output++] = character;
     }
     else
         return std::nullopt;
@@ -111,9 +102,8 @@ template <class Tag>
     uuid<Tag> value;
     const auto high = std::from_chars(compact.data(), compact.data() + 16, value.high, 16);
     const auto low = std::from_chars(compact.data() + 16, compact.data() + 32, value.low, 16);
-    if (high.ec != std::errc{} || low.ec != std::errc{} ||
-        high.ptr != compact.data() + 16 || low.ptr != compact.data() + 32 ||
-        !value.valid())
+    if (high.ec != std::errc{} || low.ec != std::errc{} || high.ptr != compact.data() + 16 ||
+        low.ptr != compact.data() + 32 || !value.valid())
         return std::nullopt;
     return value;
 }
@@ -122,11 +112,8 @@ template <class Tag>
 /// @tparam Tag Empty tag type that distinguishes unrelated identifier domains.
 /// @tparam Rep Unsigned integral storage type.
 /// @tparam Invalid Reserved invalid representation.
-template <
-    class Tag,
-    class Rep = std::uint64_t,
-    Rep Invalid = std::numeric_limits<Rep>::max()>
-requires (std::is_integral_v<Rep> && std::is_unsigned_v<Rep>)
+template <class Tag, class Rep = std::uint64_t, Rep Invalid = std::numeric_limits<Rep>::max()>
+    requires(std::is_integral_v<Rep> && std::is_unsigned_v<Rep>)
 struct strong_id
 {
     /// Unsigned serialized representation type.
@@ -135,7 +122,7 @@ struct strong_id
     static constexpr Rep invalid_value = Invalid;
 
     /// Serialized representation.
-    Rep value{ Invalid };
+    Rep value{Invalid};
 
     /// @brief Return whether this identifier is not the reserved invalid value.
     [[nodiscard]] constexpr bool valid() const noexcept
@@ -156,12 +143,10 @@ struct strong_id
 /// @tparam Tag Identifier domain tag.
 /// @tparam Rep Identifier representation type.
 /// @tparam Invalid Reserved invalid representation.
-template <class Tag, class Rep, Rep Invalid>
-struct strong_id_hash
+template <class Tag, class Rep, Rep Invalid> struct strong_id_hash
 {
     /// @brief Return a stable in-process hash for an identifier.
-    [[nodiscard]] constexpr std::size_t operator()(
-        strong_id<Tag, Rep, Invalid> value) const noexcept
+    [[nodiscard]] constexpr std::size_t operator()(strong_id<Tag, Rep, Invalid> value) const noexcept
     {
         return static_cast<std::size_t>(value.representation());
     }

@@ -21,19 +21,16 @@ using json = nlohmann::json;
 
 std::string lowercase(std::string value)
 {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) {
-        return static_cast<char>(std::tolower(character));
-    });
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
     return value;
 }
 
 bool replace_file(const std::filesystem::path& source, const std::filesystem::path& destination) noexcept
 {
 #if defined(_WIN32)
-    return MoveFileExW(
-        source.c_str(),
-        destination.c_str(),
-        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+    return MoveFileExW(source.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) !=
+           FALSE;
 #else
     std::error_code error;
     std::filesystem::rename(source, destination, error);
@@ -43,35 +40,29 @@ bool replace_file(const std::filesystem::path& source, const std::filesystem::pa
 
 json subasset_json(const asset_subasset_metadata& subasset)
 {
-    return {
-        { "key", subasset.persistent_key },
-        { "guid", to_string(subasset.guid) },
-        { "type", to_string(subasset.type) },
-        { "name", subasset.name },
-        { "tombstoned", subasset.tombstoned }
-    };
+    return {{"key", subasset.persistent_key},
+            {"guid", to_string(subasset.guid)},
+            {"type", to_string(subasset.type)},
+            {"name", subasset.name},
+            {"tombstoned", subasset.tombstoned}};
 }
 
-}
+} // namespace
 
 std::filesystem::path metadata_path_for(const std::filesystem::path& source_path)
 {
-    return std::filesystem::path(source_path.native() +
-        std::filesystem::path(".arcmeta").native());
+    return std::filesystem::path(source_path.native() + std::filesystem::path(".arcmeta").native());
 }
 
 asset_metadata_result load_asset_metadata(const std::filesystem::path& path)
 {
-    const auto failure = [&](std::string message) {
-        return asset_metadata_result::failure({
-            .code = asset_error_code::invalid_metadata,
-            .path = path,
-            .message = std::move(message)
-        });
+    const auto failure = [&](std::string message)
+    {
+        return asset_metadata_result::failure(
+            {.code = asset_error_code::invalid_metadata, .path = path, .message = std::move(message)});
     };
     std::ifstream input(path, std::ios::binary);
-    if (!input)
-        return failure("Could not open asset metadata");
+    if (!input) return failure("Could not open asset metadata");
 
     json document;
     try
@@ -83,8 +74,7 @@ asset_metadata_result load_asset_metadata(const std::filesystem::path& path)
         return failure(std::string("Invalid asset metadata JSON: ") + exception.what());
     }
 
-    if (!document.is_object() ||
-        document.value("format", std::string{}) != "arc.asset-meta" ||
+    if (!document.is_object() || document.value("format", std::string{}) != "arc.asset-meta" ||
         document.value("formatVersion", 0u) != asset_source_metadata::current_format_version)
     {
         return failure("Unsupported ARC asset metadata format or version");
@@ -129,35 +119,27 @@ asset_metadata_result load_asset_metadata(const std::filesystem::path& path)
             {
                 return failure("Asset metadata contains an invalid subasset");
             }
-            if (std::any_of(parsed.subassets.begin(), parsed.subassets.end(),
-                    [&](const asset_subasset_metadata& value) {
-                        return value.persistent_key == key || value.guid == *subasset_guid;
-                    }))
+            if (std::any_of(parsed.subassets.begin(), parsed.subassets.end(), [&](const asset_subasset_metadata& value)
+                            { return value.persistent_key == key || value.guid == *subasset_guid; }))
             {
                 return failure("Asset metadata contains duplicate subasset keys or GUIDs");
             }
-            parsed.subassets.push_back({
-                .persistent_key = key,
-                .guid = *subasset_guid,
-                .type = *subasset_type,
-                .name = record.value("name", std::string{}),
-                .tombstoned = record.value("tombstoned", false)
-            });
+            parsed.subassets.push_back({.persistent_key = key,
+                                        .guid = *subasset_guid,
+                                        .type = *subasset_type,
+                                        .name = record.value("name", std::string{}),
+                                        .tombstoned = record.value("tombstoned", false)});
         }
     }
     return asset_metadata_result::success(std::move(parsed));
 }
 
-asset_status save_asset_metadata(
-    const std::filesystem::path& path,
-    const asset_source_metadata& metadata)
+asset_status save_asset_metadata(const std::filesystem::path& path, const asset_source_metadata& metadata)
 {
-    const auto failure = [&](std::string message) {
-        return asset_status::failure({
-            .code = asset_error_code::invalid_metadata,
-            .path = path,
-            .message = std::move(message)
-        });
+    const auto failure = [&](std::string message)
+    {
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_metadata, .path = path, .message = std::move(message)});
     };
     if (!metadata.guid.valid() || !metadata.type.valid() || !metadata.importer.valid() ||
         metadata.settings_version == 0)
@@ -171,31 +153,26 @@ asset_status save_asset_metadata(
         return failure("Asset import settings are not valid JSON");
     }
 
-    json document{
-        { "format", "arc.asset-meta" },
-        { "formatVersion", asset_source_metadata::current_format_version },
-        { "guid", to_string(metadata.guid) },
-        { "type", to_string(metadata.type) },
-        { "importer", to_string(metadata.importer) },
-        { "settingsVersion", metadata.settings_version },
-        { "settings", std::move(settings) },
-        { "subassets", json::array() }
-    };
+    json document{{"format", "arc.asset-meta"},
+                  {"formatVersion", asset_source_metadata::current_format_version},
+                  {"guid", to_string(metadata.guid)},
+                  {"type", to_string(metadata.type)},
+                  {"importer", to_string(metadata.importer)},
+                  {"settingsVersion", metadata.settings_version},
+                  {"settings", std::move(settings)},
+                  {"subassets", json::array()}};
     for (const asset_subasset_metadata& subasset : metadata.subassets)
         document["subassets"].push_back(subasset_json(subasset));
 
     std::error_code directory_error;
     std::filesystem::create_directories(path.parent_path(), directory_error);
-    if (directory_error)
-        return failure("Could not create the asset metadata directory");
+    if (directory_error) return failure("Could not create the asset metadata directory");
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto temporary = path.parent_path() /
-        (path.filename().string() + ".tmp-" + std::to_string(stamp));
+    const auto temporary = path.parent_path() / (path.filename().string() + ".tmp-" + std::to_string(stamp));
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-        if (!output)
-            return failure("Could not create temporary asset metadata");
+        if (!output) return failure("Could not create temporary asset metadata");
         output << document.dump(2) << '\n';
         output.flush();
         if (!output)
@@ -217,41 +194,29 @@ std::string normalize_asset_path(const std::filesystem::path& path)
     return path.lexically_normal().generic_string();
 }
 
-std::optional<std::pair<asset_type_id, asset_importer_id>> classify_asset_path(
-    const std::filesystem::path& path) noexcept
+std::optional<std::pair<asset_type_id, asset_importer_id>>
+classify_asset_path(const std::filesystem::path& path) noexcept
 {
     const std::string extension = lowercase(path.extension().string());
-    if (extension == ".arcscene")
-        return std::pair{ asset_types::scene, importer_ids::scene };
-    if (extension == ".arcprefab")
-        return std::pair{ asset_types::prefab, importer_ids::prefab };
-    if (extension == ".arcmat")
-        return std::pair{ asset_types::material, importer_ids::material };
-    if (extension == ".slang" || extension == ".glsl" || extension == ".vert" ||
-        extension == ".frag" || extension == ".comp" || extension == ".hlsl" ||
-        extension == ".inc")
-        return std::pair{ asset_types::shader, importer_ids::shader };
+    if (extension == ".arcscene") return std::pair{asset_types::scene, importer_ids::scene};
+    if (extension == ".arcprefab") return std::pair{asset_types::prefab, importer_ids::prefab};
+    if (extension == ".arcmat") return std::pair{asset_types::material, importer_ids::material};
+    if (extension == ".slang" || extension == ".glsl" || extension == ".vert" || extension == ".frag" ||
+        extension == ".comp" || extension == ".hlsl" || extension == ".inc")
+        return std::pair{asset_types::shader, importer_ids::shader};
     if (extension == ".hdr" || extension == ".exr")
-        return std::pair{ asset_types::environment, importer_ids::environment };
-    if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" ||
-        extension == ".dds" || extension == ".tga" || extension == ".bmp" ||
-        extension == ".ktx" || extension == ".ktx2")
-        return std::pair{ asset_types::texture_2d, importer_ids::texture };
-    if (extension == ".glb" || extension == ".gltf")
-        return std::pair{ asset_types::imported_scene, importer_ids::gltf };
-    if (extension == ".fbx")
-        return std::pair{ asset_types::imported_scene, importer_ids::fbx };
-    if (extension == ".bin")
-        return std::pair{ asset_types::binary_blob, importer_ids::binary };
-    if (extension == ".arcanim")
-        return std::pair{ asset_types::animation_clip, importer_ids::animation };
-    if (extension == ".arccollision")
-        return std::pair{ asset_types::collision, importer_ids::collision };
-    if (extension == ".arcnav")
-        return std::pair{ asset_types::navigation, importer_ids::navigation };
-    if (extension == ".wav" || extension == ".ogg" || extension == ".mp3" ||
-        extension == ".flac")
-        return std::pair{ asset_types::audio_clip, importer_ids::audio };
+        return std::pair{asset_types::environment, importer_ids::environment};
+    if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".dds" ||
+        extension == ".tga" || extension == ".bmp" || extension == ".ktx" || extension == ".ktx2")
+        return std::pair{asset_types::texture_2d, importer_ids::texture};
+    if (extension == ".glb" || extension == ".gltf") return std::pair{asset_types::imported_scene, importer_ids::gltf};
+    if (extension == ".fbx") return std::pair{asset_types::imported_scene, importer_ids::fbx};
+    if (extension == ".bin") return std::pair{asset_types::binary_blob, importer_ids::binary};
+    if (extension == ".arcanim") return std::pair{asset_types::animation_clip, importer_ids::animation};
+    if (extension == ".arccollision") return std::pair{asset_types::collision, importer_ids::collision};
+    if (extension == ".arcnav") return std::pair{asset_types::navigation, importer_ids::navigation};
+    if (extension == ".wav" || extension == ".ogg" || extension == ".mp3" || extension == ".flac")
+        return std::pair{asset_types::audio_clip, importer_ids::audio};
     return std::nullopt;
 }
 

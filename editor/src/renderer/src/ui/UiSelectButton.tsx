@@ -9,7 +9,13 @@ type UiSelectButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   showChevron?: boolean;
 };
 
-export function UiSelectButton({ active = false, children, className, showChevron = true, ...props }: UiSelectButtonProps) {
+export function UiSelectButton({
+  active = false,
+  children,
+  className,
+  showChevron = true,
+  ...props
+}: UiSelectButtonProps) {
   return (
     <UiButton
       active={active}

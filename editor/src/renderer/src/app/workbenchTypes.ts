@@ -7,7 +7,8 @@ export type StartupState = {
   hostError?: string;
 };
 
-export type ActivityId = 'scene' | 'assets' | 'search' | 'versionControl' | 'aiAssistant' | 'profiler' | 'renderGraph' | 'settings';
+export type ActivityId =
+  'scene' | 'assets' | 'search' | 'versionControl' | 'aiAssistant' | 'profiler' | 'renderGraph' | 'settings';
 
 export type DockRegion = 'left' | 'center' | 'right' | 'bottom';
 

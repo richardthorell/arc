@@ -28,36 +28,30 @@ constexpr auto make_mask_block(std::size_t block_index, Predicate pred) noexcept
 
 } // namespace detail
 
-template <std::size_t N>
-constexpr simd_mask<N> prefix_mask(std::size_t count) noexcept
+template <std::size_t N> constexpr simd_mask<N> prefix_mask(std::size_t count) noexcept
 {
     return [count]<std::size_t... Block>(std::index_sequence<Block...>)
     {
         return detail::simd_access::template make_mask<N>(
-            detail::make_mask_block<N>(Block, [count](std::size_t lane) { return lane < count; })...
-        );
+            detail::make_mask_block<N>(Block, [count](std::size_t lane) { return lane < count; })...);
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }
 
-template <std::size_t N>
-constexpr simd_mask<N> suffix_mask(std::size_t count) noexcept
+template <std::size_t N> constexpr simd_mask<N> suffix_mask(std::size_t count) noexcept
 {
     return [count]<std::size_t... Block>(std::index_sequence<Block...>)
     {
         return detail::simd_access::template make_mask<N>(
-            detail::make_mask_block<N>(Block, [count](std::size_t lane) { return lane >= N - count; })...
-        );
+            detail::make_mask_block<N>(Block, [count](std::size_t lane) { return lane >= N - count; })...);
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }
 
-template <std::size_t N>
-constexpr simd_mask<N> range_mask(std::size_t first, std::size_t last) noexcept
+template <std::size_t N> constexpr simd_mask<N> range_mask(std::size_t first, std::size_t last) noexcept
 {
     return [first, last]<std::size_t... Block>(std::index_sequence<Block...>)
     {
-        return detail::simd_access::template make_mask<N>(
-            detail::make_mask_block<N>(Block, [first, last](std::size_t lane) { return lane >= first && lane < last; })...
-        );
+        return detail::simd_access::template make_mask<N>(detail::make_mask_block<N>(
+            Block, [first, last](std::size_t lane) { return lane >= first && lane < last; })...);
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }
 

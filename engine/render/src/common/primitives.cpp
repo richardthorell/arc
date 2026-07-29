@@ -28,7 +28,8 @@ float terrain_height_at(float x, float z, float size, float height_scale) noexce
     const float half = std::max(size * 0.5f, 0.001f);
     const float nx = x / half;
     const float nz = z / half;
-    const auto gaussian = [](float px, float pz, float cx, float cz, float sx, float sz) {
+    const auto gaussian = [](float px, float pz, float cx, float cz, float sx, float sz)
+    {
         const float dx = (px - cx) / sx;
         const float dz = (pz - cz) / sz;
         return std::exp(-(dx * dx + dz * dz));
@@ -37,7 +38,7 @@ float terrain_height_at(float x, float z, float size, float height_scale) noexce
     // Large authored forms establish a readable vista: a high rear range,
     // asymmetric hero peaks, a traversable middle valley, and a lake basin.
     const float rear_range = std::exp(-std::pow((nz + 0.62f) / 0.23f, 2.0f)) *
-        (0.46f + 0.15f * std::sin(nx * 10.0f) + 0.10f * std::sin(nx * 23.0f + 0.8f));
+                             (0.46f + 0.15f * std::sin(nx * 10.0f) + 0.10f * std::sin(nx * 23.0f + 0.8f));
     const float left_peak = gaussian(nx, nz, -0.48f, -0.30f, 0.26f, 0.34f) * 0.92f;
     const float right_peak = gaussian(nx, nz, 0.48f, -0.43f, 0.22f, 0.30f) * 0.78f;
     const float shoulder = gaussian(nx, nz, -0.72f, 0.02f, 0.34f, 0.48f) * 0.33f;
@@ -45,41 +46,23 @@ float terrain_height_at(float x, float z, float size, float height_scale) noexce
 
     // Several inexpensive octave-like bands remove the analytic smoothness
     // without making the default scene nondeterministic.
-    const float rolling =
-        std::sin(nx * 7.5f + std::cos(nz * 4.0f) * 1.4f) * 0.075f +
-        std::sin((nx + nz) * 15.0f) * std::cos((nx - nz) * 9.0f) * 0.038f;
+    const float rolling = std::sin(nx * 7.5f + std::cos(nz * 4.0f) * 1.4f) * 0.075f +
+                          std::sin((nx + nz) * 15.0f) * std::cos((nx - nz) * 9.0f) * 0.038f;
     const float ridges = (1.0f - std::abs(std::sin(nx * 19.0f - nz * 15.0f))) * 0.045f;
     const float detail = std::sin(nx * 48.0f + nz * 31.0f) * std::sin(nz * 42.0f) * 0.012f;
     const float distance = std::sqrt(nx * nx + nz * nz);
     const float edge_falloff = smoothstep(0.78f, 1.35f, distance) * 0.18f;
 
-    return (0.035f + rear_range + left_peak + right_peak + shoulder + rolling + ridges + detail - lake_basin - edge_falloff) * height_scale;
+    return (0.035f + rear_range + left_peak + right_peak + shoulder + rolling + ridges + detail - lake_basin -
+            edge_falloff) *
+           height_scale;
 }
 
-mesh_vertex vertex(
-    float x,
-    float y,
-    float z,
-    float nx,
-    float ny,
-    float nz,
-    float u,
-    float v,
-    float r,
-    float g,
-    float b);
+mesh_vertex vertex(float x, float y, float z, float nx, float ny, float nz, float u, float v, float r, float g,
+                   float b);
 
-mesh_vertex terrain_vertex(
-    float x,
-    float y,
-    float z,
-    float nx,
-    float ny,
-    float nz,
-    float u,
-    float v,
-    float height01,
-    float slope)
+mesh_vertex terrain_vertex(float x, float y, float z, float nx, float ny, float nz, float u, float v, float height01,
+                           float slope)
 {
     const float lowland = smoothstep(0.02f, 0.22f, height01);
     const float highland = smoothstep(0.58f, 0.90f, height01);
@@ -92,54 +75,25 @@ mesh_vertex terrain_vertex(
     const float rock_g = 0.62f + 0.11f * highland;
     const float rock_b = 0.58f + 0.10f * highland;
 
-    return vertex(
-        x,
-        y,
-        z,
-        nx,
-        ny,
-        nz,
-        u,
-        v,
-        grass_r * (1.0f - rock) + rock_r * rock,
-        grass_g * (1.0f - rock) + rock_g * rock,
-        grass_b * (1.0f - rock) + rock_b * rock);
+    return vertex(x, y, z, nx, ny, nz, u, v, grass_r * (1.0f - rock) + rock_r * rock,
+                  grass_g * (1.0f - rock) + rock_g * rock, grass_b * (1.0f - rock) + rock_b * rock);
 }
 
-mesh_vertex vertex(
-    float x,
-    float y,
-    float z,
-    float nx,
-    float ny,
-    float nz,
-    float u,
-    float v,
-    float r = 1.0f,
-    float g = 1.0f,
-    float b = 1.0f)
+mesh_vertex vertex(float x, float y, float z, float nx, float ny, float nz, float u, float v, float r = 1.0f,
+                   float g = 1.0f, float b = 1.0f)
 {
-    return {
-        .position = { x, y, z },
-        .normal = { nx, ny, nz },
-        .texcoord = { u, v },
-        .color = { r, g, b, 1.0f }
-    };
+    return {.position = {x, y, z}, .normal = {nx, ny, nz}, .texcoord = {u, v}, .color = {r, g, b, 1.0f}};
 }
 
-void append_face(
-    mesh_data& mesh,
-    const mesh_vertex& a,
-    const mesh_vertex& b,
-    const mesh_vertex& c,
-    const mesh_vertex& d)
+void append_face(mesh_data& mesh, const mesh_vertex& a, const mesh_vertex& b, const mesh_vertex& c,
+                 const mesh_vertex& d)
 {
     const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
     mesh.vertices.push_back(a);
     mesh.vertices.push_back(b);
     mesh.vertices.push_back(c);
     mesh.vertices.push_back(d);
-    mesh.indices.insert(mesh.indices.end(), { base, base + 1, base + 2, base, base + 2, base + 3 });
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
 }
 
 } // namespace
@@ -156,13 +110,11 @@ mesh_data make_plane_mesh(float size)
     const float half = std::max(0.001f, size) * 0.5f;
     mesh_data mesh;
     mesh.name = "Plane";
-    mesh.vertices = {
-        vertex(-half, 0.0f, -half, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f),
-        vertex(half, 0.0f, -half, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f),
-        vertex(half, 0.0f, half, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
-        vertex(-half, 0.0f, half, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f)
-    };
-    mesh.indices = { 0, 1, 2, 0, 2, 3 };
+    mesh.vertices = {vertex(-half, 0.0f, -half, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f),
+                     vertex(half, 0.0f, -half, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f),
+                     vertex(half, 0.0f, half, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
+                     vertex(-half, 0.0f, half, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f)};
+    mesh.indices = {0, 1, 2, 0, 2, 3};
     return mesh;
 }
 
@@ -172,42 +124,30 @@ mesh_data make_cube_mesh(float size)
     mesh_data mesh;
     mesh.name = "Cube";
 
-    append_face(
-        mesh,
-        vertex(-half, -half, half, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f),
-        vertex(half, -half, half, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f),
-        vertex(half, half, half, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f),
-        vertex(-half, half, half, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f));
-    append_face(
-        mesh,
-        vertex(half, -half, -half, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f),
-        vertex(-half, -half, -half, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f),
-        vertex(-half, half, -half, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f),
-        vertex(half, half, -half, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f));
-    append_face(
-        mesh,
-        vertex(-half, -half, -half, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
-        vertex(-half, -half, half, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
-        vertex(-half, half, half, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
-        vertex(-half, half, -half, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f));
-    append_face(
-        mesh,
-        vertex(half, -half, half, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
-        vertex(half, -half, -half, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
-        vertex(half, half, -half, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
-        vertex(half, half, half, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f));
-    append_face(
-        mesh,
-        vertex(-half, half, half, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f),
-        vertex(half, half, half, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f),
-        vertex(half, half, -half, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
-        vertex(-half, half, -half, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f));
-    append_face(
-        mesh,
-        vertex(-half, -half, -half, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f),
-        vertex(half, -half, -half, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f),
-        vertex(half, -half, half, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f),
-        vertex(-half, -half, half, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f));
+    append_face(mesh, vertex(-half, -half, half, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f),
+                vertex(half, -half, half, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f),
+                vertex(half, half, half, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f),
+                vertex(-half, half, half, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f));
+    append_face(mesh, vertex(half, -half, -half, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f),
+                vertex(-half, -half, -half, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f),
+                vertex(-half, half, -half, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f),
+                vertex(half, half, -half, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f));
+    append_face(mesh, vertex(-half, -half, -half, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                vertex(-half, -half, half, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
+                vertex(-half, half, half, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
+                vertex(-half, half, -half, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f));
+    append_face(mesh, vertex(half, -half, half, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+                vertex(half, -half, -half, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
+                vertex(half, half, -half, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
+                vertex(half, half, half, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f));
+    append_face(mesh, vertex(-half, half, half, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f),
+                vertex(half, half, half, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f),
+                vertex(half, half, -half, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
+                vertex(-half, half, -half, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f));
+    append_face(mesh, vertex(-half, -half, -half, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f),
+                vertex(half, -half, -half, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f),
+                vertex(half, -half, half, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f),
+                vertex(-half, -half, half, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f));
 
     return mesh;
 }
@@ -245,7 +185,7 @@ mesh_data make_uv_sphere_mesh(float radius, std::uint32_t slices, std::uint32_t 
             const std::uint32_t b = a + 1;
             const std::uint32_t c = a + stride + 1;
             const std::uint32_t d = a + stride;
-            mesh.indices.insert(mesh.indices.end(), { a, b, c, a, c, d });
+            mesh.indices.insert(mesh.indices.end(), {a, b, c, a, c, d});
         }
     }
 
@@ -277,7 +217,7 @@ mesh_data make_cylinder_mesh(float radius, float height, std::uint32_t segments)
         const std::uint32_t b = a + 1;
         const std::uint32_t c = a + 3;
         const std::uint32_t d = a + 2;
-        mesh.indices.insert(mesh.indices.end(), { a, b, c, a, c, d });
+        mesh.indices.insert(mesh.indices.end(), {a, b, c, a, c, d});
     }
 
     const std::uint32_t top_center = static_cast<std::uint32_t>(mesh.vertices.size());
@@ -292,7 +232,7 @@ mesh_data make_cylinder_mesh(float radius, float height, std::uint32_t segments)
         const std::uint32_t top = bottom + 1;
         const std::uint32_t next_bottom = next * 2;
         const std::uint32_t next_top = next_bottom + 1;
-        mesh.indices.insert(mesh.indices.end(), { top_center, top, next_top, bottom_center, next_bottom, bottom });
+        mesh.indices.insert(mesh.indices.end(), {top_center, top, next_top, bottom_center, next_bottom, bottom});
     }
 
     return mesh;
@@ -330,7 +270,8 @@ mesh_data make_terrain_grid_mesh(float size, std::uint32_t subdivisions, float h
         }
     }
 
-    const auto sample_height = [&](std::uint32_t x, std::uint32_t z) {
+    const auto sample_height = [&](std::uint32_t x, std::uint32_t z)
+    {
         x = std::min(x, subdivisions);
         z = std::min(z, subdivisions);
         return heights[static_cast<std::size_t>(z) * vertices_per_side + x];
@@ -355,17 +296,8 @@ mesh_data make_terrain_grid_mesh(float size, std::uint32_t subdivisions, float h
             const float normal_y = ny * inv_normal_length;
             const float height01 = (py - min_height) / std::max(max_height - min_height, 0.001f);
             const float slope = 1.0f - normal_y;
-            mesh.vertices.push_back(terrain_vertex(
-                px,
-                py,
-                pz,
-                nx * inv_normal_length,
-                normal_y,
-                nz * inv_normal_length,
-                px / 5.0f,
-                pz / 5.0f,
-                height01,
-                slope));
+            mesh.vertices.push_back(terrain_vertex(px, py, pz, nx * inv_normal_length, normal_y, nz * inv_normal_length,
+                                                   px / 5.0f, pz / 5.0f, height01, slope));
         }
     }
 
@@ -377,7 +309,7 @@ mesh_data make_terrain_grid_mesh(float size, std::uint32_t subdivisions, float h
             const std::uint32_t b = a + 1;
             const std::uint32_t c = a + vertices_per_side + 1;
             const std::uint32_t d = a + vertices_per_side;
-            mesh.indices.insert(mesh.indices.end(), { a, b, c, a, c, d });
+            mesh.indices.insert(mesh.indices.end(), {a, b, c, a, c, d});
         }
     }
 
@@ -395,7 +327,8 @@ mesh_data make_grass_patch_mesh(float patch_size, std::uint32_t blade_count, flo
     mesh.vertices.reserve(static_cast<std::size_t>(blade_count) * 8);
     mesh.indices.reserve(static_cast<std::size_t>(blade_count) * 12);
 
-    const auto random01 = [](std::uint32_t value) {
+    const auto random01 = [](std::uint32_t value)
+    {
         value ^= value << 13u;
         value ^= value >> 17u;
         value ^= value << 5u;
@@ -413,13 +346,16 @@ mesh_data make_grass_patch_mesh(float patch_size, std::uint32_t blade_count, flo
         const float clump = std::max(0.45f, 1.0f - (std::abs(x) + std::abs(z)) / std::max(0.001f, half_patch * 2.0f));
         const float g = 0.55f + 0.28f * clump;
 
-        const auto add_blade_quad = [&](float dx, float dz) {
+        const auto add_blade_quad = [&](float dx, float dz)
+        {
             const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
             mesh.vertices.push_back(vertex(x - dx, 0.0f, z - dz, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.18f, g, 0.14f));
             mesh.vertices.push_back(vertex(x + dx, 0.0f, z + dz, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.18f, g, 0.14f));
-            mesh.vertices.push_back(vertex(x + bend + dx * 0.18f, blade_height, z + bend + dz * 0.18f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.36f, std::min(g + 0.18f, 1.0f), 0.20f));
-            mesh.vertices.push_back(vertex(x + bend - dx * 0.18f, blade_height, z + bend - dz * 0.18f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.36f, std::min(g + 0.18f, 1.0f), 0.20f));
-            mesh.indices.insert(mesh.indices.end(), { base, base + 1, base + 2, base, base + 2, base + 3 });
+            mesh.vertices.push_back(vertex(x + bend + dx * 0.18f, blade_height, z + bend + dz * 0.18f, 0.0f, 1.0f, 0.0f,
+                                           1.0f, 1.0f, 0.36f, std::min(g + 0.18f, 1.0f), 0.20f));
+            mesh.vertices.push_back(vertex(x + bend - dx * 0.18f, blade_height, z + bend - dz * 0.18f, 0.0f, 1.0f, 0.0f,
+                                           0.0f, 1.0f, 0.36f, std::min(g + 0.18f, 1.0f), 0.20f));
+            mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
         };
 
         add_blade_quad(width, 0.0f);

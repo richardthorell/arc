@@ -11,7 +11,7 @@ namespace arc::render
  */
 struct resource_handle
 {
-    std::uint32_t index{ invalid_index };
+    std::uint32_t index{invalid_index};
     std::uint32_t generation{};
 
     static constexpr std::uint32_t invalid_index = 0xffffffffu;
@@ -64,7 +64,7 @@ public:
 private:
     struct slot
     {
-        std::uint32_t generation{ 1 };
+        std::uint32_t generation{1};
         bool alive{};
     };
 
@@ -87,7 +87,7 @@ using environment_handle = resource_handle;
  */
 struct render_object_id
 {
-    std::uint32_t index{ resource_handle::invalid_index };
+    std::uint32_t index{resource_handle::invalid_index};
     std::uint32_t generation{};
 
     /**

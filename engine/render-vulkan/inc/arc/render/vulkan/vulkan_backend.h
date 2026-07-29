@@ -36,7 +36,6 @@ struct vulkan_backend_config
 /**
  * @brief Create the Vulkan render backend.
  */
-[[nodiscard]] render_backend_create_result create_vulkan_backend(
-    const vulkan_backend_config& config = {});
+[[nodiscard]] render_backend_create_result create_vulkan_backend(const vulkan_backend_config& config = {});
 
 } // namespace arc::render::vulkan

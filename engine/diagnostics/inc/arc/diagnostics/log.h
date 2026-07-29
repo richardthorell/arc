@@ -31,7 +31,7 @@ enum class log_level
  */
 struct log_record
 {
-    log_level level{ log_level::info };
+    log_level level{log_level::info};
     std::string_view category{};
     std::string_view message{};
     std::source_location source{};
@@ -93,7 +93,7 @@ public:
 
 private:
     mutable std::mutex mutex_;
-    log_level min_level_{ log_level::trace };
+    log_level min_level_{log_level::trace};
     std::vector<std::shared_ptr<log_sink>> sinks_;
 };
 
@@ -127,11 +127,8 @@ void clear_log_sinks();
 /**
  * @brief Write a message to the active process-wide logger.
  */
-void log(
-    log_level level,
-    std::string_view category,
-    std::string_view message,
-    std::source_location source = std::source_location::current());
+void log(log_level level, std::string_view category, std::string_view message,
+         std::source_location source = std::source_location::current());
 
 /**
  * @brief Return a stable lowercase name for a log level.
@@ -141,31 +138,37 @@ std::string_view to_string(log_level level) noexcept;
 /**
  * @brief Log a trace message.
  */
-void trace(std::string_view category, std::string_view message, std::source_location source = std::source_location::current());
+void trace(std::string_view category, std::string_view message,
+           std::source_location source = std::source_location::current());
 
 /**
  * @brief Log a debug message.
  */
-void debug(std::string_view category, std::string_view message, std::source_location source = std::source_location::current());
+void debug(std::string_view category, std::string_view message,
+           std::source_location source = std::source_location::current());
 
 /**
  * @brief Log an informational message.
  */
-void info(std::string_view category, std::string_view message, std::source_location source = std::source_location::current());
+void info(std::string_view category, std::string_view message,
+          std::source_location source = std::source_location::current());
 
 /**
  * @brief Log a warning message.
  */
-void warn(std::string_view category, std::string_view message, std::source_location source = std::source_location::current());
+void warn(std::string_view category, std::string_view message,
+          std::source_location source = std::source_location::current());
 
 /**
  * @brief Log an error message.
  */
-void error(std::string_view category, std::string_view message, std::source_location source = std::source_location::current());
+void error(std::string_view category, std::string_view message,
+           std::source_location source = std::source_location::current());
 
 /**
  * @brief Log a fatal message.
  */
-void fatal(std::string_view category, std::string_view message, std::source_location source = std::source_location::current());
+void fatal(std::string_view category, std::string_view message,
+           std::source_location source = std::source_location::current());
 
 } // namespace arc::diagnostics

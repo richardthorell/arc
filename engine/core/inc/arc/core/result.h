@@ -11,8 +11,7 @@ namespace arc::core
 /// @brief Value-or-error return type for recoverable operations.
 /// @tparam T Successful value type.
 /// @tparam E Error value type.
-template <class T, class E>
-class [[nodiscard]] result
+template <class T, class E> class [[nodiscard]] result
 {
 public:
     /// @brief Construct a successful result.
@@ -91,8 +90,7 @@ public:
 
 private:
     template <std::size_t Index, class Value>
-    explicit result(std::in_place_index_t<Index> index, Value&& value)
-        : storage_(index, std::forward<Value>(value))
+    explicit result(std::in_place_index_t<Index> index, Value&& value) : storage_(index, std::forward<Value>(value))
     {
     }
 
@@ -101,8 +99,7 @@ private:
 
 /// @brief Value-or-error return type for operations without a success payload.
 /// @tparam E Error value type.
-template <class E>
-class [[nodiscard]] result<void, E>
+template <class E> class [[nodiscard]] result<void, E>
 {
 public:
     /// @brief Construct a successful status.
@@ -155,14 +152,10 @@ public:
     }
 
 private:
-    explicit result(std::in_place_index_t<0> index)
-        : storage_(index)
-    {
-    }
+    explicit result(std::in_place_index_t<0> index) : storage_(index) {}
 
     template <class Value>
-    explicit result(std::in_place_index_t<1> index, Value&& value)
-        : storage_(index, std::forward<Value>(value))
+    explicit result(std::in_place_index_t<1> index, Value&& value) : storage_(index, std::forward<Value>(value))
     {
     }
 
@@ -171,7 +164,6 @@ private:
 
 /// @brief Recoverable operation status without a success payload.
 /// @tparam E Error value type.
-template <class E>
-using status = result<void, E>;
+template <class E> using status = result<void, E>;
 
 } // namespace arc::core

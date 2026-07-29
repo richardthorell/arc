@@ -101,9 +101,12 @@ enum class render_format : std::uint8_t
 struct render_graph_resource_handle
 {
     static constexpr std::uint32_t invalid_index = std::numeric_limits<std::uint32_t>::max();
-    std::uint32_t index{ invalid_index };
+    std::uint32_t index{invalid_index};
 
-    constexpr bool valid() const noexcept { return index != invalid_index; }
+    constexpr bool valid() const noexcept
+    {
+        return index != invalid_index;
+    }
     friend constexpr bool operator==(render_graph_resource_handle, render_graph_resource_handle) noexcept = default;
 };
 
@@ -162,7 +165,7 @@ struct render_extent
 {
     std::uint32_t width{};
     std::uint32_t height{};
-    std::uint32_t depth{ 1 };
+    std::uint32_t depth{1};
 };
 
 /**
@@ -171,15 +174,15 @@ struct render_extent
 struct render_graph_resource
 {
     std::string name;
-    render_resource_kind kind{ render_resource_kind::unknown };
+    render_resource_kind kind{render_resource_kind::unknown};
     render_extent extent{};
-    render_extent_mode extent_mode{ render_extent_mode::relative_to_view };
-    float width_scale{ 1.0f };
-    float height_scale{ 1.0f };
-    render_format format{ render_format::unknown };
-    std::uint32_t mip_levels{ 1 };
-    std::uint32_t array_layers{ 1 };
-    std::uint32_t sample_count{ 1 };
+    render_extent_mode extent_mode{render_extent_mode::relative_to_view};
+    float width_scale{1.0f};
+    float height_scale{1.0f};
+    render_format format{render_format::unknown};
+    std::uint32_t mip_levels{1};
+    std::uint32_t array_layers{1};
+    std::uint32_t sample_count{1};
     bool imported{};
     bool persistent{};
 };
@@ -193,13 +196,13 @@ struct render_resource_access
     // Transitional label-based access for external graph producers. Compiled
     // accesses always contain both the strong handle and canonical name.
     std::string resource;
-    render_resource_kind kind{ render_resource_kind::unknown };
-    render_resource_usage usage{ render_resource_usage::unknown };
+    render_resource_kind kind{render_resource_kind::unknown};
+    render_resource_usage usage{render_resource_usage::unknown};
     bool write{};
-    render_load_op load_op{ render_load_op::load };
-    render_store_op store_op{ render_store_op::store };
+    render_load_op load_op{render_load_op::load};
+    render_store_op store_op{render_store_op::store};
     float clear_color[4]{};
-    float clear_depth{ 1.0f };
+    float clear_depth{1.0f};
 };
 
 /**
@@ -208,9 +211,9 @@ struct render_resource_access
 struct render_graph_pass
 {
     std::string name;
-    render_queue_type queue{ render_queue_type::graphics };
-    render_pass_kind kind{ render_pass_kind::custom };
-    builtin_render_pass builtin{ builtin_render_pass::none };
+    render_queue_type queue{render_queue_type::graphics};
+    render_pass_kind kind{render_pass_kind::custom};
+    builtin_render_pass builtin{builtin_render_pass::none};
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
     render_pass_record_fn record{};
@@ -224,9 +227,9 @@ struct compiled_render_pass
 {
     std::uint32_t source_index{};
     std::string name;
-    render_queue_type queue{ render_queue_type::graphics };
-    render_pass_kind kind{ render_pass_kind::custom };
-    builtin_render_pass builtin{ builtin_render_pass::none };
+    render_queue_type queue{render_queue_type::graphics};
+    render_pass_kind kind{render_pass_kind::custom};
+    builtin_render_pass builtin{builtin_render_pass::none};
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
     render_pass_record_fn record{};
@@ -240,12 +243,12 @@ struct render_resource_transition
 {
     render_graph_resource_handle handle{};
     std::string resource;
-    render_resource_usage before{ render_resource_usage::unknown };
-    render_resource_usage after{ render_resource_usage::unknown };
+    render_resource_usage before{render_resource_usage::unknown};
+    render_resource_usage after{render_resource_usage::unknown};
     std::uint32_t before_pass{};
     std::uint32_t after_pass{};
-    render_queue_type before_queue{ render_queue_type::graphics };
-    render_queue_type after_queue{ render_queue_type::graphics };
+    render_queue_type before_queue{render_queue_type::graphics};
+    render_queue_type after_queue{render_queue_type::graphics};
 };
 
 /**
@@ -254,7 +257,7 @@ struct render_resource_transition
 struct render_resource_lifetime
 {
     render_graph_resource_handle handle{};
-    std::uint32_t first_pass{ std::numeric_limits<std::uint32_t>::max() };
+    std::uint32_t first_pass{std::numeric_limits<std::uint32_t>::max()};
     std::uint32_t last_pass{};
     std::uint32_t physical_resource{};
     std::uint64_t estimated_bytes{};

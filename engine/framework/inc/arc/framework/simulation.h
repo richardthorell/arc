@@ -28,17 +28,17 @@ enum class simulation_overrun_policy : std::uint8_t
 
 struct simulation_config
 {
-    double fixed_tick_rate{ 60.0 };
-    double maximum_frame_delta_seconds{ 0.25 };
-    std::uint32_t maximum_catch_up_ticks{ 8 };
-    double time_scale{ 1.0 };
-    std::uint64_t process_seed{ 0x4152435f53454544ull };
-    simulation_overrun_policy overrun_policy{ simulation_overrun_policy::discard_excess };
+    double fixed_tick_rate{60.0};
+    double maximum_frame_delta_seconds{0.25};
+    std::uint32_t maximum_catch_up_ticks{8};
+    double time_scale{1.0};
+    std::uint64_t process_seed{0x4152435f53454544ull};
+    simulation_overrun_policy overrun_policy{simulation_overrun_policy::discard_excess};
     std::size_t snapshot_budget_bytes{};
     bool headless{};
-    bool presentation_enabled{ true };
+    bool presentation_enabled{true};
     bool allow_headless_time_controls{};
-    runtime_world_role default_world_role{ runtime_world_role::client };
+    runtime_world_role default_world_role{runtime_world_role::client};
 
     double fixed_delta_seconds() const noexcept
     {
@@ -49,21 +49,16 @@ struct simulation_config
 struct simulation_tick
 {
     simulation_tick_id id{};
-    double delta_seconds{ 1.0 / 60.0 };
+    double delta_seconds{1.0 / 60.0};
     double total_seconds{};
 };
 
 inline bool valid_simulation_config(const simulation_config& value) noexcept
 {
-    return std::isfinite(value.fixed_tick_rate) &&
-        value.fixed_tick_rate >= 1.0 &&
-        value.fixed_tick_rate <= 1000.0 &&
-        std::isfinite(value.maximum_frame_delta_seconds) &&
-        value.maximum_frame_delta_seconds > 0.0 &&
-        value.maximum_catch_up_ticks > 0 &&
-        std::isfinite(value.time_scale) &&
-        value.time_scale >= 0.0 &&
-        value.time_scale <= 16.0;
+    return std::isfinite(value.fixed_tick_rate) && value.fixed_tick_rate >= 1.0 && value.fixed_tick_rate <= 1000.0 &&
+           std::isfinite(value.maximum_frame_delta_seconds) && value.maximum_frame_delta_seconds > 0.0 &&
+           value.maximum_catch_up_ticks > 0 && std::isfinite(value.time_scale) && value.time_scale >= 0.0 &&
+           value.time_scale <= 16.0;
 }
 
 } // namespace arc::framework

@@ -91,17 +91,16 @@ class task_callable
 public:
     task_callable() = default;
 
-    template <class Function>
-    explicit task_callable(Function&& function)
+    template <class Function> explicit task_callable(Function&& function)
     {
         using stored_type = std::decay_t<Function>;
-        if constexpr (sizeof(stored_type) <= inline_capacity &&
-            alignof(stored_type) <= alignof(std::max_align_t) &&
-            std::is_nothrow_move_constructible_v<stored_type>)
+        if constexpr (sizeof(stored_type) <= inline_capacity && alignof(stored_type) <= alignof(std::max_align_t) &&
+                      std::is_nothrow_move_constructible_v<stored_type>)
         {
             new (storage_) stored_type(std::forward<Function>(function));
             object_ = storage_;
-            move_ = [](void* destination, void* source) noexcept {
+            move_ = [](void* destination, void* source) noexcept
+            {
                 new (destination) stored_type(std::move(*static_cast<stored_type*>(source)));
                 static_cast<stored_type*>(source)->~stored_type();
             };
@@ -158,8 +157,7 @@ private:
 
     void reset() noexcept
     {
-        if (object_ && destroy_)
-            destroy_(object_);
+        if (object_ && destroy_) destroy_(object_);
         object_ = nullptr;
         invoke_ = nullptr;
         destroy_ = nullptr;
@@ -202,7 +200,7 @@ private:
     bool heap_{};
 };
 
-}
+} // namespace detail
 
 class cancellation_token
 {
@@ -234,10 +232,13 @@ private:
 
 struct [[nodiscard]] job_wait_result
 {
-    job_status status{ job_status::invalid };
+    job_status status{job_status::invalid};
     std::exception_ptr exception;
 
-    bool succeeded() const noexcept { return status == job_status::succeeded; }
+    bool succeeded() const noexcept
+    {
+        return status == job_status::succeeded;
+    }
 };
 
 class job_system;
@@ -275,23 +276,23 @@ private:
 
 struct job_descriptor
 {
-    std::string_view name{ "unnamed job" };
-    job_priority priority{ job_priority::normal };
-    job_affinity affinity{ job_affinity::any_worker };
+    std::string_view name{"unnamed job"};
+    job_priority priority{job_priority::normal};
+    job_affinity affinity{job_affinity::any_worker};
     std::vector<job_handle> dependencies;
     std::span<const job_handle> dependency_view;
     job_handle parent;
     cancellation_token cancellation;
-    job_dependency_policy dependency_policy{ job_dependency_policy::cancel_on_failure };
+    job_dependency_policy dependency_policy{job_dependency_policy::cancel_on_failure};
 };
 
 struct job_profile_event
 {
     std::uint64_t sequence{};
     std::string name;
-    job_priority priority{ job_priority::normal };
-    job_affinity affinity{ job_affinity::any_worker };
-    job_status status{ job_status::invalid };
+    job_priority priority{job_priority::normal};
+    job_affinity affinity{job_affinity::any_worker};
+    job_status status{job_status::invalid};
     std::uint64_t thread_id{};
     std::uint64_t queued_nanoseconds{};
     std::uint64_t started_nanoseconds{};
@@ -320,14 +321,13 @@ struct job_system_config
 {
     std::size_t worker_count{};
     bool run_inline{};
-    std::size_t io_worker_count{ 2 };
-    bool enable_render_thread{ true };
-    std::size_t profile_event_capacity{ 8192 };
+    std::size_t io_worker_count{2};
+    bool enable_render_thread{true};
+    std::size_t profile_event_capacity{8192};
     memory::memory_system* memory{};
 };
 
-template <class T>
-class job_future
+template <class T> class job_future
 {
 private:
     struct value_state
@@ -339,10 +339,22 @@ private:
 public:
     job_future() = default;
 
-    bool valid() const noexcept { return handle_.valid(); }
-    bool ready() const { return handle_.ready(); }
-    job_status status() const noexcept { return handle_.status(); }
-    const job_handle& handle() const noexcept { return handle_; }
+    bool valid() const noexcept
+    {
+        return handle_.valid();
+    }
+    bool ready() const
+    {
+        return handle_.ready();
+    }
+    job_status status() const noexcept
+    {
+        return handle_.status();
+    }
+    const job_handle& handle() const noexcept
+    {
+        return handle_;
+    }
 
     T get() const
     {
@@ -356,7 +368,10 @@ public:
     {
         job_handle handle;
         std::shared_ptr<value_state> value;
-        bool await_ready() const { return handle.ready(); }
+        bool await_ready() const
+        {
+            return handle.ready();
+        }
         void await_suspend(std::coroutine_handle<> continuation)
         {
             handle.operator co_await().await_suspend(continuation);
@@ -368,13 +383,15 @@ public:
             return std::move(*value->value);
         }
     };
-    awaiter operator co_await() const { return { handle_, value_ }; }
+    awaiter operator co_await() const
+    {
+        return {handle_, value_};
+    }
 #endif
 
 private:
     job_future(job_handle handle, std::shared_ptr<value_state> value)
-        : handle_(std::move(handle))
-        , value_(std::move(value))
+        : handle_(std::move(handle)), value_(std::move(value))
     {
     }
 
@@ -383,21 +400,38 @@ private:
     friend class job_system;
 };
 
-template <>
-class job_future<void>
+template <> class job_future<void>
 {
 public:
     job_future() = default;
     explicit job_future(job_handle handle) : handle_(std::move(handle)) {}
 
-    bool valid() const noexcept { return handle_.valid(); }
-    bool ready() const { return handle_.ready(); }
-    job_status status() const noexcept { return handle_.status(); }
-    const job_handle& handle() const noexcept { return handle_; }
-    void get() const { handle_.wait(); }
+    bool valid() const noexcept
+    {
+        return handle_.valid();
+    }
+    bool ready() const
+    {
+        return handle_.ready();
+    }
+    job_status status() const noexcept
+    {
+        return handle_.status();
+    }
+    const job_handle& handle() const noexcept
+    {
+        return handle_;
+    }
+    void get() const
+    {
+        handle_.wait();
+    }
 
 #if defined(ARC_ENABLE_JOB_COROUTINES)
-    auto operator co_await() const noexcept { return handle_.operator co_await(); }
+    auto operator co_await() const noexcept
+    {
+        return handle_.operator co_await();
+    }
 #endif
 
 private:
@@ -405,11 +439,9 @@ private:
 };
 
 #if defined(ARC_ENABLE_JOB_COROUTINES)
-template <class T = void>
-class job_task;
+template <class T = void> class job_task;
 
-template <class T>
-class job_task
+template <class T> class job_task
 {
 public:
     struct promise_type
@@ -421,15 +453,29 @@ public:
         {
             return job_task(std::coroutine_handle<promise_type>::from_promise(*this));
         }
-        std::suspend_never initial_suspend() const noexcept { return {}; }
-        std::suspend_always final_suspend() const noexcept { return {}; }
-        void unhandled_exception() noexcept { exception = std::current_exception(); }
-        template <class Value>
-        void return_value(Value&& result) { value.emplace(std::forward<Value>(result)); }
+        std::suspend_never initial_suspend() const noexcept
+        {
+            return {};
+        }
+        std::suspend_always final_suspend() const noexcept
+        {
+            return {};
+        }
+        void unhandled_exception() noexcept
+        {
+            exception = std::current_exception();
+        }
+        template <class Value> void return_value(Value&& result)
+        {
+            value.emplace(std::forward<Value>(result));
+        }
     };
 
     job_task() = default;
-    ~job_task() { if (coroutine_) coroutine_.destroy(); }
+    ~job_task()
+    {
+        if (coroutine_) coroutine_.destroy();
+    }
     job_task(job_task&& other) noexcept : coroutine_(std::exchange(other.coroutine_, {})) {}
     job_task& operator=(job_task&& other) noexcept
     {
@@ -445,8 +491,7 @@ public:
     {
         while (coroutine_ && !coroutine_.done())
             std::this_thread::yield();
-        if (coroutine_.promise().exception)
-            std::rethrow_exception(coroutine_.promise().exception);
+        if (coroutine_.promise().exception) std::rethrow_exception(coroutine_.promise().exception);
         return std::move(*coroutine_.promise().value);
     }
 
@@ -455,8 +500,7 @@ private:
     std::coroutine_handle<promise_type> coroutine_{};
 };
 
-template <>
-class job_task<void>
+template <> class job_task<void>
 {
 public:
     struct promise_type
@@ -466,14 +510,26 @@ public:
         {
             return job_task(std::coroutine_handle<promise_type>::from_promise(*this));
         }
-        std::suspend_never initial_suspend() const noexcept { return {}; }
-        std::suspend_always final_suspend() const noexcept { return {}; }
-        void unhandled_exception() noexcept { exception = std::current_exception(); }
+        std::suspend_never initial_suspend() const noexcept
+        {
+            return {};
+        }
+        std::suspend_always final_suspend() const noexcept
+        {
+            return {};
+        }
+        void unhandled_exception() noexcept
+        {
+            exception = std::current_exception();
+        }
         void return_void() noexcept {}
     };
 
     job_task() = default;
-    ~job_task() { if (coroutine_) coroutine_.destroy(); }
+    ~job_task()
+    {
+        if (coroutine_) coroutine_.destroy();
+    }
     job_task(job_task&& other) noexcept : coroutine_(std::exchange(other.coroutine_, {})) {}
     job_task& operator=(job_task&& other) noexcept
     {
@@ -488,8 +544,7 @@ public:
     {
         while (coroutine_ && !coroutine_.done())
             std::this_thread::yield();
-        if (coroutine_.promise().exception)
-            std::rethrow_exception(coroutine_.promise().exception);
+        if (coroutine_.promise().exception) std::rethrow_exception(coroutine_.promise().exception);
     }
 
 private:
@@ -512,50 +567,39 @@ public:
     job_system(const job_system&) = delete;
     job_system& operator=(const job_system&) = delete;
 
-    template <class Function>
-    job_handle submit(Function&& function)
+    template <class Function> job_handle submit(Function&& function)
     {
         return submit({}, std::forward<Function>(function));
     }
 
-    template <class Function>
-    job_handle submit(job_descriptor descriptor, Function&& function)
+    template <class Function> job_handle submit(job_descriptor descriptor, Function&& function)
     {
         return submit_erased(std::move(descriptor), detail::task_callable(std::forward<Function>(function)), false);
     }
 
-    template <class Function>
-    job_handle submit_child(job_descriptor descriptor, Function&& function)
+    template <class Function> job_handle submit_child(job_descriptor descriptor, Function&& function)
     {
         descriptor.parent = current_job();
-        if (!descriptor.parent.valid())
-            throw std::logic_error("submit_child must be called while executing a job");
+        if (!descriptor.parent.valid()) throw std::logic_error("submit_child must be called while executing a job");
         return submit(std::move(descriptor), std::forward<Function>(function));
     }
 
-    template <class Function>
-    job_handle submit_child(Function&& function)
+    template <class Function> job_handle submit_child(Function&& function)
     {
         return submit_child({}, std::forward<Function>(function));
     }
 
-    template <class Function>
-    void dispatch(Function&& function)
+    template <class Function> void dispatch(Function&& function)
     {
         dispatch({}, std::forward<Function>(function));
     }
 
-    template <class Function>
-    void dispatch(job_descriptor descriptor, Function&& function)
+    template <class Function> void dispatch(job_descriptor descriptor, Function&& function)
     {
-        (void)submit_erased(
-            std::move(descriptor),
-            detail::task_callable(std::forward<Function>(function)),
-            true);
+        (void)submit_erased(std::move(descriptor), detail::task_callable(std::forward<Function>(function)), true);
     }
 
-    template <class Function>
-    auto submit_future(job_descriptor descriptor, Function&& function)
+    template <class Function> auto submit_future(job_descriptor descriptor, Function&& function)
     {
         using result_type = std::invoke_result_t<std::decay_t<Function>>;
         if constexpr (std::is_void_v<result_type>)
@@ -566,20 +610,18 @@ public:
         {
             using future_type = job_future<result_type>;
             auto value = std::make_shared<typename future_type::value_state>();
-            auto handle = submit(std::move(descriptor), [
-                function = std::forward<Function>(function),
-                value
-            ]() mutable {
-                result_type result = std::invoke(function);
-                std::lock_guard lock(value->mutex);
-                value->value.emplace(std::move(result));
-            });
+            auto handle = submit(std::move(descriptor),
+                                 [function = std::forward<Function>(function), value]() mutable
+                                 {
+                                     result_type result = std::invoke(function);
+                                     std::lock_guard lock(value->mutex);
+                                     value->value.emplace(std::move(result));
+                                 });
             return future_type(std::move(handle), std::move(value));
         }
     }
 
-    template <class Function>
-    auto submit_future(Function&& function)
+    template <class Function> auto submit_future(Function&& function)
     {
         return submit_future({}, std::forward<Function>(function));
     }
@@ -589,20 +631,16 @@ public:
     template <class Function>
     void parallel_for(std::size_t begin, std::size_t end, std::size_t grain_size, Function&& function)
     {
-        if (begin >= end)
-            return;
+        if (begin >= end) return;
         grain_size = std::max<std::size_t>(grain_size, 1);
         std::vector<job_handle> handles;
         handles.reserve((end - begin + grain_size - 1) / grain_size);
         for (std::size_t chunk_begin = begin; chunk_begin < end; chunk_begin += grain_size)
         {
             const std::size_t chunk_end = std::min(end, chunk_begin + grain_size);
-            handles.push_back(submit({
-                .name = "parallel_for",
-                .priority = job_priority::normal
-            }, [chunk_begin, chunk_end, &function]() {
-                std::invoke(function, chunk_begin, chunk_end);
-            }));
+            handles.push_back(submit({.name = "parallel_for", .priority = job_priority::normal},
+                                     [chunk_begin, chunk_end, &function]()
+                                     { std::invoke(function, chunk_begin, chunk_end); }));
         }
         wait_all(handles);
     }
@@ -622,16 +660,14 @@ public:
 private:
     job_handle submit_erased(job_descriptor descriptor, detail::task_callable function, bool detached);
     job_wait_result wait_for(const std::shared_ptr<detail::job_state>& state) const noexcept;
-    void add_coroutine_continuation(
-        const std::shared_ptr<detail::job_state>& state,
-        std::coroutine_handle<> continuation);
+    void add_coroutine_continuation(const std::shared_ptr<detail::job_state>& state,
+                                    std::coroutine_handle<> continuation);
 
     std::unique_ptr<implementation> implementation_;
     friend class job_handle;
 };
 
-template <class Function>
-job_handle submit(job_system& jobs, Function&& function)
+template <class Function> job_handle submit(job_system& jobs, Function&& function)
 {
     return jobs.submit(std::forward<Function>(function));
 }

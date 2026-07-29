@@ -22,6 +22,7 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 add_executable(arc_ecs_tests ${TEST_SOURCES})
+arc_configure_first_party_target(arc_ecs_tests)
 target_link_libraries(arc_ecs_tests PRIVATE arc-ecs Catch2::Catch2WithMain)
 
 include(Catch)

@@ -15,7 +15,7 @@ namespace arc::ecs
 struct prefab_component_record
 {
     component_type_id type{};
-    std::uint32_t schema_version{ 1 };
+    std::uint32_t schema_version{1};
     std::vector<std::byte> payload;
 };
 
@@ -30,7 +30,7 @@ struct prefab_entity_record
 struct prefab_asset
 {
     static constexpr std::uint32_t current_format_version = 2;
-    std::uint32_t format_version{ current_format_version };
+    std::uint32_t format_version{current_format_version};
     entity_guid guid{};
     std::string name;
     std::string project_relative_path;
@@ -51,7 +51,7 @@ struct prefab_override_key
     entity_guid source_entity{};
     component_type_id component{};
     component_field_id field{};
-    prefab_override_kind kind{ prefab_override_kind::field };
+    prefab_override_kind kind{prefab_override_kind::field};
 
     friend bool operator==(const prefab_override_key&, const prefab_override_key&) = default;
 };
@@ -72,30 +72,28 @@ struct prefab_instance_component
     bool source_missing{};
 };
 
-template <>
-struct component_traits<prefab_instance_component>
+template <> struct component_traits<prefab_instance_component>
 {
     static constexpr bool reflected = true;
     static constexpr std::string_view canonical_name = "arc.ecs.prefab_instance";
-    static constexpr component_type_id id{ 0xa7c0000000000000ull, 0x0000000000000003ull };
-    static constexpr std::array<component_field_descriptor, 6> fields{{
-        { 1, "prefab_guid", "Prefab GUID", reflected_field_kind::structure,
-            reflected_field_flags::serialized },
-        { 2, "prefab_path", "Prefab", reflected_field_kind::asset_reference,
-            reflected_field_flags::serialized | reflected_field_flags::editable },
-        { 3, "source_root", "Source Root", reflected_field_kind::structure,
-            reflected_field_flags::serialized },
-        { 4, "source_to_instance", "Entity Mapping", reflected_field_kind::sequence,
-            reflected_field_flags::serialized },
-        { 5, "overrides", "Overrides", reflected_field_kind::sequence,
-            reflected_field_flags::serialized },
-        { 6, "source_missing", "Source Missing", reflected_field_kind::boolean,
-            reflected_field_flags::transient }
-    }};
-    static constexpr component_descriptor descriptor{
-        id, canonical_name, "Prefab Instance", 1, sizeof(prefab_instance_component),
-        alignof(prefab_instance_component), fields, true, false
-    };
+    static constexpr component_type_id id{0xa7c0000000000000ull, 0x0000000000000003ull};
+    static constexpr std::array<component_field_descriptor, 6> fields{
+        {{1, "prefab_guid", "Prefab GUID", reflected_field_kind::structure, reflected_field_flags::serialized},
+         {2, "prefab_path", "Prefab", reflected_field_kind::asset_reference,
+          reflected_field_flags::serialized | reflected_field_flags::editable},
+         {3, "source_root", "Source Root", reflected_field_kind::structure, reflected_field_flags::serialized},
+         {4, "source_to_instance", "Entity Mapping", reflected_field_kind::sequence, reflected_field_flags::serialized},
+         {5, "overrides", "Overrides", reflected_field_kind::sequence, reflected_field_flags::serialized},
+         {6, "source_missing", "Source Missing", reflected_field_kind::boolean, reflected_field_flags::transient}}};
+    static constexpr component_descriptor descriptor{id,
+                                                     canonical_name,
+                                                     "Prefab Instance",
+                                                     1,
+                                                     sizeof(prefab_instance_component),
+                                                     alignof(prefab_instance_component),
+                                                     fields,
+                                                     true,
+                                                     false};
 };
 
 struct [[nodiscard]] prefab_propagation_result
@@ -106,16 +104,16 @@ struct [[nodiscard]] prefab_propagation_result
     std::size_t overrides_preserved{};
     std::vector<std::string> diagnostics;
 
-    bool succeeded() const noexcept { return diagnostics.empty(); }
+    bool succeeded() const noexcept
+    {
+        return diagnostics.empty();
+    }
 };
 
-inline bool has_prefab_override(
-    const prefab_instance_component& instance,
-    const prefab_override_key& key) noexcept
+inline bool has_prefab_override(const prefab_instance_component& instance, const prefab_override_key& key) noexcept
 {
     for (const prefab_override& override_value : instance.overrides)
-        if (override_value.key == key)
-            return true;
+        if (override_value.key == key) return true;
     return false;
 }
 
@@ -133,14 +131,11 @@ inline bool set_prefab_override(prefab_instance_component& instance, prefab_over
     return true;
 }
 
-inline bool revert_prefab_override(
-    prefab_instance_component& instance,
-    const prefab_override_key& key)
+inline bool revert_prefab_override(prefab_instance_component& instance, const prefab_override_key& key)
 {
     const auto found = std::find_if(instance.overrides.begin(), instance.overrides.end(),
-        [&key](const prefab_override& value) { return value.key == key; });
-    if (found == instance.overrides.end())
-        return false;
+                                    [&key](const prefab_override& value) { return value.key == key; });
+    if (found == instance.overrides.end()) return false;
     instance.overrides.erase(found);
     return true;
 }

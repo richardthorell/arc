@@ -5,6 +5,7 @@ endif()
 add_library(arc-platform-windows STATIC
     src/windows_entry.cpp
 )
+arc_configure_first_party_target(arc-platform-windows)
 
 target_compile_features(arc-platform-windows
     PUBLIC
@@ -42,6 +43,7 @@ function(arc_add_windows_app)
     add_executable(${ARC_WINDOWS_APP_NAME} WIN32
         ${ARC_WINDOWS_APP_SOURCES}
     )
+    arc_configure_first_party_target(${ARC_WINDOWS_APP_NAME})
 
     target_compile_features(${ARC_WINDOWS_APP_NAME}
         PRIVATE

@@ -6,8 +6,7 @@ namespace arc::simd
 {
 
 #if defined(ARC_SIMD_NEON)
-template <>
-struct simd_op<float32x4_t>
+template <> struct simd_op<float32x4_t>
 {
     static inline float32x4_t load_aligned(const float* ptr) noexcept
     {
@@ -43,15 +42,18 @@ struct simd_op<float32x4_t>
     {
         switch (index)
         {
-        case 0: return vdupq_n_f32(vgetq_lane_f32(value, 0));
-        case 1: return vdupq_n_f32(vgetq_lane_f32(value, 1));
-        case 2: return vdupq_n_f32(vgetq_lane_f32(value, 2));
-        default: return vdupq_n_f32(vgetq_lane_f32(value, 3));
+            case 0:
+                return vdupq_n_f32(vgetq_lane_f32(value, 0));
+            case 1:
+                return vdupq_n_f32(vgetq_lane_f32(value, 1));
+            case 2:
+                return vdupq_n_f32(vgetq_lane_f32(value, 2));
+            default:
+                return vdupq_n_f32(vgetq_lane_f32(value, 3));
         }
     }
 
-    template <std::size_t I>
-    static inline float extract(float32x4_t value) noexcept
+    template <std::size_t I> static inline float extract(float32x4_t value) noexcept
     {
         return vgetq_lane_f32(value, I);
     }
@@ -60,15 +62,18 @@ struct simd_op<float32x4_t>
     {
         switch (index)
         {
-        case 0: return vsetq_lane_f32(element, value, 0);
-        case 1: return vsetq_lane_f32(element, value, 1);
-        case 2: return vsetq_lane_f32(element, value, 2);
-        default: return vsetq_lane_f32(element, value, 3);
+            case 0:
+                return vsetq_lane_f32(element, value, 0);
+            case 1:
+                return vsetq_lane_f32(element, value, 1);
+            case 2:
+                return vsetq_lane_f32(element, value, 2);
+            default:
+                return vsetq_lane_f32(element, value, 3);
         }
     }
 
-    template <std::size_t I>
-    static inline float32x4_t insert(float32x4_t value, float element) noexcept
+    template <std::size_t I> static inline float32x4_t insert(float32x4_t value, float element) noexcept
     {
         return vsetq_lane_f32(element, value, I);
     }
@@ -232,9 +237,7 @@ struct simd_op<float32x4_t>
     }
 };
 
-
-template <>
-struct simd_op<int32x4_t>
+template <> struct simd_op<int32x4_t>
 {
     static inline int32x4_t load_aligned(const int32_t* ptr) noexcept
     {
@@ -270,15 +273,18 @@ struct simd_op<int32x4_t>
     {
         switch (index)
         {
-        case 0: return vdupq_n_s32(vgetq_lane_s32(value, 0));
-        case 1: return vdupq_n_s32(vgetq_lane_s32(value, 1));
-        case 2: return vdupq_n_s32(vgetq_lane_s32(value, 2));
-        default: return vdupq_n_s32(vgetq_lane_s32(value, 3));
+            case 0:
+                return vdupq_n_s32(vgetq_lane_s32(value, 0));
+            case 1:
+                return vdupq_n_s32(vgetq_lane_s32(value, 1));
+            case 2:
+                return vdupq_n_s32(vgetq_lane_s32(value, 2));
+            default:
+                return vdupq_n_s32(vgetq_lane_s32(value, 3));
         }
     }
 
-    template <std::size_t I>
-    static inline int32_t extract(int32x4_t value) noexcept
+    template <std::size_t I> static inline int32_t extract(int32x4_t value) noexcept
     {
         return vgetq_lane_s32(value, I);
     }
@@ -287,15 +293,18 @@ struct simd_op<int32x4_t>
     {
         switch (index)
         {
-        case 0: return vsetq_lane_s32(element, value, 0);
-        case 1: return vsetq_lane_s32(element, value, 1);
-        case 2: return vsetq_lane_s32(element, value, 2);
-        default: return vsetq_lane_s32(element, value, 3);
+            case 0:
+                return vsetq_lane_s32(element, value, 0);
+            case 1:
+                return vsetq_lane_s32(element, value, 1);
+            case 2:
+                return vsetq_lane_s32(element, value, 2);
+            default:
+                return vsetq_lane_s32(element, value, 3);
         }
     }
 
-    template <std::size_t I>
-    static inline int32x4_t insert(int32x4_t value, int32_t element) noexcept
+    template <std::size_t I> static inline int32x4_t insert(int32x4_t value, int32_t element) noexcept
     {
         return vsetq_lane_s32(element, value, I);
     }
@@ -416,8 +425,7 @@ struct simd_op<int32x4_t>
     }
 };
 
-template <>
-struct simd_op<uint32x4_t>
+template <> struct simd_op<uint32x4_t>
 {
     static inline uint32x4_t load_aligned(const uint32_t* ptr) noexcept
     {
@@ -453,15 +461,18 @@ struct simd_op<uint32x4_t>
     {
         switch (index)
         {
-        case 0: return vdupq_n_u32(vgetq_lane_u32(value, 0));
-        case 1: return vdupq_n_u32(vgetq_lane_u32(value, 1));
-        case 2: return vdupq_n_u32(vgetq_lane_u32(value, 2));
-        default: return vdupq_n_u32(vgetq_lane_u32(value, 3));
+            case 0:
+                return vdupq_n_u32(vgetq_lane_u32(value, 0));
+            case 1:
+                return vdupq_n_u32(vgetq_lane_u32(value, 1));
+            case 2:
+                return vdupq_n_u32(vgetq_lane_u32(value, 2));
+            default:
+                return vdupq_n_u32(vgetq_lane_u32(value, 3));
         }
     }
 
-    template <std::size_t I>
-    static inline uint32_t extract(uint32x4_t value) noexcept
+    template <std::size_t I> static inline uint32_t extract(uint32x4_t value) noexcept
     {
         return vgetq_lane_u32(value, I);
     }
@@ -470,15 +481,18 @@ struct simd_op<uint32x4_t>
     {
         switch (index)
         {
-        case 0: return vsetq_lane_u32(element, value, 0);
-        case 1: return vsetq_lane_u32(element, value, 1);
-        case 2: return vsetq_lane_u32(element, value, 2);
-        default: return vsetq_lane_u32(element, value, 3);
+            case 0:
+                return vsetq_lane_u32(element, value, 0);
+            case 1:
+                return vsetq_lane_u32(element, value, 1);
+            case 2:
+                return vsetq_lane_u32(element, value, 2);
+            default:
+                return vsetq_lane_u32(element, value, 3);
         }
     }
 
-    template <std::size_t I>
-    static inline uint32x4_t insert(uint32x4_t value, uint32_t element) noexcept
+    template <std::size_t I> static inline uint32x4_t insert(uint32x4_t value, uint32_t element) noexcept
     {
         return vsetq_lane_u32(element, value, I);
     }
@@ -605,10 +619,8 @@ struct simd_op<uint32x4_t>
 };
 #endif
 
-
 #if defined(ARC_SIMD_NEON_FP64)
-template <>
-struct simd_op<float64x2_t>
+template <> struct simd_op<float64x2_t>
 {
     static inline float64x2_t load_aligned(const double* ptr) noexcept
     {
@@ -644,13 +656,14 @@ struct simd_op<float64x2_t>
     {
         switch (index)
         {
-        case 0: return vdupq_n_f64(vgetq_lane_f64(value, 0));
-        default: return vdupq_n_f64(vgetq_lane_f64(value, 1));
+            case 0:
+                return vdupq_n_f64(vgetq_lane_f64(value, 0));
+            default:
+                return vdupq_n_f64(vgetq_lane_f64(value, 1));
         }
     }
 
-    template <std::size_t I>
-    static inline double extract(float64x2_t value) noexcept
+    template <std::size_t I> static inline double extract(float64x2_t value) noexcept
     {
         return vgetq_lane_f64(value, I);
     }
@@ -659,13 +672,14 @@ struct simd_op<float64x2_t>
     {
         switch (index)
         {
-        case 0: return vsetq_lane_f64(element, value, 0);
-        default: return vsetq_lane_f64(element, value, 1);
+            case 0:
+                return vsetq_lane_f64(element, value, 0);
+            default:
+                return vsetq_lane_f64(element, value, 1);
         }
     }
 
-    template <std::size_t I>
-    static inline float64x2_t insert(float64x2_t value, double element) noexcept
+    template <std::size_t I> static inline float64x2_t insert(float64x2_t value, double element) noexcept
     {
         return vsetq_lane_f64(element, value, I);
     }

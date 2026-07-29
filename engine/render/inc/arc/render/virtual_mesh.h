@@ -25,7 +25,7 @@ struct virtual_mesh_cluster
     std::uint32_t triangle_count{};
     std::uint32_t first_vertex{};
     std::uint32_t vertex_count{};
-    std::size_t material_index{ std::numeric_limits<std::size_t>::max() };
+    std::size_t material_index{std::numeric_limits<std::size_t>::max()};
     math::vector3f bounds_min{};
     math::vector3f bounds_max{};
     math::vector3f sphere_center{};
@@ -66,7 +66,7 @@ struct virtual_mesh_build_stats
  */
 struct virtual_mesh_build_options
 {
-    std::uint32_t max_triangles_per_cluster{ 128 };
+    std::uint32_t max_triangles_per_cluster{128};
 };
 
 /**

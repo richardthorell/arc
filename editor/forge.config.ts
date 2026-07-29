@@ -6,18 +6,19 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 
+const bundledHost = process.env.ARC_PACKAGED_HOST_PATH;
+if (process.env.ARC_REQUIRE_PACKAGED_HOST === '1' && !bundledHost) {
+  throw new Error('ARC_PACKAGED_HOST_PATH is required for packaged editor builds');
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'arc-editor',
+    extraResource: bundledHost ? [bundledHost] : [],
   },
   rebuildConfig: {},
-  makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
-    new MakerDeb({}),
-    new MakerRpm({}),
-  ],
+  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerDeb({}), new MakerRpm({})],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({

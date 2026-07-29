@@ -17,7 +17,7 @@ namespace arc::editor
  */
 struct console_log_entry
 {
-    diagnostics::log_level level{ diagnostics::log_level::info };
+    diagnostics::log_level level{diagnostics::log_level::info};
     std::string category;
     std::string message;
     std::chrono::system_clock::time_point timestamp{};

@@ -10,8 +10,7 @@ namespace arc::geometric
  *
  * Points on the line are sampled as `origin + direction * t`.
  */
-template <class T, std::size_t N>
-struct line
+template <class T, std::size_t N> struct line
 {
     /// @brief Scalar coordinate type.
     using value_type = T;
@@ -27,8 +26,7 @@ struct line
     constexpr line() noexcept = default;
     /// @brief Construct from an origin point and direction vector.
     constexpr line(const point<T, N>& origin_value, const arc::math::vector<T, N>& direction_value) noexcept
-        : origin(origin_value)
-        , direction(direction_value)
+        : origin(origin_value), direction(direction_value)
     {
     }
 };
@@ -39,8 +37,7 @@ struct line
  * Points on the ray are sampled as `origin + direction * t`; callers should use
  * non-negative `t` for the conventional ray domain.
  */
-template <class T, std::size_t N>
-struct ray
+template <class T, std::size_t N> struct ray
 {
     /// @brief Scalar coordinate type.
     using value_type = T;
@@ -56,8 +53,7 @@ struct ray
     constexpr ray() noexcept = default;
     /// @brief Construct from an origin point and direction vector.
     constexpr ray(const point<T, N>& origin_value, const arc::math::vector<T, N>& direction_value) noexcept
-        : origin(origin_value)
-        , direction(direction_value)
+        : origin(origin_value), direction(direction_value)
     {
     }
 };
@@ -68,8 +64,7 @@ struct ray
  * Points on the segment are sampled as `start + (end - start) * t`; callers
  * should use `0 <= t <= 1` for the conventional segment domain.
  */
-template <class T, std::size_t N>
-struct segment
+template <class T, std::size_t N> struct segment
 {
     /// @brief Scalar coordinate type.
     using value_type = T;
@@ -85,8 +80,7 @@ struct segment
     constexpr segment() noexcept = default;
     /// @brief Construct from start and end points.
     constexpr segment(const point<T, N>& start_value, const point<T, N>& end_value) noexcept
-        : start(start_value)
-        , end(end_value)
+        : start(start_value), end(end_value)
     {
     }
 };

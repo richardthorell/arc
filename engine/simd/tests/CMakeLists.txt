@@ -29,6 +29,7 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.
 
 # Define test executable
 add_executable(arc_simd_tests ${TEST_SOURCES})
+arc_configure_first_party_target(arc_simd_tests)
 target_link_libraries(arc_simd_tests PRIVATE arc-simd Catch2::Catch2WithMain)
 
 # Enable test discovery

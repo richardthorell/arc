@@ -43,13 +43,11 @@ int main(int argc, char** argv)
             options.enable_debug_time_controls = true;
         else if (argument == "--ticks" && index + 1 < argc)
         {
-            if (!parse_u64(argv[++index], options.maximum_ticks))
-                return 2;
+            if (!parse_u64(argv[++index], options.maximum_ticks)) return 2;
         }
         else if (argument == "--seed" && index + 1 < argc)
         {
-            if (!parse_u64(argv[++index], options.seed))
-                return 2;
+            if (!parse_u64(argv[++index], options.seed)) return 2;
         }
         else
         {

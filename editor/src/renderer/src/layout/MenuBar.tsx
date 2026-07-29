@@ -14,7 +14,7 @@ type MenuBarProps = {
 };
 
 const menuItems = ['File', 'Edit', 'View', 'Scene', 'Render', 'Tools', 'Window', 'Help'] as const;
-type MenuItem = typeof menuItems[number];
+type MenuItem = (typeof menuItems)[number];
 
 type MenuCommand = { label: string; command: CommandId; shortcut?: string; disabled?: boolean };
 
@@ -27,12 +27,17 @@ const baseMenuCommands: Partial<Record<MenuItem, MenuCommand[]>> = {
     { label: 'Import Scene Into Current...', command: 'file.importScene' },
   ],
   Edit: [],
-  Window: [
-    { label: 'Reset Layout', command: 'layout.reset' },
-  ],
+  Window: [{ label: 'Reset Layout', command: 'layout.reset' }],
 };
 
-export function MenuBar({ projectTitle, onCommand, canUndo = false, canRedo = false, undoLabel, redoLabel }: MenuBarProps) {
+export function MenuBar({
+  projectTitle,
+  onCommand,
+  canUndo = false,
+  canRedo = false,
+  undoLabel,
+  redoLabel,
+}: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuItem | null>(null);
   const menuRef = useRef<HTMLElement | null>(null);
 
@@ -82,7 +87,7 @@ export function MenuBar({ projectTitle, onCommand, canUndo = false, canRedo = fa
                 <UiButton
                   aria-expanded={expanded}
                   aria-haspopup={commands ? 'menu' : undefined}
-                  onClick={() => commands ? setOpenMenu(expanded ? null : item) : setOpenMenu(null)}
+                  onClick={() => (commands ? setOpenMenu(expanded ? null : item) : setOpenMenu(null))}
                   variant="ghost"
                 >
                   {item}
@@ -90,8 +95,15 @@ export function MenuBar({ projectTitle, onCommand, canUndo = false, canRedo = fa
                 {commands && expanded && (
                   <div className="menu-dropdown" role="menu">
                     {commands.map((entry) => (
-                      <UiButton disabled={entry.disabled} key={entry.command} role="menuitem" onClick={() => runMenuCommand(entry.command)} variant="ghost">
-                        <span>{entry.label}</span>{entry.shortcut && <small>{entry.shortcut}</small>}
+                      <UiButton
+                        disabled={entry.disabled}
+                        key={entry.command}
+                        role="menuitem"
+                        onClick={() => runMenuCommand(entry.command)}
+                        variant="ghost"
+                      >
+                        <span>{entry.label}</span>
+                        {entry.shortcut && <small>{entry.shortcut}</small>}
                       </UiButton>
                     ))}
                   </div>

@@ -104,16 +104,16 @@ enum class shadow_filter : std::uint8_t
  */
 struct shadow_settings
 {
-    bool enabled{ true };
-    std::uint32_t resolution{ 2048 };
-    float bias{ 0.0015f };
-    float normal_bias{ 0.01f };
-    float strength{ 0.75f };
-    shadow_filter filter{ shadow_filter::pcf_3x3 };
-    std::uint16_t priority{ 128 };
-    bool contact_shadows{ true };
-    float contact_shadow_length{ 0.5f };
-    shadow_cache_mode cache_mode{ shadow_cache_mode::automatic };
+    bool enabled{true};
+    std::uint32_t resolution{2048};
+    float bias{0.0015f};
+    float normal_bias{0.01f};
+    float strength{0.75f};
+    shadow_filter filter{shadow_filter::pcf_3x3};
+    std::uint16_t priority{128};
+    bool contact_shadows{true};
+    float contact_shadow_length{0.5f};
+    shadow_cache_mode cache_mode{shadow_cache_mode::automatic};
 };
 
 /**
@@ -194,22 +194,22 @@ struct draw_mesh_event
 {
     mesh_handle mesh{};
     material_handle material{};
-    math::matrix4f model{ math::identity<float, 4>() };
-    math::matrix4f previous_model{ math::identity<float, 4>() };
-    math::matrix4f view_projection{ math::identity<float, 4>() };
-    math::matrix4f previous_view_projection{ math::identity<float, 4>() };
+    math::matrix4f model{math::identity<float, 4>()};
+    math::matrix4f previous_model{math::identity<float, 4>()};
+    math::matrix4f view_projection{math::identity<float, 4>()};
+    math::matrix4f previous_view_projection{math::identity<float, 4>()};
     geometric::box3f world_bounds{};
-    render_mode mode{ render_mode::shaded };
-    mesh_visualization_mode visualization{ mesh_visualization_mode::standard };
+    render_mode mode{render_mode::shaded};
+    mesh_visualization_mode visualization{mesh_visualization_mode::standard};
     render_object_id object_id{};
     bool selected{};
-    bool casts_shadows{ true };
-    bool receives_shadows{ true };
-    render_mobility mobility{ render_mobility::movable };
+    bool casts_shadows{true};
+    bool receives_shadows{true};
+    render_mobility mobility{render_mobility::movable};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
     math::vector4f base_color_tint = math::vector4f::one;
-    math::vector4f wire_color{ 0.25f, 0.65f, 1.0f, 1.0f };
+    math::vector4f wire_color{0.25f, 0.65f, 1.0f, 1.0f};
     std::string label;
 };
 
@@ -219,18 +219,18 @@ struct draw_mesh_event
 struct directional_light_event
 {
     render_object_id object_id{};
-    math::vector3f direction{ 0.0f, -1.0f, 0.0f };
+    math::vector3f direction{0.0f, -1.0f, 0.0f};
     math::vector3f color = math::vector3f::one;
-    float intensity{ 1.0f };
+    float intensity{1.0f};
     bool casts_shadows{};
-    bool enabled{ true };
+    bool enabled{true};
     bool use_color_temperature{};
-    float temperature_kelvin{ 6500.0f };
+    float temperature_kelvin{6500.0f};
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
     shadow_settings shadow{};
     directional_shadow_settings cascades{};
-    render_mobility mobility{ render_mobility::movable };
+    render_mobility mobility{render_mobility::movable};
     std::string label;
 };
 
@@ -242,16 +242,16 @@ struct point_light_event
     render_object_id object_id{};
     math::vector3f position{};
     math::vector3f color = math::vector3f::one;
-    float intensity{ 1.0f };
-    float range{ 10.0f };
+    float intensity{1.0f};
+    float range{10.0f};
     bool casts_shadows{};
-    bool enabled{ true };
+    bool enabled{true};
     bool use_color_temperature{};
-    float temperature_kelvin{ 6500.0f };
+    float temperature_kelvin{6500.0f};
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
-    shadow_settings shadow{ .enabled = false };
-    render_mobility mobility{ render_mobility::movable };
+    shadow_settings shadow{.enabled = false};
+    render_mobility mobility{render_mobility::movable};
     std::string label;
 };
 
@@ -262,20 +262,20 @@ struct spot_light_event
 {
     render_object_id object_id{};
     math::vector3f position{};
-    math::vector3f direction{ 0.0f, -1.0f, 0.0f };
+    math::vector3f direction{0.0f, -1.0f, 0.0f};
     math::vector3f color = math::vector3f::one;
-    float intensity{ 1.0f };
-    float range{ 10.0f };
-    float inner_angle{ 0.35f };
-    float outer_angle{ 0.75f };
+    float intensity{1.0f};
+    float range{10.0f};
+    float inner_angle{0.35f};
+    float outer_angle{0.75f};
     bool casts_shadows{};
-    bool enabled{ true };
+    bool enabled{true};
     bool use_color_temperature{};
-    float temperature_kelvin{ 6500.0f };
+    float temperature_kelvin{6500.0f};
     light_intensity_unit intensity_unit{};
     texture_handle cookie_texture{};
-    shadow_settings shadow{ .enabled = false };
-    render_mobility mobility{ render_mobility::movable };
+    shadow_settings shadow{.enabled = false};
+    render_mobility mobility{render_mobility::movable};
     std::string label;
 };
 
@@ -286,21 +286,21 @@ struct area_light_event
 {
     render_object_id object_id{};
     math::vector3f position{};
-    math::vector3f direction{ 0.0f, -1.0f, 0.0f };
-    math::vector3f tangent{ 1.0f, 0.0f, 0.0f };
+    math::vector3f direction{0.0f, -1.0f, 0.0f};
+    math::vector3f tangent{1.0f, 0.0f, 0.0f};
     math::vector3f color = math::vector3f::one;
-    float intensity{ 100.0f };
-    float width{ 1.0f };
-    float height{ 1.0f };
+    float intensity{100.0f};
+    float width{1.0f};
+    float height{1.0f};
     area_light_shape shape{};
     bool two_sided{};
     bool casts_shadows{};
-    bool enabled{ true };
+    bool enabled{true};
     bool use_color_temperature{};
-    float temperature_kelvin{ 6500.0f };
+    float temperature_kelvin{6500.0f};
     light_intensity_unit intensity_unit{};
-    shadow_settings shadow{ .enabled = false };
-    render_mobility mobility{ render_mobility::movable };
+    shadow_settings shadow{.enabled = false};
+    render_mobility mobility{render_mobility::movable};
     std::string label;
 };
 
@@ -321,29 +321,18 @@ struct render_world_event
     std::string label;
 };
 
-using render_event_payload = std::variant<
-    mesh_upload_event,
-    mesh_destroy_event,
-    virtual_mesh_upload_event,
-    texture_upload_event,
-    material_upload_event,
-    environment_upload_event,
-    environment_destroy_event,
-    viewport_resize_event,
-    draw_mesh_event,
-    directional_light_event,
-    point_light_event,
-    spot_light_event,
-    area_light_event,
-    render_world_event,
-    debug_marker_event>;
+using render_event_payload =
+    std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, texture_upload_event,
+                 material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event,
+                 draw_mesh_event, directional_light_event, point_light_event, spot_light_event, area_light_event,
+                 render_world_event, debug_marker_event>;
 
 /**
  * @brief Thread-producible typed render event.
  */
 struct render_event
 {
-    render_event_payload payload{ debug_marker_event{} };
+    render_event_payload payload{debug_marker_event{}};
 
     /**
      * @brief Return the event kind without exposing variant internals.
@@ -410,10 +399,8 @@ public:
     /**
      * @brief Append a virtual mesh upload request.
      */
-    void virtual_mesh_upload(
-        virtual_mesh_handle handle,
-        std::shared_ptr<const virtual_mesh_data> mesh,
-        std::string label = {});
+    void virtual_mesh_upload(virtual_mesh_handle handle, std::shared_ptr<const virtual_mesh_data> mesh,
+                             std::string label = {});
 
     /**
      * @brief Append a texture upload request.
@@ -423,12 +410,14 @@ public:
     /**
      * @brief Append a material upload request.
      */
-    void material_upload(material_handle handle, std::shared_ptr<const material_descriptor> material, std::string label = {});
+    void material_upload(material_handle handle, std::shared_ptr<const material_descriptor> material,
+                         std::string label = {});
 
     /**
      * @brief Append an environment upload request.
      */
-    void environment_upload(environment_handle handle, std::shared_ptr<const environment_descriptor> environment, std::string label = {});
+    void environment_upload(environment_handle handle, std::shared_ptr<const environment_descriptor> environment,
+                            std::string label = {});
 
     /** @brief Append an environment retirement request. */
     void environment_destroy(environment_handle handle);
@@ -436,115 +425,62 @@ public:
     /**
      * @brief Append a static mesh draw request.
      */
-    void draw_mesh(
-        mesh_handle mesh,
-        material_handle material,
-        const math::matrix4f& model,
-        const math::matrix4f& view_projection,
-        std::string label);
+    void draw_mesh(mesh_handle mesh, material_handle material, const math::matrix4f& model,
+                   const math::matrix4f& view_projection, std::string label);
 
     /**
      * @brief Append a static mesh draw request with editor render state.
      */
-    void draw_mesh(
-        mesh_handle mesh,
-        material_handle material,
-        const math::matrix4f& model,
-        const math::matrix4f& view_projection,
-        render_mode mode = render_mode::shaded,
-        mesh_visualization_mode visualization = mesh_visualization_mode::standard,
-        bool selected = false,
-        const math::vector4f& wire_color = math::vector4f{ 0.25f, 0.65f, 1.0f, 1.0f },
-        std::string label = {});
+    void draw_mesh(mesh_handle mesh, material_handle material, const math::matrix4f& model,
+                   const math::matrix4f& view_projection, render_mode mode = render_mode::shaded,
+                   mesh_visualization_mode visualization = mesh_visualization_mode::standard, bool selected = false,
+                   const math::vector4f& wire_color = math::vector4f{0.25f, 0.65f, 1.0f, 1.0f}, std::string label = {});
 
     /**
      * @brief Append a static mesh draw request with editor render state and entity tint.
      */
-    void draw_mesh_tinted(
-        mesh_handle mesh,
-        material_handle material,
-        const math::matrix4f& model,
-        const math::matrix4f& view_projection,
-        render_mode mode = render_mode::shaded,
-        mesh_visualization_mode visualization = mesh_visualization_mode::standard,
-        bool selected = false,
-        const math::vector4f& base_color_tint = math::vector4f::one,
-        const math::vector4f& wire_color = math::vector4f{ 0.25f, 0.65f, 1.0f, 1.0f },
-        std::string label = {});
+    void draw_mesh_tinted(mesh_handle mesh, material_handle material, const math::matrix4f& model,
+                          const math::matrix4f& view_projection, render_mode mode = render_mode::shaded,
+                          mesh_visualization_mode visualization = mesh_visualization_mode::standard,
+                          bool selected = false, const math::vector4f& base_color_tint = math::vector4f::one,
+                          const math::vector4f& wire_color = math::vector4f{0.25f, 0.65f, 1.0f, 1.0f},
+                          std::string label = {});
 
     /**
      * @brief Append a directional light.
      */
-    void directional_light(
-        const math::vector3f& direction,
-        const math::vector3f& color,
-        float intensity,
-        bool casts_shadows,
-        std::string label = {},
-        bool enabled = true,
-        bool use_color_temperature = false,
-        float temperature_kelvin = 6500.0f,
-        light_intensity_unit intensity_unit = {},
-        texture_handle cookie_texture = {},
-        shadow_settings shadow = {});
+    void directional_light(const math::vector3f& direction, const math::vector3f& color, float intensity,
+                           bool casts_shadows, std::string label = {}, bool enabled = true,
+                           bool use_color_temperature = false, float temperature_kelvin = 6500.0f,
+                           light_intensity_unit intensity_unit = {}, texture_handle cookie_texture = {},
+                           shadow_settings shadow = {});
 
     /**
      * @brief Append a point light.
      */
-    void point_light(
-        const math::vector3f& position,
-        const math::vector3f& color,
-        float intensity,
-        float range,
-        bool casts_shadows,
-        std::string label = {},
-        bool enabled = true,
-        bool use_color_temperature = false,
-        float temperature_kelvin = 6500.0f,
-        light_intensity_unit intensity_unit = {},
-        texture_handle cookie_texture = {},
-        shadow_settings shadow = { .enabled = false });
+    void point_light(const math::vector3f& position, const math::vector3f& color, float intensity, float range,
+                     bool casts_shadows, std::string label = {}, bool enabled = true,
+                     bool use_color_temperature = false, float temperature_kelvin = 6500.0f,
+                     light_intensity_unit intensity_unit = {}, texture_handle cookie_texture = {},
+                     shadow_settings shadow = {.enabled = false});
 
     /**
      * @brief Append a spot light.
      */
-    void spot_light(
-        const math::vector3f& position,
-        const math::vector3f& direction,
-        const math::vector3f& color,
-        float intensity,
-        float range,
-        float inner_angle,
-        float outer_angle,
-        bool casts_shadows,
-        std::string label = {},
-        bool enabled = true,
-        bool use_color_temperature = false,
-        float temperature_kelvin = 6500.0f,
-        light_intensity_unit intensity_unit = {},
-        texture_handle cookie_texture = {},
-        shadow_settings shadow = { .enabled = false });
+    void spot_light(const math::vector3f& position, const math::vector3f& direction, const math::vector3f& color,
+                    float intensity, float range, float inner_angle, float outer_angle, bool casts_shadows,
+                    std::string label = {}, bool enabled = true, bool use_color_temperature = false,
+                    float temperature_kelvin = 6500.0f, light_intensity_unit intensity_unit = {},
+                    texture_handle cookie_texture = {}, shadow_settings shadow = {.enabled = false});
 
     /**
      * @brief Append a rectangle/disk area light.
      */
-    void area_light(
-        const math::vector3f& position,
-        const math::vector3f& direction,
-        const math::vector3f& tangent,
-        const math::vector3f& color,
-        float intensity,
-        float width,
-        float height,
-        area_light_shape shape,
-        bool two_sided,
-        bool casts_shadows,
-        std::string label = {},
-        bool enabled = true,
-        bool use_color_temperature = false,
-        float temperature_kelvin = 6500.0f,
-        light_intensity_unit intensity_unit = {},
-        shadow_settings shadow = { .enabled = false });
+    void area_light(const math::vector3f& position, const math::vector3f& direction, const math::vector3f& tangent,
+                    const math::vector3f& color, float intensity, float width, float height, area_light_shape shape,
+                    bool two_sided, bool casts_shadows, std::string label = {}, bool enabled = true,
+                    bool use_color_temperature = false, float temperature_kelvin = 6500.0f,
+                    light_intensity_unit intensity_unit = {}, shadow_settings shadow = {.enabled = false});
 
     /**
      * @brief Append a debug marker event.

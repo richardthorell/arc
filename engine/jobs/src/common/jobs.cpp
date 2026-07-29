@@ -32,14 +32,14 @@ std::uint64_t thread_id_value() noexcept
 struct thread_worker_context
 {
     job_system* scheduler{};
-    std::size_t worker_index{ static_cast<std::size_t>(-1) };
-    job_affinity affinity{ job_affinity::any_worker };
+    std::size_t worker_index{static_cast<std::size_t>(-1)};
+    job_affinity affinity{job_affinity::any_worker};
 };
 
 thread_local thread_worker_context worker_context{};
 thread_local std::weak_ptr<detail::job_state> current_job_state;
 
-}
+} // namespace
 
 namespace detail
 {
@@ -53,16 +53,18 @@ struct job_state
 {
     job_system* scheduler{};
     std::string name;
-    job_priority priority{ job_priority::normal };
-    job_affinity affinity{ job_affinity::any_worker };
-    job_dependency_policy dependency_policy{ job_dependency_policy::cancel_on_failure };
+    job_priority priority{job_priority::normal};
+    job_affinity affinity{job_affinity::any_worker};
+    job_dependency_policy dependency_policy{job_dependency_policy::cancel_on_failure};
     cancellation_token cancellation;
     task_callable function;
     std::weak_ptr<job_state> parent;
-    std::atomic_size_t unfinished{ 1 };
-    std::atomic_size_t pending_dependencies{};
+    std::atomic_size_t unfinished{1};
+    // Submission owns one sentinel count until every prerequisite is
+    // registered, preventing early prerequisites from releasing the task.
+    std::atomic_size_t pending_dependencies{1};
     std::atomic_bool dependency_failed{};
-    std::atomic<job_status> status{ job_status::waiting_dependencies };
+    std::atomic<job_status> status{job_status::waiting_dependencies};
     std::exception_ptr exception;
     mutable std::mutex mutex;
     std::condition_variable completion;
@@ -76,7 +78,7 @@ struct job_state
     std::uint64_t execution_thread{};
 };
 
-}
+} // namespace detail
 
 struct job_system::implementation
 {
@@ -114,11 +116,9 @@ struct job_system::implementation
             }
             for (std::size_t priority = first; priority < priority_count; ++priority)
             {
-                if (priorities[priority].empty())
-                    continue;
-                high_priority_streak = priority <= static_cast<std::size_t>(job_priority::high)
-                    ? high_priority_streak + 1
-                    : 0;
+                if (priorities[priority].empty()) continue;
+                high_priority_streak =
+                    priority <= static_cast<std::size_t>(job_priority::high) ? high_priority_streak + 1 : 0;
                 auto value = std::move(priorities[priority].back());
                 priorities[priority].pop_back();
                 return value;
@@ -131,8 +131,7 @@ struct job_system::implementation
             std::lock_guard lock(mutex);
             for (auto& queue : priorities)
             {
-                if (queue.empty())
-                    continue;
+                if (queue.empty()) continue;
                 auto value = std::move(queue.front());
                 queue.pop_front();
                 return value;
@@ -166,9 +165,7 @@ struct job_system::implementation
     };
 
     explicit implementation(job_system& owner, job_system_config value)
-        : scheduler(&owner)
-        , config(value)
-        , memory(value.memory ? value.memory : &memory::default_memory_system())
+        : scheduler(&owner), config(value), memory(value.memory ? value.memory : &memory::default_memory_system())
     {
     }
 
@@ -187,7 +184,7 @@ struct job_system::implementation
     mutable std::mutex wake_mutex;
     std::condition_variable wake;
     std::atomic_bool stopping{};
-    std::atomic<job_shutdown_mode> shutdown_mode{ job_shutdown_mode::drain };
+    std::atomic<job_shutdown_mode> shutdown_mode{job_shutdown_mode::drain};
     std::atomic_uint64_t next_sequence{};
     std::atomic_uint64_t submitted{};
     std::atomic_uint64_t completed{};
@@ -202,11 +199,9 @@ struct job_system::implementation
 
     bool queues_empty() const
     {
-        if (injection.size() || main.size() || render.size() || io.size())
-            return false;
+        if (injection.size() || main.size() || render.size() || io.size()) return false;
         for (const auto& worker : workers)
-            if (worker->size())
-                return false;
+            if (worker->size()) return false;
         return true;
     }
 };
@@ -218,8 +213,8 @@ class job_pool_resource final : public std::pmr::memory_resource
 {
 public:
     explicit job_pool_resource(memory::memory_system& memory)
-        : backing_(memory, memory::memory_domain::jobs, memory::make_memory_tag("jobs.state"))
-        , pool_(std::array<std::size_t, 3>{ 256, 512, 1024 }, 64, &backing_)
+        : backing_(memory, memory::memory_domain::jobs, memory::make_memory_tag("jobs.state")),
+          pool_(std::array<std::size_t, 3>{256, 512, 1024}, 64, &backing_)
     {
     }
 
@@ -228,8 +223,7 @@ private:
     {
         if (bytes <= 1024 && alignment <= alignof(std::max_align_t))
         {
-            if (void* pointer = pool_.try_allocate(bytes, alignment))
-                return pointer;
+            if (void* pointer = pool_.try_allocate(bytes, alignment)) return pointer;
             throw std::bad_alloc();
         }
         return backing_.allocate(bytes, alignment);
@@ -259,8 +253,7 @@ std::shared_ptr<job_pool_resource> pool_resource_for(job_system::implementation&
 {
     std::lock_guard lock(pool_resources_mutex);
     auto& resource = pool_resources[&implementation];
-    if (!resource)
-        resource = std::make_shared<job_pool_resource>(*implementation.memory);
+    if (!resource) resource = std::make_shared<job_pool_resource>(*implementation.memory);
     return resource;
 }
 
@@ -272,17 +265,15 @@ void release_pool_resource(job_system::implementation& implementation)
 
 void record_profile(job_system::implementation& implementation, const std::shared_ptr<detail::job_state>& state)
 {
-    job_profile_event event{
-        .sequence = state->sequence,
-        .name = state->name,
-        .priority = state->priority,
-        .affinity = state->affinity,
-        .status = state->status.load(std::memory_order_acquire),
-        .thread_id = state->execution_thread,
-        .queued_nanoseconds = state->queued_time,
-        .started_nanoseconds = state->started_time,
-        .completed_nanoseconds = state->completed_time
-    };
+    job_profile_event event{.sequence = state->sequence,
+                            .name = state->name,
+                            .priority = state->priority,
+                            .affinity = state->affinity,
+                            .status = state->status.load(std::memory_order_acquire),
+                            .thread_id = state->execution_thread,
+                            .queued_nanoseconds = state->queued_time,
+                            .started_nanoseconds = state->started_time,
+                            .completed_nanoseconds = state->completed_time};
     std::lock_guard lock(implementation.profile_mutex);
     if (implementation.profile_events.size() >= implementation.config.profile_event_capacity)
     {
@@ -292,21 +283,16 @@ void record_profile(job_system::implementation& implementation, const std::share
     implementation.profile_events.push_back(std::move(event));
 }
 
-void finish_part(
-    job_system::implementation& implementation,
-    const std::shared_ptr<detail::job_state>& state,
-    job_status requested_status);
+void finish_part(job_system::implementation& implementation, const std::shared_ptr<detail::job_state>& state,
+                 job_status requested_status);
 
-void dependency_finished(
-    job_system::implementation& implementation,
-    const std::shared_ptr<detail::job_state>& dependent,
-    job_status prerequisite_status);
+void dependency_finished(job_system::implementation& implementation,
+                         const std::shared_ptr<detail::job_state>& dependent, job_status prerequisite_status);
 
 void enqueue_ready(job_system::implementation& implementation, std::shared_ptr<detail::job_state> state)
 {
-    if (state->cancellation.stop_requested() ||
-        (state->dependency_failed.load(std::memory_order_acquire) &&
-            state->dependency_policy == job_dependency_policy::cancel_on_failure))
+    if (state->cancellation.stop_requested() || (state->dependency_failed.load(std::memory_order_acquire) &&
+                                                 state->dependency_policy == job_dependency_policy::cancel_on_failure))
     {
         finish_part(implementation, state, job_status::cancelled);
         return;
@@ -338,40 +324,38 @@ void enqueue_ready(job_system::implementation& implementation, std::shared_ptr<d
 
     switch (state->affinity)
     {
-    case job_affinity::main_thread:
-        implementation.main.push(std::move(state), false);
-        break;
-    case job_affinity::render_thread:
-        implementation.render.push(std::move(state), false);
-        break;
-    case job_affinity::io_thread:
-        implementation.io.push(std::move(state), false);
-        break;
-    case job_affinity::any_worker:
-        if (worker_context.scheduler == implementation.scheduler &&
-            worker_context.affinity == job_affinity::any_worker &&
-            worker_context.worker_index < implementation.workers.size())
-        {
-            implementation.workers[worker_context.worker_index]->push(std::move(state), true);
-        }
-        else
-        {
-            implementation.injection.push(std::move(state), false);
-        }
-        break;
+        case job_affinity::main_thread:
+            implementation.main.push(std::move(state), false);
+            break;
+        case job_affinity::render_thread:
+            implementation.render.push(std::move(state), false);
+            break;
+        case job_affinity::io_thread:
+            implementation.io.push(std::move(state), false);
+            break;
+        case job_affinity::any_worker:
+            if (worker_context.scheduler == implementation.scheduler &&
+                worker_context.affinity == job_affinity::any_worker &&
+                worker_context.worker_index < implementation.workers.size())
+            {
+                implementation.workers[worker_context.worker_index]->push(std::move(state), true);
+            }
+            else
+            {
+                implementation.injection.push(std::move(state), false);
+            }
+            break;
     }
     implementation.wake.notify_all();
 }
 
-void finish_part(
-    job_system::implementation& implementation,
-    const std::shared_ptr<detail::job_state>& state,
-    job_status requested_status)
+void finish_part(job_system::implementation& implementation, const std::shared_ptr<detail::job_state>& state,
+                 job_status requested_status)
 {
     if (requested_status == job_status::failed)
         state->status.store(job_status::failed, std::memory_order_release);
     else if (requested_status == job_status::cancelled &&
-        state->status.load(std::memory_order_acquire) != job_status::failed)
+             state->status.load(std::memory_order_acquire) != job_status::failed)
         state->status.store(job_status::cancelled, std::memory_order_release);
 
     if (state->unfinished.fetch_sub(1, std::memory_order_acq_rel) != 1)
@@ -389,11 +373,9 @@ void finish_part(
     if (final_status == job_status::failed)
     {
         implementation.failed.fetch_add(1, std::memory_order_relaxed);
-        if (state->detached)
-            diagnostics::error("jobs", std::string("Fire-and-forget job failed: ") + state->name);
+        if (state->detached) diagnostics::error("jobs", std::string("Fire-and-forget job failed: ") + state->name);
     }
-    if (final_status == job_status::cancelled)
-        implementation.cancelled.fetch_add(1, std::memory_order_relaxed);
+    if (final_status == job_status::cancelled) implementation.cancelled.fetch_add(1, std::memory_order_relaxed);
     implementation.completed.fetch_add(1, std::memory_order_relaxed);
 
     std::vector<std::shared_ptr<detail::job_state>> dependents;
@@ -409,16 +391,14 @@ void finish_part(
     for (const auto& dependent : dependents)
         dependency_finished(implementation, dependent, final_status);
     for (const auto continuation : continuations)
-        if (continuation)
-            continuation.resume();
+        if (continuation) continuation.resume();
     if (auto parent = state->parent.lock())
-        finish_part(implementation, parent, final_status == job_status::failed ? job_status::failed : job_status::succeeded);
+        finish_part(implementation, parent,
+                    final_status == job_status::failed ? job_status::failed : job_status::succeeded);
 }
 
-void dependency_finished(
-    job_system::implementation& implementation,
-    const std::shared_ptr<detail::job_state>& dependent,
-    job_status prerequisite_status)
+void dependency_finished(job_system::implementation& implementation,
+                         const std::shared_ptr<detail::job_state>& dependent, job_status prerequisite_status)
 {
     if (prerequisite_status == job_status::failed || prerequisite_status == job_status::cancelled)
         dependent->dependency_failed.store(true, std::memory_order_release);
@@ -428,8 +408,7 @@ void dependency_finished(
 
 void execute_state(job_system::implementation& implementation, const std::shared_ptr<detail::job_state>& state)
 {
-    if (!state)
-        return;
+    if (!state) return;
     if (implementation.shutdown_mode.load(std::memory_order_acquire) == job_shutdown_mode::cancel_pending ||
         state->cancellation.stop_requested())
     {
@@ -438,8 +417,7 @@ void execute_state(job_system::implementation& implementation, const std::shared
     }
 
     job_status expected = job_status::queued;
-    if (!state->status.compare_exchange_strong(expected, job_status::running, std::memory_order_acq_rel))
-        return;
+    if (!state->status.compare_exchange_strong(expected, job_status::running, std::memory_order_acq_rel)) return;
     state->started_time = now_nanoseconds();
     state->execution_thread = thread_id_value();
     implementation.active.fetch_add(1, std::memory_order_acq_rel);
@@ -465,10 +443,8 @@ void execute_state(job_system::implementation& implementation, const std::shared
 std::shared_ptr<detail::job_state> take_general(job_system::implementation& implementation, std::size_t worker_index)
 {
     static thread_local std::size_t streak{};
-    if (auto value = implementation.workers[worker_index]->pop_local(streak))
-        return value;
-    if (auto value = implementation.injection.pop_local(streak))
-        return value;
+    if (auto value = implementation.workers[worker_index]->pop_local(streak)) return value;
+    if (auto value = implementation.injection.pop_local(streak)) return value;
 
     const auto count = implementation.workers.size();
     for (std::size_t offset = 1; offset < count; ++offset)
@@ -485,7 +461,8 @@ std::shared_ptr<detail::job_state> take_general(job_system::implementation& impl
 
 void general_worker_loop(job_system::implementation& implementation, std::size_t worker_index)
 {
-    worker_context = { .scheduler = implementation.scheduler, .worker_index = worker_index, .affinity = job_affinity::any_worker };
+    worker_context = {
+        .scheduler = implementation.scheduler, .worker_index = worker_index, .affinity = job_affinity::any_worker};
     for (;;)
     {
         if (auto state = take_general(implementation, worker_index))
@@ -494,8 +471,7 @@ void general_worker_loop(job_system::implementation& implementation, std::size_t
             continue;
         }
         if (implementation.stopping.load(std::memory_order_acquire) &&
-            implementation.active.load(std::memory_order_acquire) == 0 &&
-            implementation.queues_empty())
+            implementation.active.load(std::memory_order_acquire) == 0 && implementation.queues_empty())
             break;
         std::unique_lock lock(implementation.wake_mutex);
         implementation.wake.wait_for(lock, std::chrono::milliseconds(2));
@@ -505,7 +481,7 @@ void general_worker_loop(job_system::implementation& implementation, std::size_t
 
 void affinity_worker_loop(job_system::implementation& implementation, job_affinity affinity, std::size_t index)
 {
-    worker_context = { .scheduler = implementation.scheduler, .worker_index = index, .affinity = affinity };
+    worker_context = {.scheduler = implementation.scheduler, .worker_index = index, .affinity = affinity};
     auto* queue = affinity == job_affinity::render_thread ? &implementation.render : &implementation.io;
     std::size_t streak{};
     for (;;)
@@ -516,8 +492,7 @@ void affinity_worker_loop(job_system::implementation& implementation, job_affini
             continue;
         }
         if (implementation.stopping.load(std::memory_order_acquire) &&
-            implementation.active.load(std::memory_order_acquire) == 0 &&
-            implementation.queues_empty())
+            implementation.active.load(std::memory_order_acquire) == 0 && implementation.queues_empty())
             break;
         std::unique_lock lock(implementation.wake_mutex);
         implementation.wake.wait_for(lock, std::chrono::milliseconds(2));
@@ -525,17 +500,11 @@ void affinity_worker_loop(job_system::implementation& implementation, job_affini
     worker_context = {};
 }
 
-}
+} // namespace
 
-job_cancelled::job_cancelled()
-    : std::runtime_error("job was cancelled")
-{
-}
+job_cancelled::job_cancelled() : std::runtime_error("job was cancelled") {}
 
-cancellation_token::cancellation_token(std::shared_ptr<detail::cancellation_state> state)
-    : state_(std::move(state))
-{
-}
+cancellation_token::cancellation_token(std::shared_ptr<detail::cancellation_state> state) : state_(std::move(state)) {}
 
 bool cancellation_token::valid() const noexcept
 {
@@ -547,10 +516,7 @@ bool cancellation_token::stop_requested() const noexcept
     return state_ && state_->cancelled.load(std::memory_order_acquire);
 }
 
-cancellation_source::cancellation_source()
-    : state_(std::make_shared<detail::cancellation_state>())
-{
-}
+cancellation_source::cancellation_source() : state_(std::make_shared<detail::cancellation_state>()) {}
 
 cancellation_token cancellation_source::token() const noexcept
 {
@@ -567,24 +533,18 @@ bool cancellation_source::stop_requested() const noexcept
     return state_->cancelled.load(std::memory_order_acquire);
 }
 
-job_handle::job_handle(std::shared_ptr<detail::job_state> state)
-    : state_(std::move(state))
-{
-}
+job_handle::job_handle(std::shared_ptr<detail::job_state> state) : state_(std::move(state)) {}
 
 void job_handle::wait() const
 {
     const auto result = wait_result();
-    if (result.status == job_status::cancelled)
-        throw job_cancelled();
-    if (result.exception)
-        std::rethrow_exception(result.exception);
+    if (result.status == job_status::cancelled) throw job_cancelled();
+    if (result.exception) std::rethrow_exception(result.exception);
 }
 
 job_wait_result job_handle::wait_result() const noexcept
 {
-    if (!state_)
-        return {};
+    if (!state_) return {};
     return state_->scheduler->wait_for(state_);
 }
 
@@ -610,8 +570,7 @@ cancellation_token job_handle::cancellation() const noexcept
 
 bool job_handle::request_cancel() const noexcept
 {
-    if (!state_ || !state_->cancellation.state_)
-        return false;
+    if (!state_ || !state_->cancellation.state_) return false;
     return !state_->cancellation.state_->cancelled.exchange(true, std::memory_order_acq_rel);
 }
 
@@ -633,35 +592,27 @@ void job_handle::awaiter::await_resume() const
 
 job_handle::awaiter job_handle::operator co_await() const noexcept
 {
-    return { state_ };
+    return {state_};
 }
 #endif
 
 std::size_t job_system::default_worker_count() noexcept
 {
     const auto hardware_count = std::thread::hardware_concurrency();
-    if (hardware_count <= 4)
-        return 1;
+    if (hardware_count <= 4) return 1;
     return static_cast<std::size_t>(hardware_count - 4);
 }
 
 job_system_config job_system::single_threaded_config() noexcept
 {
-    return {
-        .worker_count = 0,
-        .run_inline = true,
-        .io_worker_count = 0,
-        .enable_render_thread = false
-    };
+    return {.worker_count = 0, .run_inline = true, .io_worker_count = 0, .enable_render_thread = false};
 }
 
-job_system::job_system(job_system_config config)
-    : implementation_(std::make_unique<implementation>(*this, config))
+job_system::job_system(job_system_config config) : implementation_(std::make_unique<implementation>(*this, config))
 {
     auto& value = *implementation_;
     value.main_thread = std::this_thread::get_id();
-    if (config.run_inline)
-        return;
+    if (config.run_inline) return;
 
     const auto worker_count = config.worker_count == 0 ? default_worker_count() : config.worker_count;
     value.workers.reserve(worker_count);
@@ -683,12 +634,10 @@ job_system::~job_system()
 
 job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_callable function, bool detached)
 {
-    if (!implementation_->config.run_inline &&
-        descriptor.affinity == job_affinity::render_thread &&
+    if (!implementation_->config.run_inline && descriptor.affinity == job_affinity::render_thread &&
         !implementation_->config.enable_render_thread)
         throw std::invalid_argument("render-affinity job submitted without a render executor");
-    if (!implementation_->config.run_inline &&
-        descriptor.affinity == job_affinity::io_thread &&
+    if (!implementation_->config.run_inline && descriptor.affinity == job_affinity::io_thread &&
         implementation_->config.io_worker_count == 0)
         throw std::invalid_argument("IO-affinity job submitted without an IO executor");
 
@@ -704,10 +653,13 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
         pool->deallocate(state_memory, sizeof(detail::job_state), alignof(detail::job_state));
         throw;
     }
-    auto state = std::shared_ptr<detail::job_state>(raw_state, [pool = std::move(pool)](detail::job_state* value) {
-        value->~job_state();
-        pool->deallocate(value, sizeof(detail::job_state), alignof(detail::job_state));
-    });
+    auto state = std::shared_ptr<detail::job_state>(raw_state,
+                                                    [pool = std::move(pool)](detail::job_state* value)
+                                                    {
+                                                        value->~job_state();
+                                                        pool->deallocate(value, sizeof(detail::job_state),
+                                                                         alignof(detail::job_state));
+                                                    });
     state->scheduler = this;
     state->name = descriptor.name.empty() ? "unnamed job" : std::string(descriptor.name);
     state->priority = descriptor.priority;
@@ -727,7 +679,8 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
     state->sequence = implementation_->next_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
     implementation_->submitted.fetch_add(1, std::memory_order_relaxed);
 
-    const auto for_each_dependency = [&descriptor](auto&& operation) {
+    const auto for_each_dependency = [&descriptor](auto&& operation)
+    {
         for (const job_handle& dependency : descriptor.dependencies)
             operation(dependency);
         for (const job_handle& dependency : descriptor.dependency_view)
@@ -736,15 +689,16 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
 
     if (descriptor.parent.valid())
     {
-        for_each_dependency([&descriptor](const job_handle& dependency) {
-            if (!dependency.valid())
-                return;
-            for (auto ancestor = descriptor.parent.state_; ancestor; ancestor = ancestor->parent.lock())
+        for_each_dependency(
+            [&descriptor](const job_handle& dependency)
             {
-                if (ancestor.get() == dependency.state_.get())
-                    throw std::invalid_argument("a child job cannot depend on an ancestor that waits for it");
-            }
-        });
+                if (!dependency.valid()) return;
+                for (auto ancestor = descriptor.parent.state_; ancestor; ancestor = ancestor->parent.lock())
+                {
+                    if (ancestor.get() == dependency.state_.get())
+                        throw std::invalid_argument("a child job cannot depend on an ancestor that waits for it");
+                }
+            });
     }
 
     if (descriptor.parent.valid())
@@ -752,17 +706,16 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
         auto parent = descriptor.parent.state_;
         auto unfinished = parent->unfinished.load(std::memory_order_acquire);
         while (unfinished != 0 &&
-            !parent->unfinished.compare_exchange_weak(unfinished, unfinished + 1, std::memory_order_acq_rel))
+               !parent->unfinished.compare_exchange_weak(unfinished, unfinished + 1, std::memory_order_acq_rel))
         {
         }
-        if (unfinished == 0)
-            throw std::invalid_argument("cannot attach a child to a completed job");
+        if (unfinished == 0) throw std::invalid_argument("cannot attach a child to a completed job");
         state->parent = parent;
     }
 
-    const auto register_dependency = [&](const job_handle& dependency) {
-        if (!dependency.valid() || dependency.state_.get() == state.get())
-            return;
+    const auto register_dependency = [&](const job_handle& dependency)
+    {
+        if (!dependency.valid() || dependency.state_.get() == state.get()) return;
 
         bool completed{};
         job_status dependency_status{};
@@ -784,34 +737,23 @@ job_handle job_system::submit_erased(job_descriptor descriptor, detail::task_cal
     {
         const job_handle& dependency = descriptor.dependencies[index];
         const bool duplicate = std::any_of(
-            descriptor.dependencies.begin(),
-            descriptor.dependencies.begin() + static_cast<std::ptrdiff_t>(index),
-            [&dependency](const job_handle& prior) {
-                return prior.state_.get() == dependency.state_.get();
-            });
-        if (!duplicate)
-            register_dependency(dependency);
+            descriptor.dependencies.begin(), descriptor.dependencies.begin() + static_cast<std::ptrdiff_t>(index),
+            [&dependency](const job_handle& prior) { return prior.state_.get() == dependency.state_.get(); });
+        if (!duplicate) register_dependency(dependency);
     }
     for (std::size_t index = 0; index < descriptor.dependency_view.size(); ++index)
     {
         const job_handle& dependency = descriptor.dependency_view[index];
-        const bool duplicate_owned = std::any_of(
-            descriptor.dependencies.begin(),
-            descriptor.dependencies.end(),
-            [&dependency](const job_handle& prior) {
-                return prior.state_.get() == dependency.state_.get();
-            });
+        const bool duplicate_owned = std::any_of(descriptor.dependencies.begin(), descriptor.dependencies.end(),
+                                                 [&dependency](const job_handle& prior)
+                                                 { return prior.state_.get() == dependency.state_.get(); });
         const bool duplicate_view = std::any_of(
-            descriptor.dependency_view.begin(),
-            descriptor.dependency_view.begin() + static_cast<std::ptrdiff_t>(index),
-            [&dependency](const job_handle& prior) {
-                return prior.state_.get() == dependency.state_.get();
-            });
-        if (!duplicate_owned && !duplicate_view)
-            register_dependency(dependency);
+            descriptor.dependency_view.begin(), descriptor.dependency_view.begin() + static_cast<std::ptrdiff_t>(index),
+            [&dependency](const job_handle& prior) { return prior.state_.get() == dependency.state_.get(); });
+        if (!duplicate_owned && !duplicate_view) register_dependency(dependency);
     }
 
-    if (state->pending_dependencies.load(std::memory_order_acquire) == 0)
+    if (state->pending_dependencies.fetch_sub(1, std::memory_order_acq_rel) == 1)
         enqueue_ready(*implementation_, state);
     return job_handle(std::move(state));
 }
@@ -824,14 +766,12 @@ void job_system::wait_all(const std::vector<job_handle>& handles) const
 
 job_wait_result job_system::wait_for(const std::shared_ptr<detail::job_state>& state) const noexcept
 {
-    if (!state)
-        return {};
+    if (!state) return {};
 
     while (!job_status_complete(state->status.load(std::memory_order_acquire)))
     {
         bool helped{};
-        if (!implementation_->config.run_inline &&
-            worker_context.scheduler == this &&
+        if (!implementation_->config.run_inline && worker_context.scheduler == this &&
             worker_context.affinity == job_affinity::any_worker &&
             worker_context.worker_index < implementation_->workers.size())
         {
@@ -856,28 +796,22 @@ job_wait_result job_system::wait_for(const std::shared_ptr<detail::job_state>& s
         if (!helped)
         {
             std::unique_lock lock(state->mutex);
-            state->completion.wait_for(lock, std::chrono::milliseconds(1), [&] {
-                return job_status_complete(state->status.load(std::memory_order_acquire));
-            });
+            state->completion.wait_for(lock, std::chrono::milliseconds(1), [&]
+                                       { return job_status_complete(state->status.load(std::memory_order_acquire)); });
         }
     }
-    return {
-        .status = state->status.load(std::memory_order_acquire),
-        .exception = state->exception
-    };
+    return {.status = state->status.load(std::memory_order_acquire), .exception = state->exception};
 }
 
 std::size_t job_system::pump_main_thread(std::size_t maximum_jobs)
 {
-    if (!is_main_thread() && !implementation_->config.run_inline)
-        return 0;
+    if (!is_main_thread() && !implementation_->config.run_inline) return 0;
     std::size_t executed{};
     std::size_t streak{};
     while (executed < maximum_jobs)
     {
         auto state = implementation_->main.pop_local(streak);
-        if (!state)
-            break;
+        if (!state) break;
         execute_state(*implementation_, state);
         ++executed;
     }
@@ -894,8 +828,7 @@ std::size_t job_system::pump_render_thread(std::size_t maximum_jobs)
     while (executed < maximum_jobs)
     {
         auto state = implementation_->render.pop_local(streak);
-        if (!state)
-            break;
+        if (!state) break;
         execute_state(*implementation_, state);
         ++executed;
     }
@@ -915,20 +848,19 @@ bool job_system::is_main_thread() const noexcept
 job_handle job_system::current_job() const noexcept
 {
     auto state = current_job_state.lock();
-    if (!state || state->scheduler != this)
-        return {};
+    if (!state || state->scheduler != this) return {};
     return job_handle(std::move(state));
 }
 
 void job_system::shutdown(job_shutdown_mode mode)
 {
-    if (!implementation_ || implementation_->stopping.exchange(true, std::memory_order_acq_rel))
-        return;
+    if (!implementation_ || implementation_->stopping.exchange(true, std::memory_order_acq_rel)) return;
     implementation_->shutdown_mode.store(mode, std::memory_order_release);
 
     if (mode == job_shutdown_mode::cancel_pending)
     {
-        auto cancel_queue = [&](implementation::work_queue& queue) {
+        auto cancel_queue = [&](implementation::work_queue& queue)
+        {
             for (auto& state : queue.take_all())
                 finish_part(*implementation_, state, job_status::cancelled);
         };
@@ -951,8 +883,7 @@ void job_system::shutdown(job_shutdown_mode mode)
         if (worker.joinable()) worker.join();
     for (auto& worker : implementation_->io_threads)
         if (worker.joinable()) worker.join();
-    if (implementation_->render_thread.joinable())
-        implementation_->render_thread.join();
+    if (implementation_->render_thread.joinable()) implementation_->render_thread.join();
     implementation_->worker_threads.clear();
     implementation_->io_threads.clear();
 }
@@ -987,20 +918,17 @@ job_system_snapshot job_system::snapshot(bool consume_events) const
         .stolen = implementation_->stolen.load(std::memory_order_relaxed),
         .cancelled = implementation_->cancelled.load(std::memory_order_relaxed),
         .failed = implementation_->failed.load(std::memory_order_relaxed),
-        .dropped_profile_events = implementation_->dropped_profile_events.load(std::memory_order_relaxed)
-    };
+        .dropped_profile_events = implementation_->dropped_profile_events.load(std::memory_order_relaxed)};
     for (const auto& worker : implementation_->workers)
         result.queued_general += worker->size();
     std::lock_guard lock(implementation_->profile_mutex);
     result.recent_events.assign(implementation_->profile_events.begin(), implementation_->profile_events.end());
-    if (consume_events)
-        implementation_->profile_events.clear();
+    if (consume_events) implementation_->profile_events.clear();
     return result;
 }
 
-void job_system::add_coroutine_continuation(
-    const std::shared_ptr<detail::job_state>& state,
-    std::coroutine_handle<> continuation)
+void job_system::add_coroutine_continuation(const std::shared_ptr<detail::job_state>& state,
+                                            std::coroutine_handle<> continuation)
 {
     bool resume_immediately{};
     {
@@ -1010,8 +938,7 @@ void job_system::add_coroutine_continuation(
         else
             state->continuations.push_back(continuation);
     }
-    if (resume_immediately)
-        continuation.resume();
+    if (resume_immediately) continuation.resume();
 }
 
 void wait_all(const std::vector<job_handle>& handles)

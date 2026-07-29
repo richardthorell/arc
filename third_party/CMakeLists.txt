@@ -50,6 +50,7 @@ elseif(ARC_FETCH_THIRD_PARTY)
     FetchContent_Declare(
         sqlite_amalgamation
         URL https://www.sqlite.org/2026/sqlite-amalgamation-3530300.zip
+        URL_HASH SHA256=646421e12aac110282ef8cc68f1a62d4bb15fc7b8f09da0b53e29ee690500431
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(sqlite_amalgamation)
@@ -91,8 +92,7 @@ elseif(ARC_FETCH_STB)
     FetchContent_Declare(
         stb
         GIT_REPOSITORY https://github.com/nothings/stb.git
-        GIT_TAG master
-        GIT_SHALLOW TRUE
+        GIT_TAG 31c1ad37456438565541f4919958214b6e762fb4
     )
     FetchContent_MakeAvailable(stb)
     target_include_directories(arc-third-party-stb INTERFACE "${stb_SOURCE_DIR}")
@@ -119,8 +119,7 @@ elseif(ARC_FETCH_THIRD_PARTY AND ARC_FETCH_UFBX)
     FetchContent_Declare(
         ufbx
         GIT_REPOSITORY https://github.com/ufbx/ufbx.git
-        GIT_TAG master
-        GIT_SHALLOW TRUE
+        GIT_TAG fcc5d6ba444cfd3eb80677dba5e37e493941abe5
     )
     FetchContent_MakeAvailable(ufbx)
 

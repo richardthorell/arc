@@ -1,0 +1,6 @@
+.vite
+node_modules
+out
+dist
+package-lock.json
+src/renderer/src/inspector/generatedEcsMetadata.ts

@@ -16,14 +16,15 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <variant>
 
@@ -40,20 +41,35 @@ namespace
 class pick_test_backend final : public arc::render::render_backend
 {
 public:
-    arc::render::render_backend_type type() const noexcept override { return arc::render::render_backend_type::vulkan; }
-    const arc::render::render_capabilities& capabilities() const noexcept override { return capabilities_; }
-    arc::render::render_submit_result submit(
-        const arc::render::render_frame_packet&, const arc::render::compiled_render_graph&) override
+    arc::render::render_backend_type type() const noexcept override
+    {
+        return arc::render::render_backend_type::vulkan;
+    }
+    const arc::render::render_capabilities& capabilities() const noexcept override
+    {
+        return capabilities_;
+    }
+    arc::render::render_submit_result submit(const arc::render::render_frame_packet&,
+                                             const arc::render::compiled_render_graph&) override
     {
         return arc::render::render_submit_result::success();
     }
-    void request_object_pick(arc::render::render_object_pick_request request) override { request_ = request; }
-    arc::render::render_object_pick_result last_object_pick() const override { return result; }
+    void request_object_pick(arc::render::render_object_pick_request request) override
+    {
+        request_ = request;
+    }
+    arc::render::render_object_pick_result last_object_pick() const override
+    {
+        return result;
+    }
     void request_frame_capture(arc::render::render_frame_capture_request request) override
     {
         capture_request = std::move(request);
     }
-    arc::render::render_frame_capture_result last_frame_capture() const override { return capture_result; }
+    arc::render::render_frame_capture_result last_frame_capture() const override
+    {
+        return capture_result;
+    }
 
     arc::render::render_object_pick_request request_{};
     arc::render::render_object_pick_result result{};
@@ -62,12 +78,7 @@ public:
 
 private:
     arc::render::render_capabilities capabilities_{
-        .api_major = 1,
-        .api_minor = 2,
-        .graphics_queue = true,
-        .compute_queue = true,
-        .presentation = true
-    };
+        .api_major = 1, .api_minor = 2, .graphics_queue = true, .compute_queue = true, .presentation = true};
 };
 
 arc::editor::host_entity_id parse_entity_from_response(const std::string& line)
@@ -75,11 +86,18 @@ arc::editor::host_entity_id parse_entity_from_response(const std::string& line)
     arc::editor::host_entity_id entity;
     const auto index_pos = line.find("\"index\":");
     const auto generation_pos = line.find("\"generation\":");
-    if (index_pos == std::string::npos || generation_pos == std::string::npos)
-        return entity;
+    if (index_pos == std::string::npos || generation_pos == std::string::npos) return entity;
 
-    std::sscanf(line.c_str() + index_pos, "\"index\":%u", &entity.index);
-    std::sscanf(line.c_str() + generation_pos, "\"generation\":%u", &entity.generation);
+    const auto parse_value = [&line](const std::size_t position, const std::string_view prefix, std::uint32_t& value)
+    {
+        const char* begin = line.data() + position + prefix.size();
+        const char* end = line.data() + line.size();
+        const auto [parsed_end, error] = std::from_chars(begin, end, value);
+        return error == std::errc{} && parsed_end != begin;
+    };
+    if (!parse_value(index_pos, "\"index\":", entity.index) ||
+        !parse_value(generation_pos, "\"generation\":", entity.generation))
+        return {};
     return entity;
 }
 
@@ -114,9 +132,9 @@ TEST_CASE("editor console sink captures bounded log records")
 {
     arc::editor::editor_console_sink sink(2);
 
-    sink.write({ .level = arc::diagnostics::log_level::info, .category = "one", .message = "first" });
-    sink.write({ .level = arc::diagnostics::log_level::warn, .category = "two", .message = "second" });
-    sink.write({ .level = arc::diagnostics::log_level::error, .category = "three", .message = "third" });
+    sink.write({.level = arc::diagnostics::log_level::info, .category = "one", .message = "first"});
+    sink.write({.level = arc::diagnostics::log_level::warn, .category = "two", .message = "second"});
+    sink.write({.level = arc::diagnostics::log_level::error, .category = "three", .message = "third"});
 
     const auto entries = sink.entries();
     REQUIRE(entries.size() == 2);
@@ -149,36 +167,33 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     arc::ecs::world registry;
     const auto camera_entity = registry.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = { 0.0f, 0.0f, 5.0f };
+    camera_transform.position = {0.0f, 0.0f, 5.0f};
     registry.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     registry.emplace<arc::scene::camera_component>(camera_entity);
     const auto selected = registry.create();
     registry.emplace<arc::scene::transform_component>(selected);
-    registry.emplace<arc::scene::bounds_component>(selected,
-        arc::geometric::box3f{ arc::geometric::point3f{ -0.5f, -0.5f, -0.5f },
-            arc::geometric::point3f{ 0.5f, 0.5f, 0.5f } });
+    registry.emplace<arc::scene::bounds_component>(
+        selected,
+        arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f}, arc::geometric::point3f{0.5f, 0.5f, 0.5f}});
     arc::scene::update_world_transforms(registry);
 
     const arc::editor::editor_gizmo_context context{
-        .tool = arc::editor::editor_tool::translate,
-        .viewport_width = 800,
-        .viewport_height = 600
-    };
+        .tool = arc::editor::editor_tool::translate, .viewport_width = 800, .viewport_height = 600};
     const auto overlay = arc::editor::build_editor_gizmo_overlay(registry, selected, camera_entity, context);
     REQUIRE(overlay.lines.size() == 15);
     REQUIRE(overlay.lines[12].color[0] > overlay.lines[12].color[1]);
     REQUIRE(arc::editor::hit_test_editor_gizmo(registry, selected, camera_entity, context, 450.0f, 300.0f) ==
-        arc::editor::gizmo_axis::x);
+            arc::editor::gizmo_axis::x);
     REQUIRE(arc::editor::hit_test_editor_gizmo(registry, selected, camera_entity, context, 780.0f, 580.0f) ==
-        arc::editor::gizmo_axis::none);
+            arc::editor::gizmo_axis::none);
 
     const auto& camera = registry.get<arc::scene::camera_component>(camera_entity);
-    const float near_scale = arc::editor::editor_gizmo_world_scale(camera,
-        registry.get<arc::scene::transform_component>(camera_entity), {}, 600);
-    registry.get<arc::scene::transform_component>(camera_entity).set_position({ 0.0f, 0.0f, 10.0f });
+    const float near_scale = arc::editor::editor_gizmo_world_scale(
+        camera, registry.get<arc::scene::transform_component>(camera_entity), {}, 600);
+    registry.get<arc::scene::transform_component>(camera_entity).set_position({0.0f, 0.0f, 10.0f});
     arc::scene::update_world_transforms(registry);
-    const float far_scale = arc::editor::editor_gizmo_world_scale(camera,
-        registry.get<arc::scene::transform_component>(camera_entity), {}, 600);
+    const float far_scale = arc::editor::editor_gizmo_world_scale(
+        camera, registry.get<arc::scene::transform_component>(camera_entity), {}, 600);
     REQUIRE(far_scale == Catch::Approx(near_scale * 2.0f));
 }
 
@@ -190,22 +205,18 @@ TEST_CASE("editor picking hits bounded entities")
     scene.emplace<arc::scene::terrain_component>(terrain);
     scene.emplace<arc::scene::bounds_component>(
         terrain,
-        arc::geometric::box3f{ arc::geometric::point3f{ -100.0f, -100.0f, -100.0f },
-            arc::geometric::point3f{ 100.0f, 100.0f, 100.0f } },
-        arc::geometric::box3f{},
-        true);
+        arc::geometric::box3f{arc::geometric::point3f{-100.0f, -100.0f, -100.0f},
+                              arc::geometric::point3f{100.0f, 100.0f, 100.0f}},
+        arc::geometric::box3f{}, true);
     const auto entity = scene.create();
     scene.emplace<arc::scene::transform_component>(entity);
     scene.emplace<arc::scene::bounds_component>(
         entity,
-        arc::geometric::box3f{ arc::geometric::point3f{ -1.0f, -1.0f, -1.0f }, arc::geometric::point3f{ 1.0f, 1.0f, 1.0f } },
-        arc::geometric::box3f{},
-        true);
+        arc::geometric::box3f{arc::geometric::point3f{-1.0f, -1.0f, -1.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}},
+        arc::geometric::box3f{}, true);
 
-    const arc::editor::editor_ray ray{
-        .origin = arc::math::vector3f{ 0.0f, 0.0f, 5.0f },
-        .direction = arc::math::vector3f{ 0.0f, 0.0f, -1.0f }
-    };
+    const arc::editor::editor_ray ray{.origin = arc::math::vector3f{0.0f, 0.0f, 5.0f},
+                                      .direction = arc::math::vector3f{0.0f, 0.0f, -1.0f}};
     REQUIRE(arc::editor::pick_bounded_entity(scene, ray) == terrain);
 
     scene.emplace<arc::scene::active_component>(entity, false);
@@ -214,7 +225,7 @@ TEST_CASE("editor picking hits bounded entities")
     float distance{};
     REQUIRE(arc::editor::intersect_ray_box(
         ray,
-        arc::geometric::box3f{ arc::geometric::point3f{ -1.0f, -1.0f, -1.0f }, arc::geometric::point3f{ 1.0f, 1.0f, 1.0f } },
+        arc::geometric::box3f{arc::geometric::point3f{-1.0f, -1.0f, -1.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}},
         distance));
     REQUIRE(distance == Catch::Approx(4.0f));
 }
@@ -224,7 +235,7 @@ TEST_CASE("editor camera controller orbits pans and zooms")
     arc::editor::editor_camera_controller camera;
     arc::scene::transform_component transform;
 
-    camera.focus({ 0.0f, 0.0f, 0.0f }, 2.0f);
+    camera.focus({0.0f, 0.0f, 0.0f}, 2.0f);
     const float focused_distance = camera.distance();
     arc::scene::transform_component before_zoom;
     camera.apply_to(before_zoom);
@@ -245,16 +256,16 @@ TEST_CASE("editor camera controller orbits pans and zooms")
 
     camera.orbit(40.0f, 0.0f);
     camera.apply_to(transform);
-    const auto right_after_yaw = arc::math::rotate(transform.rotation, arc::math::vector3f{ 1.0f, 0.0f, 0.0f });
+    const auto right_after_yaw = arc::math::rotate(transform.rotation, arc::math::vector3f{1.0f, 0.0f, 0.0f});
     REQUIRE(right_after_yaw[1] == Catch::Approx(0.0f).margin(0.00001f));
     camera.orbit(0.0f, 30.0f);
     camera.apply_to(transform);
-    const auto right_after_pitch = arc::math::rotate(transform.rotation, arc::math::vector3f{ 1.0f, 0.0f, 0.0f });
+    const auto right_after_pitch = arc::math::rotate(transform.rotation, arc::math::vector3f{1.0f, 0.0f, 0.0f});
     REQUIRE(arc::math::dot(right_after_yaw, right_after_pitch) == Catch::Approx(1.0f).margin(0.00001f));
 
     arc::editor::editor_camera_controller direction_test;
     arc::scene::transform_component before_up;
-    direction_test.focus({ 0.0f, 0.0f, 0.0f }, 2.0f);
+    direction_test.focus({0.0f, 0.0f, 0.0f}, 2.0f);
     direction_test.apply_to(before_up);
     direction_test.orbit(20.0f, 0.0f);
     arc::scene::transform_component after_right;
@@ -264,19 +275,19 @@ TEST_CASE("editor camera controller orbits pans and zooms")
     arc::scene::transform_component after_up;
     direction_test.apply_to(after_up);
     REQUIRE(after_up.position[1] > before_up.position[1]);
-    const auto right = arc::math::rotate(after_up.rotation, arc::math::vector3f{ 1.0f, 0.0f, 0.0f });
+    const auto right = arc::math::rotate(after_up.rotation, arc::math::vector3f{1.0f, 0.0f, 0.0f});
     REQUIRE(right[1] == Catch::Approx(0.0f).margin(0.00001f));
 
     arc::editor::editor_camera_controller synchronized;
     synchronized.synchronize_from(after_up);
     arc::scene::transform_component synchronized_transform;
     synchronized.apply_to(synchronized_transform);
-    REQUIRE(arc::math::dot(
-        arc::scene::forward_direction(after_up),
-        arc::scene::forward_direction(synchronized_transform)) == Catch::Approx(1.0f).margin(0.00001f));
+    REQUIRE(arc::math::dot(arc::scene::forward_direction(after_up),
+                           arc::scene::forward_direction(synchronized_transform)) ==
+            Catch::Approx(1.0f).margin(0.00001f));
 
     arc::editor::editor_camera_controller vertical_direction;
-    vertical_direction.focus({ 0.0f, 0.0f, 0.0f }, 2.0f);
+    vertical_direction.focus({0.0f, 0.0f, 0.0f}, 2.0f);
     arc::scene::transform_component before_vertical_drag;
     vertical_direction.apply_to(before_vertical_drag);
     const auto before_upward_drag_forward = arc::scene::forward_direction(before_vertical_drag);
@@ -291,7 +302,7 @@ TEST_CASE("editor camera controller orbits pans and zooms")
 TEST_CASE("editor camera free look rotates in place without roll")
 {
     arc::editor::editor_camera_controller camera;
-    camera.focus({ 3.0f, 2.0f, -4.0f }, 3.0f);
+    camera.focus({3.0f, 2.0f, -4.0f}, 3.0f);
 
     arc::scene::transform_component before;
     camera.apply_to(before);
@@ -302,8 +313,7 @@ TEST_CASE("editor camera free look rotates in place without roll")
     arc::scene::transform_component after;
     camera.apply_to(after);
 
-    REQUIRE(arc::math::length(arc::math::sub(after.position, initial_position)) ==
-        Catch::Approx(0.0f).margin(0.0001f));
+    REQUIRE(arc::math::length(arc::math::sub(after.position, initial_position)) == Catch::Approx(0.0f).margin(0.0001f));
     REQUIRE(arc::math::length(arc::math::sub(camera.focus_point(), initial_focus)) > 0.01f);
 
     const auto looked_forward = arc::scene::forward_direction(after);
@@ -313,26 +323,26 @@ TEST_CASE("editor camera free look rotates in place without roll")
     const auto dolly_translation = arc::math::sub(after.position, position_before_dolly);
     REQUIRE(arc::math::dot(dolly_translation, looked_forward) == Catch::Approx(3.0f).margin(0.0001f));
     REQUIRE(arc::math::length(arc::math::cross(dolly_translation, looked_forward)) ==
-        Catch::Approx(0.0f).margin(0.0001f));
+            Catch::Approx(0.0f).margin(0.0001f));
 
     for (int index = 0; index < 128; ++index)
         camera.look(index % 2 == 0 ? 17.0f : -9.0f, index % 3 == 0 ? 31.0f : -14.0f);
     camera.look(0.0f, -100000.0f);
     camera.apply_to(after);
 
-    const auto right = arc::math::rotate(after.rotation, arc::math::vector3f{ 1.0f, 0.0f, 0.0f });
+    const auto right = arc::math::rotate(after.rotation, arc::math::vector3f{1.0f, 0.0f, 0.0f});
     const auto up = arc::scene::up_direction(after);
     REQUIRE(right[1] == Catch::Approx(0.0f).margin(0.0001f));
     REQUIRE(up[1] > 0.0f);
-    REQUIRE(arc::math::length(arc::math::sub(after.position, arc::math::add(
-        initial_position, arc::math::mul(looked_forward, 3.0f)))) ==
-        Catch::Approx(0.0f).margin(0.0001f));
+    REQUIRE(arc::math::length(arc::math::sub(after.position,
+                                             arc::math::add(initial_position, arc::math::mul(looked_forward, 3.0f)))) ==
+            Catch::Approx(0.0f).margin(0.0001f));
 }
 
 TEST_CASE("camera transform forward matches the rendered view projection")
 {
     arc::editor::editor_camera_controller camera_controller;
-    camera_controller.focus({ 4.0f, 3.0f, -7.0f }, 5.0f);
+    camera_controller.focus({4.0f, 3.0f, -7.0f}, 5.0f);
     camera_controller.orbit(53.0f, -31.0f);
 
     arc::scene::transform_component transform;
@@ -349,10 +359,8 @@ TEST_CASE("camera transform forward matches the rendered view projection")
     const auto view_projection = arc::scene::view_projection(camera, transform, 16.0f / 9.0f);
     arc::math::matrix4f inverse_view_projection;
     REQUIRE(arc::math::try_inverse(view_projection, inverse_view_projection));
-    const auto near_center = arc::math::transform_point(
-        inverse_view_projection, arc::math::vector3f{ 0.0f, 0.0f, 0.0f });
-    const auto far_center = arc::math::transform_point(
-        inverse_view_projection, arc::math::vector3f{ 0.0f, 0.0f, 1.0f });
+    const auto near_center = arc::math::transform_point(inverse_view_projection, arc::math::vector3f{0.0f, 0.0f, 0.0f});
+    const auto far_center = arc::math::transform_point(inverse_view_projection, arc::math::vector3f{0.0f, 0.0f, 1.0f});
     const auto rendered_forward = arc::math::normalize(arc::math::sub(far_center, near_center));
     REQUIRE(arc::math::dot(rendered_forward, forward) == Catch::Approx(1.0f).margin(0.0001f));
 }
@@ -363,7 +371,7 @@ TEST_CASE("viewport rays use camera world space and pixel centers")
     viewport.set_size(101.0f, 101.0f);
     arc::scene::camera_component camera;
     arc::scene::transform_component transform;
-    transform.world = arc::math::translation(arc::math::vector3f{ 8.0f, 3.0f, 2.0f });
+    transform.world = arc::math::translation(arc::math::vector3f{8.0f, 3.0f, 2.0f});
     transform.dirty = false;
 
     const auto center = arc::editor::screen_ray_from_camera(camera, transform, viewport, 50.0f, 50.0f);
@@ -393,39 +401,30 @@ TEST_CASE("exact scene picking selects the nearest surface instead of terrain bo
     terrain.size = 10.0f;
     terrain.subdivisions = 2;
     terrain.heights.assign(9, 0.0f);
-    terrain.layer_weights.assign(9, std::array<std::uint8_t, 4>{ 255, 0, 0, 0 });
-    scene.emplace<arc::scene::bounds_component>(
-        terrain_entity,
-        arc::geometric::box3f{
-            arc::geometric::point3f{ -5.0f, -10.0f, -5.0f },
-            arc::geometric::point3f{ 5.0f, 10.0f, 5.0f } },
-        arc::geometric::box3f{},
-        true);
+    terrain.layer_weights.assign(9, std::array<std::uint8_t, 4>{255, 0, 0, 0});
+    scene.emplace<arc::scene::bounds_component>(terrain_entity,
+                                                arc::geometric::box3f{arc::geometric::point3f{-5.0f, -10.0f, -5.0f},
+                                                                      arc::geometric::point3f{5.0f, 10.0f, 5.0f}},
+                                                arc::geometric::box3f{}, true);
 
     const auto cube = scene.create();
     arc::scene::transform_component cube_transform;
-    cube_transform.set_position({ 0.0f, 2.0f, 0.0f });
+    cube_transform.set_position({0.0f, 2.0f, 0.0f});
     scene.emplace<arc::scene::transform_component>(cube, cube_transform);
     scene.emplace<arc::scene::mesh_renderer_component>(cube, cube_mesh);
     scene.emplace<arc::scene::bounds_component>(
         cube,
-        arc::geometric::box3f{
-            arc::geometric::point3f{ -0.5f, -0.5f, -0.5f },
-            arc::geometric::point3f{ 0.5f, 0.5f, 0.5f } },
-        arc::geometric::box3f{},
-        true);
+        arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f}, arc::geometric::point3f{0.5f, 0.5f, 0.5f}},
+        arc::geometric::box3f{}, true);
     arc::scene::update_world_transforms(scene);
 
-    const arc::editor::editor_ray ray{
-        .origin = { 0.0f, 10.0f, 0.0f },
-        .direction = { 0.0f, -1.0f, 0.0f }
-    };
+    const arc::editor::editor_ray ray{.origin = {0.0f, 10.0f, 0.0f}, .direction = {0.0f, -1.0f, 0.0f}};
     const auto foreground = arc::editor::pick_scene_entity(scene, renderer, ray);
     REQUIRE(foreground.entity == cube);
     REQUIRE(foreground.exact);
     REQUIRE_FALSE(foreground.background);
 
-    scene.get<arc::scene::transform_component>(cube).set_position({ 0.0f, -2.0f, 0.0f });
+    scene.get<arc::scene::transform_component>(cube).set_position({0.0f, -2.0f, 0.0f});
     arc::scene::update_world_transforms(scene);
     const auto background = arc::editor::pick_scene_entity(scene, renderer, ray);
     REQUIRE(background.entity == terrain_entity);
@@ -435,7 +434,7 @@ TEST_CASE("exact scene picking selects the nearest surface instead of terrain bo
 
 TEST_CASE("editor euler conversion keeps pure y rotation stable")
 {
-    const auto rotation = arc::editor::quaternion_from_euler_degrees({ 0.0f, 135.0f, 0.0f });
+    const auto rotation = arc::editor::quaternion_from_euler_degrees({0.0f, 135.0f, 0.0f});
     const auto euler = arc::editor::euler_degrees_from_quaternion(rotation);
 
     REQUIRE(euler[0] == Catch::Approx(0.0f).margin(0.001f));
@@ -445,7 +444,7 @@ TEST_CASE("editor euler conversion keeps pure y rotation stable")
 
 TEST_CASE("editor euler conversion round trips mixed rotation")
 {
-    const arc::math::vector3f input{ 20.0f, 135.0f, 10.0f };
+    const arc::math::vector3f input{20.0f, 135.0f, 10.0f};
     const auto rotation = arc::editor::quaternion_from_euler_degrees(input);
     const auto euler = arc::editor::euler_degrees_from_quaternion(rotation);
 
@@ -457,7 +456,7 @@ TEST_CASE("editor euler conversion round trips mixed rotation")
 TEST_CASE("editor default sun rotation points downward at an angle")
 {
     arc::scene::transform_component transform;
-    transform.rotation = arc::editor::quaternion_from_euler_degrees({ -50.0f, -35.0f, 0.0f });
+    transform.rotation = arc::editor::quaternion_from_euler_degrees({-50.0f, -35.0f, 0.0f});
 
     const auto direction = arc::scene::forward_direction(transform);
 
@@ -469,19 +468,19 @@ TEST_CASE("editor default sun rotation points downward at an angle")
 TEST_CASE("editor tool shortcuts update active tool")
 {
     arc::input::input_manager input;
-    input.bind_action("tool.select", { .device = arc::input::input_device_type::keyboard, .code = 'Q' });
-    input.bind_action("tool.translate", { .device = arc::input::input_device_type::keyboard, .code = 'W' });
-    input.bind_action("tool.rotate", { .device = arc::input::input_device_type::keyboard, .code = 'E' });
-    input.bind_action("tool.scale", { .device = arc::input::input_device_type::keyboard, .code = 'R' });
+    input.bind_action("tool.select", {.device = arc::input::input_device_type::keyboard, .code = 'Q'});
+    input.bind_action("tool.translate", {.device = arc::input::input_device_type::keyboard, .code = 'W'});
+    input.bind_action("tool.rotate", {.device = arc::input::input_device_type::keyboard, .code = 'E'});
+    input.bind_action("tool.scale", {.device = arc::input::input_device_type::keyboard, .code = 'R'});
 
     auto tool = arc::editor::editor_tool::select;
     input.begin_frame();
-    input.process_event({ .type = arc::framework::event_type::key_down, .key_code = 'W' });
+    input.process_event({.type = arc::framework::event_type::key_down, .key_code = 'W'});
     arc::editor::apply_tool_shortcuts(input, tool);
     REQUIRE(tool == arc::editor::editor_tool::translate);
 
     input.begin_frame();
-    input.process_event({ .type = arc::framework::event_type::key_down, .key_code = 'R' });
+    input.process_event({.type = arc::framework::event_type::key_down, .key_code = 'R'});
     arc::editor::apply_tool_shortcuts(input, tool);
     REQUIRE(tool == arc::editor::editor_tool::scale);
 }
@@ -492,7 +491,7 @@ TEST_CASE("editor can add a selected primitive mesh entity")
     arc::render::renderer renderer;
     arc::render::material_descriptor imported_material;
     imported_material.name = "Imported Mesh Material";
-    imported_material.base_color = { 1.0f, 0.72f, 0.05f, 1.0f };
+    imported_material.base_color = {1.0f, 0.72f, 0.05f, 1.0f};
     scene.default_material = renderer.create_material(imported_material);
 
     const auto entity = arc::editor::add_primitive_to_scene(scene, renderer, arc::editor::editor_primitive_type::plane);
@@ -513,55 +512,81 @@ TEST_CASE("editor can add a selected primitive mesh entity")
 
 TEST_CASE("arc host protocol serializes command and query envelopes")
 {
-    const arc::editor::host_entity_id entity{ .index = 7, .generation = 3 };
+    const arc::editor::host_entity_id entity{.index = 7, .generation = 3};
     const arc::editor::host_transform transform{
-        .position = { 1.0f, 2.0f, 3.0f },
-        .rotation = { 0.0f, 0.0f, 0.707f, 0.707f },
-        .scale = { 2.0f, 2.0f, 2.0f }
-    };
+        .position = {1.0f, 2.0f, 3.0f}, .rotation = {0.0f, 0.0f, 0.707f, 0.707f}, .scale = {2.0f, 2.0f, 2.0f}};
 
     const arc::editor::host_command_envelope commands[]{
-        { .request_id = 1, .payload = arc::editor::host_open_project_command{ .name = "Protocol", .root = "D:/Protocol" } },
-        { .request_id = 2, .payload = arc::editor::host_open_scene_command{ .path = "D:/Protocol/assets/test.glb", .append = true } },
-        { .request_id = 3, .payload = arc::editor::host_create_entity_command{
-            .kind = arc::editor::host_create_entity_kind::empty, .parent = entity } },
-        { .request_id = 4, .payload = arc::editor::host_select_entity_command{ .entity = entity } },
-        { .request_id = 5, .payload = arc::editor::host_rename_entity_command{ .entity = entity, .name = "Renamed" } },
-        { .request_id = 6, .payload = arc::editor::host_delete_entity_command{ .entity = entity } },
-        { .request_id = 7, .payload = arc::editor::host_set_transform_command{ .entity = entity, .transform = transform } },
-        { .request_id = 8, .payload = arc::editor::host_viewport_attach_command{ .native_handle = 1234, .x = 16, .y = 32, .width = 1280, .height = 720 } },
-        { .request_id = 9, .payload = arc::editor::host_viewport_resize_command{ .x = 24, .y = 48, .width = 640, .height = 360 } },
-        { .request_id = 10, .payload = arc::editor::host_viewport_set_camera_mode_command{ .projection = arc::editor::host_camera_projection::orthographic } },
-        { .request_id = 11, .payload = arc::editor::host_viewport_set_render_options_command{
-            .render_mode = arc::editor::host_render_mode::wireframe,
-            .visualization = arc::editor::host_visualization_mode::world_normal,
-            .overlay = arc::editor::host_overlay_mode::all_wireframe,
-            .shadows = false } },
-        { .request_id = 12, .payload = arc::editor::host_viewport_camera_input_command{
-            .orbit_x = 4.0f, .orbit_y = -2.0f, .look_x = 3.0f, .look_y = -1.0f, .zoom = 1.0f } },
-        { .request_id = 13, .payload = arc::editor::host_set_world_environment_command{
-            .environment = { .entity = entity, .sky_source = arc::editor::host_sky_source::solid_color } } },
-        { .request_id = 14, .payload = arc::editor::host_apply_world_environment_preset_command{
-            .entity = entity, .preset = arc::editor::host_world_environment_preset::night } },
-        { .request_id = 15, .payload = arc::editor::host_set_environment_hdri_command{
-            .entity = entity, .path = "assets/environment/studio.hdr" } },
-        { .request_id = 16, .payload = arc::editor::host_set_mesh_renderer_command{
-            .entity = entity, .visible = false, .base_color_tint = { 0.8f, 0.7f, 0.6f, 1.0f } } },
-        { .request_id = 17, .payload = arc::editor::host_set_entity_material_command{
-            .entity = entity, .path = "materials/stone.arcmat" } },
-        { .request_id = 18, .payload = arc::editor::host_create_prefab_command{
-            .entity = entity, .path = "assets/prefabs/stone.arcprefab" } },
-        { .request_id = 19, .payload = arc::editor::host_instantiate_prefab_command{
-            .path = "assets/prefabs/stone.arcprefab", .parent = entity } },
-        { .request_id = 20, .payload = arc::editor::host_apply_prefab_command{ .entity = entity } },
-        { .request_id = 21, .payload = arc::editor::host_revert_prefab_command{ .entity = entity } },
-        { .request_id = 22, .payload = arc::editor::host_unpack_prefab_command{ .entity = entity } },
-        { .request_id = 23, .payload = arc::editor::host_viewport_set_pose_command{
-            .position = { 1.0f, 2.0f, 3.0f }, .target = { 0.0f, 0.0f, 0.0f } } },
-        { .request_id = 24, .payload = arc::editor::host_viewport_capture_command{
-            .capture_id = 99, .color = true, .depth = true, .object_id = true, .normals = true,
-            .scene_color = true, .base_color = true, .material_properties = true, .emissive = true } }
-    };
+        {.request_id = 1, .payload = arc::editor::host_open_project_command{.name = "Protocol", .root = "D:/Protocol"}},
+        {.request_id = 2,
+         .payload = arc::editor::host_open_scene_command{.path = "D:/Protocol/assets/test.glb", .append = true}},
+        {.request_id = 3,
+         .payload = arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty,
+                                                            .parent = entity}},
+        {.request_id = 4, .payload = arc::editor::host_select_entity_command{.entity = entity}},
+        {.request_id = 5, .payload = arc::editor::host_rename_entity_command{.entity = entity, .name = "Renamed"}},
+        {.request_id = 6, .payload = arc::editor::host_delete_entity_command{.entity = entity}},
+        {.request_id = 7, .payload = arc::editor::host_set_transform_command{.entity = entity, .transform = transform}},
+        {.request_id = 8,
+         .payload =
+             arc::editor::host_viewport_attach_command{
+                 .native_handle = 1234, .x = 16, .y = 32, .width = 1280, .height = 720}},
+        {.request_id = 9,
+         .payload = arc::editor::host_viewport_resize_command{.x = 24, .y = 48, .width = 640, .height = 360}},
+        {.request_id = 10,
+         .payload =
+             arc::editor::host_viewport_set_camera_mode_command{.projection =
+                                                                    arc::editor::host_camera_projection::orthographic}},
+        {.request_id = 11,
+         .payload =
+             arc::editor::host_viewport_set_render_options_command{
+                 .render_mode = arc::editor::host_render_mode::wireframe,
+                 .visualization = arc::editor::host_visualization_mode::world_normal,
+                 .overlay = arc::editor::host_overlay_mode::all_wireframe,
+                 .shadows = false}},
+        {.request_id = 12,
+         .payload =
+             arc::editor::host_viewport_camera_input_command{
+                 .orbit_x = 4.0f, .orbit_y = -2.0f, .look_x = 3.0f, .look_y = -1.0f, .zoom = 1.0f}},
+        {.request_id = 13,
+         .payload =
+             arc::editor::host_set_world_environment_command{
+                 .environment = {.entity = entity, .sky_source = arc::editor::host_sky_source::solid_color}}},
+        {.request_id = 14,
+         .payload =
+             arc::editor::host_apply_world_environment_preset_command{
+                 .entity = entity, .preset = arc::editor::host_world_environment_preset::night}},
+        {.request_id = 15,
+         .payload =
+             arc::editor::host_set_environment_hdri_command{.entity = entity, .path = "assets/environment/studio.hdr"}},
+        {.request_id = 16,
+         .payload = arc::editor::host_set_mesh_renderer_command{.entity = entity,
+                                                                .visible = false,
+                                                                .base_color_tint = {0.8f, 0.7f, 0.6f, 1.0f}}},
+        {.request_id = 17,
+         .payload = arc::editor::host_set_entity_material_command{.entity = entity, .path = "materials/stone.arcmat"}},
+        {.request_id = 18,
+         .payload =
+             arc::editor::host_create_prefab_command{.entity = entity, .path = "assets/prefabs/stone.arcprefab"}},
+        {.request_id = 19,
+         .payload =
+             arc::editor::host_instantiate_prefab_command{.path = "assets/prefabs/stone.arcprefab", .parent = entity}},
+        {.request_id = 20, .payload = arc::editor::host_apply_prefab_command{.entity = entity}},
+        {.request_id = 21, .payload = arc::editor::host_revert_prefab_command{.entity = entity}},
+        {.request_id = 22, .payload = arc::editor::host_unpack_prefab_command{.entity = entity}},
+        {.request_id = 23,
+         .payload =
+             arc::editor::host_viewport_set_pose_command{.position = {1.0f, 2.0f, 3.0f}, .target = {0.0f, 0.0f, 0.0f}}},
+        {.request_id = 24,
+         .payload = arc::editor::host_viewport_capture_command{.capture_id = 99,
+                                                               .color = true,
+                                                               .depth = true,
+                                                               .object_id = true,
+                                                               .normals = true,
+                                                               .scene_color = true,
+                                                               .base_color = true,
+                                                               .material_properties = true,
+                                                               .emissive = true}}};
 
     for (const auto& command : commands)
     {
@@ -586,24 +611,25 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
     }
 
     const arc::editor::host_query_envelope queries[]{
-        { .request_id = 16, .payload = arc::editor::host_scene_hierarchy_query{} },
-        { .request_id = 17, .payload = arc::editor::host_selected_entity_query{} },
-        { .request_id = 18, .payload = arc::editor::host_project_assets_query{} },
-        { .request_id = 19, .payload = arc::editor::host_asset_thumbnail_query{ .path = "textures/checker.png", .max_size = 128 } },
-        { .request_id = 20, .payload = arc::editor::host_viewport_state_query{} },
-        { .request_id = 21, .payload = arc::editor::host_world_environment_query{ .entity = entity } },
-        { .request_id = 22, .payload = arc::editor::host_scene_spatial_query{
-            .kind = arc::editor::host_spatial_query_kind::raycast,
-            .origin = { 0.0f, 2.0f, 4.0f }, .direction = { 0.0f, -0.2f, -1.0f } } },
-        { .request_id = 23, .payload = arc::editor::host_viewport_capture_query{ .capture_id = 99 } },
-        { .request_id = 24, .payload = arc::editor::host_scene_entities_query{
-            .search = "rock", .offset = 10, .limit = 25 } },
-        { .request_id = 25, .payload = arc::editor::host_entity_by_guid_query{
-            .guid = "00112233445566778899aabbccddeeff" } },
-        { .request_id = 26, .payload = arc::editor::host_component_schema_query{} },
-        { .request_id = 27, .payload = arc::editor::host_scene_spatial_query{
-            .kind = arc::editor::host_spatial_query_kind::frustum } }
-    };
+        {.request_id = 16, .payload = arc::editor::host_scene_hierarchy_query{}},
+        {.request_id = 17, .payload = arc::editor::host_selected_entity_query{}},
+        {.request_id = 18, .payload = arc::editor::host_project_assets_query{}},
+        {.request_id = 19,
+         .payload = arc::editor::host_asset_thumbnail_query{.path = "textures/checker.png", .max_size = 128}},
+        {.request_id = 20, .payload = arc::editor::host_viewport_state_query{}},
+        {.request_id = 21, .payload = arc::editor::host_world_environment_query{.entity = entity}},
+        {.request_id = 22,
+         .payload = arc::editor::host_scene_spatial_query{.kind = arc::editor::host_spatial_query_kind::raycast,
+                                                          .origin = {0.0f, 2.0f, 4.0f},
+                                                          .direction = {0.0f, -0.2f, -1.0f}}},
+        {.request_id = 23, .payload = arc::editor::host_viewport_capture_query{.capture_id = 99}},
+        {.request_id = 24,
+         .payload = arc::editor::host_scene_entities_query{.search = "rock", .offset = 10, .limit = 25}},
+        {.request_id = 25,
+         .payload = arc::editor::host_entity_by_guid_query{.guid = "00112233445566778899aabbccddeeff"}},
+        {.request_id = 26, .payload = arc::editor::host_component_schema_query{}},
+        {.request_id = 27,
+         .payload = arc::editor::host_scene_spatial_query{.kind = arc::editor::host_spatial_query_kind::frustum}}};
 
     for (const auto& query : queries)
     {
@@ -628,39 +654,31 @@ TEST_CASE("profiler snapshots serialize scheduler and allocation telemetry")
     snapshot.jobs_completed = 2;
     snapshot.jobs_stolen = 1;
     snapshot.jobs_queued = 1;
-    snapshot.memory_domains.push_back({
-        .domain = "components",
-        .bytes_outstanding = 512,
-        .peak_bytes = 1024,
-        .soft_limit = 2048,
-        .hard_limit = 4096
-    });
-    snapshot.allocation_groups.push_back({
-        .domain = "components",
-        .tag = "world.components",
-        .world_id = 7,
-        .thread_id = 9,
-        .stack_id = 11,
-        .allocation_count = 4,
-        .bytes_outstanding = 512
-    });
-    snapshot.jobs.push_back({
-        .sequence = 8,
-        .name = "render.frame",
-        .priority = "critical",
-        .affinity = "render",
-        .status = "succeeded",
-        .thread_id = 9,
-        .queued_nanoseconds = 10,
-        .started_nanoseconds = 20,
-        .completed_nanoseconds = 30
-    });
+    snapshot.memory_domains.push_back(
+        {.domain = "components", .bytes_outstanding = 512, .peak_bytes = 1024, .soft_limit = 2048, .hard_limit = 4096});
+    snapshot.allocation_groups.push_back({.domain = "components",
+                                          .tag = "world.components",
+                                          .world_id = 7,
+                                          .thread_id = 9,
+                                          .stack_id = 11,
+                                          .allocation_count = 4,
+                                          .bytes_outstanding = 512});
+    snapshot.jobs.push_back({.sequence = 8,
+                             .name = "render.frame",
+                             .priority = "critical",
+                             .affinity = "render",
+                             .status = "succeeded",
+                             .thread_id = 9,
+                             .queued_nanoseconds = 10,
+                             .started_nanoseconds = 20,
+                             .completed_nanoseconds = 30});
 
     const auto json = arc::editor::to_json(snapshot);
     REQUIRE(json.find("\"timestampNanoseconds\":42") != std::string::npos);
     REQUIRE(json.find("\"world.components\"") != std::string::npos);
     REQUIRE(json.find("\"render.frame\"") != std::string::npos);
-    REQUIRE(std::string(arc::editor::to_string(arc::editor::host_event_type::profiler_snapshot)) == "profiler.snapshot");
+    REQUIRE(std::string(arc::editor::to_string(arc::editor::host_event_type::profiler_snapshot)) ==
+            "profiler.snapshot");
 }
 
 TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
@@ -675,10 +693,7 @@ TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
     tga[14] = 2;
     tga[16] = 32;
     tga[17] = 0x20;
-    const std::array<unsigned char, 16> pixels{
-        0, 0, 255, 255, 0, 255, 0, 255,
-        255, 0, 0, 255, 255, 255, 255, 255
-    };
+    const std::array<unsigned char, 16> pixels{0, 0, 255, 255, 0, 255, 0, 255, 255, 0, 0, 255, 255, 255, 255, 255};
     std::copy(pixels.begin(), pixels.end(), tga.begin() + 18);
     {
         std::ofstream output(texture_path, std::ios::binary);
@@ -690,12 +705,11 @@ TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = root;
-    REQUIRE(host->open_project({ .name = "Thumbnail Test", .root = root }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Thumbnail Test", .root = root}, assets).succeeded);
 
     const auto catalog = host->project_assets_snapshot();
-    REQUIRE(std::any_of(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset) {
-        return asset.path == "textures/preview.tga" && asset.kind == "texture";
-    }));
+    REQUIRE(std::any_of(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset)
+                        { return asset.path == "textures/preview.tga" && asset.kind == "texture"; }));
 
     const auto thumbnail = host->asset_thumbnail("textures/preview.tga", 64);
     REQUIRE(thumbnail.has_value());
@@ -704,27 +718,33 @@ TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
     REQUIRE(thumbnail->data_url.starts_with("data:image/bmp;base64,Qk"));
     REQUIRE_FALSE(host->asset_thumbnail("../outside.tga", 64).has_value());
 
-    const auto response = host->query({
-        .request_id = 91,
-        .payload = arc::editor::host_asset_thumbnail_query{ .path = "textures/preview.tga", .max_size = 64 } });
+    const auto response = host->query(
+        {.request_id = 91,
+         .payload = arc::editor::host_asset_thumbnail_query{.path = "textures/preview.tga", .max_size = 64}});
     REQUIRE(response.succeeded);
     REQUIRE(response.payload_json.find("data:image/bmp;base64,") != std::string::npos);
 
     const auto hierarchy = host->scene_snapshot();
-    const auto environment = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity) {
-        return entity.kind == arc::editor::host_entity_kind::environment;
-    });
+    const auto environment = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity)
+                                          { return entity.kind == arc::editor::host_entity_kind::environment; });
     REQUIRE(environment != hierarchy.entities.end());
-    REQUIRE(host->execute({ .request_id = 92, .payload = arc::editor::host_set_environment_hdri_command{
-        .entity = environment->entity, .path = "textures/preview.tga" } }).succeeded);
+    REQUIRE(host->execute({.request_id = 92,
+                           .payload = arc::editor::host_set_environment_hdri_command{.entity = environment->entity,
+                                                                                     .path = "textures/preview.tga"}})
+                .succeeded);
     const auto assigned_environment = host->world_environment_snapshot(environment->entity);
     REQUIRE(assigned_environment.has_value());
     REQUIRE(assigned_environment->hdri_path == "textures/preview.tga");
     REQUIRE(assigned_environment->sky_source == arc::editor::host_sky_source::physical_atmosphere);
-    REQUIRE_FALSE(host->execute({ .request_id = 93, .payload = arc::editor::host_set_environment_hdri_command{
-        .entity = environment->entity, .path = "../outside.tga" } }).succeeded);
-    REQUIRE(host->execute({ .request_id = 94, .payload = arc::editor::host_set_environment_hdri_command{
-        .entity = environment->entity, .path = {} } }).succeeded);
+    REQUIRE_FALSE(
+        host->execute({.request_id = 93,
+                       .payload = arc::editor::host_set_environment_hdri_command{.entity = environment->entity,
+                                                                                 .path = "../outside.tga"}})
+            .succeeded);
+    REQUIRE(host->execute({.request_id = 94,
+                           .payload = arc::editor::host_set_environment_hdri_command{.entity = environment->entity,
+                                                                                     .path = {}}})
+                .succeeded);
     REQUIRE(host->world_environment_snapshot(environment->entity)->hdri_path.empty());
     host.reset();
     std::filesystem::remove_all(root);
@@ -733,10 +753,10 @@ TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
 TEST_CASE("material preview renderer produces a deterministic PBR sphere")
 {
     auto material = arc::editor::make_default_material_asset("Preview Bronze");
-    material.material.base_color = { 0.72f, 0.24f, 0.07f, 1.0f };
+    material.material.base_color = {0.72f, 0.24f, 0.07f, 1.0f};
     material.material.metallic = 0.85f;
     material.material.roughness = 0.28f;
-    material.material.emissive_factor = { 0.01f, 0.0f, 0.0f };
+    material.material.emissive_factor = {0.01f, 0.0f, 0.0f};
     const auto first = arc::editor::render_material_preview(material, {}, 64);
     const auto second = arc::editor::render_material_preview(material, {}, 64);
     REQUIRE(first.succeeded());
@@ -763,30 +783,30 @@ TEST_CASE("asset registry host commands reimport rename and validate GUIDs")
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = root;
-    REQUIRE(host->open_project({ .name = "Asset Commands", .root = root }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Asset Commands", .root = root}, assets).succeeded);
 
     const auto catalog = host->project_assets_snapshot();
-    const auto source = std::find_if(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset) {
-        return asset.path == "materials/source.arcmat";
-    });
+    const auto source = std::find_if(catalog.assets.begin(), catalog.assets.end(),
+                                     [](const auto& asset) { return asset.path == "materials/source.arcmat"; });
     REQUIRE(source != catalog.assets.end());
-    const auto renamed = host->execute({ .request_id = 1, .payload = arc::editor::host_asset_rename_command{
-        .guid = source->guid, .name = "renamed.arcmat" } });
+    const auto renamed = host->execute(
+        {.request_id = 1,
+         .payload = arc::editor::host_asset_rename_command{.guid = source->guid, .name = "renamed.arcmat"}});
     REQUIRE(renamed.succeeded);
     REQUIRE(std::filesystem::exists(root / "materials" / "renamed.arcmat"));
     REQUIRE(std::filesystem::exists(root / "materials" / "renamed.arcmat.arcmeta"));
-    REQUIRE(host->execute({ .request_id = 2, .payload = arc::editor::host_asset_reimport_command{
-        .guid = source->guid } }).succeeded);
-    REQUIRE_FALSE(host->execute({ .request_id = 3, .payload = arc::editor::host_asset_rename_command{
-        .guid = "not-a-guid", .name = "invalid.arcmat" } }).succeeded);
+    REQUIRE(host->execute({.request_id = 2, .payload = arc::editor::host_asset_reimport_command{.guid = source->guid}})
+                .succeeded);
+    REQUIRE_FALSE(host->execute({.request_id = 3,
+                                 .payload = arc::editor::host_asset_rename_command{.guid = "not-a-guid",
+                                                                                   .name = "invalid.arcmat"}})
+                      .succeeded);
 
     arc::editor::host_command_envelope parsed;
     std::string error;
-    REQUIRE(arc::editor::from_json(
-        R"({"requestId":4,"type":"asset.move","payload":{"guid":")" + source->guid +
-        R"(","path":"materials/moved.arcmat"}})",
-        parsed,
-        error));
+    REQUIRE(arc::editor::from_json(R"({"requestId":4,"type":"asset.move","payload":{"guid":")" + source->guid +
+                                       R"(","path":"materials/moved.arcmat"}})",
+                                   parsed, error));
     REQUIRE(std::holds_alternative<arc::editor::host_asset_move_command>(parsed.payload));
 
     host.reset();
@@ -800,7 +820,7 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
     std::filesystem::create_directories(root / "materials");
     auto material = arc::editor::make_default_material_asset("Inspector Stone");
     material.path = root / "materials" / "inspector_stone.arcmat";
-    material.material.base_color = { 0.3f, 0.34f, 0.38f, 1.0f };
+    material.material.base_color = {0.3f, 0.34f, 0.38f, 1.0f};
     std::string message;
     REQUIRE(arc::editor::save_material_asset(material, root, message));
 
@@ -809,36 +829,51 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = root;
-    REQUIRE(host->open_project({ .name = "Mesh Material Host", .root = root }, assets).succeeded);
-    REQUIRE(host->execute({ .request_id = 1, .payload = arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::sphere } }).succeeded);
+    REQUIRE(host->open_project({.name = "Mesh Material Host", .root = root}, assets).succeeded);
+    REQUIRE(host->execute(
+                    {.request_id = 1,
+                     .payload =
+                         arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::sphere}})
+                .succeeded);
     const auto entity = host->selected_entity_snapshot().entity;
     const auto initial = host->selected_entity_snapshot();
     REQUIRE(initial.mesh_renderer.has_value());
     REQUIRE(initial.mesh_renderer->visible);
     REQUIRE(initial.mesh_renderer->has_material);
 
-    REQUIRE(host->execute({ .request_id = 2, .payload = arc::editor::host_set_mesh_renderer_command{
-        .entity = entity, .visible = false, .base_color_tint = { 0.5f, 0.6f, 0.7f, 0.8f } } }).succeeded);
+    REQUIRE(host->execute({.request_id = 2,
+                           .payload =
+                               arc::editor::host_set_mesh_renderer_command{
+                                   .entity = entity, .visible = false, .base_color_tint = {0.5f, 0.6f, 0.7f, 0.8f}}})
+                .succeeded);
     REQUIRE_FALSE(host->selected_entity_snapshot().mesh_renderer->visible);
     REQUIRE(host->selected_entity_snapshot().mesh_renderer->base_color_tint.z == Catch::Approx(0.7f));
-    REQUIRE_FALSE(host->execute({ .request_id = 3, .payload = arc::editor::host_set_mesh_renderer_command{
-        .entity = entity, .visible = true,
-        .base_color_tint = { std::numeric_limits<float>::infinity(), 1.0f, 1.0f, 1.0f } } }).succeeded);
+    REQUIRE_FALSE(
+        host->execute({.request_id = 3,
+                       .payload =
+                           arc::editor::host_set_mesh_renderer_command{
+                               .entity = entity,
+                               .visible = true,
+                               .base_color_tint = {std::numeric_limits<float>::infinity(), 1.0f, 1.0f, 1.0f}}})
+            .succeeded);
 
-    REQUIRE(host->execute({ .request_id = 4, .payload = arc::editor::host_set_entity_material_command{
-        .entity = entity, .path = "materials/inspector_stone.arcmat" } }).succeeded);
+    REQUIRE(host->execute({.request_id = 4,
+                           .payload =
+                               arc::editor::host_set_entity_material_command{
+                                   .entity = entity, .path = "materials/inspector_stone.arcmat"}})
+                .succeeded);
     const auto assigned = host->selected_entity_snapshot();
     REQUIRE(assigned.mesh_renderer->asset_backed_material);
     REQUIRE(assigned.mesh_renderer->material_name == "Inspector Stone");
     REQUIRE(assigned.mesh_renderer->material_path == "materials/inspector_stone.arcmat");
-    REQUIRE_FALSE(host->execute({ .request_id = 5, .payload = arc::editor::host_set_entity_material_command{
-        .entity = entity, .path = "../outside.arcmat" } }).succeeded);
+    REQUIRE_FALSE(host->execute({.request_id = 5,
+                                 .payload = arc::editor::host_set_entity_material_command{.entity = entity,
+                                                                                          .path = "../outside.arcmat"}})
+                      .succeeded);
 
     const auto catalog = host->project_assets_snapshot();
-    REQUIRE(std::any_of(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset) {
-        return asset.path == "materials/inspector_stone.arcmat" && asset.kind == "material";
-    }));
+    REQUIRE(std::any_of(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset)
+                        { return asset.path == "materials/inspector_stone.arcmat" && asset.kind == "material"; }));
     const auto preview = host->asset_thumbnail("materials/inspector_stone.arcmat", 96);
     REQUIRE(preview.has_value());
     REQUIRE(preview->width == 96);
@@ -851,12 +886,12 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
 TEST_CASE("world environment JSON round trips every field and enum")
 {
     arc::editor::host_world_environment_snapshot environment;
-    environment.entity = { 17, 4 };
+    environment.entity = {17, 4};
     environment.enabled = false;
     environment.sky_visible = false;
     environment.affect_lighting = false;
     environment.sky_source = arc::editor::host_sky_source::hdri;
-    environment.solid_color = { 0.11f, 0.22f, 0.33f };
+    environment.solid_color = {0.11f, 0.22f, 0.33f};
     environment.hdri_path = "environments/night.hdr";
     environment.hdri_rotation_degrees = 37.0f;
     environment.radiance_intensity = 1.25f;
@@ -865,8 +900,8 @@ TEST_CASE("world environment JSON round trips every field and enum")
     environment.rayleigh_strength = 1.1f;
     environment.mie_strength = 0.2f;
     environment.ozone_strength = 0.3f;
-    environment.atmosphere_tint = { 0.44f, 0.55f, 0.66f };
-    environment.ground_albedo = { 0.12f, 0.13f, 0.14f };
+    environment.atmosphere_tint = {0.44f, 0.55f, 0.66f};
+    environment.ground_albedo = {0.12f, 0.13f, 0.14f};
     environment.mie_anisotropy = 0.7f;
     environment.rayleigh_scale_height = 7.0f;
     environment.mie_scale_height = 2.0f;
@@ -901,12 +936,10 @@ TEST_CASE("world environment JSON round trips every field and enum")
     environment.star_twinkle = 0.2f;
     environment.clouds_enabled = false;
     environment.cloud_shadows = false;
-    environment.cumulus = { false, 0.1f, 0.2f, 1000.0f, 200.0f, 0.3f, 0.4f, 0.5f,
-        -1.0f, 0.25f, 3.0f, 0.6f, 0.7f };
-    environment.cirrus = { true, 0.8f, 0.7f, 7000.0f, 300.0f, 0.6f, 0.5f, 0.4f,
-        0.5f, -0.5f, 9.0f, 0.3f, 0.2f };
+    environment.cumulus = {false, 0.1f, 0.2f, 1000.0f, 200.0f, 0.3f, 0.4f, 0.5f, -1.0f, 0.25f, 3.0f, 0.6f, 0.7f};
+    environment.cirrus = {true, 0.8f, 0.7f, 7000.0f, 300.0f, 0.6f, 0.5f, 0.4f, 0.5f, -0.5f, 9.0f, 0.3f, 0.2f};
     environment.fog_enabled = false;
-    environment.fog_color = { 0.15f, 0.25f, 0.35f };
+    environment.fog_color = {0.15f, 0.25f, 0.35f};
     environment.fog_density = 0.02f;
     environment.fog_height_falloff = 0.3f;
     environment.fog_start_distance = 12.0f;
@@ -914,14 +947,12 @@ TEST_CASE("world environment JSON round trips every field and enum")
     environment.fog_sun_scattering = 0.4f;
     environment.lighting_enabled = false;
     environment.lighting_source = arc::editor::host_environment_lighting_source::constant_color;
-    environment.lighting_color = { 0.2f, 0.3f, 0.4f };
+    environment.lighting_color = {0.2f, 0.3f, 0.4f};
     environment.diffuse_intensity = 0.9f;
     environment.specular_intensity = 0.8f;
 
     const arc::editor::host_command_envelope command{
-        .request_id = 42,
-        .payload = arc::editor::host_set_world_environment_command{ environment }
-    };
+        .request_id = 42, .payload = arc::editor::host_set_world_environment_command{environment}};
     const auto json = arc::editor::to_json(command);
     arc::editor::host_command_envelope parsed;
     std::string error;
@@ -937,61 +968,56 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
     auto host = manager.acquire(std::move(renderer));
 
     arc::editor::editor_asset_state assets;
-    const auto opened = host->open_project(
-        { .name = "Host Test", .root = std::filesystem::temp_directory_path() },
-        assets);
+    const auto opened =
+        host->open_project({.name = "Host Test", .root = std::filesystem::temp_directory_path()}, assets);
     REQUIRE(opened.succeeded);
 
     const auto created = host->execute(arc::editor::host_command_envelope{
         .request_id = 1,
-        .payload = arc::editor::host_create_entity_command{ .kind = arc::editor::host_create_entity_kind::cube } });
+        .payload = arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube}});
     REQUIRE(created.succeeded);
     const auto created_entity = host->selected_entity_snapshot().entity;
     REQUIRE(created_entity.valid());
 
     const auto renamed = host->execute(arc::editor::host_command_envelope{
         .request_id = 2,
-        .payload = arc::editor::host_rename_entity_command{
-            .entity = created_entity,
-            .name = "Command Cube" } });
+        .payload = arc::editor::host_rename_entity_command{.entity = created_entity, .name = "Command Cube"}});
     REQUIRE(renamed.succeeded);
 
     const auto selected = host->selected_entity_snapshot();
     REQUIRE(selected.entity == created_entity);
     REQUIRE(selected.name == "Command Cube");
     REQUIRE(selected.transform.has_value());
-    REQUIRE(std::any_of(selected.components.begin(), selected.components.end(), [](const auto& component) {
-        return component.kind == arc::editor::host_component_kind::transform;
-    }));
+    REQUIRE(std::any_of(selected.components.begin(), selected.components.end(), [](const auto& component)
+                        { return component.kind == arc::editor::host_component_kind::transform; }));
 
     auto transform = *selected.transform;
-    transform.position = { 2.0f, 3.0f, 4.0f };
+    transform.position = {2.0f, 3.0f, 4.0f};
     REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .request_id = 3,
-        .payload = arc::editor::host_set_transform_command{
-            .entity = created_entity,
-            .transform = transform } }).succeeded);
+                              .request_id = 3,
+                              .payload = arc::editor::host_set_transform_command{.entity = created_entity,
+                                                                                 .transform = transform}})
+                .succeeded);
     REQUIRE(host->selected_entity_snapshot().transform->position.x == Catch::Approx(2.0f));
 
     const auto snapshot = host->scene_snapshot();
-    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(), [&](const auto& entity) {
-        return entity.entity == created_entity && entity.name == "Command Cube" && entity.selected;
-    }));
+    REQUIRE(
+        std::any_of(snapshot.entities.begin(), snapshot.entities.end(), [&](const auto& entity)
+                    { return entity.entity == created_entity && entity.name == "Command Cube" && entity.selected; }));
 
-    REQUIRE(host->query({ .request_id = 4, .payload = arc::editor::host_scene_hierarchy_query{} }).succeeded);
-    REQUIRE(host->query({ .request_id = 5, .payload = arc::editor::host_project_assets_query{} }).succeeded);
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .request_id = 6,
-        .payload = arc::editor::host_delete_entity_command{ .entity = created_entity } }).succeeded);
+    REQUIRE(host->query({.request_id = 4, .payload = arc::editor::host_scene_hierarchy_query{}}).succeeded);
+    REQUIRE(host->query({.request_id = 5, .payload = arc::editor::host_project_assets_query{}}).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .request_id = 6, .payload = arc::editor::host_delete_entity_command{.entity = created_entity}})
+                .succeeded);
     REQUIRE_FALSE(host->selected_entity_snapshot().entity.valid());
 
     const auto events = host->poll_events();
-    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
-        return event.event_type == arc::editor::host_event_type::entity_created;
-    }));
-    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
-        return event.event_type == arc::editor::host_event_type::entity_deleted;
-    }));
+    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event)
+                        { return event.event_type == arc::editor::host_event_type::entity_created; }));
+    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event)
+                        { return event.event_type == arc::editor::host_event_type::entity_deleted; }));
 }
 
 TEST_CASE("arc host hierarchy and history preserve subtrees and group edit transactions")
@@ -1000,78 +1026,89 @@ TEST_CASE("arc host hierarchy and history preserve subtrees and group edit trans
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project({ .name = "Authoring Test", .root = {} }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Authoring Test", .root = {}}, assets).succeeded);
 
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::cube }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube})
+                .succeeded);
     const auto parent = host->selected_entity_snapshot().entity;
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::sphere }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::sphere})
+                .succeeded);
     const auto child = host->selected_entity_snapshot().entity;
     REQUIRE(host->execute(arc::editor::host_reparent_entity_command{
-        .entity = child, .parent = parent, .preserve_world = true }).succeeded);
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::empty, .parent = parent }).succeeded);
+                              .entity = child, .parent = parent, .preserve_world = true})
+                .succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty,
+                                                                  .parent = parent})
+                .succeeded);
     const auto empty_child = host->selected_entity_snapshot().entity;
     REQUIRE(host->selected_entity_snapshot().name == "Entity");
 
     const auto hierarchy = host->scene_snapshot();
     const auto parent_record = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(),
-        [parent](const auto& value) { return value.entity == parent; });
+                                            [parent](const auto& value) { return value.entity == parent; });
     const auto child_record = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(),
-        [child](const auto& value) { return value.entity == child; });
+                                           [child](const auto& value) { return value.entity == child; });
     REQUIRE(parent_record != hierarchy.entities.end());
     REQUIRE(child_record != hierarchy.entities.end());
     REQUIRE(child_record->parent_guid == parent_record->guid);
     const auto empty_record = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(),
-        [empty_child](const auto& value) { return value.entity == empty_child; });
+                                           [empty_child](const auto& value) { return value.entity == empty_child; });
     REQUIRE(empty_record != hierarchy.entities.end());
     REQUIRE(empty_record->parent_guid == parent_record->guid);
 
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::empty }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
     const auto first_root = host->selected_entity_snapshot().entity;
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::empty }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
     const auto second_root = host->selected_entity_snapshot().entity;
-    REQUIRE(host->execute(arc::editor::host_reorder_entity_command{
-        .entity = second_root, .before_sibling = first_root }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_reorder_entity_command{.entity = second_root, .before_sibling = first_root})
+                .succeeded);
     const auto reordered = host->scene_snapshot();
     const auto first_root_record = std::find_if(reordered.entities.begin(), reordered.entities.end(),
-        [first_root](const auto& value) { return value.entity == first_root; });
-    const auto second_root_record = std::find_if(reordered.entities.begin(), reordered.entities.end(),
-        [second_root](const auto& value) { return value.entity == second_root; });
+                                                [first_root](const auto& value) { return value.entity == first_root; });
+    const auto second_root_record =
+        std::find_if(reordered.entities.begin(), reordered.entities.end(),
+                     [second_root](const auto& value) { return value.entity == second_root; });
     REQUIRE(first_root_record != reordered.entities.end());
     REQUIRE(second_root_record != reordered.entities.end());
     REQUIRE(second_root_record->parent_guid.empty());
     REQUIRE(second_root_record->sibling_order < first_root_record->sibling_order);
 
-    REQUIRE(host->execute(arc::editor::host_select_entity_command{ .entity = parent }).succeeded);
-    REQUIRE(host->execute(arc::editor::host_duplicate_entity_command{ .entity = parent }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = parent}).succeeded);
+    REQUIRE(host->execute(arc::editor::host_duplicate_entity_command{.entity = parent}).succeeded);
     const auto duplicate = host->selected_entity_snapshot().entity;
     REQUIRE(duplicate != parent);
     REQUIRE(host->scene_snapshot().entities.size() == reordered.entities.size() + 3);
-    REQUIRE(host->execute(arc::editor::host_delete_entity_command{ .entity = parent }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_delete_entity_command{.entity = parent}).succeeded);
     REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
     const auto restored_hierarchy = host->scene_snapshot();
     REQUIRE(std::any_of(restored_hierarchy.entities.begin(), restored_hierarchy.entities.end(),
-        [parent](const auto& value) { return value.entity == parent; }));
+                        [parent](const auto& value) { return value.entity == parent; }));
 
-    REQUIRE(host->execute(arc::editor::host_select_entity_command{ .entity = duplicate }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = duplicate}).succeeded);
     const auto original = *host->selected_entity_snapshot().transform;
     auto preview = original;
     preview.position.x += 1.0f;
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .payload = arc::editor::host_set_transform_command{ .entity = duplicate, .transform = preview },
-        .edit = arc::editor::host_edit_transaction{ .id = 7, .phase = arc::editor::host_edit_phase::begin, .label = "Gizmo Drag" } }).succeeded);
+    REQUIRE(
+        host->execute(arc::editor::host_command_envelope{
+                          .payload = arc::editor::host_set_transform_command{.entity = duplicate, .transform = preview},
+                          .edit = arc::editor::host_edit_transaction{.id = 7,
+                                                                     .phase = arc::editor::host_edit_phase::begin,
+                                                                     .label = "Gizmo Drag"}})
+            .succeeded);
     preview.position.x += 1.0f;
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .payload = arc::editor::host_set_transform_command{ .entity = duplicate, .transform = preview },
-        .edit = arc::editor::host_edit_transaction{ .id = 7, .phase = arc::editor::host_edit_phase::update } }).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .payload = arc::editor::host_set_transform_command{.entity = duplicate, .transform = preview},
+                    .edit = arc::editor::host_edit_transaction{.id = 7, .phase = arc::editor::host_edit_phase::update}})
+                .succeeded);
     preview.position.x += 1.0f;
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .payload = arc::editor::host_set_transform_command{ .entity = duplicate, .transform = preview },
-        .edit = arc::editor::host_edit_transaction{ .id = 7, .phase = arc::editor::host_edit_phase::commit } }).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .payload = arc::editor::host_set_transform_command{.entity = duplicate, .transform = preview},
+                    .edit = arc::editor::host_edit_transaction{.id = 7, .phase = arc::editor::host_edit_phase::commit}})
+                .succeeded);
     REQUIRE(host->scene_snapshot().undo_label == "Gizmo Drag");
     REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
     REQUIRE(host->selected_entity_snapshot().transform->position.x == Catch::Approx(original.position.x));
@@ -1080,12 +1117,18 @@ TEST_CASE("arc host hierarchy and history preserve subtrees and group edit trans
 
     auto cancelled = preview;
     cancelled.position.y += 8.0f;
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .payload = arc::editor::host_set_transform_command{ .entity = duplicate, .transform = cancelled },
-        .edit = arc::editor::host_edit_transaction{ .id = 8, .phase = arc::editor::host_edit_phase::begin, .label = "Cancelled Drag" } }).succeeded);
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .payload = arc::editor::host_set_transform_command{ .entity = duplicate, .transform = cancelled },
-        .edit = arc::editor::host_edit_transaction{ .id = 8, .phase = arc::editor::host_edit_phase::cancel } }).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .payload = arc::editor::host_set_transform_command{.entity = duplicate, .transform = cancelled},
+                    .edit = arc::editor::host_edit_transaction{.id = 8,
+                                                               .phase = arc::editor::host_edit_phase::begin,
+                                                               .label = "Cancelled Drag"}})
+                .succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .payload = arc::editor::host_set_transform_command{.entity = duplicate, .transform = cancelled},
+                    .edit = arc::editor::host_edit_transaction{.id = 8, .phase = arc::editor::host_edit_phase::cancel}})
+                .succeeded);
     REQUIRE(host->selected_entity_snapshot().transform->position.y == Catch::Approx(preview.position.y));
 }
 
@@ -1095,16 +1138,15 @@ TEST_CASE("viewport navigation and repeated selection do not emit scene refresh 
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project({ .name = "Event Dedup Test", .root = {} }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Event Dedup Test", .root = {}}, assets).succeeded);
     host->poll_events();
 
     const auto selected = host->selected_entity_snapshot().entity;
     REQUIRE(selected.valid());
-    REQUIRE(host->execute(arc::editor::host_select_entity_command{ .entity = selected }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = selected}).succeeded);
     REQUIRE(host->poll_events().empty());
 
-    REQUIRE(host->execute(arc::editor::host_viewport_camera_input_command{
-        .look_x = 4.0f, .look_y = -2.0f }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_viewport_camera_input_command{.look_x = 4.0f, .look_y = -2.0f}).succeeded);
     REQUIRE(host->poll_events().empty());
 
     REQUIRE(host->execute(arc::editor::host_clear_selection_command{}).succeeded);
@@ -1121,7 +1163,7 @@ TEST_CASE("viewport picking resolves the asynchronous ObjectID result before CPU
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project({ .name = "Async Pick Test", .root = {} }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Async Pick Test", .root = {}}, assets).succeeded);
     auto backend = std::make_unique<pick_test_backend>();
     auto* backend_ptr = backend.get();
     host->renderer_service().set_backend(std::move(backend));
@@ -1130,27 +1172,24 @@ TEST_CASE("viewport picking resolves the asynchronous ObjectID result before CPU
     const auto original = host->selected_entity_snapshot().entity;
     const auto target = host->scene_state().water_entity;
     REQUIRE(host->scene_state().scene.alive(target));
-    REQUIRE(target != (arc::ecs::entity{ original.index, original.generation }));
-    REQUIRE(host->execute(arc::editor::host_viewport_pick_command{ .x = 24, .y = 36 }).succeeded);
+    REQUIRE(target != (arc::ecs::entity{original.index, original.generation}));
+    REQUIRE(host->execute(arc::editor::host_viewport_pick_command{.x = 24, .y = 36}).succeeded);
     REQUIRE(host->selected_entity_snapshot().entity == original);
     REQUIRE(backend_ptr->request_.x == 24);
     REQUIRE(backend_ptr->request_.y == 36);
 
-    backend_ptr->result = {
-        .request_id = backend_ptr->request_.request_id,
-        .available = true,
-        .hit = true,
-        .object = { target.index, target.generation },
-        .x = 24,
-        .y = 36,
-        .frame_index = 1
-    };
-    REQUIRE(host->request_viewport({ .frame_index = 1, .width = 640, .height = 480 }).submitted);
-    REQUIRE(host->selected_entity_snapshot().entity == (arc::editor::host_entity_id{ target.index, target.generation }));
+    backend_ptr->result = {.request_id = backend_ptr->request_.request_id,
+                           .available = true,
+                           .hit = true,
+                           .object = {target.index, target.generation},
+                           .x = 24,
+                           .y = 36,
+                           .frame_index = 1};
+    REQUIRE(host->request_viewport({.frame_index = 1, .width = 640, .height = 480}).submitted);
+    REQUIRE(host->selected_entity_snapshot().entity == (arc::editor::host_entity_id{target.index, target.generation}));
     const auto events = host->poll_events();
-    REQUIRE(std::count_if(events.begin(), events.end(), [](const auto& event) {
-        return event.event_type == arc::editor::host_event_type::entity_selected;
-    }) == 1);
+    REQUIRE(std::count_if(events.begin(), events.end(), [](const auto& event)
+                          { return event.event_type == arc::editor::host_event_type::entity_selected; }) == 1);
 }
 
 TEST_CASE("viewport captures remain asynchronous and map ObjectIDs to persistent GUIDs")
@@ -1159,56 +1198,51 @@ TEST_CASE("viewport captures remain asynchronous and map ObjectIDs to persistent
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project({ .name = "Capture Test", .root = {} }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Capture Test", .root = {}}, assets).succeeded);
     auto backend = std::make_unique<pick_test_backend>();
     auto* backend_ptr = backend.get();
     host->renderer_service().set_backend(std::move(backend));
 
-    REQUIRE(host->execute(arc::editor::host_viewport_capture_command{
-        .capture_id = 77, .color = true, .depth = false, .object_id = true, .normals = false,
-        .scene_color = true, .base_color = true, .material_properties = true, .emissive = true }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_viewport_capture_command{.capture_id = 77,
+                                                                     .color = true,
+                                                                     .depth = false,
+                                                                     .object_id = true,
+                                                                     .normals = false,
+                                                                     .scene_color = true,
+                                                                     .base_color = true,
+                                                                     .material_properties = true,
+                                                                     .emissive = true})
+                .succeeded);
     REQUIRE(backend_ptr->capture_request.capture_id == 77);
     REQUIRE(backend_ptr->capture_request.channels.size() == 6);
-    REQUIRE(std::find(
-        backend_ptr->capture_request.channels.begin(),
-        backend_ptr->capture_request.channels.end(),
-        arc::render::render_capture_channel::scene_color) != backend_ptr->capture_request.channels.end());
+    REQUIRE(std::find(backend_ptr->capture_request.channels.begin(), backend_ptr->capture_request.channels.end(),
+                      arc::render::render_capture_channel::scene_color) != backend_ptr->capture_request.channels.end());
 
-    arc::editor::host_query_envelope query{
-        .request_id = 8,
-        .payload = arc::editor::host_viewport_capture_query{ .capture_id = 77 }
-    };
+    arc::editor::host_query_envelope query{.request_id = 8,
+                                           .payload = arc::editor::host_viewport_capture_query{.capture_id = 77}};
     REQUIRE(host->query(query).payload_json.find("\"pending\":true") != std::string::npos);
 
     const auto selected = host->selected_entity_snapshot();
-    backend_ptr->capture_result = {
-        .capture_id = 77,
-        .frame_index = 4,
-        .available = true,
-        .succeeded = true,
-        .camera = {
-            .position = { 1.0f, 2.0f, 3.0f },
-            .forward = { 0.0f, 0.0f, -1.0f },
-            .up = { 0.0f, 1.0f, 0.0f },
-            .near_plane = 0.1f,
-            .far_plane = 500.0f,
-            .render_width = 640,
-            .render_height = 360,
-            .output_width = 1280,
-            .output_height = 720
-        },
-        .images = { {
-            .channel = arc::render::render_capture_channel::output_color,
-            .format = arc::render::render_capture_format::rgba8_unorm,
-            .width = 1,
-            .height = 1,
-            .data = { std::byte{ 255 }, std::byte{ 0 }, std::byte{ 0 }, std::byte{ 255 } }
-        } },
-        .objects = { {
-            .encoded_id = selected.entity.index + 1u,
-            .object = { selected.entity.index, selected.entity.generation }
-        } }
-    };
+    backend_ptr->capture_result = {.capture_id = 77,
+                                   .frame_index = 4,
+                                   .available = true,
+                                   .succeeded = true,
+                                   .camera = {.position = {1.0f, 2.0f, 3.0f},
+                                              .forward = {0.0f, 0.0f, -1.0f},
+                                              .up = {0.0f, 1.0f, 0.0f},
+                                              .near_plane = 0.1f,
+                                              .far_plane = 500.0f,
+                                              .render_width = 640,
+                                              .render_height = 360,
+                                              .output_width = 1280,
+                                              .output_height = 720},
+                                   .images = {{.channel = arc::render::render_capture_channel::output_color,
+                                               .format = arc::render::render_capture_format::rgba8_unorm,
+                                               .width = 1,
+                                               .height = 1,
+                                               .data = {std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}}}},
+                                   .objects = {{.encoded_id = selected.entity.index + 1u,
+                                                .object = {selected.entity.index, selected.entity.generation}}}};
     const auto completed = host->query(query);
     REQUIRE(completed.succeeded);
     REQUIRE(completed.payload_json.find("\"pending\":false") != std::string::npos);
@@ -1220,7 +1254,8 @@ TEST_CASE("viewport captures remain asynchronous and map ObjectIDs to persistent
 
 TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject invalid loads")
 {
-    const auto root = std::filesystem::temp_directory_path() /
+    const auto root =
+        std::filesystem::temp_directory_path() /
         ("arc-scene-document-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::error_code error;
     std::filesystem::create_directories(root / "assets", error);
@@ -1231,21 +1266,22 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = root / "assets";
-    REQUIRE(host->open_project({ .name = "Persistence Test", .root = root }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Persistence Test", .root = root}, assets).succeeded);
     const auto selected = host->selected_entity_snapshot().entity;
-    REQUIRE(host->execute(arc::editor::host_rename_entity_command{ .entity = selected, .name = "Persisted Entity" }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_rename_entity_command{.entity = selected, .name = "Persisted Entity"})
+                .succeeded);
     const auto initial_snapshot = host->scene_snapshot();
     const auto selected_record = std::find_if(initial_snapshot.entities.begin(), initial_snapshot.entities.end(),
-        [selected](const auto& value) { return value.entity == selected; });
+                                              [selected](const auto& value) { return value.entity == selected; });
     REQUIRE(selected_record != initial_snapshot.entities.end());
     const auto selected_guid = selected_record->guid;
 
     const auto path = root / "scenes" / "mountain.arcscene";
-    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{ .path = path }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = path}).succeeded);
     REQUIRE(std::filesystem::exists(path));
     REQUIRE_FALSE(host->scene_snapshot().dirty);
 
-    REQUIRE(host->execute(arc::editor::host_rename_entity_command{ .entity = selected, .name = "Changed" }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_rename_entity_command{.entity = selected, .name = "Changed"}).succeeded);
     REQUIRE(host->scene_snapshot().dirty);
     REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
     REQUIRE_FALSE(host->scene_snapshot().dirty);
@@ -1258,23 +1294,23 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     const auto component_position = document.find(component_marker);
     REQUIRE(component_position != std::string::npos);
     document.insert(component_position + component_marker.size(),
-        "\n        \"FutureRenderer\": {\"version\": 7, \"opaque\": {\"quality\": \"future\"}},");
+                    "\n        \"FutureRenderer\": {\"version\": 7, \"opaque\": {\"quality\": \"future\"}},");
     const std::string transform_marker = "\"Transform\": {";
     const auto transform_position = document.find(transform_marker);
     REQUIRE(transform_position != std::string::npos);
     document.insert(transform_position + transform_marker.size(),
-        "\n          \"futureTransformState\": {\"author\": \"future-editor\"},");
+                    "\n          \"futureTransformState\": {\"author\": \"future-editor\"},");
     const auto resealed = arc::persistence::seal_json_document(document, true);
     REQUIRE(resealed.succeeded());
     {
         std::ofstream output(path, std::ios::binary | std::ios::trunc);
         output << resealed.text;
     }
-    REQUIRE(host->execute(arc::editor::host_open_scene_command{ .path = path }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = path}).succeeded);
     REQUIRE_FALSE(host->scene_snapshot().dirty);
     const auto loaded_snapshot = host->scene_snapshot();
-    REQUIRE(std::any_of(loaded_snapshot.entities.begin(), loaded_snapshot.entities.end(),
-        [&](const auto& value) { return value.guid == selected_guid && value.name == "Persisted Entity"; }));
+    REQUIRE(std::any_of(loaded_snapshot.entities.begin(), loaded_snapshot.entities.end(), [&](const auto& value)
+                        { return value.guid == selected_guid && value.name == "Persisted Entity"; }));
     REQUIRE(host->execute(arc::editor::host_save_scene_command{}).succeeded);
     std::ifstream resaved_input(path, std::ios::binary);
     const std::string resaved((std::istreambuf_iterator<char>(resaved_input)), std::istreambuf_iterator<char>());
@@ -1295,7 +1331,7 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
         output << invalid;
     }
     const auto before_invalid_load = arc::editor::to_json(host->scene_snapshot());
-    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{ .path = invalid_path }).succeeded);
+    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{.path = invalid_path}).succeeded);
     REQUIRE(arc::editor::to_json(host->scene_snapshot()) == before_invalid_load);
 
     auto malformed_camera = resaved;
@@ -1313,20 +1349,20 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
         std::ofstream output(malformed_camera_path, std::ios::binary | std::ios::trunc);
         output << malformed_camera;
     }
-    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{ .path = malformed_camera_path }).succeeded);
+    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{.path = malformed_camera_path}).succeeded);
     REQUIRE(arc::editor::to_json(host->scene_snapshot()) == before_invalid_load);
 
     auto unsafe_asset = resaved;
     const auto first_components = unsafe_asset.find("\"components\": {");
     REQUIRE(first_components != std::string::npos);
     unsafe_asset.insert(first_components,
-        "\"assetBinding\": {\"kind\": \"imported\", \"path\": \"../outside.glb\"},\n        ");
+                        "\"assetBinding\": {\"kind\": \"imported\", \"path\": \"../outside.glb\"},\n        ");
     const auto unsafe_asset_path = root / "scenes" / "unsafe-asset.arcscene";
     {
         std::ofstream output(unsafe_asset_path, std::ios::binary | std::ios::trunc);
         output << unsafe_asset;
     }
-    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{ .path = unsafe_asset_path }).succeeded);
+    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{.path = unsafe_asset_path}).succeeded);
     REQUIRE(arc::editor::to_json(host->scene_snapshot()) == before_invalid_load);
 
     const auto first_id_key = resaved.find("\"id\": \"");
@@ -1349,14 +1385,16 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
         std::ofstream output(duplicate_guid_path, std::ios::binary | std::ios::trunc);
         output << duplicate_guid;
     }
-    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{ .path = duplicate_guid_path }).succeeded);
+    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{.path = duplicate_guid_path}).succeeded);
     REQUIRE(arc::editor::to_json(host->scene_snapshot()) == before_invalid_load);
 
     auto cyclic_hierarchy = resaved;
-    const auto replace_parent = [&](std::size_t id_key, const std::string& parent_id) {
+    const auto replace_parent = [&](std::size_t id_key, const std::string& parent_id)
+    {
         const auto parent_key = cyclic_hierarchy.find("\"parent\":", id_key);
         REQUIRE(parent_key != std::string::npos);
-        const auto value_begin = cyclic_hierarchy.find_first_not_of(" \t", parent_key + std::string("\"parent\":").size());
+        const auto value_begin =
+            cyclic_hierarchy.find_first_not_of(" \t", parent_key + std::string("\"parent\":").size());
         const auto value_end = cyclic_hierarchy.find_first_of(",\r\n", value_begin);
         REQUIRE(value_begin != std::string::npos);
         REQUIRE(value_end != std::string::npos);
@@ -1370,7 +1408,7 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
         std::ofstream output(cyclic_path, std::ios::binary | std::ios::trunc);
         output << cyclic_hierarchy;
     }
-    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{ .path = cyclic_path }).succeeded);
+    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{.path = cyclic_path}).succeeded);
     REQUIRE(arc::editor::to_json(host->scene_snapshot()) == before_invalid_load);
 
     std::filesystem::remove_all(root, error);
@@ -1382,24 +1420,24 @@ TEST_CASE("selected camera snapshots and entity-specific edits round trip atomic
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project(
-        { .name = "Inspector Camera Test", .root = std::filesystem::temp_directory_path() },
-        assets).succeeded);
+    REQUIRE(
+        host->open_project({.name = "Inspector Camera Test", .root = std::filesystem::temp_directory_path()}, assets)
+            .succeeded);
     const auto game_camera = host->scene_state().game_camera_entity;
     const auto editor_camera = host->scene_state().camera_entity;
-    const arc::editor::host_entity_id game_camera_id{ game_camera.index, game_camera.generation };
+    const arc::editor::host_entity_id game_camera_id{game_camera.index, game_camera.generation};
 
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .request_id = 1,
-        .payload = arc::editor::host_select_entity_command{ .entity = game_camera_id } }).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .request_id = 1, .payload = arc::editor::host_select_entity_command{.entity = game_camera_id}})
+                .succeeded);
 
     const auto selected = host->selected_entity_snapshot();
     REQUIRE(selected.entity == game_camera_id);
     REQUIRE(selected.camera.has_value());
     REQUIRE(selected.render_layer_mask == arc::editor::host_default_render_layer);
-    REQUIRE(std::any_of(selected.components.begin(), selected.components.end(), [](const auto& component) {
-        return component.kind == arc::editor::host_component_kind::camera && component.editable;
-    }));
+    REQUIRE(std::any_of(selected.components.begin(), selected.components.end(), [](const auto& component)
+                        { return component.kind == arc::editor::host_component_kind::camera && component.editable; }));
 
     const auto editor_before = host->scene_state().scene.get<arc::scene::camera_component>(editor_camera);
     auto updated = *selected.camera;
@@ -1409,12 +1447,12 @@ TEST_CASE("selected camera snapshots and entity-specific edits round trip atomic
     updated.near_plane = 0.25f;
     updated.far_plane = 4096.0f;
     updated.active = true;
-    updated.clear_color = { 0.1f, 0.2f, 0.3f, 0.8f };
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .request_id = 2,
-        .payload = arc::editor::host_set_camera_command{
-            .entity = game_camera_id,
-            .camera = updated } }).succeeded);
+    updated.clear_color = {0.1f, 0.2f, 0.3f, 0.8f};
+    REQUIRE(
+        host->execute(arc::editor::host_command_envelope{
+                          .request_id = 2,
+                          .payload = arc::editor::host_set_camera_command{.entity = game_camera_id, .camera = updated}})
+            .succeeded);
 
     const auto round_trip = host->selected_entity_snapshot();
     REQUIRE(round_trip.camera.has_value());
@@ -1424,28 +1462,44 @@ TEST_CASE("selected camera snapshots and entity-specific edits round trip atomic
     REQUIRE(editor_after.fov_y_radians == Catch::Approx(editor_before.fov_y_radians));
     REQUIRE(editor_after.near_plane == Catch::Approx(editor_before.near_plane));
 
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .request_id = 3,
-        .payload = arc::editor::host_set_render_layer_command{
-            .entity = game_camera_id,
-            .render_layer_mask = arc::editor::host_environment_render_layer } }).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .request_id = 3,
+                    .payload =
+                        arc::editor::host_set_render_layer_command{
+                            .entity = game_camera_id, .render_layer_mask = arc::editor::host_environment_render_layer}})
+                .succeeded);
     REQUIRE(host->selected_entity_snapshot().render_layer_mask == arc::editor::host_environment_render_layer);
 
     const auto confirmed = *host->selected_entity_snapshot().camera;
-    for (const auto invalid : {
-        arc::editor::host_camera_snapshot{ confirmed.projection, 1.0f, confirmed.orthographic_height, confirmed.near_plane, confirmed.far_plane, confirmed.active, confirmed.clear_color },
-        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, 0.0f, confirmed.near_plane, confirmed.far_plane, confirmed.active, confirmed.clear_color },
-        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, confirmed.orthographic_height, 0.0f, confirmed.far_plane, confirmed.active, confirmed.clear_color },
-        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, confirmed.orthographic_height, confirmed.near_plane, confirmed.near_plane, confirmed.active, confirmed.clear_color },
-        arc::editor::host_camera_snapshot{ confirmed.projection, std::numeric_limits<float>::infinity(), confirmed.orthographic_height, confirmed.near_plane, confirmed.far_plane, confirmed.active, confirmed.clear_color },
-        arc::editor::host_camera_snapshot{ confirmed.projection, confirmed.fov_y_degrees, confirmed.orthographic_height, confirmed.near_plane, confirmed.far_plane, confirmed.active, { -0.1f, 0.2f, 0.3f, 1.0f } }
-    })
+    for (const auto invalid :
+         {arc::editor::host_camera_snapshot{confirmed.projection, 1.0f, confirmed.orthographic_height,
+                                            confirmed.near_plane, confirmed.far_plane, confirmed.active,
+                                            confirmed.clear_color},
+          arc::editor::host_camera_snapshot{confirmed.projection, confirmed.fov_y_degrees, 0.0f, confirmed.near_plane,
+                                            confirmed.far_plane, confirmed.active, confirmed.clear_color},
+          arc::editor::host_camera_snapshot{confirmed.projection, confirmed.fov_y_degrees,
+                                            confirmed.orthographic_height, 0.0f, confirmed.far_plane, confirmed.active,
+                                            confirmed.clear_color},
+          arc::editor::host_camera_snapshot{confirmed.projection, confirmed.fov_y_degrees,
+                                            confirmed.orthographic_height, confirmed.near_plane, confirmed.near_plane,
+                                            confirmed.active, confirmed.clear_color},
+          arc::editor::host_camera_snapshot{confirmed.projection, std::numeric_limits<float>::infinity(),
+                                            confirmed.orthographic_height, confirmed.near_plane, confirmed.far_plane,
+                                            confirmed.active, confirmed.clear_color},
+          arc::editor::host_camera_snapshot{confirmed.projection,
+                                            confirmed.fov_y_degrees,
+                                            confirmed.orthographic_height,
+                                            confirmed.near_plane,
+                                            confirmed.far_plane,
+                                            confirmed.active,
+                                            {-0.1f, 0.2f, 0.3f, 1.0f}}})
     {
         REQUIRE_FALSE(host->execute(arc::editor::host_command_envelope{
-            .request_id = 4,
-            .payload = arc::editor::host_set_camera_command{
-                .entity = game_camera_id,
-                .camera = invalid } }).succeeded);
+                                        .request_id = 4,
+                                        .payload = arc::editor::host_set_camera_command{.entity = game_camera_id,
+                                                                                        .camera = invalid}})
+                          .succeeded);
         REQUIRE(*host->selected_entity_snapshot().camera == confirmed);
     }
 
@@ -1456,20 +1510,20 @@ TEST_CASE("selected camera snapshots and entity-specific edits round trip atomic
 
 TEST_CASE("camera and render layer JSON commands preserve their typed payloads")
 {
-    const arc::editor::host_entity_id entity{ 12, 4 };
+    const arc::editor::host_entity_id entity{12, 4};
     arc::editor::host_camera_snapshot camera;
     camera.fov_y_degrees = 80.0f;
     camera.near_plane = 0.5f;
     camera.far_plane = 5000.0f;
-    camera.clear_color = { 0.2f, 0.3f, 0.4f, 1.0f };
+    camera.clear_color = {0.2f, 0.3f, 0.4f, 1.0f};
 
     const std::array<arc::editor::host_command_payload, 2> payloads{
-        arc::editor::host_command_payload{ arc::editor::host_set_camera_command{ .entity = entity, .camera = camera } },
-        arc::editor::host_command_payload{ arc::editor::host_set_render_layer_command{ .entity = entity, .render_layer_mask = 2u } }
-    };
+        arc::editor::host_command_payload{arc::editor::host_set_camera_command{.entity = entity, .camera = camera}},
+        arc::editor::host_command_payload{
+            arc::editor::host_set_render_layer_command{.entity = entity, .render_layer_mask = 2u}}};
     for (const auto& payload : payloads)
     {
-        const arc::editor::host_command_envelope source{ .request_id = 91, .payload = payload };
+        const arc::editor::host_command_envelope source{.request_id = 91, .payload = payload};
         arc::editor::host_command_envelope parsed;
         std::string error;
         REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, error));
@@ -1484,13 +1538,12 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project(
-        { .name = "Inspector Light Test", .root = std::filesystem::temp_directory_path() },
-        assets).succeeded);
+    REQUIRE(host->open_project({.name = "Inspector Light Test", .root = std::filesystem::temp_directory_path()}, assets)
+                .succeeded);
 
     const auto sun = host->scene_state().sun_entity;
-    const arc::editor::host_entity_id sun_id{ sun.index, sun.generation };
-    REQUIRE(host->execute(arc::editor::host_select_entity_command{ .entity = sun_id }).succeeded);
+    const arc::editor::host_entity_id sun_id{sun.index, sun.generation};
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = sun_id}).succeeded);
     const auto selected = host->selected_entity_snapshot();
     REQUIRE(selected.light.has_value());
     REQUIRE(selected.light->kind == arc::editor::host_light_kind::directional);
@@ -1498,7 +1551,7 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
 
     auto updated = *selected.light;
     updated.intensity = 85000.0f;
-    updated.color = { 1.0f, 0.82f, 0.63f };
+    updated.color = {1.0f, 0.82f, 0.63f};
     updated.use_color_temperature = true;
     updated.temperature_kelvin = 5200.0f;
     updated.shadow_resolution = 3072;
@@ -1510,25 +1563,20 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
     updated.shadow_distance = 180.0f;
     updated.cascade_split_lambda = 0.7f;
     updated.cascade_blend_fraction = 0.1f;
-    REQUIRE(host->execute(arc::editor::host_set_light_command{
-        .entity = sun_id, .light = updated }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_set_light_command{.entity = sun_id, .light = updated}).succeeded);
     REQUIRE(*host->selected_entity_snapshot().light == updated);
-    REQUIRE(host->execute(arc::editor::host_set_mobility_command{
-        .entity = sun_id,
-        .mobility = arc::editor::host_mobility::static_object }).succeeded);
-    REQUIRE(host->selected_entity_snapshot().mobility ==
-        arc::editor::host_mobility::static_object);
+    REQUIRE(host->execute(arc::editor::host_set_mobility_command{.entity = sun_id,
+                                                                 .mobility = arc::editor::host_mobility::static_object})
+                .succeeded);
+    REQUIRE(host->selected_entity_snapshot().mobility == arc::editor::host_mobility::static_object);
 
     auto invalid = updated;
     invalid.unit = arc::editor::host_light_unit::lumen;
-    REQUIRE_FALSE(host->execute(arc::editor::host_set_light_command{
-        .entity = sun_id, .light = invalid }).succeeded);
+    REQUIRE_FALSE(host->execute(arc::editor::host_set_light_command{.entity = sun_id, .light = invalid}).succeeded);
     REQUIRE(*host->selected_entity_snapshot().light == updated);
 
     const arc::editor::host_command_envelope source{
-        .request_id = 92,
-        .payload = arc::editor::host_set_light_command{ .entity = sun_id, .light = updated }
-    };
+        .request_id = 92, .payload = arc::editor::host_set_light_command{.entity = sun_id, .light = updated}};
     arc::editor::host_command_envelope parsed;
     std::string error;
     REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, error));
@@ -1541,28 +1589,28 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
 
 TEST_CASE("scene authoring protocol commands and edit transactions round trip")
 {
-    const arc::editor::host_entity_id entity{ 8, 3 };
-    const arc::editor::host_entity_id parent{ 4, 2 };
+    const arc::editor::host_entity_id entity{8, 3};
+    const arc::editor::host_entity_id parent{4, 2};
     const std::array<arc::editor::host_command_payload, 9> payloads{
-        arc::editor::host_new_scene_command{ .name = "New World" },
+        arc::editor::host_new_scene_command{.name = "New World"},
         arc::editor::host_save_scene_command{},
-        arc::editor::host_save_scene_as_command{ .path = "scenes/world.arcscene" },
-        arc::editor::host_duplicate_entity_command{ .entity = entity },
-        arc::editor::host_reparent_entity_command{ .entity = entity, .parent = parent, .preserve_world = true },
-        arc::editor::host_reorder_entity_command{ .entity = entity, .before_sibling = parent },
+        arc::editor::host_save_scene_as_command{.path = "scenes/world.arcscene"},
+        arc::editor::host_duplicate_entity_command{.entity = entity},
+        arc::editor::host_reparent_entity_command{.entity = entity, .parent = parent, .preserve_world = true},
+        arc::editor::host_reorder_entity_command{.entity = entity, .before_sibling = parent},
         arc::editor::host_history_undo_command{},
         arc::editor::host_history_redo_command{},
-        arc::editor::host_viewport_set_tool_command{ .tool = arc::editor::host_viewport_tool::rotate,
-            .coordinate_space = arc::editor::host_coordinate_space::local, .snapping = true }
-    };
+        arc::editor::host_viewport_set_tool_command{.tool = arc::editor::host_viewport_tool::rotate,
+                                                    .coordinate_space = arc::editor::host_coordinate_space::local,
+                                                    .snapping = true}};
     for (const auto& payload : payloads)
     {
         const arc::editor::host_command_envelope source{
             .request_id = 71,
             .command_type = arc::editor::command_type(payload),
             .payload = payload,
-            .edit = arc::editor::host_edit_transaction{ .id = 44, .phase = arc::editor::host_edit_phase::commit, .label = "Quoted \"edit\"" }
-        };
+            .edit = arc::editor::host_edit_transaction{
+                .id = 44, .phase = arc::editor::host_edit_phase::commit, .label = "Quoted \"edit\""}};
         arc::editor::host_command_envelope parsed;
         std::string error;
         REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, error));
@@ -1577,7 +1625,7 @@ TEST_CASE("scene authoring protocol commands and edit transactions round trip")
     arc::editor::host_query_envelope history_query;
     std::string error;
     REQUIRE(arc::editor::from_json("{\"kind\":\"query\",\"requestId\":5,\"type\":\"history.state\",\"payload\":{}}",
-        history_query, error));
+                                   history_query, error));
     REQUIRE(std::holds_alternative<arc::editor::host_history_state_query>(history_query.payload));
 }
 
@@ -1587,18 +1635,14 @@ TEST_CASE("runtime protocol commands and state query round trip")
         arc::editor::host_runtime_resume_command{},
         arc::editor::host_runtime_pause_command{},
         arc::editor::host_runtime_stop_command{},
-        arc::editor::host_runtime_step_command{ .ticks = 3 },
-        arc::editor::host_runtime_set_time_scale_command{ .value = 2.0 },
-        arc::editor::host_runtime_capture_snapshot_command{ .label = "Before ability" },
-        arc::editor::host_runtime_restore_snapshot_command{ .snapshot_id = 9 }
-    };
+        arc::editor::host_runtime_step_command{.ticks = 3},
+        arc::editor::host_runtime_set_time_scale_command{.value = 2.0},
+        arc::editor::host_runtime_capture_snapshot_command{.label = "Before ability"},
+        arc::editor::host_runtime_restore_snapshot_command{.snapshot_id = 9}};
     for (const auto& payload : payloads)
     {
         const arc::editor::host_command_envelope source{
-            .request_id = 88,
-            .command_type = arc::editor::command_type(payload),
-            .payload = payload
-        };
+            .request_id = 88, .command_type = arc::editor::command_type(payload), .payload = payload};
         arc::editor::host_command_envelope parsed;
         std::string error;
         REQUIRE(arc::editor::from_json(arc::editor::to_json(source), parsed, error));
@@ -1608,21 +1652,17 @@ TEST_CASE("runtime protocol commands and state query round trip")
 
     arc::editor::host_query_envelope query;
     std::string error;
-    REQUIRE(arc::editor::from_json(
-        "{\"kind\":\"query\",\"requestId\":12,\"type\":\"runtime.state\",\"payload\":{}}",
-        query,
-        error));
+    REQUIRE(arc::editor::from_json("{\"kind\":\"query\",\"requestId\":12,\"type\":\"runtime.state\",\"payload\":{}}",
+                                   query, error));
     REQUIRE(std::holds_alternative<arc::editor::host_runtime_state_query>(query.payload));
 
-    arc::editor::host_runtime_snapshot snapshot{
-        .state = arc::editor::host_runtime_state::paused,
-        .tick_id = 42,
-        .revision = 7,
-        .discarded_ticks = 3,
-        .time_scale = 0.5,
-        .interpolation_alpha = 0.25,
-        .world_count = 2
-    };
+    arc::editor::host_runtime_snapshot snapshot{.state = arc::editor::host_runtime_state::paused,
+                                                .tick_id = 42,
+                                                .revision = 7,
+                                                .discarded_ticks = 3,
+                                                .time_scale = 0.5,
+                                                .interpolation_alpha = 0.25,
+                                                .world_count = 2};
     const auto json = arc::editor::to_json(snapshot);
     REQUIRE(json.find("\"state\":\"paused\"") != std::string::npos);
     REQUIRE(json.find("\"tickId\":42") != std::string::npos);
@@ -1645,30 +1685,26 @@ TEST_CASE("arc host runtime controls are authoritative and revisioned")
     REQUIRE(state.revision > initial_revision);
 
     REQUIRE(host->execute(arc::editor::host_runtime_pause_command{}).succeeded);
-    REQUIRE(host->execute(arc::editor::host_runtime_step_command{ .ticks = 2 }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_runtime_step_command{.ticks = 2}).succeeded);
     state = host->runtime_snapshot();
     REQUIRE(state.state == arc::editor::host_runtime_state::paused);
     REQUIRE(state.tick_id == 2);
 
-    REQUIRE(host->execute(arc::editor::host_runtime_set_time_scale_command{ .value = 4.0 }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_runtime_set_time_scale_command{.value = 4.0}).succeeded);
     REQUIRE(host->runtime_snapshot().time_scale == Catch::Approx(4.0));
     REQUIRE_FALSE(host->execute(arc::editor::host_runtime_set_time_scale_command{
-        .value = std::numeric_limits<double>::infinity() }).succeeded);
+                                    .value = std::numeric_limits<double>::infinity()})
+                      .succeeded);
 
-    const auto response = host->query({
-        .request_id = 99,
-        .payload = arc::editor::host_runtime_state_query{}
-    });
+    const auto response = host->query({.request_id = 99, .payload = arc::editor::host_runtime_state_query{}});
     REQUIRE(response.succeeded);
     REQUIRE(response.payload_json.find("\"tickId\":2") != std::string::npos);
 
     const auto events = host->poll_events();
-    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
-        return event.event_type == arc::editor::host_event_type::runtime_state_changed;
-    }));
-    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
-        return event.event_type == arc::editor::host_event_type::runtime_tick_completed;
-    }));
+    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event)
+                        { return event.event_type == arc::editor::host_event_type::runtime_state_changed; }));
+    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event)
+                        { return event.event_type == arc::editor::host_event_type::runtime_tick_completed; }));
 }
 
 TEST_CASE("editor preview checkpoints operate on the authoritative authoring world")
@@ -1676,32 +1712,30 @@ TEST_CASE("editor preview checkpoints operate on the authoritative authoring wor
     auto renderer = std::make_unique<arc::render::renderer>();
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
-    REQUIRE(host->open_project({
-        .name = "Runtime Authoring World",
-        .root = std::filesystem::temp_directory_path()
-    }, {}).succeeded);
+    REQUIRE(host->open_project({.name = "Runtime Authoring World", .root = std::filesystem::temp_directory_path()}, {})
+                .succeeded);
 
     const std::size_t original_count = host->scene_snapshot().entities.size();
-    const auto captured = host->execute(
-        arc::editor::host_runtime_capture_snapshot_command{ .label = "Authoring checkpoint" });
+    const auto captured =
+        host->execute(arc::editor::host_runtime_capture_snapshot_command{.label = "Authoring checkpoint"});
     REQUIRE(captured.succeeded);
     const std::string marker = "\"snapshotId\":";
     const std::size_t marker_offset = captured.payload_json.find(marker);
     REQUIRE(marker_offset != std::string::npos);
-    const std::uint64_t snapshot_id = std::stoull(
-        captured.payload_json.substr(marker_offset + marker.size()));
+    const std::uint64_t snapshot_id = std::stoull(captured.payload_json.substr(marker_offset + marker.size()));
 
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::cube }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube})
+                .succeeded);
     REQUIRE(host->scene_snapshot().entities.size() == original_count + 1);
-    REQUIRE(host->execute(arc::editor::host_runtime_restore_snapshot_command{
-        .snapshot_id = snapshot_id }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_runtime_restore_snapshot_command{.snapshot_id = snapshot_id}).succeeded);
     REQUIRE(host->scene_snapshot().entities.size() == original_count);
     const auto events = host->poll_events();
-    REQUIRE(std::any_of(events.begin(), events.end(), [](const auto& event) {
-        return event.event_type == arc::editor::host_event_type::scene_changed &&
-            event.message == "Preview runtime snapshot restored";
-    }));
+    REQUIRE(std::any_of(events.begin(), events.end(),
+                        [](const auto& event)
+                        {
+                            return event.event_type == arc::editor::host_event_type::scene_changed &&
+                                   event.message == "Preview runtime snapshot restored";
+                        }));
 }
 
 TEST_CASE("arc host resolves a project assets directory for protocol-opened projects")
@@ -1716,10 +1750,7 @@ TEST_CASE("arc host resolves a project assets directory for protocol-opened proj
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     const auto response = host->execute(arc::editor::host_command_envelope{
-        .request_id = 1,
-        .payload = arc::editor::host_open_project_command{
-            .name = "Asset Root Test",
-            .root = root } });
+        .request_id = 1, .payload = arc::editor::host_open_project_command{.name = "Asset Root Test", .root = root}});
 
     REQUIRE(response.succeeded);
     REQUIRE(host->project_assets_snapshot().asset_root == root / "assets");
@@ -1729,19 +1760,18 @@ TEST_CASE("arc host resolves a project assets directory for protocol-opened proj
 TEST_CASE("world environment host snapshots round trip every settings group and preserve runtime handles")
 {
     arc::scene::world_environment_settings settings;
-    settings.world.hdri_texture = { .index = 1, .generation = 2 };
-    settings.celestial.sun_light = { .index = 3, .generation = 4 };
+    settings.world.hdri_texture = {.index = 1, .generation = 2};
+    settings.celestial.sun_light = {.index = 3, .generation = 4};
     settings.celestial.animation_time_seconds = 91.0f;
-    settings.lighting.environment = { .index = 5, .generation = 6 };
-    settings.lighting.hdri_texture = { .index = 7, .generation = 8 };
-    const arc::editor::host_entity_id entity{ 12, 2 };
-    auto snapshot = arc::editor::to_host_world_environment_snapshot(
-        entity, settings, "environments/studio.hdr");
+    settings.lighting.environment = {.index = 5, .generation = 6};
+    settings.lighting.hdri_texture = {.index = 7, .generation = 8};
+    const arc::editor::host_entity_id entity{12, 2};
+    auto snapshot = arc::editor::to_host_world_environment_snapshot(entity, settings, "environments/studio.hdr");
 
     snapshot.enabled = false;
     snapshot.sky_visible = false;
     snapshot.sky_source = arc::editor::host_sky_source::solid_color;
-    snapshot.solid_color = { 0.1f, 0.2f, 0.3f };
+    snapshot.solid_color = {0.1f, 0.2f, 0.3f};
     snapshot.hdri_rotation_degrees = 42.0f;
     snapshot.radiance_intensity = 1.7f;
     snapshot.rayleigh_strength = 1.2f;
@@ -1774,8 +1804,7 @@ TEST_CASE("world environment host snapshots round trip every settings group and 
     REQUIRE(converted.lighting.environment.index == 5);
     REQUIRE(converted.lighting.hdri_texture.index == 7);
 
-    const auto round_trip = arc::editor::to_host_world_environment_snapshot(
-        entity, converted, snapshot.hdri_path);
+    const auto round_trip = arc::editor::to_host_world_environment_snapshot(entity, converted, snapshot.hdri_path);
     REQUIRE(round_trip.entity == entity);
     REQUIRE(round_trip.sky_source == snapshot.sky_source);
     REQUIRE(round_trip.hdri_path == "environments/studio.hdr");
@@ -1789,12 +1818,11 @@ TEST_CASE("arc host validates and applies world environment commands")
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project({ .name = "Environment Host Test", .root = {} }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Environment Host Test", .root = {}}, assets).succeeded);
 
     const auto hierarchy = host->scene_snapshot();
-    const auto found = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity) {
-        return entity.kind == arc::editor::host_entity_kind::environment;
-    });
+    const auto found = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity)
+                                    { return entity.kind == arc::editor::host_entity_kind::environment; });
     REQUIRE(found != hierarchy.entities.end());
     const auto initial = host->world_environment_snapshot(found->entity);
     REQUIRE(initial.has_value());
@@ -1808,8 +1836,7 @@ TEST_CASE("arc host validates and applies world environment commands")
     edited.sun_temperature_multiplier = 0.85f;
     edited.moon_angular_radius_degrees = 0.31f;
     const auto updated = host->execute(arc::editor::host_command_envelope{
-        .request_id = 1,
-        .payload = arc::editor::host_set_world_environment_command{ .environment = edited } });
+        .request_id = 1, .payload = arc::editor::host_set_world_environment_command{.environment = edited}});
     REQUIRE(updated.succeeded);
     const auto current = host->world_environment_snapshot(found->entity);
     REQUIRE(current.has_value());
@@ -1821,18 +1848,22 @@ TEST_CASE("arc host validates and applies world environment commands")
 
     edited.local_time_hours = 25.0f;
     REQUIRE_FALSE(host->execute(arc::editor::host_command_envelope{
-        .request_id = 2,
-        .payload = arc::editor::host_set_world_environment_command{ .environment = edited } }).succeeded);
+                                    .request_id = 2,
+                                    .payload = arc::editor::host_set_world_environment_command{.environment = edited}})
+                      .succeeded);
     REQUIRE(host->world_environment_snapshot(found->entity)->local_time_hours == Catch::Approx(19.25f));
 
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .request_id = 3,
-        .payload = arc::editor::host_apply_world_environment_preset_command{
-            .entity = found->entity,
-            .preset = arc::editor::host_world_environment_preset::night } }).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .request_id = 3,
+                    .payload =
+                        arc::editor::host_apply_world_environment_preset_command{
+                            .entity = found->entity, .preset = arc::editor::host_world_environment_preset::night}})
+                .succeeded);
     REQUIRE(host->world_environment_snapshot(found->entity)->local_time_hours == Catch::Approx(23.0f));
-    REQUIRE(host->query({ .request_id = 4, .payload = arc::editor::host_world_environment_query{
-        .entity = found->entity } }).succeeded);
+    REQUIRE(
+        host->query({.request_id = 4, .payload = arc::editor::host_world_environment_query{.entity = found->entity}})
+            .succeeded);
 }
 
 TEST_CASE("arc host process speaks newline delimited json over stdio")
@@ -1860,22 +1891,14 @@ TEST_CASE("arc host process speaks newline delimited json over stdio")
 
     PROCESS_INFORMATION process{};
     std::string command_line = "\"" ARC_HOST_PROCESS_PATH "\"";
-    REQUIRE(CreateProcessA(
-        nullptr,
-        command_line.data(),
-        nullptr,
-        nullptr,
-        TRUE,
-        0,
-        nullptr,
-        nullptr,
-        &startup,
-        &process));
+    REQUIRE(
+        CreateProcessA(nullptr, command_line.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startup, &process));
 
     CloseHandle(child_stdin_read);
     CloseHandle(child_stdout_write);
 
-    const auto read_line = [&]() {
+    const auto read_line = [&]()
+    {
         std::string line;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         while (std::chrono::steady_clock::now() < deadline)
@@ -1891,18 +1914,16 @@ TEST_CASE("arc host process speaks newline delimited json over stdio")
             char ch{};
             DWORD read = 0;
             REQUIRE(ReadFile(child_stdout_read, &ch, 1, &read, nullptr));
-            if (read == 0)
-                continue;
-            if (ch == '\n')
-                return line;
-            if (ch != '\r')
-                line.push_back(ch);
+            if (read == 0) continue;
+            if (ch == '\n') return line;
+            if (ch != '\r') line.push_back(ch);
         }
         return line;
     };
 
     std::vector<std::string> observed_events;
-    const auto request = [&](std::uint64_t request_id, const std::string& json) {
+    const auto request = [&](std::uint64_t request_id, const std::string& json)
+    {
         const std::string line = json + '\n';
         DWORD written = 0;
         REQUIRE(WriteFile(child_stdin_write, line.data(), static_cast<DWORD>(line.size()), &written, nullptr));
@@ -1923,36 +1944,35 @@ TEST_CASE("arc host process speaks newline delimited json over stdio")
     };
 
     request(1, arc::editor::to_json(arc::editor::host_command_envelope{
-        .request_id = 1,
-        .payload = arc::editor::host_open_project_command{
-            .name = "Process Test",
-            .root = std::filesystem::temp_directory_path() } }));
+                   .request_id = 1,
+                   .payload = arc::editor::host_open_project_command{.name = "Process Test",
+                                                                     .root = std::filesystem::temp_directory_path()}}));
 
-    const auto create_response = request(2, arc::editor::to_json(arc::editor::host_command_envelope{
-        .request_id = 2,
-        .payload = arc::editor::host_create_entity_command{ .kind = arc::editor::host_create_entity_kind::cube } }));
+    const auto create_response = request(
+        2,
+        arc::editor::to_json(arc::editor::host_command_envelope{
+            .request_id = 2,
+            .payload = arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube}}));
     const auto created_entity = parse_entity_from_response(create_response);
     REQUIRE(created_entity.valid());
 
-    const auto hierarchy_response = request(3, arc::editor::to_json(arc::editor::host_query_envelope{
-        .request_id = 3,
-        .payload = arc::editor::host_scene_hierarchy_query{} }));
+    const auto hierarchy_response =
+        request(3, arc::editor::to_json(arc::editor::host_query_envelope{
+                       .request_id = 3, .payload = arc::editor::host_scene_hierarchy_query{}}));
     REQUIRE(hierarchy_response.find("\"entities\"") != std::string::npos);
 
-    request(4, arc::editor::to_json(arc::editor::host_command_envelope{
-        .request_id = 4,
-        .payload = arc::editor::host_rename_entity_command{
-            .entity = created_entity,
-            .name = "Process Cube" } }));
+    request(4,
+            arc::editor::to_json(arc::editor::host_command_envelope{
+                .request_id = 4,
+                .payload = arc::editor::host_rename_entity_command{.entity = created_entity, .name = "Process Cube"}}));
 
-    const auto renamed_hierarchy = request(5, arc::editor::to_json(arc::editor::host_query_envelope{
-        .request_id = 5,
-        .payload = arc::editor::host_scene_hierarchy_query{} }));
+    const auto renamed_hierarchy =
+        request(5, arc::editor::to_json(arc::editor::host_query_envelope{
+                       .request_id = 5, .payload = arc::editor::host_scene_hierarchy_query{}}));
     REQUIRE(renamed_hierarchy.find("Process Cube") != std::string::npos);
 
     request(6, arc::editor::to_json(arc::editor::host_command_envelope{
-        .request_id = 6,
-        .payload = arc::editor::host_close_project_command{} }));
+                   .request_id = 6, .payload = arc::editor::host_close_project_command{}}));
 
     CloseHandle(child_stdin_write);
     WaitForSingleObject(process.hProcess, 5000);
@@ -1960,9 +1980,8 @@ TEST_CASE("arc host process speaks newline delimited json over stdio")
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
 
-    REQUIRE(std::any_of(observed_events.begin(), observed_events.end(), [](const auto& event) {
-        return event.find("\"type\":\"entity.created\"") != std::string::npos;
-    }));
+    REQUIRE(std::any_of(observed_events.begin(), observed_events.end(), [](const auto& event)
+                        { return event.find("\"type\":\"entity.created\"") != std::string::npos; }));
 #else
     SUCCEED("arc_host_process integration is enabled on Windows builds with ARC_HOST_PROCESS_PATH");
 #endif
@@ -1975,7 +1994,7 @@ TEST_CASE("editor material assets load save and round trip")
 
     auto asset = arc::editor::make_default_material_asset("Bronze");
     asset.path = root / "materials" / "bronze.arcmat";
-    asset.material.base_color = { 0.8f, 0.42f, 0.18f, 1.0f };
+    asset.material.base_color = {0.8f, 0.42f, 0.18f, 1.0f};
     asset.material.metallic = 0.75f;
     asset.material.roughness = 0.32f;
     asset.material.normal_scale = 0.85f;
@@ -2042,7 +2061,7 @@ TEST_CASE("terrain material version two migrates to version three with fixed lay
     asset.domain = "terrain";
     asset.material.domain = arc::render::material_domain::terrain;
     asset.material.terrain_layers[0].name = "Grass";
-    asset.material.terrain_layers[0].tint = { 0.65f, 0.8f, 0.5f, 1.0f };
+    asset.material.terrain_layers[0].tint = {0.65f, 0.8f, 0.5f, 1.0f};
     asset.material.terrain_layers[0].world_scale = 2.75f;
     asset.material.terrain_layers[0].roughness = 0.84f;
     asset.terrain_layers[0].base_color = "textures/terrain/grass/base.jpg";
@@ -2084,7 +2103,7 @@ TEST_CASE("material version three round trips advanced PBR lobes and validates r
     asset.material.transmission_factor = 0.8f;
     asset.material.index_of_refraction = 1.46f;
     asset.material.thickness_factor = 0.35f;
-    asset.material.attenuation_color = { 0.7f, 0.9f, 1.0f };
+    asset.material.attenuation_color = {0.7f, 0.9f, 1.0f};
     asset.material.attenuation_distance = 2.5f;
     asset.material.emissive_luminance_nits = 1200.0f;
     asset.textures.clear_coat = "textures/coat.png";
@@ -2105,10 +2124,7 @@ TEST_CASE("material version three round trips advanced PBR lobes and validates r
 
     std::ifstream saved_input(asset.path, std::ios::binary);
     REQUIRE(saved_input.good());
-    std::string invalid_text{
-        std::istreambuf_iterator<char>{ saved_input },
-        std::istreambuf_iterator<char>{}
-    };
+    std::string invalid_text{std::istreambuf_iterator<char>{saved_input}, std::istreambuf_iterator<char>{}};
     const auto roughness = invalid_text.find("\"roughness\": 0.62");
     REQUIRE(roughness != std::string::npos);
     invalid_text.replace(roughness, std::string("\"roughness\": 0.62").size(), "\"roughness\": 2.0");
@@ -2128,7 +2144,7 @@ TEST_CASE("editor material library applies materials to selected mesh renderer")
     const auto selected = scene.create();
     scene.emplace<arc::scene::mesh_renderer_component>(selected);
 
-    const arc::render::material_handle material{ .index = 42, .generation = 7 };
+    const arc::render::material_handle material{.index = 42, .generation = 7};
     REQUIRE(arc::editor::apply_material_to_selected(scene, selected, material));
     REQUIRE(scene.get<arc::scene::mesh_renderer_component>(selected).material == material);
 
@@ -2145,29 +2161,18 @@ TEST_CASE("editor material texture slots accept texture assets and reject wrong 
     editor.working = arc::editor::make_default_material_asset("Slot Test");
 
     std::string message;
-    REQUIRE(arc::editor::assign_texture_to_material_slot(
-        editor,
-        arc::editor::material_texture_slot::base_color,
-        root,
-        root / "textures" / "base.png",
-        &message));
+    REQUIRE(arc::editor::assign_texture_to_material_slot(editor, arc::editor::material_texture_slot::base_color, root,
+                                                         root / "textures" / "base.png", &message));
     REQUIRE(editor.dirty);
     REQUIRE(editor.working.textures.base_color == "textures/base.png");
 
-    REQUIRE(arc::editor::assign_texture_to_material_slot(
-        editor,
-        arc::editor::material_texture_slot::normal,
-        root,
-        std::filesystem::path{ "textures/normal.dds" },
-        &message));
+    REQUIRE(arc::editor::assign_texture_to_material_slot(editor, arc::editor::material_texture_slot::normal, root,
+                                                         std::filesystem::path{"textures/normal.dds"}, &message));
     REQUIRE(editor.working.textures.normal == "textures/normal.dds");
 
-    REQUIRE_FALSE(arc::editor::assign_texture_to_material_slot(
-        editor,
-        arc::editor::material_texture_slot::ao,
-        root,
-        std::filesystem::path{ "materials/not_a_texture.arcmat" },
-        &message));
+    REQUIRE_FALSE(arc::editor::assign_texture_to_material_slot(editor, arc::editor::material_texture_slot::ao, root,
+                                                               std::filesystem::path{"materials/not_a_texture.arcmat"},
+                                                               &message));
 }
 
 TEST_CASE("editor material library reuses material handles and saves live updates")
@@ -2225,42 +2230,23 @@ TEST_CASE("editor viewport material drop applies to hit entity and ignores misse
     scene.emplace<arc::scene::mesh_renderer_component>(entity);
     scene.emplace<arc::scene::bounds_component>(
         entity,
-        arc::geometric::box3f{ arc::geometric::point3f{ -1.0f, -1.0f, -1.0f }, arc::geometric::point3f{ 1.0f, 1.0f, 1.0f } },
-        arc::geometric::box3f{},
-        true);
+        arc::geometric::box3f{arc::geometric::point3f{-1.0f, -1.0f, -1.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}},
+        arc::geometric::box3f{}, true);
 
     arc::ecs::entity selected{};
-    const arc::editor::editor_ray hit_ray{
-        .origin = arc::math::vector3f{ 0.0f, 0.0f, 5.0f },
-        .direction = arc::math::vector3f{ 0.0f, 0.0f, -1.0f }
-    };
+    const arc::editor::editor_ray hit_ray{.origin = arc::math::vector3f{0.0f, 0.0f, 5.0f},
+                                          .direction = arc::math::vector3f{0.0f, 0.0f, -1.0f}};
     const auto hit = arc::editor::apply_material_asset_to_viewport_hit(
-        library,
-        renderer,
-        root,
-        std::filesystem::path{ "materials/drop.arcmat" },
-        scene,
-        hit_ray,
-        selected,
-        &message);
+        library, renderer, root, std::filesystem::path{"materials/drop.arcmat"}, scene, hit_ray, selected, &message);
     REQUIRE(hit == entity);
     REQUIRE(selected == entity);
     REQUIRE(scene.get<arc::scene::mesh_renderer_component>(entity).material.valid());
 
     const auto assigned = scene.get<arc::scene::mesh_renderer_component>(entity).material;
-    const arc::editor::editor_ray miss_ray{
-        .origin = arc::math::vector3f{ 4.0f, 4.0f, 5.0f },
-        .direction = arc::math::vector3f{ 0.0f, 0.0f, -1.0f }
-    };
+    const arc::editor::editor_ray miss_ray{.origin = arc::math::vector3f{4.0f, 4.0f, 5.0f},
+                                           .direction = arc::math::vector3f{0.0f, 0.0f, -1.0f}};
     const auto missed = arc::editor::apply_material_asset_to_viewport_hit(
-        library,
-        renderer,
-        root,
-        std::filesystem::path{ "materials/drop.arcmat" },
-        scene,
-        miss_ray,
-        selected,
-        &message);
+        library, renderer, root, std::filesystem::path{"materials/drop.arcmat"}, scene, miss_ray, selected, &message);
     REQUIRE_FALSE(missed.valid());
     REQUIRE(selected == entity);
     REQUIRE(scene.get<arc::scene::mesh_renderer_component>(entity).material == assigned);
@@ -2272,72 +2258,78 @@ TEST_CASE("terrain host snapshots validate brush settings and group a stroke int
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project({ .name = "Terrain Authoring", .root = {} }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Terrain Authoring", .root = {}}, assets).succeeded);
     const auto terrain_entity = host->scene_state().terrain_entity;
     REQUIRE(host->execute(arc::editor::host_select_entity_command{
-        .entity = { terrain_entity.index, terrain_entity.generation } }).succeeded);
+                              .entity = {terrain_entity.index, terrain_entity.generation}})
+                .succeeded);
     const auto terrain_id = host->selected_entity_snapshot().entity;
     REQUIRE(host->selected_entity_snapshot().terrain.has_value());
     REQUIRE(host->selected_entity_snapshot().terrain->resolution == 257u);
     REQUIRE(host->selected_entity_snapshot().terrain->chunk_quads == 128u);
 
-    REQUIRE(host->execute(arc::editor::host_set_terrain_brush_command{
-        .entity = terrain_id,
-        .tool = arc::editor::host_terrain_brush_tool::paint,
-        .radius = 8.0f,
-        .strength = 0.4f,
-        .falloff = 0.75f,
-        .active_layer = 2u }).succeeded);
+    REQUIRE(
+        host->execute(arc::editor::host_set_terrain_brush_command{.entity = terrain_id,
+                                                                  .tool = arc::editor::host_terrain_brush_tool::paint,
+                                                                  .radius = 8.0f,
+                                                                  .strength = 0.4f,
+                                                                  .falloff = 0.75f,
+                                                                  .active_layer = 2u})
+            .succeeded);
     {
         const auto events = host->poll_events();
-        REQUIRE(std::count_if(events.begin(), events.end(), [](const auto& event) {
-            return event.event_type == arc::editor::host_event_type::terrain_tool_changed;
-        }) == 1);
-        REQUIRE(std::none_of(events.begin(), events.end(), [](const auto& event) {
-            return event.event_type == arc::editor::host_event_type::component_changed &&
-                event.message.find("brush") != std::string::npos;
-        }));
+        REQUIRE(std::count_if(events.begin(), events.end(), [](const auto& event)
+                              { return event.event_type == arc::editor::host_event_type::terrain_tool_changed; }) == 1);
+        REQUIRE(std::none_of(events.begin(), events.end(),
+                             [](const auto& event)
+                             {
+                                 return event.event_type == arc::editor::host_event_type::component_changed &&
+                                        event.message.find("brush") != std::string::npos;
+                             }));
     }
     const auto configured = *host->selected_entity_snapshot().terrain;
     REQUIRE(configured.brush_tool == arc::editor::host_terrain_brush_tool::paint);
     REQUIRE(configured.brush_radius == Catch::Approx(8.0f));
     REQUIRE(configured.active_layer == 2u);
-    REQUIRE_FALSE(host->execute(arc::editor::host_set_terrain_brush_command{
-        .entity = terrain_id,
-        .radius = std::numeric_limits<float>::infinity(),
-        .strength = 0.4f,
-        .falloff = 0.75f }).succeeded);
+    REQUIRE_FALSE(
+        host->execute(arc::editor::host_set_terrain_brush_command{.entity = terrain_id,
+                                                                  .radius = std::numeric_limits<float>::infinity(),
+                                                                  .strength = 0.4f,
+                                                                  .falloff = 0.75f})
+            .succeeded);
     REQUIRE(host->selected_entity_snapshot().terrain->brush_radius == Catch::Approx(8.0f));
 
-    REQUIRE(host->execute(arc::editor::host_viewport_set_tool_command{
-        .tool = arc::editor::host_viewport_tool::terrain }).succeeded);
-    host->request_viewport({ .frame_index = 1u, .width = 800u, .height = 600u });
-    REQUIRE(host->execute(arc::editor::host_terrain_hover_command{
-        .entity = terrain_id, .x = 400u, .y = 300u }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_viewport_set_tool_command{.tool = arc::editor::host_viewport_tool::terrain})
+                .succeeded);
+    host->request_viewport({.frame_index = 1u, .width = 800u, .height = 600u});
+    REQUIRE(
+        host->execute(arc::editor::host_terrain_hover_command{.entity = terrain_id, .x = 400u, .y = 300u}).succeeded);
     REQUIRE(host->terrain_tool_snapshot().active);
     REQUIRE(host->terrain_tool_snapshot().hover_visible);
     host->poll_events();
     auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity);
     const auto before = terrain.layer_weights;
     const auto begin = host->execute(arc::editor::host_command_envelope{
-        .payload = arc::editor::host_terrain_stroke_command{
-            terrain_id, 400u, 300u, arc::editor::host_edit_phase::begin, false },
-        .edit = arc::editor::host_edit_transaction{ 901u, arc::editor::host_edit_phase::begin, "Terrain Stroke" } });
+        .payload = arc::editor::host_terrain_stroke_command{terrain_id, 400u, 300u, arc::editor::host_edit_phase::begin,
+                                                            false},
+        .edit = arc::editor::host_edit_transaction{901u, arc::editor::host_edit_phase::begin, "Terrain Stroke"}});
     REQUIRE(begin.succeeded);
     REQUIRE(begin.payload_json.find("\"hit\":true") != std::string::npos);
     REQUIRE(host->poll_events().empty());
-    REQUIRE(host->execute(arc::editor::host_command_envelope{
-        .payload = arc::editor::host_terrain_stroke_command{
-            terrain_id, 405u, 300u, arc::editor::host_edit_phase::commit, false },
-        .edit = arc::editor::host_edit_transaction{ 901u, arc::editor::host_edit_phase::commit, "Terrain Stroke" } }).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_command_envelope{
+                    .payload = arc::editor::host_terrain_stroke_command{terrain_id, 405u, 300u,
+                                                                        arc::editor::host_edit_phase::commit, false},
+                    .edit = arc::editor::host_edit_transaction{901u, arc::editor::host_edit_phase::commit,
+                                                               "Terrain Stroke"}})
+                .succeeded);
     {
         const auto events = host->poll_events();
-        REQUIRE(std::count_if(events.begin(), events.end(), [](const auto& event) {
-            return event.event_type == arc::editor::host_event_type::terrain_stroke_committed;
-        }) == 1);
-        REQUIRE(std::none_of(events.begin(), events.end(), [](const auto& event) {
-            return event.event_type == arc::editor::host_event_type::component_changed;
-        }));
+        REQUIRE(std::count_if(events.begin(), events.end(), [](const auto& event)
+                              { return event.event_type == arc::editor::host_event_type::terrain_stroke_committed; }) ==
+                1);
+        REQUIRE(std::none_of(events.begin(), events.end(), [](const auto& event)
+                             { return event.event_type == arc::editor::host_event_type::component_changed; }));
     }
     REQUIRE(host->scene_snapshot().undo_label == "Terrain Stroke");
     REQUIRE(terrain.layer_weights != before);
@@ -2358,17 +2350,17 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = root;
-    REQUIRE(host->open_project({ .name = "Terrain Persistence", .root = root }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Terrain Persistence", .root = root}, assets).succeeded);
     auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);
     arc::scene::terrain_brush_settings brush;
     brush.tool = arc::scene::terrain_brush_tool::sculpt;
     brush.radius = 9.0f;
     brush.strength = 0.65f;
-    arc::scene::apply_terrain_brush(terrain, { 4.0f, 0.0f, -7.0f }, brush, 0.5f);
+    arc::scene::apply_terrain_brush(terrain, {4.0f, 0.0f, -7.0f}, brush, 0.5f);
     const auto expected_heights = terrain.heights;
     const auto expected_weights = terrain.layer_weights;
     const auto path = root / "terrain.arcscene";
-    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{ .path = path }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = path}).succeeded);
 
     std::ifstream saved_stream(path, std::ios::binary);
     const std::string saved((std::istreambuf_iterator<char>(saved_stream)), std::istreambuf_iterator<char>());
@@ -2378,8 +2370,9 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
     REQUIRE(saved.find("\"weights\"") != std::string::npos);
 
     terrain.heights.assign(terrain.heights.size(), -100.0f);
-    REQUIRE(host->execute(arc::editor::host_open_scene_command{ .path = path }).succeeded);
-    const auto& loaded = host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);
+    REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = path}).succeeded);
+    const auto& loaded =
+        host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);
     REQUIRE(loaded.layer_weights == expected_weights);
     const auto [minimum, maximum] = std::minmax_element(expected_heights.begin(), expected_heights.end());
     const float tolerance = (*maximum - *minimum) / 65535.0f + 0.0001f;
@@ -2393,10 +2386,15 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
     const auto data_end = corrupt.find('"', data_begin);
     corrupt.replace(data_begin, data_end - data_begin, "AAAA");
     const auto corrupt_path = root / "corrupt.arcscene";
-    { std::ofstream stream(corrupt_path, std::ios::binary | std::ios::trunc); stream << corrupt; }
+    {
+        std::ofstream stream(corrupt_path, std::ios::binary | std::ios::trunc);
+        stream << corrupt;
+    }
     const auto revision_before = loaded.content_revision;
-    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{ .path = corrupt_path }).succeeded);
-    REQUIRE(host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity).content_revision == revision_before);
+    REQUIRE_FALSE(host->execute(arc::editor::host_open_scene_command{.path = corrupt_path}).succeeded);
+    REQUIRE(host->scene_state()
+                .scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity)
+                .content_revision == revision_before);
     std::filesystem::remove_all(root, error);
 }
 
@@ -2413,22 +2411,21 @@ TEST_CASE("prefab authoring creates, instantiates, persists, reverts, and unpack
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = root / "assets";
-    REQUIRE(host->open_project({ .name = "Prefab Authoring", .root = root }, assets).succeeded);
+    REQUIRE(host->open_project({.name = "Prefab Authoring", .root = root}, assets).succeeded);
 
-    const auto created_source = host->execute(arc::editor::host_create_entity_command{
-        .kind = arc::editor::host_create_entity_kind::cube });
+    const auto created_source =
+        host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube});
     REQUIRE(created_source.succeeded);
     const auto source = parse_entity_from_response(created_source.payload_json);
     REQUIRE(source.valid());
     const auto prefab_path = root / "assets" / "prefabs" / "camera_rig.arcprefab";
-    REQUIRE(host->execute(arc::editor::host_create_prefab_command{
-        .entity = source, .path = prefab_path }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_prefab_command{.entity = source, .path = prefab_path}).succeeded);
     REQUIRE(std::filesystem::is_regular_file(prefab_path));
     REQUIRE(host->selected_entity_snapshot().prefab.has_value());
     REQUIRE(host->selected_entity_snapshot().prefab->prefab_path == "assets/prefabs/camera_rig.arcprefab");
 
-    const auto instantiated = host->execute(arc::editor::host_instantiate_prefab_command{
-        .path = "assets/prefabs/camera_rig.arcprefab" });
+    const auto instantiated =
+        host->execute(arc::editor::host_instantiate_prefab_command{.path = "assets/prefabs/camera_rig.arcprefab"});
     REQUIRE(instantiated.succeeded);
     const auto instance_id = parse_entity_from_response(instantiated.payload_json);
     REQUIRE(instance_id.valid());
@@ -2436,26 +2433,27 @@ TEST_CASE("prefab authoring creates, instantiates, persists, reverts, and unpack
     REQUIRE(host->selected_entity_snapshot().prefab.has_value());
     REQUIRE(host->selected_entity_snapshot().prefab->source_missing == false);
 
-    REQUIRE(host->execute(arc::editor::host_rename_entity_command{
-        .entity = instance_id, .name = "Changed Prefab Instance" }).succeeded);
-    REQUIRE(host->execute(arc::editor::host_apply_prefab_command{ .entity = instance_id }).succeeded);
-    REQUIRE(host->execute(arc::editor::host_revert_prefab_command{ .entity = instance_id }).succeeded);
+    REQUIRE(
+        host->execute(arc::editor::host_rename_entity_command{.entity = instance_id, .name = "Changed Prefab Instance"})
+            .succeeded);
+    REQUIRE(host->execute(arc::editor::host_apply_prefab_command{.entity = instance_id}).succeeded);
+    REQUIRE(host->execute(arc::editor::host_revert_prefab_command{.entity = instance_id}).succeeded);
     const auto reverted = host->selected_entity_snapshot().entity;
     REQUIRE(reverted.valid());
     REQUIRE(host->selected_entity_snapshot().name == "Changed Prefab Instance");
     REQUIRE(host->selected_entity_snapshot().prefab.has_value());
 
-    REQUIRE(host->execute(arc::editor::host_unpack_prefab_command{ .entity = reverted }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_unpack_prefab_command{.entity = reverted}).succeeded);
     REQUIRE_FALSE(host->selected_entity_snapshot().prefab.has_value());
     REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
     REQUIRE(host->selected_entity_snapshot().prefab.has_value());
 
     const auto scene_path = root / "prefab_scene.arcscene";
-    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{ .path = scene_path }).succeeded);
-    REQUIRE(host->execute(arc::editor::host_open_scene_command{ .path = scene_path }).succeeded);
+    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = scene_path}).succeeded);
+    REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = scene_path}).succeeded);
     const auto reopened = host->scene_snapshot();
     REQUIRE(std::any_of(reopened.entities.begin(), reopened.entities.end(),
-        [](const auto& value) { return value.name == "Changed Prefab Instance"; }));
+                        [](const auto& value) { return value.name == "Changed Prefab Instance"; }));
 
     std::filesystem::remove_all(root, error);
 }

@@ -53,9 +53,7 @@ math::matrix4f orthographic_rh_zo(float height, float aspect, float near_plane, 
 /**
  * @brief Build the active camera view-projection matrix for a viewport aspect.
  */
-math::matrix4f view_projection(
-    const camera_component& camera,
-    const transform_component& transform,
-    float aspect) noexcept;
+math::matrix4f view_projection(const camera_component& camera, const transform_component& transform,
+                               float aspect) noexcept;
 
 } // namespace arc::scene

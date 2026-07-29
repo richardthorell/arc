@@ -37,7 +37,7 @@ const char* editor_tool_label(editor_tool tool) noexcept;
 struct editor_ray
 {
     math::vector3f origin{};
-    math::vector3f direction{ 0.0f, 0.0f, -1.0f };
+    math::vector3f direction{0.0f, 0.0f, -1.0f};
 };
 
 struct editor_pick_result
@@ -115,8 +115,8 @@ private:
     math::vector3f focus_{};
     math::vector3f position_{};
     float yaw_{};
-    float pitch_{ -0.18f };
-    float distance_{ 4.0f };
+    float pitch_{-0.18f};
+    float distance_{4.0f};
 };
 
 /**
@@ -142,20 +142,15 @@ ecs::entity pick_bounded_entity(const ecs::world& registry, const editor_ray& ra
 /**
  * @brief Pick the nearest exact terrain or static-mesh surface, with bounds fallback.
  */
-editor_pick_result pick_scene_entity(
-    const ecs::world& registry,
-    const render::renderer& renderer,
-    const editor_ray& ray) noexcept;
+editor_pick_result pick_scene_entity(const ecs::world& registry, const render::renderer& renderer,
+                                     const editor_ray& ray) noexcept;
 
 /**
  * @brief Build a world-space picking ray from camera and viewport coordinates.
  */
-editor_ray screen_ray_from_camera(
-    const scene::camera_component& camera,
-    const scene::transform_component& camera_transform,
-    const editor_viewport& viewport,
-    float local_x,
-    float local_y) noexcept;
+editor_ray screen_ray_from_camera(const scene::camera_component& camera,
+                                  const scene::transform_component& camera_transform, const editor_viewport& viewport,
+                                  float local_x, float local_y) noexcept;
 
 /**
  * @brief Return whether a ray intersects a box, writing nearest distance when hit.
@@ -165,15 +160,13 @@ bool intersect_ray_box(const editor_ray& ray, const geometric::box3f& bounds, fl
 /**
  * @brief Transform local bounds by a transform into world-space AABB bounds.
  */
-geometric::box3f transformed_bounds(const geometric::box3f& local_bounds, const scene::transform_component& transform) noexcept;
+geometric::box3f transformed_bounds(const geometric::box3f& local_bounds,
+                                    const scene::transform_component& transform) noexcept;
 
 /**
  * @brief Focus a camera controller on the selected entity.
  */
-bool focus_selected_entity(
-    const ecs::world& registry,
-    ecs::entity selected,
-    editor_camera_controller& camera) noexcept;
+bool focus_selected_entity(const ecs::world& registry, ecs::entity selected, editor_camera_controller& camera) noexcept;
 
 /**
  * @brief Convert Euler degrees to a quaternion.

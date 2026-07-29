@@ -58,7 +58,8 @@ TEST_CASE("registry view returns entities with all requested components")
 
     std::size_t count{};
     scene.view<arc::scene::transform_component, arc::scene::camera_component>().each(
-        [&](arc::ecs::entity value, const auto&, const auto&) {
+        [&](arc::ecs::entity value, const auto&, const auto&)
+        {
             REQUIRE(value == camera);
             ++count;
         });
@@ -78,11 +79,8 @@ TEST_CASE("registry copies component pools without sharing storage")
 
 TEST_CASE("paged component pools keep live component addresses stable while growing")
 {
-    arc::memory::memory_system memory({
-        .physical_memory_override = 16 * 1024 * 1024,
-        .track_live_allocations = true,
-        .capture_call_stacks = false
-    });
+    arc::memory::memory_system memory(
+        {.physical_memory_override = 16 * 1024 * 1024, .track_live_allocations = true, .capture_call_stacks = false});
     arc::ecs::world scene(memory, 99);
     const auto first = scene.create();
     auto* stable = &scene.emplace<arc::scene::name_component>(first, "Stable");
@@ -97,9 +95,8 @@ TEST_CASE("paged component pools keep live component addresses stable while grow
     REQUIRE(stable->value == "Stable");
     REQUIRE(scene.memory().world_id() == 99);
     const auto snapshot = memory.snapshot();
-    const auto component_domain = std::find_if(snapshot.domains.begin(), snapshot.domains.end(), [](const auto& value) {
-        return value.domain == arc::memory::memory_domain::components;
-    });
+    const auto component_domain = std::find_if(snapshot.domains.begin(), snapshot.domains.end(), [](const auto& value)
+                                               { return value.domain == arc::memory::memory_domain::components; });
     REQUIRE(component_domain != snapshot.domains.end());
     REQUIRE(component_domain->stats.bytes_outstanding > 0);
 }
@@ -139,14 +136,14 @@ TEST_CASE("scene hierarchy reparents orders and preserves world transforms")
     const auto parent = scene.create();
     const auto first = scene.create();
     const auto second = scene.create();
-    scene.emplace<arc::scene::transform_component>(parent).position = { 10.0f, 0.0f, 0.0f };
-    scene.emplace<arc::scene::transform_component>(first).position = { 2.0f, 0.0f, 0.0f };
-    scene.emplace<arc::scene::transform_component>(second).position = { 4.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(parent).position = {10.0f, 0.0f, 0.0f};
+    scene.emplace<arc::scene::transform_component>(first).position = {2.0f, 0.0f, 0.0f};
+    scene.emplace<arc::scene::transform_component>(second).position = {4.0f, 0.0f, 0.0f};
 
     REQUIRE(arc::scene::reparent(scene, first, parent));
     REQUIRE(arc::scene::reparent(scene, second, parent, first));
     const auto ordered = arc::scene::children(scene, parent);
-    REQUIRE(ordered == std::vector<arc::ecs::entity>{ second, first });
+    REQUIRE(ordered == std::vector<arc::ecs::entity>{second, first});
     REQUIRE(scene.get<arc::scene::hierarchy_component>(parent).child_count == 2);
     arc::scene::update_world_transforms(scene);
     REQUIRE(arc::scene::world_position(scene.get<arc::scene::transform_component>(first))[0] == Catch::Approx(2.0f));
@@ -175,14 +172,15 @@ TEST_CASE("scene hierarchy propagates transforms and destroys complete subtrees"
     const auto root = scene.create();
     const auto child = scene.create();
     const auto grandchild = scene.create();
-    scene.emplace<arc::scene::transform_component>(root).position = { 3.0f, 0.0f, 0.0f };
-    scene.emplace<arc::scene::transform_component>(child).position = { 2.0f, 0.0f, 0.0f };
-    scene.emplace<arc::scene::transform_component>(grandchild).position = { 1.0f, 0.0f, 0.0f };
+    scene.emplace<arc::scene::transform_component>(root).position = {3.0f, 0.0f, 0.0f};
+    scene.emplace<arc::scene::transform_component>(child).position = {2.0f, 0.0f, 0.0f};
+    scene.emplace<arc::scene::transform_component>(grandchild).position = {1.0f, 0.0f, 0.0f};
     REQUIRE(arc::scene::reparent(scene, root, logical_root, {}, arc::scene::reparent_transform_policy::preserve_local));
     REQUIRE(arc::scene::reparent(scene, child, root, {}, arc::scene::reparent_transform_policy::preserve_local));
     REQUIRE(arc::scene::reparent(scene, grandchild, child, {}, arc::scene::reparent_transform_policy::preserve_local));
     arc::scene::update_world_transforms(scene);
-    REQUIRE(arc::scene::world_position(scene.get<arc::scene::transform_component>(grandchild))[0] == Catch::Approx(6.0f));
+    REQUIRE(arc::scene::world_position(scene.get<arc::scene::transform_component>(grandchild))[0] ==
+            Catch::Approx(6.0f));
     REQUIRE(arc::scene::destroy_subtree(scene, child));
     REQUIRE(scene.alive(root));
     REQUIRE_FALSE(scene.alive(child));
@@ -193,10 +191,10 @@ TEST_CASE("scene hierarchy propagates transforms and destroys complete subtrees"
 TEST_CASE("transform and camera helpers use right handed minus z forward")
 {
     arc::scene::transform_component transform;
-    transform.position = arc::math::vector3f{ 1.0f, 2.0f, 3.0f };
-    transform.scale = arc::math::vector3f{ 2.0f, 3.0f, 4.0f };
+    transform.position = arc::math::vector3f{1.0f, 2.0f, 3.0f};
+    transform.scale = arc::math::vector3f{2.0f, 3.0f, 4.0f};
     transform.dirty = false;
-    transform.set_position({ 1.0f, 2.0f, 3.0f });
+    transform.set_position({1.0f, 2.0f, 3.0f});
     REQUIRE(transform.dirty);
 
     const auto local = arc::scene::local_matrix(transform);
@@ -212,7 +210,7 @@ TEST_CASE("transform and camera helpers use right handed minus z forward")
     REQUIRE(projection(3, 2) == Catch::Approx(-1.0f));
 
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     const auto view = arc::scene::view_matrix(camera_transform);
     const auto camera_space = arc::math::transform_point(view, arc::math::vector3f::zero);
     REQUIRE(camera_space[2] == Catch::Approx(-5.0f));
@@ -231,11 +229,10 @@ TEST_CASE("transform and camera helpers use right handed minus z forward")
 TEST_CASE("affine inverse matches the generic inverse for rotated transforms")
 {
     arc::scene::transform_component transform;
-    transform.position = { 13.0f, -7.5f, 21.0f };
-    transform.rotation = arc::math::from_axis_angle(
-        arc::math::normalize(arc::math::vector3f{ 1.0f, 2.0f, -3.0f }),
-        0.73f);
-    transform.scale = { 1.5f, 0.75f, 2.25f };
+    transform.position = {13.0f, -7.5f, 21.0f};
+    transform.rotation =
+        arc::math::from_axis_angle(arc::math::normalize(arc::math::vector3f{1.0f, 2.0f, -3.0f}), 0.73f);
+    transform.scale = {1.5f, 0.75f, 2.25f};
 
     const auto affine = arc::scene::local_matrix(transform);
     arc::math::matrix4f fast_inverse;
@@ -250,8 +247,7 @@ TEST_CASE("affine inverse matches the generic inverse for rotated transforms")
         {
             const float expected = row == column ? 1.0f : 0.0f;
             REQUIRE(identity(row, column) == Catch::Approx(expected).margin(0.0001f));
-            REQUIRE(fast_inverse(row, column) ==
-                Catch::Approx(reference_inverse(row, column)).margin(0.0001f));
+            REQUIRE(fast_inverse(row, column) == Catch::Approx(reference_inverse(row, column)).margin(0.0001f));
         }
     }
 }
@@ -259,29 +255,26 @@ TEST_CASE("affine inverse matches the generic inverse for rotated transforms")
 TEST_CASE("camera world view agrees with the quaternion view matrix")
 {
     arc::scene::transform_component camera;
-    camera.position = { 26.0f, 38.0f, 42.0f };
-    camera.rotation = arc::math::from_axis_angle(
-        arc::math::normalize(arc::math::vector3f{ 0.3f, 1.0f, -0.2f }),
-        -0.91f);
+    camera.position = {26.0f, 38.0f, 42.0f};
+    camera.rotation = arc::math::from_axis_angle(arc::math::normalize(arc::math::vector3f{0.3f, 1.0f, -0.2f}), -0.91f);
     camera.scale = arc::math::vector3f::one;
 
     const auto world_view = arc::scene::world_view_matrix(camera);
     const auto quaternion_view = arc::scene::view_matrix(camera);
     for (std::size_t row = 0; row < 4; ++row)
         for (std::size_t column = 0; column < 4; ++column)
-            REQUIRE(world_view(row, column) ==
-                Catch::Approx(quaternion_view(row, column)).margin(0.0001f));
+            REQUIRE(world_view(row, column) == Catch::Approx(quaternion_view(row, column)).margin(0.0001f));
 }
 
 TEST_CASE("render scene extracts visible mesh draw events from active camera")
 {
     arc::ecs::world scene;
     arc::render::renderer renderer;
-    const arc::render::mesh_handle mesh{ .index = 2, .generation = 1 };
+    const arc::render::mesh_handle mesh{.index = 2, .generation = 1};
 
     const auto camera_entity = scene.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     scene.emplace<arc::scene::camera_component>(camera_entity);
 
@@ -290,17 +283,12 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
     scene.emplace<arc::scene::selection_component>(mesh_entity, true);
     arc::scene::mesh_renderer_component mesh_renderer;
     mesh_renderer.mesh = mesh;
-    mesh_renderer.base_color_tint = arc::math::vector4f{ 0.2f, 0.4f, 0.6f, 1.0f };
+    mesh_renderer.base_color_tint = arc::math::vector4f{0.2f, 0.4f, 0.6f, 1.0f};
     scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh_renderer);
 
-    const auto result = arc::scene::render_scene(
-        scene,
-        renderer,
-        1280,
-        720,
-        arc::render::render_mode::wireframe,
-        arc::render::mesh_visualization_mode::standard,
-        arc::render::editor_overlay_mode::selected_wireframe);
+    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720, arc::render::render_mode::wireframe,
+                                                 arc::render::mesh_visualization_mode::standard,
+                                                 arc::render::editor_overlay_mode::selected_wireframe);
     REQUIRE(result.camera_found);
     REQUIRE(result.renderable_count == 1);
     REQUIRE(result.submitted_draw_count == 1);
@@ -327,29 +315,19 @@ TEST_CASE("render scene honors an explicitly selected editor camera")
 
     const auto game_camera = scene.create();
     arc::scene::transform_component game_transform;
-    game_transform.position = { 40.0f, 0.0f, 0.0f };
+    game_transform.position = {40.0f, 0.0f, 0.0f};
     scene.emplace<arc::scene::transform_component>(game_camera, game_transform);
     scene.emplace<arc::scene::camera_component>(game_camera);
 
     const auto editor_camera = scene.create();
     arc::scene::transform_component editor_transform;
-    editor_transform.position = { 0.0f, 12.0f, 7.0f };
+    editor_transform.position = {0.0f, 12.0f, 7.0f};
     scene.emplace<arc::scene::transform_component>(editor_camera, editor_transform);
     scene.emplace<arc::scene::camera_component>(editor_camera);
 
     const auto result = arc::scene::render_scene(
-        scene,
-        renderer,
-        1280,
-        720,
-        arc::render::render_mode::shaded,
-        arc::render::mesh_visualization_mode::standard,
-        arc::render::editor_overlay_mode::none,
-        true,
-        {},
-        0.0f,
-        {},
-        editor_camera);
+        scene, renderer, 1280, 720, arc::render::render_mode::shaded, arc::render::mesh_visualization_mode::standard,
+        arc::render::editor_overlay_mode::none, true, {}, 0.0f, {}, editor_camera);
     REQUIRE(result.camera_found);
 
     const auto packet = renderer.frame_queue().commit(1);
@@ -377,9 +355,7 @@ TEST_CASE("world environment solar clock and validation are deterministic")
     REQUIRE(phase_a < 1.0f);
 
     arc::scene::world_environment_settings settings;
-    arc::scene::apply_world_environment_preset(
-        arc::scene::world_environment_preset::indoor_neutral,
-        settings);
+    arc::scene::apply_world_environment_preset(arc::scene::world_environment_preset::indoor_neutral, settings);
     REQUIRE_FALSE(settings.world.sky_visible);
     REQUIRE(settings.world.affect_lighting);
     REQUIRE(settings.lighting.source == arc::scene::environment_lighting_source::constant_color);
@@ -402,7 +378,12 @@ TEST_CASE("world environment validation rejects every authored range family")
         [](settings& value) { value.atmosphere.mie_anisotropy = 1.0f; },
         [](settings& value) { value.atmosphere.rayleigh_strength = -0.1f; },
         [](settings& value) { value.atmosphere.rayleigh_scale_height = 0.0f; },
-        [](settings& value) { value.celestial.year = 2023; value.celestial.month = 2; value.celestial.day = 29; },
+        [](settings& value)
+        {
+            value.celestial.year = 2023;
+            value.celestial.month = 2;
+            value.celestial.day = 29;
+        },
         [](settings& value) { value.celestial.latitude_degrees = 90.1f; },
         [](settings& value) { value.celestial.longitude_degrees = -180.1f; },
         [](settings& value) { value.celestial.utc_offset_hours = 14.1f; },
@@ -415,8 +396,7 @@ TEST_CASE("world environment validation rejects every authored range family")
         [](settings& value) { value.clouds.cirrus.wind_speed = -1.0f; },
         [](settings& value) { value.fog.max_opacity = 1.01f; },
         [](settings& value) { value.fog.density = -0.01f; },
-        [](settings& value) { value.lighting.diffuse_intensity = -0.01f; }
-    };
+        [](settings& value) { value.lighting.diffuse_intensity = -0.01f; }};
 
     for (const auto& mutate : invalid_mutations)
     {
@@ -430,19 +410,16 @@ TEST_CASE("world environment validation rejects every authored range family")
 TEST_CASE("world environment presets preserve runtime identity and aggregate writes are atomic")
 {
     arc::scene::world_environment_settings settings;
-    settings.world.hdri_texture = { .index = 7, .generation = 2 };
-    settings.celestial.sun_light = { .index = 9, .generation = 3 };
+    settings.world.hdri_texture = {.index = 7, .generation = 2};
+    settings.celestial.sun_light = {.index = 9, .generation = 3};
     settings.celestial.animation_time_seconds = 123.0f;
-    settings.lighting.environment = { .index = 11, .generation = 4 };
-    settings.lighting.hdri_texture = { .index = 13, .generation = 5 };
+    settings.lighting.environment = {.index = 11, .generation = 4};
+    settings.lighting.hdri_texture = {.index = 13, .generation = 5};
 
-    for (const auto preset : {
-        arc::scene::world_environment_preset::clear_day,
-        arc::scene::world_environment_preset::alpine_late_morning,
-        arc::scene::world_environment_preset::golden_hour,
-        arc::scene::world_environment_preset::overcast,
-        arc::scene::world_environment_preset::night,
-        arc::scene::world_environment_preset::indoor_neutral })
+    for (const auto preset :
+         {arc::scene::world_environment_preset::clear_day, arc::scene::world_environment_preset::alpine_late_morning,
+          arc::scene::world_environment_preset::golden_hour, arc::scene::world_environment_preset::overcast,
+          arc::scene::world_environment_preset::night, arc::scene::world_environment_preset::indoor_neutral})
     {
         arc::scene::apply_world_environment_preset(preset, settings);
         REQUIRE(settings.world.hdri_texture.index == 7);
@@ -464,7 +441,7 @@ TEST_CASE("world environment presets preserve runtime identity and aggregate wri
     invalid.atmosphere.atmosphere_radius = invalid.atmosphere.planet_radius;
     REQUIRE_FALSE(arc::scene::set_world_environment_settings(registry, entity, invalid));
     REQUIRE(registry.get<arc::scene::sky_atmosphere_component>(entity).atmosphere_radius >
-        registry.get<arc::scene::sky_atmosphere_component>(entity).planet_radius);
+            registry.get<arc::scene::sky_atmosphere_component>(entity).planet_radius);
 
     registry.remove<arc::scene::height_fog_component>(entity);
     REQUIRE_FALSE(arc::scene::read_world_environment_settings(registry, entity).has_value());
@@ -500,10 +477,8 @@ TEST_CASE("simulated geographic environment advances time and drives its linked 
     REQUIRE(advanced.day == 29);
     REQUIRE(advanced.local_time_hours == Catch::Approx(0.5f));
     const auto& updated_rotation = registry.get<arc::scene::transform_component>(sun).rotation;
-    REQUIRE((updated_rotation[0] != original_rotation[0] ||
-        updated_rotation[1] != original_rotation[1] ||
-        updated_rotation[2] != original_rotation[2] ||
-        updated_rotation[3] != original_rotation[3]));
+    REQUIRE((updated_rotation[0] != original_rotation[0] || updated_rotation[1] != original_rotation[1] ||
+             updated_rotation[2] != original_rotation[2] || updated_rotation[3] != original_rotation[3]));
     const auto& updated_light = registry.get<arc::scene::directional_light_component>(sun);
     REQUIRE(updated_light.use_color_temperature);
     REQUIRE(updated_light.temperature_kelvin >= 1000.0f);
@@ -638,7 +613,7 @@ TEST_CASE("render scene rejects legacy and incomplete environments and selects d
 
     arc::scene::world_environment_settings first;
     first.world.source = arc::scene::sky_source::solid_color;
-    first.world.solid_color = { 0.2f, 0.3f, 0.4f };
+    first.world.solid_color = {0.2f, 0.3f, 0.4f};
     const auto first_entity = registry.create();
     REQUIRE(arc::scene::set_world_environment_settings(registry, first_entity, first));
     arc::scene::world_environment_settings second;
@@ -649,16 +624,9 @@ TEST_CASE("render scene rejects legacy and incomplete environments and selects d
     arc::scene::scene_render_visibility visibility;
     visibility.sky = false;
     visibility.fog = false;
-    result = arc::scene::render_scene(
-        registry,
-        renderer,
-        320,
-        180,
-        arc::render::render_mode::shaded,
-        arc::render::mesh_visualization_mode::standard,
-        arc::render::editor_overlay_mode::selected_wireframe,
-        true,
-        visibility);
+    result = arc::scene::render_scene(registry, renderer, 320, 180, arc::render::render_mode::shaded,
+                                      arc::render::mesh_visualization_mode::standard,
+                                      arc::render::editor_overlay_mode::selected_wireframe, true, visibility);
     REQUIRE(result.world_environment_count == 2);
     REQUIRE(result.environment.source == arc::render::sky_source_mode::solid_color);
     REQUIRE_FALSE(result.environment.sky_visible);
@@ -670,25 +638,23 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
 {
     arc::ecs::world scene;
     arc::render::renderer renderer;
-    const arc::render::mesh_handle mesh{ .index = 2, .generation = 1 };
+    const arc::render::mesh_handle mesh{.index = 2, .generation = 1};
 
     const auto camera_entity = scene.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     scene.emplace<arc::scene::camera_component>(camera_entity);
 
     const auto mesh_entity = scene.create();
     arc::scene::transform_component transform;
-    transform.position = arc::math::vector3f{ 20.0f, 0.0f, 0.0f };
+    transform.position = arc::math::vector3f{20.0f, 0.0f, 0.0f};
     scene.emplace<arc::scene::transform_component>(mesh_entity, transform);
     scene.emplace<arc::scene::bounds_component>(
         mesh_entity,
-        arc::geometric::box3f{
-            arc::geometric::point3f{ arc::math::vector3f{ -22.0f, -1.0f, -6.0f } },
-            arc::geometric::point3f{ arc::math::vector3f{ -18.0f, 1.0f, -4.0f } } },
-        arc::geometric::box3f{},
-        true);
+        arc::geometric::box3f{arc::geometric::point3f{arc::math::vector3f{-22.0f, -1.0f, -6.0f}},
+                              arc::geometric::point3f{arc::math::vector3f{-18.0f, 1.0f, -4.0f}}},
+        arc::geometric::box3f{}, true);
     scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{}, true);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
@@ -710,7 +676,7 @@ TEST_CASE("render scene extracts and culls virtual mesh clusters")
 
     const auto camera_entity = scene.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     scene.emplace<arc::scene::camera_component>(camera_entity);
 
@@ -734,16 +700,16 @@ TEST_CASE("render scene extracts and culls virtual mesh clusters")
     source.vertices[5].position[0] = 100.5f;
     source.vertices[5].position[1] = 0.5f;
     source.vertices[5].position[2] = 0.0f;
-    source.indices = { 0, 1, 2, 3, 4, 5 };
-    const auto virtual_mesh = renderer.create_virtual_mesh(
-        arc::render::build_virtual_mesh(source, { .max_triangles_per_cluster = 1 }));
+    source.indices = {0, 1, 2, 3, 4, 5};
+    const auto virtual_mesh =
+        renderer.create_virtual_mesh(arc::render::build_virtual_mesh(source, {.max_triangles_per_cluster = 1}));
 
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(mesh_entity);
     scene.emplace<arc::scene::selection_component>(mesh_entity, true);
     arc::scene::virtual_mesh_renderer_component virtual_renderer;
     virtual_renderer.mesh = virtual_mesh;
-    virtual_renderer.base_color_tint = arc::math::vector4f{ 0.8f, 0.2f, 0.4f, 1.0f };
+    virtual_renderer.base_color_tint = arc::math::vector4f{0.8f, 0.2f, 0.4f, 1.0f};
     scene.emplace<arc::scene::virtual_mesh_renderer_component>(mesh_entity, virtual_renderer);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
@@ -776,11 +742,11 @@ TEST_CASE("render scene can request wireframe overlay for every draw")
 {
     arc::ecs::world scene;
     arc::render::renderer renderer;
-    const arc::render::mesh_handle mesh{ .index = 2, .generation = 1 };
+    const arc::render::mesh_handle mesh{.index = 2, .generation = 1};
 
     const auto camera_entity = scene.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     scene.emplace<arc::scene::camera_component>(camera_entity);
 
@@ -788,14 +754,9 @@ TEST_CASE("render scene can request wireframe overlay for every draw")
     scene.emplace<arc::scene::transform_component>(mesh_entity);
     scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{}, true);
 
-    const auto result = arc::scene::render_scene(
-        scene,
-        renderer,
-        1280,
-        720,
-        arc::render::render_mode::shaded,
-        arc::render::mesh_visualization_mode::albedo,
-        arc::render::editor_overlay_mode::all_wireframe);
+    const auto result = arc::scene::render_scene(scene, renderer, 1280, 720, arc::render::render_mode::shaded,
+                                                 arc::render::mesh_visualization_mode::albedo,
+                                                 arc::render::editor_overlay_mode::all_wireframe);
     REQUIRE(result.submitted_draw_count == 1);
 
     const auto packet = renderer.frame_queue().commit(1);
@@ -826,11 +787,11 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
 {
     arc::ecs::world scene;
     arc::render::renderer renderer;
-    const arc::render::mesh_handle mesh{ .index = 3, .generation = 1 };
+    const arc::render::mesh_handle mesh{.index = 3, .generation = 1};
 
     const auto camera_entity = scene.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     scene.emplace<arc::scene::active_component>(camera_entity);
     scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     scene.emplace<arc::scene::camera_component>(camera_entity);
@@ -844,11 +805,7 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     scene.emplace<arc::scene::name_component>(sun, "Sun");
     scene.emplace<arc::scene::active_component>(sun);
     scene.emplace<arc::scene::transform_component>(sun);
-    scene.emplace<arc::scene::directional_light_component>(
-        sun,
-        arc::math::vector3f{ 1.0f, 0.9f, 0.7f },
-        2.0f,
-        true);
+    scene.emplace<arc::scene::directional_light_component>(sun, arc::math::vector3f{1.0f, 0.9f, 0.7f}, 2.0f, true);
     auto& sun_light = scene.get<arc::scene::directional_light_component>(sun);
     sun_light.use_color_temperature = true;
     sun_light.temperature_kelvin = 3000.0f;
@@ -862,20 +819,13 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     sun_light.cascades.maximum_distance = 175.0f;
     sun_light.cascades.split_lambda = 0.72f;
     sun_light.cascades.blend_fraction = 0.12f;
-    scene.emplace<arc::scene::mobility_component>(
-        sun,
-        arc::render::render_mobility::stationary);
+    scene.emplace<arc::scene::mobility_component>(sun, arc::render::render_mobility::stationary);
 
     const auto disabled_point = scene.create();
     scene.emplace<arc::scene::active_component>(disabled_point);
     scene.emplace<arc::scene::transform_component>(disabled_point);
-    scene.emplace<arc::scene::point_light_component>(
-        disabled_point,
-        arc::math::vector3f{ 0.2f, 0.3f, 1.0f },
-        10.0f,
-        5.0f,
-        false,
-        false);
+    scene.emplace<arc::scene::point_light_component>(disabled_point, arc::math::vector3f{0.2f, 0.3f, 1.0f}, 10.0f, 5.0f,
+                                                     false, false);
 
     const auto reflection_probe = scene.create();
     scene.emplace<arc::scene::active_component>(reflection_probe);
@@ -926,28 +876,22 @@ TEST_CASE("render scene extracts skinned and instanced render items")
 
     const auto camera_entity = scene.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     scene.emplace<arc::scene::camera_component>(camera_entity);
 
     const auto skinned = scene.create();
     scene.emplace<arc::scene::transform_component>(skinned);
     scene.emplace<arc::scene::skinned_mesh_renderer_component>(
-        skinned,
-        arc::render::mesh_handle{ .index = 10, .generation = 1 },
-        arc::render::material_handle{ .index = 2, .generation = 1 },
-        arc::render::buffer_handle{ .index = 4, .generation = 1 },
-        64u,
-        true);
+        skinned, arc::render::mesh_handle{.index = 10, .generation = 1},
+        arc::render::material_handle{.index = 2, .generation = 1},
+        arc::render::buffer_handle{.index = 4, .generation = 1}, 64u, true);
 
     const auto instanced = scene.create();
     scene.emplace<arc::scene::transform_component>(instanced);
     scene.emplace<arc::scene::instance_group_component>(
-        instanced,
-        arc::render::mesh_handle{ .index = 11, .generation = 1 },
-        arc::render::material_handle{ .index = 3, .generation = 1 },
-        12u,
-        true);
+        instanced, arc::render::mesh_handle{.index = 11, .generation = 1},
+        arc::render::material_handle{.index = 3, .generation = 1}, 12u, true);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
     REQUIRE(result.camera_found);
@@ -968,12 +912,12 @@ TEST_CASE("render scene applies first valid LOD mesh")
 {
     arc::ecs::world scene;
     arc::render::renderer renderer;
-    const arc::render::mesh_handle base_mesh{ .index = 1, .generation = 1 };
-    const arc::render::mesh_handle lod_mesh{ .index = 9, .generation = 1 };
+    const arc::render::mesh_handle base_mesh{.index = 1, .generation = 1};
+    const arc::render::mesh_handle lod_mesh{.index = 9, .generation = 1};
 
     const auto camera_entity = scene.create();
     arc::scene::transform_component camera_transform;
-    camera_transform.position = arc::math::vector3f{ 0.0f, 0.0f, 5.0f };
+    camera_transform.position = arc::math::vector3f{0.0f, 0.0f, 5.0f};
     scene.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
     scene.emplace<arc::scene::camera_component>(camera_entity);
 
@@ -981,9 +925,7 @@ TEST_CASE("render scene applies first valid LOD mesh")
     scene.emplace<arc::scene::transform_component>(mesh_entity);
     scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, base_mesh, arc::render::material_handle{}, true);
     scene.emplace<arc::scene::lod_component>(
-        mesh_entity,
-        std::vector<arc::scene::lod_level>{ { .screen_coverage = 1.0f, .mesh = lod_mesh } },
-        true);
+        mesh_entity, std::vector<arc::scene::lod_level>{{.screen_coverage = 1.0f, .mesh = lod_mesh}}, true);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
     REQUIRE(result.submitted_draw_count == 1);
@@ -1033,19 +975,19 @@ TEST_CASE("terrain brushes sculpt smooth flatten and paint normalized layers")
     arc::scene::terrain_brush_settings brush;
     brush.radius = 4.0f;
     brush.strength = 1.0f;
-    auto dirty = arc::scene::apply_terrain_brush(terrain, { 0.0f, original, 0.0f }, brush, 1.0f / 60.0f);
+    auto dirty = arc::scene::apply_terrain_brush(terrain, {0.0f, original, 0.0f}, brush, 1.0f / 60.0f);
     REQUIRE(dirty.valid);
     REQUIRE(terrain.heights[center_index] > original);
 
     brush.tool = arc::scene::terrain_brush_tool::flatten;
     brush.flatten_height = 2.0f;
-    arc::scene::apply_terrain_brush(terrain, { 0.0f, 0.0f, 0.0f }, brush, 1.0f);
+    arc::scene::apply_terrain_brush(terrain, {0.0f, 0.0f, 0.0f}, brush, 1.0f);
     REQUIRE(terrain.heights[center_index] == Catch::Approx(2.0f));
 
     brush.tool = arc::scene::terrain_brush_tool::paint;
     brush.active_layer = 3;
     const auto before = terrain.layer_weights[center_index][3];
-    arc::scene::apply_terrain_brush(terrain, { 0.0f, 0.0f, 0.0f }, brush, 1.0f);
+    arc::scene::apply_terrain_brush(terrain, {0.0f, 0.0f, 0.0f}, brush, 1.0f);
     const auto weights = terrain.layer_weights[center_index];
     REQUIRE(weights[3] >= before);
     REQUIRE(static_cast<unsigned>(weights[0]) + weights[1] + weights[2] + weights[3] == 255u);
@@ -1059,7 +1001,7 @@ TEST_CASE("terrain raycasts return the actual heightfield surface")
     terrain.chunk_quads = 4;
     terrain.height_scale = 1.0f;
     arc::scene::generate_terrain_heightfield(terrain);
-    const auto hit = arc::scene::raycast_terrain(terrain, { 0.0f, 20.0f, 0.0f }, { 0.0f, -1.0f, 0.0f });
+    const auto hit = arc::scene::raycast_terrain(terrain, {0.0f, 20.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
     REQUIRE(hit.hit);
     REQUIRE(hit.position[1] == Catch::Approx(arc::scene::sample_terrain_height(terrain, 0.0f, 0.0f)).margin(0.001f));
 }
@@ -1070,8 +1012,8 @@ TEST_CASE("generated scene metadata provides ordinary persistence field codecs")
     REQUIRE(arc::scene::register_persistence_components(registry));
 
     arc::scene::transform_component source;
-    source.position = { 3.0f, -2.0f, 7.5f };
-    source.scale = { 2.0f, 3.0f, 4.0f };
+    source.position = {3.0f, -2.0f, 7.5f};
+    source.scale = {2.0f, 3.0f, 4.0f};
     arc::persistence::archive_component_record encoded;
     const auto type = arc::ecs::component_metadata<arc::scene::transform_component>().id;
     REQUIRE(registry.encode(type, &source, encoded));

@@ -45,8 +45,7 @@ public:
      */
     constexpr matrix(std::initializer_list<T> values)
     {
-        if (values.size() != size)
-            throw std::length_error("matrix initializer size mismatch");
+        if (values.size() != size) throw std::length_error("matrix initializer size mismatch");
 
         std::size_t index = 0;
         for (const T& value : values)
@@ -54,9 +53,8 @@ public:
     }
 
     template <detail::matrix_expression Expr>
-        requires (
-            detail::expr_traits<std::remove_cvref_t<Expr>>::rows == Rows &&
-            detail::expr_traits<std::remove_cvref_t<Expr>>::cols == Cols)
+        requires(detail::expr_traits<std::remove_cvref_t<Expr>>::rows == Rows &&
+                 detail::expr_traits<std::remove_cvref_t<Expr>>::cols == Cols)
     /// @brief Materialize a compatible matrix expression into this matrix.
     constexpr matrix(const Expr& expr) noexcept
     {
@@ -64,9 +62,8 @@ public:
     }
 
     template <detail::matrix_expression Expr>
-        requires (
-            detail::expr_traits<std::remove_cvref_t<Expr>>::rows == Rows &&
-            detail::expr_traits<std::remove_cvref_t<Expr>>::cols == Cols)
+        requires(detail::expr_traits<std::remove_cvref_t<Expr>>::rows == Rows &&
+                 detail::expr_traits<std::remove_cvref_t<Expr>>::cols == Cols)
     /// @brief Assign and materialize a compatible matrix expression.
     constexpr matrix& operator=(const Expr& expr) noexcept
     {
@@ -107,8 +104,7 @@ private:
             return col * Rows + row;
     }
 
-    template <detail::matrix_expression Expr>
-    constexpr void assign(const Expr& expr) noexcept
+    template <detail::matrix_expression Expr> constexpr void assign(const Expr& expr) noexcept
     {
         detail::assign_matrix<T, Rows, Cols>(*this, expr);
     }
@@ -145,8 +141,7 @@ struct expr_traits<matrix<T, Rows, Cols, Layout>>
     static constexpr matrix_layout layout = Layout;
 };
 
-template <class Op, class Lhs, class Rhs>
-struct expr_traits<matrix_binary_expr<Op, Lhs, Rhs>>
+template <class Op, class Lhs, class Rhs> struct expr_traits<matrix_binary_expr<Op, Lhs, Rhs>>
 {
     using value_type = typename matrix_binary_expr<Op, Lhs, Rhs>::value_type;
     static constexpr int kind = 1;
@@ -155,8 +150,7 @@ struct expr_traits<matrix_binary_expr<Op, Lhs, Rhs>>
     static constexpr matrix_layout layout = matrix_binary_expr<Op, Lhs, Rhs>::layout;
 };
 
-template <class Expr>
-struct expr_traits<matrix_neg_expr<Expr>>
+template <class Expr> struct expr_traits<matrix_neg_expr<Expr>>
 {
     using value_type = typename matrix_neg_expr<Expr>::value_type;
     static constexpr int kind = 1;
@@ -182,7 +176,7 @@ template <detail::matrix_expression Expr>
 constexpr auto eval(const Expr& expr) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
-    return matrix<typename traits::value_type, traits::rows, traits::cols, traits::layout>{ expr };
+    return matrix<typename traits::value_type, traits::rows, traits::cols, traits::layout>{expr};
 }
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
@@ -190,7 +184,7 @@ template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
 /// @brief Build a lazy elementwise matrix addition expression.
 constexpr auto add(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::matrix_binary_expr<detail::add_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::matrix_binary_expr<detail::add_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
@@ -198,7 +192,7 @@ template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
 /// @brief Build a lazy elementwise matrix subtraction expression.
 constexpr auto sub(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::matrix_binary_expr<detail::sub_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::matrix_binary_expr<detail::sub_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
@@ -206,7 +200,7 @@ template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
 /// @brief Build a lazy elementwise matrix multiplication expression.
 constexpr auto mul(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::matrix_binary_expr<detail::mul_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::matrix_binary_expr<detail::mul_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
@@ -214,14 +208,14 @@ template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
 /// @brief Build a lazy elementwise matrix division expression.
 constexpr auto div(Lhs&& lhs, Rhs&& rhs)
 {
-    return detail::matrix_binary_expr<detail::div_op, Lhs, Rhs>{ std::forward<Lhs>(lhs), std::forward<Rhs>(rhs) };
+    return detail::matrix_binary_expr<detail::div_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::matrix_expression Expr>
 /// @brief Build a lazy matrix negation expression.
 constexpr auto neg(Expr&& expr)
 {
-    return detail::matrix_neg_expr<Expr>{ std::forward<Expr>(expr) };
+    return detail::matrix_neg_expr<Expr>{std::forward<Expr>(expr)};
 }
 
 template <detail::matrix_expression Expr, class Scalar>
@@ -229,7 +223,7 @@ template <detail::matrix_expression Expr, class Scalar>
 /// @brief Build a lazy expression adding a scalar to every matrix element.
 constexpr auto add(Expr&& expr, Scalar scalar)
 {
-    return detail::matrix_scalar_expr<detail::add_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::add_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::matrix_expression Expr>
@@ -237,7 +231,7 @@ template <class Scalar, detail::matrix_expression Expr>
 /// @brief Build a lazy expression adding every matrix element to a scalar.
 constexpr auto add(Scalar scalar, Expr&& expr)
 {
-    return detail::matrix_scalar_expr<detail::add_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::add_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <detail::matrix_expression Expr, class Scalar>
@@ -245,7 +239,7 @@ template <detail::matrix_expression Expr, class Scalar>
 /// @brief Build a lazy expression subtracting a scalar from every matrix element.
 constexpr auto sub(Expr&& expr, Scalar scalar)
 {
-    return detail::matrix_scalar_expr<detail::sub_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::sub_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::matrix_expression Expr>
@@ -253,7 +247,7 @@ template <class Scalar, detail::matrix_expression Expr>
 /// @brief Build a lazy expression subtracting every matrix element from a scalar.
 constexpr auto sub(Scalar scalar, Expr&& expr)
 {
-    return detail::matrix_scalar_expr<detail::sub_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::sub_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <detail::matrix_expression Expr, class Scalar>
@@ -261,7 +255,7 @@ template <detail::matrix_expression Expr, class Scalar>
 /// @brief Build a lazy expression multiplying every matrix element by a scalar.
 constexpr auto mul(Expr&& expr, Scalar scalar)
 {
-    return detail::matrix_scalar_expr<detail::mul_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::mul_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::matrix_expression Expr>
@@ -269,7 +263,7 @@ template <class Scalar, detail::matrix_expression Expr>
 /// @brief Build a lazy expression multiplying a scalar by every matrix element.
 constexpr auto mul(Scalar scalar, Expr&& expr)
 {
-    return detail::matrix_scalar_expr<detail::mul_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::mul_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <detail::matrix_expression Expr, class Scalar>
@@ -277,7 +271,7 @@ template <detail::matrix_expression Expr, class Scalar>
 /// @brief Build a lazy expression dividing every matrix element by a scalar.
 constexpr auto div(Expr&& expr, Scalar scalar)
 {
-    return detail::matrix_scalar_expr<detail::div_op, false, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::div_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class Scalar, detail::matrix_expression Expr>
@@ -285,7 +279,7 @@ template <class Scalar, detail::matrix_expression Expr>
 /// @brief Build a lazy expression dividing a scalar by every matrix element.
 constexpr auto div(Scalar scalar, Expr&& expr)
 {
-    return detail::matrix_scalar_expr<detail::div_op, true, Scalar, Expr>{ scalar, std::forward<Expr>(expr) };
+    return detail::matrix_scalar_expr<detail::div_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
 
 template <class T, std::size_t N, matrix_layout Layout = matrix_layout::column_major>
@@ -294,7 +288,7 @@ constexpr auto identity() noexcept
 {
     matrix<T, N, N, Layout> result{};
     for (std::size_t i = 0; i < N; ++i)
-        result(i, i) = T{ 1 };
+        result(i, i) = T{1};
     return result;
 }
 
@@ -318,17 +312,14 @@ constexpr auto transpose(const Expr& expr) noexcept
  * accidentally consuming an identity or partially reduced matrix after a failed inverse.
  */
 template <detail::matrix_expression Expr>
-    requires (
-        detail::expr_traits<std::remove_cvref_t<Expr>>::rows ==
-            detail::expr_traits<std::remove_cvref_t<Expr>>::cols &&
-        std::is_floating_point_v<typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type>)
+    requires(detail::expr_traits<std::remove_cvref_t<Expr>>::rows ==
+                 detail::expr_traits<std::remove_cvref_t<Expr>>::cols &&
+             std::is_floating_point_v<typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type>)
 constexpr bool try_inverse(
     const Expr& expr,
-    matrix<
-        typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type,
-        detail::expr_traits<std::remove_cvref_t<Expr>>::rows,
-        detail::expr_traits<std::remove_cvref_t<Expr>>::cols,
-        detail::expr_traits<std::remove_cvref_t<Expr>>::layout>& output,
+    matrix<typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type,
+           detail::expr_traits<std::remove_cvref_t<Expr>>::rows, detail::expr_traits<std::remove_cvref_t<Expr>>::cols,
+           detail::expr_traits<std::remove_cvref_t<Expr>>::layout>& output,
     typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type epsilon =
         static_cast<typename detail::expr_traits<std::remove_cvref_t<Expr>>::value_type>(1.0e-8)) noexcept
 {
@@ -336,7 +327,7 @@ constexpr bool try_inverse(
     using value_type = typename traits::value_type;
     constexpr std::size_t dimensions = traits::rows;
 
-    matrix<value_type, dimensions, dimensions, traits::layout> working{ expr };
+    matrix<value_type, dimensions, dimensions, traits::layout> working{expr};
     auto result = identity<value_type, dimensions, traits::layout>();
 
     for (std::size_t pivot_column = 0; pivot_column < dimensions; ++pivot_column)
@@ -353,8 +344,7 @@ constexpr bool try_inverse(
             }
         }
 
-        if (!std::isfinite(pivot_magnitude) || pivot_magnitude <= epsilon)
-            return false;
+        if (!std::isfinite(pivot_magnitude) || pivot_magnitude <= epsilon) return false;
 
         if (pivot_row != pivot_column)
         {
@@ -365,7 +355,7 @@ constexpr bool try_inverse(
             }
         }
 
-        const value_type reciprocal = value_type{ 1 } / working(pivot_column, pivot_column);
+        const value_type reciprocal = value_type{1} / working(pivot_column, pivot_column);
         for (std::size_t column = 0; column < dimensions; ++column)
         {
             working(pivot_column, column) *= reciprocal;
@@ -374,11 +364,9 @@ constexpr bool try_inverse(
 
         for (std::size_t row = 0; row < dimensions; ++row)
         {
-            if (row == pivot_column)
-                continue;
+            if (row == pivot_column) continue;
             const value_type factor = working(row, pivot_column);
-            if (factor == value_type{})
-                continue;
+            if (factor == value_type{}) continue;
             for (std::size_t column = 0; column < dimensions; ++column)
             {
                 working(row, column) -= factor * working(pivot_column, column);
@@ -392,7 +380,7 @@ constexpr bool try_inverse(
 }
 
 template <detail::matrix_expression Lhs, detail::matrix_expression Rhs>
-    requires (detail::expr_traits<std::remove_cvref_t<Lhs>>::cols == detail::expr_traits<std::remove_cvref_t<Rhs>>::rows)
+    requires(detail::expr_traits<std::remove_cvref_t<Lhs>>::cols == detail::expr_traits<std::remove_cvref_t<Rhs>>::rows)
 /// @brief Return the linear algebra matrix product of two compatible matrices.
 constexpr auto matmul(const Lhs& lhs, const Rhs& rhs) noexcept
 {
@@ -415,26 +403,22 @@ constexpr auto matmul(const Lhs& lhs, const Rhs& rhs) noexcept
 }
 
 template <detail::matrix_expression Mat, detail::vector_expression Vec>
-    requires (
-        detail::expr_traits<std::remove_cvref_t<Mat>>::rows == 4 &&
-        detail::expr_traits<std::remove_cvref_t<Mat>>::cols == 4 &&
-        detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
+    requires(detail::expr_traits<std::remove_cvref_t<Mat>>::rows == 4 &&
+             detail::expr_traits<std::remove_cvref_t<Mat>>::cols == 4 &&
+             detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
 /// @brief Transform a 3D direction by the linear part of a 4x4 matrix.
 constexpr auto transform_vector(const Mat& mat, const Vec& vec) noexcept
 {
     using value_type = std::common_type_t<detail::expr_value_t<Mat>, detail::expr_value_t<Vec>>;
-    return vector<value_type, 3>{
-        static_cast<value_type>(mat(0, 0) * vec[0] + mat(0, 1) * vec[1] + mat(0, 2) * vec[2]),
-        static_cast<value_type>(mat(1, 0) * vec[0] + mat(1, 1) * vec[1] + mat(1, 2) * vec[2]),
-        static_cast<value_type>(mat(2, 0) * vec[0] + mat(2, 1) * vec[1] + mat(2, 2) * vec[2])
-    };
+    return vector<value_type, 3>{static_cast<value_type>(mat(0, 0) * vec[0] + mat(0, 1) * vec[1] + mat(0, 2) * vec[2]),
+                                 static_cast<value_type>(mat(1, 0) * vec[0] + mat(1, 1) * vec[1] + mat(1, 2) * vec[2]),
+                                 static_cast<value_type>(mat(2, 0) * vec[0] + mat(2, 1) * vec[1] + mat(2, 2) * vec[2])};
 }
 
 template <detail::matrix_expression Mat, detail::vector_expression Vec>
-    requires (
-        detail::expr_traits<std::remove_cvref_t<Mat>>::rows == 4 &&
-        detail::expr_traits<std::remove_cvref_t<Mat>>::cols == 4 &&
-        detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
+    requires(detail::expr_traits<std::remove_cvref_t<Mat>>::rows == 4 &&
+             detail::expr_traits<std::remove_cvref_t<Mat>>::cols == 4 &&
+             detail::expr_traits<std::remove_cvref_t<Vec>>::size == 3)
 /// @brief Transform a 3D point by a 4x4 matrix using homogeneous `w = 1`.
 constexpr auto transform_point(const Mat& mat, const Vec& vec) noexcept
 {
@@ -443,18 +427,16 @@ constexpr auto transform_point(const Mat& mat, const Vec& vec) noexcept
     vector<value_type, 3> result{
         static_cast<value_type>(mat(0, 0) * vec[0] + mat(0, 1) * vec[1] + mat(0, 2) * vec[2] + mat(0, 3)),
         static_cast<value_type>(mat(1, 0) * vec[0] + mat(1, 1) * vec[1] + mat(1, 2) * vec[2] + mat(1, 3)),
-        static_cast<value_type>(mat(2, 0) * vec[0] + mat(2, 1) * vec[1] + mat(2, 2) * vec[2] + mat(2, 3))
-    };
+        static_cast<value_type>(mat(2, 0) * vec[0] + mat(2, 1) * vec[1] + mat(2, 2) * vec[2] + mat(2, 3))};
 
-    const value_type w = static_cast<value_type>(
-        mat(3, 0) * vec[0] + mat(3, 1) * vec[1] + mat(3, 2) * vec[2] + mat(3, 3));
-    if (w != value_type{} && w != value_type{ 1 })
-        result = div(result, w);
+    const value_type w =
+        static_cast<value_type>(mat(3, 0) * vec[0] + mat(3, 1) * vec[1] + mat(3, 2) * vec[2] + mat(3, 3));
+    if (w != value_type{} && w != value_type{1}) result = div(result, w);
     return result;
 }
 
 template <detail::vector_expression Expr, matrix_layout Layout = matrix_layout::column_major>
-    requires (detail::expr_traits<std::remove_cvref_t<Expr>>::size == 3)
+    requires(detail::expr_traits<std::remove_cvref_t<Expr>>::size == 3)
 /// @brief Return a 4x4 translation matrix from a 3D offset vector.
 constexpr auto translation(const Expr& offset) noexcept
 {
@@ -470,11 +452,11 @@ template <class T, matrix_layout Layout = matrix_layout::column_major>
 /// @brief Return a 4x4 translation matrix from scalar offsets.
 constexpr auto translation(T x, T y, T z) noexcept
 {
-    return translation<vector<T, 3>, Layout>(vector<T, 3>{ x, y, z });
+    return translation<vector<T, 3>, Layout>(vector<T, 3>{x, y, z});
 }
 
 template <detail::vector_expression Expr, matrix_layout Layout = matrix_layout::column_major>
-    requires (detail::expr_traits<std::remove_cvref_t<Expr>>::size == 3)
+    requires(detail::expr_traits<std::remove_cvref_t<Expr>>::size == 3)
 /// @brief Return a 4x4 non-uniform scaling matrix from a 3D scale vector.
 constexpr auto scaling(const Expr& scale) noexcept
 {
@@ -490,7 +472,7 @@ template <class T, matrix_layout Layout = matrix_layout::column_major>
 /// @brief Return a 4x4 non-uniform scaling matrix from scalar scale values.
 constexpr auto scaling(T x, T y, T z) noexcept
 {
-    return scaling<vector<T, 3>, Layout>(vector<T, 3>{ x, y, z });
+    return scaling<vector<T, 3>, Layout>(vector<T, 3>{x, y, z});
 }
 
 template <class T, matrix_layout Layout = matrix_layout::column_major>
@@ -563,8 +545,7 @@ constexpr auto operator/(Lhs&& lhs, Rhs&& rhs)
     return div(std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));
 }
 
-template <detail::matrix_expression Expr>
-constexpr auto operator-(Expr&& expr)
+template <detail::matrix_expression Expr> constexpr auto operator-(Expr&& expr)
 {
     return neg(std::forward<Expr>(expr));
 }

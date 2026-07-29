@@ -15,7 +15,10 @@ struct material_preview_result
     render::texture_data texture;
     std::string message;
 
-    bool succeeded() const noexcept { return texture.has_pixels(); }
+    bool succeeded() const noexcept
+    {
+        return texture.has_pixels();
+    }
 };
 
 /**
@@ -26,9 +29,7 @@ struct material_preview_result
  * and can later be replaced by an offscreen backend implementation without
  * changing the host or asset-picker contracts.
  */
-material_preview_result render_material_preview(
-    const material_asset& asset,
-    const std::filesystem::path& asset_root,
-    std::uint32_t size = 128);
+material_preview_result render_material_preview(const material_asset& asset, const std::filesystem::path& asset_root,
+                                                std::uint32_t size = 128);
 
 } // namespace arc::editor

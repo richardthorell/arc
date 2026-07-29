@@ -8,6 +8,9 @@ import { SceneGatewayCore } from './aiGatewayCore';
 import { AiGatewayServer } from './aiGatewayServer';
 
 const isDevelopment = !app.isPackaged;
+const isCiSmoke =
+  Boolean(process.env.ARC_CI_SMOKE_LOG) || process.argv.includes('--ci-smoke') || app.commandLine.hasSwitch('ci-smoke');
+let ciSmokeProjectRoot: string | null = null;
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -20,7 +23,7 @@ let closeConfirmationPending = false;
 let shutdownPending = false;
 let shutdownComplete = false;
 
-const activeWindow = (): BrowserWindow | null => mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+const activeWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
 
 export type HostResponse = {
   kind: 'response';
@@ -120,30 +123,32 @@ const parseHostLogLine = (line: string, stream: 'stdout' | 'stderr'): Omit<HostL
 const hostExecutableName = process.platform === 'win32' ? 'arc_host_process.exe' : 'arc_host_process';
 
 const resolveHostProcessPath = (): string | null => {
-  const candidates = [
+  const candidates: Array<string | undefined> = [
     process.env.ARC_HOST_PROCESS_PATH,
-    path.resolve(process.cwd(), '..', 'out', 'build', 'editor-vulkan', 'editor', 'native', 'Release', hostExecutableName),
-    path.resolve(process.cwd(), '..', 'out', 'build', 'editor-vulkan', 'editor', 'native', 'Debug', hostExecutableName),
-    path.resolve(process.cwd(), '..', 'out', 'build', 'editor-vulkan', 'editor', 'native', hostExecutableName),
-    path.resolve(process.cwd(), '..', 'out', 'build', 'editor-no-vulkan', 'editor', 'native', 'Release', hostExecutableName),
-    path.resolve(process.cwd(), '..', 'out', 'build', 'editor-no-vulkan', 'editor', 'native', 'Debug', hostExecutableName),
-    path.resolve(process.cwd(), '..', 'out', 'build', 'editor-no-vulkan', 'editor', 'native', hostExecutableName),
-    path.resolve(process.cwd(), 'out', 'build', 'editor-vulkan', 'editor', 'native', 'Release', hostExecutableName),
-    path.resolve(process.cwd(), 'out', 'build', 'editor-vulkan', 'editor', 'native', 'Debug', hostExecutableName),
-    path.resolve(process.cwd(), 'out', 'build', 'editor-vulkan', 'editor', 'native', hostExecutableName),
-    path.resolve(process.cwd(), 'out', 'build', 'editor-no-vulkan', 'editor', 'native', 'Release', hostExecutableName),
-    path.resolve(process.cwd(), 'out', 'build', 'editor-no-vulkan', 'editor', 'native', 'Debug', hostExecutableName),
-    path.resolve(process.cwd(), 'out', 'build', 'editor-no-vulkan', 'editor', 'native', hostExecutableName),
-  ].filter((candidate): candidate is string => Boolean(candidate));
+    app.isPackaged ? path.join(process.resourcesPath, hostExecutableName) : undefined,
+    app.isPackaged ? path.join(process.resourcesPath, 'native', hostExecutableName) : undefined,
+  ];
+  for (const root of [path.resolve(process.cwd(), '..'), path.resolve(process.cwd())]) {
+    for (const preset of ['editor-vulkan', 'editor-no-vulkan']) {
+      const nativeRoot = path.join(root, 'out', 'build', preset, 'editor', 'native');
+      for (const configuration of ['RelWithDebInfo', 'Release', 'Debug']) {
+        candidates.push(path.join(nativeRoot, configuration, hostExecutableName));
+      }
+      candidates.push(path.join(nativeRoot, hostExecutableName));
+    }
+  }
 
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+  return candidates.find((candidate): candidate is string => Boolean(candidate && fs.existsSync(candidate))) ?? null;
 };
 
 export class ArcHostClient {
   private readonly executablePath: string | null;
   private process: ChildProcessWithoutNullStreams | null = null;
   private requestId = 1;
-  private readonly pending = new Map<number, { resolve: (value: HostResponse) => void; reject: (reason: Error) => void }>();
+  private readonly pending = new Map<
+    number,
+    { resolve: (value: HostResponse) => void; reject: (reason: Error) => void }
+  >();
   private lastError = '';
   private pendingRuntimeTick: HostEvent | null = null;
   private runtimeTickScheduled = false;
@@ -187,22 +192,29 @@ export class ArcHostClient {
         console.warn(`[arc_host_process] ${this.lastError}`);
       }
     });
-    child.on('exit', () => {
+    child.on('exit', (code, signal) => {
       this.process = null;
+      const exitDetail =
+        this.lastError ||
+        `arc_host_process exited${code === null ? '' : ` with code ${code}`}${signal ? ` (${signal})` : ''}`;
       sendHostLog({
         level: 'warning',
         source: 'host.process',
-        message: 'arc_host_process exited',
+        message: exitDetail,
       });
       for (const pending of this.pending.values()) {
-        pending.reject(new Error('arc_host_process exited'));
+        pending.reject(new Error(exitDetail));
       }
       this.pending.clear();
     });
 
     void this.command('project.open', {
       name: 'Arc Sandbox',
-      root: path.resolve(process.cwd(), '..'),
+      root: (() => {
+        if (!isCiSmoke) return path.resolve(process.cwd(), '..');
+        ciSmokeProjectRoot ??= fs.mkdtempSync(path.join(app.getPath('temp'), 'arc-editor-smoke-'));
+        return ciSmokeProjectRoot;
+      })(),
     }).catch((error) => {
       this.lastError = error instanceof Error ? error.message : String(error);
     });
@@ -213,8 +225,12 @@ export class ArcHostClient {
     this.process = null;
   }
 
-  command(type: string, payload: Record<string, unknown> = {}, edit?: Record<string, unknown>,
-    expectedSceneRevision?: number): Promise<HostResponse> {
+  command(
+    type: string,
+    payload: Record<string, unknown> = {},
+    edit?: Record<string, unknown>,
+    expectedSceneRevision?: number,
+  ): Promise<HostResponse> {
     return this.send({ kind: 'command', type, payload, edit, expectedSceneRevision });
   }
 
@@ -227,8 +243,13 @@ export class ArcHostClient {
     return () => this.eventListeners.delete(listener);
   }
 
-  private send(message: { kind: 'command' | 'query'; type: string; payload: Record<string, unknown>;
-    edit?: Record<string, unknown>; expectedSceneRevision?: number }): Promise<HostResponse> {
+  private send(message: {
+    kind: 'command' | 'query';
+    type: string;
+    payload: Record<string, unknown>;
+    edit?: Record<string, unknown>;
+    expectedSceneRevision?: number;
+  }): Promise<HostResponse> {
     this.start();
     const child = this.process;
     if (!child?.stdin.writable) {
@@ -366,6 +387,37 @@ const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
   }
 };
 
+const finishCiSmoke = (exitCode: number, message?: string): void => {
+  if (message) {
+    console.error(`[arc-editor-smoke] ${message}`);
+  }
+  const smokeLog = process.env.ARC_CI_SMOKE_LOG;
+  if (smokeLog) {
+    try {
+      fs.writeFileSync(smokeLog, message ?? 'ok', 'utf8');
+    } catch (error) {
+      console.error(
+        `[arc-editor-smoke] failed to write smoke diagnostic: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  hostClient?.stop();
+  hostClient = null;
+  if (ciSmokeProjectRoot) {
+    try {
+      fs.rmSync(ciSmokeProjectRoot, { recursive: true, force: true });
+    } catch {
+      // The host process may still be releasing its working directory on
+      // Windows. The isolated directory is safe to leave for OS temp cleanup.
+    }
+    ciSmokeProjectRoot = null;
+  }
+  shutdownComplete = true;
+  app.exit(exitCode);
+};
+
 const createMainWindow = (): void => {
   mainWindow = new BrowserWindow({
     width: 1600,
@@ -376,6 +428,7 @@ const createMainWindow = (): void => {
     title: 'ARC Editor',
     autoHideMenuBar: true,
     frame: false,
+    show: !isCiSmoke,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -392,10 +445,37 @@ const createMainWindow = (): void => {
   mainWindow.on('maximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', false));
   mainWindow.on('close', (event) => {
+    if (isCiSmoke) return;
     if (allowWindowClose) return;
     event.preventDefault();
     if (mainWindow) void confirmWindowClose(mainWindow);
   });
+
+  if (isCiSmoke) {
+    const timeout = setTimeout(
+      () => finishCiSmoke(1, 'timed out waiting for renderer and native-host handshake'),
+      30_000,
+    );
+    mainWindow.webContents.once('did-fail-load', (_event, code, description) => {
+      clearTimeout(timeout);
+      finishCiSmoke(1, `renderer failed to load (${code}): ${description}`);
+    });
+    mainWindow.webContents.once('did-finish-load', () => {
+      void (async () => {
+        try {
+          const response = await hostClient?.query('scene.hierarchy');
+          if (!response?.succeeded) {
+            throw new Error(response?.error || hostClient?.error || 'native host did not answer');
+          }
+          clearTimeout(timeout);
+          finishCiSmoke(0);
+        } catch (error) {
+          clearTimeout(timeout);
+          finishCiSmoke(1, error instanceof Error ? error.message : String(error));
+        }
+      })();
+    });
+  }
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     void mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -408,29 +488,34 @@ const createMainWindow = (): void => {
   }
 };
 
-app.whenReady().then(async () => {
+void app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   hostClient = new ArcHostClient();
-  const gatewayCore = new SceneGatewayCore(hostClient);
-  hostClient.onEvent((event) => {
-    gatewayCore.recordHostEvent(event);
-    if (event.type === 'project.opened' || event.type === 'project.closed' ||
-        (event.type === 'scene.changed' && /opened|loaded|new scene/i.test(event.message))) {
-      void gatewayCore.invalidateAuthority(event.message || event.type);
-    }
-  });
-  aiGateway = new AiGatewayServer(gatewayCore, {
-    appDataPath: app.getPath('userData'),
-    onStatus: (status) => activeWindow()?.webContents.send('ai-gateway:status', status),
-  });
-  try {
-    await aiGateway.start();
-  } catch (error) {
-    sendHostLog({
-      level: 'error',
-      source: 'ai.gateway',
-      message: `AI gateway failed to start: ${error instanceof Error ? error.message : String(error)}`,
+  if (!isCiSmoke) {
+    const gatewayCore = new SceneGatewayCore(hostClient);
+    hostClient.onEvent((event) => {
+      gatewayCore.recordHostEvent(event);
+      if (
+        event.type === 'project.opened' ||
+        event.type === 'project.closed' ||
+        (event.type === 'scene.changed' && /opened|loaded|new scene/i.test(event.message))
+      ) {
+        void gatewayCore.invalidateAuthority(event.message || event.type);
+      }
     });
+    aiGateway = new AiGatewayServer(gatewayCore, {
+      appDataPath: app.getPath('userData'),
+      onStatus: (status) => activeWindow()?.webContents.send('ai-gateway:status', status),
+    });
+    try {
+      await aiGateway.start();
+    } catch (error) {
+      sendHostLog({
+        level: 'error',
+        source: 'ai.gateway',
+        message: `AI gateway failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   }
 
   ipcMain.handle('app:getVersion', () => app.getVersion());
@@ -439,11 +524,17 @@ app.whenReady().then(async () => {
     engineHostConnected: hostClient?.connected ?? false,
     viewportMode: hostClient?.connected ? 'native' : 'placeholder',
     hostError: hostClient?.error ?? '',
+    ciSmoke: isCiSmoke,
   }));
 
-  ipcMain.handle('host:query', (_event, type: string, payload: Record<string, unknown> = {}) => hostClient?.query(type, payload));
-  ipcMain.handle('host:command', (_event, type: string, payload: Record<string, unknown>, edit?: Record<string, unknown>) =>
-    hostClient?.command(type, payload, edit));
+  ipcMain.handle('host:query', (_event, type: string, payload: Record<string, unknown> = {}) =>
+    hostClient?.query(type, payload),
+  );
+  ipcMain.handle(
+    'host:command',
+    (_event, type: string, payload: Record<string, unknown>, edit?: Record<string, unknown>) =>
+      hostClient?.command(type, payload, edit),
+  );
   ipcMain.handle('ai-gateway:status', () => aiGateway?.core.status() ?? null);
   ipcMain.handle('ai-gateway:approve', (_event, requestId: string) => aiGateway?.core.approveEdit(requestId) ?? false);
   ipcMain.handle('ai-gateway:deny', (_event, requestId: string) => aiGateway?.core.denyEdit(requestId) ?? false);
@@ -451,7 +542,8 @@ app.whenReady().then(async () => {
     await aiGateway?.core.revokeClient(clientId);
   });
   ipcMain.handle('ai-gateway:cancelEdit', async (_event, sessionId: string, clientId: string) =>
-    aiGateway?.core.invoke('edit.cancel', { editSessionId: sessionId }, clientId));
+    aiGateway?.core.invoke('edit.cancel', { editSessionId: sessionId }, clientId),
+  );
   ipcMain.handle('ai-gateway:undoLastEdit', async () => aiGateway?.core.undoLastCommittedEdit());
   ipcMain.handle('dialog:openScene', async (_event, options: OpenSceneDialogOptions = {}) => {
     const target = activeWindow();
@@ -486,35 +578,34 @@ app.whenReady().then(async () => {
     const target = activeWindow();
     if (!target) throw new Error('No active editor window');
     const result = await dialog.showSaveDialog(target, {
-      title: 'Save ARC Scene', buttonLabel: 'Save', defaultPath: 'Untitled.arcscene',
+      title: 'Save ARC Scene',
+      buttonLabel: 'Save',
+      defaultPath: 'Untitled.arcscene',
       filters: [{ name: 'ARC Scene', extensions: ['arcscene'] }],
     });
     if (result.canceled || !result.filePath) return { canceled: true };
     const response = await hostClient?.command('scene.saveAs', { path: result.filePath });
     return { canceled: false, filePath: result.filePath, response };
   });
-  ipcMain.handle('dialog:createPrefab', async (
-    _event,
-    entity: { index: number; generation: number },
-  ) => {
+  ipcMain.handle('dialog:createPrefab', async (_event, entity: { index: number; generation: number }) => {
     const target = activeWindow();
     if (!target) throw new Error('No active editor window');
     const result = await dialog.showSaveDialog(target, {
-      title: 'Create ARC Prefab', buttonLabel: 'Create Prefab', defaultPath: 'NewPrefab.arcprefab',
+      title: 'Create ARC Prefab',
+      buttonLabel: 'Create Prefab',
+      defaultPath: 'NewPrefab.arcprefab',
       filters: [{ name: 'ARC Prefab', extensions: ['arcprefab'] }],
     });
     if (result.canceled || !result.filePath) return { canceled: true };
     const response = await hostClient?.command('prefab.create', { entity, path: result.filePath });
     return { canceled: false, filePath: result.filePath, response };
   });
-  ipcMain.handle('dialog:instantiatePrefab', async (
-    _event,
-    parent?: { index: number; generation: number },
-  ) => {
+  ipcMain.handle('dialog:instantiatePrefab', async (_event, parent?: { index: number; generation: number }) => {
     const target = activeWindow();
     if (!target) throw new Error('No active editor window');
     const result = await dialog.showOpenDialog(target, {
-      title: 'Instantiate ARC Prefab', buttonLabel: 'Instantiate',
+      title: 'Instantiate ARC Prefab',
+      buttonLabel: 'Instantiate',
       properties: ['openFile'],
       filters: [{ name: 'ARC Prefab', extensions: ['arcprefab'] }],
     });
@@ -527,6 +618,7 @@ app.whenReady().then(async () => {
     return { canceled: false, filePath, response };
   });
   ipcMain.handle('viewport:attach', (_event, bounds: NativeViewportBounds) => {
+    if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
     const target = activeWindow();
     if (!target) {
       throw new Error('No active editor window');
@@ -538,13 +630,16 @@ app.whenReady().then(async () => {
     });
   });
   ipcMain.handle('viewport:resize', (_event, bounds: NativeViewportBounds) => {
+    if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
     const target = activeWindow();
     if (!target) {
       throw new Error('No active editor window');
     }
     return hostClient?.command('viewport.resize', scaleViewportBounds(target, bounds));
   });
-  ipcMain.handle('viewport:cameraInput', (_event, input: CameraInput) => hostClient?.command('viewport.cameraInput', input));
+  ipcMain.handle('viewport:cameraInput', (_event, input: CameraInput) =>
+    hostClient?.command('viewport.cameraInput', input),
+  );
 
   ipcMain.handle('nativeWindow:minimize', () => activeWindow()?.minimize());
   ipcMain.handle('nativeWindow:toggleMaximize', () => {
@@ -574,6 +669,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  if (isCiSmoke) return;
   if (process.platform !== 'darwin') {
     app.quit();
   }

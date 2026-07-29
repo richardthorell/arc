@@ -19,8 +19,24 @@ const sample = (): ProfilerSnapshot => ({
       { domain: 'streaming', bytes: 2048, peakBytes: 4096, softLimit: 4096, hardLimit: 8192, pressure: false },
     ],
     groups: [
-      { domain: 'components', tag: 'world.components', worldId: 7, threadId: 11, stackId: 99, allocationCount: 3, bytes: 1024 },
-      { domain: 'streaming', tag: 'assets.streaming', worldId: 0, threadId: 12, stackId: 0, allocationCount: 1, bytes: 2048 },
+      {
+        domain: 'components',
+        tag: 'world.components',
+        worldId: 7,
+        threadId: 11,
+        stackId: 99,
+        allocationCount: 3,
+        bytes: 1024,
+      },
+      {
+        domain: 'streaming',
+        tag: 'assets.streaming',
+        worldId: 0,
+        threadId: 12,
+        stackId: 0,
+        allocationCount: 1,
+        bytes: 2048,
+      },
     ],
   },
   scheduler: {
@@ -31,17 +47,19 @@ const sample = (): ProfilerSnapshot => ({
     failed: 1,
     queued: 1,
     droppedEvents: 0,
-    jobs: [{
-      sequence: 1,
-      name: 'render.frame',
-      priority: 'critical',
-      affinity: 'render',
-      status: 'succeeded',
-      threadId: 11,
-      queuedNanoseconds: 10,
-      startedNanoseconds: 20,
-      completedNanoseconds: 1020,
-    }],
+    jobs: [
+      {
+        sequence: 1,
+        name: 'render.frame',
+        priority: 'critical',
+        affinity: 'render',
+        status: 'succeeded',
+        threadId: 11,
+        queuedNanoseconds: 10,
+        startedNanoseconds: 20,
+        completedNanoseconds: 1020,
+      },
+    ],
   },
 });
 

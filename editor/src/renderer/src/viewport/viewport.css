@@ -81,7 +81,7 @@
   height: 6px;
   border-radius: 50%;
   background: #6b7280;
-  content: "";
+  content: '';
 }
 
 .arc-viewport-live-pill.live {
@@ -155,7 +155,7 @@
   border-radius: 60% 36% 42% 58%;
   background: linear-gradient(135deg, rgba(46, 99, 120, 0.8), rgba(11, 22, 30, 0.9));
   box-shadow: 0 0 32px rgba(144, 193, 208, 0.1) inset;
-  content: "";
+  content: '';
 }
 
 .arc-viewport-object-shadow {
@@ -233,7 +233,7 @@
   width: 10px;
   height: 10px;
   background: #ffffff;
-  box-shadow: 0 0 12px rgba(255,255,255,0.65);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.65);
 }
 
 .arc-transform-gizmo .axis-y {
@@ -251,7 +251,7 @@
   border-right: 8px solid transparent;
   border-bottom: 12px solid #22c55e;
   border-left: 8px solid transparent;
-  content: "";
+  content: '';
 }
 
 .arc-transform-gizmo .axis-x {
@@ -269,7 +269,7 @@
   border-top: 8px solid transparent;
   border-bottom: 8px solid transparent;
   border-left: 12px solid #ef4444;
-  content: "";
+  content: '';
 }
 
 .arc-transform-gizmo .axis-z {
@@ -288,10 +288,10 @@
   display: grid;
   gap: 4px;
   padding: 5px;
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   background: rgba(24, 24, 24, 0.82);
-  box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
 }
 
 .arc-viewport-tool-strip button {
@@ -315,11 +315,11 @@
   top: 48px;
   min-width: 168px;
   padding: 10px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   background: rgba(15, 17, 23, 0.74);
   backdrop-filter: blur(8px);
-  box-shadow: 0 12px 34px rgba(0,0,0,0.28);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
 }
 
 .arc-viewport-stats dl {
@@ -358,7 +358,7 @@
   gap: 6px;
   height: 26px;
   padding: 0 8px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 5px;
   color: #cccccc;
   background: rgba(24, 24, 24, 0.72);
@@ -375,7 +375,7 @@
 .arc-viewport-breadcrumb span::after {
   margin-left: 6px;
   color: #8b949e;
-  content: ">";
+  content: '>';
 }
 
 .arc-axis-gizmo-large {
@@ -395,7 +395,7 @@
   height: 38px;
   border-radius: 999px;
   background: #22c55e;
-  content: "";
+  content: '';
 }
 
 .arc-axis-gizmo-large::after {

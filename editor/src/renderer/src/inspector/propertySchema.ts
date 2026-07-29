@@ -90,9 +90,12 @@ export type PropertyComponentSchema<TContext = object, TId extends string = stri
 };
 
 export function getPathValue<TContext extends object>(context: TContext, path: string): unknown {
-  return path.split('.').reduce<unknown>((value, key) => (
-    value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined
-  ), context);
+  return path
+    .split('.')
+    .reduce<unknown>(
+      (value, key) => (value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined),
+      context,
+    );
 }
 
 export function setPathValue<TContext extends object>(context: TContext, path: string, value: unknown): TContext {

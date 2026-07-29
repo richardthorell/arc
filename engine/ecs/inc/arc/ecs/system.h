@@ -29,19 +29,17 @@ enum class component_access_mode : std::uint8_t
 struct component_access
 {
     component_type_id component{};
-    component_access_mode mode{ component_access_mode::read };
+    component_access_mode mode{component_access_mode::read};
 };
 
-template <class T>
-constexpr component_access reads() noexcept
+template <class T> constexpr component_access reads() noexcept
 {
-    return { component_type<T>(), component_access_mode::read };
+    return {component_type<T>(), component_access_mode::read};
 }
 
-template <class T>
-constexpr component_access writes() noexcept
+template <class T> constexpr component_access writes() noexcept
 {
-    return { component_type<T>(), component_access_mode::write };
+    return {component_type<T>(), component_access_mode::write};
 }
 
 enum class system_phase : std::uint8_t
@@ -58,84 +56,105 @@ enum class system_phase : std::uint8_t
 };
 
 inline constexpr std::array fixed_system_phases{
-    system_phase::input,
-    system_phase::network_receive,
-    system_phase::gameplay_commands,
-    system_phase::movement,
-    system_phase::physics,
-    system_phase::abilities,
-    system_phase::ai,
-    system_phase::replication
-};
+    system_phase::input,    system_phase::network_receive, system_phase::gameplay_commands,
+    system_phase::movement, system_phase::physics,         system_phase::abilities,
+    system_phase::ai,       system_phase::replication};
 
 struct system_descriptor;
 
 class system_context
 {
 public:
-    world& owner() noexcept { return *owner_; }
-    const world& owner() const noexcept { return *owner_; }
-    entity_command_buffer& commands() noexcept { return *commands_; }
-    float delta_seconds() const noexcept { return delta_seconds_; }
-    float fixed_delta_seconds() const noexcept { return execution_.fixed_delta_seconds; }
-    float frame_delta_seconds() const noexcept { return execution_.frame_delta_seconds; }
-    simulation_tick_id tick_id() const noexcept { return execution_.tick; }
-    runtime_world_role world_role() const noexcept { return execution_.world_role; }
-    std::uint64_t world_id() const noexcept { return execution_.world_id; }
-    float interpolation_alpha() const noexcept { return execution_.interpolation_alpha; }
-    bool presentation() const noexcept { return execution_.presentation; }
+    world& owner() noexcept
+    {
+        return *owner_;
+    }
+    const world& owner() const noexcept
+    {
+        return *owner_;
+    }
+    entity_command_buffer& commands() noexcept
+    {
+        return *commands_;
+    }
+    float delta_seconds() const noexcept
+    {
+        return delta_seconds_;
+    }
+    float fixed_delta_seconds() const noexcept
+    {
+        return execution_.fixed_delta_seconds;
+    }
+    float frame_delta_seconds() const noexcept
+    {
+        return execution_.frame_delta_seconds;
+    }
+    simulation_tick_id tick_id() const noexcept
+    {
+        return execution_.tick;
+    }
+    runtime_world_role world_role() const noexcept
+    {
+        return execution_.world_role;
+    }
+    std::uint64_t world_id() const noexcept
+    {
+        return execution_.world_id;
+    }
+    float interpolation_alpha() const noexcept
+    {
+        return execution_.interpolation_alpha;
+    }
+    bool presentation() const noexcept
+    {
+        return execution_.presentation;
+    }
     const simulation_input_snapshot& input() const noexcept
     {
         static constexpr simulation_input_snapshot empty{};
         return execution_.input ? *execution_.input : empty;
     }
-    memory::tick_arena* tick_memory() const noexcept { return execution_.tick_memory; }
-    memory::frame_arena* frame_memory() const noexcept { return execution_.frame_memory; }
-    runtime_service_provider* services() const noexcept { return execution_.services; }
-
-    template <class Service>
-    Service* service(runtime_service_id id) const noexcept
+    memory::tick_arena* tick_memory() const noexcept
     {
-        return execution_.services
-            ? static_cast<Service*>(execution_.services->find_service(id))
-            : nullptr;
+        return execution_.tick_memory;
+    }
+    memory::frame_arena* frame_memory() const noexcept
+    {
+        return execution_.frame_memory;
+    }
+    runtime_service_provider* services() const noexcept
+    {
+        return execution_.services;
+    }
+
+    template <class Service> Service* service(runtime_service_id id) const noexcept
+    {
+        return execution_.services ? static_cast<Service*>(execution_.services->find_service(id)) : nullptr;
     }
 
     random_stream random(random_stream_id stream, std::uint64_t stable_subject = 0) const noexcept
     {
-        return make_random_stream(
-            execution_.process_seed,
-            execution_.world_id,
-            execution_.tick,
-            stream,
-            stable_subject);
+        return make_random_stream(execution_.process_seed, execution_.world_id, execution_.tick, stream,
+                                  stable_subject);
     }
 
-    template <class T>
-    const T* read(entity value) const
+    template <class T> const T* read(entity value) const
     {
         require_access(component_type<T>(), component_access_mode::read);
         return std::as_const(*owner_).template try_get<T>(value);
     }
 
-    template <class T>
-    T* write(entity value)
+    template <class T> T* write(entity value)
     {
         require_access(component_type<T>(), component_access_mode::write);
         return owner_->template try_get<T>(value);
     }
 
 private:
-    system_context(
-        world& owner,
-        entity_command_buffer& commands,
-        const system_execution_info& execution,
-        const system_descriptor& descriptor)
-        : owner_(&owner)
-        , commands_(&commands)
-        , descriptor_(&descriptor)
-        , execution_(execution)
-        , delta_seconds_(execution.delta_seconds)
+    system_context(world& owner, entity_command_buffer& commands, const system_execution_info& execution,
+                   const system_descriptor& descriptor)
+        : owner_(&owner), commands_(&commands), descriptor_(&descriptor), execution_(execution),
+          delta_seconds_(execution.delta_seconds)
     {
     }
 
@@ -152,29 +171,25 @@ private:
 struct system_descriptor
 {
     std::string name;
-    system_phase phase{ system_phase::gameplay_commands };
-    jobs::job_priority priority{ jobs::job_priority::normal };
-    jobs::job_affinity affinity{ jobs::job_affinity::any_worker };
+    system_phase phase{system_phase::gameplay_commands};
+    jobs::job_priority priority{jobs::job_priority::normal};
+    jobs::job_affinity affinity{jobs::job_affinity::any_worker};
     std::vector<component_access> components;
     std::vector<std::string> before;
     std::vector<std::string> after;
     std::function<void(system_context&)> execute;
 };
 
-inline void system_context::require_access(
-    component_type_id component,
-    component_access_mode requested) const
+inline void system_context::require_access(component_type_id component, component_access_mode requested) const
 {
-    const auto found = std::find_if(
-        descriptor_->components.begin(),
-        descriptor_->components.end(),
-        [component](const component_access& access) { return access.component == component; });
+    const auto found =
+        std::find_if(descriptor_->components.begin(), descriptor_->components.end(),
+                     [component](const component_access& access) { return access.component == component; });
     const bool accepted = found != descriptor_->components.end() &&
-        (requested == component_access_mode::read || found->mode == component_access_mode::write);
+                          (requested == component_access_mode::read || found->mode == component_access_mode::write);
     if (!accepted)
-        throw std::logic_error(
-            "system '" + descriptor_->name + "' used undeclared " +
-            (requested == component_access_mode::write ? "write" : "read") + " component access");
+        throw std::logic_error("system '" + descriptor_->name + "' used undeclared " +
+                               (requested == component_access_mode::write ? "write" : "read") + " component access");
 }
 
 struct system_schedule_error
@@ -189,7 +204,10 @@ struct [[nodiscard]] system_run_result
     command_flush_result commands;
     std::vector<system_schedule_error> errors;
 
-    bool succeeded() const noexcept { return errors.empty() && commands.succeeded(); }
+    bool succeeded() const noexcept
+    {
+        return errors.empty() && commands.succeeded();
+    }
 };
 
 /** Dependency- and access-aware scheduler layered on ARC's work-stealing jobs. */
@@ -198,9 +216,7 @@ class system_scheduler
 public:
     bool add(system_descriptor descriptor)
     {
-        if (frozen_ || descriptor.name.empty() || !descriptor.execute ||
-            index_.contains(descriptor.name))
-            return false;
+        if (frozen_ || descriptor.name.empty() || !descriptor.execute || index_.contains(descriptor.name)) return false;
         index_.emplace(descriptor.name, systems_.size());
         systems_.push_back(std::move(descriptor));
         invalidate_schedules();
@@ -209,11 +225,9 @@ public:
 
     bool remove(std::string_view name)
     {
-        if (frozen_)
-            return false;
+        if (frozen_) return false;
         const auto found = index_.find(std::string(name));
-        if (found == index_.end())
-            return false;
+        if (found == index_.end()) return false;
         systems_.erase(systems_.begin() + static_cast<std::ptrdiff_t>(found->second));
         rebuild_index();
         invalidate_schedules();
@@ -222,15 +236,20 @@ public:
 
     void clear()
     {
-        if (frozen_)
-            return;
+        if (frozen_) return;
         systems_.clear();
         index_.clear();
         invalidate_schedules();
     }
 
-    std::size_t size() const noexcept { return systems_.size(); }
-    bool frozen() const noexcept { return frozen_; }
+    std::size_t size() const noexcept
+    {
+        return systems_.size();
+    }
+    bool frozen() const noexcept
+    {
+        return frozen_;
+    }
 
     std::vector<system_schedule_error> freeze()
     {
@@ -238,19 +257,14 @@ public:
         for (std::size_t phase_index = 0; phase_index < phase_schedules_.size(); ++phase_index)
         {
             compiled_phase& schedule = phase_schedules_[phase_index];
-            if (!schedule.compiled)
-                compile_phase(static_cast<system_phase>(phase_index), schedule);
+            if (!schedule.compiled) compile_phase(static_cast<system_phase>(phase_index), schedule);
             errors.insert(errors.end(), schedule.errors.begin(), schedule.errors.end());
         }
-        if (errors.empty())
-            frozen_ = true;
+        if (errors.empty()) frozen_ = true;
         return errors;
     }
 
-    system_run_result run(
-        world& owner,
-        jobs::job_system& jobs,
-        float delta_seconds)
+    system_run_result run(world& owner, jobs::job_system& jobs, float delta_seconds)
     {
         system_execution_info execution{};
         execution.delta_seconds = delta_seconds;
@@ -261,36 +275,26 @@ public:
         {
             system_run_result phase_result = run_phase(owner, jobs, phase, execution);
             aggregate.systems_executed += phase_result.systems_executed;
-            aggregate.errors.insert(
-                aggregate.errors.end(),
-                std::make_move_iterator(phase_result.errors.begin()),
-                std::make_move_iterator(phase_result.errors.end()));
+            aggregate.errors.insert(aggregate.errors.end(), std::make_move_iterator(phase_result.errors.begin()),
+                                    std::make_move_iterator(phase_result.errors.end()));
             aggregate.commands.applied += phase_result.commands.applied;
-            aggregate.commands.errors.insert(
-                aggregate.commands.errors.end(),
-                std::make_move_iterator(phase_result.commands.errors.begin()),
-                std::make_move_iterator(phase_result.commands.errors.end()));
-            if (!phase_result.succeeded())
-                break;
+            aggregate.commands.errors.insert(aggregate.commands.errors.end(),
+                                             std::make_move_iterator(phase_result.commands.errors.begin()),
+                                             std::make_move_iterator(phase_result.commands.errors.end()));
+            if (!phase_result.succeeded()) break;
         }
         return aggregate;
     }
 
-    system_run_result run_phase(
-        world& owner,
-        jobs::job_system& jobs,
-        system_phase phase,
-        const system_execution_info& execution)
+    system_run_result run_phase(world& owner, jobs::job_system& jobs, system_phase phase,
+                                const system_execution_info& execution)
     {
         system_run_result result;
         compiled_phase& schedule = phase_schedules_[static_cast<std::size_t>(phase)];
-        if (!schedule.compiled)
-            compile_phase(phase, schedule);
-        if (schedule.selected.empty())
-            return result;
+        if (!schedule.compiled) compile_phase(phase, schedule);
+        if (schedule.selected.empty()) return result;
         result.errors = schedule.errors;
-        if (!result.errors.empty())
-            return result;
+        if (!result.errors.empty()) return result;
 
         for (jobs::job_handle& handle : schedule.handles)
             handle = {};
@@ -299,8 +303,11 @@ public:
             struct scheduled_execution_scope
             {
                 world* owner{};
-                ~scheduled_execution_scope() { owner->end_scheduled_execution(); }
-            } scheduled_scope{ &owner };
+                ~scheduled_execution_scope()
+                {
+                    owner->end_scheduled_execution();
+                }
+            } scheduled_scope{&owner};
 
             try
             {
@@ -312,15 +319,16 @@ public:
                         prerequisites.push_back(schedule.handles[dependency]);
 
                     system_descriptor& system = systems_[index];
-                    schedule.handles[index] = jobs.submit({
-                        .name = system.name,
-                        .priority = system.priority,
-                        .affinity = system.affinity,
-                        .dependency_view = prerequisites
-                    }, [&owner, &system, buffer = schedule.command_buffers[index].get(), execution]() {
-                        system_context context(owner, *buffer, execution, system);
-                        system.execute(context);
-                    });
+                    schedule.handles[index] =
+                        jobs.submit({.name = system.name,
+                                     .priority = system.priority,
+                                     .affinity = system.affinity,
+                                     .dependency_view = prerequisites},
+                                    [&owner, &system, buffer = schedule.command_buffers[index].get(), execution]()
+                                    {
+                                        system_context context(owner, *buffer, execution, system);
+                                        system.execute(context);
+                                    });
                 }
 
                 for (const std::size_t index : schedule.selected)
@@ -333,9 +341,7 @@ public:
                     }
 
                     std::string message =
-                        wait.status == jobs::job_status::cancelled
-                        ? "system was cancelled"
-                        : "system execution failed";
+                        wait.status == jobs::job_status::cancelled ? "system was cancelled" : "system execution failed";
                     if (wait.exception)
                     {
                         try
@@ -351,15 +357,14 @@ public:
                         {
                         }
                     }
-                    result.errors.push_back({ systems_[index].name, std::move(message) });
+                    result.errors.push_back({systems_[index].name, std::move(message)});
                 }
             }
             catch (const std::exception& error)
             {
                 for (const jobs::job_handle& handle : schedule.handles)
-                    if (handle.valid())
-                        (void)handle.wait_result();
-                result.errors.push_back({ {}, std::string("system scheduling failed: ") + error.what() });
+                    if (handle.valid()) (void)handle.wait_result();
+                result.errors.push_back({{}, std::string("system scheduling failed: ") + error.what()});
             }
         }
 
@@ -397,27 +402,21 @@ private:
         schedule.prerequisites.resize(systems_.size());
         for (std::size_t index = 0; index < systems_.size(); ++index)
         {
-            if (systems_[index].phase != phase)
-                continue;
+            if (systems_[index].phase != phase) continue;
             schedule.selected.push_back(index);
-            schedule.command_buffers[index] = std::make_unique<entity_command_buffer>(
-                entity_command_buffer::sort_key{
-                    static_cast<std::uint32_t>(phase),
-                    static_cast<std::uint32_t>(index),
-                    0 });
+            schedule.command_buffers[index] = std::make_unique<entity_command_buffer>(entity_command_buffer::sort_key{
+                static_cast<std::uint32_t>(phase), static_cast<std::uint32_t>(index), 0});
         }
         build_phase_dependencies(phase, schedule.dependencies, schedule.errors);
         if (schedule.errors.empty() && has_cycle(schedule.dependencies))
-            schedule.errors.push_back({ {}, "system dependency graph contains a cycle" });
+            schedule.errors.push_back({{}, "system dependency graph contains a cycle"});
         if (schedule.errors.empty())
         {
             schedule.execution_order = topological_order(schedule.dependencies);
-            schedule.execution_order.erase(
-                std::remove_if(
-                    schedule.execution_order.begin(),
-                    schedule.execution_order.end(),
-                    [&](std::size_t index) { return systems_[index].phase != phase; }),
-                schedule.execution_order.end());
+            schedule.execution_order.erase(std::remove_if(schedule.execution_order.begin(),
+                                                          schedule.execution_order.end(), [&](std::size_t index)
+                                                          { return systems_[index].phase != phase; }),
+                                           schedule.execution_order.end());
         }
         for (const std::size_t index : schedule.selected)
         {
@@ -443,9 +442,8 @@ private:
         return false;
     }
 
-    void build_dependencies(
-        std::vector<std::vector<std::size_t>>& dependencies,
-        std::vector<system_schedule_error>& errors) const
+    void build_dependencies(std::vector<std::vector<std::size_t>>& dependencies,
+                            std::vector<system_schedule_error>& errors) const
     {
         for (std::size_t index = 0; index < systems_.size(); ++index)
         {
@@ -454,7 +452,7 @@ private:
             {
                 const auto found = index_.find(name);
                 if (found == index_.end())
-                    errors.push_back({ system.name, "unknown after dependency '" + name + "'" });
+                    errors.push_back({system.name, "unknown after dependency '" + name + "'"});
                 else
                     dependencies[index].push_back(found->second);
             }
@@ -462,7 +460,7 @@ private:
             {
                 const auto found = index_.find(name);
                 if (found == index_.end())
-                    errors.push_back({ system.name, "unknown before dependency '" + name + "'" });
+                    errors.push_back({system.name, "unknown before dependency '" + name + "'"});
                 else
                     dependencies[found->second].push_back(index);
             }
@@ -472,15 +470,11 @@ private:
         {
             for (std::size_t left = 0; left < systems_.size(); ++left)
             {
-                if (left == right)
-                    continue;
+                if (left == right) continue;
                 if (systems_[left].phase < systems_[right].phase)
                     dependencies[right].push_back(left);
-                else if (
-                    left < right &&
-                    systems_[left].phase == systems_[right].phase &&
-                    conflicts(systems_[left], systems_[right]) &&
-                    !depends_on(dependencies, left, right))
+                else if (left < right && systems_[left].phase == systems_[right].phase &&
+                         conflicts(systems_[left], systems_[right]) && !depends_on(dependencies, left, right))
                     dependencies[right].push_back(left);
             }
             auto& values = dependencies[right];
@@ -489,52 +483,41 @@ private:
         }
     }
 
-    void build_phase_dependencies(
-        system_phase phase,
-        std::vector<std::vector<std::size_t>>& dependencies,
-        std::vector<system_schedule_error>& errors) const
+    void build_phase_dependencies(system_phase phase, std::vector<std::vector<std::size_t>>& dependencies,
+                                  std::vector<system_schedule_error>& errors) const
     {
         for (std::size_t index = 0; index < systems_.size(); ++index)
         {
             const system_descriptor& system = systems_[index];
-            if (system.phase != phase)
-                continue;
+            if (system.phase != phase) continue;
             for (const std::string& name : system.after)
             {
                 const auto found = index_.find(name);
                 if (found == index_.end())
-                    errors.push_back({ system.name, "unknown after dependency '" + name + "'" });
+                    errors.push_back({system.name, "unknown after dependency '" + name + "'"});
                 else if (systems_[found->second].phase == phase)
                     dependencies[index].push_back(found->second);
                 else if (systems_[found->second].phase > phase)
-                    errors.push_back({
-                        system.name,
-                        "after dependency '" + name + "' is in a later system phase"
-                    });
+                    errors.push_back({system.name, "after dependency '" + name + "' is in a later system phase"});
             }
             for (const std::string& name : system.before)
             {
                 const auto found = index_.find(name);
                 if (found == index_.end())
-                    errors.push_back({ system.name, "unknown before dependency '" + name + "'" });
+                    errors.push_back({system.name, "unknown before dependency '" + name + "'"});
                 else if (systems_[found->second].phase == phase)
                     dependencies[found->second].push_back(index);
                 else if (systems_[found->second].phase < phase)
-                    errors.push_back({
-                        system.name,
-                        "before dependency '" + name + "' is in an earlier system phase"
-                    });
+                    errors.push_back({system.name, "before dependency '" + name + "' is in an earlier system phase"});
             }
         }
 
         for (std::size_t right = 0; right < systems_.size(); ++right)
         {
-            if (systems_[right].phase != phase)
-                continue;
+            if (systems_[right].phase != phase) continue;
             for (std::size_t left = 0; left < right; ++left)
             {
-                if (systems_[left].phase == phase &&
-                    conflicts(systems_[left], systems_[right]) &&
+                if (systems_[left].phase == phase && conflicts(systems_[left], systems_[right]) &&
                     !depends_on(dependencies, left, right))
                     dependencies[right].push_back(left);
             }
@@ -546,44 +529,40 @@ private:
 
     static bool has_cycle(const std::vector<std::vector<std::size_t>>& dependencies)
     {
-        enum class visit : std::uint8_t { none, active, complete };
+        enum class visit : std::uint8_t
+        {
+            none,
+            active,
+            complete
+        };
         std::vector<visit> states(dependencies.size());
-        const auto inspect = [&](auto&& self, std::size_t index) -> bool {
-            if (states[index] == visit::active)
-                return true;
-            if (states[index] == visit::complete)
-                return false;
+        const auto inspect = [&](auto&& self, std::size_t index) -> bool
+        {
+            if (states[index] == visit::active) return true;
+            if (states[index] == visit::complete) return false;
             states[index] = visit::active;
             for (const std::size_t dependency : dependencies[index])
-                if (self(self, dependency))
-                    return true;
+                if (self(self, dependency)) return true;
             states[index] = visit::complete;
             return false;
         };
         for (std::size_t index = 0; index < dependencies.size(); ++index)
-            if (inspect(inspect, index))
-                return true;
+            if (inspect(inspect, index)) return true;
         return false;
     }
 
-    static bool depends_on(
-        const std::vector<std::vector<std::size_t>>& dependencies,
-        std::size_t system,
-        std::size_t candidate,
-        std::size_t depth = 0)
+    static bool depends_on(const std::vector<std::vector<std::size_t>>& dependencies, std::size_t system,
+                           std::size_t candidate, std::size_t depth = 0)
     {
-        if (system >= dependencies.size() || depth >= dependencies.size())
-            return false;
+        if (system >= dependencies.size() || depth >= dependencies.size()) return false;
         for (const std::size_t dependency : dependencies[system])
         {
-            if (dependency == candidate || depends_on(dependencies, dependency, candidate, depth + 1))
-                return true;
+            if (dependency == candidate || depends_on(dependencies, dependency, candidate, depth + 1)) return true;
         }
         return false;
     }
 
-    static std::vector<std::size_t> topological_order(
-        const std::vector<std::vector<std::size_t>>& dependencies)
+    static std::vector<std::size_t> topological_order(const std::vector<std::vector<std::size_t>>& dependencies)
     {
         std::vector<std::size_t> indegree(dependencies.size());
         std::vector<std::vector<std::size_t>> dependents(dependencies.size());
@@ -595,8 +574,7 @@ private:
         }
         std::vector<std::size_t> ready;
         for (std::size_t index = 0; index < indegree.size(); ++index)
-            if (indegree[index] == 0)
-                ready.push_back(index);
+            if (indegree[index] == 0) ready.push_back(index);
         std::vector<std::size_t> result;
         while (!ready.empty())
         {
@@ -624,8 +602,7 @@ private:
 
     std::vector<system_descriptor> systems_;
     std::unordered_map<std::string, std::size_t> index_;
-    std::array<compiled_phase, static_cast<std::size_t>(system_phase::presentation_extraction) + 1>
-        phase_schedules_;
+    std::array<compiled_phase, static_cast<std::size_t>(system_phase::presentation_extraction) + 1> phase_schedules_;
     bool frozen_{};
 };
 

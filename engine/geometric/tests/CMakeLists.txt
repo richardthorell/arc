@@ -27,6 +27,7 @@ endif()
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 add_executable(arc_geometric_tests ${TEST_SOURCES})
+arc_configure_first_party_target(arc_geometric_tests)
 target_link_libraries(arc_geometric_tests PRIVATE arc-geometric Catch2::Catch2WithMain)
 
 include(Catch)

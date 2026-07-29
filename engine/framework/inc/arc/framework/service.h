@@ -21,13 +21,13 @@ using runtime_service_provider = ecs::runtime_service_provider;
 
 constexpr runtime_service_id make_runtime_service_id(const char* name) noexcept
 {
-    return { ecs::stable_hash_64(name) };
+    return {ecs::stable_hash_64(name)};
 }
 
 struct runtime_service_snapshot
 {
     runtime_service_id service{};
-    std::uint32_t version{ 1 };
+    std::uint32_t version{1};
     std::vector<std::byte> bytes;
 };
 
@@ -40,17 +40,15 @@ enum class runtime_service_error_code : std::uint8_t
 
 struct runtime_service_error
 {
-    runtime_service_error_code code{ runtime_service_error_code::validation_failed };
+    runtime_service_error_code code{runtime_service_error_code::validation_failed};
     runtime_service_id service{};
     std::uint64_t world{};
     std::string message;
 };
 
 using runtime_service_status = core::status<runtime_service_error>;
-using runtime_service_capture_result =
-    core::result<std::vector<runtime_service_snapshot>, runtime_service_error>;
-using runtime_service_blob_result =
-    core::result<std::vector<std::byte>, runtime_service_error>;
+using runtime_service_capture_result = core::result<std::vector<runtime_service_snapshot>, runtime_service_error>;
+using runtime_service_blob_result = core::result<std::vector<std::byte>, runtime_service_error>;
 
 class runtime_service_context;
 
@@ -60,41 +58,40 @@ public:
     virtual ~runtime_service() = default;
     virtual runtime_service_id id() const noexcept = 0;
     virtual std::string_view name() const noexcept = 0;
-    virtual std::vector<runtime_service_id> dependencies() const { return {}; }
-    virtual bool has_deterministic_state() const noexcept { return false; }
-    virtual std::uint32_t snapshot_version() const noexcept { return 1; }
-    [[nodiscard]] virtual runtime_service_blob_result capture_deterministic_state(
-        std::uint64_t world) const
+    virtual std::vector<runtime_service_id> dependencies() const
+    {
+        return {};
+    }
+    virtual bool has_deterministic_state() const noexcept
+    {
+        return false;
+    }
+    virtual std::uint32_t snapshot_version() const noexcept
+    {
+        return 1;
+    }
+    [[nodiscard]] virtual runtime_service_blob_result capture_deterministic_state(std::uint64_t world) const
     {
         if (has_deterministic_state())
-            return runtime_service_blob_result::failure({
-                .code = runtime_service_error_code::capture_failed,
-                .service = id(),
-                .world = world,
-                .message = "runtime service does not implement deterministic snapshot capture"
-            });
+            return runtime_service_blob_result::failure(
+                {.code = runtime_service_error_code::capture_failed,
+                 .service = id(),
+                 .world = world,
+                 .message = "runtime service does not implement deterministic snapshot capture"});
         return runtime_service_blob_result::success({});
     }
-    [[nodiscard]] virtual runtime_service_status validate_deterministic_state(
-        std::uint64_t world,
-        std::uint32_t,
-        const std::vector<std::byte>&) const
+    [[nodiscard]] virtual runtime_service_status validate_deterministic_state(std::uint64_t world, std::uint32_t,
+                                                                              const std::vector<std::byte>&) const
     {
         if (has_deterministic_state())
-            return runtime_service_status::failure({
-                .code = runtime_service_error_code::validation_failed,
-                .service = id(),
-                .world = world,
-                .message = "runtime service does not implement deterministic snapshot validation"
-            });
+            return runtime_service_status::failure(
+                {.code = runtime_service_error_code::validation_failed,
+                 .service = id(),
+                 .world = world,
+                 .message = "runtime service does not implement deterministic snapshot validation"});
         return runtime_service_status::success();
     }
-    virtual void restore_deterministic_state(
-        std::uint64_t,
-        std::uint32_t,
-        const std::vector<std::byte>&) noexcept
-    {
-    }
+    virtual void restore_deterministic_state(std::uint64_t, std::uint32_t, const std::vector<std::byte>&) noexcept {}
     virtual void on_start(runtime_service_context&) {}
     virtual void on_shutdown(runtime_service_context&) noexcept {}
 };
@@ -104,12 +101,12 @@ class runtime_service_registry;
 class runtime_service_context
 {
 public:
-    explicit runtime_service_context(runtime_service_registry& services) noexcept
-        : services_(&services)
-    {
-    }
+    explicit runtime_service_context(runtime_service_registry& services) noexcept : services_(&services) {}
 
-    runtime_service_registry& services() const noexcept { return *services_; }
+    runtime_service_registry& services() const noexcept
+    {
+        return *services_;
+    }
 
 private:
     runtime_service_registry* services_{};
@@ -126,40 +123,39 @@ public:
 
     bool add(std::unique_ptr<runtime_service> service);
 
-    template <class Service, class... Args>
-    Service& emplace(Args&&... args)
+    template <class Service, class... Args> Service& emplace(Args&&... args)
     {
         auto service = std::make_unique<Service>(std::forward<Args>(args)...);
         Service& result = *service;
-        if (!add(std::move(service)))
-            throw std::invalid_argument("duplicate or invalid runtime service");
+        if (!add(std::move(service))) throw std::invalid_argument("duplicate or invalid runtime service");
         return result;
     }
 
     void start();
     void shutdown() noexcept;
-    bool started() const noexcept { return started_; }
-    std::size_t size() const noexcept { return services_.size(); }
+    bool started() const noexcept
+    {
+        return started_;
+    }
+    std::size_t size() const noexcept
+    {
+        return services_.size();
+    }
 
     void* find_service(runtime_service_id id) noexcept override;
     const void* find_service(runtime_service_id id) const noexcept override;
-    [[nodiscard]] runtime_service_capture_result capture_deterministic_state(
-        std::uint64_t world) const;
-    [[nodiscard]] runtime_service_status validate_deterministic_state(
-        std::uint64_t world,
-        const std::vector<runtime_service_snapshot>& snapshots) const;
-    void restore_deterministic_state(
-        std::uint64_t world,
-        const std::vector<runtime_service_snapshot>& snapshots) noexcept;
+    [[nodiscard]] runtime_service_capture_result capture_deterministic_state(std::uint64_t world) const;
+    [[nodiscard]] runtime_service_status
+    validate_deterministic_state(std::uint64_t world, const std::vector<runtime_service_snapshot>& snapshots) const;
+    void restore_deterministic_state(std::uint64_t world,
+                                     const std::vector<runtime_service_snapshot>& snapshots) noexcept;
 
-    template <class Service>
-    Service* find(runtime_service_id id) noexcept
+    template <class Service> Service* find(runtime_service_id id) noexcept
     {
         return static_cast<Service*>(find_service(id));
     }
 
-    template <class Service>
-    const Service* find(runtime_service_id id) const noexcept
+    template <class Service> const Service* find(runtime_service_id id) const noexcept
     {
         return static_cast<const Service*>(find_service(id));
     }

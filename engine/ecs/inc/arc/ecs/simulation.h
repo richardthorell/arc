@@ -14,7 +14,10 @@ struct simulation_tick_id
 {
     std::uint64_t value{};
 
-    constexpr bool valid() const noexcept { return value != 0; }
+    constexpr bool valid() const noexcept
+    {
+        return value != 0;
+    }
     friend constexpr bool operator==(simulation_tick_id, simulation_tick_id) noexcept = default;
     friend constexpr auto operator<=>(simulation_tick_id, simulation_tick_id) noexcept = default;
 };
@@ -30,7 +33,10 @@ struct runtime_service_id
 {
     std::uint64_t value{};
 
-    constexpr bool valid() const noexcept { return value != 0; }
+    constexpr bool valid() const noexcept
+    {
+        return value != 0;
+    }
     friend constexpr bool operator==(runtime_service_id, runtime_service_id) noexcept = default;
 };
 
@@ -46,7 +52,10 @@ struct random_stream_id
 {
     std::uint64_t value{};
 
-    constexpr bool valid() const noexcept { return value != 0; }
+    constexpr bool valid() const noexcept
+    {
+        return value != 0;
+    }
     friend constexpr bool operator==(random_stream_id, random_stream_id) noexcept = default;
 };
 
@@ -68,8 +77,8 @@ enum class simulation_input_action : std::uint8_t
 
 struct simulation_input_command
 {
-    simulation_input_kind kind{ simulation_input_kind::key };
-    simulation_input_action action{ simulation_input_action::changed };
+    simulation_input_kind kind{simulation_input_kind::key};
+    simulation_input_action action{simulation_input_action::changed};
     std::int32_t code{};
     std::uint32_t modifiers{};
     std::int32_t x{};
@@ -97,7 +106,7 @@ constexpr std::uint64_t stable_hash_64(const char* text) noexcept
 
 constexpr random_stream_id make_random_stream_id(const char* name) noexcept
 {
-    return { stable_hash_64(name) };
+    return {stable_hash_64(name)};
 }
 
 /** ARC-owned PCG32 stream. Its output is stable across standard-library implementations. */
@@ -135,20 +144,18 @@ public:
 
     constexpr std::uint32_t range(std::uint32_t upper_exclusive) noexcept
     {
-        if (upper_exclusive == 0)
-            return 0;
+        if (upper_exclusive == 0) return 0;
         const std::uint32_t threshold = (0u - upper_exclusive) % upper_exclusive;
         for (;;)
         {
             const std::uint32_t value = next_u32();
-            if (value >= threshold)
-                return value % upper_exclusive;
+            if (value >= threshold) return value % upper_exclusive;
         }
     }
 
 private:
-    std::uint64_t state_{ 0x853c49e6748fea9bull };
-    std::uint64_t increment_{ 0xda3e39cb94b95bdbull };
+    std::uint64_t state_{0x853c49e6748fea9bull};
+    std::uint64_t increment_{0xda3e39cb94b95bdbull};
 };
 
 constexpr std::uint64_t splitmix64(std::uint64_t value) noexcept
@@ -159,12 +166,8 @@ constexpr std::uint64_t splitmix64(std::uint64_t value) noexcept
     return value ^ (value >> 31u);
 }
 
-inline random_stream make_random_stream(
-    std::uint64_t process_seed,
-    std::uint64_t world_id,
-    simulation_tick_id tick,
-    random_stream_id stream,
-    std::uint64_t stable_subject = 0) noexcept
+inline random_stream make_random_stream(std::uint64_t process_seed, std::uint64_t world_id, simulation_tick_id tick,
+                                        random_stream_id stream, std::uint64_t stable_subject = 0) noexcept
 {
     std::uint64_t state = splitmix64(process_seed);
     state = splitmix64(state ^ world_id);
@@ -177,7 +180,7 @@ inline random_stream make_random_stream(
 struct system_execution_info
 {
     simulation_tick_id tick{};
-    runtime_world_role world_role{ runtime_world_role::client };
+    runtime_world_role world_role{runtime_world_role::client};
     std::uint64_t world_id{};
     std::uint64_t process_seed{};
     float delta_seconds{};

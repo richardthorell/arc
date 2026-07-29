@@ -12,25 +12,17 @@ namespace
 
 math::vector3f vertex_position(const mesh_vertex& vertex) noexcept
 {
-    return { vertex.position[0], vertex.position[1], vertex.position[2] };
+    return {vertex.position[0], vertex.position[1], vertex.position[2]};
 }
 
 math::vector3f min_vector(const math::vector3f& lhs, const math::vector3f& rhs) noexcept
 {
-    return {
-        std::min(lhs[0], rhs[0]),
-        std::min(lhs[1], rhs[1]),
-        std::min(lhs[2], rhs[2])
-    };
+    return {std::min(lhs[0], rhs[0]), std::min(lhs[1], rhs[1]), std::min(lhs[2], rhs[2])};
 }
 
 math::vector3f max_vector(const math::vector3f& lhs, const math::vector3f& rhs) noexcept
 {
-    return {
-        std::max(lhs[0], rhs[0]),
-        std::max(lhs[1], rhs[1]),
-        std::max(lhs[2], rhs[2])
-    };
+    return {std::max(lhs[0], rhs[0]), std::max(lhs[1], rhs[1]), std::max(lhs[2], rhs[2])};
 }
 
 void include_vertex(virtual_mesh_cluster& cluster, const mesh_vertex& vertex, bool& has_bounds) noexcept
@@ -50,8 +42,7 @@ void include_vertex(virtual_mesh_cluster& cluster, const mesh_vertex& vertex, bo
 
 void finish_cluster(virtual_mesh_data& result, virtual_mesh_cluster& cluster)
 {
-    if (cluster.triangle_count == 0)
-        return;
+    if (cluster.triangle_count == 0) return;
 
     cluster.index_count = cluster.triangle_count * 3u;
     cluster.sphere_center = math::mul(math::add(cluster.bounds_min, cluster.bounds_max), 0.5f);
@@ -61,8 +52,7 @@ void finish_cluster(virtual_mesh_data& result, virtual_mesh_cluster& cluster)
     for (auto index = cluster.first_index; index < index_end; ++index)
     {
         const auto vertex_index = result.indices[index];
-        if (vertex_index >= result.vertices.size())
-            continue;
+        if (vertex_index >= result.vertices.size()) continue;
         const auto delta = math::sub(vertex_position(result.vertices[vertex_index]), cluster.sphere_center);
         cluster.sphere_radius = std::max(cluster.sphere_radius, math::length(delta));
     }
@@ -84,8 +74,7 @@ virtual_mesh_data build_virtual_mesh(const mesh_data& source, const virtual_mesh
 
     const auto max_triangles_per_cluster = std::max(1u, options.max_triangles_per_cluster);
     const auto trailing_index_count = source.indices.size() % 3u;
-    if (trailing_index_count != 0)
-        ++result.stats.invalid_triangle_count;
+    if (trailing_index_count != 0) ++result.stats.invalid_triangle_count;
 
     virtual_mesh_cluster cluster{};
     cluster.material_index = source.material_index;
@@ -94,9 +83,9 @@ virtual_mesh_data build_virtual_mesh(const mesh_data& source, const virtual_mesh
     std::uint32_t max_vertex{};
     bool cluster_has_bounds{};
 
-    const auto flush_cluster = [&]() {
-        if (cluster.triangle_count == 0)
-            return;
+    const auto flush_cluster = [&]()
+    {
+        if (cluster.triangle_count == 0) return;
         cluster.first_vertex = min_vertex;
         cluster.vertex_count = max_vertex >= min_vertex ? (max_vertex - min_vertex + 1u) : 0u;
         finish_cluster(result, cluster);
@@ -124,7 +113,7 @@ virtual_mesh_data build_virtual_mesh(const mesh_data& source, const virtual_mesh
             cluster.material_index = source.material_index;
         }
 
-        const std::array<std::uint32_t, 3> triangle{ i0, i1, i2 };
+        const std::array<std::uint32_t, 3> triangle{i0, i1, i2};
         for (const auto vertex_index : triangle)
         {
             result.indices.push_back(vertex_index);
@@ -135,16 +124,16 @@ virtual_mesh_data build_virtual_mesh(const mesh_data& source, const virtual_mesh
         ++cluster.triangle_count;
         ++valid_triangle_count;
 
-        if (cluster.triangle_count >= max_triangles_per_cluster)
-            flush_cluster();
+        if (cluster.triangle_count >= max_triangles_per_cluster) flush_cluster();
     }
     flush_cluster();
 
     result.stats.cluster_count = static_cast<std::uint32_t>(result.clusters.size());
     result.stats.material_group_count = result.clusters.empty() ? 0u : 1u;
-    result.stats.average_triangles_per_cluster = result.stats.cluster_count == 0
-        ? 0.0f
-        : static_cast<float>(valid_triangle_count) / static_cast<float>(result.stats.cluster_count);
+    result.stats.average_triangles_per_cluster =
+        result.stats.cluster_count == 0
+            ? 0.0f
+            : static_cast<float>(valid_triangle_count) / static_cast<float>(result.stats.cluster_count);
     return result;
 }
 

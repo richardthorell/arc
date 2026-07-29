@@ -24,7 +24,7 @@ void require_terrain_frame_submission(arc::render::renderer& renderer)
     texture.width = 2;
     texture.height = 2;
     texture.format = arc::render::texture_format::rgba8_srgb;
-    texture.pixels.assign(16, std::byte{ 0x7f });
+    texture.pixels.assign(16, std::byte{0x7f});
     const auto texture_handle = renderer.create_texture(std::move(texture));
 
     arc::render::material_descriptor terrain;
@@ -143,7 +143,7 @@ TEST_CASE("Vulkan compatibility override leaves optional device paths disabled")
     auto result = arc::render::vulkan::create_vulkan_backend(config);
     if (result)
     {
-        arc::render::renderer renderer({ .force_disable_optional_features = true });
+        arc::render::renderer renderer({.force_disable_optional_features = true});
         renderer.set_backend(std::move(result).value());
         REQUIRE_FALSE(renderer.resolved_config().features.synchronization2);
         REQUIRE_FALSE(renderer.resolved_config().features.timeline_semaphores);

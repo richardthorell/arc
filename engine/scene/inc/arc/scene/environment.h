@@ -15,12 +15,12 @@ struct solar_position
     float azimuth_degrees{};
     float elevation_degrees{};
     // Direction travelled by sunlight, matching directional_light_component.
-    math::vector3f light_direction{ 0.0f, -1.0f, 0.0f };
+    math::vector3f light_direction{0.0f, -1.0f, 0.0f};
 };
 
 struct [[nodiscard]] environment_validation_result
 {
-    bool valid{ true };
+    bool valid{true};
     std::vector<std::string> errors;
 };
 
@@ -47,40 +47,24 @@ struct world_environment_settings
 
 bool is_valid_gregorian_date(std::int32_t year, std::int32_t month, std::int32_t day) noexcept;
 
-solar_position calculate_solar_position(
-    float latitude_degrees,
-    float longitude_degrees,
-    float north_offset_degrees,
-    std::int32_t year,
-    std::int32_t month,
-    std::int32_t day,
-    float local_time_hours,
-    float utc_offset_hours) noexcept;
+solar_position calculate_solar_position(float latitude_degrees, float longitude_degrees, float north_offset_degrees,
+                                        std::int32_t year, std::int32_t month, std::int32_t day, float local_time_hours,
+                                        float utc_offset_hours) noexcept;
 
-float calculate_moon_phase(
-    std::int32_t year,
-    std::int32_t month,
-    std::int32_t day,
-    float local_time_hours,
-    float utc_offset_hours) noexcept;
+float calculate_moon_phase(std::int32_t year, std::int32_t month, std::int32_t day, float local_time_hours,
+                           float utc_offset_hours) noexcept;
 
-environment_validation_result validate_world_environment(
-    const world_environment_settings& settings);
+environment_validation_result validate_world_environment(const world_environment_settings& settings);
 
 /** @brief Read a complete environment, or nullopt when any required component is missing. */
-std::optional<world_environment_settings> read_world_environment_settings(
-    const ecs::world& scene,
-    ecs::entity environment);
+std::optional<world_environment_settings> read_world_environment_settings(const ecs::world& scene,
+                                                                          ecs::entity environment);
 
 /** @brief Validate first, then replace all six environment components as one logical update. */
-bool set_world_environment_settings(
-    ecs::world& scene,
-    ecs::entity environment,
-    const world_environment_settings& settings);
+bool set_world_environment_settings(ecs::world& scene, ecs::entity environment,
+                                    const world_environment_settings& settings);
 
-void apply_world_environment_preset(
-    world_environment_preset preset,
-    world_environment_settings& settings) noexcept;
+void apply_world_environment_preset(world_environment_preset preset, world_environment_settings& settings) noexcept;
 
 /**
  * @brief Advance simulated clocks and drive linked geographic sun lights.

@@ -45,31 +45,61 @@ describe('TerrainToolsPanel', () => {
       payload: { ...initialState, ...(payload as Partial<TerrainToolState>) },
     }));
     const onStateChange = vi.fn();
-    const { rerender } = render(<TerrainToolsPanel assets={[]} command={command} onStateChange={onStateChange}
-      state={initialState} terrain={terrain} />);
+    const { rerender } = render(
+      <TerrainToolsPanel
+        assets={[]}
+        command={command}
+        onStateChange={onStateChange}
+        state={initialState}
+        terrain={terrain}
+      />,
+    );
 
     await userEvent.click(screen.getByRole('tab', { name: /Paint/ }));
-    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.setBrush',
-      expect.objectContaining({ entity: initialState.entity, tool: 'paint' })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'terrain.setBrush',
+        expect.objectContaining({ entity: initialState.entity, tool: 'paint' }),
+      ),
+    );
 
     const paintState = { ...initialState, tool: 'paint' as const };
     onStateChange.mockClear();
     command.mockClear();
-    rerender(<TerrainToolsPanel assets={[]} command={command} onStateChange={onStateChange}
-      state={paintState} terrain={terrain} />);
+    rerender(
+      <TerrainToolsPanel
+        assets={[]}
+        command={command}
+        onStateChange={onStateChange}
+        state={paintState}
+        terrain={terrain}
+      />,
+    );
     await userEvent.click(screen.getByLabelText('Paint Rock'));
-    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.setBrush',
-      expect.objectContaining({ tool: 'paint', activeLayer: 2 })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'terrain.setBrush',
+        expect.objectContaining({ tool: 'paint', activeLayer: 2 }),
+      ),
+    );
   });
 
   it('updates brush ranges through the terrain tool contract', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true, payload: initialState });
-    render(<TerrainToolsPanel assets={[]} command={command} onStateChange={() => undefined}
-      state={initialState} terrain={terrain} />);
+    render(
+      <TerrainToolsPanel
+        assets={[]}
+        command={command}
+        onStateChange={() => undefined}
+        state={initialState}
+        terrain={terrain}
+      />,
+    );
 
     const radius = screen.getByLabelText('Radius');
     fireEvent.change(radius, { target: { value: '6.25' } });
-    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.setBrush',
-      expect.objectContaining({ radius: 6.25 })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('terrain.setBrush', expect.objectContaining({ radius: 6.25 })),
+    );
   });
 });

@@ -57,6 +57,7 @@ list(APPEND ARC_PUBLIC_HEADER_SOURCES
     "${umbrella_reverse_path}")
 
 add_library(arc-public-header-tests OBJECT ${ARC_PUBLIC_HEADER_SOURCES})
+arc_configure_first_party_target(arc-public-header-tests)
 target_compile_features(arc-public-header-tests PRIVATE cxx_std_20)
 foreach(target
     arc-core arc-simd arc-math arc-geometric arc-diagnostics arc-jobs arc-memory

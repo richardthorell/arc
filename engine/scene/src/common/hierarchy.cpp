@@ -13,8 +13,7 @@ using ecs::entity;
 
 hierarchy_component& links(ecs::world& scene, entity value)
 {
-    if (auto* existing = scene.try_get<hierarchy_component>(value))
-        return *existing;
+    if (auto* existing = scene.try_get<hierarchy_component>(value)) return *existing;
     return scene.emplace<hierarchy_component>(value);
 }
 
@@ -29,22 +28,17 @@ void rebuild_root_links(ecs::world& scene, const std::vector<entity>& order)
     }
 }
 
-void update_subtree(
-    ecs::world& scene,
-    entity value,
-    const math::matrix4f* parent_world,
-    std::unordered_set<entity, ecs::entity_hash>& visited) noexcept
+void update_subtree(ecs::world& scene, entity value, const math::matrix4f* parent_world,
+                    std::unordered_set<entity, ecs::entity_hash>& visited) noexcept
 {
-    if (!scene.alive(value) || !visited.insert(value).second)
-        return;
+    if (!scene.alive(value) || !visited.insert(value).second) return;
     auto* transform = scene.try_get<transform_component>(value);
     if (transform)
     {
         const auto local = local_matrix(*transform);
         transform->world = parent_world ? math::matmul(*parent_world, local) : local;
         transform->dirty = false;
-        if (auto* bounds = scene.try_get<bounds_component>(value))
-            bounds->dirty = true;
+        if (auto* bounds = scene.try_get<bounds_component>(value)) bounds->dirty = true;
         parent_world = &transform->world;
     }
     const auto* hierarchy = scene.try_get<hierarchy_component>(value);
@@ -63,14 +57,12 @@ void update_subtree(
 
 bool is_descendant(const ecs::world& scene, entity candidate, entity ancestor) noexcept
 {
-    if (!scene.alive(candidate) || !scene.alive(ancestor))
-        return false;
+    if (!scene.alive(candidate) || !scene.alive(ancestor)) return false;
     entity current = candidate;
     std::unordered_set<entity, ecs::entity_hash> visited;
     while (scene.alive(current) && visited.insert(current).second)
     {
-        if (current == ancestor)
-            return candidate != ancestor;
+        if (current == ancestor) return candidate != ancestor;
         const auto* hierarchy = scene.try_get<hierarchy_component>(current);
         current = hierarchy ? hierarchy->parent : entity{};
     }
@@ -97,10 +89,10 @@ std::vector<entity> roots(const ecs::world& scene)
     std::vector<bool> visited_indices(candidate_indices.size());
     for (const auto candidate : candidates)
         candidate_indices[candidate.index] = true;
-    const auto is_candidate = [&](entity value) {
-        return value.index < candidate_indices.size() && candidate_indices[value.index];
-    };
-    const auto append_chain = [&](entity head) {
+    const auto is_candidate = [&](entity value)
+    { return value.index < candidate_indices.size() && candidate_indices[value.index]; };
+    const auto append_chain = [&](entity head)
+    {
         entity current = head;
         while (scene.alive(current) && is_candidate(current) && !visited_indices[current.index])
         {
@@ -120,15 +112,13 @@ std::vector<entity> roots(const ecs::world& scene)
             append_chain(candidate);
     }
     for (const auto candidate : candidates)
-        if (!visited_indices[candidate.index])
-            append_chain(candidate);
+        if (!visited_indices[candidate.index]) append_chain(candidate);
     return result;
 }
 
 std::vector<entity> children(const ecs::world& scene, entity parent)
 {
-    if (!scene.alive(parent))
-        return roots(scene);
+    if (!scene.alive(parent)) return roots(scene);
     std::vector<entity> result;
     const auto* hierarchy = scene.try_get<hierarchy_component>(parent);
     entity child = hierarchy ? hierarchy->first_child : entity{};
@@ -145,16 +135,13 @@ std::vector<entity> children(const ecs::world& scene, entity parent)
 void detach(ecs::world& scene, entity child) noexcept
 {
     auto* child_links = scene.try_get<hierarchy_component>(child);
-    if (!child_links)
-        return;
+    if (!child_links) return;
     const entity parent = child_links->parent;
     if (scene.alive(parent))
     {
         auto& parent_links = links(scene, parent);
-        if (parent_links.first_child == child)
-            parent_links.first_child = child_links->next_sibling;
-        if (parent_links.child_count > 0)
-            --parent_links.child_count;
+        if (parent_links.first_child == child) parent_links.first_child = child_links->next_sibling;
+        if (parent_links.child_count > 0) --parent_links.child_count;
     }
     if (scene.alive(child_links->previous_sibling))
         links(scene, child_links->previous_sibling).next_sibling = child_links->next_sibling;
@@ -165,12 +152,8 @@ void detach(ecs::world& scene, entity child) noexcept
     child_links->next_sibling = {};
 }
 
-bool reparent(
-    ecs::world& scene,
-    entity child,
-    entity parent,
-    entity before_sibling,
-    reparent_transform_policy policy) noexcept
+bool reparent(ecs::world& scene, entity child, entity parent, entity before_sibling,
+              reparent_transform_policy policy) noexcept
 {
     if (!scene.alive(child) || child == parent || (parent.valid() && !scene.alive(parent)) ||
         arc::scene::is_descendant(scene, parent, child))
@@ -198,12 +181,10 @@ bool reparent(
         if (const auto* parent_transform = scene.try_get<transform_component>(transform_parent))
         {
             math::matrix4f inverse_parent;
-            if (!inverse_affine(parent_transform->world, inverse_parent))
-                return false;
+            if (!inverse_affine(parent_transform->world, inverse_parent)) return false;
             preserved_local = math::matmul(inverse_parent, preserved_local);
         }
-        if (!decompose_trs(preserved_local, preserved_transform))
-            return false;
+        if (!decompose_trs(preserved_local, preserved_transform)) return false;
         has_preserved_transform = true;
     }
 
@@ -258,20 +239,18 @@ bool reparent(
 
 bool reorder(ecs::world& scene, entity child, entity before_sibling) noexcept
 {
-    if (!scene.alive(child))
-        return false;
+    if (!scene.alive(child)) return false;
     const auto* value = scene.try_get<hierarchy_component>(child);
-    return reparent(scene, child, value ? value->parent : entity{}, before_sibling, reparent_transform_policy::preserve_local);
+    return reparent(scene, child, value ? value->parent : entity{}, before_sibling,
+                    reparent_transform_policy::preserve_local);
 }
 
 void mark_transform_subtree_dirty(ecs::world& scene, entity root) noexcept
 {
     for (entity value : subtree(scene, root))
     {
-        if (auto* transform = scene.try_get<transform_component>(value))
-            transform->mark_dirty();
-        if (auto* bounds = scene.try_get<bounds_component>(value))
-            bounds->dirty = true;
+        if (auto* transform = scene.try_get<transform_component>(value)) transform->mark_dirty();
+        if (auto* bounds = scene.try_get<bounds_component>(value)) bounds->dirty = true;
     }
 }
 
@@ -285,16 +264,14 @@ void update_world_transforms(ecs::world& scene) noexcept
 std::vector<entity> subtree(const ecs::world& scene, entity root)
 {
     std::vector<entity> result;
-    if (!scene.alive(root))
-        return result;
+    if (!scene.alive(root)) return result;
     result.push_back(root);
-    std::unordered_set<entity, ecs::entity_hash> visited{ root };
+    std::unordered_set<entity, ecs::entity_hash> visited{root};
     for (std::size_t index = 0; index < result.size(); ++index)
     {
         const auto nested = arc::scene::children(scene, result[index]);
         for (const entity value : nested)
-            if (visited.insert(value).second)
-                result.push_back(value);
+            if (visited.insert(value).second) result.push_back(value);
     }
     return result;
 }
@@ -302,8 +279,7 @@ std::vector<entity> subtree(const ecs::world& scene, entity root)
 bool destroy_subtree(ecs::world& scene, entity root) noexcept
 {
     auto values = subtree(scene, root);
-    if (values.empty())
-        return false;
+    if (values.empty()) return false;
     arc::scene::detach(scene, root);
     for (auto it = values.rbegin(); it != values.rend(); ++it)
         scene.destroy(*it);

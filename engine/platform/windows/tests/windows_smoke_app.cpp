@@ -16,9 +16,7 @@ public:
         return config;
     }
 
-    void on_start() override
-    {
-    }
+    void on_start() override {}
 };
 
 } // namespace

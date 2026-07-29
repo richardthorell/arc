@@ -21,7 +21,10 @@ struct cook_processor_id
     std::uint64_t high{};
     std::uint64_t low{};
 
-    constexpr bool valid() const noexcept { return high != 0 || low != 0; }
+    constexpr bool valid() const noexcept
+    {
+        return high != 0 || low != 0;
+    }
     friend constexpr auto operator<=>(const cook_processor_id&, const cook_processor_id&) noexcept = default;
 };
 
@@ -30,7 +33,10 @@ struct artifact_schema_id
     std::uint64_t high{};
     std::uint64_t low{};
 
-    constexpr bool valid() const noexcept { return high != 0 || low != 0; }
+    constexpr bool valid() const noexcept
+    {
+        return high != 0 || low != 0;
+    }
     friend constexpr auto operator<=>(const artifact_schema_id&, const artifact_schema_id&) noexcept = default;
 };
 
@@ -42,47 +48,71 @@ std::string to_string(artifact_schema_id value);
 
 namespace cook_processor_ids
 {
-inline constexpr cook_processor_id source{ 0xa7ca55e700000003ull, 0x0000000000000001ull };
-inline constexpr cook_processor_id mesh{ 0xa7ca55e700000003ull, 0x0000000000000002ull };
-inline constexpr cook_processor_id texture{ 0xa7ca55e700000003ull, 0x0000000000000003ull };
-inline constexpr cook_processor_id shader{ 0xa7ca55e700000003ull, 0x0000000000000004ull };
-inline constexpr cook_processor_id material{ 0xa7ca55e700000003ull, 0x0000000000000005ull };
-inline constexpr cook_processor_id scene{ 0xa7ca55e700000003ull, 0x0000000000000006ull };
-inline constexpr cook_processor_id environment{ 0xa7ca55e700000003ull, 0x0000000000000007ull };
-inline constexpr cook_processor_id animation{ 0xa7ca55e700000003ull, 0x0000000000000008ull };
-inline constexpr cook_processor_id collision{ 0xa7ca55e700000003ull, 0x0000000000000009ull };
-inline constexpr cook_processor_id navigation{ 0xa7ca55e700000003ull, 0x000000000000000aull };
-inline constexpr cook_processor_id audio{ 0xa7ca55e700000003ull, 0x000000000000000bull };
-}
+inline constexpr cook_processor_id source{0xa7ca55e700000003ull, 0x0000000000000001ull};
+inline constexpr cook_processor_id mesh{0xa7ca55e700000003ull, 0x0000000000000002ull};
+inline constexpr cook_processor_id texture{0xa7ca55e700000003ull, 0x0000000000000003ull};
+inline constexpr cook_processor_id shader{0xa7ca55e700000003ull, 0x0000000000000004ull};
+inline constexpr cook_processor_id material{0xa7ca55e700000003ull, 0x0000000000000005ull};
+inline constexpr cook_processor_id scene{0xa7ca55e700000003ull, 0x0000000000000006ull};
+inline constexpr cook_processor_id environment{0xa7ca55e700000003ull, 0x0000000000000007ull};
+inline constexpr cook_processor_id animation{0xa7ca55e700000003ull, 0x0000000000000008ull};
+inline constexpr cook_processor_id collision{0xa7ca55e700000003ull, 0x0000000000000009ull};
+inline constexpr cook_processor_id navigation{0xa7ca55e700000003ull, 0x000000000000000aull};
+inline constexpr cook_processor_id audio{0xa7ca55e700000003ull, 0x000000000000000bull};
+} // namespace cook_processor_ids
 
 namespace artifact_schemas
 {
-inline constexpr artifact_schema_id source{ 0xa7ca55e700000004ull, 0x0000000000000001ull };
-inline constexpr artifact_schema_id mesh{ 0xa7ca55e700000004ull, 0x0000000000000002ull };
-inline constexpr artifact_schema_id texture{ 0xa7ca55e700000004ull, 0x0000000000000003ull };
-inline constexpr artifact_schema_id shader{ 0xa7ca55e700000004ull, 0x0000000000000004ull };
-inline constexpr artifact_schema_id material{ 0xa7ca55e700000004ull, 0x0000000000000005ull };
-inline constexpr artifact_schema_id scene{ 0xa7ca55e700000004ull, 0x0000000000000006ull };
-inline constexpr artifact_schema_id package_manifest{ 0xa7ca55e700000004ull, 0x0000000000000007ull };
-}
+inline constexpr artifact_schema_id source{0xa7ca55e700000004ull, 0x0000000000000001ull};
+inline constexpr artifact_schema_id mesh{0xa7ca55e700000004ull, 0x0000000000000002ull};
+inline constexpr artifact_schema_id texture{0xa7ca55e700000004ull, 0x0000000000000003ull};
+inline constexpr artifact_schema_id shader{0xa7ca55e700000004ull, 0x0000000000000004ull};
+inline constexpr artifact_schema_id material{0xa7ca55e700000004ull, 0x0000000000000005ull};
+inline constexpr artifact_schema_id scene{0xa7ca55e700000004ull, 0x0000000000000006ull};
+inline constexpr artifact_schema_id package_manifest{0xa7ca55e700000004ull, 0x0000000000000007ull};
+} // namespace artifact_schemas
 
-enum class cook_platform : std::uint8_t { windows, linux_os, macos };
-enum class cook_architecture : std::uint8_t { x86_64, arm64 };
-enum class cook_renderer : std::uint8_t { vulkan, direct3d12, metal };
-enum class cook_texture_family : std::uint8_t { bc, astc, etc2, portable };
-enum class cook_configuration : std::uint8_t { development, shipping };
+enum class cook_platform : std::uint8_t
+{
+    windows,
+    linux_os,
+    macos
+};
+enum class cook_architecture : std::uint8_t
+{
+    x86_64,
+    arm64
+};
+enum class cook_renderer : std::uint8_t
+{
+    vulkan,
+    direct3d12,
+    metal
+};
+enum class cook_texture_family : std::uint8_t
+{
+    bc,
+    astc,
+    etc2,
+    portable
+};
+enum class cook_configuration : std::uint8_t
+{
+    development,
+    shipping
+};
 
 struct cook_target
 {
-    std::string name{ "windows-x64-vulkan" };
-    cook_platform platform{ cook_platform::windows };
-    cook_architecture architecture{ cook_architecture::x86_64 };
-    cook_renderer renderer{ cook_renderer::vulkan };
-    cook_texture_family textures{ cook_texture_family::bc };
-    cook_configuration configuration{ cook_configuration::shipping };
-    std::uint32_t api_major{ 1 };
-    std::uint32_t api_minor{ 2 };
-    bool little_endian{ true };
+    std::string name{"windows-x64-vulkan"};
+    cook_platform platform{cook_platform::windows};
+    cook_architecture architecture{cook_architecture::x86_64};
+    cook_renderer renderer{cook_renderer::vulkan};
+    cook_texture_family textures{cook_texture_family::bc};
+    cook_configuration configuration{cook_configuration::shipping};
+    std::uint32_t api_major{1};
+    std::uint32_t api_minor{2};
+    bool little_endian{true};
     std::vector<std::string> features;
 
     friend bool operator==(const cook_target&, const cook_target&) = default;
@@ -102,7 +132,7 @@ struct asset_build_key_descriptor
     std::uint32_t processor_version{};
     artifact_schema_id schema{};
     std::uint32_t schema_version{};
-    std::string canonical_settings{ "{}" };
+    std::string canonical_settings{"{}"};
     std::string toolchain_fingerprint;
     std::vector<asset_hash> shader_include_hashes;
     std::string shader_compiler_fingerprint;
@@ -113,20 +143,33 @@ struct asset_build_key_descriptor
 
 asset_build_key make_asset_build_key(const asset_build_key_descriptor& description);
 
-enum class cache_layer : std::uint8_t { none, local, shared };
-enum class cache_access : std::uint8_t { read_write, read_only, offline };
+enum class cache_layer : std::uint8_t
+{
+    none,
+    local,
+    shared
+};
+enum class cache_access : std::uint8_t
+{
+    read_write,
+    read_only,
+    offline
+};
 
 struct cache_error
 {
     std::string message;
-    explicit operator bool() const noexcept { return !message.empty(); }
+    explicit operator bool() const noexcept
+    {
+        return !message.empty();
+    }
 };
 
 struct cache_blob
 {
     content_hash hash{};
     std::vector<std::byte> bytes;
-    cache_layer layer{ cache_layer::none };
+    cache_layer layer{cache_layer::none};
 };
 
 struct cache_action
@@ -155,11 +198,11 @@ struct cache_statistics
 
 struct cache_cleanup_policy
 {
-    std::uint64_t maximum_bytes{ 50ull * 1024ull * 1024ull * 1024ull };
-    float prune_threshold{ 0.90f };
-    float prune_target{ 0.75f };
-    std::chrono::hours temporary_lifetime{ 24 };
-    std::chrono::hours action_lifetime{ 24 * 30 };
+    std::uint64_t maximum_bytes{50ull * 1024ull * 1024ull * 1024ull};
+    float prune_threshold{0.90f};
+    float prune_target{0.75f};
+    std::chrono::hours temporary_lifetime{24};
+    std::chrono::hours action_lifetime{24 * 30};
 };
 
 class shared_cache_backend
@@ -187,11 +230,16 @@ private:
     std::unique_ptr<implementation> implementation_;
 };
 
-enum class http_cache_method : std::uint8_t { head, get, put };
+enum class http_cache_method : std::uint8_t
+{
+    head,
+    get,
+    put
+};
 
 struct http_cache_request
 {
-    http_cache_method method{ http_cache_method::get };
+    http_cache_method method{http_cache_method::get};
     std::string url;
     std::vector<std::pair<std::string, std::string>> headers;
     std::vector<std::byte> body;
@@ -233,7 +281,7 @@ private:
 struct derived_data_cache_config
 {
     std::filesystem::path root;
-    cache_access access{ cache_access::read_write };
+    cache_access access{cache_access::read_write};
     cache_cleanup_policy cleanup{};
     std::shared_ptr<shared_cache_backend> shared;
     bool require_shared{};
@@ -271,7 +319,7 @@ struct cooked_artifact
     std::string name;
     std::string extension;
     artifact_schema_id schema{};
-    std::uint32_t schema_version{ 1 };
+    std::uint32_t schema_version{1};
     content_hash hash{};
     std::uint64_t size{};
     bool gpu_compressed{};
@@ -283,7 +331,7 @@ struct asset_cook_context
     asset_snapshot asset;
     source_asset_data source;
     cook_target target;
-    std::string canonical_settings{ "{}" };
+    std::string canonical_settings{"{}"};
     std::vector<asset_snapshot> dependencies;
     jobs::cancellation_token cancellation;
 };
@@ -293,17 +341,20 @@ struct [[nodiscard]] asset_cook_result
     std::vector<cooked_artifact> artifacts;
     std::vector<asset_diagnostic> diagnostics;
     asset_error error;
-    bool succeeded() const noexcept { return !error && !artifacts.empty(); }
+    bool succeeded() const noexcept
+    {
+        return !error && !artifacts.empty();
+    }
 };
 
 struct asset_cook_processor_descriptor
 {
     cook_processor_id id{};
     std::string name;
-    std::uint32_t version{ 1 };
+    std::uint32_t version{1};
     artifact_schema_id schema{};
-    std::uint32_t schema_version{ 1 };
-    jobs::job_affinity affinity{ jobs::job_affinity::any_worker };
+    std::uint32_t schema_version{1};
+    jobs::job_affinity affinity{jobs::job_affinity::any_worker};
     std::vector<asset_type_id> input_types;
 };
 
@@ -325,7 +376,7 @@ struct cook_manifest_artifact
     std::uint32_t schema_version{};
     content_hash hash{};
     std::uint64_t size{};
-    std::string chunk{ "startup" };
+    std::string chunk{"startup"};
     std::uint64_t offset{};
     std::uint64_t stored_size{};
     bool compressed{};
@@ -334,7 +385,7 @@ struct cook_manifest_artifact
 struct cook_manifest
 {
     static constexpr std::uint32_t current_version = 1;
-    std::uint32_t version{ current_version };
+    std::uint32_t version{current_version};
     std::string build_id;
     cook_target target{};
     std::vector<asset_guid> roots;
@@ -345,7 +396,7 @@ struct cook_manifest
 struct cook_request
 {
     std::vector<asset_guid> roots;
-    cook_target target{ windows_vulkan_cook_target() };
+    cook_target target{windows_vulkan_cook_target()};
     std::filesystem::path output;
     bool fail_on_warning{};
     jobs::cancellation_token cancellation;
@@ -358,7 +409,10 @@ struct [[nodiscard]] cook_result
     std::size_t cache_hits{};
     std::vector<asset_diagnostic> diagnostics;
     asset_error error;
-    bool succeeded() const noexcept { return !error; }
+    bool succeeded() const noexcept
+    {
+        return !error;
+    }
 };
 
 class asset_cooker
@@ -374,15 +428,10 @@ private:
     std::unique_ptr<implementation> implementation_;
 };
 
-[[nodiscard]] asset_status save_cook_manifest(
-    const std::filesystem::path& path,
-    const cook_manifest& manifest);
+[[nodiscard]] asset_status save_cook_manifest(const std::filesystem::path& path, const cook_manifest& manifest);
 using cook_manifest_result = core::result<cook_manifest, asset_error>;
-[[nodiscard]] cook_manifest_result load_cook_manifest(
-    const std::filesystem::path& path);
-[[nodiscard]] asset_status verify_cook_manifest(
-    const cook_manifest& manifest,
-    derived_data_cache& cache);
+[[nodiscard]] cook_manifest_result load_cook_manifest(const std::filesystem::path& path);
+[[nodiscard]] asset_status verify_cook_manifest(const cook_manifest& manifest, derived_data_cache& cache);
 
 struct [[nodiscard]] package_build_result
 {
@@ -391,13 +440,14 @@ struct [[nodiscard]] package_build_result
     std::uint64_t stored_bytes{};
     std::uint64_t source_bytes{};
     std::string error;
-    bool succeeded() const noexcept { return error.empty(); }
+    bool succeeded() const noexcept
+    {
+        return error.empty();
+    }
 };
 
-package_build_result build_asset_packages(
-    cook_manifest manifest,
-    derived_data_cache& cache,
-    const std::filesystem::path& output);
+package_build_result build_asset_packages(cook_manifest manifest, derived_data_cache& cache,
+                                          const std::filesystem::path& output);
 
 class asset_package_mount
 {
@@ -410,14 +460,11 @@ public:
     asset_package_mount& operator=(const asset_package_mount&) = delete;
 
     [[nodiscard]] asset_status mount(const std::filesystem::path& manifest_path);
-    [[nodiscard]] core::result<std::vector<std::byte>, asset_error> read(
-        asset_guid asset,
-        artifact_schema_id schema) const;
-    jobs::job_future<io::file_result<io::file_buffer>> read_async(
-        asset_guid asset,
-        artifact_schema_id schema,
-        io::async_file_service& files,
-        jobs::cancellation_token cancellation = {}) const;
+    [[nodiscard]] core::result<std::vector<std::byte>, asset_error> read(asset_guid asset,
+                                                                         artifact_schema_id schema) const;
+    jobs::job_future<io::file_result<io::file_buffer>> read_async(asset_guid asset, artifact_schema_id schema,
+                                                                  io::async_file_service& files,
+                                                                  jobs::cancellation_token cancellation = {}) const;
     const cook_manifest& manifest() const noexcept;
 
 private:

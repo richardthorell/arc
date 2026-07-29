@@ -15,8 +15,8 @@ namespace
 
 constexpr bool constexpr_vector_expression_works()
 {
-    arc::math::vector<int, 2> a{ 1, 2 };
-    arc::math::vector<int, 2> b{ 3, 4 };
+    arc::math::vector<int, 2> a{1, 2};
+    arc::math::vector<int, 2> b{3, 4};
     const auto result = arc::math::eval(arc::math::add(arc::math::mul(a, b), 1));
 
     return result[0] == 4 && result[1] == 9;
@@ -24,14 +24,10 @@ constexpr bool constexpr_vector_expression_works()
 
 constexpr bool constexpr_vector_constants_work()
 {
-    constexpr arc::math::vector3f splat{ 2.5f };
-    return splat[0] == 2.5f
-        && splat[1] == 2.5f
-        && splat[2] == 2.5f
-        && arc::math::vector3f::zero[0] == 0.0f
-        && arc::math::vector3f::zero[2] == 0.0f
-        && arc::math::vector3f::one[0] == 1.0f
-        && arc::math::vector3f::one[2] == 1.0f;
+    constexpr arc::math::vector3f splat{2.5f};
+    return splat[0] == 2.5f && splat[1] == 2.5f && splat[2] == 2.5f && arc::math::vector3f::zero[0] == 0.0f &&
+           arc::math::vector3f::zero[2] == 0.0f && arc::math::vector3f::one[0] == 1.0f &&
+           arc::math::vector3f::one[2] == 1.0f;
 }
 
 static_assert(constexpr_vector_expression_works());
@@ -59,13 +55,13 @@ TEST_CASE("vector supports construction indexing and lazy arithmetic")
 {
     using namespace arc::math;
 
-    const vector<float, 4> splat{ 3.0f };
+    const vector<float, 4> splat{3.0f};
     REQUIRE(splat[0] == 3.0f);
     REQUIRE(splat[3] == 3.0f);
 
-    vector<float, 4> a{ 1.0f, 2.0f, 3.0f, 4.0f };
-    vector<float, 4> b{ 2.0f, 3.0f, 4.0f, 5.0f };
-    vector<float, 4> c{ 10.0f, 20.0f, 30.0f, 40.0f };
+    vector<float, 4> a{1.0f, 2.0f, 3.0f, 4.0f};
+    vector<float, 4> b{2.0f, 3.0f, 4.0f, 5.0f};
+    vector<float, 4> c{10.0f, 20.0f, 30.0f, 40.0f};
 
     const auto expr = add(mul(a, b), c);
     static_assert(!std::is_same_v<decltype(expr), vector<float, 4>>);
@@ -119,9 +115,9 @@ TEST_CASE("vector exposes game aliases and helpers")
     static_assert(std::is_same_v<vector4d, vector<double, 4>>);
     static_assert(std::is_same_v<vector2i, vector<int, 2>>);
 
-    vector3f x{ 1.0f, 0.0f, 0.0f };
-    vector3f y{ 0.0f, 1.0f, 0.0f };
-    vector3f v{ 3.0f, 4.0f, 0.0f };
+    vector3f x{1.0f, 0.0f, 0.0f};
+    vector3f y{0.0f, 1.0f, 0.0f};
+    vector3f v{3.0f, 4.0f, 0.0f};
 
     REQUIRE(dot(x, y) == 0.0f);
     REQUIRE(length_squared(v) == 25.0f);
@@ -133,21 +129,21 @@ TEST_CASE("vector exposes game aliases and helpers")
 
     const vector3f z = cross(x, y);
     REQUIRE(z[2] == Catch::Approx(1.0f));
-    REQUIRE(cross2(vector2f{ 1.0f, 0.0f }, vector2f{ 0.0f, 1.0f }) == Catch::Approx(1.0f));
+    REQUIRE(cross2(vector2f{1.0f, 0.0f}, vector2f{0.0f, 1.0f}) == Catch::Approx(1.0f));
 
     const vector3f halfway = lerp(x, y, 0.5f);
     REQUIRE(halfway[0] == Catch::Approx(0.5f));
     REQUIRE(halfway[1] == Catch::Approx(0.5f));
 
-    const vector3f clamped = clamp(vector3f{ -1.0f, 2.0f, 5.0f }, vector3f::zero, vector3f{ 1.0f, 1.0f, 4.0f });
+    const vector3f clamped = clamp(vector3f{-1.0f, 2.0f, 5.0f}, vector3f::zero, vector3f{1.0f, 1.0f, 4.0f});
     REQUIRE(clamped[0] == 0.0f);
     REQUIRE(clamped[1] == 1.0f);
     REQUIRE(clamped[2] == 4.0f);
 
-    const vector3f reflected = reflect(vector3f{ 1.0f, -1.0f, 0.0f }, vector3f{ 0.0f, 1.0f, 0.0f });
+    const vector3f reflected = reflect(vector3f{1.0f, -1.0f, 0.0f}, vector3f{0.0f, 1.0f, 0.0f});
     REQUIRE(reflected[1] == Catch::Approx(1.0f));
 
-    const vector3f projected = project(vector3f{ 2.0f, 2.0f, 0.0f }, x);
+    const vector3f projected = project(vector3f{2.0f, 2.0f, 0.0f}, x);
     REQUIRE(projected[0] == Catch::Approx(2.0f));
     REQUIRE(projected[1] == Catch::Approx(0.0f));
 }
@@ -236,9 +232,9 @@ TEST_CASE("matrix exposes aliases and game helpers")
     REQUIRE(product(0, 0) == Catch::Approx(58.0f));
     REQUIRE(product(1, 1) == Catch::Approx(154.0f));
 
-    const auto moved = translation(vector3f{ 10.0f, 20.0f, 30.0f });
-    const vector3f point = transform_point(moved, vector3f{ 1.0f, 2.0f, 3.0f });
-    const vector3f direction = transform_vector(moved, vector3f{ 1.0f, 2.0f, 3.0f });
+    const auto moved = translation(vector3f{10.0f, 20.0f, 30.0f});
+    const vector3f point = transform_point(moved, vector3f{1.0f, 2.0f, 3.0f});
+    const vector3f direction = transform_vector(moved, vector3f{1.0f, 2.0f, 3.0f});
     REQUIRE(point[0] == Catch::Approx(11.0f));
     REQUIRE(point[2] == Catch::Approx(33.0f));
     REQUIRE(direction[0] == Catch::Approx(1.0f));
@@ -247,7 +243,7 @@ TEST_CASE("matrix exposes aliases and game helpers")
     REQUIRE(transform_vector(scaled, vector3f::one)[2] == Catch::Approx(4.0f));
 
     const auto rotated = rotation_z<float>(pi<float> / 2.0f);
-    const vector3f rotated_x = transform_vector(rotated, vector3f{ 1.0f, 0.0f, 0.0f });
+    const vector3f rotated_x = transform_vector(rotated, vector3f{1.0f, 0.0f, 0.0f});
     REQUIRE(rotated_x[0] == Catch::Approx(0.0f).margin(0.00001f));
     REQUIRE(rotated_x[1] == Catch::Approx(1.0f).margin(0.00001f));
 }
@@ -256,9 +252,7 @@ TEST_CASE("matrix inversion reports singular inputs without overwriting output")
 {
     using namespace arc::math;
 
-    const matrix4f transform = matmul(
-        translation(3.0f, -2.0f, 5.0f),
-        scaling(2.0f, 3.0f, 4.0f));
+    const matrix4f transform = matmul(translation(3.0f, -2.0f, 5.0f), scaling(2.0f, 3.0f, 4.0f));
     matrix4f inverse_transform{};
     REQUIRE(try_inverse(transform, inverse_transform));
     const auto product = matmul(transform, inverse_transform);
@@ -281,7 +275,7 @@ TEST_CASE("column major matrix storage matches GLSL mat4 times column vector")
         for (std::size_t column = 0; column < 4; ++column)
             matrix(row, column) = static_cast<float>(row * 10 + column + 1);
 
-    constexpr std::array<float, 4> vector{ 2.0f, -3.0f, 5.0f, 7.0f };
+    constexpr std::array<float, 4> vector{2.0f, -3.0f, 5.0f, 7.0f};
     for (std::size_t row = 0; row < 4; ++row)
     {
         float scalar_reference{};
@@ -305,7 +299,7 @@ TEST_CASE("quaternion supports identity and expression assignment")
     REQUIRE(identity.z() == 0.0f);
     REQUIRE(identity.w() == 1.0f);
 
-    quaternion<float> a{ 1.0f, 2.0f, 3.0f, 4.0f };
+    quaternion<float> a{1.0f, 2.0f, 3.0f, 4.0f};
     quaternion<float> b(2.0f);
     quaternion<float> result;
 
@@ -337,19 +331,19 @@ TEST_CASE("quaternion exposes aliases and game helpers")
     static_assert(std::is_same_v<quaternionf, quaternion<float>>);
     static_assert(std::is_same_v<quatd, quaternion<double>>);
 
-    const quatf q{ 0.0f, 0.0f, 1.0f, 0.0f };
+    const quatf q{0.0f, 0.0f, 1.0f, 0.0f};
     const quatf c = conjugate(q);
     REQUIRE(c.z() == -1.0f);
     REQUIRE(c.w() == 0.0f);
 
-    const quatf n = normalize(quatf{ 0.0f, 0.0f, 0.0f, 2.0f });
+    const quatf n = normalize(quatf{0.0f, 0.0f, 0.0f, 2.0f});
     REQUIRE(n.w() == Catch::Approx(1.0f));
 
-    const quatf inv = inverse(quatf{ 0.0f, 0.0f, 0.0f, 2.0f });
+    const quatf inv = inverse(quatf{0.0f, 0.0f, 0.0f, 2.0f});
     REQUIRE(inv.w() == Catch::Approx(0.5f));
 
-    const quatf z_turn = from_axis_angle(vector3f{ 0.0f, 0.0f, 1.0f }, pi<float> / 2.0f);
-    const vector3f rotated = rotate(z_turn, vector3f{ 1.0f, 0.0f, 0.0f });
+    const quatf z_turn = from_axis_angle(vector3f{0.0f, 0.0f, 1.0f}, pi<float> / 2.0f);
+    const vector3f rotated = rotate(z_turn, vector3f{1.0f, 0.0f, 0.0f});
     REQUIRE(rotated[0] == Catch::Approx(0.0f).margin(0.00001f));
     REQUIRE(rotated[1] == Catch::Approx(1.0f).margin(0.00001f));
 }

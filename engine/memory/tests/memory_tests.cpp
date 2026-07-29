@@ -42,16 +42,10 @@ TEST_CASE("default tracked memory resource is available")
 
 TEST_CASE("memory system tracks domains tags and world leaks")
 {
-    arc::memory::memory_system system({
-        .physical_memory_override = 1024 * 1024,
-        .track_live_allocations = true,
-        .capture_call_stacks = false
-    });
-    arc::memory::system_memory_resource resource(
-        system,
-        arc::memory::memory_domain::world,
-        arc::memory::make_memory_tag("scene.transforms"),
-        42);
+    arc::memory::memory_system system(
+        {.physical_memory_override = 1024 * 1024, .track_live_allocations = true, .capture_call_stacks = false});
+    arc::memory::system_memory_resource resource(system, arc::memory::memory_domain::world,
+                                                 arc::memory::make_memory_tag("scene.transforms"), 42);
 
     void* pointer = resource.allocate(128, 16);
     const auto active = system.snapshot();
@@ -72,68 +66,54 @@ TEST_CASE("memory system tracks domains tags and world leaks")
 
 TEST_CASE("memory hard budgets invoke pressure handlers before rejecting")
 {
-    arc::memory::memory_system system({
-        .physical_memory_override = 1024,
-        .cpu_soft_budget_fraction = 0.5f,
-        .cpu_hard_budget_fraction = 0.75f,
-        .track_live_allocations = false,
-        .capture_call_stacks = false
-    });
-    system.set_budget(arc::memory::memory_domain::assets, { .soft_limit = 64, .hard_limit = 96 });
+    arc::memory::memory_system system({.physical_memory_override = 1024,
+                                       .cpu_soft_budget_fraction = 0.5f,
+                                       .cpu_hard_budget_fraction = 0.75f,
+                                       .track_live_allocations = false,
+                                       .capture_call_stacks = false});
+    system.set_budget(arc::memory::memory_domain::assets, {.soft_limit = 64, .hard_limit = 96});
 
     std::size_t pressure_count{};
-    system.add_pressure_handler([&](arc::memory::memory_pressure_level level, arc::memory::memory_domain domain, std::size_t bytes) {
-        REQUIRE(level == arc::memory::memory_pressure_level::hard);
-        REQUIRE(domain == arc::memory::memory_domain::assets);
-        REQUIRE(bytes == 128);
-        ++pressure_count;
-    });
+    system.add_pressure_handler(
+        [&](arc::memory::memory_pressure_level level, arc::memory::memory_domain domain, std::size_t bytes)
+        {
+            REQUIRE(level == arc::memory::memory_pressure_level::hard);
+            REQUIRE(domain == arc::memory::memory_domain::assets);
+            REQUIRE(bytes == 128);
+            ++pressure_count;
+        });
 
-    REQUIRE(system.try_allocate(
-        128,
-        alignof(std::max_align_t),
-        arc::memory::memory_domain::assets,
-        arc::memory::make_memory_tag("too-large")) == nullptr);
+    REQUIRE(system.try_allocate(128, alignof(std::max_align_t), arc::memory::memory_domain::assets,
+                                arc::memory::make_memory_tag("too-large")) == nullptr);
     REQUIRE(pressure_count == 1);
     REQUIRE(system.snapshot().pressure_event_count == 1);
 
-    const auto rejected = system.try_allocate_result(
-        128,
-        alignof(std::max_align_t),
-        arc::memory::memory_domain::assets,
-        arc::memory::make_memory_tag("typed-too-large"));
+    const auto rejected = system.try_allocate_result(128, alignof(std::max_align_t), arc::memory::memory_domain::assets,
+                                                     arc::memory::make_memory_tag("typed-too-large"));
     REQUIRE_FALSE(rejected);
     REQUIRE(rejected.error == arc::memory::allocation_error::budget_exceeded);
 }
 
 TEST_CASE("fallible allocations distinguish invalid requests")
 {
-    arc::memory::memory_system system({
-        .physical_memory_override = 1024,
-        .track_live_allocations = false,
-        .capture_call_stacks = false
-    });
-    const auto result = system.try_allocate_result(
-        16,
-        3,
-        arc::memory::memory_domain::general);
+    arc::memory::memory_system system(
+        {.physical_memory_override = 1024, .track_live_allocations = false, .capture_call_stacks = false});
+    const auto result = system.try_allocate_result(16, 3, arc::memory::memory_domain::general);
     REQUIRE_FALSE(result);
     REQUIRE(result.error == arc::memory::allocation_error::invalid_request);
 }
 
 TEST_CASE("soft memory pressure is reported once until usage recovers")
 {
-    arc::memory::memory_system system({
-        .physical_memory_override = 4096,
-        .track_live_allocations = false,
-        .capture_call_stacks = false
-    });
-    system.set_budget(arc::memory::memory_domain::streaming, { .soft_limit = 64, .hard_limit = 512 });
+    arc::memory::memory_system system(
+        {.physical_memory_override = 4096, .track_live_allocations = false, .capture_call_stacks = false});
+    system.set_budget(arc::memory::memory_domain::streaming, {.soft_limit = 64, .hard_limit = 512});
     std::size_t soft_events{};
-    system.add_pressure_handler([&](arc::memory::memory_pressure_level level, arc::memory::memory_domain, std::size_t) {
-        if (level == arc::memory::memory_pressure_level::soft)
-            ++soft_events;
-    });
+    system.add_pressure_handler(
+        [&](arc::memory::memory_pressure_level level, arc::memory::memory_domain, std::size_t)
+        {
+            if (level == arc::memory::memory_pressure_level::soft) ++soft_events;
+        });
 
     void* first = system.allocate(80, 16, arc::memory::memory_domain::streaming);
     void* second = system.allocate(16, 16, arc::memory::memory_domain::streaming);
@@ -170,7 +150,7 @@ TEST_CASE("linear arena growth preserves pointers and supports marks")
 TEST_CASE("network packet pool serves every standard size class")
 {
     arc::memory::network_packet_pool pool;
-    constexpr std::array<std::size_t, 5> sizes{ 128, 500, 1200, 4000, 60 * 1024 };
+    constexpr std::array<std::size_t, 5> sizes{128, 500, 1200, 4000, 60 * 1024};
     std::array<void*, sizes.size()> pointers{};
     for (std::size_t index = 0; index < sizes.size(); ++index)
     {
@@ -200,11 +180,8 @@ TEST_CASE("allocation tag scopes restore their previous value")
 
 TEST_CASE("streaming heap coalesces released ranges")
 {
-    arc::memory::memory_system memory({
-        .physical_memory_override = 4 * 1024 * 1024,
-        .track_live_allocations = true,
-        .capture_call_stacks = false
-    });
+    arc::memory::memory_system memory(
+        {.physical_memory_override = 4 * 1024 * 1024, .track_live_allocations = true, .capture_call_stacks = false});
     arc::memory::streaming_heap heap(memory, 4096);
     void* first = heap.allocate(512, 16);
     void* second = heap.allocate(1024, 16);
@@ -221,11 +198,8 @@ TEST_CASE("streaming heap coalesces released ranges")
 
 TEST_CASE("world memory contexts tag allocations with stable world identity")
 {
-    arc::memory::memory_system memory({
-        .physical_memory_override = 4 * 1024 * 1024,
-        .track_live_allocations = true,
-        .capture_call_stacks = false
-    });
+    arc::memory::memory_system memory(
+        {.physical_memory_override = 4 * 1024 * 1024, .track_live_allocations = true, .capture_call_stacks = false});
     arc::memory::world_memory_context world(memory, 1234);
     std::pmr::vector<int> values(world.component_resource());
     values.resize(32);

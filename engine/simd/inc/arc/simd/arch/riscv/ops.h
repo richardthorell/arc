@@ -16,8 +16,7 @@ namespace arc::simd
 
 #if defined(ARC_SIMD_RISCV)
 
-template <class T, std::size_t N>
-struct simd_op<riscv_vec<T, N>>
+template <class T, std::size_t N> struct simd_op<riscv_vec<T, N>>
 {
     using register_type = riscv_vec<T, N>;
     using mask_type = riscv_vec<uint32_t, N>;
@@ -55,8 +54,7 @@ struct simd_op<riscv_vec<T, N>>
     static inline void masked_store(T* ptr, register_type value, mask_type mask) noexcept
     {
         for (std::size_t i = 0; i < N; ++i)
-            if (mask.lanes[i] != 0)
-                ptr[i] = value.lanes[i];
+            if (mask.lanes[i] != 0) ptr[i] = value.lanes[i];
     }
 
     static inline T extract(register_type value, std::size_t index) noexcept
@@ -64,8 +62,7 @@ struct simd_op<riscv_vec<T, N>>
         return value.lanes[index];
     }
 
-    template <std::size_t I>
-    static inline T extract(register_type value) noexcept
+    template <std::size_t I> static inline T extract(register_type value) noexcept
     {
         static_assert(I < N, "lane index out of bounds");
         return value.lanes[I];
@@ -77,8 +74,7 @@ struct simd_op<riscv_vec<T, N>>
         return value;
     }
 
-    template <std::size_t I>
-    static inline register_type insert(register_type value, T element) noexcept
+    template <std::size_t I> static inline register_type insert(register_type value, T element) noexcept
     {
         static_assert(I < N, "lane index out of bounds");
         value.lanes[I] = element;
@@ -189,16 +185,14 @@ struct simd_op<riscv_vec<T, N>>
     static inline bool any(mask_type mask) noexcept
     {
         for (std::size_t i = 0; i < N; ++i)
-            if (mask.lanes[i] != 0)
-                return true;
+            if (mask.lanes[i] != 0) return true;
         return false;
     }
 
     static inline bool all(mask_type mask) noexcept
     {
         for (std::size_t i = 0; i < N; ++i)
-            if (mask.lanes[i] == 0)
-                return false;
+            if (mask.lanes[i] == 0) return false;
         return true;
     }
 
@@ -209,12 +203,12 @@ struct simd_op<riscv_vec<T, N>>
 
     static inline register_type rsqrt(register_type a) noexcept
     {
-        return map_math(a, [](auto x) { return decltype(x){ 1 } / std::sqrt(x); });
+        return map_math(a, [](auto x) { return decltype(x){1} / std::sqrt(x); });
     }
 
     static inline register_type reciprocal(register_type a) noexcept
     {
-        return map(a, [](T x) { return static_cast<T>(T{ 1 } / x); });
+        return map(a, [](T x) { return static_cast<T>(T{1} / x); });
     }
 
     static inline register_type fma(register_type a, register_type b, register_type c) noexcept
@@ -283,8 +277,7 @@ struct simd_op<riscv_vec<T, N>>
     }
 
 private:
-    template <class Op>
-    static inline register_type map(register_type a, Op op) noexcept
+    template <class Op> static inline register_type map(register_type a, Op op) noexcept
     {
         register_type result{};
         for (std::size_t i = 0; i < N; ++i)
@@ -292,8 +285,7 @@ private:
         return result;
     }
 
-    template <class Op>
-    static inline register_type map(register_type a, register_type b, Op op) noexcept
+    template <class Op> static inline register_type map(register_type a, register_type b, Op op) noexcept
     {
         register_type result{};
         for (std::size_t i = 0; i < N; ++i)
@@ -301,8 +293,7 @@ private:
         return result;
     }
 
-    template <class Op>
-    static inline register_type map_math(register_type a, Op op) noexcept
+    template <class Op> static inline register_type map_math(register_type a, Op op) noexcept
     {
         if constexpr (std::is_floating_point_v<T>)
         {
@@ -315,12 +306,11 @@ private:
     }
 
     template <class U>
-    using bit_type = std::conditional_t<sizeof(U) == 8, uint64_t,
-        std::conditional_t<sizeof(U) == 4, uint32_t,
-        std::conditional_t<sizeof(U) == 2, uint16_t, uint8_t>>>;
+    using bit_type = std::conditional_t<
+        sizeof(U) == 8, uint64_t,
+        std::conditional_t<sizeof(U) == 4, uint32_t, std::conditional_t<sizeof(U) == 2, uint16_t, uint8_t>>>;
 
-    template <class U>
-    static inline bit_type<U> to_bits(U value) noexcept
+    template <class U> static inline bit_type<U> to_bits(U value) noexcept
     {
         if constexpr (std::is_integral_v<U>)
         {
@@ -348,8 +338,7 @@ private:
         }
     }
 
-    template <class Op>
-    static inline register_type bitwise_map(register_type a, Op op) noexcept
+    template <class Op> static inline register_type bitwise_map(register_type a, Op op) noexcept
     {
         register_type result{};
         for (std::size_t i = 0; i < N; ++i)
@@ -357,8 +346,7 @@ private:
         return result;
     }
 
-    template <class Op>
-    static inline register_type bitwise_map(register_type a, register_type b, Op op) noexcept
+    template <class Op> static inline register_type bitwise_map(register_type a, register_type b, Op op) noexcept
     {
         register_type result{};
         for (std::size_t i = 0; i < N; ++i)
@@ -366,8 +354,7 @@ private:
         return result;
     }
 
-    template <class Op>
-    static inline mask_type compare(register_type a, register_type b, Op op) noexcept
+    template <class Op> static inline mask_type compare(register_type a, register_type b, Op op) noexcept
     {
         mask_type result{};
         for (std::size_t i = 0; i < N; ++i)

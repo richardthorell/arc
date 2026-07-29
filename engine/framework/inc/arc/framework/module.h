@@ -24,14 +24,11 @@ class runtime_world_manager;
 class module_context
 {
 public:
-    module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics, memory::tracked_memory_resource& memory) noexcept;
-    module_context(
-        jobs::job_system& jobs,
-        diagnostics::logger& diagnostics,
-        memory::memory_system& memory,
-        memory::tracked_memory_resource& compatibility_memory,
-        runtime_service_registry* services = nullptr,
-        runtime_world_manager* worlds = nullptr) noexcept;
+    module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics,
+                   memory::tracked_memory_resource& memory) noexcept;
+    module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics, memory::memory_system& memory,
+                   memory::tracked_memory_resource& compatibility_memory, runtime_service_registry* services = nullptr,
+                   runtime_world_manager* worlds = nullptr) noexcept;
 
     /**
      * @brief Return the shared engine job system.
@@ -117,8 +114,7 @@ public:
     /**
      * @brief Construct and add a module in-place.
      */
-    template <class Module, class... Args>
-    Module& emplace(Args&&... args)
+    template <class Module, class... Args> Module& emplace(Args&&... args)
     {
         auto value = std::make_unique<Module>(std::forward<Args>(args)...);
         Module& reference = *value;

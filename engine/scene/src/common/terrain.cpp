@@ -11,7 +11,10 @@ namespace arc::scene
 namespace
 {
 
-float saturate(float value) noexcept { return std::clamp(value, 0.0f, 1.0f); }
+float saturate(float value) noexcept
+{
+    return std::clamp(value, 0.0f, 1.0f);
+}
 float smoothstep(float a, float b, float value) noexcept
 {
     const float t = saturate((value - a) / std::max(b - a, 0.00001f));
@@ -28,8 +31,8 @@ std::uint32_t hash(std::uint32_t x, std::uint32_t z) noexcept
 
 float random_signed(std::int32_t x, std::int32_t z) noexcept
 {
-    return static_cast<float>(hash(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(z)) & 0xffffu) /
-        32767.5f - 1.0f;
+    return static_cast<float>(hash(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(z)) & 0xffffu) / 32767.5f -
+           1.0f;
 }
 
 float value_noise(float x, float z) noexcept
@@ -48,7 +51,7 @@ float value_noise(float x, float z) noexcept
 float fbm(float x, float z, std::uint32_t octaves) noexcept
 {
     float result{};
-    float amplitude{ 0.5f };
+    float amplitude{0.5f};
     for (std::uint32_t octave = 0; octave < octaves; ++octave)
     {
         result += value_noise(x, z) * amplitude;
@@ -79,24 +82,25 @@ math::vector3f normal_at(const terrain_component& terrain, std::uint32_t x, std:
     const float right = height_at(terrain, std::min(x + 1u, terrain.subdivisions), z);
     const float down = height_at(terrain, x, z > 0 ? z - 1u : z);
     const float up = height_at(terrain, x, std::min(z + 1u, terrain.subdivisions));
-    return math::normalize(math::vector3f{ left - right, spacing * 2.0f, down - up });
+    return math::normalize(math::vector3f{left - right, spacing * 2.0f, down - up});
 }
 
 std::array<std::uint8_t, 4> normalized_weights(const std::array<float, 4>& input) noexcept
 {
     float total{};
-    for (const float value : input) total += std::max(value, 0.0f);
+    for (const float value : input)
+        total += std::max(value, 0.0f);
     std::array<std::uint8_t, 4> result{};
     if (total <= 0.00001f)
     {
         result[0] = 255;
         return result;
     }
-    std::uint32_t remaining{ 255u };
+    std::uint32_t remaining{255u};
     for (std::size_t index = 0; index < 3; ++index)
     {
-        const auto encoded = static_cast<std::uint32_t>(std::clamp(
-            std::lround(std::max(input[index], 0.0f) / total * 255.0f), 0l, 255l));
+        const auto encoded = static_cast<std::uint32_t>(
+            std::clamp(std::lround(std::max(input[index], 0.0f) / total * 255.0f), 0l, 255l));
         result[index] = static_cast<std::uint8_t>(std::min(encoded, remaining));
         remaining -= result[index];
     }
@@ -104,13 +108,8 @@ std::array<std::uint8_t, 4> normalized_weights(const std::array<float, 4>& input
     return result;
 }
 
-bool intersect_triangle(
-    const math::vector3f& origin,
-    const math::vector3f& direction,
-    const math::vector3f& a,
-    const math::vector3f& b,
-    const math::vector3f& c,
-    float& distance) noexcept
+bool intersect_triangle(const math::vector3f& origin, const math::vector3f& direction, const math::vector3f& a,
+                        const math::vector3f& b, const math::vector3f& c, float& distance) noexcept
 {
     const auto edge1 = math::sub(b, a);
     const auto edge2 = math::sub(c, a);
@@ -130,7 +129,7 @@ bool intersect_triangle(
     return true;
 }
 
-}
+} // namespace
 
 bool terrain_heightfield_valid(const terrain_component& terrain) noexcept
 {
@@ -170,8 +169,9 @@ void generate_terrain_heightfield(terrain_component& terrain)
             const float basin_dz = nz - 0.18f;
             const float basin = std::exp(-(basin_dx * basin_dx / 0.10f + basin_dz * basin_dz / 0.13f));
             const float edge = smoothstep(0.82f, 1.28f, std::sqrt(nx * nx + nz * nz));
-            float height = (0.035f + mountains * (0.22f + rear * 0.80f) + ridges * rear * 0.16f -
-                basin * 0.16f - edge * 0.12f) * terrain.height_scale;
+            float height =
+                (0.035f + mountains * (0.22f + rear * 0.80f) + ridges * rear * 0.16f - basin * 0.16f - edge * 0.12f) *
+                terrain.height_scale;
             // Stable staging area for the hero formation.
             const float pad = std::exp(-((nx + 0.18f) * (nx + 0.18f) + (nz - 0.08f) * (nz - 0.08f)) / 0.012f);
             height = std::lerp(height, terrain.height_scale * 0.075f, pad * 0.72f);
@@ -188,13 +188,15 @@ void generate_terrain_heightfield(terrain_component& terrain)
             const auto index = sample_index(terrain, x, z);
             const float height01 = (terrain.heights[index] - min_height) / std::max(max_height - min_height, 0.001f);
             const float slope = 1.0f - normal_at(terrain, x, z)[1];
-            const float shore = 1.0f - smoothstep(terrain.height_scale * 0.015f, terrain.height_scale * 0.10f, terrain.heights[index]);
+            const float shore =
+                1.0f - smoothstep(terrain.height_scale * 0.015f, terrain.height_scale * 0.10f, terrain.heights[index]);
             const float rock = saturate(smoothstep(0.10f, 0.38f, slope) + smoothstep(0.62f, 0.92f, height01));
             const float sand = shore * (1.0f - rock);
-            const float dirt = saturate(smoothstep(0.04f, 0.22f, slope) * (1.0f - rock) +
-                std::abs(fbm(static_cast<float>(x) * 0.025f, static_cast<float>(z) * 0.025f, 3)) * 0.22f);
+            const float dirt =
+                saturate(smoothstep(0.04f, 0.22f, slope) * (1.0f - rock) +
+                         std::abs(fbm(static_cast<float>(x) * 0.025f, static_cast<float>(z) * 0.025f, 3)) * 0.22f);
             const float grass = std::max(0.0f, 1.0f - rock - sand - dirt * 0.55f);
-            terrain.layer_weights[index] = normalized_weights({ grass, dirt, rock, sand });
+            terrain.layer_weights[index] = normalized_weights({grass, dirt, rock, sand});
         }
     }
     ++terrain.content_revision;
@@ -212,18 +214,21 @@ float sample_terrain_height(const terrain_component& terrain, float local_x, flo
     const float tx = gx - x0;
     const float tz = gz - z0;
     return std::lerp(std::lerp(height_at(terrain, x0, z0), height_at(terrain, x1, z0), tx),
-        std::lerp(height_at(terrain, x0, z1), height_at(terrain, x1, z1), tx), tz);
+                     std::lerp(height_at(terrain, x0, z1), height_at(terrain, x1, z1), tx), tz);
 }
 
 math::vector3f sample_terrain_normal(const terrain_component& terrain, float local_x, float local_z) noexcept
 {
-    if (!terrain_heightfield_valid(terrain)) return { 0.0f, 1.0f, 0.0f };
-    const auto x = static_cast<std::uint32_t>(std::round(saturate(local_x / terrain.size + 0.5f) * terrain.subdivisions));
-    const auto z = static_cast<std::uint32_t>(std::round(saturate(local_z / terrain.size + 0.5f) * terrain.subdivisions));
+    if (!terrain_heightfield_valid(terrain)) return {0.0f, 1.0f, 0.0f};
+    const auto x =
+        static_cast<std::uint32_t>(std::round(saturate(local_x / terrain.size + 0.5f) * terrain.subdivisions));
+    const auto z =
+        static_cast<std::uint32_t>(std::round(saturate(local_z / terrain.size + 0.5f) * terrain.subdivisions));
     return normal_at(terrain, x, z);
 }
 
-render::mesh_data make_terrain_chunk_mesh(const terrain_component& terrain, std::uint32_t chunk_x, std::uint32_t chunk_z)
+render::mesh_data make_terrain_chunk_mesh(const terrain_component& terrain, std::uint32_t chunk_x,
+                                          std::uint32_t chunk_z)
 {
     render::mesh_data mesh;
     if (!terrain_heightfield_valid(terrain)) return mesh;
@@ -251,8 +256,11 @@ render::mesh_data make_terrain_chunk_mesh(const terrain_component& terrain, std:
             vertex.position[0] = -half + sx * spacing;
             vertex.position[1] = height_at(terrain, sx, sz);
             vertex.position[2] = -half + sz * spacing;
-            vertex.normal[0] = normal[0]; vertex.normal[1] = normal[1]; vertex.normal[2] = normal[2];
-            vertex.texcoord[0] = vertex.position[0]; vertex.texcoord[1] = vertex.position[2];
+            vertex.normal[0] = normal[0];
+            vertex.normal[1] = normal[1];
+            vertex.normal[2] = normal[2];
+            vertex.texcoord[0] = vertex.position[0];
+            vertex.texcoord[1] = vertex.position[2];
             for (std::size_t layer = 0; layer < 4; ++layer)
                 vertex.color[layer] = static_cast<float>(weights[layer]) / 255.0f;
             mesh.vertices.push_back(vertex);
@@ -266,17 +274,14 @@ render::mesh_data make_terrain_chunk_mesh(const terrain_component& terrain, std:
             const auto b = a + 1u;
             const auto d = a + width;
             const auto c = d + 1u;
-            mesh.indices.insert(mesh.indices.end(), { a, b, c, a, c, d });
+            mesh.indices.insert(mesh.indices.end(), {a, b, c, a, c, d});
         }
     }
     return mesh;
 }
 
-terrain_dirty_region apply_terrain_brush(
-    terrain_component& terrain,
-    const math::vector3f& local_center,
-    const terrain_brush_settings& settings,
-    float delta_seconds)
+terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math::vector3f& local_center,
+                                         const terrain_brush_settings& settings, float delta_seconds)
 {
     terrain_dirty_region dirty{};
     if (!terrain_heightfield_valid(terrain) || settings.radius <= 0.0f || settings.strength <= 0.0f) return dirty;
@@ -286,8 +291,10 @@ terrain_dirty_region apply_terrain_brush(
     const float radius_samples = settings.radius / spacing;
     const auto min_x = static_cast<std::uint32_t>(std::max(0.0f, std::floor(center_x - radius_samples)));
     const auto min_z = static_cast<std::uint32_t>(std::max(0.0f, std::floor(center_z - radius_samples)));
-    const auto max_x = static_cast<std::uint32_t>(std::min<float>(terrain.subdivisions, std::ceil(center_x + radius_samples)));
-    const auto max_z = static_cast<std::uint32_t>(std::min<float>(terrain.subdivisions, std::ceil(center_z + radius_samples)));
+    const auto max_x = static_cast<std::uint32_t>(
+        std::min(static_cast<float>(terrain.subdivisions), std::ceil(center_x + radius_samples)));
+    const auto max_z = static_cast<std::uint32_t>(
+        std::min(static_cast<float>(terrain.subdivisions), std::ceil(center_z + radius_samples)));
     const auto original_heights = terrain.heights;
     bool changed{};
     for (std::uint32_t z = min_z; z <= max_z; ++z)
@@ -306,16 +313,21 @@ terrain_dirty_region apply_terrain_brush(
             if (settings.tool == terrain_brush_tool::sculpt)
                 terrain.heights[index] += (settings.invert ? -1.0f : 1.0f) * amount * 12.0f;
             else if (settings.tool == terrain_brush_tool::flatten)
-                terrain.heights[index] = std::lerp(terrain.heights[index], settings.flatten_height, saturate(amount * 8.0f));
+                terrain.heights[index] =
+                    std::lerp(terrain.heights[index], settings.flatten_height, saturate(amount * 8.0f));
             else if (settings.tool == terrain_brush_tool::smooth)
             {
-                float total{}; float samples{};
+                float total{};
+                float samples{};
                 for (int oz = -1; oz <= 1; ++oz)
                     for (int ox = -1; ox <= 1; ++ox)
                     {
-                        const auto sx = static_cast<std::uint32_t>(std::clamp<int>(static_cast<int>(x) + ox, 0, terrain.subdivisions));
-                        const auto sz = static_cast<std::uint32_t>(std::clamp<int>(static_cast<int>(z) + oz, 0, terrain.subdivisions));
-                        total += original_heights[sample_index(terrain, sx, sz)]; ++samples;
+                        const auto sx = static_cast<std::uint32_t>(
+                            std::clamp<int>(static_cast<int>(x) + ox, 0, terrain.subdivisions));
+                        const auto sz = static_cast<std::uint32_t>(
+                            std::clamp<int>(static_cast<int>(z) + oz, 0, terrain.subdivisions));
+                        total += original_heights[sample_index(terrain, sx, sz)];
+                        ++samples;
                     }
                 terrain.heights[index] = std::lerp(terrain.heights[index], total / samples, saturate(amount * 10.0f));
             }
@@ -328,9 +340,12 @@ terrain_dirty_region apply_terrain_brush(
                 weights[active] = saturate(weights[active] + (settings.invert ? -amount : amount) * 4.0f);
                 const float remaining = 1.0f - weights[active];
                 float other_total{};
-                for (std::size_t layer = 0; layer < 4; ++layer) if (layer != active) other_total += weights[layer];
                 for (std::size_t layer = 0; layer < 4; ++layer)
-                    if (layer != active) weights[layer] = other_total > 0.0001f ? weights[layer] / other_total * remaining : remaining / 3.0f;
+                    if (layer != active) other_total += weights[layer];
+                for (std::size_t layer = 0; layer < 4; ++layer)
+                    if (layer != active)
+                        weights[layer] =
+                            other_total > 0.0001f ? weights[layer] / other_total * remaining : remaining / 3.0f;
                 terrain.layer_weights[index] = normalized_weights(weights);
             }
             changed = true;
@@ -339,16 +354,14 @@ terrain_dirty_region apply_terrain_brush(
     if (changed)
     {
         ++terrain.content_revision;
-        dirty = { min_x > 0 ? min_x - 1u : 0u, min_z > 0 ? min_z - 1u : 0u,
-            std::min(max_x + 1u, terrain.subdivisions), std::min(max_z + 1u, terrain.subdivisions), true };
+        dirty = {min_x > 0 ? min_x - 1u : 0u, min_z > 0 ? min_z - 1u : 0u, std::min(max_x + 1u, terrain.subdivisions),
+                 std::min(max_z + 1u, terrain.subdivisions), true};
     }
     return dirty;
 }
 
-terrain_raycast_hit raycast_terrain(
-    const terrain_component& terrain,
-    const math::vector3f& local_origin,
-    const math::vector3f& local_direction) noexcept
+terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math::vector3f& local_origin,
+                                    const math::vector3f& local_direction) noexcept
 {
     terrain_raycast_hit result{};
     if (!terrain_heightfield_valid(terrain)) return result;
@@ -359,13 +372,14 @@ terrain_raycast_hit raycast_terrain(
     {
         for (std::uint32_t x = 0; x < terrain.subdivisions; ++x)
         {
-            const math::vector3f a{ -half + x * spacing, height_at(terrain, x, z), -half + z * spacing };
-            const math::vector3f b{ a[0] + spacing, height_at(terrain, x + 1u, z), a[2] };
-            const math::vector3f c{ a[0] + spacing, height_at(terrain, x + 1u, z + 1u), a[2] + spacing };
-            const math::vector3f d{ a[0], height_at(terrain, x, z + 1u), a[2] + spacing };
+            const math::vector3f a{-half + x * spacing, height_at(terrain, x, z), -half + z * spacing};
+            const math::vector3f b{a[0] + spacing, height_at(terrain, x + 1u, z), a[2]};
+            const math::vector3f c{a[0] + spacing, height_at(terrain, x + 1u, z + 1u), a[2] + spacing};
+            const math::vector3f d{a[0], height_at(terrain, x, z + 1u), a[2] + spacing};
             float distance{};
             if ((intersect_triangle(local_origin, local_direction, a, b, c, distance) ||
-                intersect_triangle(local_origin, local_direction, a, c, d, distance)) && distance < nearest)
+                 intersect_triangle(local_origin, local_direction, a, c, d, distance)) &&
+                distance < nearest)
                 nearest = distance;
         }
     }
@@ -379,4 +393,4 @@ terrain_raycast_hit raycast_terrain(
     return result;
 }
 
-}
+} // namespace arc::scene

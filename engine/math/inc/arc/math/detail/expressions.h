@@ -21,20 +21,16 @@ enum class matrix_layout
     column_major
 };
 
-template <class T, std::size_t N>
-class vector;
+template <class T, std::size_t N> class vector;
 
-template <class T, std::size_t Rows, std::size_t Cols, matrix_layout Layout>
-class matrix;
+template <class T, std::size_t Rows, std::size_t Cols, matrix_layout Layout> class matrix;
 
-template <class T>
-class quaternion;
+template <class T> class quaternion;
 
 namespace detail
 {
 
-template <class Derived>
-class vector_expr
+template <class Derived> class vector_expr
 {
 public:
     constexpr const Derived& derived() const noexcept
@@ -48,8 +44,7 @@ public:
     }
 };
 
-template <class Derived>
-class matrix_expr
+template <class Derived> class matrix_expr
 {
 public:
     constexpr const Derived& derived() const noexcept
@@ -63,8 +58,7 @@ public:
     }
 };
 
-template <class Derived>
-class quaternion_expr
+template <class Derived> class quaternion_expr
 {
 public:
     constexpr const Derived& derived() const noexcept
@@ -78,56 +72,45 @@ public:
     }
 };
 
-template <class T>
-struct expr_traits;
+template <class T> struct expr_traits;
+
+template <class T> using expr_value_t = typename expr_traits<std::remove_cvref_t<T>>::value_type;
 
 template <class T>
-using expr_value_t = typename expr_traits<std::remove_cvref_t<T>>::value_type;
-
-template <class T>
-concept vector_expression = requires
-{
+concept vector_expression = requires {
     typename expr_traits<std::remove_cvref_t<T>>::value_type;
     requires expr_traits<std::remove_cvref_t<T>>::kind == 0;
 };
 
 template <class T>
-concept matrix_expression = requires
-{
+concept matrix_expression = requires {
     typename expr_traits<std::remove_cvref_t<T>>::value_type;
     requires expr_traits<std::remove_cvref_t<T>>::kind == 1;
 };
 
 template <class T>
-concept quaternion_expression = requires
-{
+concept quaternion_expression = requires {
     typename expr_traits<std::remove_cvref_t<T>>::value_type;
     requires expr_traits<std::remove_cvref_t<T>>::kind == 2;
 };
 
 template <class T, class Value>
 concept scalar_for =
-    std::convertible_to<T, Value> &&
-    !vector_expression<T> &&
-    !matrix_expression<T> &&
-    !quaternion_expression<T>;
+    std::convertible_to<T, Value> && !vector_expression<T> && !matrix_expression<T> && !quaternion_expression<T>;
 
 template <class T>
-using operand_storage_t = std::conditional_t<
-    std::is_lvalue_reference_v<T>,
-    std::add_lvalue_reference_t<const std::remove_reference_t<T>>,
-    std::remove_cvref_t<T>>;
+using operand_storage_t =
+    std::conditional_t<std::is_lvalue_reference_v<T>, std::add_lvalue_reference_t<const std::remove_reference_t<T>>,
+                       std::remove_cvref_t<T>>;
 
-template <class T>
-constexpr operand_storage_t<T&&> store_operand(T&& value)
+template <class T> constexpr operand_storage_t<T&&> store_operand(T&& value)
 {
     return std::forward<T>(value);
 }
 
 struct add_op
 {
-    template <class A, class B>
-    static constexpr auto apply(const A& a, const B& b) noexcept
+    template <class A, class B> static constexpr auto apply(const A& a, const B& b) noexcept
     {
         return a + b;
     }
@@ -135,8 +118,7 @@ struct add_op
 
 struct sub_op
 {
-    template <class A, class B>
-    static constexpr auto apply(const A& a, const B& b) noexcept
+    template <class A, class B> static constexpr auto apply(const A& a, const B& b) noexcept
     {
         return a - b;
     }
@@ -144,8 +126,7 @@ struct sub_op
 
 struct mul_op
 {
-    template <class A, class B>
-    static constexpr auto apply(const A& a, const B& b) noexcept
+    template <class A, class B> static constexpr auto apply(const A& a, const B& b) noexcept
     {
         return a * b;
     }
@@ -153,15 +134,13 @@ struct mul_op
 
 struct div_op
 {
-    template <class A, class B>
-    static constexpr auto apply(const A& a, const B& b) noexcept
+    template <class A, class B> static constexpr auto apply(const A& a, const B& b) noexcept
     {
         return a / b;
     }
 };
 
-template <class Op, class Lhs, class Rhs, class Base>
-class binary_expr : public Base
+template <class Op, class Lhs, class Rhs, class Base> class binary_expr : public Base
 {
 public:
     using lhs_type = std::remove_cvref_t<Lhs>;
@@ -170,8 +149,7 @@ public:
     using value_type = std::common_type_t<expr_value_t<lhs_type>, expr_value_t<rhs_type>>;
 
     constexpr binary_expr(Lhs&& lhs, Rhs&& rhs)
-        : lhs_(store_operand(std::forward<Lhs>(lhs)))
-        , rhs_(store_operand(std::forward<Rhs>(rhs)))
+        : lhs_(store_operand(std::forward<Lhs>(lhs))), rhs_(store_operand(std::forward<Rhs>(rhs)))
     {
     }
 
@@ -191,8 +169,7 @@ protected:
 };
 
 template <class Op, class Lhs, class Rhs>
-class vector_binary_expr final
-    : public binary_expr<Op, Lhs, Rhs, vector_expr<vector_binary_expr<Op, Lhs, Rhs>>>
+class vector_binary_expr final : public binary_expr<Op, Lhs, Rhs, vector_expr<vector_binary_expr<Op, Lhs, Rhs>>>
 {
     using base_type = binary_expr<Op, Lhs, Rhs, vector_expr<vector_binary_expr<Op, Lhs, Rhs>>>;
 
@@ -208,8 +185,7 @@ public:
     }
 };
 
-template <class A, class B, class C>
-class vector_fma_expr final : public vector_expr<vector_fma_expr<A, B, C>>
+template <class A, class B, class C> class vector_fma_expr final : public vector_expr<vector_fma_expr<A, B, C>>
 {
 public:
     using a_type = std::remove_cvref_t<A>;
@@ -220,9 +196,8 @@ public:
     static constexpr std::size_t size = expr_traits<a_type>::size;
 
     constexpr vector_fma_expr(A&& a, B&& b, C&& c)
-        : a_(store_operand(std::forward<A>(a)))
-        , b_(store_operand(std::forward<B>(b)))
-        , c_(store_operand(std::forward<C>(c)))
+        : a_(store_operand(std::forward<A>(a))), b_(store_operand(std::forward<B>(b))),
+          c_(store_operand(std::forward<C>(c)))
     {
     }
 
@@ -253,8 +228,7 @@ private:
 };
 
 template <class Op, class Lhs, class Rhs>
-class matrix_binary_expr final
-    : public binary_expr<Op, Lhs, Rhs, matrix_expr<matrix_binary_expr<Op, Lhs, Rhs>>>
+class matrix_binary_expr final : public binary_expr<Op, Lhs, Rhs, matrix_expr<matrix_binary_expr<Op, Lhs, Rhs>>>
 {
     using base_type = binary_expr<Op, Lhs, Rhs, matrix_expr<matrix_binary_expr<Op, Lhs, Rhs>>>;
 
@@ -290,17 +264,13 @@ public:
     }
 };
 
-template <class Expr, class Base>
-class neg_expr_base : public Base
+template <class Expr, class Base> class neg_expr_base : public Base
 {
 public:
     using expr_type = std::remove_cvref_t<Expr>;
     using value_type = expr_value_t<expr_type>;
 
-    constexpr explicit neg_expr_base(Expr&& expr)
-        : expr_(store_operand(std::forward<Expr>(expr)))
-    {
-    }
+    constexpr explicit neg_expr_base(Expr&& expr) : expr_(store_operand(std::forward<Expr>(expr))) {}
 
     constexpr const auto& expr() const noexcept
     {
@@ -311,8 +281,7 @@ protected:
     operand_storage_t<Expr&&> expr_;
 };
 
-template <class Expr>
-class vector_neg_expr final : public neg_expr_base<Expr, vector_expr<vector_neg_expr<Expr>>>
+template <class Expr> class vector_neg_expr final : public neg_expr_base<Expr, vector_expr<vector_neg_expr<Expr>>>
 {
     using base_type = neg_expr_base<Expr, vector_expr<vector_neg_expr<Expr>>>;
 
@@ -328,8 +297,7 @@ public:
     }
 };
 
-template <class Expr>
-class matrix_neg_expr final : public neg_expr_base<Expr, matrix_expr<matrix_neg_expr<Expr>>>
+template <class Expr> class matrix_neg_expr final : public neg_expr_base<Expr, matrix_expr<matrix_neg_expr<Expr>>>
 {
     using base_type = neg_expr_base<Expr, matrix_expr<matrix_neg_expr<Expr>>>;
 
@@ -364,8 +332,7 @@ public:
     }
 };
 
-template <class Scalar, class Expr, class Base>
-class scalar_binary_expr : public Base
+template <class Scalar, class Expr, class Base> class scalar_binary_expr : public Base
 {
 public:
     using scalar_type = std::remove_cvref_t<Scalar>;
@@ -373,8 +340,7 @@ public:
     using value_type = std::common_type_t<scalar_type, expr_value_t<expr_type>>;
 
     constexpr scalar_binary_expr(Scalar scalar, Expr&& expr)
-        : scalar_(static_cast<value_type>(scalar))
-        , expr_(store_operand(std::forward<Expr>(expr)))
+        : scalar_(static_cast<value_type>(scalar)), expr_(store_operand(std::forward<Expr>(expr)))
     {
     }
 
@@ -431,7 +397,8 @@ template <class Op, bool ScalarOnLeft, class Scalar, class Expr>
 class quaternion_scalar_expr final
     : public scalar_binary_expr<Scalar, Expr, quaternion_expr<quaternion_scalar_expr<Op, ScalarOnLeft, Scalar, Expr>>>
 {
-    using base_type = scalar_binary_expr<Scalar, Expr, quaternion_expr<quaternion_scalar_expr<Op, ScalarOnLeft, Scalar, Expr>>>;
+    using base_type =
+        scalar_binary_expr<Scalar, Expr, quaternion_expr<quaternion_scalar_expr<Op, ScalarOnLeft, Scalar, Expr>>>;
 
 public:
     using value_type = typename base_type::value_type;
@@ -448,79 +415,62 @@ public:
     }
 };
 
-template <class T>
-struct is_mul_expr : std::false_type
+template <class T> struct is_mul_expr : std::false_type
 {
 };
 
-template <class Lhs, class Rhs>
-struct is_mul_expr<vector_binary_expr<mul_op, Lhs, Rhs>> : std::true_type
+template <class Lhs, class Rhs> struct is_mul_expr<vector_binary_expr<mul_op, Lhs, Rhs>> : std::true_type
 {
 };
 
-template <class T>
-inline constexpr bool is_mul_expr_v = is_mul_expr<std::remove_cvref_t<T>>::value;
+template <class T> inline constexpr bool is_mul_expr_v = is_mul_expr<std::remove_cvref_t<T>>::value;
 
-template <class T>
-struct is_vector_fma_expr : std::false_type
+template <class T> struct is_vector_fma_expr : std::false_type
 {
 };
 
-template <class A, class B, class C>
-struct is_vector_fma_expr<vector_fma_expr<A, B, C>> : std::true_type
+template <class A, class B, class C> struct is_vector_fma_expr<vector_fma_expr<A, B, C>> : std::true_type
 {
 };
 
-template <class T>
-inline constexpr bool is_vector_fma_expr_v = is_vector_fma_expr<std::remove_cvref_t<T>>::value;
+template <class T> inline constexpr bool is_vector_fma_expr_v = is_vector_fma_expr<std::remove_cvref_t<T>>::value;
 
-template <class T>
-struct is_vector_neg_expr : std::false_type
+template <class T> struct is_vector_neg_expr : std::false_type
 {
 };
 
-template <class Expr>
-struct is_vector_neg_expr<vector_neg_expr<Expr>> : std::true_type
+template <class Expr> struct is_vector_neg_expr<vector_neg_expr<Expr>> : std::true_type
 {
 };
 
-template <class T>
-inline constexpr bool is_vector_neg_expr_v = is_vector_neg_expr<std::remove_cvref_t<T>>::value;
+template <class T> inline constexpr bool is_vector_neg_expr_v = is_vector_neg_expr<std::remove_cvref_t<T>>::value;
 
 template <class T>
-concept binary_expression_node = requires(const T& value)
-{
+concept binary_expression_node = requires(const T& value) {
     typename std::remove_cvref_t<T>::op_type;
     value.lhs();
     value.rhs();
 };
 
-template <class Expr, bool IsBinary = binary_expression_node<Expr>>
-struct is_implicit_fma_expr : std::false_type
+template <class Expr, bool IsBinary = binary_expression_node<Expr>> struct is_implicit_fma_expr : std::false_type
 {
 };
 
 template <class Expr>
 struct is_implicit_fma_expr<Expr, true>
-    : std::bool_constant<
-        std::same_as<typename std::remove_cvref_t<Expr>::op_type, add_op> &&
-        (
-            is_mul_expr_v<decltype(std::declval<const Expr&>().lhs())> ||
-            is_mul_expr_v<decltype(std::declval<const Expr&>().rhs())>
-        )>
+    : std::bool_constant<std::same_as<typename std::remove_cvref_t<Expr>::op_type, add_op> &&
+                         (is_mul_expr_v<decltype(std::declval<const Expr&>().lhs())> ||
+                          is_mul_expr_v<decltype(std::declval<const Expr&>().rhs())>)>
 {
 };
 
-template <class Expr>
-inline constexpr bool is_implicit_fma_expr_v = is_implicit_fma_expr<Expr>::value;
+template <class Expr> inline constexpr bool is_implicit_fma_expr_v = is_implicit_fma_expr<Expr>::value;
 
 template <class Expr>
 constexpr bool can_fma_vector_expr =
-    std::is_floating_point_v<expr_value_t<Expr>> &&
-    (is_vector_fma_expr_v<Expr> || is_implicit_fma_expr_v<Expr>);
+    std::is_floating_point_v<expr_value_t<Expr>> && (is_vector_fma_expr_v<Expr> || is_implicit_fma_expr_v<Expr>);
 
-template <class Value, class Expr>
-constexpr Value eval_vector_element(const Expr& expr, std::size_t index) noexcept
+template <class Value, class Expr> constexpr Value eval_vector_element(const Expr& expr, std::size_t index) noexcept
 {
     if constexpr (can_fma_vector_expr<Expr>)
     {

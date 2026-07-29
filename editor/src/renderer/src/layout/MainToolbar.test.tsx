@@ -20,8 +20,9 @@ describe('MainToolbar runtime controls', () => {
   it('dispatches playback commands and time-scale changes', () => {
     const onCommand = vi.fn();
     const onCycleTimeScale = vi.fn();
-    render(<MainToolbar onCommand={onCommand} runtimeState="paused"
-      timeScale={0.5} onCycleTimeScale={onCycleTimeScale} />);
+    render(
+      <MainToolbar onCommand={onCommand} runtimeState="paused" timeScale={0.5} onCycleTimeScale={onCycleTimeScale} />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Play' }));
     fireEvent.click(screen.getByRole('button', { name: 'Step' }));

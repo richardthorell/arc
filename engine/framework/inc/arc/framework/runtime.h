@@ -119,13 +119,15 @@ private:
     application* app_{};
     application_config config_{};
     memory::memory_system memory_{};
-    memory::system_memory_resource frame_memory_resource_{ memory_, memory::memory_domain::frame, memory::make_memory_tag("runtime.frame") };
-    memory::system_memory_resource tick_memory_resource_{ memory_, memory::memory_domain::tick, memory::make_memory_tag("runtime.tick") };
-    memory::frame_arena frame_arena_{ 256u * 1024u, &frame_memory_resource_ };
-    memory::tick_arena tick_arena_{ 128u * 1024u, &tick_memory_resource_ };
+    memory::system_memory_resource frame_memory_resource_{memory_, memory::memory_domain::frame,
+                                                          memory::make_memory_tag("runtime.frame")};
+    memory::system_memory_resource tick_memory_resource_{memory_, memory::memory_domain::tick,
+                                                         memory::make_memory_tag("runtime.tick")};
+    memory::frame_arena frame_arena_{256u * 1024u, &frame_memory_resource_};
+    memory::tick_arena tick_arena_{128u * 1024u, &tick_memory_resource_};
     jobs::job_system jobs_{};
     runtime_service_registry services_;
-    runtime_world_manager worlds_{ memory_ };
+    runtime_world_manager worlds_{memory_};
     module_context module_context_;
     module_manager modules_;
     bool modules_registered_{};

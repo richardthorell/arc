@@ -6,6 +6,15 @@ add_library(arc-render-vulkan STATIC
     src/vulkan_sky_constants.cpp
     src/vulkan_sky_constants.h
 )
+arc_configure_first_party_target(arc-render-vulkan)
+
+# The implementation translation unit is entirely third-party VMA code. Keep
+# ARC's warning gate on the Vulkan backend while exempting this vendor source.
+if(MSVC)
+    set_source_files_properties(src/vma_impl.cpp PROPERTIES COMPILE_OPTIONS "/W0;/WX-")
+else()
+    set_source_files_properties(src/vma_impl.cpp PROPERTIES COMPILE_OPTIONS "-w;-Wno-error")
+endif()
 
 target_compile_features(arc-render-vulkan
     PUBLIC

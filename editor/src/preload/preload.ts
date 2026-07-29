@@ -72,20 +72,37 @@ export type ArcAiGatewayStatus = {
   eventSequence: number;
   clients: Array<{ id: string; name: string; connectedAt: string; lastSeenAt: string }>;
   pendingEditRequests: Array<{
-    id: string; clientId: string; clientName: string; label: string; requestedAt: string;
-    state: 'pending' | 'approved' | 'denied' | 'expired'; expiresAt?: string;
+    id: string;
+    clientId: string;
+    clientName: string;
+    label: string;
+    requestedAt: string;
+    state: 'pending' | 'approved' | 'denied' | 'expired';
+    expiresAt?: string;
   }>;
   activeEditSession: {
-    id: string; clientId: string; label: string; startedAt: string; lastActivityAt: string;
+    id: string;
+    clientId: string;
+    label: string;
+    startedAt: string;
+    lastActivityAt: string;
     expectedSceneRevision: number;
   } | null;
   lastCommittedEdit: {
-    clientId: string; label: string; sceneRevision: number; committedAt: string;
+    clientId: string;
+    label: string;
+    sceneRevision: number;
+    committedAt: string;
   } | null;
   viewportLease: { clientId: string; expiresAt: string } | null;
   audit: Array<{
-    sequence: number; timestamp: string; clientId: string; category: string;
-    operation: string; succeeded: boolean; detail: string;
+    sequence: number;
+    timestamp: string;
+    clientId: string;
+    category: string;
+    operation: string;
+    succeeded: boolean;
+    detail: string;
   }>;
 };
 
@@ -93,7 +110,8 @@ const arcApi = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getStartupState: (): Promise<ArcStartupState> => ipcRenderer.invoke('editor:getStartupState'),
   host: {
-    query: (type: string, payload: Record<string, unknown> = {}): Promise<unknown> => ipcRenderer.invoke('host:query', type, payload),
+    query: (type: string, payload: Record<string, unknown> = {}): Promise<unknown> =>
+      ipcRenderer.invoke('host:query', type, payload),
     command: (type: string, payload: Record<string, unknown> = {}, edit?: HostEditTransaction): Promise<unknown> =>
       ipcRenderer.invoke('host:command', type, payload, edit),
     onLog: (callback: (event: ArcHostLogEvent) => void): (() => void) => {
@@ -122,7 +140,8 @@ const arcApi = {
     },
   },
   dialog: {
-    openScene: (options: OpenSceneDialogOptions = {}): Promise<OpenSceneDialogResult> => ipcRenderer.invoke('dialog:openScene', options),
+    openScene: (options: OpenSceneDialogOptions = {}): Promise<OpenSceneDialogResult> =>
+      ipcRenderer.invoke('dialog:openScene', options),
     saveScene: (): Promise<SaveSceneDialogResult> => ipcRenderer.invoke('dialog:saveScene'),
     createPrefab: (entity: { index: number; generation: number }): Promise<PrefabDialogResult> =>
       ipcRenderer.invoke('dialog:createPrefab', entity),

@@ -17,25 +17,38 @@ export type WorldEnvironmentInspectorProps = {
 };
 
 const environmentPresets = [
-  ['clearDay', 'Clear Day'], ['alpineLateMorning', 'Alpine'], ['goldenHour', 'Golden Hour'],
-  ['overcast', 'Overcast'], ['night', 'Night'], ['indoorNeutral', 'Indoor'],
+  ['clearDay', 'Clear Day'],
+  ['alpineLateMorning', 'Alpine'],
+  ['goldenHour', 'Golden Hour'],
+  ['overcast', 'Overcast'],
+  ['night', 'Night'],
+  ['indoorNeutral', 'Indoor'],
 ] as const;
 
 export function WorldEnvironmentInspector({
-  environment, assets, thumbnailProvider, onChange, onPreset, onHdri,
+  environment,
+  assets,
+  thumbnailProvider,
+  onChange,
+  onPreset,
+  onHdri,
 }: WorldEnvironmentInspectorProps) {
   const [draft, setDraft] = useState(environment);
   const [filter, setFilter] = useState('');
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => Object.fromEntries(
-    worldEnvironmentSchemas.map((schema) => [schema.id, schema.collapsedByDefault ?? false]),
-  ));
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(worldEnvironmentSchemas.map((schema) => [schema.id, schema.collapsedByDefault ?? false])),
+  );
   useEffect(() => setDraft(environment), [environment]);
 
   const schemas = useMemo(() => {
     const needle = filter.trim().toLocaleLowerCase();
-    return worldEnvironmentSchemas.filter((schema) => (!schema.visible || schema.visible(draft)) && (!needle ||
-      schema.title.toLocaleLowerCase().includes(needle) ||
-      schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle))));
+    return worldEnvironmentSchemas.filter(
+      (schema) =>
+        (!schema.visible || schema.visible(draft)) &&
+        (!needle ||
+          schema.title.toLocaleLowerCase().includes(needle) ||
+          schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle))),
+    );
   }, [draft, filter]);
 
   const update = (path: string, value: unknown) => {
@@ -53,24 +66,39 @@ export function WorldEnvironmentInspector({
   return (
     <section className="environment-inspector data-inspector">
       <div className="environment-preset-strip" aria-label="World environment presets">
-        {environmentPresets.map(([id, label]) => <button key={id} onClick={() => onPreset(id)} type="button">{label}</button>)}
+        {environmentPresets.map(([id, label]) => (
+          <button key={id} onClick={() => onPreset(id)} type="button">
+            {label}
+          </button>
+        ))}
       </div>
       <div className="inspector-search-row environment-search-row">
-        <label><Search size={15} /><input aria-label="Search world settings" onChange={(event) => setFilter(event.target.value)}
-          placeholder="Search world settings…" value={filter} /></label>
-        <button aria-label="World settings filter options" title="Filter virtual components" type="button"><SlidersHorizontal size={15} /></button>
+        <label>
+          <Search size={15} />
+          <input
+            aria-label="Search world settings"
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder="Search world settings…"
+            value={filter}
+          />
+        </label>
+        <button aria-label="World settings filter options" title="Filter virtual components" type="button">
+          <SlidersHorizontal size={15} />
+        </button>
       </div>
       <div className="inspector-component-list environment-component-list">
-        {schemas.map((schema) => <SchemaComponentCard
-          key={schema.id}
-          assets={assets}
-          collapsed={collapsed[schema.id] ?? false}
-          context={draft}
-          schema={schema}
-          thumbnailProvider={thumbnailProvider}
-          onToggle={() => setCollapsed((current) => ({ ...current, [schema.id]: !(current[schema.id] ?? false) }))}
-          onValue={(path, value) => update(path, value)}
-        />)}
+        {schemas.map((schema) => (
+          <SchemaComponentCard
+            key={schema.id}
+            assets={assets}
+            collapsed={collapsed[schema.id] ?? false}
+            context={draft}
+            schema={schema}
+            thumbnailProvider={thumbnailProvider}
+            onToggle={() => setCollapsed((current) => ({ ...current, [schema.id]: !(current[schema.id] ?? false) }))}
+            onValue={(path, value) => update(path, value)}
+          />
+        ))}
         {!schemas.length && <div className="inspector-state compact">No world settings match “{filter}”.</div>}
       </div>
     </section>

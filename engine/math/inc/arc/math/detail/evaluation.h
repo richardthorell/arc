@@ -8,11 +8,7 @@ namespace arc::math::detail
 {
 
 template <class T, std::size_t N>
-concept vector_simd_exact_register_available =
-    requires
-    {
-        typename arc::simd::simd_register<T, N>::type;
-    };
+concept vector_simd_exact_register_available = requires { typename arc::simd::simd_register<T, N>::type; };
 
 template <class T, std::size_t N, bool ExactRegister = vector_simd_exact_register_available<T, N>>
 struct vector_simd_io_available_impl : std::false_type
@@ -20,31 +16,27 @@ struct vector_simd_io_available_impl : std::false_type
 };
 
 template <class T, std::size_t N>
-struct vector_simd_io_available_impl<T, N, true>
-    : std::bool_constant<requires(const T* input, T* output, arc::simd::simd<T, N> value)
-    {
-        { arc::simd::load_unaligned<T, N>(input) } -> std::same_as<arc::simd::simd<T, N>>;
-        arc::simd::store_unaligned<T, N>(output, value);
-    }>
+    struct vector_simd_io_available_impl<T, N, true> : std::bool_constant <
+                                                       requires(const T* input, T* output, arc::simd::simd<T, N> value)
 {
-};
+    {
+        arc::simd::load_unaligned<T, N>(input)
+    } -> std::same_as<arc::simd::simd<T, N>>;
+    arc::simd::store_unaligned<T, N>(output, value);
+}>{};
 
-template <class T, std::size_t N>
-constexpr bool vector_simd_io_available = vector_simd_io_available_impl<T, N>::value;
+template <class T, std::size_t N> constexpr bool vector_simd_io_available = vector_simd_io_available_impl<T, N>::value;
 
-template <class Op, class T, std::size_t N, bool Available = vector_simd_io_available<T, N>>
-struct vector_simd_binary
+template <class Op, class T, std::size_t N, bool Available = vector_simd_io_available<T, N>> struct vector_simd_binary
 {
     static constexpr bool available = false;
 };
 
-template <class T, std::size_t N>
-struct vector_simd_binary<add_op, T, N, true>
+template <class T, std::size_t N> struct vector_simd_binary<add_op, T, N, true>
 {
-    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs)
-        {
-            { arc::simd::add(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
-        };
+    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs) {
+        { arc::simd::add(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
+    };
 
     static auto apply(const arc::simd::simd<T, N>& lhs, const arc::simd::simd<T, N>& rhs) noexcept
     {
@@ -52,13 +44,11 @@ struct vector_simd_binary<add_op, T, N, true>
     }
 };
 
-template <class T, std::size_t N>
-struct vector_simd_binary<sub_op, T, N, true>
+template <class T, std::size_t N> struct vector_simd_binary<sub_op, T, N, true>
 {
-    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs)
-        {
-            { arc::simd::sub(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
-        };
+    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs) {
+        { arc::simd::sub(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
+    };
 
     static auto apply(const arc::simd::simd<T, N>& lhs, const arc::simd::simd<T, N>& rhs) noexcept
     {
@@ -66,13 +56,11 @@ struct vector_simd_binary<sub_op, T, N, true>
     }
 };
 
-template <class T, std::size_t N>
-struct vector_simd_binary<mul_op, T, N, true>
+template <class T, std::size_t N> struct vector_simd_binary<mul_op, T, N, true>
 {
-    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs)
-        {
-            { arc::simd::mul(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
-        };
+    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs) {
+        { arc::simd::mul(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
+    };
 
     static auto apply(const arc::simd::simd<T, N>& lhs, const arc::simd::simd<T, N>& rhs) noexcept
     {
@@ -80,13 +68,11 @@ struct vector_simd_binary<mul_op, T, N, true>
     }
 };
 
-template <class T, std::size_t N>
-struct vector_simd_binary<div_op, T, N, true>
+template <class T, std::size_t N> struct vector_simd_binary<div_op, T, N, true>
 {
-    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs)
-        {
-            { arc::simd::div(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
-        };
+    static constexpr bool available = requires(arc::simd::simd<T, N> lhs, arc::simd::simd<T, N> rhs) {
+        { arc::simd::div(lhs, rhs) } -> std::same_as<arc::simd::simd<T, N>>;
+    };
 
     static auto apply(const arc::simd::simd<T, N>& lhs, const arc::simd::simd<T, N>& rhs) noexcept
     {
@@ -100,13 +86,12 @@ struct vector_simd_neg_available_impl : std::false_type
 };
 
 template <class T, std::size_t N>
-struct vector_simd_neg_available_impl<T, N, true>
-    : std::bool_constant<requires(arc::simd::simd<T, N> value)
-    {
-        { arc::simd::neg(value) } -> std::same_as<arc::simd::simd<T, N>>;
-    }>
+    struct vector_simd_neg_available_impl<T, N, true> : std::bool_constant < requires(arc::simd::simd<T, N> value)
 {
-};
+    {
+        arc::simd::neg(value)
+    } -> std::same_as<arc::simd::simd<T, N>>;
+}>{};
 
 template <class T, std::size_t N>
 constexpr bool vector_simd_neg_available = vector_simd_neg_available_impl<T, N>::value;
@@ -117,16 +102,14 @@ struct vector_simd_fma_available_impl : std::false_type
 };
 
 template <class T, std::size_t N>
-struct vector_simd_fma_available_impl<T, N, true>
-    : std::bool_constant<std::is_floating_point_v<T> && requires(
-          arc::simd::simd<T, N> a,
-          arc::simd::simd<T, N> b,
-          arc::simd::simd<T, N> c)
-    {
-        { arc::simd::fma(a, b, c) } -> std::same_as<arc::simd::simd<T, N>>;
-    }>
+    struct vector_simd_fma_available_impl<T, N, true>
+    : std::bool_constant <
+      std::is_floating_point_v<T>&& requires(arc::simd::simd<T, N> a, arc::simd::simd<T, N> b, arc::simd::simd<T, N> c)
 {
-};
+    {
+        arc::simd::fma(a, b, c)
+    } -> std::same_as<arc::simd::simd<T, N>>;
+}>{};
 
 template <class T, std::size_t N>
 constexpr bool vector_simd_fma_available = vector_simd_fma_available_impl<T, N>::value;
@@ -171,16 +154,12 @@ constexpr void assign_vector_simd_binary(std::array<T, N>& output, const Expr& e
     fill_vector_array(rhs, expr.rhs());
 
     arc::simd::store_unaligned<T, N>(
-        output.data(),
-        vector_simd_binary<op_type, T, N>::apply(
-            arc::simd::load_unaligned<T, N>(lhs.data()),
-            arc::simd::load_unaligned<T, N>(rhs.data())));
+        output.data(), vector_simd_binary<op_type, T, N>::apply(arc::simd::load_unaligned<T, N>(lhs.data()),
+                                                                arc::simd::load_unaligned<T, N>(rhs.data())));
 }
 
 template <class T, std::size_t N, vector_expression Expr>
-constexpr bool can_assign_vector_simd_neg =
-    is_vector_neg_expr_v<Expr> &&
-    vector_simd_neg_available<T, N>;
+constexpr bool can_assign_vector_simd_neg = is_vector_neg_expr_v<Expr> && vector_simd_neg_available<T, N>;
 
 template <class T, std::size_t N, vector_expression Expr>
 constexpr void assign_vector_simd_neg(std::array<T, N>& output, const Expr& expr) noexcept
@@ -188,15 +167,11 @@ constexpr void assign_vector_simd_neg(std::array<T, N>& output, const Expr& expr
     std::array<T, N> input{};
     fill_vector_array(input, expr.expr());
 
-    arc::simd::store_unaligned<T, N>(
-        output.data(),
-        arc::simd::neg(arc::simd::load_unaligned<T, N>(input.data())));
+    arc::simd::store_unaligned<T, N>(output.data(), arc::simd::neg(arc::simd::load_unaligned<T, N>(input.data())));
 }
 
 template <class T, std::size_t N, vector_expression Expr>
-constexpr bool can_assign_vector_simd_fma =
-    can_fma_vector_expr<Expr> &&
-    vector_simd_fma_available<T, N>;
+constexpr bool can_assign_vector_simd_fma = can_fma_vector_expr<Expr> && vector_simd_fma_available<T, N>;
 
 template <class T, std::size_t N, vector_expression Expr>
 constexpr void assign_vector_simd_fma(std::array<T, N>& output, const Expr& expr) noexcept
@@ -226,12 +201,9 @@ constexpr void assign_vector_simd_fma(std::array<T, N>& output, const Expr& expr
         fill_vector_array(c, expr.lhs());
     }
 
-    arc::simd::store_unaligned<T, N>(
-        output.data(),
-        arc::simd::fma(
-            arc::simd::load_unaligned<T, N>(a.data()),
-            arc::simd::load_unaligned<T, N>(b.data()),
-            arc::simd::load_unaligned<T, N>(c.data())));
+    arc::simd::store_unaligned<T, N>(output.data(), arc::simd::fma(arc::simd::load_unaligned<T, N>(a.data()),
+                                                                   arc::simd::load_unaligned<T, N>(b.data()),
+                                                                   arc::simd::load_unaligned<T, N>(c.data())));
 }
 
 template <class T, std::size_t N, vector_expression Expr>

@@ -27,6 +27,7 @@ endif()
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
 add_executable(arc_framework_tests ${TEST_SOURCES})
+arc_configure_first_party_target(arc_framework_tests)
 target_link_libraries(arc_framework_tests PRIVATE arc-framework Catch2::Catch2WithMain)
 
 include(Catch)

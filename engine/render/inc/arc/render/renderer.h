@@ -21,22 +21,20 @@ namespace arc::render
  */
 struct renderer_config
 {
-    render_backend_type preferred_backend{ render_backend_type::vulkan };
+    render_backend_type preferred_backend{render_backend_type::vulkan};
     bool enable_validation{};
-    render_quality_tier quality{ render_quality_tier::auto_select };
-    render_path path{ render_path::auto_select };
-    std::uint32_t adapter_index{ resource_handle::invalid_index };
-    float target_frame_time_ms{ default_target_frame_time_ms };
-    bool enable_dynamic_resolution{ true };
+    render_quality_tier quality{render_quality_tier::auto_select};
+    render_path path{render_path::auto_select};
+    std::uint32_t adapter_index{resource_handle::invalid_index};
+    float target_frame_time_ms{default_target_frame_time_ms};
+    bool enable_dynamic_resolution{true};
     bool force_disable_optional_features{};
 };
 
 /**
  * @brief Resolve project rendering policy against immutable adapter support.
  */
-resolved_render_config resolve_render_config(
-    const renderer_config& config,
-    const render_capabilities& capabilities);
+resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities);
 
 /**
  * @brief Smoothed, quantized dynamic-resolution policy shared by render paths.
@@ -49,11 +47,11 @@ public:
     float scale() const noexcept;
 
 private:
-    float target_frame_time_ms_{ default_target_frame_time_ms };
-    float minimum_scale_{ low_render_quality_profile.minimum_render_scale };
-    float maximum_scale_{ 1.0f };
-    float scale_{ 1.0f };
-    float smoothed_frame_time_ms_{ default_target_frame_time_ms };
+    float target_frame_time_ms_{default_target_frame_time_ms};
+    float minimum_scale_{low_render_quality_profile.minimum_render_scale};
+    float maximum_scale_{1.0f};
+    float scale_{1.0f};
+    float smoothed_frame_time_ms_{default_target_frame_time_ms};
     std::uint32_t over_budget_frames_{};
     std::uint32_t under_budget_frames_{};
 };

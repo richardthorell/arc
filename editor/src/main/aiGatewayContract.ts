@@ -33,7 +33,7 @@ export const gatewayMethods = [
   'history.redo',
 ] as const;
 
-export type GatewayMethod = typeof gatewayMethods[number];
+export type GatewayMethod = (typeof gatewayMethods)[number];
 
 export const gatewayHttpMethods = {
   '/api/v1/scene/overview': 'scene.overview',

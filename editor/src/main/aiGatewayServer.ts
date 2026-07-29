@@ -52,7 +52,7 @@ const sendJson = (response: ServerResponse, status: number, value: unknown): voi
   response.end(body);
 };
 
-const errorMessage = (error: unknown): string => error instanceof Error ? error.message : String(error);
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 export class AiGatewayServer {
   private server: Server | null = null;
@@ -66,7 +66,10 @@ export class AiGatewayServer {
   private unsubscribeEvents?: () => void;
   private authorityTimer?: NodeJS.Timeout;
 
-  constructor(readonly core: SceneGatewayCore, private readonly options: GatewayServerOptions) {
+  constructor(
+    readonly core: SceneGatewayCore,
+    private readonly options: GatewayServerOptions,
+  ) {
     const directory = path.join(options.appDataPath, 'ai-gateway');
     this.discoveryPath = path.join(directory, 'active.json');
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -210,7 +213,7 @@ export class AiGatewayServer {
         return;
       }
       if (url.pathname === '/api/v1/invoke' && request.method === 'POST') {
-        const body = await readBody(request) as { method?: unknown; params?: unknown };
+        const body = (await readBody(request)) as { method?: unknown; params?: unknown };
         if (typeof body.method !== 'string') throw new Error('method is required');
         sendJson(response, 200, { result: await this.invoke(body.method, body.params, clientId) });
         return;
@@ -222,12 +225,16 @@ export class AiGatewayServer {
         return;
       }
       if (url.pathname === '/rpc/v1' && request.method === 'POST') {
-        const body = await readBody(request) as {
-          jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown;
+        const body = (await readBody(request)) as {
+          jsonrpc?: unknown;
+          id?: unknown;
+          method?: unknown;
+          params?: unknown;
         };
         if (body.jsonrpc !== '2.0' || typeof body.method !== 'string') {
           sendJson(response, 400, {
-            jsonrpc: '2.0', id: body.id ?? null,
+            jsonrpc: '2.0',
+            id: body.id ?? null,
             error: { code: -32600, message: 'Invalid JSON-RPC request' },
           });
           return;
@@ -237,7 +244,8 @@ export class AiGatewayServer {
           sendJson(response, 200, { jsonrpc: '2.0', id: body.id ?? null, result });
         } catch (error) {
           sendJson(response, 200, {
-            jsonrpc: '2.0', id: body.id ?? null,
+            jsonrpc: '2.0',
+            id: body.id ?? null,
             error: { code: -32000, message: errorMessage(error) },
           });
         }
@@ -256,10 +264,9 @@ export class AiGatewayServer {
     const server = new McpServer({ name: 'arc-editor', version: '1.0.0' });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     const result = (value: unknown) => {
-      const content: Array<
-        { type: 'text'; text: string } |
-        { type: 'image'; data: string; mimeType: string }
-      > = [{ type: 'text', text: JSON.stringify(value, null, 2) }];
+      const content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }> = [
+        { type: 'text', text: JSON.stringify(value, null, 2) },
+      ];
       const colorArtifact = this.findColorArtifact(value);
       if (colorArtifact) {
         content.unshift({
@@ -270,147 +277,102 @@ export class AiGatewayServer {
       }
       return {
         content,
-        structuredContent: value && typeof value === 'object' ? value as Record<string, unknown> : { value },
+        structuredContent: value && typeof value === 'object' ? (value as Record<string, unknown>) : { value },
       };
     };
     const invoke = async (method: string, params: unknown) =>
       result(await this.invoke(method, params, this.currentClient()));
 
-    server.registerTool('arc_scene_overview', {
-      description: 'Read the current ARC scene, hierarchy, document state, and revisions.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async () => invoke('scene.overview', {}));
-    server.registerTool('arc_find_entities', {
-      description: 'Find scene entities by name or persistent GUID.',
-      inputSchema: {
-        search: z.string().optional(),
-        offset: z.number().int().nonnegative().optional(),
-        limit: z.number().int().min(1).max(200).optional(),
+    server.registerTool(
+      'arc_scene_overview',
+      {
+        description: 'Read the current ARC scene, hierarchy, document state, and revisions.',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('scene.findEntities', params));
-    server.registerTool('arc_get_entity', {
-      description: 'Inspect one scene entity and its components using a persistent GUID.',
-      inputSchema: { guid: z.string().min(1) },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('scene.getEntity', params));
-    server.registerTool('arc_component_schemas', {
-      description: 'Read reflected ARC component and field schemas.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async () => invoke('scene.componentSchemas', {}));
-    server.registerTool('arc_spatial_query', {
-      description: 'Raycast or find nearby/bounds-overlapping entities using persistent GUID results.',
-      inputSchema: {
-        kind: z.enum(['raycast', 'nearby', 'bounds', 'frustum']),
-        origin: z.array(z.number()).length(3).optional(),
-        direction: z.array(z.number()).length(3).optional(),
-        center: z.array(z.number()).length(3).optional(),
-        extent: z.array(z.number()).length(3).optional(),
-        radius: z.number().nonnegative().optional(),
-        limit: z.number().int().min(1).max(500).optional(),
+      async () => invoke('scene.overview', {}),
+    );
+    server.registerTool(
+      'arc_find_entities',
+      {
+        description: 'Find scene entities by name or persistent GUID.',
+        inputSchema: {
+          search: z.string().optional(),
+          offset: z.number().int().nonnegative().optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('scene.spatialQuery', params));
-    server.registerTool('arc_scene_changes', {
-      description: 'Read scene changes since a known revision, with an explicit full-snapshot fallback.',
-      inputSchema: { sinceSceneRevision: z.number().int().nonnegative() },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('scene.changes', params));
-    server.registerTool('arc_list_assets', {
-      description: 'List project assets available for validated scene and material bindings.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async () => invoke('assets.list', {}));
-    server.registerTool('arc_viewport_state', {
-      description: 'Read the live ARC viewport dimensions, frame revision, and performance state.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async () => invoke('viewport.state', {}));
-    server.registerTool('arc_move_viewport', {
-      description: 'Move ARC\'s editor camera. Look rotates in place, orbit rotates around the current pivot, and both use world +Y yaw with clamped camera-local +X pitch. Dolly translates linearly along camera Z.',
-      inputSchema: {
-        action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
-        x: z.number().optional(),
-        y: z.number().optional(),
-        amount: z.number().optional(),
-        guid: z.string().optional(),
-        position: z.array(z.number()).length(3).optional(),
-        target: z.array(z.number()).length(3).optional(),
-        waitFrames: z.number().int().min(0).max(120).optional(),
-        maxWidth: z.number().int().min(1).max(1920).optional(),
-        maxHeight: z.number().int().min(1).max(1080).optional(),
+      async (params) => invoke('scene.findEntities', params),
+    );
+    server.registerTool(
+      'arc_get_entity',
+      {
+        description: 'Inspect one scene entity and its components using a persistent GUID.',
+        inputSchema: { guid: z.string().min(1) },
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('viewport.move', params));
-    server.registerTool('arc_set_viewport_render_options', {
-      description: 'Set non-persistent viewport visualization, overlay, shadow, and environment visibility options.',
-      inputSchema: {
-        renderMode: z.enum(['shaded', 'wireframe']).optional(),
-        visualization: z.enum([
-          'standard', 'albedo', 'opacity', 'worldNormal', 'specularity', 'gloss',
-          'metalness', 'ao', 'emission', 'lighting', 'uv0', 'cascadeDebug',
-          'shadowMask', 'lightComplexity', 'clusterDebug',
-        ]).optional(),
-        overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
-        shadows: z.boolean().optional(),
-        environment: z.object({
-          sky: z.boolean().optional(),
-          fog: z.boolean().optional(),
-          terrain: z.boolean().optional(),
-          water: z.boolean().optional(),
-          vegetation: z.boolean().optional(),
-          decals: z.boolean().optional(),
-        }).optional(),
-        waitFrames: z.number().int().min(0).max(120).optional(),
+      async (params) => invoke('scene.getEntity', params),
+    );
+    server.registerTool(
+      'arc_component_schemas',
+      {
+        description: 'Read reflected ARC component and field schemas.',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('viewport.setRenderOptions', params));
-    server.registerTool('arc_pick_viewport', {
-      description: 'Request an entity pick at output viewport pixel coordinates.',
-      inputSchema: { x: z.number().int().nonnegative(), y: z.number().int().nonnegative() },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('viewport.pick', params));
-    server.registerTool('arc_observe_viewport', {
-      description: 'Capture coherent color, linear depth, ObjectID, and world-normal channels from the live viewport.',
-      inputSchema: {
-        color: z.boolean().optional(),
-        depth: z.boolean().optional(),
-        objectId: z.boolean().optional(),
-        normals: z.boolean().optional(),
-        sceneColor: z.boolean().optional(),
-        baseColor: z.boolean().optional(),
-        materialProperties: z.boolean().optional(),
-        emissive: z.boolean().optional(),
-        waitFrames: z.number().int().min(0).max(120).optional(),
-        maxWidth: z.number().int().min(1).max(1920).optional(),
-        maxHeight: z.number().int().min(1).max(1080).optional(),
+      async () => invoke('scene.componentSchemas', {}),
+    );
+    server.registerTool(
+      'arc_spatial_query',
+      {
+        description: 'Raycast or find nearby/bounds-overlapping entities using persistent GUID results.',
+        inputSchema: {
+          kind: z.enum(['raycast', 'nearby', 'bounds', 'frustum']),
+          origin: z.array(z.number()).length(3).optional(),
+          direction: z.array(z.number()).length(3).optional(),
+          center: z.array(z.number()).length(3).optional(),
+          extent: z.array(z.number()).length(3).optional(),
+          radius: z.number().nonnegative().optional(),
+          limit: z.number().int().min(1).max(500).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('viewport.observe', params));
-    server.registerTool('arc_debug_viewport', {
-      description: 'Atomically configure the viewport, optionally move the camera, settle frames, capture coherent channels, and return effective renderer state plus anomaly diagnostics.',
-      inputSchema: {
-        renderOptions: z.object({
-          renderMode: z.enum(['shaded', 'wireframe']).optional(),
-          visualization: z.enum([
-            'standard', 'albedo', 'opacity', 'worldNormal', 'specularity', 'gloss',
-            'metalness', 'ao', 'emission', 'lighting', 'uv0', 'cascadeDebug',
-            'shadowMask', 'lightComplexity', 'clusterDebug',
-          ]).optional(),
-          overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
-          shadows: z.boolean().optional(),
-          environment: z.object({
-            sky: z.boolean().optional(),
-            fog: z.boolean().optional(),
-            terrain: z.boolean().optional(),
-            water: z.boolean().optional(),
-            vegetation: z.boolean().optional(),
-            decals: z.boolean().optional(),
-          }).optional(),
-        }).optional(),
-        camera: z.object({
+      async (params) => invoke('scene.spatialQuery', params),
+    );
+    server.registerTool(
+      'arc_scene_changes',
+      {
+        description: 'Read scene changes since a known revision, with an explicit full-snapshot fallback.',
+        inputSchema: { sinceSceneRevision: z.number().int().nonnegative() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async (params) => invoke('scene.changes', params),
+    );
+    server.registerTool(
+      'arc_list_assets',
+      {
+        description: 'List project assets available for validated scene and material bindings.',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async () => invoke('assets.list', {}),
+    );
+    server.registerTool(
+      'arc_viewport_state',
+      {
+        description: 'Read the live ARC viewport dimensions, frame revision, and performance state.',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async () => invoke('viewport.state', {}),
+    );
+    server.registerTool(
+      'arc_move_viewport',
+      {
+        description:
+          "Move ARC's editor camera. Look rotates in place, orbit rotates around the current pivot, and both use world +Y yaw with clamped camera-local +X pitch. Dolly translates linearly along camera Z.",
+        inputSchema: {
           action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
           x: z.number().optional(),
           y: z.number().optional(),
@@ -418,8 +380,72 @@ export class AiGatewayServer {
           guid: z.string().optional(),
           position: z.array(z.number()).length(3).optional(),
           target: z.array(z.number()).length(3).optional(),
-        }).optional(),
-        capture: z.object({
+          waitFrames: z.number().int().min(0).max(120).optional(),
+          maxWidth: z.number().int().min(1).max(1920).optional(),
+          maxHeight: z.number().int().min(1).max(1080).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async (params) => invoke('viewport.move', params),
+    );
+    server.registerTool(
+      'arc_set_viewport_render_options',
+      {
+        description: 'Set non-persistent viewport visualization, overlay, shadow, and environment visibility options.',
+        inputSchema: {
+          renderMode: z.enum(['shaded', 'wireframe']).optional(),
+          visualization: z
+            .enum([
+              'standard',
+              'albedo',
+              'opacity',
+              'worldNormal',
+              'specularity',
+              'gloss',
+              'metalness',
+              'ao',
+              'emission',
+              'lighting',
+              'uv0',
+              'cascadeDebug',
+              'shadowMask',
+              'lightComplexity',
+              'clusterDebug',
+            ])
+            .optional(),
+          overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
+          shadows: z.boolean().optional(),
+          environment: z
+            .object({
+              sky: z.boolean().optional(),
+              fog: z.boolean().optional(),
+              terrain: z.boolean().optional(),
+              water: z.boolean().optional(),
+              vegetation: z.boolean().optional(),
+              decals: z.boolean().optional(),
+            })
+            .optional(),
+          waitFrames: z.number().int().min(0).max(120).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async (params) => invoke('viewport.setRenderOptions', params),
+    );
+    server.registerTool(
+      'arc_pick_viewport',
+      {
+        description: 'Request an entity pick at output viewport pixel coordinates.',
+        inputSchema: { x: z.number().int().nonnegative(), y: z.number().int().nonnegative() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async (params) => invoke('viewport.pick', params),
+    );
+    server.registerTool(
+      'arc_observe_viewport',
+      {
+        description:
+          'Capture coherent color, linear depth, ObjectID, and world-normal channels from the live viewport.',
+        inputSchema: {
           color: z.boolean().optional(),
           depth: z.boolean().optional(),
           objectId: z.boolean().optional(),
@@ -428,110 +454,257 @@ export class AiGatewayServer {
           baseColor: z.boolean().optional(),
           materialProperties: z.boolean().optional(),
           emissive: z.boolean().optional(),
+          waitFrames: z.number().int().min(0).max(120).optional(),
           maxWidth: z.number().int().min(1).max(1920).optional(),
           maxHeight: z.number().int().min(1).max(1080).optional(),
-        }).optional(),
-        samplePixels: z.array(z.object({
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async (params) => invoke('viewport.observe', params),
+    );
+    server.registerTool(
+      'arc_debug_viewport',
+      {
+        description:
+          'Atomically configure the viewport, optionally move the camera, settle frames, capture coherent channels, and return effective renderer state plus anomaly diagnostics.',
+        inputSchema: {
+          renderOptions: z
+            .object({
+              renderMode: z.enum(['shaded', 'wireframe']).optional(),
+              visualization: z
+                .enum([
+                  'standard',
+                  'albedo',
+                  'opacity',
+                  'worldNormal',
+                  'specularity',
+                  'gloss',
+                  'metalness',
+                  'ao',
+                  'emission',
+                  'lighting',
+                  'uv0',
+                  'cascadeDebug',
+                  'shadowMask',
+                  'lightComplexity',
+                  'clusterDebug',
+                ])
+                .optional(),
+              overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
+              shadows: z.boolean().optional(),
+              environment: z
+                .object({
+                  sky: z.boolean().optional(),
+                  fog: z.boolean().optional(),
+                  terrain: z.boolean().optional(),
+                  water: z.boolean().optional(),
+                  vegetation: z.boolean().optional(),
+                  decals: z.boolean().optional(),
+                })
+                .optional(),
+            })
+            .optional(),
+          camera: z
+            .object({
+              action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
+              x: z.number().optional(),
+              y: z.number().optional(),
+              amount: z.number().optional(),
+              guid: z.string().optional(),
+              position: z.array(z.number()).length(3).optional(),
+              target: z.array(z.number()).length(3).optional(),
+            })
+            .optional(),
+          capture: z
+            .object({
+              color: z.boolean().optional(),
+              depth: z.boolean().optional(),
+              objectId: z.boolean().optional(),
+              normals: z.boolean().optional(),
+              sceneColor: z.boolean().optional(),
+              baseColor: z.boolean().optional(),
+              materialProperties: z.boolean().optional(),
+              emissive: z.boolean().optional(),
+              maxWidth: z.number().int().min(1).max(1920).optional(),
+              maxHeight: z.number().int().min(1).max(1080).optional(),
+            })
+            .optional(),
+          samplePixels: z
+            .array(
+              z.object({
+                x: z.number().int().nonnegative(),
+                y: z.number().int().nonnegative(),
+              }),
+            )
+            .max(64)
+            .optional(),
+          baselineCaptureId: z.number().int().positive().optional(),
+          waitFrames: z.number().int().min(1).max(120).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+      },
+      async (params) => invoke('viewport.debug', params),
+    );
+    server.registerTool(
+      'arc_inspect_viewport_pixel',
+      {
+        description:
+          'Inspect exact color, linear depth, ObjectID/entity GUID, and world normal values at one output pixel.',
+        inputSchema: {
           x: z.number().int().nonnegative(),
           y: z.number().int().nonnegative(),
-        })).max(64).optional(),
-        baselineCaptureId: z.number().int().positive().optional(),
-        waitFrames: z.number().int().min(1).max(120).optional(),
+          captureId: z.number().int().positive().optional(),
+          waitFrames: z.number().int().min(0).max(120).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('viewport.debug', params));
-    server.registerTool('arc_inspect_viewport_pixel', {
-      description: 'Inspect exact color, linear depth, ObjectID/entity GUID, and world normal values at one output pixel.',
-      inputSchema: {
-        x: z.number().int().nonnegative(),
-        y: z.number().int().nonnegative(),
-        captureId: z.number().int().positive().optional(),
-        waitFrames: z.number().int().min(0).max(120).optional(),
+      async (params) => invoke('viewport.inspectPixel', params),
+    );
+    server.registerTool(
+      'arc_compare_viewport_captures',
+      {
+        description: 'Compare coherent viewport captures using per-channel mean error and changed-pixel fractions.',
+        inputSchema: {
+          baselineCaptureId: z.number().int().positive(),
+          currentCaptureId: z.number().int().positive().optional(),
+          waitFrames: z.number().int().min(0).max(120).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('viewport.inspectPixel', params));
-    server.registerTool('arc_compare_viewport_captures', {
-      description: 'Compare coherent viewport captures using per-channel mean error and changed-pixel fractions.',
-      inputSchema: {
-        baselineCaptureId: z.number().int().positive(),
-        currentCaptureId: z.number().int().positive().optional(),
-        waitFrames: z.number().int().min(0).max(120).optional(),
+      async (params) => invoke('viewport.compare', params),
+    );
+    server.registerTool(
+      'arc_diagnose_viewport',
+      {
+        description: 'Collect the current scene, viewport, renderer, render-graph, shadow, and history diagnostics.',
+        inputSchema: {},
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('viewport.compare', params));
-    server.registerTool('arc_diagnose_viewport', {
-      description: 'Collect the current scene, viewport, renderer, render-graph, shadow, and history diagnostics.',
-      inputSchema: {},
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async () => invoke('diagnostics.get', {}));
-    server.registerTool('arc_wait_for_event', {
-      description: 'Wait for a newer scene, frame, selection, or diagnostic event without polling the model client.',
-      inputSchema: {
-        kind: z.enum(['scene', 'frame', 'selection', 'diagnostic']),
-        afterSequence: z.number().int().nonnegative().optional(),
-        afterFrameRevision: z.number().int().nonnegative().optional(),
-        timeoutMs: z.number().int().min(1).max(30_000).optional(),
+      async () => invoke('diagnostics.get', {}),
+    );
+    server.registerTool(
+      'arc_wait_for_event',
+      {
+        description: 'Wait for a newer scene, frame, selection, or diagnostic event without polling the model client.',
+        inputSchema: {
+          kind: z.enum(['scene', 'frame', 'selection', 'diagnostic']),
+          afterSequence: z.number().int().nonnegative().optional(),
+          afterFrameRevision: z.number().int().nonnegative().optional(),
+          timeoutMs: z.number().int().min(1).max(30_000).optional(),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('events.wait', params));
-    server.registerTool('arc_request_edit_access', {
-      description: 'Ask the user to grant a temporary, in-memory ARC scene editing scope.',
-      inputSchema: { label: z.string().optional(), clientName: z.string().optional() },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    }, async (params) => invoke('edit.request', params));
-    server.registerTool('arc_begin_edit', {
-      description: 'Begin one undoable AI scene edit after the user grants access.',
-      inputSchema: { label: z.string(), expectedSceneRevision: z.number().int().positive() },
-      annotations: { destructiveHint: false, openWorldHint: false },
-    }, async (params) => invoke('edit.begin', params));
-    server.registerTool('arc_apply_edit', {
-      description: 'Apply one validated operation inside an active AI edit transaction.',
-      inputSchema: {
-        editSessionId: z.string(),
-        expectedSceneRevision: z.number().int().positive(),
-        action: z.enum(['create', 'rename', 'setActive', 'setTag', 'setMobility',
-          'setTransform', 'setMaterial', 'delete', 'duplicate', 'reparent', 'patchComponent']),
-        value: z.record(z.string(), z.unknown()),
+      async (params) => invoke('events.wait', params),
+    );
+    server.registerTool(
+      'arc_request_edit_access',
+      {
+        description: 'Ask the user to grant a temporary, in-memory ARC scene editing scope.',
+        inputSchema: { label: z.string().optional(), clientName: z.string().optional() },
+        annotations: { readOnlyHint: true, openWorldHint: false },
       },
-      annotations: { destructiveHint: true, openWorldHint: false },
-    }, async (params) => invoke('edit.apply', params));
-    server.registerTool('arc_finish_edit', {
-      description: 'Commit or cancel an active AI edit transaction.',
-      inputSchema: {
-        editSessionId: z.string(),
-        action: z.enum(['commit', 'cancel']),
-        expectedSceneRevision: z.number().int().positive().optional(),
+      async (params) => invoke('edit.request', params),
+    );
+    server.registerTool(
+      'arc_begin_edit',
+      {
+        description: 'Begin one undoable AI scene edit after the user grants access.',
+        inputSchema: { label: z.string(), expectedSceneRevision: z.number().int().positive() },
+        annotations: { destructiveHint: false, openWorldHint: false },
       },
-      annotations: { destructiveHint: false, openWorldHint: false },
-    }, async ({ action, ...params }) => invoke(action === 'commit' ? 'edit.commit' : 'edit.cancel', params));
-    server.registerTool('arc_history', {
-      description: 'Undo or redo one validated in-memory scene history operation after edit access is approved.',
-      inputSchema: {
-        action: z.enum(['undo', 'redo']),
-        expectedSceneRevision: z.number().int().positive(),
+      async (params) => invoke('edit.begin', params),
+    );
+    server.registerTool(
+      'arc_apply_edit',
+      {
+        description: 'Apply one validated operation inside an active AI edit transaction.',
+        inputSchema: {
+          editSessionId: z.string(),
+          expectedSceneRevision: z.number().int().positive(),
+          action: z.enum([
+            'create',
+            'rename',
+            'setActive',
+            'setTag',
+            'setMobility',
+            'setTransform',
+            'setMaterial',
+            'delete',
+            'duplicate',
+            'reparent',
+            'patchComponent',
+          ]),
+          value: z.record(z.string(), z.unknown()),
+        },
+        annotations: { destructiveHint: true, openWorldHint: false },
       },
-      annotations: { destructiveHint: true, openWorldHint: false },
-    }, async ({ action, ...params }) => invoke(action === 'undo' ? 'history.undo' : 'history.redo', params));
+      async (params) => invoke('edit.apply', params),
+    );
+    server.registerTool(
+      'arc_finish_edit',
+      {
+        description: 'Commit or cancel an active AI edit transaction.',
+        inputSchema: {
+          editSessionId: z.string(),
+          action: z.enum(['commit', 'cancel']),
+          expectedSceneRevision: z.number().int().positive().optional(),
+        },
+        annotations: { destructiveHint: false, openWorldHint: false },
+      },
+      async ({ action, ...params }) => invoke(action === 'commit' ? 'edit.commit' : 'edit.cancel', params),
+    );
+    server.registerTool(
+      'arc_history',
+      {
+        description: 'Undo or redo one validated in-memory scene history operation after edit access is approved.',
+        inputSchema: {
+          action: z.enum(['undo', 'redo']),
+          expectedSceneRevision: z.number().int().positive(),
+        },
+        annotations: { destructiveHint: true, openWorldHint: false },
+      },
+      async ({ action, ...params }) => invoke(action === 'undo' ? 'history.undo' : 'history.redo', params),
+    );
 
     const resource = async (uri: URL, method: string, params: unknown = {}) => ({
-      contents: [{ uri: uri.href, mimeType: 'application/json',
-        text: JSON.stringify(await this.invoke(method, params, this.currentClient()), null, 2) }],
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: 'application/json',
+          text: JSON.stringify(await this.invoke(method, params, this.currentClient()), null, 2),
+        },
+      ],
     });
-    server.registerResource('scene-summary', 'arc://scene/summary',
+    server.registerResource(
+      'scene-summary',
+      'arc://scene/summary',
       { title: 'ARC scene summary', mimeType: 'application/json' },
-      async (uri) => resource(uri, 'scene.overview'));
-    server.registerResource('component-schemas', 'arc://schema/components',
+      async (uri) => resource(uri, 'scene.overview'),
+    );
+    server.registerResource(
+      'component-schemas',
+      'arc://schema/components',
       { title: 'ARC component schemas', mimeType: 'application/json' },
-      async (uri) => resource(uri, 'scene.componentSchemas'));
-    server.registerResource('viewport-latest', 'arc://viewport/latest',
+      async (uri) => resource(uri, 'scene.componentSchemas'),
+    );
+    server.registerResource(
+      'viewport-latest',
+      'arc://viewport/latest',
       { title: 'ARC viewport state', mimeType: 'application/json' },
-      async (uri) => resource(uri, 'viewport.state'));
-    server.registerResource('diagnostics-latest', 'arc://diagnostics/latest',
+      async (uri) => resource(uri, 'viewport.state'),
+    );
+    server.registerResource(
+      'diagnostics-latest',
+      'arc://diagnostics/latest',
       { title: 'ARC diagnostics', mimeType: 'application/json' },
-      async (uri) => resource(uri, 'diagnostics.get'));
-    server.registerResource('scene-entity', new ResourceTemplate('arc://scene/entity/{guid}', { list: undefined }),
+      async (uri) => resource(uri, 'diagnostics.get'),
+    );
+    server.registerResource(
+      'scene-entity',
+      new ResourceTemplate('arc://scene/entity/{guid}', { list: undefined }),
       { title: 'ARC scene entity', mimeType: 'application/json' },
-      async (uri, variables) => resource(uri, 'scene.getEntity', { guid: String(variables.guid) }));
+      async (uri, variables) => resource(uri, 'scene.getEntity', { guid: String(variables.guid) }),
+    );
     return { server, transport };
   }
 
@@ -577,7 +750,10 @@ export class AiGatewayServer {
     const png = this.capturePng(raw, format, width, height, maxWidth, maxHeight);
     const pngArtifact = this.storeArtifact(png, 'image/png');
     const materialized: Record<string, unknown> = {
-      channel, format, width, height,
+      channel,
+      format,
+      width,
+      height,
       artifact: {
         id: pngArtifact.id,
         mimeType: pngArtifact.mimeType,
@@ -587,9 +763,14 @@ export class AiGatewayServer {
       },
     };
     const compressed = this.storeArtifact(gzipSync(raw), 'application/gzip');
-    const elementType = format === 'r32f' ? 'float32-le' :
-      format === 'r32ui' ? 'uint32-le' :
-        format === 'rgba16f' ? 'float16x4-le' : 'uint8x4';
+    const elementType =
+      format === 'r32f'
+        ? 'float32-le'
+        : format === 'r32ui'
+          ? 'uint32-le'
+          : format === 'rgba16f'
+            ? 'float16x4-le'
+            : 'uint8x4';
     materialized.rawArtifact = {
       id: compressed.id,
       mimeType: compressed.mimeType,
@@ -601,8 +782,14 @@ export class AiGatewayServer {
     return materialized;
   }
 
-  private capturePng(raw: Buffer, format: string, width: number, height: number,
-    maxWidth: number, maxHeight: number): Buffer {
+  private capturePng(
+    raw: Buffer,
+    format: string,
+    width: number,
+    height: number,
+    maxWidth: number,
+    maxHeight: number,
+  ): Buffer {
     const pixels = width * height;
     const bgra = Buffer.allocUnsafe(pixels * 4);
     const setPixel = (index: number, red: number, green: number, blue: number, alpha = 255) => {
@@ -622,18 +809,24 @@ export class AiGatewayServer {
     } else if (format === 'rgba16f') {
       for (let index = 0; index < pixels; ++index) {
         const offset = index * 8;
-        setPixel(index,
+        setPixel(
+          index,
           this.halfToByte(raw.readUInt16LE(offset)),
           this.halfToByte(raw.readUInt16LE(offset + 2)),
           this.halfToByte(raw.readUInt16LE(offset + 4)),
-          this.halfToByte(raw.readUInt16LE(offset + 6)));
+          this.halfToByte(raw.readUInt16LE(offset + 6)),
+        );
       }
     } else if (format === 'r32ui') {
       for (let index = 0; index < pixels; ++index) {
         const id = raw.readUInt32LE(index * 4);
         const hash = Math.imul(id ^ (id >>> 16), 0x45d9f3b);
-        setPixel(index, id === 0 ? 0 : hash & 255, id === 0 ? 0 : (hash >>> 8) & 255,
-          id === 0 ? 0 : (hash >>> 16) & 255);
+        setPixel(
+          index,
+          id === 0 ? 0 : hash & 255,
+          id === 0 ? 0 : (hash >>> 8) & 255,
+          id === 0 ? 0 : (hash >>> 16) & 255,
+        );
       }
     } else if (format === 'r32f') {
       const depths = new Float32Array(raw.buffer, raw.byteOffset, Math.min(pixels, raw.length / 4));
@@ -642,7 +835,7 @@ export class AiGatewayServer {
       const denominator = Math.log2(1 + Math.max(maximum, 1));
       for (let index = 0; index < pixels; ++index) {
         const depth = depths[index] ?? 0;
-        const value = Number.isFinite(depth) ? Math.round(255 * Math.log2(1 + Math.max(0, depth)) / denominator) : 0;
+        const value = Number.isFinite(depth) ? Math.round((255 * Math.log2(1 + Math.max(0, depth))) / denominator) : 0;
         setPixel(index, value, value, value);
       }
     } else {
@@ -736,8 +929,11 @@ export class AiGatewayServer {
 
   private authorized(request: IncomingMessage): boolean {
     const authorization = request.headers.authorization;
-    const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) :
-      typeof request.headers['x-arc-token'] === 'string' ? request.headers['x-arc-token'] : '';
+    const token = authorization?.startsWith('Bearer ')
+      ? authorization.slice(7)
+      : typeof request.headers['x-arc-token'] === 'string'
+        ? request.headers['x-arc-token']
+        : '';
     const actual = Buffer.from(token);
     const expected = Buffer.from(this.core.token);
     return actual.length === expected.length && timingSafeEqual(actual, expected);
@@ -782,27 +978,29 @@ export class AiGatewayServer {
   }
 
   private openApi(): Record<string, unknown> {
-    const operationPaths = Object.fromEntries(Object.entries(gatewayHttpMethods).map(([apiPath, method]) => [
-      apiPath,
-      {
-        post: {
-          operationId: method.replace(/[.-](.)/g, (_match, character: string) => character.toUpperCase()),
-          summary: `Invoke ${method}`,
-          requestBody: {
-            required: false,
-            content: {
-              'application/json': {
-                schema: { type: 'object', additionalProperties: true },
+    const operationPaths = Object.fromEntries(
+      Object.entries(gatewayHttpMethods).map(([apiPath, method]) => [
+        apiPath,
+        {
+          post: {
+            operationId: method.replace(/[.-](.)/g, (_match, character: string) => character.toUpperCase()),
+            summary: `Invoke ${method}`,
+            requestBody: {
+              required: false,
+              content: {
+                'application/json': {
+                  schema: { type: 'object', additionalProperties: true },
+                },
               },
             },
-          },
-          responses: {
-            200: { description: 'ARC gateway result' },
-            400: { description: 'Invalid or rejected operation' },
+            responses: {
+              200: { description: 'ARC gateway result' },
+              400: { description: 'Invalid or rejected operation' },
+            },
           },
         },
-      },
-    ]));
+      ]),
+    );
     return {
       openapi: '3.1.0',
       info: { title: 'ARC AI Scene Gateway', version: '1.0.0' },

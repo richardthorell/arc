@@ -36,16 +36,15 @@ inline std::uint16_t float_to_half_lane(float value) noexcept
 
     if (exponent <= 0)
     {
-        if (exponent < -10)
-            return static_cast<std::uint16_t>(sign);
+        if (exponent < -10) return static_cast<std::uint16_t>(sign);
         mantissa = (mantissa | 0x00800000u) >> (1 - exponent);
         return static_cast<std::uint16_t>(sign | ((mantissa + 0x00001000u) >> 13));
     }
 
-    if (exponent >= 31)
-        return static_cast<std::uint16_t>(sign | 0x7C00u);
+    if (exponent >= 31) return static_cast<std::uint16_t>(sign | 0x7C00u);
 
-    return static_cast<std::uint16_t>(sign | (static_cast<std::uint32_t>(exponent) << 10) | ((mantissa + 0x00001000u) >> 13));
+    return static_cast<std::uint16_t>(sign | (static_cast<std::uint32_t>(exponent) << 10) |
+                                      ((mantissa + 0x00001000u) >> 13));
 }
 
 inline float half_to_float_lane(std::uint16_t value) noexcept
@@ -56,8 +55,7 @@ inline float half_to_float_lane(std::uint16_t value) noexcept
 
     if (exponent == 0)
     {
-        if (mantissa == 0)
-            return std::bit_cast<float>(sign);
+        if (mantissa == 0) return std::bit_cast<float>(sign);
         while ((mantissa & 0x0400u) == 0)
         {
             mantissa <<= 1;
@@ -77,8 +75,7 @@ inline float half_to_float_lane(std::uint16_t value) noexcept
 
 } // namespace detail
 
-template <std::size_t N>
-inline simd<uint32_t, N> pack_unorm8(const simd<float, N>& value) noexcept
+template <std::size_t N> inline simd<uint32_t, N> pack_unorm8(const simd<float, N>& value) noexcept
 {
     auto lanes = detail::simd_to_array(value);
     std::array<uint32_t, N> result{};
@@ -87,8 +84,7 @@ inline simd<uint32_t, N> pack_unorm8(const simd<float, N>& value) noexcept
     return detail::simd_from_array<uint32_t, N>(result);
 }
 
-template <std::size_t N>
-inline simd<float, N> unpack_unorm8(const simd<uint32_t, N>& value) noexcept
+template <std::size_t N> inline simd<float, N> unpack_unorm8(const simd<uint32_t, N>& value) noexcept
 {
     auto lanes = detail::simd_to_array(value);
     std::array<float, N> result{};
@@ -97,8 +93,7 @@ inline simd<float, N> unpack_unorm8(const simd<uint32_t, N>& value) noexcept
     return detail::simd_from_array<float, N>(result);
 }
 
-template <std::size_t N>
-inline simd<uint32_t, N> pack_snorm8(const simd<float, N>& value) noexcept
+template <std::size_t N> inline simd<uint32_t, N> pack_snorm8(const simd<float, N>& value) noexcept
 {
     auto lanes = detail::simd_to_array(value);
     std::array<uint32_t, N> result{};
@@ -107,8 +102,7 @@ inline simd<uint32_t, N> pack_snorm8(const simd<float, N>& value) noexcept
     return detail::simd_from_array<uint32_t, N>(result);
 }
 
-template <std::size_t N>
-inline simd<float, N> unpack_snorm8(const simd<uint32_t, N>& value) noexcept
+template <std::size_t N> inline simd<float, N> unpack_snorm8(const simd<uint32_t, N>& value) noexcept
 {
     auto lanes = detail::simd_to_array(value);
     std::array<float, N> result{};
@@ -121,11 +115,8 @@ inline simd<float, N> unpack_snorm8(const simd<uint32_t, N>& value) noexcept
 }
 
 template <std::size_t N>
-inline simd<uint32_t, N> pack_rgba8(
-    const simd<float, N>& r,
-    const simd<float, N>& g,
-    const simd<float, N>& b,
-    const simd<float, N>& a) noexcept
+inline simd<uint32_t, N> pack_rgba8(const simd<float, N>& r, const simd<float, N>& g, const simd<float, N>& b,
+                                    const simd<float, N>& a) noexcept
 {
     auto rv = detail::simd_to_array(r);
     auto gv = detail::simd_to_array(g);
@@ -135,18 +126,14 @@ inline simd<uint32_t, N> pack_rgba8(
 
     for (std::size_t i = 0; i < N; ++i)
     {
-        result[i] =
-            (detail::pack_unorm8_lane(rv[i]) << 0) |
-            (detail::pack_unorm8_lane(gv[i]) << 8) |
-            (detail::pack_unorm8_lane(bv[i]) << 16) |
-            (detail::pack_unorm8_lane(av[i]) << 24);
+        result[i] = (detail::pack_unorm8_lane(rv[i]) << 0) | (detail::pack_unorm8_lane(gv[i]) << 8) |
+                    (detail::pack_unorm8_lane(bv[i]) << 16) | (detail::pack_unorm8_lane(av[i]) << 24);
     }
 
     return detail::simd_from_array<uint32_t, N>(result);
 }
 
-template <std::size_t N>
-inline std::array<simd<float, N>, 4> unpack_rgba8(const simd<uint32_t, N>& rgba) noexcept
+template <std::size_t N> inline std::array<simd<float, N>, 4> unpack_rgba8(const simd<uint32_t, N>& rgba) noexcept
 {
     auto lanes = detail::simd_to_array(rgba);
     std::array<float, N> r{};
@@ -162,16 +149,11 @@ inline std::array<simd<float, N>, 4> unpack_rgba8(const simd<uint32_t, N>& rgba)
         a[i] = static_cast<float>((lanes[i] >> 24) & 0xFFu) / 255.0f;
     }
 
-    return {
-        detail::simd_from_array<float, N>(r),
-        detail::simd_from_array<float, N>(g),
-        detail::simd_from_array<float, N>(b),
-        detail::simd_from_array<float, N>(a)
-    };
+    return {detail::simd_from_array<float, N>(r), detail::simd_from_array<float, N>(g),
+            detail::simd_from_array<float, N>(b), detail::simd_from_array<float, N>(a)};
 }
 
-template <std::size_t N>
-inline simd<uint32_t, N> float_to_half(const simd<float, N>& value) noexcept
+template <std::size_t N> inline simd<uint32_t, N> float_to_half(const simd<float, N>& value) noexcept
 {
     auto lanes = detail::simd_to_array(value);
     std::array<uint32_t, N> result{};
@@ -180,8 +162,7 @@ inline simd<uint32_t, N> float_to_half(const simd<float, N>& value) noexcept
     return detail::simd_from_array<uint32_t, N>(result);
 }
 
-template <std::size_t N>
-inline simd<float, N> half_to_float(const simd<uint32_t, N>& value) noexcept
+template <std::size_t N> inline simd<float, N> half_to_float(const simd<uint32_t, N>& value) noexcept
 {
     auto lanes = detail::simd_to_array(value);
     std::array<float, N> result{};
@@ -191,21 +172,15 @@ inline simd<float, N> half_to_float(const simd<uint32_t, N>& value) noexcept
 }
 
 template <std::size_t N>
-inline simd<uint32_t, N> pack_bgra8(
-    const simd<float, N>& r,
-    const simd<float, N>& g,
-    const simd<float, N>& b,
-    const simd<float, N>& a) noexcept
+inline simd<uint32_t, N> pack_bgra8(const simd<float, N>& r, const simd<float, N>& g, const simd<float, N>& b,
+                                    const simd<float, N>& a) noexcept
 {
     return pack_rgba8(b, g, r, a);
 }
 
 template <std::size_t N>
-inline simd<uint32_t, N> pack_argb8(
-    const simd<float, N>& r,
-    const simd<float, N>& g,
-    const simd<float, N>& b,
-    const simd<float, N>& a) noexcept
+inline simd<uint32_t, N> pack_argb8(const simd<float, N>& r, const simd<float, N>& g, const simd<float, N>& b,
+                                    const simd<float, N>& a) noexcept
 {
     auto rv = detail::simd_to_array(r);
     auto gv = detail::simd_to_array(g);
@@ -215,11 +190,8 @@ inline simd<uint32_t, N> pack_argb8(
 
     for (std::size_t i = 0; i < N; ++i)
     {
-        result[i] =
-            (detail::pack_unorm8_lane(av[i]) << 24) |
-            (detail::pack_unorm8_lane(rv[i]) << 16) |
-            (detail::pack_unorm8_lane(gv[i]) << 8) |
-            (detail::pack_unorm8_lane(bv[i]) << 0);
+        result[i] = (detail::pack_unorm8_lane(av[i]) << 24) | (detail::pack_unorm8_lane(rv[i]) << 16) |
+                    (detail::pack_unorm8_lane(gv[i]) << 8) | (detail::pack_unorm8_lane(bv[i]) << 0);
     }
 
     return detail::simd_from_array<uint32_t, N>(result);

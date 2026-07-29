@@ -15,7 +15,7 @@ public:
     void write(const arc::diagnostics::log_record& record) override
     {
         std::lock_guard lock(mutex);
-        records.push_back({ record.level, std::string(record.category), std::string(record.message) });
+        records.push_back({record.level, std::string(record.category), std::string(record.message)});
     }
 
     struct captured_record
@@ -38,8 +38,8 @@ TEST_CASE("logger filters records by minimum level")
     log->add_sink(sink);
     log->set_min_level(arc::diagnostics::log_level::warn);
 
-    log->write({ .level = arc::diagnostics::log_level::info, .category = "test", .message = "ignored" });
-    log->write({ .level = arc::diagnostics::log_level::error, .category = "test", .message = "kept" });
+    log->write({.level = arc::diagnostics::log_level::info, .category = "test", .message = "ignored"});
+    log->write({.level = arc::diagnostics::log_level::error, .category = "test", .message = "kept"});
 
     REQUIRE(sink->records.size() == 1);
     REQUIRE(sink->records[0].level == arc::diagnostics::log_level::error);

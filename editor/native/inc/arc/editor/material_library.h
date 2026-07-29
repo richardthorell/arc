@@ -60,69 +60,39 @@ bool is_material_asset_path(const std::filesystem::path& path);
 
 bool is_texture_asset_path(const std::filesystem::path& path);
 
-bool assign_texture_to_material_slot(
-    material_editor_state& editor,
-    material_texture_slot slot,
-    const std::filesystem::path& asset_root,
-    const std::filesystem::path& texture_path,
-    std::string* message = nullptr);
+bool assign_texture_to_material_slot(material_editor_state& editor, material_texture_slot slot,
+                                     const std::filesystem::path& asset_root, const std::filesystem::path& texture_path,
+                                     std::string* message = nullptr);
 
-bool create_default_material_asset(
-    const std::filesystem::path& path,
-    const std::filesystem::path& asset_root,
-    std::string& message);
+bool create_default_material_asset(const std::filesystem::path& path, const std::filesystem::path& asset_root,
+                                   std::string& message);
 
-render::material_handle load_material_for_editor(
-    editor_material_library& library,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root,
-    const std::filesystem::path& path,
-    material_asset* out_asset = nullptr);
+render::material_handle load_material_for_editor(editor_material_library& library, render::renderer& renderer,
+                                                 const std::filesystem::path& asset_root,
+                                                 const std::filesystem::path& path,
+                                                 material_asset* out_asset = nullptr);
 
-bool open_material_editor(
-    material_editor_state& editor,
-    editor_material_library& library,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root,
-    const std::filesystem::path& path,
-    std::string& message);
+bool open_material_editor(material_editor_state& editor, editor_material_library& library, render::renderer& renderer,
+                          const std::filesystem::path& asset_root, const std::filesystem::path& path,
+                          std::string& message);
 
-bool save_material_editor(
-    material_editor_state& editor,
-    editor_material_library& library,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root,
-    std::string& message);
+bool save_material_editor(material_editor_state& editor, editor_material_library& library, render::renderer& renderer,
+                          const std::filesystem::path& asset_root, std::string& message);
 
-bool update_material_editor_live_material(
-    material_editor_state& editor,
-    editor_material_library& library,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root,
-    std::string* message = nullptr);
+bool update_material_editor_live_material(material_editor_state& editor, editor_material_library& library,
+                                          render::renderer& renderer, const std::filesystem::path& asset_root,
+                                          std::string* message = nullptr);
 
-bool apply_material_to_selected(
-    ecs::world& scene,
-    ecs::entity selected,
-    render::material_handle material);
+bool apply_material_to_selected(ecs::world& scene, ecs::entity selected, render::material_handle material);
 
-bool apply_material_asset_to_entity(
-    editor_material_library& library,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root,
-    const std::filesystem::path& material_path,
-    ecs::world& scene,
-    ecs::entity entity,
-    std::string* message = nullptr);
+bool apply_material_asset_to_entity(editor_material_library& library, render::renderer& renderer,
+                                    const std::filesystem::path& asset_root, const std::filesystem::path& material_path,
+                                    ecs::world& scene, ecs::entity entity, std::string* message = nullptr);
 
-ecs::entity apply_material_asset_to_viewport_hit(
-    editor_material_library& library,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root,
-    const std::filesystem::path& material_path,
-    ecs::world& scene,
-    const editor_ray& ray,
-    ecs::entity& selected,
-    std::string* message = nullptr);
+ecs::entity apply_material_asset_to_viewport_hit(editor_material_library& library, render::renderer& renderer,
+                                                 const std::filesystem::path& asset_root,
+                                                 const std::filesystem::path& material_path, ecs::world& scene,
+                                                 const editor_ray& ray, ecs::entity& selected,
+                                                 std::string* message = nullptr);
 
 } // namespace arc::editor

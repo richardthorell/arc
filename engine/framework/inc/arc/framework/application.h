@@ -19,13 +19,13 @@ class runtime_world_manager;
  */
 struct application_config
 {
-    std::string title{ "ARC Application" };
-    std::uint32_t initial_width{ 1280 };
-    std::uint32_t initial_height{ 720 };
-    bool resizable{ true };
-    bool visible{ true };
-    bool start_focused{ true };
-    bool maximized{ false };
+    std::string title{"ARC Application"};
+    std::uint32_t initial_width{1280};
+    std::uint32_t initial_height{720};
+    bool resizable{true};
+    bool visible{true};
+    bool start_focused{true};
+    bool maximized{false};
     simulation_config simulation{};
 };
 

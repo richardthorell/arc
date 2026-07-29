@@ -12,23 +12,18 @@ namespace detail
 struct simd_access;
 
 template <class T, std::size_t N>
-concept simd_register_available = requires
-{
-    typename simd_register<T, N>::type;
-};
+concept simd_register_available = requires { typename simd_register<T, N>::type; };
 
 // Helper to find the largest power-of-two ≤ N
 consteval std::size_t largest_power_of_two(std::size_t n, std::size_t candidate = 1)
 {
-    if (candidate * 2 > n)
-        return candidate;
+    if (candidate * 2 > n) return candidate;
 
     return largest_power_of_two(n, candidate * 2);
 }
 
 // Recursive optimal lanes selection
-template <typename T, std::size_t Candidate, std::size_t MaxLanes>
-consteval std::size_t optimal_lanes_impl()
+template <typename T, std::size_t Candidate, std::size_t MaxLanes> consteval std::size_t optimal_lanes_impl()
 {
     if constexpr (Candidate == 0)
     {
@@ -49,8 +44,7 @@ consteval std::size_t optimal_lanes_impl()
 }
 
 // Entry point
-template <typename T, std::size_t N>
-consteval std::size_t optimal_lanes()
+template <typename T, std::size_t N> consteval std::size_t optimal_lanes()
 {
     constexpr std::size_t max_lanes = simd_max_lanes<T>;
     constexpr std::size_t candidate = largest_power_of_two(N);
@@ -60,15 +54,13 @@ consteval std::size_t optimal_lanes()
 
 } // namespace detail
 
-
 /**
  * @brief Storage block for SIMD types.
- * 
+ *
  * @tparam T The base data type (e.g., float, int32_t).
  * @tparam N The total number of lanes in the SIMD type.
  */
-template <class T, std::size_t N>
-struct simd_block
+template <class T, std::size_t N> struct simd_block
 {
     /**
      * @brief Number of lanes per SIMD register block.

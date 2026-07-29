@@ -68,7 +68,7 @@ struct editor_scene_state
         assets::asset_reference material;
     };
     ecs::entity_guid scene_guid{};
-    std::string scene_name{ "Untitled" };
+    std::string scene_name{"Untitled"};
     std::filesystem::path active_scene_path;
     std::vector<asset_binding> asset_bindings;
     std::vector<std::pair<ecs::entity_guid, std::string>> unknown_component_records;
@@ -94,7 +94,8 @@ void ensure_scene_authoring_metadata(editor_scene_state& scene);
 ecs::entity find_entity_by_guid(const editor_scene_state& scene, ecs::entity_guid guid) noexcept;
 ecs::entity_guid entity_guid_of(const editor_scene_state& scene, ecs::entity entity) noexcept;
 editor_scene_state::asset_binding* find_asset_binding(editor_scene_state& scene, ecs::entity_guid guid) noexcept;
-const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& scene, ecs::entity_guid guid) noexcept;
+const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& scene,
+                                                            ecs::entity_guid guid) noexcept;
 
 enum class editor_scene_open_mode : std::uint8_t
 {
@@ -122,7 +123,7 @@ struct editor_scene_import_shared_state
 {
     mutable std::mutex mutex;
     float progress{};
-    render::scene_import_stage stage{ render::scene_import_stage::loading };
+    render::scene_import_stage stage{render::scene_import_stage::loading};
     std::string message;
     std::vector<std::string> diagnostics;
     std::atomic_bool cancel_requested{};
@@ -130,8 +131,8 @@ struct editor_scene_import_shared_state
 
 struct editor_scene_import_state
 {
-    editor_scene_import_status status{ editor_scene_import_status::idle };
-    editor_scene_open_mode mode{ editor_scene_open_mode::replace };
+    editor_scene_import_status status{editor_scene_import_status::idle};
+    editor_scene_open_mode mode{editor_scene_open_mode::replace};
     std::filesystem::path source_path;
     std::shared_ptr<editor_scene_import_shared_state> shared;
     jobs::cancellation_source cancellation;
@@ -183,28 +184,18 @@ const char* selected_entity_name(const editor_scene_state& scene, const char* fa
 
 const char* primitive_type_name(editor_primitive_type type) noexcept;
 
-ecs::entity add_primitive_to_scene(
-    editor_scene_state& scene,
-    render::renderer& renderer,
-    editor_primitive_type type);
+ecs::entity add_primitive_to_scene(editor_scene_state& scene, render::renderer& renderer, editor_primitive_type type);
 
 ecs::entity add_world_environment_to_scene(editor_scene_state& scene);
 
-ecs::entity add_terrain_to_scene(
-    editor_scene_state& scene,
-    render::renderer& renderer,
-    render::material_handle material = {});
+ecs::entity add_terrain_to_scene(editor_scene_state& scene, render::renderer& renderer,
+                                 render::material_handle material = {});
 
-render::material_handle create_default_terrain_material(
-    editor_scene_state& scene,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root);
+render::material_handle create_default_terrain_material(editor_scene_state& scene, render::renderer& renderer,
+                                                        const std::filesystem::path& asset_root);
 
-bool rebuild_terrain_chunks(
-    editor_scene_state& scene,
-    render::renderer& renderer,
-    ecs::entity entity,
-    const scene::terrain_dirty_region* dirty_region = nullptr);
+bool rebuild_terrain_chunks(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                            const scene::terrain_dirty_region* dirty_region = nullptr);
 
 ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer);
 
@@ -212,26 +203,18 @@ ecs::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer
 
 ecs::entity add_decal_to_scene(editor_scene_state& scene);
 
-editor_scene_open_result open_scene_asset_in_editor(
-    editor_scene_state& scene,
-    render::renderer& renderer,
-    const std::filesystem::path& asset_root,
-    const std::filesystem::path& path,
-    editor_scene_open_mode mode);
+editor_scene_open_result open_scene_asset_in_editor(editor_scene_state& scene, render::renderer& renderer,
+                                                    const std::filesystem::path& asset_root,
+                                                    const std::filesystem::path& path, editor_scene_open_mode mode);
 
-editor_scene_open_result apply_scene_import_result_to_editor(
-    editor_scene_state& scene,
-    render::renderer& renderer,
-    const std::filesystem::path& source_path,
-    render::scene_import_result imported,
-    editor_scene_open_mode mode);
+editor_scene_open_result apply_scene_import_result_to_editor(editor_scene_state& scene, render::renderer& renderer,
+                                                             const std::filesystem::path& source_path,
+                                                             render::scene_import_result imported,
+                                                             editor_scene_open_mode mode);
 
-bool start_scene_import(
-    editor_scene_import_state& state,
-    jobs::job_system& jobs,
-    const std::filesystem::path& asset_root,
-    const std::filesystem::path& path,
-    editor_scene_open_mode mode);
+bool start_scene_import(editor_scene_import_state& state, jobs::job_system& jobs,
+                        const std::filesystem::path& asset_root, const std::filesystem::path& path,
+                        editor_scene_open_mode mode);
 
 bool poll_scene_import(editor_scene_import_state& state);
 

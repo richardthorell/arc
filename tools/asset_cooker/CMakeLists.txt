@@ -1,6 +1,7 @@
 add_executable(arc-cook
     main.cpp
 )
+arc_configure_first_party_target(arc-cook)
 
 target_compile_features(arc-cook PRIVATE cxx_std_20)
 target_link_libraries(arc-cook

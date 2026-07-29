@@ -143,105 +143,132 @@ const hostSelectedEntitySchema = z.object({
   active: z.boolean(),
   renderLayerMask: z.number().int().nonnegative(),
   mobility: z.enum(['static', 'stationary', 'movable']).default('movable'),
-  transform: z.object({
-    position: vec3Tuple,
-    rotation: quaternionTuple,
-    scale: vec3Tuple,
-  }).nullable(),
-  camera: z.object({
-    projection: z.enum(['perspective', 'orthographic']),
-    fovYDegrees: finiteNumber,
-    orthographicHeight: finiteNumber,
-    nearPlane: finiteNumber,
-    farPlane: finiteNumber,
-    active: z.boolean(),
-    clearColor: vec4Tuple,
-    exposureMode: z.enum(['manual', 'automatic']).default('automatic'),
-    exposureMetering: z.enum(['average', 'centerWeighted']).default('average'),
-    manualEV100: finiteNumber.default(10),
-    exposureCompensation: finiteNumber.default(0),
-    minimumEV100: finiteNumber.default(-8),
-    maximumEV100: finiteNumber.default(20),
-    brightenSpeed: finiteNumber.nonnegative().default(3),
-    darkenSpeed: finiteNumber.nonnegative().default(1),
-  }).nullable(),
-  light: z.object({
-    kind: z.enum(['directional', 'point', 'spot', 'rectangle', 'disk']),
-    unit: z.enum(['unitless', 'lumens', 'candela', 'lux', 'nits']),
-    color: vec3Tuple,
-    intensity: finiteNumber.nonnegative(),
-    range: finiteNumber.positive(),
-    innerAngleDegrees: finiteNumber.nonnegative(),
-    outerAngleDegrees: finiteNumber.positive(),
-    width: finiteNumber.positive(),
-    height: finiteNumber.positive(),
-    twoSided: z.boolean(),
-    enabled: z.boolean(),
-    castsShadows: z.boolean(),
-    shadowResolution: z.number().int().min(128).max(8192).default(2048),
-    shadowPriority: z.number().int().min(0).max(65535).default(128),
-    shadowStrength: finiteNumber.min(0).max(1).default(0.75),
-    shadowBias: finiteNumber.nonnegative().default(0.0015),
-    shadowNormalBias: finiteNumber.nonnegative().default(0.01),
-    shadowFilter: z.number().int().min(0).max(3).default(1),
-    contactShadows: z.boolean().default(true),
-    contactShadowLength: finiteNumber.nonnegative().default(0.5),
-    shadowCacheMode: z.number().int().min(0).max(2).default(0),
-    cascadeCount: z.number().int().min(1).max(4).default(4),
-    shadowDistance: finiteNumber.positive().default(200),
-    cascadeSplitLambda: finiteNumber.min(0).max(1).default(0.65),
-    cascadeBlendFraction: finiteNumber.min(0).max(0.3).default(0.1),
-    stableCascades: z.boolean().default(true),
-    useColorTemperature: z.boolean(),
-    temperatureKelvin: finiteNumber.min(1000).max(40000),
-  }).nullable().default(null),
-  meshRenderer: z.object({
-    visible: z.boolean(),
-    castsShadows: z.boolean().default(true),
-    receivesShadows: z.boolean().default(true),
-    shadowLodBias: finiteNumber.min(-4).max(8).default(0),
-    maximumShadowDistance: finiteNumber.nonnegative().default(0),
-    baseColorTint: vec4Tuple,
-    hasMaterial: z.boolean(),
-    assetBackedMaterial: z.boolean(),
-    materialName: z.string(),
-    materialPath: z.string(),
-  }).nullable(),
-  terrain: z.object({
-    enabled: z.boolean(),
-    size: finiteNumber.positive(),
-    resolution: z.number().int().min(3),
-    chunkQuads: z.number().int().positive(),
-    receiveShadows: z.boolean(),
-    castShadows: z.boolean().default(true),
-    shadowLodBias: finiteNumber.min(-4).max(8).default(0),
-    maximumShadowDistance: finiteNumber.nonnegative().default(0),
-    contentRevision: z.number().int().nonnegative(),
-    brushTool: z.enum(['sculpt', 'smooth', 'flatten', 'paint']),
-    brushRadius: finiteNumber.min(0.25).max(128),
-    brushStrength: finiteNumber.positive().max(1),
-    brushFalloff: finiteNumber.min(0).max(1),
-    activeLayer: z.number().int().min(0).max(3),
-    layers: z.array(z.object({ name: z.string(), baseColorPath: z.string() })).length(4),
-  }).nullable().default(null),
-  prefab: z.object({
-    prefabGuid: z.string(),
-    prefabPath: z.string(),
-    overrideCount: z.number().int().nonnegative(),
-    sourceMissing: z.boolean(),
-  }).nullable().default(null),
-  components: z.array(z.object({
-    kind: z.string(),
-    label: z.string(),
-    editable: z.boolean(),
-  })),
+  transform: z
+    .object({
+      position: vec3Tuple,
+      rotation: quaternionTuple,
+      scale: vec3Tuple,
+    })
+    .nullable(),
+  camera: z
+    .object({
+      projection: z.enum(['perspective', 'orthographic']),
+      fovYDegrees: finiteNumber,
+      orthographicHeight: finiteNumber,
+      nearPlane: finiteNumber,
+      farPlane: finiteNumber,
+      active: z.boolean(),
+      clearColor: vec4Tuple,
+      exposureMode: z.enum(['manual', 'automatic']).default('automatic'),
+      exposureMetering: z.enum(['average', 'centerWeighted']).default('average'),
+      manualEV100: finiteNumber.default(10),
+      exposureCompensation: finiteNumber.default(0),
+      minimumEV100: finiteNumber.default(-8),
+      maximumEV100: finiteNumber.default(20),
+      brightenSpeed: finiteNumber.nonnegative().default(3),
+      darkenSpeed: finiteNumber.nonnegative().default(1),
+    })
+    .nullable(),
+  light: z
+    .object({
+      kind: z.enum(['directional', 'point', 'spot', 'rectangle', 'disk']),
+      unit: z.enum(['unitless', 'lumens', 'candela', 'lux', 'nits']),
+      color: vec3Tuple,
+      intensity: finiteNumber.nonnegative(),
+      range: finiteNumber.positive(),
+      innerAngleDegrees: finiteNumber.nonnegative(),
+      outerAngleDegrees: finiteNumber.positive(),
+      width: finiteNumber.positive(),
+      height: finiteNumber.positive(),
+      twoSided: z.boolean(),
+      enabled: z.boolean(),
+      castsShadows: z.boolean(),
+      shadowResolution: z.number().int().min(128).max(8192).default(2048),
+      shadowPriority: z.number().int().min(0).max(65535).default(128),
+      shadowStrength: finiteNumber.min(0).max(1).default(0.75),
+      shadowBias: finiteNumber.nonnegative().default(0.0015),
+      shadowNormalBias: finiteNumber.nonnegative().default(0.01),
+      shadowFilter: z.number().int().min(0).max(3).default(1),
+      contactShadows: z.boolean().default(true),
+      contactShadowLength: finiteNumber.nonnegative().default(0.5),
+      shadowCacheMode: z.number().int().min(0).max(2).default(0),
+      cascadeCount: z.number().int().min(1).max(4).default(4),
+      shadowDistance: finiteNumber.positive().default(200),
+      cascadeSplitLambda: finiteNumber.min(0).max(1).default(0.65),
+      cascadeBlendFraction: finiteNumber.min(0).max(0.3).default(0.1),
+      stableCascades: z.boolean().default(true),
+      useColorTemperature: z.boolean(),
+      temperatureKelvin: finiteNumber.min(1000).max(40000),
+    })
+    .nullable()
+    .default(null),
+  meshRenderer: z
+    .object({
+      visible: z.boolean(),
+      castsShadows: z.boolean().default(true),
+      receivesShadows: z.boolean().default(true),
+      shadowLodBias: finiteNumber.min(-4).max(8).default(0),
+      maximumShadowDistance: finiteNumber.nonnegative().default(0),
+      baseColorTint: vec4Tuple,
+      hasMaterial: z.boolean(),
+      assetBackedMaterial: z.boolean(),
+      materialName: z.string(),
+      materialPath: z.string(),
+    })
+    .nullable(),
+  terrain: z
+    .object({
+      enabled: z.boolean(),
+      size: finiteNumber.positive(),
+      resolution: z.number().int().min(3),
+      chunkQuads: z.number().int().positive(),
+      receiveShadows: z.boolean(),
+      castShadows: z.boolean().default(true),
+      shadowLodBias: finiteNumber.min(-4).max(8).default(0),
+      maximumShadowDistance: finiteNumber.nonnegative().default(0),
+      contentRevision: z.number().int().nonnegative(),
+      brushTool: z.enum(['sculpt', 'smooth', 'flatten', 'paint']),
+      brushRadius: finiteNumber.min(0.25).max(128),
+      brushStrength: finiteNumber.positive().max(1),
+      brushFalloff: finiteNumber.min(0).max(1),
+      activeLayer: z.number().int().min(0).max(3),
+      layers: z.array(z.object({ name: z.string(), baseColorPath: z.string() })).length(4),
+    })
+    .nullable()
+    .default(null),
+  prefab: z
+    .object({
+      prefabGuid: z.string(),
+      prefabPath: z.string(),
+      overrideCount: z.number().int().nonnegative(),
+      sourceMissing: z.boolean(),
+    })
+    .nullable()
+    .default(null),
+  components: z.array(
+    z.object({
+      kind: z.string(),
+      label: z.string(),
+      editable: z.boolean(),
+    }),
+  ),
 });
 
 const tupleToVec3 = (value: [number, number, number]): Vec3 => ({ x: value[0], y: value[1], z: value[2] });
-const tupleToVec4 = (value: [number, number, number, number]): Vec4 => ({ x: value[0], y: value[1], z: value[2], w: value[3] });
-const tupleToQuaternion = (value: [number, number, number, number]): Quaternion => ({ x: value[0], y: value[1], z: value[2], w: value[3] });
-const radiansToDegrees = (value: number) => value * 180 / Math.PI;
-const degreesToRadians = (value: number) => value * Math.PI / 180;
+const tupleToVec4 = (value: [number, number, number, number]): Vec4 => ({
+  x: value[0],
+  y: value[1],
+  z: value[2],
+  w: value[3],
+});
+const tupleToQuaternion = (value: [number, number, number, number]): Quaternion => ({
+  x: value[0],
+  y: value[1],
+  z: value[2],
+  w: value[3],
+});
+const radiansToDegrees = (value: number) => (value * 180) / Math.PI;
+const degreesToRadians = (value: number) => (value * Math.PI) / 180;
 
 export function quaternionToEulerDegrees(value: Quaternion): Vec3 {
   const length = Math.hypot(value.x, value.y, value.z, value.w) || 1;
@@ -280,24 +307,33 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
   const rotationQuaternion = parsed.transform ? tupleToQuaternion(parsed.transform.rotation) : null;
   return {
     ...parsed,
-    transform: parsed.transform && rotationQuaternion ? {
-      position: tupleToVec3(parsed.transform.position),
-      rotationDegrees: quaternionToEulerDegrees(rotationQuaternion),
-      scale: tupleToVec3(parsed.transform.scale),
-      rotationQuaternion,
-    } : null,
-    camera: parsed.camera ? {
-      ...parsed.camera,
-      clearColor: tupleToVec4(parsed.camera.clearColor),
-    } : null,
-    light: parsed.light ? {
-      ...parsed.light,
-      color: { ...tupleToVec3(parsed.light.color), w: 1 },
-    } : null,
-    meshRenderer: parsed.meshRenderer ? {
-      ...parsed.meshRenderer,
-      baseColorTint: tupleToVec4(parsed.meshRenderer.baseColorTint),
-    } : null,
+    transform:
+      parsed.transform && rotationQuaternion
+        ? {
+            position: tupleToVec3(parsed.transform.position),
+            rotationDegrees: quaternionToEulerDegrees(rotationQuaternion),
+            scale: tupleToVec3(parsed.transform.scale),
+            rotationQuaternion,
+          }
+        : null,
+    camera: parsed.camera
+      ? {
+          ...parsed.camera,
+          clearColor: tupleToVec4(parsed.camera.clearColor),
+        }
+      : null,
+    light: parsed.light
+      ? {
+          ...parsed.light,
+          color: { ...tupleToVec3(parsed.light.color), w: 1 },
+        }
+      : null,
+    meshRenderer: parsed.meshRenderer
+      ? {
+          ...parsed.meshRenderer,
+          baseColorTint: tupleToVec4(parsed.meshRenderer.baseColorTint),
+        }
+      : null,
   };
 }
 

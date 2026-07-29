@@ -14,8 +14,7 @@ constexpr simd<T, N> masked_fill(const simd_mask<N>& mask, const simd<T, N>& a, 
     return masked(mask, a, [&](auto) { return fill<T, N>(value); });
 }
 
-template <class T, std::size_t N>
-constexpr simd<T, N> masked_fill(const simd_mask<N>& mask, T value) noexcept
+template <class T, std::size_t N> constexpr simd<T, N> masked_fill(const simd_mask<N>& mask, T value) noexcept
 {
     return masked_fill(mask, fill<T, N>(T(0)), value);
 }
@@ -57,7 +56,8 @@ constexpr simd<T, N> masked_max(const simd_mask<N>& mask, const simd<T, N>& a, c
 }
 
 template <class T, std::size_t N>
-constexpr simd<T, N> masked_clamp(const simd_mask<N>& mask, const simd<T, N>& value, const simd<T, N>& min_value, const simd<T, N>& max_value) noexcept
+constexpr simd<T, N> masked_clamp(const simd_mask<N>& mask, const simd<T, N>& value, const simd<T, N>& min_value,
+                                  const simd<T, N>& max_value) noexcept
 {
     return masked(mask, min_value, max_value, [&](auto lo, auto hi) { return clamp(value, lo, hi); });
 }

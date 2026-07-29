@@ -46,7 +46,7 @@ using input_axis_id = std::uint32_t;
  */
 struct input_binding
 {
-    input_device_type device{ input_device_type::keyboard };
+    input_device_type device{input_device_type::keyboard};
     int code{};
     player_id player{};
 
@@ -62,7 +62,7 @@ struct input_binding
 struct input_context
 {
     std::string name;
-    bool enabled{ true };
+    bool enabled{true};
 };
 
 /**
@@ -123,8 +123,8 @@ private:
     std::unordered_set<std::uint64_t> held_;
     std::unordered_set<std::uint64_t> pressed_;
     std::unordered_set<std::uint64_t> released_;
-    input_action_id next_action_id_{ 1 };
-    input_axis_id next_axis_id_{ 1 };
+    input_action_id next_action_id_{1};
+    input_axis_id next_axis_id_{1};
 };
 
 } // namespace arc::input

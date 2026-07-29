@@ -10,7 +10,14 @@
 namespace arc::editor
 {
 
-enum class edit_transaction_phase : std::uint8_t { none, begin, update, commit, cancel };
+enum class edit_transaction_phase : std::uint8_t
+{
+    none,
+    begin,
+    update,
+    commit,
+    cancel
+};
 
 struct editor_history_snapshot
 {
@@ -39,10 +46,8 @@ public:
     bool redo(editor_scene_state& scene);
     bool begin(std::uint64_t transaction_id, std::string label, const editor_scene_state& scene);
     bool commit(std::uint64_t transaction_id, const editor_scene_state& scene);
-    bool commit_terrain(
-        std::uint64_t transaction_id,
-        const editor_scene_state& current_scene,
-        ecs::entity_guid terrain_guid);
+    bool commit_terrain(std::uint64_t transaction_id, const editor_scene_state& current_scene,
+                        ecs::entity_guid terrain_guid);
     bool cancel(std::uint64_t transaction_id, editor_scene_state& scene);
     bool transaction_matches(std::uint64_t transaction_id) const noexcept;
     void mark_saved() noexcept;
@@ -90,8 +95,8 @@ private:
     std::size_t cursor_{};
     std::size_t bytes_{};
     std::uint64_t revision_{};
-    std::uint64_t next_revision_{ 1 };
-    std::uint64_t saved_revision_{ static_cast<std::uint64_t>(-1) };
+    std::uint64_t next_revision_{1};
+    std::uint64_t saved_revision_{static_cast<std::uint64_t>(-1)};
     std::optional<transaction> transaction_;
     std::optional<editor_terrain_history_change> last_terrain_change_;
 };

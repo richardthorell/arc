@@ -10,27 +10,17 @@
 namespace arc::framework
 {
 
-module_context::module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics, memory::tracked_memory_resource& memory) noexcept
-    : jobs_(&jobs)
-    , diagnostics_(&diagnostics)
-    , memory_(&memory)
-    , memory_service_(&memory::default_memory_system())
+module_context::module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics,
+                               memory::tracked_memory_resource& memory) noexcept
+    : jobs_(&jobs), diagnostics_(&diagnostics), memory_(&memory), memory_service_(&memory::default_memory_system())
 {
 }
 
-module_context::module_context(
-    jobs::job_system& jobs,
-    diagnostics::logger& diagnostics,
-    memory::memory_system& memory,
-    memory::tracked_memory_resource& compatibility_memory,
-    runtime_service_registry* services,
-    runtime_world_manager* worlds) noexcept
-    : jobs_(&jobs)
-    , diagnostics_(&diagnostics)
-    , memory_(&compatibility_memory)
-    , memory_service_(&memory)
-    , services_(services)
-    , worlds_(worlds)
+module_context::module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics, memory::memory_system& memory,
+                               memory::tracked_memory_resource& compatibility_memory,
+                               runtime_service_registry* services, runtime_world_manager* worlds) noexcept
+    : jobs_(&jobs), diagnostics_(&diagnostics), memory_(&compatibility_memory), memory_service_(&memory),
+      services_(services), worlds_(worlds)
 {
 }
 
@@ -71,28 +61,18 @@ std::vector<std::string> module::dependencies() const
     return {};
 }
 
-void module::on_start(module_context&)
-{
-}
+void module::on_start(module_context&) {}
 
-void module::on_update(module_context&, const frame_time&)
-{
-}
+void module::on_update(module_context&, const frame_time&) {}
 
-void module::on_event(module_context&, const event&)
-{
-}
+void module::on_event(module_context&, const event&) {}
 
-void module::on_shutdown(module_context&)
-{
-}
+void module::on_shutdown(module_context&) {}
 
 void module_registry::add(std::unique_ptr<module> value)
 {
-    if (!value)
-        throw std::invalid_argument("module_registry cannot add a null module");
-    if (value->name().empty())
-        throw std::invalid_argument("module names must not be empty");
+    if (!value) throw std::invalid_argument("module_registry cannot add a null module");
+    if (value->name().empty()) throw std::invalid_argument("module names must not be empty");
 
     modules_.push_back(std::move(value));
 }
@@ -124,8 +104,7 @@ const module_registry& module_manager::registry() const noexcept
 
 void module_manager::start(module_context& context)
 {
-    if (started_)
-        return;
+    if (started_) return;
 
     resolve_order();
     std::size_t started_count{};
@@ -151,8 +130,7 @@ void module_manager::start(module_context& context)
 
 void module_manager::update(module_context& context, const frame_time& time)
 {
-    if (!started_)
-        return;
+    if (!started_) return;
 
     for (const auto index : order_)
         registry_.modules()[index]->on_update(context, time);
@@ -160,8 +138,7 @@ void module_manager::update(module_context& context, const frame_time& time)
 
 void module_manager::dispatch(module_context& context, const event& value)
 {
-    if (!started_)
-        return;
+    if (!started_) return;
 
     for (const auto index : order_)
         registry_.modules()[index]->on_event(context, value);
@@ -169,8 +146,7 @@ void module_manager::dispatch(module_context& context, const event& value)
 
 void module_manager::shutdown(module_context& context)
 {
-    if (!started_)
-        return;
+    if (!started_) return;
 
     for (auto iterator = order_.rbegin(); iterator != order_.rend(); ++iterator)
         registry_.modules()[*iterator]->on_shutdown(context);
@@ -193,8 +169,7 @@ std::vector<std::string_view> module_manager::start_order() const
 
 void module_manager::resolve_order()
 {
-    if (ordered_)
-        return;
+    if (ordered_) return;
 
     const auto& modules = registry_.modules();
     std::unordered_map<std::string, std::size_t> names;
@@ -203,26 +178,23 @@ void module_manager::resolve_order()
     for (std::size_t index = 0; index < modules.size(); ++index)
     {
         const std::string name(modules[index]->name());
-        if (!names.emplace(name, index).second)
-            throw std::invalid_argument("duplicate module name: " + name);
+        if (!names.emplace(name, index).second) throw std::invalid_argument("duplicate module name: " + name);
     }
 
     order_.clear();
     order_.reserve(modules.size());
     std::vector<int> state(modules.size(), 0);
 
-    auto visit = [&](auto& self, std::size_t index) -> void {
-        if (state[index] == 2)
-            return;
-        if (state[index] == 1)
-            throw std::invalid_argument("module dependency cycle detected");
+    auto visit = [&](auto& self, std::size_t index) -> void
+    {
+        if (state[index] == 2) return;
+        if (state[index] == 1) throw std::invalid_argument("module dependency cycle detected");
 
         state[index] = 1;
         for (const auto& dependency : modules[index]->dependencies())
         {
             const auto found = names.find(dependency);
-            if (found == names.end())
-                throw std::invalid_argument("unknown module dependency: " + dependency);
+            if (found == names.end()) throw std::invalid_argument("unknown module dependency: " + dependency);
             self(self, found->second);
         }
         state[index] = 2;
