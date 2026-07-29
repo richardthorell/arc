@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arc/ecs/identity.h>
 #include <arc/ecs/world.h>
 
 #include <span>

@@ -55,7 +55,7 @@ file_result<file_buffer> read_range_sync(
     std::uint64_t offset,
     std::optional<std::size_t> requested_bytes,
     std::size_t chunk_size,
-    const cancellation_token& cancellation)
+    const jobs::cancellation_token& cancellation)
 {
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream)
@@ -97,7 +97,7 @@ file_result<void> write_sync(
     const std::filesystem::path& path,
     const file_buffer& bytes,
     std::size_t chunk_size,
-    const cancellation_token& cancellation)
+    const jobs::cancellation_token& cancellation)
 {
     std::error_code directory_error;
     if (!path.parent_path().empty())
@@ -130,69 +130,69 @@ file_result<void> write_sync(
 
 }
 
-async_file_service::async_file_service(job_system& jobs, async_file_config config)
+async_file_service::async_file_service(jobs::job_system& jobs, async_file_config config)
     : jobs_(&jobs)
     , config_(config)
 {
     config_.chunk_size = std::max<std::size_t>(config_.chunk_size, 4096);
 }
 
-job_future<file_result<file_buffer>> async_file_service::read_all(
+jobs::job_future<file_result<file_buffer>> async_file_service::read_all(
     std::filesystem::path path,
-    cancellation_token cancellation)
+    jobs::cancellation_token cancellation)
 {
     return jobs_->submit_future({
         .name = "io.read_all",
-        .priority = job_priority::normal,
-        .affinity = job_affinity::io_thread,
+        .priority = jobs::job_priority::normal,
+        .affinity = jobs::job_affinity::io_thread,
         .cancellation = cancellation
     }, [path = std::move(path), cancellation, chunk = config_.chunk_size] {
         return read_range_sync(path, 0, std::nullopt, chunk, cancellation);
     });
 }
 
-job_future<file_result<file_buffer>> async_file_service::read_range(
+jobs::job_future<file_result<file_buffer>> async_file_service::read_range(
     std::filesystem::path path,
     std::uint64_t offset,
     std::size_t bytes,
-    cancellation_token cancellation)
+    jobs::cancellation_token cancellation)
 {
     return jobs_->submit_future({
         .name = "io.read_range",
-        .priority = job_priority::normal,
-        .affinity = job_affinity::io_thread,
+        .priority = jobs::job_priority::normal,
+        .affinity = jobs::job_affinity::io_thread,
         .cancellation = cancellation
     }, [path = std::move(path), offset, bytes, cancellation, chunk = config_.chunk_size] {
         return read_range_sync(path, offset, bytes, chunk, cancellation);
     });
 }
 
-job_future<file_result<void>> async_file_service::write(
+jobs::job_future<file_result<void>> async_file_service::write(
     std::filesystem::path path,
     std::span<const std::byte> bytes,
-    cancellation_token cancellation)
+    jobs::cancellation_token cancellation)
 {
     file_buffer owned(bytes.begin(), bytes.end());
     return jobs_->submit_future({
         .name = "io.write",
-        .priority = job_priority::normal,
-        .affinity = job_affinity::io_thread,
+        .priority = jobs::job_priority::normal,
+        .affinity = jobs::job_affinity::io_thread,
         .cancellation = cancellation
     }, [path = std::move(path), bytes = std::move(owned), cancellation, chunk = config_.chunk_size] {
         return write_sync(path, bytes, chunk, cancellation);
     });
 }
 
-job_future<file_result<void>> async_file_service::write_atomic(
+jobs::job_future<file_result<void>> async_file_service::write_atomic(
     std::filesystem::path path,
     std::span<const std::byte> bytes,
-    cancellation_token cancellation)
+    jobs::cancellation_token cancellation)
 {
     file_buffer owned(bytes.begin(), bytes.end());
     return jobs_->submit_future({
         .name = "io.write_atomic",
-        .priority = job_priority::high,
-        .affinity = job_affinity::io_thread,
+        .priority = jobs::job_priority::high,
+        .affinity = jobs::job_affinity::io_thread,
         .cancellation = cancellation
     }, [path = std::move(path), bytes = std::move(owned), cancellation, chunk = config_.chunk_size] {
         const auto temporary = temporary_path_for(path);
@@ -219,14 +219,14 @@ job_future<file_result<void>> async_file_service::write_atomic(
     });
 }
 
-job_future<file_result<file_info>> async_file_service::stat(
+jobs::job_future<file_result<file_info>> async_file_service::stat(
     std::filesystem::path path,
-    cancellation_token cancellation)
+    jobs::cancellation_token cancellation)
 {
     return jobs_->submit_future({
         .name = "io.stat",
-        .priority = job_priority::normal,
-        .affinity = job_affinity::io_thread,
+        .priority = jobs::job_priority::normal,
+        .affinity = jobs::job_affinity::io_thread,
         .cancellation = cancellation
     }, [path = std::move(path), cancellation] {
         if (cancellation.stop_requested())
@@ -254,7 +254,7 @@ std::size_t async_file_service::chunk_size() const noexcept
     return config_.chunk_size;
 }
 
-job_system& async_file_service::scheduler() const noexcept
+jobs::job_system& async_file_service::scheduler() const noexcept
 {
     return *jobs_;
 }

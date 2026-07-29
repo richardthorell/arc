@@ -2,7 +2,7 @@
 
 #include <concepts>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -53,4 +53,4 @@ concept apply_operand_for =
             typename simd_traits<std::remove_cvref_t<Ret>>::value_type>
     );
 
-} // namespace arc
+} // namespace arc::simd

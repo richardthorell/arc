@@ -5,7 +5,7 @@
 #include <array>
 #include <cmath>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -56,4 +56,4 @@ inline simd<T, N> atan2(const simd<T, N>& y, const simd<T, N>& x) noexcept
     return detail::simd_map(y, x, [](T a, T b) { return std::atan2(a, b); });
 }
 
-} // namespace arc
+} // namespace arc::simd

@@ -5,7 +5,7 @@
 
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 /// @brief Return the elementwise sum of two SIMD vectors.
@@ -49,4 +49,4 @@ constexpr simd<T, N> neg(const simd<T, N>& a) noexcept
     return apply<simd<T, N>>(ops_for<simd<T, N>>::neg, a);
 }
 
-} // namespace arc
+} // namespace arc::simd

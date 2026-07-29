@@ -6,7 +6,7 @@
 #include <array>
 #include <utility>
 
-namespace arc::detail
+namespace arc::simd::detail
 {
 
 template <class T, std::size_t N, std::size_t... I>
@@ -55,4 +55,4 @@ constexpr simd<T, N> simd_map(const simd<T, N>& a, const simd<T, N>& b, Op op) n
     return simd_from_array<T, N>(result);
 }
 
-} // namespace arc::detail
+} // namespace arc::simd::detail

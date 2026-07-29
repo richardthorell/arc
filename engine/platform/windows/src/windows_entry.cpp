@@ -44,30 +44,30 @@ std::wstring widen(const std::string& value)
     return result;
 }
 
-arc::mouse_button translate_mouse_button(UINT message, WPARAM wparam)
+arc::framework::mouse_button translate_mouse_button(UINT message, WPARAM wparam)
 {
     switch (message)
     {
     case WM_LBUTTONDOWN:
     case WM_LBUTTONUP:
-        return arc::mouse_button::left;
+        return arc::framework::mouse_button::left;
     case WM_RBUTTONDOWN:
     case WM_RBUTTONUP:
-        return arc::mouse_button::right;
+        return arc::framework::mouse_button::right;
     case WM_MBUTTONDOWN:
     case WM_MBUTTONUP:
-        return arc::mouse_button::middle;
+        return arc::framework::mouse_button::middle;
     case WM_XBUTTONDOWN:
     case WM_XBUTTONUP:
-        return HIWORD(wparam) == XBUTTON1 ? arc::mouse_button::x1 : arc::mouse_button::x2;
+        return HIWORD(wparam) == XBUTTON1 ? arc::framework::mouse_button::x1 : arc::framework::mouse_button::x2;
     default:
-        return arc::mouse_button::unknown;
+        return arc::framework::mouse_button::unknown;
     }
 }
 
-arc::runtime* runtime_from_window(HWND window)
+arc::framework::runtime* runtime_from_window(HWND window)
 {
-    return reinterpret_cast<arc::runtime*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    return reinterpret_cast<arc::framework::runtime*>(GetWindowLongPtrW(window, GWLP_USERDATA));
 }
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
@@ -78,15 +78,15 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
     }
 
-    arc::runtime* runtime = runtime_from_window(window);
+    arc::framework::runtime* runtime = runtime_from_window(window);
 
     switch (message)
     {
     case WM_CLOSE:
         if (runtime)
         {
-            arc::event event{};
-            event.type = arc::event_type::close_requested;
+            arc::framework::event event{};
+            event.type = arc::framework::event_type::close_requested;
             runtime->dispatch(event);
         }
         DestroyWindow(window);
@@ -99,8 +99,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_SIZE:
         if (runtime)
         {
-            arc::event event{};
-            event.type = arc::event_type::resized;
+            arc::framework::event event{};
+            event.type = arc::framework::event_type::resized;
             event.width = static_cast<std::uint32_t>(LOWORD(lparam));
             event.height = static_cast<std::uint32_t>(HIWORD(lparam));
             runtime->dispatch(event);
@@ -111,8 +111,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_KILLFOCUS:
         if (runtime)
         {
-            arc::event event{};
-            event.type = message == WM_SETFOCUS ? arc::event_type::focus_gained : arc::event_type::focus_lost;
+            arc::framework::event event{};
+            event.type = message == WM_SETFOCUS ? arc::framework::event_type::focus_gained : arc::framework::event_type::focus_lost;
             runtime->dispatch(event);
         }
         return 0;
@@ -123,8 +123,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_SYSKEYUP:
         if (runtime)
         {
-            arc::event event{};
-            event.type = (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) ? arc::event_type::key_down : arc::event_type::key_up;
+            arc::framework::event event{};
+            event.type = (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) ? arc::framework::event_type::key_down : arc::framework::event_type::key_up;
             event.key_code = static_cast<int>(wparam);
             event.repeat = (lparam & (1 << 30)) != 0;
             runtime->dispatch(event);
@@ -134,8 +134,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_MOUSEMOVE:
         if (runtime)
         {
-            arc::event event{};
-            event.type = arc::event_type::mouse_moved;
+            arc::framework::event event{};
+            event.type = arc::framework::event_type::mouse_moved;
             event.x = GET_X_LPARAM(lparam);
             event.y = GET_Y_LPARAM(lparam);
             runtime->dispatch(event);
@@ -152,11 +152,11 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_XBUTTONUP:
         if (runtime)
         {
-            arc::event event{};
+            arc::framework::event event{};
             event.type =
                 (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN || message == WM_MBUTTONDOWN || message == WM_XBUTTONDOWN)
-                    ? arc::event_type::mouse_button_down
-                    : arc::event_type::mouse_button_up;
+                    ? arc::framework::event_type::mouse_button_down
+                    : arc::framework::event_type::mouse_button_up;
             event.button = translate_mouse_button(message, wparam);
             event.x = GET_X_LPARAM(lparam);
             event.y = GET_Y_LPARAM(lparam);
@@ -167,8 +167,8 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     case WM_MOUSEWHEEL:
         if (runtime)
         {
-            arc::event event{};
-            event.type = arc::event_type::mouse_wheel;
+            arc::framework::event event{};
+            event.type = arc::framework::event_type::mouse_wheel;
             event.wheel_delta = static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / static_cast<float>(WHEEL_DELTA);
             event.x = GET_X_LPARAM(lparam);
             event.y = GET_Y_LPARAM(lparam);
@@ -181,7 +181,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
     }
 }
 
-DWORD window_style(const arc::application_config& config)
+DWORD window_style(const arc::framework::application_config& config)
 {
     if (config.resizable)
         return WS_OVERLAPPEDWINDOW;
@@ -193,12 +193,12 @@ DWORD window_style(const arc::application_config& config)
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 {
-    std::unique_ptr<arc::application> app = arc::create_application();
+    std::unique_ptr<arc::framework::application> app = arc::framework::create_application();
     if (!app)
         return -1;
 
-    arc::runtime runtime(*app);
-    const arc::application_config& config = runtime.config();
+    arc::framework::runtime runtime(*app);
+    const arc::framework::application_config& config = runtime.config();
     const std::wstring class_name = L"ArcWindowsHost";
     const std::wstring title = widen(config.title);
 

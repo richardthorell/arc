@@ -4,7 +4,7 @@
 
 #include <cmath>
 
-namespace arc
+namespace arc::simd
 {
 
 #if defined(ARC_SIMD_SSE)

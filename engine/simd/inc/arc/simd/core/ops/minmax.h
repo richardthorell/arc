@@ -5,7 +5,7 @@
 
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -48,4 +48,4 @@ constexpr simd<T, N> max(const simd<T, N>& a, const simd<T, N>& b) noexcept
         return apply<simd<T, N>>(ops_for<simd<T, N>>::max, a, b);
 }
 
-} // namespace arc
+} // namespace arc::simd

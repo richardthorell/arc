@@ -411,12 +411,12 @@ class world
 {
 public:
     world()
-        : memory_(std::make_shared<world_memory_context>())
+        : memory_(std::make_shared<memory::world_memory_context>())
     {
     }
 
-    explicit world(memory_system& memory, std::uint64_t world_id = 0, memory_budget budget = {})
-        : memory_(std::make_shared<world_memory_context>(memory, world_id, budget))
+    explicit world(memory::memory_system& memory, std::uint64_t world_id = 0, memory::memory_budget budget = {})
+        : memory_(std::make_shared<memory::world_memory_context>(memory, world_id, budget))
     {
     }
 
@@ -522,8 +522,8 @@ public:
     {
         return std::atomic_ref<const change_revision>(revision_).load(std::memory_order_acquire);
     }
-    world_memory_context& memory() noexcept { return *memory_; }
-    const world_memory_context& memory() const noexcept { return *memory_; }
+    memory::world_memory_context& memory() noexcept { return *memory_; }
+    const memory::world_memory_context& memory() const noexcept { return *memory_; }
 
     std::vector<entity> entities_snapshot() const
     {
@@ -909,7 +909,7 @@ private:
     void begin_command_flush() noexcept { flushing_commands_ = true; }
     void end_command_flush() noexcept { flushing_commands_ = false; }
 
-    std::shared_ptr<world_memory_context> memory_;
+    std::shared_ptr<memory::world_memory_context> memory_;
     std::vector<std::uint32_t> generations_;
     std::vector<bool> alive_;
     std::vector<std::uint32_t> free_list_;

@@ -49,7 +49,7 @@ std::string field_id_text(ecs::component_field_id id)
 
 json dependency_record(
     const assets::asset_reference& reference,
-    scene::entity_guid owner,
+    ecs::entity_guid owner,
     ecs::component_type_id component,
     ecs::component_field_id field,
     bool required)
@@ -59,7 +59,7 @@ json dependency_record(
         { "expectedType", reference.expected_type.valid()
             ? assets::to_string(reference.expected_type) : std::string{} },
         { "pathHint", reference.path_hint },
-        { "ownerEntity", owner.valid() ? scene::to_string(owner) : std::string{} },
+        { "ownerEntity", owner.valid() ? ecs::to_string(owner) : std::string{} },
         { "ownerComponent", component.valid() ? ecs::to_string(component) : std::string{} },
         { "ownerField", field != 0 ? field_id_text(field) : std::string{} },
         { "required", required }
@@ -69,7 +69,7 @@ json dependency_record(
 json build_dependency_manifest(
     const editor_scene_state& state,
     assets::asset_manager* asset_registry = nullptr,
-    const std::unordered_set<scene::entity, ecs::entity_hash>* included_entities = nullptr)
+    const std::unordered_set<ecs::entity, ecs::entity_hash>* included_entities = nullptr)
 {
     json dependencies = json::array();
     const auto& mesh = ecs::component_metadata<scene::mesh_renderer_component>();
@@ -244,15 +244,15 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             ? true : fail("has invalid mobility");
     if (name == "WorldRegion")
         return value.contains("id") && value["id"].is_string() &&
-            scene::parse_entity_guid(value["id"].get<std::string>()).has_value()
+            ecs::parse_entity_guid(value["id"].get<std::string>()).has_value()
             ? true : fail("has an invalid region id");
     if (name == "PrefabInstance")
     {
         if (!value.contains("prefabGuid") || !value["prefabGuid"].is_string() ||
-            !scene::parse_entity_guid(value["prefabGuid"].get<std::string>()) ||
+            !ecs::parse_entity_guid(value["prefabGuid"].get<std::string>()) ||
             !value.contains("prefabPath") || !value["prefabPath"].is_string() ||
             !value.contains("sourceRoot") || !value["sourceRoot"].is_string() ||
-            !scene::parse_entity_guid(value["sourceRoot"].get<std::string>()) ||
+            !ecs::parse_entity_guid(value["sourceRoot"].get<std::string>()) ||
             !value.contains("mapping") || !value["mapping"].is_array() ||
             !value.contains("overrides") || !value["overrides"].is_array())
             return fail("has malformed prefab identity or override data");
@@ -461,7 +461,7 @@ json serialize_asset_reference(
     };
 }
 
-std::vector<scene::entity> ordered_entities(const editor_scene_state& state);
+std::vector<ecs::entity> ordered_entities(const editor_scene_state& state);
 
 bool is_normal_project_relative_path(const std::filesystem::path& path, const std::filesystem::path& project_root)
 {
@@ -542,7 +542,7 @@ bool validate_scene_for_save(const editor_scene_state& state, const std::filesys
         if (value == state.camera_entity) continue;
         ++persisted_count;
         const auto guid = entity_guid_of(state, value);
-        if (!guid.valid() || !guids.insert(scene::to_string(guid)).second)
+        if (!guid.valid() || !guids.insert(ecs::to_string(guid)).second)
         {
             error = "scene contains a missing or duplicate entity GUID";
             return false;
@@ -567,7 +567,7 @@ bool validate_scene_for_save(const editor_scene_state& state, const std::filesys
                 return false;
             }
             const auto* parent_links = state.scene.try_get<scene::hierarchy_component>(ancestor);
-            ancestor = parent_links ? parent_links->parent : scene::entity{};
+            ancestor = parent_links ? parent_links->parent : ecs::entity{};
         }
         if (state.scene.has<scene::world_environment_component>(value) &&
             !scene::read_world_environment_settings(state.scene, value))
@@ -595,11 +595,11 @@ bool validate_scene_for_save(const editor_scene_state& state, const std::filesys
 
 json component_version() { return json{ { "version", 1 } }; }
 
-std::vector<scene::entity> ordered_entities(const editor_scene_state& state)
+std::vector<ecs::entity> ordered_entities(const editor_scene_state& state)
 {
-    std::vector<scene::entity> result;
-    std::unordered_set<scene::entity, ecs::entity_hash> visited;
-    const auto append = [&](auto&& self, scene::entity value) -> void {
+    std::vector<ecs::entity> result;
+    std::unordered_set<ecs::entity, ecs::entity_hash> visited;
+    const auto append = [&](auto&& self, ecs::entity value) -> void {
         if (!visited.insert(value).second)
             return;
         result.push_back(value);
@@ -657,16 +657,16 @@ void deserialize_light_common(const json& source, math::vector3f& color, float& 
     }
 }
 
-json serialize_entity(const editor_scene_state& state, scene::entity value, const std::filesystem::path& project_root)
+json serialize_entity(const editor_scene_state& state, ecs::entity value, const std::filesystem::path& project_root)
 {
     const auto guid = entity_guid_of(state, value);
     json output{
-        { "id", scene::to_string(guid) },
+        { "id", ecs::to_string(guid) },
         { "parent", nullptr },
         { "components", json::object() }
     };
     if (const auto* hierarchy = state.scene.try_get<scene::hierarchy_component>(value); hierarchy && state.scene.alive(hierarchy->parent))
-        output["parent"] = scene::to_string(entity_guid_of(state, hierarchy->parent));
+        output["parent"] = ecs::to_string(entity_guid_of(state, hierarchy->parent));
     auto& components = output["components"];
     if (const auto* component = state.scene.try_get<scene::name_component>(value))
         components["Name"] = { { "version", 1 }, { "value", component->value } };
@@ -680,15 +680,15 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
         components["Mobility"] = { { "version", 1 }, { "value", static_cast<int>(component->value) } };
     if (const auto* component = state.scene.try_get<scene::world_region_component>(value))
         components["WorldRegion"] = {
-            { "version", 1 }, { "id", scene::to_string(component->region.value) }
+            { "version", 1 }, { "id", ecs::to_string(component->region.value) }
         };
     if (const auto* component = state.scene.try_get<scene::prefab_instance_component>(value))
     {
         json mapping = json::array();
         for (const auto& [source, instance] : component->source_to_instance)
             mapping.push_back({
-                { "source", scene::to_string(source) },
-                { "instance", scene::to_string(instance) }
+                { "source", ecs::to_string(source) },
+                { "instance", ecs::to_string(instance) }
             });
         json overrides = json::array();
         for (const auto& override_value : component->overrides)
@@ -697,7 +697,7 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
                 reinterpret_cast<const std::uint8_t*>(override_value.value.data()),
                 override_value.value.size());
             overrides.push_back({
-                { "source", scene::to_string(override_value.key.source_entity) },
+                { "source", ecs::to_string(override_value.key.source_entity) },
                 { "component", ecs::to_string(override_value.key.component) },
                 { "field", override_value.key.field },
                 { "kind", static_cast<std::uint32_t>(override_value.key.kind) },
@@ -706,9 +706,9 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
         }
         components["PrefabInstance"] = {
             { "version", 1 },
-            { "prefabGuid", scene::to_string(component->prefab_guid) },
+            { "prefabGuid", ecs::to_string(component->prefab_guid) },
             { "prefabPath", relative_asset_path(component->prefab_path, project_root).generic_string() },
-            { "sourceRoot", scene::to_string(component->source_root) },
+            { "sourceRoot", ecs::to_string(component->source_root) },
             { "mapping", std::move(mapping) },
             { "overrides", std::move(overrides) }
         };
@@ -785,7 +785,7 @@ json serialize_entity(const editor_scene_state& state, scene::entity value, cons
         components["WorldEnvironment"] = json::parse(to_json(snapshot));
         components["WorldEnvironment"]["version"] = 1;
         if (state.scene.alive(settings->celestial.sun_light))
-            components["WorldEnvironment"]["sunLight"] = scene::to_string(entity_guid_of(state, settings->celestial.sun_light));
+            components["WorldEnvironment"]["sunLight"] = ecs::to_string(entity_guid_of(state, settings->celestial.sun_light));
     }
     if (const auto* component = state.scene.try_get<scene::terrain_component>(value))
     {
@@ -880,8 +880,8 @@ editor_primitive_type primitive_from_name(std::string_view value)
 scene_document_text_result serialize_scene_subtree_as_prefab(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    scene::entity root,
-    scene::entity_guid prefab_guid,
+    ecs::entity root,
+    ecs::entity_guid prefab_guid,
     std::string_view prefab_name)
 {
     ensure_scene_authoring_metadata(state);
@@ -891,14 +891,14 @@ scene_document_text_result serialize_scene_subtree_as_prefab(
         return { .message = "prefab GUID is invalid" };
 
     const auto values = scene::subtree(state.scene, root);
-    std::unordered_set<scene::entity, ecs::entity_hash> included(values.begin(), values.end());
+    std::unordered_set<ecs::entity, ecs::entity_hash> included(values.begin(), values.end());
     json document{
         { "format", "arc.prefab" },
         { "formatVersion", ecs::prefab_asset::current_format_version },
         { "prefab", {
-            { "id", scene::to_string(prefab_guid) },
+            { "id", ecs::to_string(prefab_guid) },
             { "name", std::string(prefab_name) },
-            { "root", scene::to_string(entity_guid_of(state, root)) }
+            { "root", ecs::to_string(entity_guid_of(state, root)) }
         } },
         { "entities", json::array() },
         { "dependencies", build_dependency_manifest(state, nullptr, &included) }
@@ -906,7 +906,7 @@ scene_document_text_result serialize_scene_subtree_as_prefab(
     try
     {
         std::uint32_t order{};
-        for (const scene::entity value : values)
+        for (const ecs::entity value : values)
         {
             json record = serialize_entity(state, value, project_root);
             record["components"].erase("PrefabInstance");
@@ -964,7 +964,7 @@ scene_document_result save_scene_document(
     const auto saved_scene_name = path.stem().string();
     json document{
         { "format", "arc.scene" }, { "formatVersion", arc_scene_format_version },
-        { "scene", { { "id", scene::to_string(state.scene_guid) }, { "name", saved_scene_name } } },
+        { "scene", { { "id", ecs::to_string(state.scene_guid) }, { "name", saved_scene_name } } },
         { "entities", json::array() },
         { "dependencies", build_dependency_manifest(state, asset_registry) }
     };
@@ -1028,7 +1028,7 @@ static scene_document_result load_scene_document_payload(
     if (!document["scene"].contains("id") || !document["scene"]["id"].is_string() ||
         (document["scene"].contains("name") && !document["scene"]["name"].is_string()))
         return { .message = "scene document has invalid scene metadata" };
-    const auto scene_id = scene::parse_entity_guid(document["scene"]["id"].get<std::string>());
+    const auto scene_id = ecs::parse_entity_guid(document["scene"]["id"].get<std::string>());
     if (!scene_id)
         return { .message = "scene document has an invalid scene GUID" };
 
@@ -1041,7 +1041,7 @@ static scene_document_result load_scene_document_payload(
             !record.contains("parent") || !record.contains("components") || !record["components"].is_object())
             return { .message = "scene contains a malformed entity record" };
         const auto id = record["id"].get<std::string>();
-        if (!scene::parse_entity_guid(id) || !ids.insert(id).second)
+        if (!ecs::parse_entity_guid(id) || !ids.insert(id).second)
             return { .message = "scene contains an invalid/duplicate entity or component object" };
         if (!record["parent"].is_null() && !record["parent"].is_string())
             return { .message = "scene contains an invalid parent reference" };
@@ -1105,7 +1105,7 @@ static scene_document_result load_scene_document_payload(
         ? *state.scene.try_get<scene::transform_component>(state.camera_entity) : scene::transform_component{};
     const auto old_editor_camera = state.scene.try_get<scene::camera_component>(state.camera_entity)
         ? *state.scene.try_get<scene::camera_component>(state.camera_entity) : scene::camera_component{};
-    loaded.scene = scene::registry{};
+    loaded.scene = ecs::world{};
     loaded.selected_entity = {};
     loaded.game_camera_entity = {};
     loaded.sun_entity = {};
@@ -1125,7 +1125,7 @@ static scene_document_result load_scene_document_payload(
     loaded.recovered_document = stored.recovered;
 
     loaded.camera_entity = loaded.scene.create();
-    loaded.scene.emplace<scene::persistent_id_component>(loaded.camera_entity, scene::generate_entity_guid());
+    loaded.scene.emplace<scene::persistent_id_component>(loaded.camera_entity, ecs::generate_entity_guid());
     loaded.scene.emplace<scene::hierarchy_component>(loaded.camera_entity);
     loaded.scene.emplace<scene::name_component>(loaded.camera_entity, "Editor Camera");
     loaded.scene.emplace<scene::tag_component>(loaded.camera_entity, "EditorOnly");
@@ -1133,22 +1133,22 @@ static scene_document_result load_scene_document_payload(
     loaded.scene.emplace<scene::transform_component>(loaded.camera_entity, old_editor_transform);
     loaded.scene.emplace<scene::camera_component>(loaded.camera_entity, old_editor_camera);
 
-    std::unordered_map<std::string, scene::entity> entities;
-    std::vector<std::pair<scene::entity, std::string>> pending_parents;
-    std::vector<std::pair<scene::entity, std::string>> pending_suns;
+    std::unordered_map<std::string, ecs::entity> entities;
+    std::vector<std::pair<ecs::entity, std::string>> pending_parents;
+    std::vector<std::pair<ecs::entity, std::string>> pending_suns;
     try
     {
         for (const auto& record : document["entities"])
         {
             const auto id_text = record.at("id").get<std::string>();
-            const auto guid = *scene::parse_entity_guid(id_text);
+            const auto guid = *ecs::parse_entity_guid(id_text);
             const auto& components = record.at("components");
             for (const auto& [component_name, component] : components.items())
                 if (!component.is_object() || !component.contains("version") || !component["version"].is_number_unsigned())
                     throw std::runtime_error("component '" + component_name + "' has no valid schema version");
             const auto binding_json = record.value("assetBinding", json::object());
             const std::string binding_kind = binding_json.value("kind", "");
-            scene::entity entity{};
+            ecs::entity entity{};
             if (binding_kind == "primitive")
                 entity = add_primitive_to_scene(loaded, renderer, primitive_from_name(binding_json.value("subresource", "Plane")));
             else if (components.contains("Terrain"))
@@ -1185,7 +1185,7 @@ static scene_document_result load_scene_document_payload(
                     static_cast<render::render_mobility>(components["Mobility"].value("value", 2)));
             if (components.contains("WorldRegion"))
             {
-                const auto region = scene::parse_entity_guid(components["WorldRegion"].value("id", ""));
+                const auto region = ecs::parse_entity_guid(components["WorldRegion"].value("id", ""));
                 if (!region) throw std::runtime_error("invalid world region identity");
                 loaded.scene.emplace<scene::world_region_component>(entity, ecs::world_region_id{ *region });
             }
@@ -1193,8 +1193,8 @@ static scene_document_result load_scene_document_payload(
             {
                 const auto& source = components["PrefabInstance"];
                 scene::prefab_instance_component instance;
-                instance.prefab_guid = *scene::parse_entity_guid(source.value("prefabGuid", ""));
-                instance.source_root = *scene::parse_entity_guid(source.value("sourceRoot", ""));
+                instance.prefab_guid = *ecs::parse_entity_guid(source.value("prefabGuid", ""));
+                instance.source_root = *ecs::parse_entity_guid(source.value("sourceRoot", ""));
                 const auto prefab_path = resolve_document_asset_path(source.value("prefabPath", ""), project_root);
                 if (!prefab_path) throw std::runtime_error("invalid prefab asset path");
                 instance.prefab_path = prefab_path->generic_string();
@@ -1202,8 +1202,8 @@ static scene_document_result load_scene_document_payload(
                 {
                     if (!mapping.is_object() || !mapping.contains("source") || !mapping.contains("instance"))
                         throw std::runtime_error("invalid prefab entity mapping");
-                    const auto source_id = scene::parse_entity_guid(mapping["source"].get<std::string>());
-                    const auto instance_id = scene::parse_entity_guid(mapping["instance"].get<std::string>());
+                    const auto source_id = ecs::parse_entity_guid(mapping["source"].get<std::string>());
+                    const auto instance_id = ecs::parse_entity_guid(mapping["instance"].get<std::string>());
                     if (!source_id || !instance_id) throw std::runtime_error("invalid prefab mapped entity GUID");
                     instance.source_to_instance.emplace_back(*source_id, *instance_id);
                 }
@@ -1212,7 +1212,7 @@ static scene_document_result load_scene_document_payload(
                     if (!stored.is_object() || !stored.contains("source") || !stored.contains("component") ||
                         !stored.contains("field") || !stored.contains("kind") || !stored.contains("value"))
                         throw std::runtime_error("invalid prefab override");
-                    const auto source_id = scene::parse_entity_guid(stored["source"].get<std::string>());
+                    const auto source_id = ecs::parse_entity_guid(stored["source"].get<std::string>());
                     const auto component_id = ecs::parse_component_type_id(stored["component"].get<std::string>());
                     const auto bytes = base64_decode(stored["value"].get<std::string>());
                     const auto kind = stored["kind"].get<std::uint32_t>();
@@ -1559,8 +1559,10 @@ scene_document_result load_scene_document_text(
     persistence::document_load_result stored;
     stored.source_path = logical_path;
     stored.text.assign(text);
-    assets::asset_hash hash;
-    stored.succeeded = persistence::verify_json_document(text, &hash, stored.error);
+    auto verified = persistence::verify_json_document(text, false);
+    stored.succeeded = verified.has_value();
+    if (!verified)
+        stored.error = verified.error().message;
     if (!stored.succeeded)
         return { .message = stored.error };
     const auto parsed = json::parse(text, nullptr, false);

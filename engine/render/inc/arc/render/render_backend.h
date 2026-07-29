@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arc/core/core.h>
 #include <arc/render/events.h>
 #include <arc/render/render_graph.h>
 
@@ -283,14 +284,52 @@ public:
     virtual ~shader_library() = default;
 };
 
-/**
- * @brief Result from submitting a frame packet to a backend.
- */
-struct render_submit_result
+/** @brief Recoverable frame-submission failure categories. */
+enum class render_submit_error_code : std::uint8_t
 {
-    bool submitted{};
+    /// No backend is attached or capable of accepting the frame.
+    backend_unavailable,
+    /// The compiled graph does not satisfy backend execution requirements.
+    invalid_render_graph,
+    /// The graphics device was lost during submission.
+    device_lost,
+    /// An unspecified backend operation failed.
+    backend_failure
+};
+
+/** @brief Recoverable error returned when a backend cannot submit a frame. */
+struct render_submit_error
+{
+    render_submit_error_code code{ render_submit_error_code::backend_failure };
     std::string message;
 };
+
+/** @brief Status returned after submitting a frame packet to a backend. */
+using render_submit_result = core::status<render_submit_error>;
+
+/**
+ * @brief Failure categories for presenting a backend-owned surface.
+ */
+enum class surface_frame_error_code : std::uint8_t
+{
+    unsupported,
+    unavailable,
+    out_of_date,
+    device_lost,
+    backend_failure
+};
+
+/**
+ * @brief Recoverable failure returned by surface presentation.
+ */
+struct surface_frame_error
+{
+    surface_frame_error_code code{ surface_frame_error_code::backend_failure };
+    std::string message;
+};
+
+/** @brief Result of presenting one backend-owned surface frame. */
+using surface_frame_result = core::status<surface_frame_error>;
 
 /**
  * @brief One named GPU/backend timing sample in milliseconds.
@@ -385,7 +424,7 @@ struct render_object_pick_request
 /**
  * @brief Result from the latest asynchronous ObjectID pick readback.
  */
-struct render_object_pick_result
+struct [[nodiscard]] render_object_pick_result
 {
     std::uint64_t request_id{};
     bool available{};
@@ -454,7 +493,7 @@ struct render_capture_camera_state
     std::uint32_t output_height{};
 };
 
-struct render_frame_capture_result
+struct [[nodiscard]] render_frame_capture_result
 {
     std::uint64_t capture_id{};
     std::uint64_t frame_index{};
@@ -513,6 +552,17 @@ public:
     virtual render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) = 0;
 
     /**
+     * @brief Present the latest submitted frame to the backend-owned surface.
+     * @param width Output width in physical pixels.
+     * @param height Output height in physical pixels.
+     * @return Success, or a structured recoverable presentation error.
+     * @note Must be called from the backend's render thread.
+     */
+    [[nodiscard]] virtual surface_frame_result present_surface_frame(
+        std::uint32_t width,
+        std::uint32_t height);
+
+    /**
      * @brief Resize the backend-owned editor/game viewport target.
      */
     virtual void resize_viewport(std::uint32_t width, std::uint32_t height);
@@ -548,21 +598,34 @@ public:
     virtual render_frame_capture_result last_frame_capture() const;
 };
 
-/**
- * @brief Factory result for backend creation.
- */
-struct render_backend_create_result
+/** @brief Render-backend creation failure categories. */
+enum class render_backend_create_error_code : std::uint8_t
 {
-    std::unique_ptr<render_backend> backend;
-    std::string message;
-
-    /**
-     * @brief Return whether a backend was created.
-     */
-    bool succeeded() const noexcept
-    {
-        return static_cast<bool>(backend);
-    }
+    /// The platform graphics loader could not be initialized.
+    loader_unavailable,
+    /// The backend API instance could not be created.
+    instance_creation_failed,
+    /// The requested presentation surface could not be created.
+    surface_creation_failed,
+    /// No adapter met the backend's required baseline.
+    adapter_unavailable,
+    /// Logical device creation failed.
+    device_creation_failed,
+    /// Backend GPU-memory allocator creation failed.
+    memory_allocator_creation_failed
 };
+
+/** @brief Structured failure returned by a render-backend factory. */
+struct render_backend_create_error
+{
+    render_backend_create_error_code code{
+        render_backend_create_error_code::device_creation_failed
+    };
+    std::string message;
+};
+
+/** @brief Value-or-error result returned by a render-backend factory. */
+using render_backend_create_result =
+    core::result<std::unique_ptr<render_backend>, render_backend_create_error>;
 
 } // namespace arc::render

@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::jobs
+ * @brief Dependency-aware work scheduling, affinity, cancellation, and profiling.
+ */
+
 #include <arc/memory/memory.h>
 
 #include <atomic>
@@ -21,7 +25,7 @@
 #include <utility>
 #include <vector>
 
-namespace arc
+namespace arc::jobs
 {
 
 enum class job_priority : std::uint8_t
@@ -228,7 +232,7 @@ private:
     std::shared_ptr<detail::cancellation_state> state_;
 };
 
-struct job_wait_result
+struct [[nodiscard]] job_wait_result
 {
     job_status status{ job_status::invalid };
     std::exception_ptr exception;
@@ -319,7 +323,7 @@ struct job_system_config
     std::size_t io_worker_count{ 2 };
     bool enable_render_thread{ true };
     std::size_t profile_event_capacity{ 8192 };
-    memory_system* memory{};
+    memory::memory_system* memory{};
 };
 
 template <class T>
@@ -640,4 +644,4 @@ void parallel_for(job_system& jobs, std::size_t begin, std::size_t end, std::siz
     jobs.parallel_for(begin, end, grain_size, std::forward<Function>(function));
 }
 
-} // namespace arc
+} // namespace arc::jobs

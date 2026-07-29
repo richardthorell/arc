@@ -159,7 +159,7 @@ scene_lighting_data pack_scene_lighting(
     const std::vector<directional_light_event>& directional,
     const std::vector<point_light_event>& point,
     const std::vector<spot_light_event>& spot,
-    const environment_desc* environment,
+    const environment_descriptor* environment,
     std::uint32_t point_limit,
     std::uint32_t spot_limit,
     const std::vector<area_light_event>& area)

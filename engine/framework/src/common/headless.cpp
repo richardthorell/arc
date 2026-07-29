@@ -6,7 +6,7 @@
 #include <exception>
 #include <thread>
 
-namespace arc
+namespace arc::framework
 {
 
 headless_runtime_result run_headless(application& app, headless_runtime_options options)
@@ -90,4 +90,4 @@ headless_runtime_result run_headless(application& app, headless_runtime_options 
     }
 }
 
-} // namespace arc
+} // namespace arc::framework

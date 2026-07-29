@@ -59,12 +59,12 @@ struct asset_fixture
         manager.on_shutdown(context);
     }
 
-    arc::memory_system memory;
-    arc::job_system jobs;
+    arc::memory::memory_system memory;
+    arc::jobs::job_system jobs;
     arc::io::async_file_service files;
     arc::assets::asset_manager manager;
-    arc::runtime_service_registry services;
-    arc::runtime_service_context context;
+    arc::framework::runtime_service_registry services;
+    arc::framework::runtime_service_context context;
 };
 
 class test_cook_processor final : public arc::assets::asset_cook_processor
@@ -148,10 +148,10 @@ TEST_CASE("asset metadata round trips stable subasset identities")
         }}
     };
     const auto path = project.assets / "cabin.glb.arcmeta";
-    std::string error;
-    REQUIRE(save_asset_metadata(path, source, error));
-    asset_source_metadata loaded;
-    REQUIRE(load_asset_metadata(path, loaded, error));
+    REQUIRE(save_asset_metadata(path, source));
+    auto loaded_result = load_asset_metadata(path);
+    REQUIRE(loaded_result);
+    const asset_source_metadata& loaded = loaded_result.value();
     REQUIRE(loaded.guid == source.guid);
     REQUIRE(loaded.type == source.type);
     REQUIRE(loaded.importer == source.importer);
@@ -287,9 +287,9 @@ TEST_CASE("first prefab sidecar adopts the authored prefab identity")
     const auto prefab = fixture.manager.find("assets/prefabs/cabin.arcprefab");
     REQUIRE(prefab);
     REQUIRE(prefab->guid == authored);
-    asset_source_metadata metadata;
-    std::string error;
-    REQUIRE(load_asset_metadata(project.assets / "prefabs/cabin.arcprefab.arcmeta", metadata, error));
+    auto metadata_result = load_asset_metadata(project.assets / "prefabs/cabin.arcprefab.arcmeta");
+    REQUIRE(metadata_result);
+    const asset_source_metadata& metadata = metadata_result.value();
     REQUIRE(metadata.guid == authored);
 }
 
@@ -341,7 +341,7 @@ TEST_CASE("asset handles pins cancellation and pressure eviction preserve reside
     REQUIRE(fixture.manager.evict_unused() == 1);
     REQUIRE(fixture.manager.find(asset->guid)->residency == asset_residency::derived);
 
-    arc::cancellation_source cancelled;
+    arc::jobs::cancellation_source cancelled;
     REQUIRE(cancelled.request_cancel());
     const auto cancelled_result = fixture.manager.load<source_asset_data>({
         .reference = reference,
@@ -355,7 +355,7 @@ TEST_CASE("cook build keys include processor shader and platform identities")
 {
     using namespace arc::assets;
     constexpr std::string_view source_text = "source";
-    asset_build_key_desc description{
+    asset_build_key_descriptor description{
         .source_hash = hash_bytes(std::as_bytes(std::span(source_text.data(), source_text.size()))),
         .importer = importer_ids::shader,
         .importer_version = 3,
@@ -457,15 +457,14 @@ TEST_CASE("incremental cooker reuses actions and packages mount without source s
     REQUIRE(package.succeeded());
     REQUIRE(package.chunks.size() == 1);
     asset_package_mount mount;
-    std::string error;
-    REQUIRE(mount.mount(package.manifest_path, error));
+    REQUIRE(mount.mount(package.manifest_path));
     for (const auto& artifact : mount.manifest().artifacts)
     {
-        const auto loaded = mount.read(artifact.asset, artifact.schema, error);
+        const auto loaded = mount.read(artifact.asset, artifact.schema);
         REQUIRE(loaded);
-        REQUIRE(hash_bytes(*loaded) == artifact.hash);
+        REQUIRE(hash_bytes(loaded.value()) == artifact.hash);
 
-        arc::job_system jobs({ .run_inline = true });
+        arc::jobs::job_system jobs({ .run_inline = true });
         arc::io::async_file_service files(jobs);
         const auto async_loaded = mount.read_async(
             artifact.asset, artifact.schema, files).get();
@@ -485,9 +484,9 @@ TEST_CASE("incremental cooker reuses actions and packages mount without source s
         [](const auto& entry) {
             return entry.path().string().find(".corrupt-") != std::string::npos;
         }));
-    REQUIRE(mount.mount(repaired.manifest_path, error));
+    REQUIRE(mount.mount(repaired.manifest_path));
     for (const auto& artifact : mount.manifest().artifacts)
-        REQUIRE(mount.read(artifact.asset, artifact.schema, error));
+        REQUIRE(mount.read(artifact.asset, artifact.schema));
 }
 
 TEST_CASE("cache pruning preserves pinned blobs")

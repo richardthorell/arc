@@ -300,7 +300,7 @@ public:
     /**
      * @brief Compile pass order and validate dependencies.
      */
-    compiled_render_graph compile() const;
+    [[nodiscard]] compiled_render_graph compile() const;
 
     /**
      * @brief Remove all pass declarations.

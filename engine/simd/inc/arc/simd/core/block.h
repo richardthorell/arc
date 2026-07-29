@@ -4,7 +4,7 @@
 
 #include <array>
 
-namespace arc
+namespace arc::simd
 {
 namespace detail
 {
@@ -96,4 +96,4 @@ struct simd_block
     using data_type = std::array<register_type, blocks>;
 };
 
-} // namespace arc
+} // namespace arc::simd

@@ -165,6 +165,14 @@ void render_backend::configure(const resolved_render_config&)
 {
 }
 
+surface_frame_result render_backend::present_surface_frame(std::uint32_t, std::uint32_t)
+{
+    return surface_frame_result::failure({
+        .code = surface_frame_error_code::unsupported,
+        .message = "surface presentation is not supported by this backend"
+    });
+}
+
 render_viewport_texture render_backend::viewport_texture() const noexcept
 {
     return {};
@@ -336,11 +344,11 @@ bool renderer::update_texture(texture_handle handle, texture_data texture)
     return true;
 }
 
-material_handle renderer::create_material(material_desc material)
+material_handle renderer::create_material(material_descriptor material)
 {
     const material_handle handle = material_handles_.allocate();
     material.handle = handle;
-    auto shared_material = std::make_shared<material_desc>(std::move(material));
+    auto shared_material = std::make_shared<material_descriptor>(std::move(material));
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
@@ -349,13 +357,13 @@ material_handle renderer::create_material(material_desc material)
     return handle;
 }
 
-bool renderer::update_material(material_handle handle, material_desc material)
+bool renderer::update_material(material_handle handle, material_descriptor material)
 {
     if (!material_handles_.alive(handle))
         return false;
 
     material.handle = handle;
-    auto shared_material = std::make_shared<material_desc>(std::move(material));
+    auto shared_material = std::make_shared<material_descriptor>(std::move(material));
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
@@ -364,11 +372,11 @@ bool renderer::update_material(material_handle handle, material_desc material)
     return true;
 }
 
-environment_handle renderer::create_environment(environment_desc environment)
+environment_handle renderer::create_environment(environment_descriptor environment)
 {
     const environment_handle handle = environment_handles_.allocate();
     environment.handle = handle;
-    auto shared_environment = std::make_shared<environment_desc>(std::move(environment));
+    auto shared_environment = std::make_shared<environment_descriptor>(std::move(environment));
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
@@ -377,12 +385,12 @@ environment_handle renderer::create_environment(environment_desc environment)
     return handle;
 }
 
-bool renderer::update_environment(environment_handle handle, environment_desc environment)
+bool renderer::update_environment(environment_handle handle, environment_descriptor environment)
 {
     if (!environment_handles_.alive(handle))
         return false;
     environment.handle = handle;
-    auto shared_environment = std::make_shared<environment_desc>(std::move(environment));
+    auto shared_environment = std::make_shared<environment_descriptor>(std::move(environment));
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.environment_upload(handle, shared_environment, shared_environment->name);
@@ -496,7 +504,10 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
     const auto compiled = graph.compile();
 
     if (!backend_)
-        return { .submitted = false, .message = "no render backend attached" };
+        return render_submit_result::failure({
+            render_submit_error_code::backend_unavailable,
+            "no render backend attached"
+        });
 
     if (config_.enable_dynamic_resolution)
     {
@@ -537,31 +548,31 @@ std::string_view renderer_module::name() const
     return "renderer";
 }
 
-void renderer_module::on_start(module_context&)
+void renderer_module::on_start(framework::module_context&)
 {
-    arc::info("render", "Renderer module started");
+    arc::diagnostics::info("render", "Renderer module started");
 }
 
-void renderer_module::on_update(module_context&, const frame_time& time)
+void renderer_module::on_update(framework::module_context&, const framework::frame_time& time)
 {
     if (!renderer_.backend())
     {
         if (!missing_backend_reported_)
         {
-            arc::debug("render", "no render backend attached");
+            arc::diagnostics::debug("render", "no render backend attached");
             missing_backend_reported_ = true;
         }
         return;
     }
 
     const auto result = renderer_.render_frame(time.frame_index, graph_);
-    if (!result.submitted && !result.message.empty())
-        arc::debug("render", result.message);
+    if (!result && !result.error().message.empty())
+        arc::diagnostics::debug("render", result.error().message);
 }
 
-void renderer_module::on_shutdown(module_context&)
+void renderer_module::on_shutdown(framework::module_context&)
 {
-    arc::info("render", "Renderer module shutdown");
+    arc::diagnostics::info("render", "Renderer module shutdown");
 }
 
 } // namespace arc::render

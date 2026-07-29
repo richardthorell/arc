@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-namespace arc
+namespace arc::diagnostics
 {
 
 /**
@@ -168,4 +168,4 @@ void error(std::string_view category, std::string_view message, std::source_loca
  */
 void fatal(std::string_view category, std::string_view message, std::source_location source = std::source_location::current());
 
-} // namespace arc
+} // namespace arc::diagnostics

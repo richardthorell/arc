@@ -1,5 +1,7 @@
 #pragma once
 
+#include <arc/core/id.h>
+
 #include <array>
 #include <algorithm>
 #include <charconv>
@@ -16,50 +18,25 @@
 namespace arc::ecs
 {
 
-struct component_type_id
-{
-    std::uint64_t high{};
-    std::uint64_t low{};
-
-    constexpr bool valid() const noexcept { return high != 0 || low != 0; }
-    friend constexpr auto operator<=>(component_type_id, component_type_id) noexcept = default;
-};
+struct component_type_id_tag;
+using component_type_id = core::uuid<component_type_id_tag>;
+static_assert(sizeof(component_type_id) == 16);
+static_assert(std::is_standard_layout_v<component_type_id>);
+static_assert(std::is_trivially_copyable_v<component_type_id>);
 
 struct component_type_id_hash
 {
     std::size_t operator()(component_type_id value) const noexcept
     {
-        return static_cast<std::size_t>(value.high ^ (value.low + 0x9e3779b97f4a7c15ull +
-            (value.high << 6u) + (value.high >> 2u)));
+        return core::uuid_hash<component_type_id_tag>{}(value);
     }
 };
 
-inline std::string to_string(component_type_id value)
-{
-    constexpr char digits[] = "0123456789abcdef";
-    std::string result(32, '0');
-    for (std::size_t index = 0; index < 16; ++index)
-    {
-        const std::uint64_t source = index < 8 ? value.high : value.low;
-        const std::size_t byte_index = index < 8 ? index : index - 8;
-        const auto byte = static_cast<std::uint8_t>(source >> ((7 - byte_index) * 8u));
-        result[index * 2] = digits[byte >> 4u];
-        result[index * 2 + 1] = digits[byte & 0x0fu];
-    }
-    return result;
-}
+inline std::string to_string(component_type_id value) { return core::to_string(value); }
 
 inline std::optional<component_type_id> parse_component_type_id(std::string_view value) noexcept
 {
-    if (value.size() != 32)
-        return std::nullopt;
-    component_type_id result{};
-    const auto high = std::from_chars(value.data(), value.data() + 16, result.high, 16);
-    const auto low = std::from_chars(value.data() + 16, value.data() + 32, result.low, 16);
-    if (high.ec != std::errc{} || low.ec != std::errc{} ||
-        high.ptr != value.data() + 16 || low.ptr != value.data() + 32 || !result.valid())
-        return std::nullopt;
-    return result;
+    return core::parse_uuid<component_type_id_tag>(value);
 }
 
 using component_field_id = std::uint64_t;
@@ -123,6 +100,10 @@ struct component_field_descriptor
         reflected_field_flags::prefab_override };
     std::size_t offset{ invalid_offset };
     std::size_t value_size{};
+    std::string_view description;
+    std::string_view unit;
+    std::optional<double> minimum;
+    std::optional<double> maximum;
 };
 
 struct component_descriptor
@@ -136,6 +117,7 @@ struct component_descriptor
     std::span<const component_field_descriptor> fields;
     bool custom_serialization{};
     bool custom_replication{};
+    std::string_view description;
 };
 
 template <class T>

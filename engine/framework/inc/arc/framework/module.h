@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace arc
+namespace arc::framework
 {
 
 struct frame_time;
@@ -24,42 +24,42 @@ class runtime_world_manager;
 class module_context
 {
 public:
-    module_context(job_system& jobs, logger& diagnostics, tracked_memory_resource& memory) noexcept;
+    module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics, memory::tracked_memory_resource& memory) noexcept;
     module_context(
-        job_system& jobs,
-        logger& diagnostics,
-        memory_system& memory,
-        tracked_memory_resource& compatibility_memory,
+        jobs::job_system& jobs,
+        diagnostics::logger& diagnostics,
+        memory::memory_system& memory,
+        memory::tracked_memory_resource& compatibility_memory,
         runtime_service_registry* services = nullptr,
         runtime_world_manager* worlds = nullptr) noexcept;
 
     /**
      * @brief Return the shared engine job system.
      */
-    job_system& jobs() const noexcept;
+    jobs::job_system& jobs() const noexcept;
 
     /**
-     * @brief Return the shared diagnostics logger.
+     * @brief Return the shared diagnostics diagnostics::logger.
      */
-    logger& diagnostics() const noexcept;
+    diagnostics::logger& diagnostics() const noexcept;
 
     /**
      * @brief Return the shared tracked memory resource.
      */
-    tracked_memory_resource& memory() const noexcept;
+    memory::tracked_memory_resource& memory() const noexcept;
 
     /**
      * @brief Return the engine memory service used for budgets, tags, and arenas.
      */
-    memory_system& memory_service() const noexcept;
+    memory::memory_system& memory_service() const noexcept;
     runtime_service_registry* services() const noexcept;
     runtime_world_manager* worlds() const noexcept;
 
 private:
-    job_system* jobs_{};
-    logger* diagnostics_{};
-    tracked_memory_resource* memory_{};
-    memory_system* memory_service_{};
+    jobs::job_system* jobs_{};
+    diagnostics::logger* diagnostics_{};
+    memory::tracked_memory_resource* memory_{};
+    memory::memory_system* memory_service_{};
     runtime_service_registry* services_{};
     runtime_world_manager* worlds_{};
 };
@@ -200,4 +200,4 @@ private:
     bool started_{};
 };
 
-} // namespace arc
+} // namespace arc::framework

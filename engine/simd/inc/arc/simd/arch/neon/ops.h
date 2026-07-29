@@ -2,7 +2,7 @@
 
 #include "arc/simd/arch/neon/detect.h"
 
-namespace arc
+namespace arc::simd
 {
 
 #if defined(ARC_SIMD_NEON)
@@ -827,4 +827,4 @@ struct simd_op<float64x2_t>
 };
 #endif
 
-} // namespace arc
+} // namespace arc::simd

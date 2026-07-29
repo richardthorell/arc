@@ -8,7 +8,7 @@ namespace arc::render
 {
 
 shader_permutation_key make_shader_permutation_key(
-    const material_desc& material,
+    const material_descriptor& material,
     std::uint8_t debug_view,
     bool wireframe) noexcept
 {

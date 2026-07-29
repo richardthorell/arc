@@ -2,7 +2,7 @@
 
 #include <arc/simd/core/ops/detail.h>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -14,4 +14,4 @@ constexpr simd<T, N> select(const simd_mask<N>& mask, const simd<T, N>& a, const
     }(std::make_index_sequence<simd<T, N>::blocks()>{});
 }
 
-} // namespace arc
+} // namespace arc::simd

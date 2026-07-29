@@ -1,5 +1,6 @@
 #pragma once
 
+#include <arc/core/core.h>
 #include <arc/ecs/simulation.h>
 
 #include <cstdint>
@@ -12,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace arc
+namespace arc::framework
 {
 
 using runtime_service_id = ecs::runtime_service_id;
@@ -30,6 +31,27 @@ struct runtime_service_snapshot
     std::vector<std::byte> bytes;
 };
 
+enum class runtime_service_error_code : std::uint8_t
+{
+    capture_failed,
+    validation_failed,
+    service_missing
+};
+
+struct runtime_service_error
+{
+    runtime_service_error_code code{ runtime_service_error_code::validation_failed };
+    runtime_service_id service{};
+    std::uint64_t world{};
+    std::string message;
+};
+
+using runtime_service_status = core::status<runtime_service_error>;
+using runtime_service_capture_result =
+    core::result<std::vector<runtime_service_snapshot>, runtime_service_error>;
+using runtime_service_blob_result =
+    core::result<std::vector<std::byte>, runtime_service_error>;
+
 class runtime_service_context;
 
 class runtime_service
@@ -41,30 +63,31 @@ public:
     virtual std::vector<runtime_service_id> dependencies() const { return {}; }
     virtual bool has_deterministic_state() const noexcept { return false; }
     virtual std::uint32_t snapshot_version() const noexcept { return 1; }
-    virtual bool capture_deterministic_state(
-        std::uint64_t,
-        std::vector<std::byte>&,
-        std::string& error) const
+    [[nodiscard]] virtual runtime_service_blob_result capture_deterministic_state(
+        std::uint64_t world) const
     {
         if (has_deterministic_state())
-        {
-            error = "runtime service does not implement deterministic snapshot capture";
-            return false;
-        }
-        return true;
+            return runtime_service_blob_result::failure({
+                .code = runtime_service_error_code::capture_failed,
+                .service = id(),
+                .world = world,
+                .message = "runtime service does not implement deterministic snapshot capture"
+            });
+        return runtime_service_blob_result::success({});
     }
-    virtual bool validate_deterministic_state(
-        std::uint64_t,
+    [[nodiscard]] virtual runtime_service_status validate_deterministic_state(
+        std::uint64_t world,
         std::uint32_t,
-        const std::vector<std::byte>&,
-        std::string& error) const
+        const std::vector<std::byte>&) const
     {
         if (has_deterministic_state())
-        {
-            error = "runtime service does not implement deterministic snapshot validation";
-            return false;
-        }
-        return true;
+            return runtime_service_status::failure({
+                .code = runtime_service_error_code::validation_failed,
+                .service = id(),
+                .world = world,
+                .message = "runtime service does not implement deterministic snapshot validation"
+            });
+        return runtime_service_status::success();
     }
     virtual void restore_deterministic_state(
         std::uint64_t,
@@ -120,14 +143,11 @@ public:
 
     void* find_service(runtime_service_id id) noexcept override;
     const void* find_service(runtime_service_id id) const noexcept override;
-    bool capture_deterministic_state(
+    [[nodiscard]] runtime_service_capture_result capture_deterministic_state(
+        std::uint64_t world) const;
+    [[nodiscard]] runtime_service_status validate_deterministic_state(
         std::uint64_t world,
-        std::vector<runtime_service_snapshot>& snapshots,
-        std::string& error) const;
-    bool validate_deterministic_state(
-        std::uint64_t world,
-        const std::vector<runtime_service_snapshot>& snapshots,
-        std::string& error) const;
+        const std::vector<runtime_service_snapshot>& snapshots) const;
     void restore_deterministic_state(
         std::uint64_t world,
         const std::vector<runtime_service_snapshot>& snapshots) noexcept;
@@ -154,4 +174,4 @@ private:
     bool started_{};
 };
 
-} // namespace arc
+} // namespace arc::framework

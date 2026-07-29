@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::render
+ * @brief Backend-neutral rendering resources, graphs, packets, and execution contracts.
+ */
+
 /**
  * @file arc/render/render.h
  * @brief Aggregate include for ARC rendering APIs.

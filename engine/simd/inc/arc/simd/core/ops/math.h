@@ -5,7 +5,7 @@
 #include <arc/simd/core/ops/memory.h>
 #include <arc/simd/core/ops/minmax.h>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -222,4 +222,4 @@ constexpr simd<T, N> trunc(const simd<T, N>& value) noexcept
     return apply<simd<T, N>>(ops_for<simd<T, N>>::trunc, value);
 }
 
-} // namespace arc
+} // namespace arc::simd

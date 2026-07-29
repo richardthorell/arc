@@ -1,5 +1,7 @@
 #pragma once
 
+#include <arc/core/result.h>
+
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -41,16 +43,37 @@ struct shader_reflection
     std::vector<std::string> resources;
 };
 
-/**
- * @brief Shader compilation result.
- */
-struct shader_compile_result
+/** @brief Successfully compiled shader package data. */
+struct shader_compile_output
 {
-    bool succeeded{};
-    std::string diagnostics;
     std::vector<std::uint8_t> bytecode;
     shader_reflection reflection;
 };
+
+/** @brief Shader compilation failure categories. */
+enum class shader_compile_error_code : std::uint8_t
+{
+    /// The request contains an invalid entry point, profile, or target.
+    invalid_request,
+    /// The shader source or one of its includes is unavailable.
+    source_unavailable,
+    /// No compiler implementation supports the requested target.
+    compiler_unavailable,
+    /// The compiler rejected the source.
+    compilation_failed
+};
+
+/** @brief Structured shader compilation failure. */
+struct shader_compile_error
+{
+    shader_compile_error_code code{ shader_compile_error_code::compilation_failed };
+    std::string source_path;
+    std::string diagnostics;
+};
+
+/** @brief Value-or-error shader compilation result. */
+using shader_compile_result =
+    core::result<shader_compile_output, shader_compile_error>;
 
 /**
  * @brief Cached shader source metadata used for hot reload checks.
@@ -78,7 +101,8 @@ public:
     /**
      * @brief Compile one shader request into backend bytecode.
      */
-    virtual shader_compile_result compile(const shader_compile_request& request) = 0;
+    [[nodiscard]] virtual shader_compile_result compile(
+        const shader_compile_request& request) = 0;
 };
 
 /**
@@ -90,7 +114,9 @@ public:
     /**
      * @brief Compile or return a cached result for the request.
      */
-    shader_compile_result compile_or_get(shader_compiler& compiler, const shader_compile_request& request);
+    [[nodiscard]] shader_compile_result compile_or_get(
+        shader_compiler& compiler,
+        const shader_compile_request& request);
 
     /**
      * @brief Return whether the source file for a request has changed since caching.

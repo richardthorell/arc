@@ -32,7 +32,11 @@ layout(push_constant) uniform deferred_constants
 
 vec3 reconstruct_world_position(vec2 uv, float depth)
 {
-    vec4 clip_position = vec4(uv * 2.0 - vec2(1.0), depth, 1.0);
+    // Fullscreen UVs are Y-flipped so texture coordinates follow the
+    // top-left Vulkan attachment convention. Clip-space Y is not flipped:
+    // undo the texture mapping before applying inverse_view_projection.
+    vec2 clip_xy = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    vec4 clip_position = vec4(clip_xy, depth, 1.0);
     vec4 world_position = constants.inverse_view_projection * clip_position;
     return world_position.xyz / max(abs(world_position.w), 1.0e-6);
 }

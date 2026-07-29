@@ -125,7 +125,7 @@ public:
         state_ = old_state * 6364136223846793005ull + increment_;
         const auto shifted = static_cast<std::uint32_t>(((old_state >> 18u) ^ old_state) >> 27u);
         const auto rotation = static_cast<std::uint32_t>(old_state >> 59u);
-        return (shifted >> rotation) | (shifted << ((-rotation) & 31u));
+        return (shifted >> rotation) | (shifted << ((0u - rotation) & 31u));
     }
 
     constexpr float next_float() noexcept
@@ -137,7 +137,7 @@ public:
     {
         if (upper_exclusive == 0)
             return 0;
-        const std::uint32_t threshold = static_cast<std::uint32_t>(-upper_exclusive) % upper_exclusive;
+        const std::uint32_t threshold = (0u - upper_exclusive) % upper_exclusive;
         for (;;)
         {
             const std::uint32_t value = next_u32();
@@ -187,8 +187,8 @@ struct system_execution_info
     bool presentation{};
     const simulation_input_snapshot* input{};
     runtime_service_provider* services{};
-    tick_arena* tick_memory{};
-    frame_arena* frame_memory{};
+    memory::tick_arena* tick_memory{};
+    memory::frame_arena* frame_memory{};
 };
 
 } // namespace arc::ecs

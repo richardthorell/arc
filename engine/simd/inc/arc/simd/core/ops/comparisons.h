@@ -7,7 +7,7 @@
 
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -84,4 +84,4 @@ constexpr simd_mask<N> cmp_ge(const simd<T, N>& a, const simd<T, N>& b) noexcept
         return compare(a, b, ops_for<simd<T, N>>::cmp_ge);
 }
 
-} // namespace arc
+} // namespace arc::simd

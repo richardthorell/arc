@@ -123,8 +123,12 @@ package_build_result build_asset_packages(
     }
 
     result.manifest_path = output / (manifest.target.name + ".arccookmanifest");
-    if (!save_cook_manifest(result.manifest_path, manifest, result.error))
+    auto saved = save_cook_manifest(result.manifest_path, manifest);
+    if (!saved)
+    {
+        result.error = saved.error().message;
         return result;
+    }
     return result;
 }
 
@@ -143,11 +147,12 @@ asset_package_mount::~asset_package_mount() = default;
 asset_package_mount::asset_package_mount(asset_package_mount&&) noexcept = default;
 asset_package_mount& asset_package_mount::operator=(asset_package_mount&&) noexcept = default;
 
-bool asset_package_mount::mount(const std::filesystem::path& manifest_path, std::string& error)
+asset_status asset_package_mount::mount(const std::filesystem::path& manifest_path)
 {
-    cook_manifest staged;
-    if (!load_cook_manifest(manifest_path, staged, error))
-        return false;
+    auto loaded = load_cook_manifest(manifest_path);
+    if (!loaded)
+        return asset_status::failure(std::move(loaded).error());
+    cook_manifest staged = std::move(loaded).value();
     for (const auto& artifact : staged.artifacts)
     {
         const auto package = manifest_path.parent_path() / artifact.chunk;
@@ -155,21 +160,24 @@ bool asset_package_mount::mount(const std::filesystem::path& manifest_path, std:
         if (!std::filesystem::exists(package, filesystem_error) ||
             artifact.stored_size == 0 || artifact.compressed)
         {
-            error = artifact.compressed
-                ? "This runtime does not support compressed ARC package records"
-                : "Cook package chunk is missing or invalid";
-            return false;
+            return asset_status::failure({
+                .code = asset_error_code::invalid_metadata,
+                .guid = artifact.asset,
+                .path = package,
+                .message = artifact.compressed
+                    ? "This runtime does not support compressed ARC package records"
+                    : "Cook package chunk is missing or invalid"
+            });
         }
     }
     implementation_->root = manifest_path.parent_path();
     implementation_->manifest = std::move(staged);
-    return true;
+    return asset_status::success();
 }
 
-std::optional<std::vector<std::byte>> asset_package_mount::read(
+core::result<std::vector<std::byte>, asset_error> asset_package_mount::read(
     asset_guid asset,
-    artifact_schema_id schema,
-    std::string& error) const
+    artifact_schema_id schema) const
 {
     const auto found = std::find_if(
         implementation_->manifest.artifacts.begin(),
@@ -177,31 +185,42 @@ std::optional<std::vector<std::byte>> asset_package_mount::read(
         [&](const auto& value) { return value.asset == asset && value.schema == schema; });
     if (found == implementation_->manifest.artifacts.end())
     {
-        error = "Cooked artifact is not present in the mounted package";
-        return std::nullopt;
+        return core::result<std::vector<std::byte>, asset_error>::failure({
+            .code = asset_error_code::not_found,
+            .guid = asset,
+            .message = "Cooked artifact is not present in the mounted package"
+        });
     }
     std::ifstream stream(implementation_->root / found->chunk, std::ios::binary);
     if (!stream)
     {
-        error = "Could not open cooked package chunk";
-        return std::nullopt;
+        return core::result<std::vector<std::byte>, asset_error>::failure({
+            .code = asset_error_code::io_failed,
+            .guid = asset,
+            .path = implementation_->root / found->chunk,
+            .message = "Could not open cooked package chunk"
+        });
     }
     stream.seekg(static_cast<std::streamoff>(found->offset));
     std::vector<std::byte> bytes(static_cast<std::size_t>(found->stored_size));
     stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!stream || hash_bytes(bytes) != found->hash)
     {
-        error = "Cooked package artifact failed content verification";
-        return std::nullopt;
+        return core::result<std::vector<std::byte>, asset_error>::failure({
+            .code = asset_error_code::invalid_metadata,
+            .guid = asset,
+            .path = implementation_->root / found->chunk,
+            .message = "Cooked package artifact failed content verification"
+        });
     }
-    return bytes;
+    return core::result<std::vector<std::byte>, asset_error>::success(std::move(bytes));
 }
 
-job_future<io::file_result<io::file_buffer>> asset_package_mount::read_async(
+jobs::job_future<io::file_result<io::file_buffer>> asset_package_mount::read_async(
     asset_guid asset,
     artifact_schema_id schema,
     io::async_file_service& files,
-    cancellation_token cancellation) const
+    jobs::cancellation_token cancellation) const
 {
     const auto found = std::find_if(
         implementation_->manifest.artifacts.begin(),
@@ -211,7 +230,7 @@ job_future<io::file_result<io::file_buffer>> asset_package_mount::read_async(
     {
         return files.scheduler().submit_future({
             .name = "assets.package.missing",
-            .affinity = job_affinity::io_thread,
+            .affinity = jobs::job_affinity::io_thread,
             .cancellation = cancellation
         }, [] {
             return io::file_result<io::file_buffer>::failure({
@@ -228,9 +247,9 @@ job_future<io::file_result<io::file_buffer>> asset_package_mount::read_async(
         found->offset,
         static_cast<std::size_t>(found->stored_size),
         cancellation);
-    job_descriptor descriptor{
+    jobs::job_descriptor descriptor{
         .name = "assets.package.verify",
-        .affinity = job_affinity::io_thread,
+        .affinity = jobs::job_affinity::io_thread,
         .dependencies = { range.handle() },
         .cancellation = cancellation
     };

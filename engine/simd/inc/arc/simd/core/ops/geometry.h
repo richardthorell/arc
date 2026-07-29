@@ -7,7 +7,7 @@
 #include <array>
 #include <cmath>
 
-namespace arc
+namespace arc::simd
 {
 
 /// @brief Return the dot product of the first three lanes.
@@ -183,4 +183,4 @@ constexpr simd<T, 4> transform_direction3(const std::array<simd<T, 4>, 4>& rows,
     return transform4(rows, detail::simd_from_array<T, 4>(d));
 }
 
-} // namespace arc
+} // namespace arc::simd

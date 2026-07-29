@@ -92,7 +92,7 @@ cook_target windows_vulkan_cook_target();
 cook_target linux_vulkan_cook_target();
 std::string canonical_cook_target(const cook_target& target);
 
-struct asset_build_key_desc
+struct asset_build_key_descriptor
 {
     asset_hash source_hash{};
     std::vector<asset_hash> dependency_hashes;
@@ -111,7 +111,7 @@ struct asset_build_key_desc
     cook_target target{};
 };
 
-asset_build_key make_asset_build_key(const asset_build_key_desc& description);
+asset_build_key make_asset_build_key(const asset_build_key_descriptor& description);
 
 enum class cache_layer : std::uint8_t { none, local, shared };
 enum class cache_access : std::uint8_t { read_write, read_only, offline };
@@ -285,10 +285,10 @@ struct asset_cook_context
     cook_target target;
     std::string canonical_settings{ "{}" };
     std::vector<asset_snapshot> dependencies;
-    cancellation_token cancellation;
+    jobs::cancellation_token cancellation;
 };
 
-struct asset_cook_result
+struct [[nodiscard]] asset_cook_result
 {
     std::vector<cooked_artifact> artifacts;
     std::vector<asset_diagnostic> diagnostics;
@@ -303,7 +303,7 @@ struct asset_cook_processor_descriptor
     std::uint32_t version{ 1 };
     artifact_schema_id schema{};
     std::uint32_t schema_version{ 1 };
-    job_affinity affinity{ job_affinity::any_worker };
+    jobs::job_affinity affinity{ jobs::job_affinity::any_worker };
     std::vector<asset_type_id> input_types;
 };
 
@@ -348,10 +348,10 @@ struct cook_request
     cook_target target{ windows_vulkan_cook_target() };
     std::filesystem::path output;
     bool fail_on_warning{};
-    cancellation_token cancellation;
+    jobs::cancellation_token cancellation;
 };
 
-struct cook_result
+struct [[nodiscard]] cook_result
 {
     cook_manifest manifest;
     std::size_t cooked{};
@@ -374,20 +374,17 @@ private:
     std::unique_ptr<implementation> implementation_;
 };
 
-bool save_cook_manifest(
+[[nodiscard]] asset_status save_cook_manifest(
     const std::filesystem::path& path,
+    const cook_manifest& manifest);
+using cook_manifest_result = core::result<cook_manifest, asset_error>;
+[[nodiscard]] cook_manifest_result load_cook_manifest(
+    const std::filesystem::path& path);
+[[nodiscard]] asset_status verify_cook_manifest(
     const cook_manifest& manifest,
-    std::string& error);
-bool load_cook_manifest(
-    const std::filesystem::path& path,
-    cook_manifest& manifest,
-    std::string& error);
-bool verify_cook_manifest(
-    const cook_manifest& manifest,
-    derived_data_cache& cache,
-    std::vector<std::string>& diagnostics);
+    derived_data_cache& cache);
 
-struct package_build_result
+struct [[nodiscard]] package_build_result
 {
     std::filesystem::path manifest_path;
     std::vector<std::filesystem::path> chunks;
@@ -412,16 +409,15 @@ public:
     asset_package_mount(const asset_package_mount&) = delete;
     asset_package_mount& operator=(const asset_package_mount&) = delete;
 
-    bool mount(const std::filesystem::path& manifest_path, std::string& error);
-    std::optional<std::vector<std::byte>> read(
+    [[nodiscard]] asset_status mount(const std::filesystem::path& manifest_path);
+    [[nodiscard]] core::result<std::vector<std::byte>, asset_error> read(
         asset_guid asset,
-        artifact_schema_id schema,
-        std::string& error) const;
-    job_future<io::file_result<io::file_buffer>> read_async(
+        artifact_schema_id schema) const;
+    jobs::job_future<io::file_result<io::file_buffer>> read_async(
         asset_guid asset,
         artifact_schema_id schema,
         io::async_file_service& files,
-        cancellation_token cancellation = {}) const;
+        jobs::cancellation_token cancellation = {}) const;
     const cook_manifest& manifest() const noexcept;
 
 private:

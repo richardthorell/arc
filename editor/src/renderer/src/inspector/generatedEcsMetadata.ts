@@ -3,6 +3,9 @@ export interface GeneratedEcsFieldMetadata {
   id: string
   name: string
   displayName: string
+  description: string
+  unit: string
+  constraints: Readonly<Record<string, number>>
   kind: string
   flags: string[]
 }
@@ -10,6 +13,7 @@ export interface GeneratedEcsComponentMetadata {
   id: string
   canonicalName: string
   displayName: string
+  description: string
   schemaVersion: number
   fields: GeneratedEcsFieldMetadata[]
 }
@@ -19,12 +23,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000001",
     "canonicalName": "arc::scene.name_component",
     "displayName": "Name",
+    "description": "Reflected scene data for the Name component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "value",
         "displayName": "Value",
+        "description": "Authored value value for Name.",
+        "unit": "none",
+        "constraints": {},
         "kind": "string",
         "flags": [
           "serialized",
@@ -38,12 +46,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000002",
     "canonicalName": "arc::scene.transform_component",
     "displayName": "Transform",
+    "description": "Reflected scene data for the Transform component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "position",
         "displayName": "Location",
+        "description": "Authored Location value for Transform.",
+        "unit": "meters",
+        "constraints": {},
         "kind": "vector3",
         "flags": [
           "serialized",
@@ -55,6 +67,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000002",
         "name": "rotation",
         "displayName": "Rotation",
+        "description": "Authored rotation value for Transform.",
+        "unit": "none",
+        "constraints": {},
         "kind": "quaternion",
         "flags": [
           "serialized",
@@ -66,6 +81,11 @@ export const generatedEcsComponents = [
         "id": "0000000000000003",
         "name": "scale",
         "displayName": "Scale",
+        "description": "Authored scale value for Transform.",
+        "unit": "ratio",
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "vector3",
         "flags": [
           "serialized",
@@ -77,6 +97,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000004",
         "name": "world",
         "displayName": "World",
+        "description": "Authored world value for Transform.",
+        "unit": "none",
+        "constraints": {},
         "kind": "matrix",
         "flags": [
           "transient"
@@ -86,6 +109,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000005",
         "name": "dirty",
         "displayName": "Dirty",
+        "description": "Authored dirty value for Transform.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "transient"
@@ -97,12 +123,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000003",
     "canonicalName": "arc::scene.tag_component",
     "displayName": "Tag",
+    "description": "Reflected scene data for the Tag component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "value",
         "displayName": "Value",
+        "description": "Authored value value for Tag.",
+        "unit": "none",
+        "constraints": {},
         "kind": "string",
         "flags": [
           "serialized",
@@ -116,12 +146,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000004",
     "canonicalName": "arc::scene.active_component",
     "displayName": "Active",
+    "description": "Reflected scene data for the Active component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "active",
         "displayName": "Active",
+        "description": "Authored active value for Active.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "serialized",
@@ -135,12 +169,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000005",
     "canonicalName": "arc::scene.selection_component",
     "displayName": "Selection",
+    "description": "Reflected scene data for the Selection component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "selected",
         "displayName": "Selected",
+        "description": "Authored selected value for Selection.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "transient",
@@ -153,12 +191,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000006",
     "canonicalName": "arc::scene.bounds_component",
     "displayName": "Bounds",
+    "description": "Reflected scene data for the Bounds component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "local_bounds",
         "displayName": "Local Bounds",
+        "description": "Authored local bounds value for Bounds.",
+        "unit": "none",
+        "constraints": {},
         "kind": "struct",
         "flags": [
           "serialized",
@@ -170,6 +212,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000002",
         "name": "world_bounds",
         "displayName": "World Bounds",
+        "description": "Authored world bounds value for Bounds.",
+        "unit": "none",
+        "constraints": {},
         "kind": "struct",
         "flags": [
           "transient"
@@ -179,6 +224,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000003",
         "name": "dirty",
         "displayName": "Dirty",
+        "description": "Authored dirty value for Bounds.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "transient"
@@ -190,12 +238,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000007",
     "canonicalName": "arc::scene.camera_component",
     "displayName": "Camera",
+    "description": "Reflected scene data for the Camera component.",
     "schemaVersion": 2,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "projection",
         "displayName": "Projection",
+        "description": "Authored projection value for Camera.",
+        "unit": "none",
+        "constraints": {},
         "kind": "enum",
         "flags": [
           "serialized",
@@ -207,6 +259,12 @@ export const generatedEcsComponents = [
         "id": "0000000000000002",
         "name": "fov_y_radians",
         "displayName": "Field of View",
+        "description": "Authored Field of View value for Camera.",
+        "unit": "radians",
+        "constraints": {
+          "minimum": 0.0174532925199433,
+          "maximum": 3.12413936106985
+        },
         "kind": "float",
         "flags": [
           "serialized",
@@ -218,6 +276,11 @@ export const generatedEcsComponents = [
         "id": "0000000000000003",
         "name": "near_plane",
         "displayName": "Near Clip",
+        "description": "Authored Near Clip value for Camera.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "float",
         "flags": [
           "serialized",
@@ -229,6 +292,11 @@ export const generatedEcsComponents = [
         "id": "0000000000000004",
         "name": "far_plane",
         "displayName": "Far Clip",
+        "description": "Authored Far Clip value for Camera.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "float",
         "flags": [
           "serialized",
@@ -240,6 +308,11 @@ export const generatedEcsComponents = [
         "id": "0000000000000005",
         "name": "orthographic_height",
         "displayName": "Orthographic Size",
+        "description": "Authored Orthographic Size value for Camera.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "float",
         "flags": [
           "serialized",
@@ -251,6 +324,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000006",
         "name": "active",
         "displayName": "Active Camera",
+        "description": "Authored Active Camera value for Camera.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "serialized",
@@ -262,6 +338,11 @@ export const generatedEcsComponents = [
         "id": "0000000000000007",
         "name": "clear_color",
         "displayName": "Clear Color",
+        "description": "Authored Clear Color value for Camera.",
+        "unit": "linear-rgba",
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "vector4",
         "flags": [
           "serialized",
@@ -273,6 +354,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000008",
         "name": "exposure",
         "displayName": "Exposure",
+        "description": "Authored Exposure value for Camera.",
+        "unit": "none",
+        "constraints": {},
         "kind": "struct",
         "flags": [
           "serialized",
@@ -286,12 +370,16 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000008",
     "canonicalName": "arc::scene.mesh_renderer_component",
     "displayName": "Mesh Renderer",
+    "description": "Reflected scene data for the Mesh Renderer component.",
     "schemaVersion": 2,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "mesh",
         "displayName": "Mesh",
+        "description": "Authored mesh value for Mesh Renderer.",
+        "unit": "none",
+        "constraints": {},
         "kind": "asset",
         "flags": [
           "serialized",
@@ -303,6 +391,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000002",
         "name": "material",
         "displayName": "Material",
+        "description": "Authored material value for Mesh Renderer.",
+        "unit": "none",
+        "constraints": {},
         "kind": "asset",
         "flags": [
           "serialized",
@@ -314,6 +405,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000003",
         "name": "visible",
         "displayName": "Visible",
+        "description": "Authored visible value for Mesh Renderer.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "serialized",
@@ -325,6 +419,11 @@ export const generatedEcsComponents = [
         "id": "0000000000000004",
         "name": "base_color_tint",
         "displayName": "Base Color Tint",
+        "description": "Authored base color tint value for Mesh Renderer.",
+        "unit": "linear-rgba",
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "vector4",
         "flags": [
           "serialized",
@@ -336,6 +435,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000005",
         "name": "casts_shadows",
         "displayName": "Cast Shadows",
+        "description": "Authored Cast Shadows value for Mesh Renderer.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "serialized",
@@ -347,6 +449,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000006",
         "name": "receives_shadows",
         "displayName": "Receive Shadows",
+        "description": "Authored Receive Shadows value for Mesh Renderer.",
+        "unit": "none",
+        "constraints": {},
         "kind": "bool",
         "flags": [
           "serialized",
@@ -358,6 +463,9 @@ export const generatedEcsComponents = [
         "id": "0000000000000007",
         "name": "shadow_lod_bias",
         "displayName": "Shadow LOD Bias",
+        "description": "Authored Shadow LOD Bias value for Mesh Renderer.",
+        "unit": "lod-levels",
+        "constraints": {},
         "kind": "float",
         "flags": [
           "serialized",
@@ -369,6 +477,11 @@ export const generatedEcsComponents = [
         "id": "0000000000000008",
         "name": "maximum_shadow_distance",
         "displayName": "Maximum Shadow Distance",
+        "description": "Authored Maximum Shadow Distance value for Mesh Renderer.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "float",
         "flags": [
           "serialized",
@@ -382,6 +495,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000009",
     "canonicalName": "arc::scene.virtual_mesh_renderer_component",
     "displayName": "Virtual Mesh Renderer",
+    "description": "Reflected scene data for the Virtual Mesh Renderer component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -389,6 +503,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000000a",
     "canonicalName": "arc::scene.skinned_mesh_renderer_component",
     "displayName": "Skinned Mesh Renderer",
+    "description": "Reflected scene data for the Skinned Mesh Renderer component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -396,6 +511,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000000b",
     "canonicalName": "arc::scene.lod_component",
     "displayName": "LOD",
+    "description": "Reflected scene data for the LOD component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -403,6 +519,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000000c",
     "canonicalName": "arc::scene.instance_group_component",
     "displayName": "Instance Group",
+    "description": "Reflected scene data for the Instance Group component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -410,12 +527,16 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000000d",
     "canonicalName": "arc::scene.render_layer_component",
     "displayName": "Render Layer",
+    "description": "Reflected scene data for the Render Layer component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "mask",
         "displayName": "Mask",
+        "description": "Authored mask value for Render Layer.",
+        "unit": "bitmask",
+        "constraints": {},
         "kind": "uint",
         "flags": [
           "serialized",
@@ -429,12 +550,16 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001e",
     "canonicalName": "arc::scene.mobility_component",
     "displayName": "Mobility",
+    "description": "Reflected scene data for the Mobility component.",
     "schemaVersion": 1,
     "fields": [
       {
         "id": "0000000000000001",
         "name": "value",
         "displayName": "Mobility",
+        "description": "Authored Mobility value for Mobility.",
+        "unit": "none",
+        "constraints": {},
         "kind": "enum",
         "flags": [
           "serialized",
@@ -448,6 +573,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000000e",
     "canonicalName": "arc::scene.directional_light_component",
     "displayName": "Directional Light",
+    "description": "Reflected scene data for the Directional Light component.",
     "schemaVersion": 3,
     "fields": []
   },
@@ -455,6 +581,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000000f",
     "canonicalName": "arc::scene.point_light_component",
     "displayName": "Point Light",
+    "description": "Reflected scene data for the Point Light component.",
     "schemaVersion": 3,
     "fields": []
   },
@@ -462,6 +589,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000010",
     "canonicalName": "arc::scene.spot_light_component",
     "displayName": "Spot Light",
+    "description": "Reflected scene data for the Spot Light component.",
     "schemaVersion": 3,
     "fields": []
   },
@@ -469,6 +597,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000011",
     "canonicalName": "arc::scene.reflection_probe_component",
     "displayName": "Reflection Probe",
+    "description": "Reflected scene data for the Reflection Probe component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -476,6 +605,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000012",
     "canonicalName": "arc::scene.irradiance_probe_component",
     "displayName": "Irradiance Probe",
+    "description": "Reflected scene data for the Irradiance Probe component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -483,6 +613,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000013",
     "canonicalName": "arc::scene.world_environment_component",
     "displayName": "World Environment",
+    "description": "Reflected scene data for the World Environment component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -490,6 +621,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000014",
     "canonicalName": "arc::scene.sky_atmosphere_component",
     "displayName": "Sky Atmosphere",
+    "description": "Reflected scene data for the Sky Atmosphere component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -497,6 +629,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000015",
     "canonicalName": "arc::scene.celestial_sky_component",
     "displayName": "Celestial Sky",
+    "description": "Reflected scene data for the Celestial Sky component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -504,6 +637,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000016",
     "canonicalName": "arc::scene.cloud_layers_component",
     "displayName": "Cloud Layers",
+    "description": "Reflected scene data for the Cloud Layers component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -511,6 +645,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000017",
     "canonicalName": "arc::scene.environment_lighting_component",
     "displayName": "Environment Lighting",
+    "description": "Reflected scene data for the Environment Lighting component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -518,6 +653,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000018",
     "canonicalName": "arc::scene.height_fog_component",
     "displayName": "Height Fog",
+    "description": "Reflected scene data for the Height Fog component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -525,6 +661,7 @@ export const generatedEcsComponents = [
     "id": "a7c00000000000010000000000000019",
     "canonicalName": "arc::scene.terrain_component",
     "displayName": "Terrain",
+    "description": "Reflected scene data for the Terrain component.",
     "schemaVersion": 2,
     "fields": []
   },
@@ -532,6 +669,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001a",
     "canonicalName": "arc::scene.water_component",
     "displayName": "Water",
+    "description": "Reflected scene data for the Water component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -539,6 +677,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001b",
     "canonicalName": "arc::scene.vegetation_component",
     "displayName": "Vegetation",
+    "description": "Reflected scene data for the Vegetation component.",
     "schemaVersion": 2,
     "fields": []
   },
@@ -546,6 +685,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001c",
     "canonicalName": "arc::scene.decal_component",
     "displayName": "Decal",
+    "description": "Reflected scene data for the Decal component.",
     "schemaVersion": 1,
     "fields": []
   },
@@ -553,6 +693,7 @@ export const generatedEcsComponents = [
     "id": "a7c0000000000001000000000000001d",
     "canonicalName": "arc::scene.area_light_component",
     "displayName": "Area Light",
+    "description": "Reflected scene data for the Area Light component.",
     "schemaVersion": 3,
     "fields": []
   }

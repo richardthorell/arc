@@ -95,7 +95,7 @@ public:
     /**
      * @brief Create a renderer-owned mesh resource and enqueue its upload.
      */
-    mesh_handle create_mesh(mesh_data mesh);
+    [[nodiscard]] mesh_handle create_mesh(mesh_data mesh);
 
     /** @brief Replace mesh vertices while retaining its handle and topology. */
     bool update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex> vertices);
@@ -106,12 +106,12 @@ public:
     /**
      * @brief Create a renderer-owned virtual mesh resource and enqueue its upload.
      */
-    virtual_mesh_handle create_virtual_mesh(virtual_mesh_data mesh);
+    [[nodiscard]] virtual_mesh_handle create_virtual_mesh(virtual_mesh_data mesh);
 
     /**
      * @brief Create a renderer-owned texture resource and enqueue its upload.
      */
-    texture_handle create_texture(texture_data texture);
+    [[nodiscard]] texture_handle create_texture(texture_data texture);
 
     /**
      * @brief Replace an existing renderer texture without changing its handle.
@@ -121,20 +121,20 @@ public:
     /**
      * @brief Create a renderer-owned material resource and enqueue its upload.
      */
-    material_handle create_material(material_desc material);
+    [[nodiscard]] material_handle create_material(material_descriptor material);
 
     /**
      * @brief Replace an existing renderer material description without changing its handle.
      */
-    bool update_material(material_handle handle, material_desc material);
+    bool update_material(material_handle handle, material_descriptor material);
 
     /**
      * @brief Create a renderer-owned environment resource.
      */
-    environment_handle create_environment(environment_desc environment);
+    [[nodiscard]] environment_handle create_environment(environment_descriptor environment);
 
     /** @brief Replace an existing environment without changing its handle. */
-    bool update_environment(environment_handle handle, environment_desc environment);
+    bool update_environment(environment_handle handle, environment_descriptor environment);
 
     /** @brief Retire an environment handle and enqueue backend cleanup. */
     bool destroy_environment(environment_handle handle);
@@ -227,7 +227,7 @@ private:
 /**
  * @brief Engine module that owns renderer lifecycle.
  */
-class renderer_module final : public arc::module
+class renderer_module final : public framework::module
 {
 public:
     explicit renderer_module(renderer_config config = {});
@@ -238,9 +238,9 @@ public:
     renderer& service() noexcept;
 
     std::string_view name() const override;
-    void on_start(module_context& context) override;
-    void on_update(module_context& context, const frame_time& time) override;
-    void on_shutdown(module_context& context) override;
+    void on_start(framework::module_context& context) override;
+    void on_update(framework::module_context& context, const framework::frame_time& time) override;
+    void on_shutdown(framework::module_context& context) override;
 
 private:
     renderer renderer_;

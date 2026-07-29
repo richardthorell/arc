@@ -2,7 +2,7 @@
 
 #include <arc/simd/core/ops/lanes.h>
 
-namespace arc
+namespace arc::simd
 {
 
 template <std::size_t... I, class T, std::size_t N>
@@ -54,4 +54,4 @@ constexpr simd<T, N> shuffle(const simd<T, N>& a, const simd<T, N>& b) noexcept
     return simd<T, N>(extract<I < N ? I : I - N>(I < N ? a : b)...);
 }
 
-} // namespace arc
+} // namespace arc::simd

@@ -9,7 +9,7 @@
 #include <random>
 #include <thread>
 
-namespace arc
+namespace arc::jobs
 {
 namespace
 {
@@ -168,13 +168,13 @@ struct job_system::implementation
     explicit implementation(job_system& owner, job_system_config value)
         : scheduler(&owner)
         , config(value)
-        , memory(value.memory ? value.memory : &default_memory_system())
+        , memory(value.memory ? value.memory : &memory::default_memory_system())
     {
     }
 
     job_system* scheduler{};
     job_system_config config;
-    memory_system* memory{};
+    memory::memory_system* memory{};
     std::vector<std::unique_ptr<work_queue>> workers;
     work_queue injection;
     work_queue main;
@@ -217,8 +217,8 @@ namespace
 class job_pool_resource final : public std::pmr::memory_resource
 {
 public:
-    explicit job_pool_resource(memory_system& memory)
-        : backing_(memory, memory_domain::jobs, make_memory_tag("jobs.state"))
+    explicit job_pool_resource(memory::memory_system& memory)
+        : backing_(memory, memory::memory_domain::jobs, memory::make_memory_tag("jobs.state"))
         , pool_(std::array<std::size_t, 3>{ 256, 512, 1024 }, 64, &backing_)
     {
     }
@@ -248,8 +248,8 @@ private:
         return this == &other;
     }
 
-    system_memory_resource backing_;
-    fixed_block_pool pool_;
+    memory::system_memory_resource backing_;
+    memory::fixed_block_pool pool_;
 };
 
 std::mutex pool_resources_mutex;
@@ -390,7 +390,7 @@ void finish_part(
     {
         implementation.failed.fetch_add(1, std::memory_order_relaxed);
         if (state->detached)
-            error("jobs", std::string("Fire-and-forget job failed: ") + state->name);
+            diagnostics::error("jobs", std::string("Fire-and-forget job failed: ") + state->name);
     }
     if (final_status == job_status::cancelled)
         implementation.cancelled.fetch_add(1, std::memory_order_relaxed);
@@ -448,7 +448,7 @@ void execute_state(job_system::implementation& implementation, const std::shared
     job_status completion = job_status::succeeded;
     try
     {
-        allocation_tag_scope tag("jobs.execute");
+        memory::allocation_tag_scope tag("jobs.execute");
         state->function();
     }
     catch (...)
@@ -1020,4 +1020,4 @@ void wait_all(const std::vector<job_handle>& handles)
         handle.wait();
 }
 
-} // namespace arc
+} // namespace arc::jobs

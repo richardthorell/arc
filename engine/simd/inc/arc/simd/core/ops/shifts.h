@@ -4,7 +4,7 @@
 
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 template <int Bits, class T, std::size_t N>
@@ -32,4 +32,4 @@ constexpr simd<T, N> shift_right_logical(const simd<T, N>& value) noexcept
     });
 }
 
-} // namespace arc
+} // namespace arc::simd

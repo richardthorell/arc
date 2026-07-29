@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::io
+ * @brief Asynchronous, cancellable, tagged file operations.
+ */
+
 #include <arc/jobs/jobs.h>
 
 #include <cstddef>
@@ -108,33 +112,33 @@ struct async_file_config
 class async_file_service
 {
 public:
-    explicit async_file_service(job_system& jobs, async_file_config config = {});
+    explicit async_file_service(jobs::job_system& jobs, async_file_config config = {});
 
-    job_future<file_result<file_buffer>> read_all(
+    jobs::job_future<file_result<file_buffer>> read_all(
         std::filesystem::path path,
-        cancellation_token cancellation = {});
-    job_future<file_result<file_buffer>> read_range(
+        jobs::cancellation_token cancellation = {});
+    jobs::job_future<file_result<file_buffer>> read_range(
         std::filesystem::path path,
         std::uint64_t offset,
         std::size_t bytes,
-        cancellation_token cancellation = {});
-    job_future<file_result<void>> write(
+        jobs::cancellation_token cancellation = {});
+    jobs::job_future<file_result<void>> write(
         std::filesystem::path path,
         std::span<const std::byte> bytes,
-        cancellation_token cancellation = {});
-    job_future<file_result<void>> write_atomic(
+        jobs::cancellation_token cancellation = {});
+    jobs::job_future<file_result<void>> write_atomic(
         std::filesystem::path path,
         std::span<const std::byte> bytes,
-        cancellation_token cancellation = {});
-    job_future<file_result<file_info>> stat(
+        jobs::cancellation_token cancellation = {});
+    jobs::job_future<file_result<file_info>> stat(
         std::filesystem::path path,
-        cancellation_token cancellation = {});
+        jobs::cancellation_token cancellation = {});
 
     std::size_t chunk_size() const noexcept;
-    job_system& scheduler() const noexcept;
+    jobs::job_system& scheduler() const noexcept;
 
 private:
-    job_system* jobs_{};
+    jobs::job_system* jobs_{};
     async_file_config config_{};
 };
 

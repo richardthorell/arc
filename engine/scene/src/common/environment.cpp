@@ -13,6 +13,8 @@ namespace arc::scene
 namespace
 {
 
+using ecs::entity;
+
 inline constexpr float clear_day_sun_illuminance_lux = 65000.0f;
 
 constexpr float hours_per_day = 24.0f;
@@ -294,7 +296,7 @@ environment_validation_result validate_world_environment(
 }
 
 std::optional<world_environment_settings> read_world_environment_settings(
-    const registry& scene,
+    const ecs::world& scene,
     entity environment)
 {
     const auto* world = scene.try_get<world_environment_component>(environment);
@@ -309,7 +311,7 @@ std::optional<world_environment_settings> read_world_environment_settings(
 }
 
 bool set_world_environment_settings(
-    registry& scene,
+    ecs::world& scene,
     entity environment,
     const world_environment_settings& settings)
 {
@@ -405,7 +407,7 @@ void apply_world_environment_preset(
     lighting.hdri_texture = lighting_hdri_texture;
 }
 
-void update_world_environments(registry& scene, float delta_seconds)
+void update_world_environments(ecs::world& scene, float delta_seconds)
 {
     scene.view<world_environment_component, celestial_sky_component>().each(
         [&](entity value, const world_environment_component&, const celestial_sky_component&) {

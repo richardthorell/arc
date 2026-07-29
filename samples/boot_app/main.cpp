@@ -5,12 +5,12 @@
 namespace
 {
 
-class boot_test_application final : public arc::application
+class boot_test_application final : public arc::framework::application
 {
 public:
-    arc::application_config configure() const override
+    arc::framework::application_config configure() const override
     {
-        arc::application_config config{};
+        arc::framework::application_config config{};
         config.title = "ARC Boot Test";
         config.initial_width = 960;
         config.initial_height = 540;
@@ -22,7 +22,7 @@ public:
 
 } // namespace
 
-arc::application_ptr arc::create_application()
+arc::framework::application_ptr arc::framework::create_application()
 {
     return std::make_unique<boot_test_application>();
 }

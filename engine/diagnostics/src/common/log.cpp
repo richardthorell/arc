@@ -3,7 +3,7 @@
 #include <iostream>
 #include <utility>
 
-namespace arc
+namespace arc::diagnostics
 {
 namespace
 {
@@ -195,4 +195,4 @@ void fatal(std::string_view category, std::string_view message, std::source_loca
     log(log_level::fatal, category, message, source);
 }
 
-} // namespace arc
+} // namespace arc::diagnostics

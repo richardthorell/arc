@@ -8,7 +8,7 @@ namespace arc::editor
 struct prefab_document_result
 {
     bool succeeded{};
-    scene::entity root{};
+    ecs::entity root{};
     std::size_t entity_count{};
     std::string message;
     std::vector<std::string> diagnostics;
@@ -17,7 +17,7 @@ struct prefab_document_result
 prefab_document_result save_prefab_document(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    scene::entity root,
+    ecs::entity root,
     const std::filesystem::path& path,
     assets::asset_manager* asset_registry = nullptr);
 
@@ -26,22 +26,22 @@ prefab_document_result instantiate_prefab_document(
     render::renderer& renderer,
     const std::filesystem::path& project_root,
     const std::filesystem::path& path,
-    scene::entity parent = {},
+    ecs::entity parent = {},
     assets::asset_manager* asset_registry = nullptr);
 
 prefab_document_result apply_prefab_instance(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    scene::entity root,
+    ecs::entity root,
     assets::asset_manager* asset_registry = nullptr);
 
 prefab_document_result revert_prefab_instance(
     editor_scene_state& state,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
-    scene::entity root,
+    ecs::entity root,
     assets::asset_manager* asset_registry = nullptr);
 
-bool unpack_prefab_instance(editor_scene_state& state, scene::entity root);
+bool unpack_prefab_instance(editor_scene_state& state, ecs::entity root);
 
 } // namespace arc::editor

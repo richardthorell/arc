@@ -55,7 +55,7 @@ public:
     /**
      * @brief Allocate one descriptor slot of the requested type.
      */
-    descriptor_slot allocate(descriptor_resource_type type);
+    [[nodiscard]] descriptor_slot allocate(descriptor_resource_type type);
 
     /**
      * @brief Release a slot if its generation is still current.
@@ -129,7 +129,9 @@ public:
     /**
      * @brief Allocate aligned bytes from the frame arena.
      */
-    void* allocate(std::size_t size, std::size_t alignment = alignof(std::max_align_t));
+    [[nodiscard]] void* allocate(
+        std::size_t size,
+        std::size_t alignment = alignof(std::max_align_t));
 
     /**
      * @brief Reset all transient allocations.
@@ -147,7 +149,7 @@ public:
     std::size_t capacity() const noexcept;
 
 private:
-    arc::linear_arena arena_;
+    arc::memory::linear_arena arena_;
 };
 
 struct upload_allocation

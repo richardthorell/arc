@@ -35,46 +35,46 @@ editor_asset_state load_default_editor_assets(const std::filesystem::path& asset
 
 struct editor_scene_state
 {
-    scene::registry scene;
+    ecs::world scene;
     render::mesh_handle default_mesh;
     render::material_handle default_material;
     render::material_handle primitive_material;
     render::material_handle terrain_material;
-    render::material_desc terrain_material_desc;
+    render::material_descriptor terrain_material_descriptor;
     std::array<std::filesystem::path, 4> terrain_layer_paths{};
     render::material_handle water_material;
     render::material_handle vegetation_material;
     render::environment_handle environment_lighting_resource;
     std::filesystem::path world_environment_hdri_path;
     std::vector<render::texture_handle> default_textures;
-    scene::entity camera_entity;
-    scene::entity game_camera_entity;
-    scene::entity sun_entity;
-    scene::entity world_environment_entity;
-    scene::entity mesh_entity;
-    scene::entity terrain_entity;
-    scene::entity water_entity;
-    scene::entity vegetation_entity;
-    scene::entity selected_entity;
-    std::vector<scene::entity> primitive_entities;
-    std::vector<scene::entity> imported_scene_entities;
-    std::vector<scene::entity> world_feature_entities;
+    ecs::entity camera_entity;
+    ecs::entity game_camera_entity;
+    ecs::entity sun_entity;
+    ecs::entity world_environment_entity;
+    ecs::entity mesh_entity;
+    ecs::entity terrain_entity;
+    ecs::entity water_entity;
+    ecs::entity vegetation_entity;
+    ecs::entity selected_entity;
+    std::vector<ecs::entity> primitive_entities;
+    std::vector<ecs::entity> imported_scene_entities;
+    std::vector<ecs::entity> world_feature_entities;
     struct asset_binding
     {
-        scene::entity_guid entity;
+        ecs::entity_guid entity;
         std::string source_kind;
         assets::asset_reference source;
         std::string subresource;
         assets::asset_reference material;
     };
-    scene::entity_guid scene_guid{};
+    ecs::entity_guid scene_guid{};
     std::string scene_name{ "Untitled" };
     std::filesystem::path active_scene_path;
     std::vector<asset_binding> asset_bindings;
-    std::vector<std::pair<scene::entity_guid, std::string>> unknown_component_records;
+    std::vector<std::pair<ecs::entity_guid, std::string>> unknown_component_records;
     struct preserved_component_record
     {
-        scene::entity_guid entity;
+        ecs::entity_guid entity;
         std::string component_name;
         std::string json;
     };
@@ -91,10 +91,10 @@ struct editor_scene_state
 };
 
 void ensure_scene_authoring_metadata(editor_scene_state& scene);
-scene::entity find_entity_by_guid(const editor_scene_state& scene, scene::entity_guid guid) noexcept;
-scene::entity_guid entity_guid_of(const editor_scene_state& scene, scene::entity entity) noexcept;
-editor_scene_state::asset_binding* find_asset_binding(editor_scene_state& scene, scene::entity_guid guid) noexcept;
-const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& scene, scene::entity_guid guid) noexcept;
+ecs::entity find_entity_by_guid(const editor_scene_state& scene, ecs::entity_guid guid) noexcept;
+ecs::entity_guid entity_guid_of(const editor_scene_state& scene, ecs::entity entity) noexcept;
+editor_scene_state::asset_binding* find_asset_binding(editor_scene_state& scene, ecs::entity_guid guid) noexcept;
+const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& scene, ecs::entity_guid guid) noexcept;
 
 enum class editor_scene_open_mode : std::uint8_t
 {
@@ -134,8 +134,8 @@ struct editor_scene_import_state
     editor_scene_open_mode mode{ editor_scene_open_mode::replace };
     std::filesystem::path source_path;
     std::shared_ptr<editor_scene_import_shared_state> shared;
-    cancellation_source cancellation;
-    job_future<render::scene_import_result> task;
+    jobs::cancellation_source cancellation;
+    jobs::job_future<render::scene_import_result> task;
     render::scene_import_result result;
     bool modal_open{};
     bool result_ready{};
@@ -183,14 +183,14 @@ const char* selected_entity_name(const editor_scene_state& scene, const char* fa
 
 const char* primitive_type_name(editor_primitive_type type) noexcept;
 
-scene::entity add_primitive_to_scene(
+ecs::entity add_primitive_to_scene(
     editor_scene_state& scene,
     render::renderer& renderer,
     editor_primitive_type type);
 
-scene::entity add_world_environment_to_scene(editor_scene_state& scene);
+ecs::entity add_world_environment_to_scene(editor_scene_state& scene);
 
-scene::entity add_terrain_to_scene(
+ecs::entity add_terrain_to_scene(
     editor_scene_state& scene,
     render::renderer& renderer,
     render::material_handle material = {});
@@ -203,14 +203,14 @@ render::material_handle create_default_terrain_material(
 bool rebuild_terrain_chunks(
     editor_scene_state& scene,
     render::renderer& renderer,
-    scene::entity entity,
+    ecs::entity entity,
     const scene::terrain_dirty_region* dirty_region = nullptr);
 
-scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer);
+ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer);
 
-scene::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer& renderer);
+ecs::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer& renderer);
 
-scene::entity add_decal_to_scene(editor_scene_state& scene);
+ecs::entity add_decal_to_scene(editor_scene_state& scene);
 
 editor_scene_open_result open_scene_asset_in_editor(
     editor_scene_state& scene,
@@ -228,7 +228,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
 
 bool start_scene_import(
     editor_scene_import_state& state,
-    job_system& jobs,
+    jobs::job_system& jobs,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& path,
     editor_scene_open_mode mode);

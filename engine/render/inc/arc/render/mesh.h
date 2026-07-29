@@ -89,7 +89,7 @@ struct material_texture_paths
  */
 struct material_import
 {
-    material_desc material;
+    material_descriptor material;
     material_texture_indices textures;
     material_texture_paths texture_paths;
     std::filesystem::path asset_path;
@@ -140,7 +140,7 @@ struct scene_import_options
 /**
  * @brief Result from loading a mesh file.
  */
-struct mesh_load_result
+struct [[nodiscard]] mesh_load_result
 {
     mesh_data mesh;
     std::vector<texture_data> textures;
@@ -172,7 +172,7 @@ struct scene_import_node
 /**
  * @brief Imported static scene data before renderer handles are created.
  */
-struct scene_import_result
+struct [[nodiscard]] scene_import_result
 {
     std::vector<mesh_data> meshes;
     std::vector<texture_data> textures;
@@ -197,10 +197,10 @@ struct scene_import_result
  */
 mesh_load_result load_gltf_mesh(const std::filesystem::path& path);
 
-job_future<mesh_load_result> load_gltf_mesh_async(
-    job_system& jobs,
+jobs::job_future<mesh_load_result> load_gltf_mesh_async(
+    jobs::job_system& jobs,
     std::filesystem::path path,
-    cancellation_token cancellation = {});
+    jobs::cancellation_token cancellation = {});
 
 /**
  * @brief Load a supported static scene asset by extension.
@@ -219,11 +219,11 @@ scene_import_result load_scene_asset(
  */
 scene_import_result load_scene_asset(const std::filesystem::path& path);
 
-job_future<scene_import_result> load_scene_asset_async(
-    job_system& jobs,
+jobs::job_future<scene_import_result> load_scene_asset_async(
+    jobs::job_system& jobs,
     std::filesystem::path path,
     scene_import_options options = {},
     scene_import_progress_callback progress = {},
-    cancellation_token cancellation = {});
+    jobs::cancellation_token cancellation = {});
 
 } // namespace arc::render

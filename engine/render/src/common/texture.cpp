@@ -566,16 +566,16 @@ texture_load_result load_texture_asset_bytes(
     };
 }
 
-job_future<texture_load_result> load_texture_asset_async(
+jobs::job_future<texture_load_result> load_texture_asset_async(
     io::async_file_service& files,
     std::filesystem::path path,
-    cancellation_token cancellation)
+    jobs::cancellation_token cancellation)
 {
     auto read = files.read_all(path, cancellation);
     return files.scheduler().submit_future({
         .name = "render.decode_texture",
-        .priority = job_priority::normal,
-        .affinity = job_affinity::any_worker,
+        .priority = jobs::job_priority::normal,
+        .affinity = jobs::job_affinity::any_worker,
         .dependencies = { read.handle() },
         .cancellation = cancellation
     }, [read, path = std::move(path)]() mutable {

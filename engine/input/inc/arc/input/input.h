@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::input
+ * @brief Platform-neutral input state and binding contracts.
+ */
+
 #include <arc/framework/event.h>
 
 #include <cstdint>
@@ -75,7 +79,7 @@ public:
     /**
      * @brief Consume one ARC platform event.
      */
-    void process_event(const arc::event& event);
+    void process_event(const framework::event& event);
 
     /**
      * @brief Bind an action name to a physical input.

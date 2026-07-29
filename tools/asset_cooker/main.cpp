@@ -84,12 +84,14 @@ public:
         {
             persistence::component_persistence_registry components;
             persistence::schema_migration_registry migrations;
-            std::string error;
-            if (!scene::register_persistence_components(components) ||
-                !scene::register_persistence_migrations(migrations, error))
+            auto migration_status = scene::register_persistence_migrations(migrations);
+            if (!scene::register_persistence_components(components) || !migration_status)
                 return { .error = { .code = asset_error_code::import_failed,
                     .guid = context.asset.guid, .path = context.source.source_path,
-                    .message = "Persistence registry initialization failed: " + error } };
+                    .message = "Persistence registry initialization failed: " +
+                        (migration_status
+                            ? std::string("component registration failed")
+                            : migration_status.error().message) } };
             const std::string_view source(
                 reinterpret_cast<const char*>(context.source.bytes.data()),
                 context.source.bytes.size());
@@ -120,18 +122,18 @@ public:
                             dependency.reference.path_hint } };
                 }
             }
-            auto bytes = persistence::write_tagged_binary(
-                archive.document, canonical_cook_target(context.target), error);
-            if (!error.empty())
+            auto binary = persistence::write_tagged_binary(
+                archive.document, canonical_cook_target(context.target));
+            if (!binary)
                 return { .error = { .code = asset_error_code::import_failed,
                     .guid = context.asset.guid, .path = context.source.source_path,
-                    .message = std::move(error) } };
+                    .message = binary.error().message } };
             return { .artifacts = {{
                 .name = context.source.source_path.stem().string(),
                 .extension = extension_,
                 .schema = descriptor_.schema,
                 .schema_version = descriptor_.schema_version,
-                .bytes = std::move(bytes)
+                .bytes = std::move(binary).value()
             }} };
         }
         const auto canonical = document.dump();
@@ -546,39 +548,43 @@ int main(int argc, char** argv)
 
     if (command.command == "verify")
     {
-        cook_manifest manifest;
-        std::string error;
         const auto manifest_path = command.manifest.empty()
             ? command.output / (command.profile + ".arccookmanifest") : command.manifest;
-        if (!load_cook_manifest(manifest_path, manifest, error))
+        auto loaded_manifest = load_cook_manifest(manifest_path);
+        if (!loaded_manifest)
         {
-            std::cerr << error << '\n';
+            std::cerr << loaded_manifest.error().message << '\n';
             return 1;
         }
+        cook_manifest manifest = std::move(loaded_manifest).value();
         asset_package_mount mount;
-        if (mount.mount(manifest_path, error))
+        auto mounted = mount.mount(manifest_path);
+        if (mounted)
         {
             for (const auto& artifact : mount.manifest().artifacts)
-                if (!mount.read(artifact.asset, artifact.schema, error))
+            {
+                auto read = mount.read(artifact.asset, artifact.schema);
+                if (!read)
                 {
-                    std::cerr << error << '\n';
+                    std::cerr << read.error().message << '\n';
                     return 1;
                 }
+            }
             std::cout << "verified package " << manifest_path.generic_string() << '\n';
             return 0;
         }
-        std::vector<std::string> diagnostics;
-        if (!verify_cook_manifest(manifest, cache, diagnostics))
+        auto verified = verify_cook_manifest(manifest, cache);
+        if (!verified)
         {
-            for (const auto& value : diagnostics) std::cerr << value << '\n';
+            std::cerr << verified.error().message << '\n';
             return 1;
         }
         std::cout << "verified manifest " << manifest_path.generic_string() << '\n';
         return 0;
     }
 
-    memory_system memory;
-    job_system jobs({ .memory = &memory });
+    memory::memory_system memory;
+    jobs::job_system jobs({ .memory = &memory });
     io::async_file_service files(jobs);
     asset_manager assets({
         .project_root = command.project,
@@ -587,8 +593,8 @@ int main(int argc, char** argv)
         .target_profile = command.profile,
         .enable_source_monitor = false
     }, jobs, files, memory);
-    runtime_service_registry services;
-    runtime_service_context context(services);
+    framework::runtime_service_registry services;
+    framework::runtime_service_context context(services);
     assets.on_start(context);
 
     asset_cooker cooker(assets, cache);
@@ -642,9 +648,10 @@ int main(int argc, char** argv)
     }
     else if (command.command == "cook")
     {
-        if (!save_cook_manifest(manifest_path, cooked.manifest, error))
+        auto saved = save_cook_manifest(manifest_path, cooked.manifest);
+        if (!saved)
         {
-            std::cerr << error << '\n';
+            std::cerr << saved.error().message << '\n';
             assets.on_shutdown(context);
             return 1;
         }

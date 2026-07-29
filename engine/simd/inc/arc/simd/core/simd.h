@@ -4,7 +4,7 @@
 
 #include <ranges>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -163,4 +163,4 @@ inline simd<T, N> make_simd(Iter first, Sent last)
     return result;
 }
 
-} // namespace arc
+} // namespace arc::simd

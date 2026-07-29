@@ -3,7 +3,7 @@
 #include <arc/simd/core/ops/geometry.h>
 #include <arc/simd/core/ops/scalar.h>
 
-namespace arc
+namespace arc::simd
 {
 
 /// @brief Return the conjugate of a quaternion stored as `(x, y, z, w)`.
@@ -55,4 +55,4 @@ constexpr simd<T, 4> quat_rotate3(const simd<T, 4>& q, const simd<T, 4>& vector)
     return vector + t * fill<T, 4>(extract<3>(q)) + cross3(qv, t);
 }
 
-} // namespace arc
+} // namespace arc::simd

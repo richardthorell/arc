@@ -3,7 +3,7 @@
 #include <arc/simd/core/ops/detail.h>
 #include <arc/simd/core/ops/mask_helpers.h>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -128,4 +128,4 @@ constexpr simd<T, N> fill(T value) noexcept
     );
 }
 
-} // namespace arc
+} // namespace arc::simd

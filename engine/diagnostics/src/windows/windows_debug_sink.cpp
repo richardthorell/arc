@@ -11,7 +11,7 @@
 
 #include <string>
 
-namespace arc
+namespace arc::diagnostics
 {
 namespace
 {
@@ -50,4 +50,4 @@ struct windows_debug_log_sink_installer
 const windows_debug_log_sink_installer installer;
 
 } // namespace
-} // namespace arc
+} // namespace arc::diagnostics

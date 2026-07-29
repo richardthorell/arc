@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace arc
+namespace arc::framework
 {
 namespace
 {
@@ -61,7 +61,7 @@ private:
 } // namespace
 
 runtime_world::runtime_world(
-    memory_system& memory,
+    memory::memory_system& memory,
     runtime_world_id id,
     runtime_world_descriptor descriptor)
     : id_(id)
@@ -166,7 +166,7 @@ void runtime_world::fault(std::string message)
 }
 
 runtime_world_run_result runtime_world::run_phase(
-    job_system& jobs,
+    jobs::job_system& jobs,
     ecs::system_phase phase,
     const ecs::system_execution_info& execution)
 {
@@ -182,12 +182,12 @@ runtime_world_run_result runtime_world::run_phase(
 }
 
 runtime_world_run_result runtime_world::run_fixed(
-    job_system& jobs,
+    jobs::job_system& jobs,
     const simulation_tick& tick,
     runtime_service_provider* services,
     const simulation_input_snapshot* input,
-    tick_arena& tick_memory,
-    frame_arena& frame_memory,
+    memory::tick_arena& tick_memory,
+    memory::frame_arena& frame_memory,
     std::uint64_t process_seed)
 {
     runtime_world_run_result aggregate;
@@ -223,14 +223,14 @@ runtime_world_run_result runtime_world::run_fixed(
 }
 
 runtime_world_run_result runtime_world::run_presentation(
-    job_system& jobs,
+    jobs::job_system& jobs,
     const simulation_tick& tick,
     float frame_delta_seconds,
     float interpolation_alpha,
     runtime_service_provider* services,
     const simulation_input_snapshot* input,
-    tick_arena& tick_memory,
-    frame_arena& frame_memory,
+    memory::tick_arena& tick_memory,
+    memory::frame_arena& frame_memory,
     std::uint64_t process_seed)
 {
     if (state_ != runtime_world_state::running && state_ != runtime_world_state::paused)
@@ -255,7 +255,7 @@ runtime_world_run_result runtime_world::run_presentation(
     return run_phase(jobs, ecs::system_phase::presentation_extraction, execution);
 }
 
-runtime_world_manager::runtime_world_manager(memory_system& memory)
+runtime_world_manager::runtime_world_manager(memory::memory_system& memory)
     : memory_(&memory)
 {
 }
@@ -334,12 +334,12 @@ std::vector<runtime_world_id> runtime_world_manager::ordered_worlds() const
 }
 
 runtime_world_run_result runtime_world_manager::run_fixed(
-    job_system& jobs,
+    jobs::job_system& jobs,
     const simulation_tick& tick,
     runtime_service_provider* services,
     const simulation_input_snapshot* input,
-    tick_arena& tick_memory,
-    frame_arena& frame_memory,
+    memory::tick_arena& tick_memory,
+    memory::frame_arena& frame_memory,
     std::uint64_t process_seed)
 {
     runtime_world_run_result aggregate;
@@ -358,14 +358,14 @@ runtime_world_run_result runtime_world_manager::run_fixed(
 }
 
 runtime_world_run_result runtime_world_manager::run_presentation(
-    job_system& jobs,
+    jobs::job_system& jobs,
     const simulation_tick& tick,
     float frame_delta_seconds,
     float interpolation_alpha,
     runtime_service_provider* services,
     const simulation_input_snapshot* input,
-    tick_arena& tick_memory,
-    frame_arena& frame_memory,
+    memory::tick_arena& tick_memory,
+    memory::frame_arena& frame_memory,
     std::uint64_t process_seed)
 {
     runtime_world_run_result aggregate;
@@ -437,10 +437,13 @@ world_snapshot_result runtime_world_manager::capture_snapshot(
         return { false, {}, "runtime world does not exist" };
 
     std::vector<runtime_service_snapshot> service_snapshots;
-    std::string service_error;
-    if (services && !services->capture_deterministic_state(
-        world_id.value, service_snapshots, service_error))
-        return { false, {}, std::move(service_error) };
+    if (services)
+    {
+        auto captured = services->capture_deterministic_state(world_id.value);
+        if (!captured)
+            return { false, {}, captured.error().message };
+        service_snapshots = std::move(captured).value();
+    }
     std::size_t service_bytes{};
     for (const runtime_service_snapshot& snapshot : service_snapshots)
         service_bytes += snapshot.bytes.size();
@@ -489,17 +492,19 @@ world_snapshot_result runtime_world_manager::restore_snapshot(
     if (!world)
         return { false, found->metadata, "snapshot target world does not exist" };
 
-    std::string service_error;
-    if (!found->services.empty() &&
-        (!services || !services->validate_deterministic_state(
-            world->id_.value, found->services, service_error)))
+    if (!found->services.empty() && !services)
         return {
             false,
             found->metadata,
-            service_error.empty()
-                ? "snapshot deterministic runtime services are unavailable"
-                : std::move(service_error)
+            "snapshot deterministic runtime services are unavailable"
         };
+    if (services)
+    {
+        auto validated = services->validate_deterministic_state(
+            world->id_.value, found->services);
+        if (!validated)
+            return { false, found->metadata, validated.error().message };
+    }
 
     try
     {
@@ -549,4 +554,4 @@ void runtime_world_manager::trim_snapshots()
     }
 }
 
-} // namespace arc
+} // namespace arc::framework

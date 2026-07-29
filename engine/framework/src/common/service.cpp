@@ -4,7 +4,7 @@
 #include <functional>
 #include <stdexcept>
 
-namespace arc
+namespace arc::framework
 {
 
 runtime_service_registry::~runtime_service_registry()
@@ -106,12 +106,10 @@ const void* runtime_service_registry::find_service(runtime_service_id id) const 
     return found == index_.end() ? nullptr : services_[found->second].get();
 }
 
-bool runtime_service_registry::capture_deterministic_state(
-    std::uint64_t world,
-    std::vector<runtime_service_snapshot>& snapshots,
-    std::string& error) const
+runtime_service_capture_result runtime_service_registry::capture_deterministic_state(
+    std::uint64_t world) const
 {
-    snapshots.clear();
+    std::vector<runtime_service_snapshot> snapshots;
     for (const std::size_t index : order_)
     {
         const runtime_service& service = *services_[index];
@@ -121,22 +119,24 @@ bool runtime_service_registry::capture_deterministic_state(
             .service = service.id(),
             .version = service.snapshot_version()
         };
-        if (!service.capture_deterministic_state(world, snapshot.bytes, error))
+        auto captured = service.capture_deterministic_state(world);
+        if (!captured)
         {
-            if (error.empty())
-                error = "runtime service '" + std::string(service.name()) + "' rejected snapshot capture";
-            snapshots.clear();
-            return false;
+            auto error = captured.error();
+            if (error.message.empty())
+                error.message = "runtime service '" + std::string(service.name()) +
+                    "' rejected snapshot capture";
+            return runtime_service_capture_result::failure(std::move(error));
         }
+        snapshot.bytes = std::move(captured).value();
         snapshots.push_back(std::move(snapshot));
     }
-    return true;
+    return runtime_service_capture_result::success(std::move(snapshots));
 }
 
-bool runtime_service_registry::validate_deterministic_state(
+runtime_service_status runtime_service_registry::validate_deterministic_state(
     std::uint64_t world,
-    const std::vector<runtime_service_snapshot>& snapshots,
-    std::string& error) const
+    const std::vector<runtime_service_snapshot>& snapshots) const
 {
     for (const std::size_t index : order_)
     {
@@ -151,9 +151,13 @@ bool runtime_service_registry::validate_deterministic_state(
             });
         if (captured == snapshots.end())
         {
-            error = "snapshot is missing deterministic state for runtime service '" +
-                std::string(service.name()) + "'";
-            return false;
+            return runtime_service_status::failure({
+                .code = runtime_service_error_code::service_missing,
+                .service = service.id(),
+                .world = world,
+                .message = "snapshot is missing deterministic state for runtime service '" +
+                    std::string(service.name()) + "'"
+            });
         }
     }
 
@@ -162,20 +166,31 @@ bool runtime_service_registry::validate_deterministic_state(
         const auto found = index_.find(snapshot.service.value);
         if (found == index_.end())
         {
-            error = "snapshot references an unavailable deterministic runtime service";
-            return false;
+            return runtime_service_status::failure({
+                .code = runtime_service_error_code::service_missing,
+                .service = snapshot.service,
+                .world = world,
+                .message = "snapshot references an unavailable deterministic runtime service"
+            });
         }
         const runtime_service& service = *services_[found->second];
-        if (!service.has_deterministic_state() ||
-            !service.validate_deterministic_state(
-                world, snapshot.version, snapshot.bytes, error))
+        auto validated = service.validate_deterministic_state(
+            world, snapshot.version, snapshot.bytes);
+        if (!service.has_deterministic_state() || !validated)
         {
-            if (error.empty())
-                error = "runtime service '" + std::string(service.name()) + "' rejected snapshot restore";
-            return false;
+            runtime_service_error error = validated
+                ? runtime_service_error{
+                    .code = runtime_service_error_code::validation_failed,
+                    .service = service.id(),
+                    .world = world }
+                : validated.error();
+            if (error.message.empty())
+                error.message = "runtime service '" + std::string(service.name()) +
+                    "' rejected snapshot restore";
+            return runtime_service_status::failure(std::move(error));
         }
     }
-    return true;
+    return runtime_service_status::success();
 }
 
 void runtime_service_registry::restore_deterministic_state(
@@ -191,4 +206,4 @@ void runtime_service_registry::restore_deterministic_state(
     }
 }
 
-} // namespace arc
+} // namespace arc::framework

@@ -56,7 +56,7 @@ enum class environment_generation_state : std::uint8_t
 /**
  * @brief Renderer environment source and v1 prefilter outputs.
  */
-struct environment_desc
+struct environment_descriptor
 {
     environment_handle handle{};
     std::string name;
@@ -255,7 +255,7 @@ scene_lighting_data pack_scene_lighting(
     const std::vector<directional_light_event>& directional,
     const std::vector<point_light_event>& point,
     const std::vector<spot_light_event>& spot,
-    const environment_desc* environment = nullptr,
+    const environment_descriptor* environment = nullptr,
     std::uint32_t point_limit = max_point_lights,
     std::uint32_t spot_limit = max_spot_lights,
     const std::vector<area_light_event>& area = {});

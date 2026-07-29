@@ -50,8 +50,10 @@ shader_compile_result shader_library_cache::compile_or_get(shader_compiler& comp
     }
 
     auto result = compiler.compile(request);
-    if (result.succeeded)
-        cache_[key] = { .result = result, .source = current_source };
+    if (result)
+        cache_.insert_or_assign(
+            key,
+            cached_shader{ .result = result, .source = current_source });
     return result;
 }
 

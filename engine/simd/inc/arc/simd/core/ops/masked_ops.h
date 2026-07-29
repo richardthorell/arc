@@ -5,7 +5,7 @@
 #include <arc/simd/core/ops/comparisons.h>
 #include <arc/simd/core/ops/math.h>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -170,4 +170,4 @@ constexpr simd<T, N> masked_compare_ge(const simd_mask<N>& mask, const simd<T, N
     return masked(mask, a, b, cmp_ge<T, N>);
 }
 
-} // namespace arc
+} // namespace arc::simd

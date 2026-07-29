@@ -43,13 +43,13 @@ namespace
 constexpr std::string_view base64_alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 template <class Component>
-void copy_component(const scene::registry& source, scene::registry& target, scene::entity from, scene::entity to)
+void copy_component(const ecs::world& source, ecs::world& target, ecs::entity from, ecs::entity to)
 {
     if (const auto* value = source.try_get<Component>(from))
         target.emplace<Component>(to, *value);
 }
 
-scene::entity duplicate_entity_subtree(editor_scene_state& state, scene::entity source, scene::entity parent = {})
+ecs::entity duplicate_entity_subtree(editor_scene_state& state, ecs::entity source, ecs::entity parent = {})
 {
     if (!state.scene.alive(source))
         return {};
@@ -80,7 +80,7 @@ scene::entity duplicate_entity_subtree(editor_scene_state& state, scene::entity 
     copy_component<scene::water_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::vegetation_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::decal_component>(state.scene, state.scene, source, duplicate);
-    state.scene.emplace<scene::persistent_id_component>(duplicate, scene::generate_entity_guid());
+    state.scene.emplace<scene::persistent_id_component>(duplicate, ecs::generate_entity_guid());
     state.scene.emplace<scene::hierarchy_component>(duplicate);
     state.scene.emplace<scene::selection_component>(duplicate, false);
     const auto new_guid = entity_guid_of(state, duplicate);
@@ -391,12 +391,12 @@ std::optional<std::filesystem::path> resolve_project_document(
     return candidate;
 }
 
-scene::entity to_scene_entity(host_entity_id entity) noexcept
+ecs::entity to_scene_entity(host_entity_id entity) noexcept
 {
     return { .index = entity.index, .generation = entity.generation };
 }
 
-host_entity_id to_host_entity(scene::entity entity) noexcept
+host_entity_id to_host_entity(ecs::entity entity) noexcept
 {
     return { .index = entity.index, .generation = entity.generation };
 }
@@ -878,14 +878,14 @@ std::string validation_message(const scene::environment_validation_result& valid
     return message.str();
 }
 
-void remove_entity_ref(std::vector<scene::entity>& entities, scene::entity entity)
+void remove_entity_ref(std::vector<ecs::entity>& entities, ecs::entity entity)
 {
     entities.erase(
         std::remove(entities.begin(), entities.end(), entity),
         entities.end());
 }
 
-void forget_entity(editor_scene_state& scene, scene::entity entity)
+void forget_entity(editor_scene_state& scene, ecs::entity entity)
 {
     if (scene.camera_entity == entity)
         scene.camera_entity = {};
@@ -917,14 +917,14 @@ void rebuild_all_terrain_chunks(editor_scene_state& state, render::renderer& ren
             rebuild_terrain_chunks(state, renderer, entity);
 }
 
-std::string entity_name(const editor_scene_state& state, scene::entity entity, const char* fallback)
+std::string entity_name(const editor_scene_state& state, ecs::entity entity, const char* fallback)
 {
     if (const auto* name = state.scene.try_get<scene::name_component>(entity))
         return name->value;
     return fallback;
 }
 
-bool entity_active(const editor_scene_state& state, scene::entity entity)
+bool entity_active(const editor_scene_state& state, ecs::entity entity)
 {
     const auto* active = state.scene.try_get<scene::active_component>(entity);
     return !active || active->active;
@@ -935,7 +935,7 @@ void push_event(
     std::uint64_t& sequence,
     host_event_type type,
     std::string message,
-    scene::entity entity = {},
+    ecs::entity entity = {},
     std::string payload_json = {})
 {
     events.push_back({
@@ -949,8 +949,8 @@ void push_event(
 
 template <class Component>
 void add_component_snapshot(
-    const scene::registry& world,
-    scene::entity entity,
+    const ecs::world& world,
+    ecs::entity entity,
     std::vector<host_component_snapshot>& components,
     host_component_kind kind,
     const char* label)
@@ -1132,7 +1132,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
         for (const auto& texture : assets.default_textures)
             state.default_textures.push_back(renderer.create_texture(texture));
 
-        render::material_desc material;
+        render::material_descriptor material;
         material.name = assets.default_mesh.name + " Material";
         if (!assets.default_materials.empty())
         {
@@ -1215,7 +1215,7 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
 
     add_world_environment_to_scene(state);
 
-    render::environment_desc environment_lighting;
+    render::environment_descriptor environment_lighting;
     environment_lighting.name = "Default Mountain Daylight";
     environment_lighting.fallback_color = math::vector3f{ 0.16f, 0.22f, 0.30f };
     environment_lighting.intensity = 1.1f;
@@ -1278,12 +1278,12 @@ editor_scene_state create_default_scene(const editor_asset_state& assets, render
 
 } // namespace
 
-class editor_preview_application final : public application
+class editor_preview_application final : public framework::application
 {
 public:
-    application_config configure() const override
+    framework::application_config configure() const override
     {
-        application_config config{};
+        framework::application_config config{};
         config.title = "ARC Editor Preview Runtime";
         config.visible = false;
         config.simulation.snapshot_budget_bytes = 64u * 1024u * 1024u;
@@ -1291,11 +1291,11 @@ public:
         return config;
     }
 
-    void register_worlds(runtime_world_manager& worlds) override
+    void register_worlds(framework::runtime_world_manager& worlds) override
     {
         worlds.create({
             .name = "Editor Preview World",
-            .role = runtime_world_role::editor_preview,
+            .role = framework::runtime_world_role::editor_preview,
             .seed = 0x4152435f45444954ull,
             .presentation_enabled = false
         });
@@ -1313,14 +1313,14 @@ struct arc_host::state
         const auto worlds = simulation.worlds().ordered_worlds();
         if (!worlds.empty())
         {
-            if (runtime_world* world = simulation.worlds().find(worlds.front()))
+            if (framework::runtime_world* world = simulation.worlds().find(worlds.front()))
                 world->attach_entities(scene.scene);
         }
     }
 
     std::unique_ptr<render::renderer> renderer;
     editor_preview_application simulation_application;
-    runtime simulation;
+    framework::runtime simulation;
     std::unique_ptr<io::async_file_service> asset_files;
     std::unique_ptr<arc::assets::asset_manager> asset_registry;
     std::unique_ptr<arc::assets::derived_data_cache> derived_cache;
@@ -1365,7 +1365,7 @@ struct arc_host::state
 arc_host::arc_host(std::unique_ptr<render::renderer> renderer)
     : state_(std::make_unique<state>(std::move(renderer)))
 {
-    arc::info("editor.host", "Arc Host started");
+    arc::diagnostics::info("editor.host", "Arc Host started");
     push_event(state_->events, state_->event_sequence, host_event_type::host_started, "Arc Host started");
 }
 
@@ -1373,11 +1373,11 @@ arc_host::~arc_host()
 {
     if (state_)
     {
-        arc::info("editor.host", "Arc Host shutdown");
+        arc::diagnostics::info("editor.host", "Arc Host shutdown");
         push_event(state_->events, state_->event_sequence, host_event_type::host_shutdown, "Arc Host shutdown");
         if (state_->asset_registry)
         {
-            runtime_service_context context(state_->simulation.services());
+            framework::runtime_service_context context(state_->simulation.services());
             state_->asset_registry->on_shutdown(context);
             state_->asset_registry.reset();
             state_->derived_cache.reset();
@@ -1397,7 +1397,7 @@ host_response arc_host::open_project(
     state_->project.root = command.root;
     if (state_->asset_registry)
     {
-        runtime_service_context context(state_->simulation.services());
+        framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_shutdown(context);
     }
     state_->asset_registry.reset();
@@ -1417,7 +1417,7 @@ host_response arc_host::open_project(
         *state_->asset_files,
         state_->simulation.memory());
     {
-        runtime_service_context context(state_->simulation.services());
+        framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_start(context);
     }
     state_->asset_event_cursor = 0;
@@ -1436,7 +1436,7 @@ host_response arc_host::open_project(
     state_->project_open = true;
 
     const std::string message = "Opened project '" + state_->project.name + "'";
-    arc::info("editor.host", message);
+    arc::diagnostics::info("editor.host", message);
     push_event(state_->events, state_->event_sequence, host_event_type::project_opened, message);
     push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Default editor scene loaded");
     return {
@@ -1495,8 +1495,8 @@ host_response arc_host::execute(const host_command_envelope& command)
 
     auto response = std::visit([this, request_id = command.request_id](const auto& payload) -> host_response {
         using command_type = std::decay_t<decltype(payload)>;
-        const auto fail = [this, request_id](std::string message, scene::entity entity = {}) {
-            arc::warn("editor.host", message);
+        const auto fail = [this, request_id](std::string message, ecs::entity entity = {}) {
+            arc::diagnostics::warn("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::command_failed, message, entity);
             return host_response{ .request_id = request_id, .succeeded = false, .error = std::move(message) };
         };
@@ -1520,7 +1520,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             const std::string message = "Closed project '" + state_->project.name + "'";
             if (state_->asset_registry)
             {
-                runtime_service_context context(state_->simulation.services());
+                framework::runtime_service_context context(state_->simulation.services());
                 state_->asset_registry->on_shutdown(context);
                 state_->asset_registry.reset();
                 state_->derived_cache.reset();
@@ -1529,7 +1529,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             state_->scene = {};
             state_->project = {};
             state_->project_open = false;
-            arc::info("editor.host", message);
+            arc::diagnostics::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::project_closed, message);
             return success();
         }
@@ -1613,7 +1613,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             state_->preview_stopped = false;
             if (!state_->simulation.step(payload.ticks))
                 return fail("Preview runtime could not queue a fixed-step");
-            const frame_time stepped = state_->simulation.advance(0.0);
+            const framework::frame_time stepped = state_->simulation.advance(0.0);
             ++state_->runtime_revision;
             const auto snapshot = runtime_snapshot();
             push_event(
@@ -1645,7 +1645,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             const auto worlds = state_->simulation.worlds().ordered_worlds();
             if (worlds.empty())
                 return fail("Preview runtime has no world to snapshot");
-            const world_snapshot_result captured =
+            const framework::world_snapshot_result captured =
                 state_->simulation.capture_snapshot(worlds.front(), payload.label);
             if (!captured.succeeded)
                 return fail(captured.error);
@@ -1655,7 +1655,7 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
         else if constexpr (std::is_same_v<command_type, host_runtime_restore_snapshot_command>)
         {
-            const world_snapshot_result restored =
+            const framework::world_snapshot_result restored =
                 state_->simulation.restore_snapshot({ payload.snapshot_id });
             if (!restored.succeeded)
                 return fail(restored.error);
@@ -1771,7 +1771,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             const auto requested_parent = to_scene_entity(payload.parent);
             if (payload.parent.valid() && !state_->scene.scene.alive(requested_parent))
                 return fail("Cannot create a child under a missing parent", requested_parent);
-            scene::entity created{};
+            ecs::entity created{};
             switch (payload.kind)
             {
             case host_create_entity_kind::empty:
@@ -1821,7 +1821,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
 
             const std::string message = "Created entity: " + label;
-            arc::info("editor.host", message);
+            arc::diagnostics::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::entity_created, message, created);
             push_event(state_->events, state_->event_sequence, host_event_type::entity_selected, "Selected entity", created);
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", created);
@@ -1838,7 +1838,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             scene::destroy_subtree(state_->scene.scene, entity);
             for (const auto nested : removed) forget_entity(state_->scene, nested);
             const std::string message = "Deleted entity: " + name;
-            arc::info("editor.host", message);
+            arc::diagnostics::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::entity_deleted, message, entity);
             push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Scene changed", entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -1848,7 +1848,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             const auto source = to_scene_entity(payload.entity);
             if (!state_->scene.scene.alive(source)) return fail("Cannot duplicate a missing entity", source);
             const auto* links = state_->scene.scene.try_get<scene::hierarchy_component>(source);
-            const auto duplicate = duplicate_entity_subtree(state_->scene, source, links ? links->parent : scene::entity{});
+            const auto duplicate = duplicate_entity_subtree(state_->scene, source, links ? links->parent : ecs::entity{});
             if (!duplicate.valid()) return fail("Entity duplication failed", source);
             select_entity(state_->scene.scene, duplicate, state_->scene.selected_entity);
             push_event(state_->events, state_->event_sequence, host_event_type::entity_created, "Entity duplicated", duplicate);
@@ -1963,7 +1963,7 @@ host_response arc_host::execute(const host_command_envelope& command)
 
             state_->scene.scene.emplace<scene::name_component>(entity, payload.name);
             const std::string message = "Renamed entity to '" + payload.name + "'";
-            arc::info("editor.host", message);
+            arc::diagnostics::info("editor.host", message);
             push_event(state_->events, state_->event_sequence, host_event_type::component_changed, message, entity);
             return success("{\"entity\":" + to_json(payload.entity) + '}');
         }
@@ -2229,9 +2229,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->scene.default_textures.push_back(texture);
                 resolved_path = *path;
             }
-            state_->scene.terrain_material_desc.domain = render::material_domain::terrain;
-            state_->scene.terrain_material_desc.terrain_layers[payload.layer].base_color_texture = texture;
-            if (!state_->renderer->update_material(terrain->material, state_->scene.terrain_material_desc))
+            state_->scene.terrain_material_descriptor.domain = render::material_domain::terrain;
+            state_->scene.terrain_material_descriptor.terrain_layers[payload.layer].base_color_texture = texture;
+            if (!state_->renderer->update_material(terrain->material, state_->scene.terrain_material_descriptor))
                 return fail("Terrain material could not be updated", entity);
             state_->scene.terrain_layer_paths[payload.layer] = std::move(resolved_path);
             ++terrain->content_revision;
@@ -2402,7 +2402,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             const auto update_environment_resource = [&] {
                 if (!lighting->environment.valid())
                     return;
-                render::environment_desc environment;
+                render::environment_descriptor environment;
                 environment.name = "World Environment HDRI";
                 environment.equirectangular_texture = world->hdri_texture;
                 environment.fallback_color = world->solid_color;
@@ -2755,7 +2755,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                 if (!state_->scene.scene.alive(hit.entity))
                     return { .request_id = request_id, .succeeded = true, .payload_json = "{\"hits\":[]}" };
                 const std::string json = "{\"hits\":[{\"guid\":" +
-                    to_json_string(scene::to_string(entity_guid_of(state_->scene, hit.entity))) +
+                    to_json_string(ecs::to_string(entity_guid_of(state_->scene, hit.entity))) +
                     ",\"distance\":" + std::to_string(hit.distance) +
                     ",\"exact\":" + std::string(hit.exact ? "true" : "false") +
                     ",\"background\":" + std::string(hit.background ? "true" : "false") + "}]}";
@@ -2805,7 +2805,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                         ? render::intersects(*viewport_frustum, bounds->world_bounds)
                         : distance <= std::max(payload.radius, 0.0f);
                 if (included)
-                    matches.push_back({ scene::to_string(entity_guid_of(state_->scene, entity)), distance });
+                    matches.push_back({ ecs::to_string(entity_guid_of(state_->scene, entity)), distance });
             }
             std::sort(matches.begin(), matches.end(), [](const spatial_match& left, const spatial_match& right) {
                 if (left.distance != right.distance)
@@ -3023,14 +3023,14 @@ host_response arc_host::query(const host_query_envelope& query) const
             bool first_object = true;
             for (const auto& object : capture.objects)
             {
-                const scene::entity entity{ object.object.index, object.object.generation };
+                const ecs::entity entity{ object.object.index, object.object.generation };
                 if (!state_->scene.scene.alive(entity))
                     continue;
                 if (!first_object)
                     json += ',';
                 first_object = false;
                 json += "{\"id\":" + std::to_string(object.encoded_id) +
-                    ",\"guid\":" + to_json_string(scene::to_string(entity_guid_of(state_->scene, entity))) + '}';
+                    ",\"guid\":" + to_json_string(ecs::to_string(entity_guid_of(state_->scene, entity))) + '}';
             }
             json += "],\"diagnostics\":[";
             for (std::size_t index = 0; index < capture.diagnostics.size(); ++index)
@@ -3160,10 +3160,10 @@ host_runtime_snapshot arc_host::runtime_snapshot() const
         : state_->simulation.running()
             ? host_runtime_state::running
             : host_runtime_state::stopped;
-    for (const runtime_world_id id : state_->simulation.worlds().ordered_worlds())
+    for (const framework::runtime_world_id id : state_->simulation.worlds().ordered_worlds())
     {
-        const runtime_world* world = state_->simulation.worlds().find(id);
-        if (world && world->state() == runtime_world_state::faulted)
+        const framework::runtime_world* world = state_->simulation.worlds().find(id);
+        if (world && world->state() == framework::runtime_world_state::faulted)
         {
             snapshot.state = host_runtime_state::faulted;
             break;
@@ -3202,7 +3202,7 @@ host_scene_snapshot arc_host::scene_snapshot() const
 {
     host_scene_snapshot snapshot;
     const auto history = state_->history.snapshot();
-    snapshot.scene_guid = scene::to_string(state_->scene.scene_guid);
+    snapshot.scene_guid = ecs::to_string(state_->scene.scene_guid);
     snapshot.scene_name = state_->scene.scene_name;
     snapshot.active_scene_path = state_->scene.active_scene_path.generic_string();
     snapshot.scene_revision = state_->scene_revision;
@@ -3222,7 +3222,7 @@ host_scene_snapshot arc_host::scene_snapshot() const
     for (const auto root : root_entities)
         if (root != state_->scene.camera_entity)
             root_orders[root.index] = root_order++;
-    const auto add = [&](scene::entity entity) {
+    const auto add = [&](ecs::entity entity) {
         if (!entity.valid() || !state_->scene.scene.alive(entity))
             return;
         host_entity_kind kind = host_entity_kind::unknown;
@@ -3243,9 +3243,9 @@ host_scene_snapshot arc_host::scene_snapshot() const
         {
             if (state_->scene.scene.alive(hierarchy->parent))
             {
-                parent_guid = scene::to_string(entity_guid_of(state_->scene, hierarchy->parent));
+                parent_guid = ecs::to_string(entity_guid_of(state_->scene, hierarchy->parent));
                 auto sibling = hierarchy->previous_sibling;
-                std::unordered_set<scene::entity, ecs::entity_hash> visited_siblings;
+                std::unordered_set<ecs::entity, ecs::entity_hash> visited_siblings;
                 while (state_->scene.scene.alive(sibling) && visited_siblings.insert(sibling).second)
                 {
                     ++sibling_order;
@@ -3259,7 +3259,7 @@ host_scene_snapshot arc_host::scene_snapshot() const
         }
         snapshot.entities.push_back({
             .entity = to_host_entity(entity),
-            .guid = scene::to_string(entity_guid_of(state_->scene, entity)),
+            .guid = ecs::to_string(entity_guid_of(state_->scene, entity)),
             .parent_guid = std::move(parent_guid),
             .sibling_order = sibling_order,
             .name = entity_name(state_->scene, entity, "Entity"),
@@ -3283,7 +3283,7 @@ host_selected_entity_snapshot arc_host::selected_entity_snapshot() const
 
 host_selected_entity_snapshot arc_host::entity_snapshot(std::string_view guid_text) const
 {
-    const auto guid = scene::parse_entity_guid(guid_text);
+    const auto guid = ecs::parse_entity_guid(guid_text);
     if (!guid)
         return {};
     return entity_snapshot(to_host_entity(find_entity_by_guid(state_->scene, *guid)));
@@ -3297,7 +3297,7 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         return snapshot;
 
     snapshot.entity = to_host_entity(selected);
-    snapshot.guid = scene::to_string(entity_guid_of(state_->scene, selected));
+    snapshot.guid = ecs::to_string(entity_guid_of(state_->scene, selected));
     snapshot.name = entity_name(state_->scene, selected, "Unnamed Entity");
     if (const auto* tag = state_->scene.scene.try_get<scene::tag_component>(selected))
         snapshot.tag = tag->value;
@@ -3419,7 +3419,7 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
     if (const auto* prefab = state_->scene.scene.try_get<scene::prefab_instance_component>(selected))
     {
         snapshot.prefab = host_prefab_snapshot{
-            .prefab_guid = scene::to_string(prefab->prefab_guid),
+            .prefab_guid = ecs::to_string(prefab->prefab_guid),
             .prefab_path = prefab->prefab_path,
             .override_count = prefab->overrides.size(),
             .source_missing = prefab->source_missing
@@ -3656,7 +3656,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     float delta_seconds = 0.0f;
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)
         delta_seconds = std::chrono::duration<float>(frame_start - state_->last_viewport_frame_time).count();
-    const frame_time runtime_frame = state_->simulation.advance(delta_seconds);
+    const framework::frame_time runtime_frame = state_->simulation.advance(delta_seconds);
     if (runtime_frame.last_completed_tick.value != state_->last_runtime_tick_event)
     {
         state_->last_runtime_tick_event = runtime_frame.last_completed_tick.value;
@@ -3700,8 +3700,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
             defaults::viewport_pick_fallback_frame_count;
         if (gpu_ready || fallback_due)
         {
-            scene::entity picked = gpu_ready && gpu.hit
-                ? scene::entity{ gpu.object.index, gpu.object.generation }
+            ecs::entity picked = gpu_ready && gpu.hit
+                ? ecs::entity{ gpu.object.index, gpu.object.generation }
                 : state_->pending_pick->cpu_fallback.entity;
             if (gpu_ready && gpu.hit && state_->scene.scene.alive(picked))
             {
@@ -3715,7 +3715,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
             }
             if (gpu_ready && gpu.hit && !state_->scene.scene.alive(picked))
                 picked = state_->pending_pick->cpu_fallback.entity;
-            arc::debug(
+            arc::diagnostics::debug(
                 "editor.pick",
                 "pick request=" + std::to_string(state_->pending_pick->request_id) +
                     " source=" + std::string(gpu_ready && gpu.hit ? "gpu" : "cpu") +
@@ -3816,16 +3816,20 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     }
     state_->last_viewport_frame_time = frame_end;
     state_->viewport_draw_calls = state_->scene.last_render.submitted_draw_count;
-    state_->viewport_submitted = submit_result.submitted;
-    if (!submit_result.submitted && !submit_result.message.empty())
+    state_->viewport_submitted = submit_result.has_value();
+    if (!submit_result && !submit_result.error().message.empty())
     {
-        arc::error("editor.host", submit_result.message);
-        push_event(state_->events, state_->event_sequence, host_event_type::viewport_error, submit_result.message);
+        arc::diagnostics::error("editor.host", submit_result.error().message);
+        push_event(
+            state_->events,
+            state_->event_sequence,
+            host_event_type::viewport_error,
+            submit_result.error().message);
     }
 
     return {
-        .submitted = submit_result.submitted,
-        .message = submit_result.message,
+        .submitted = submit_result.has_value(),
+        .message = submit_result ? std::string{} : submit_result.error().message,
         .payload_json = "{\"drawCalls\":" + std::to_string(state_->scene.last_render.submitted_draw_count) + '}'
     };
 }
@@ -3899,7 +3903,7 @@ std::shared_ptr<arc_host> arc_host_manager::acquire(std::unique_ptr<render::rend
 {
     if (auto existing = host_.lock())
     {
-        arc::info("editor.host", "Acquired existing Arc Host");
+        arc::diagnostics::info("editor.host", "Acquired existing Arc Host");
         return existing;
     }
 

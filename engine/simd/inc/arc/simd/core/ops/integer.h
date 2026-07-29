@@ -9,7 +9,7 @@
 #include <limits>
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -93,4 +93,4 @@ constexpr simd<To, N> widen(const simd<From, N>& value) noexcept
     return convert<To>(value);
 }
 
-} // namespace arc
+} // namespace arc::simd

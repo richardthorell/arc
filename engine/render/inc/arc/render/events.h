@@ -22,7 +22,7 @@ namespace arc::render
 
 enum class light_intensity_unit : std::uint8_t;
 enum class area_light_shape : std::uint8_t;
-struct environment_desc;
+struct environment_descriptor;
 struct render_world_packet;
 
 /**
@@ -158,7 +158,7 @@ struct texture_upload_event
 struct material_upload_event
 {
     material_handle handle{};
-    std::shared_ptr<const material_desc> material;
+    std::shared_ptr<const material_descriptor> material;
     std::string label;
 };
 
@@ -168,7 +168,7 @@ struct material_upload_event
 struct environment_upload_event
 {
     environment_handle handle{};
-    std::shared_ptr<const environment_desc> environment;
+    std::shared_ptr<const environment_descriptor> environment;
     std::string label;
 };
 
@@ -423,12 +423,12 @@ public:
     /**
      * @brief Append a material upload request.
      */
-    void material_upload(material_handle handle, std::shared_ptr<const material_desc> material, std::string label = {});
+    void material_upload(material_handle handle, std::shared_ptr<const material_descriptor> material, std::string label = {});
 
     /**
      * @brief Append an environment upload request.
      */
-    void environment_upload(environment_handle handle, std::shared_ptr<const environment_desc> environment, std::string label = {});
+    void environment_upload(environment_handle handle, std::shared_ptr<const environment_descriptor> environment, std::string label = {});
 
     /** @brief Append an environment retirement request. */
     void environment_destroy(environment_handle handle);

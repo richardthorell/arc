@@ -2,7 +2,7 @@
 
 #include <arc/simd/core/ops/detail.h>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -53,4 +53,4 @@ constexpr simd_mask<N> bitwise_not(const simd_mask<N>& a) noexcept
     return apply<simd_mask<N>>(ops_for<simd_mask<N>>::bitwise_not, a);
 }
 
-} // namespace arc
+} // namespace arc::simd

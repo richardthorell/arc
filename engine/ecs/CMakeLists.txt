@@ -1,7 +1,7 @@
 arc_add_module(
     NAME arc-ecs
     TYPE STATIC
-    DEPS arc-jobs arc-memory arc-diagnostics
+    DEPS arc-core arc-jobs arc-memory arc-diagnostics
     NO_TESTS
 )
 

@@ -44,7 +44,7 @@ struct material_asset
     std::string name{ "New Material" };
     std::string shader{ "arc/default_phong" };
     std::string domain{ "surface" };
-    render::material_desc material;
+    render::material_descriptor material;
     material_texture_paths textures;
     std::array<terrain_layer_texture_paths, 4> terrain_layers;
     bool graph_reserved{};

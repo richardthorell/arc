@@ -10,7 +10,7 @@
     #include <xmmintrin.h>
 #endif
 
-namespace arc
+namespace arc::simd
 {
 
 enum class prefetch_hint
@@ -123,4 +123,4 @@ constexpr void store4(T* ptr, const simd<T, 4>& value) noexcept
     ptr[3] = lanes[3];
 }
 
-} // namespace arc
+} // namespace arc::simd

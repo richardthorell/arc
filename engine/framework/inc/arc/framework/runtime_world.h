@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-namespace arc
+namespace arc::framework
 {
 
 struct runtime_world_id
@@ -41,7 +41,7 @@ struct runtime_world_descriptor
     std::string name{ "World" };
     runtime_world_role role{ runtime_world_role::client };
     std::uint64_t seed{};
-    memory_budget memory{};
+    memory::memory_budget memory{};
     bool install_placeholder_systems{ true };
     bool presentation_enabled{ true };
 };
@@ -65,14 +65,14 @@ struct world_snapshot_metadata
     std::string label;
 };
 
-struct world_snapshot_result
+struct [[nodiscard]] world_snapshot_result
 {
     bool succeeded{};
     world_snapshot_metadata metadata;
     std::string error;
 };
 
-struct runtime_world_run_result
+struct [[nodiscard]] runtime_world_run_result
 {
     std::size_t systems_executed{};
     std::vector<ecs::system_schedule_error> errors;
@@ -83,7 +83,7 @@ struct runtime_world_run_result
 class runtime_world
 {
 public:
-    runtime_world(memory_system& memory, runtime_world_id id, runtime_world_descriptor descriptor);
+    runtime_world(memory::memory_system& memory, runtime_world_id id, runtime_world_descriptor descriptor);
 
     runtime_world_id id() const noexcept { return id_; }
     std::string_view name() const noexcept { return descriptor_.name; }
@@ -109,29 +109,29 @@ public:
     bool attach_entities(ecs::world& entities) noexcept;
 
     runtime_world_run_result run_fixed(
-        job_system& jobs,
+        jobs::job_system& jobs,
         const simulation_tick& tick,
         runtime_service_provider* services,
         const simulation_input_snapshot* input,
-        tick_arena& tick_memory,
-        frame_arena& frame_memory,
+        memory::tick_arena& tick_memory,
+        memory::frame_arena& frame_memory,
         std::uint64_t process_seed);
     runtime_world_run_result run_presentation(
-        job_system& jobs,
+        jobs::job_system& jobs,
         const simulation_tick& tick,
         float frame_delta_seconds,
         float interpolation_alpha,
         runtime_service_provider* services,
         const simulation_input_snapshot* input,
-        tick_arena& tick_memory,
-        frame_arena& frame_memory,
+        memory::tick_arena& tick_memory,
+        memory::frame_arena& frame_memory,
         std::uint64_t process_seed);
 
 private:
     friend class runtime_world_manager;
     void install_placeholder_systems();
     runtime_world_run_result run_phase(
-        job_system& jobs,
+        jobs::job_system& jobs,
         ecs::system_phase phase,
         const ecs::system_execution_info& execution);
     void fault(std::string message);
@@ -151,7 +151,7 @@ private:
 class runtime_world_manager
 {
 public:
-    explicit runtime_world_manager(memory_system& memory);
+    explicit runtime_world_manager(memory::memory_system& memory);
 
     runtime_world& create(runtime_world_descriptor descriptor = {});
     bool destroy(runtime_world_id id);
@@ -162,22 +162,22 @@ public:
     bool executing() const noexcept { return executing_; }
 
     runtime_world_run_result run_fixed(
-        job_system& jobs,
+        jobs::job_system& jobs,
         const simulation_tick& tick,
         runtime_service_provider* services,
         const simulation_input_snapshot* input,
-        tick_arena& tick_memory,
-        frame_arena& frame_memory,
+        memory::tick_arena& tick_memory,
+        memory::frame_arena& frame_memory,
         std::uint64_t process_seed);
     runtime_world_run_result run_presentation(
-        job_system& jobs,
+        jobs::job_system& jobs,
         const simulation_tick& tick,
         float frame_delta_seconds,
         float interpolation_alpha,
         runtime_service_provider* services,
         const simulation_input_snapshot* input,
-        tick_arena& tick_memory,
-        frame_arena& frame_memory,
+        memory::tick_arena& tick_memory,
+        memory::frame_arena& frame_memory,
         std::uint64_t process_seed);
 
     void start_all();
@@ -212,7 +212,7 @@ private:
     void rebuild_execution_order();
     void trim_snapshots();
 
-    memory_system* memory_{};
+    memory::memory_system* memory_{};
     std::vector<std::unique_ptr<runtime_world>> worlds_;
     std::vector<runtime_world*> execution_order_;
     std::deque<stored_snapshot> snapshots_;
@@ -223,4 +223,4 @@ private:
     bool executing_{};
 };
 
-} // namespace arc
+} // namespace arc::framework

@@ -33,51 +33,51 @@
 namespace
 {
 
-const char* job_priority_name(arc::job_priority value) noexcept
+const char* job_priority_name(arc::jobs::job_priority value) noexcept
 {
     switch (value)
     {
-    case arc::job_priority::critical: return "critical";
-    case arc::job_priority::high: return "high";
-    case arc::job_priority::normal: return "normal";
-    case arc::job_priority::low: return "low";
-    case arc::job_priority::background: return "background";
-    case arc::job_priority::count: break;
+    case arc::jobs::job_priority::critical: return "critical";
+    case arc::jobs::job_priority::high: return "high";
+    case arc::jobs::job_priority::normal: return "normal";
+    case arc::jobs::job_priority::low: return "low";
+    case arc::jobs::job_priority::background: return "background";
+    case arc::jobs::job_priority::count: break;
     }
     return "unknown";
 }
 
-const char* job_affinity_name(arc::job_affinity value) noexcept
+const char* job_affinity_name(arc::jobs::job_affinity value) noexcept
 {
     switch (value)
     {
-    case arc::job_affinity::any_worker: return "worker";
-    case arc::job_affinity::main_thread: return "main";
-    case arc::job_affinity::render_thread: return "render";
-    case arc::job_affinity::io_thread: return "io";
+    case arc::jobs::job_affinity::any_worker: return "worker";
+    case arc::jobs::job_affinity::main_thread: return "main";
+    case arc::jobs::job_affinity::render_thread: return "render";
+    case arc::jobs::job_affinity::io_thread: return "io";
     }
     return "unknown";
 }
 
-const char* job_status_name(arc::job_status value) noexcept
+const char* job_status_name(arc::jobs::job_status value) noexcept
 {
     switch (value)
     {
-    case arc::job_status::invalid: return "invalid";
-    case arc::job_status::waiting_dependencies: return "dependencies";
-    case arc::job_status::queued: return "queued";
-    case arc::job_status::running: return "running";
-    case arc::job_status::waiting_children: return "children";
-    case arc::job_status::succeeded: return "succeeded";
-    case arc::job_status::failed: return "failed";
-    case arc::job_status::cancelled: return "cancelled";
+    case arc::jobs::job_status::invalid: return "invalid";
+    case arc::jobs::job_status::waiting_dependencies: return "dependencies";
+    case arc::jobs::job_status::queued: return "queued";
+    case arc::jobs::job_status::running: return "running";
+    case arc::jobs::job_status::waiting_children: return "children";
+    case arc::jobs::job_status::succeeded: return "succeeded";
+    case arc::jobs::job_status::failed: return "failed";
+    case arc::jobs::job_status::cancelled: return "cancelled";
     }
     return "unknown";
 }
 
 arc::editor::host_profiler_snapshot make_profiler_snapshot(
-    const arc::job_system_snapshot& jobs,
-    const arc::memory_snapshot& memory)
+    const arc::jobs::job_system_snapshot& jobs,
+    const arc::memory::memory_snapshot& memory)
 {
     arc::editor::host_profiler_snapshot result;
     result.timestamp_nanoseconds = static_cast<std::uint64_t>(
@@ -98,7 +98,7 @@ arc::editor::host_profiler_snapshot make_profiler_snapshot(
     for (const auto& domain : memory.domains)
     {
         result.memory_domains.push_back({
-            .domain = std::string(arc::to_string(domain.domain)),
+            .domain = std::string(arc::memory::to_string(domain.domain)),
             .bytes_outstanding = domain.stats.bytes_outstanding,
             .peak_bytes = domain.stats.peak_bytes_outstanding,
             .soft_limit = domain.budget.soft_limit,
@@ -110,7 +110,7 @@ arc::editor::host_profiler_snapshot make_profiler_snapshot(
     for (const auto& group : memory.allocation_groups)
     {
         result.allocation_groups.push_back({
-            .domain = std::string(arc::to_string(group.domain)),
+            .domain = std::string(arc::memory::to_string(group.domain)),
             .tag = std::string(group.tag.name),
             .world_id = group.world_id,
             .thread_id = group.thread_id,
@@ -162,7 +162,7 @@ public:
     native_viewport_controller(
         std::shared_ptr<arc::editor::arc_host> host,
         std::mutex& host_mutex,
-        arc::job_system& jobs)
+        arc::jobs::job_system& jobs)
         : host_(std::move(host))
         , host_mutex_(host_mutex)
         , jobs_(&jobs)
@@ -189,8 +189,8 @@ public:
         if (!running_.exchange(true))
             render_task_ = jobs_->submit({
                 .name = "editor.native_viewport",
-                .priority = arc::job_priority::critical,
-                .affinity = arc::job_affinity::render_thread
+                .priority = arc::jobs::job_priority::critical,
+                .affinity = arc::jobs::job_affinity::render_thread
             }, [this] { render_loop(); });
     }
 
@@ -354,15 +354,16 @@ private:
         config.surface_user_data = window_;
 
         auto result = arc::render::vulkan::create_vulkan_backend(config);
-        if (!result.succeeded())
+        if (!result)
         {
-            std::cerr << "arc_host_process Vulkan backend error: " << result.message << '\n';
+            std::cerr << "arc_host_process Vulkan backend error: "
+                      << result.error().message << '\n';
             return false;
         }
 
         std::lock_guard lock(host_mutex_);
-        host_->renderer_service().set_backend(std::move(result.backend));
-        backend_ = arc::render::vulkan::as_vulkan_backend(host_->renderer_service().backend());
+        host_->renderer_service().set_backend(std::move(result).value());
+        backend_ = host_->renderer_service().backend();
         return backend_ != nullptr;
     }
 
@@ -385,8 +386,8 @@ private:
         if (!backend_)
             return;
 
-        std::string message;
         bool rendered{};
+        std::string message;
         update_terrain_hover();
         {
             std::lock_guard lock(host_mutex_);
@@ -395,7 +396,10 @@ private:
                 .width = value.width,
                 .height = value.height
             });
-            rendered = backend_->render_native_viewport_frame(value.width, value.height, message);
+            auto present = backend_->present_surface_frame(value.width, value.height);
+            rendered = present.has_value();
+            if (!rendered)
+                message = std::move(present.error().message);
         }
         if (rendered)
         {
@@ -728,7 +732,7 @@ private:
         manipulation_local_axis_[static_cast<std::size_t>(axis) - 1u] = 1.0f;
         manipulation_rotation_axis_ = manipulation_local_axis_;
         manipulation_world_units_per_pixel_ = 0.02f;
-        const auto selected_entity = arc::scene::entity{ snapshot.entity.index, snapshot.entity.generation };
+        const auto selected_entity = arc::ecs::entity{ snapshot.entity.index, snapshot.entity.generation };
         const auto* selected_transform = state.scene.try_get<arc::scene::transform_component>(selected_entity);
         const auto* camera = state.scene.try_get<arc::scene::camera_component>(state.camera_entity);
         const auto* camera_transform = state.scene.try_get<arc::scene::transform_component>(state.camera_entity);
@@ -743,11 +747,11 @@ private:
             manipulation_local_axis_ = world_axis;
             manipulation_rotation_axis_ = world_axis;
             auto parent = state.scene.try_get<arc::scene::hierarchy_component>(selected_entity)
-                ? state.scene.get<arc::scene::hierarchy_component>(selected_entity).parent : arc::scene::entity{};
+                ? state.scene.get<arc::scene::hierarchy_component>(selected_entity).parent : arc::ecs::entity{};
             while (state.scene.alive(parent) && !state.scene.has<arc::scene::transform_component>(parent))
             {
                 const auto* hierarchy = state.scene.try_get<arc::scene::hierarchy_component>(parent);
-                parent = hierarchy ? hierarchy->parent : arc::scene::entity{};
+                parent = hierarchy ? hierarchy->parent : arc::ecs::entity{};
             }
             if (const auto* parent_transform = state.scene.try_get<arc::scene::transform_component>(parent))
             {
@@ -974,13 +978,13 @@ private:
 
     std::shared_ptr<arc::editor::arc_host> host_;
     std::mutex& host_mutex_;
-    arc::job_system* jobs_{};
-    arc::job_handle render_task_;
+    arc::jobs::job_system* jobs_{};
+    arc::jobs::job_handle render_task_;
     std::atomic<bool> running_{};
     mutable std::mutex bounds_mutex_;
     HWND parent_{};
     HWND window_{};
-    arc::render::vulkan::vulkan_backend* backend_{};
+    arc::render::render_backend* backend_{};
     std::int32_t x_{};
     std::int32_t y_{};
     std::uint32_t width_{ 1 };
@@ -1042,7 +1046,7 @@ LRESULT CALLBACK native_viewport_wnd_proc(HWND window, UINT message, WPARAM wpar
 class native_viewport_controller
 {
 public:
-    native_viewport_controller(std::shared_ptr<arc::editor::arc_host>, std::mutex&, arc::job_system&)
+    native_viewport_controller(std::shared_ptr<arc::editor::arc_host>, std::mutex&, arc::jobs::job_system&)
     {
     }
 
@@ -1066,8 +1070,8 @@ public:
 
 int main()
 {
-    auto& memory = arc::default_memory_system();
-    arc::job_system jobs({ .memory = &memory });
+    auto& memory = arc::memory::default_memory_system();
+    arc::jobs::job_system jobs({ .memory = &memory });
     jobs.register_main_thread();
     auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
     std::mutex host_mutex;

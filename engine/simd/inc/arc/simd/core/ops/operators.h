@@ -4,7 +4,7 @@
 #include <arc/simd/core/ops/bitwise.h>
 #include <arc/simd/core/ops/comparisons.h>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -141,4 +141,4 @@ simd_mask<N>& operator^=(simd_mask<N>& a, const simd_mask<N>& b) noexcept
     return a;
 }
 
-} // namespace arc
+} // namespace arc::simd

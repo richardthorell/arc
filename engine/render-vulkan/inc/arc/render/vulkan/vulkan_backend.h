@@ -29,77 +29,14 @@ struct vulkan_backend_config
 };
 
 /**
- * @brief Vulkan handles and editor presentation hooks exposed by the Vulkan backend.
- */
-class vulkan_backend : public render_backend
-{
-public:
-    ~vulkan_backend() override = default;
-
-    /**
-     * @brief Return the Vulkan instance owned by this backend.
-     */
-    virtual VkInstance instance() const noexcept = 0;
-
-    /**
-     * @brief Return the selected Vulkan physical device.
-     */
-    virtual VkPhysicalDevice physical_device() const noexcept = 0;
-
-    /**
-     * @brief Return the logical Vulkan device.
-     */
-    virtual VkDevice device() const noexcept = 0;
-
-    /**
-     * @brief Return the primary graphics/present queue family.
-     */
-    virtual std::uint32_t queue_family() const noexcept = 0;
-
-    /**
-     * @brief Return the primary graphics/present queue.
-     */
-    virtual VkQueue queue() const noexcept = 0;
-
-    /**
-     * @brief Initialize Dear ImGui's Vulkan renderer against the backend swapchain.
-     */
-    virtual bool initialize_imgui(std::uint32_t width, std::uint32_t height, std::string& message) = 0;
-
-    /**
-     * @brief Start a Dear ImGui Vulkan frame.
-     */
-    virtual void new_imgui_frame() = 0;
-
-    /**
-     * @brief Submit the current Dear ImGui draw data and present the swapchain.
-     */
-    virtual bool render_imgui_frame(void* draw_data, std::uint32_t width, std::uint32_t height, std::string& message) = 0;
-
-    /**
-     * @brief Render the current engine viewport directly to the presentation surface.
-     */
-    virtual bool render_native_viewport_frame(std::uint32_t width, std::uint32_t height, std::string& message) = 0;
-
-    /**
-     * @brief Shut down Dear ImGui's Vulkan renderer integration.
-     */
-    virtual void shutdown_imgui() noexcept = 0;
-};
-
-/**
  * @brief Return whether the Vulkan loader can be initialized.
  */
-bool vulkan_loader_available() noexcept;
+[[nodiscard]] bool vulkan_loader_available() noexcept;
 
 /**
  * @brief Create the Vulkan render backend.
  */
-render_backend_create_result create_vulkan_backend(const vulkan_backend_config& config = {});
-
-/**
- * @brief Return a Vulkan backend interface when a generic backend is Vulkan.
- */
-vulkan_backend* as_vulkan_backend(render_backend* backend) noexcept;
+[[nodiscard]] render_backend_create_result create_vulkan_backend(
+    const vulkan_backend_config& config = {});
 
 } // namespace arc::render::vulkan

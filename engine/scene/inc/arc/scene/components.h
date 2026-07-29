@@ -3,8 +3,8 @@
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
 #include <arc/render/virtual_mesh.h>
-#include <arc/scene/entity.h>
-#include <arc/scene/entity_guid.h>
+#include <arc/ecs/entity.h>
+#include <arc/ecs/identity.h>
 #include <arc/ecs/hierarchy.h>
 #include <arc/ecs/partition.h>
 #include <arc/ecs/prefab.h>
@@ -396,7 +396,7 @@ struct celestial_sky_component
     bool enabled{ true };
     sun_position_mode sun_mode{ sun_position_mode::manual_light };
     celestial_time_mode time_mode{ celestial_time_mode::fixed };
-    entity sun_light{};
+    ecs::entity sun_light{};
     float latitude_degrees{ 46.8f };
     float longitude_degrees{ 8.2f };
     float north_offset_degrees{};

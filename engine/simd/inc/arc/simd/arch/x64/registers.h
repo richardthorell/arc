@@ -2,7 +2,7 @@
 
 #include "arc/simd/arch/x64/detect.h"
 
-namespace arc
+namespace arc::simd
 {
 
 #if defined(ARC_SIMD_SSE)
@@ -194,4 +194,4 @@ inline constexpr std::size_t simd_max_lanes<uint64_t> =
     1;
 #endif
 
-} // namespace arc
+} // namespace arc::simd

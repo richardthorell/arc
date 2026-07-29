@@ -255,14 +255,14 @@ void apply_tool_shortcuts(const input::input_manager& input, editor_tool& tool) 
         tool = editor_tool::scale;
 }
 
-void clear_selection(scene::registry& registry, scene::entity& selected) noexcept
+void clear_selection(ecs::world& registry, ecs::entity& selected) noexcept
 {
-    std::vector<scene::entity> selected_entities;
+    std::vector<ecs::entity> selected_entities;
     registry.view<scene::selection_component>().each(
-        [&](scene::entity value, const scene::selection_component&) {
+        [&](ecs::entity value, const scene::selection_component&) {
             selected_entities.push_back(value);
         });
-    for (const scene::entity value : selected_entities)
+    for (const ecs::entity value : selected_entities)
     {
         if (auto* selection = registry.try_get<scene::selection_component>(value))
             selection->selected = false;
@@ -270,7 +270,7 @@ void clear_selection(scene::registry& registry, scene::entity& selected) noexcep
     selected = {};
 }
 
-bool select_entity(scene::registry& registry, scene::entity entity, scene::entity& selected)
+bool select_entity(ecs::world& registry, ecs::entity entity, ecs::entity& selected)
 {
     clear_selection(registry, selected);
     if (!registry.alive(entity))
@@ -284,13 +284,13 @@ bool select_entity(scene::registry& registry, scene::entity entity, scene::entit
     return true;
 }
 
-scene::entity pick_bounded_entity(const scene::registry& registry, const editor_ray& ray) noexcept
+ecs::entity pick_bounded_entity(const ecs::world& registry, const editor_ray& ray) noexcept
 {
-    scene::entity picked{};
+    ecs::entity picked{};
     float picked_distance = std::numeric_limits<float>::max();
 
     registry.view<scene::transform_component, scene::bounds_component>().each(
-        [&](scene::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds) {
+        [&](ecs::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds) {
             const auto* active = registry.try_get<scene::active_component>(value);
             if (active && !active->active)
                 return;
@@ -310,14 +310,14 @@ scene::entity pick_bounded_entity(const scene::registry& registry, const editor_
 }
 
 editor_pick_result pick_scene_entity(
-    const scene::registry& registry,
+    const ecs::world& registry,
     const render::renderer& renderer,
     const editor_ray& ray) noexcept
 {
     editor_pick_result picked{ .distance = std::numeric_limits<float>::max() };
 
     registry.view<scene::transform_component, scene::bounds_component>().each(
-        [&](scene::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds) {
+        [&](ecs::entity value, const scene::transform_component& transform, const scene::bounds_component& bounds) {
             const auto* active = registry.try_get<scene::active_component>(value);
             if (active && !active->active)
                 return;
@@ -503,8 +503,8 @@ geometric::box3f transformed_bounds(const geometric::box3f& local_bounds, const 
 }
 
 bool focus_selected_entity(
-    const scene::registry& registry,
-    scene::entity selected,
+    const ecs::world& registry,
+    ecs::entity selected,
     editor_camera_controller& camera) noexcept
 {
     if (!registry.alive(selected))

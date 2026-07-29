@@ -122,7 +122,7 @@ TEST_CASE("Frozen component registries assign deterministic compact indices")
 
 TEST_CASE("Prepared query iteration performs no tracked allocations")
 {
-    ::arc::memory_system memory;
+    ::arc::memory::memory_system memory;
     world owner(memory, 77u);
     owner.prepare_typed_query<query_read<position>>();
     for (int index = 0; index < 128; ++index)
@@ -240,7 +240,7 @@ TEST_CASE("System scheduler orders write conflicts and permits commands")
     world owner;
     const entity value = owner.create();
     owner.emplace<position>(value);
-    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
     system_scheduler scheduler;
     std::vector<int> order;
 
@@ -274,7 +274,7 @@ TEST_CASE("System scheduler honors forward dependencies and validates declared a
     world owner;
     const entity value = owner.create();
     owner.emplace<position>(value);
-    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
     system_scheduler ordered;
     std::vector<int> order;
 

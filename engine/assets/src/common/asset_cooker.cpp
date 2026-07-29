@@ -432,11 +432,17 @@ cook_result asset_cooker::cook(const cook_request& request)
     return result;
 }
 
-bool save_cook_manifest(
+asset_status save_cook_manifest(
     const std::filesystem::path& path,
-    const cook_manifest& manifest,
-    std::string& error)
+    const cook_manifest& manifest)
 {
+    const auto failure = [&](std::string message) {
+        return asset_status::failure({
+            .code = asset_error_code::io_failed,
+            .path = path,
+            .message = std::move(message)
+        });
+    };
     json artifacts = json::array();
     for (const auto& artifact : manifest.artifacts)
         artifacts.push_back({
@@ -472,14 +478,12 @@ bool save_cook_manifest(
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
         if (!stream)
         {
-            error = "Could not create cook manifest";
-            return false;
+            return failure("Could not create cook manifest");
         }
         stream << document.dump(2) << '\n';
         if (!stream)
         {
-            error = "Could not write cook manifest";
-            return false;
+            return failure("Could not write cook manifest");
         }
     }
     std::filesystem::remove(path, filesystem_error);
@@ -487,30 +491,30 @@ bool save_cook_manifest(
     std::filesystem::rename(temporary, path, filesystem_error);
     if (filesystem_error)
     {
-        error = "Could not publish cook manifest: " + filesystem_error.message();
-        return false;
+        return failure("Could not publish cook manifest: " + filesystem_error.message());
     }
-    return true;
+    return asset_status::success();
 }
 
-bool load_cook_manifest(
-    const std::filesystem::path& path,
-    cook_manifest& manifest,
-    std::string& error)
+cook_manifest_result load_cook_manifest(const std::filesystem::path& path)
 {
+    const auto failure = [&](std::string message) {
+        return cook_manifest_result::failure({
+            .code = asset_error_code::invalid_metadata,
+            .path = path,
+            .message = std::move(message)
+        });
+    };
     std::ifstream stream(path, std::ios::binary);
     if (!stream)
-    {
-        error = "Could not open cook manifest";
-        return false;
-    }
+        return failure("Could not open cook manifest");
+    cook_manifest manifest;
     const auto document = json::parse(stream, nullptr, false);
     if (!document.is_object() || document.value("format", "") != "arc.cook-manifest" ||
         document.value("version", 0u) != cook_manifest::current_version ||
         !parse_target(document.value("target", json{}), manifest.target))
     {
-        error = "Cook manifest is invalid or unsupported";
-        return false;
+        return failure("Cook manifest is invalid or unsupported");
     }
     manifest = {};
     manifest.version = document.value("version", 0u);
@@ -531,8 +535,7 @@ bool load_cook_manifest(
         !parse_guids("dependencyClosure", manifest.dependency_closure) ||
         !document.contains("artifacts") || !document["artifacts"].is_array())
     {
-        error = "Cook manifest contains invalid asset identities";
-        return false;
+        return failure("Cook manifest contains invalid asset identities");
     }
     for (const auto& value : document["artifacts"])
     {
@@ -549,8 +552,7 @@ bool load_cook_manifest(
         });
         if (!asset || !type || !hash || !schema_value)
         {
-            error = "Cook manifest contains an invalid artifact";
-            return false;
+            return failure("Cook manifest contains an invalid artifact");
         }
         manifest.artifacts.push_back({
             .asset = *asset,
@@ -566,26 +568,27 @@ bool load_cook_manifest(
             .compressed = value.value("compressed", false)
         });
     }
-    return true;
+    return cook_manifest_result::success(std::move(manifest));
 }
 
-bool verify_cook_manifest(
+asset_status verify_cook_manifest(
     const cook_manifest& manifest,
-    derived_data_cache& cache,
-    std::vector<std::string>& diagnostics)
+    derived_data_cache& cache)
 {
-    bool valid = true;
     for (const auto& artifact : manifest.artifacts)
     {
         cache_error error;
         const auto blob = cache.get_blob(artifact.hash, error);
         if (!blob || blob->bytes.size() != artifact.size)
         {
-            diagnostics.push_back("Missing or invalid artifact " + to_string(artifact.hash));
-            valid = false;
+            return asset_status::failure({
+                .code = asset_error_code::not_found,
+                .guid = artifact.asset,
+                .message = "Missing or invalid artifact " + to_string(artifact.hash)
+            });
         }
     }
-    return valid;
+    return asset_status::success();
 }
 
 } // namespace arc::assets

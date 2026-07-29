@@ -1,7 +1,7 @@
 #pragma once
 
+#include <arc/ecs/world.h>
 #include <arc/scene/components.h>
-#include <arc/scene/registry.h>
 
 #include <vector>
 
@@ -14,20 +14,20 @@ enum class reparent_transform_policy
     preserve_local
 };
 
-bool is_descendant(const registry& scene, entity candidate, entity ancestor) noexcept;
-std::vector<entity> roots(const registry& scene);
-std::vector<entity> children(const registry& scene, entity parent);
+bool is_descendant(const ecs::world& scene, ecs::entity candidate, ecs::entity ancestor) noexcept;
+std::vector<ecs::entity> roots(const ecs::world& scene);
+std::vector<ecs::entity> children(const ecs::world& scene, ecs::entity parent);
 bool reparent(
-    registry& scene,
-    entity child,
-    entity parent = {},
-    entity before_sibling = {},
+    ecs::world& scene,
+    ecs::entity child,
+    ecs::entity parent = {},
+    ecs::entity before_sibling = {},
     reparent_transform_policy policy = reparent_transform_policy::preserve_world) noexcept;
-bool reorder(registry& scene, entity child, entity before_sibling = {}) noexcept;
-void detach(registry& scene, entity child) noexcept;
-void mark_transform_subtree_dirty(registry& scene, entity root) noexcept;
-void update_world_transforms(registry& scene) noexcept;
-std::vector<entity> subtree(const registry& scene, entity root);
-bool destroy_subtree(registry& scene, entity root) noexcept;
+bool reorder(ecs::world& scene, ecs::entity child, ecs::entity before_sibling = {}) noexcept;
+void detach(ecs::world& scene, ecs::entity child) noexcept;
+void mark_transform_subtree_dirty(ecs::world& scene, ecs::entity root) noexcept;
+void update_world_transforms(ecs::world& scene) noexcept;
+std::vector<ecs::entity> subtree(const ecs::world& scene, ecs::entity root);
+bool destroy_subtree(ecs::world& scene, ecs::entity root) noexcept;
 
 } // namespace arc::scene

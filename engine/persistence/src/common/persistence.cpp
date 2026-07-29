@@ -31,6 +31,20 @@ using json = nlohmann::json;
 constexpr std::string_view scene_format = "arc.scene";
 constexpr std::string_view prefab_format = "arc.prefab";
 
+persistence_status persistence_failure(
+    persistence_error_code code,
+    std::string message,
+    ecs::component_type_id component = {},
+    ecs::component_field_id field = {})
+{
+    return persistence_status::failure({
+        .code = code,
+        .component = component,
+        .field = field,
+        .message = std::move(message)
+    });
+}
+
 std::uint64_t unknown_field_id(std::string_view name) noexcept
 {
     std::uint64_t result = 14695981039346656037ull;
@@ -674,28 +688,31 @@ const component_persistence_descriptor* component_persistence_registry::find(
     return found == descriptors_.end() ? nullptr : &*found;
 }
 
-bool component_persistence_registry::encode(
+persistence_status component_persistence_registry::encode(
     ecs::component_type_id type,
     const void* component,
-    archive_component_record& output,
-    std::string& error) const
+    archive_component_record& output) const
 {
     const auto* descriptor = find(type);
     if (!descriptor || !component)
     {
-        error = "component has no registered persistence encoder";
-        return false;
+        return persistence_failure(
+            persistence_error_code::codec_missing,
+            "component has no registered persistence encoder",
+            type);
     }
     output.type = descriptor->component->id;
     output.name = std::string(descriptor->component->display_name);
     output.schema_version = descriptor->component->schema_version;
     output.known = true;
     if (descriptor->encode)
-        return descriptor->encode(component, output, error);
+        return descriptor->encode(component, output);
     if (descriptor->component->custom_serialization)
     {
-        error = "custom component has no registered persistence encoder";
-        return false;
+        return persistence_failure(
+            persistence_error_code::codec_missing,
+            "custom component has no registered persistence encoder",
+            type);
     }
     output.fields.clear();
     for (const auto& field : descriptor->component->fields)
@@ -705,39 +722,47 @@ bool component_persistence_registry::encode(
         archive_value value;
         if (!encode_reflected_field(field, component, value))
         {
-            error = "reflected field cannot be encoded: " + std::string(field.name);
-            return false;
+            return persistence_failure(
+                persistence_error_code::encode_failed,
+                "reflected field cannot be encoded: " + std::string(field.name),
+                type,
+                field.id);
         }
         output.fields.push_back({
             field.id, std::string(field.name), std::move(value), true
         });
     }
-    return true;
+    return persistence_status::success();
 }
 
-bool component_persistence_registry::decode(
+persistence_status component_persistence_registry::decode(
     ecs::component_type_id type,
     void* component,
-    const archive_component_record& input,
-    std::string& error) const
+    const archive_component_record& input) const
 {
     const auto* descriptor = find(type);
     if (!descriptor || !component)
     {
-        error = "component has no registered persistence decoder";
-        return false;
+        return persistence_failure(
+            persistence_error_code::codec_missing,
+            "component has no registered persistence decoder",
+            type);
     }
     if (input.type != descriptor->component->id)
     {
-        error = "component persistence decoder received the wrong stable type ID";
-        return false;
+        return persistence_failure(
+            persistence_error_code::decode_failed,
+            "component persistence decoder received the wrong stable type ID",
+            type);
     }
     if (descriptor->decode)
-        return descriptor->decode(component, input, error);
+        return descriptor->decode(component, input);
     if (descriptor->component->custom_serialization)
     {
-        error = "custom component has no registered persistence decoder";
-        return false;
+        return persistence_failure(
+            persistence_error_code::codec_missing,
+            "custom component has no registered persistence decoder",
+            type);
     }
     for (const auto& field : input.fields)
     {
@@ -747,11 +772,14 @@ bool component_persistence_registry::decode(
             continue;
         if (!decode_reflected_field(*metadata, field.value, component))
         {
-            error = "reflected field cannot be decoded: " + field.name;
-            return false;
+            return persistence_failure(
+                persistence_error_code::decode_failed,
+                "reflected field cannot be decoded: " + field.name,
+                type,
+                field.id);
         }
     }
-    return true;
+    return persistence_status::success();
 }
 
 bool schema_migration_registry::register_component(
@@ -786,9 +814,9 @@ bool schema_migration_registry::register_document(
     return true;
 }
 
-bool schema_migration_registry::freeze(std::string& error)
+persistence_status schema_migration_registry::freeze()
 {
-    if (frozen_) return true;
+    if (frozen_) return persistence_status::success();
     std::sort(component_edges_.begin(), component_edges_.end(), [](const auto& lhs, const auto& rhs) {
         return lhs.type != rhs.type ? lhs.type < rhs.type : lhs.from < rhs.from;
     });
@@ -802,8 +830,10 @@ bool schema_migration_registry::freeze(std::string& error)
             (index > 0 && component_edges_[index - 1].type == edge.type &&
                 component_edges_[index - 1].to != edge.from))
         {
-            error = "component migration graph contains a gap or non-consecutive edge";
-            return false;
+            return persistence_failure(
+                persistence_error_code::migration_invalid,
+                "component migration graph contains a gap or non-consecutive edge",
+                edge.type);
         }
     }
     for (std::size_t index = 0; index < document_edges_.size(); ++index)
@@ -813,28 +843,32 @@ bool schema_migration_registry::freeze(std::string& error)
             (index > 0 && document_edges_[index - 1].kind == edge.kind &&
                 document_edges_[index - 1].to != edge.from))
         {
-            error = "document migration graph contains a gap or non-consecutive edge";
-            return false;
+            return persistence_failure(
+                persistence_error_code::migration_invalid,
+                "document migration graph contains a gap or non-consecutive edge");
         }
     }
     frozen_ = true;
-    return true;
+    return persistence_status::success();
 }
 
-bool schema_migration_registry::migrate(
+persistence_status schema_migration_registry::migrate(
     archive_component_record& component,
-    std::uint32_t target_version,
-    std::string& error) const
+    std::uint32_t target_version) const
 {
     if (!frozen_)
     {
-        error = "component migration registry is not frozen";
-        return false;
+        return persistence_failure(
+            persistence_error_code::migration_invalid,
+            "component migration registry is not frozen",
+            component.type);
     }
     if (component.schema_version > target_version)
     {
-        error = "component downgrade is not supported";
-        return false;
+        return persistence_failure(
+            persistence_error_code::migration_invalid,
+            "component downgrade is not supported",
+            component.type);
     }
     while (component.schema_version < target_version)
     {
@@ -844,30 +878,34 @@ bool schema_migration_registry::migrate(
             });
         if (found == component_edges_.end())
         {
-            error = "component migration path has a gap";
-            return false;
+            return persistence_failure(
+                persistence_error_code::migration_missing,
+                "component migration path has a gap",
+                component.type);
         }
-        if (!found->function(component, error))
-            return false;
+        auto migrated = found->function(component);
+        if (!migrated)
+            return migrated;
         component.schema_version = found->to;
     }
-    return true;
+    return persistence_status::success();
 }
 
-bool schema_migration_registry::migrate(
+persistence_status schema_migration_registry::migrate(
     archive_document& document,
-    std::uint32_t target_version,
-    std::string& error) const
+    std::uint32_t target_version) const
 {
     if (!frozen_)
     {
-        error = "document migration registry is not frozen";
-        return false;
+        return persistence_failure(
+            persistence_error_code::migration_invalid,
+            "document migration registry is not frozen");
     }
     if (document.format_version > target_version)
     {
-        error = "document downgrade is not supported";
-        return false;
+        return persistence_failure(
+            persistence_error_code::migration_invalid,
+            "document downgrade is not supported");
     }
     while (document.format_version < target_version)
     {
@@ -877,14 +915,16 @@ bool schema_migration_registry::migrate(
             });
         if (found == document_edges_.end())
         {
-            error = "document migration path has a gap";
-            return false;
+            return persistence_failure(
+                persistence_error_code::migration_missing,
+                "document migration path has a gap");
         }
-        if (!found->function(document, error))
-            return false;
+        auto migrated = found->function(document);
+        if (!migrated)
+            return migrated;
         document.format_version = found->to;
     }
-    return true;
+    return persistence_status::success();
 }
 
 json_seal_result seal_json_document(std::string_view unsealed_text, bool pretty)
@@ -917,17 +957,19 @@ json_seal_result seal_json_document(std::string_view unsealed_text, bool pretty)
     return result;
 }
 
-bool verify_json_document(
+core::result<assets::asset_hash, persistence_error> verify_json_document(
     std::string_view text,
-    assets::asset_hash* payload_hash,
-    std::string& error)
+    bool require_integrity)
 {
+    const auto failure = [](std::string message) {
+        return core::result<assets::asset_hash, persistence_error>::failure({
+            .code = persistence_error_code::integrity_failed,
+            .message = std::move(message)
+        });
+    };
     auto document = json::parse(text, nullptr, false);
     if (!document.is_object())
-    {
-        error = "document JSON is malformed";
-        return false;
-    }
+        return failure("document JSON is malformed");
     const auto format = document.value("format", "");
     const std::string_view metadata = format == scene_format ? "scene" :
         (format == prefab_format ? "prefab" : "");
@@ -936,46 +978,45 @@ bool verify_json_document(
         !document.contains(metadata) || !document[metadata].is_object() ||
         !document.contains("entities") || !document["entities"].is_array())
     {
-        error = "document JSON does not satisfy the persistence envelope";
-        return false;
+        return failure("document JSON does not satisfy the persistence envelope");
     }
     const auto hash = canonical_payload_hash(document);
-    if (payload_hash) *payload_hash = hash;
     const auto integrity = document.find("integrity");
     if (integrity == document.end())
-        return true;
+        return require_integrity
+            ? failure("document has no integrity record")
+            : core::result<assets::asset_hash, persistence_error>::success(hash);
     if (!integrity->is_object() || integrity->value("algorithm", "") != "sha256")
     {
-        error = "document integrity metadata is malformed";
-        return false;
+        return failure("document integrity metadata is malformed");
     }
     const auto expected = assets::parse_asset_hash(integrity->value("payloadHash", ""));
     if (!expected || *expected != hash)
     {
-        error = "document payload failed SHA-256 integrity verification";
-        return false;
+        return failure("document payload failed SHA-256 integrity verification");
     }
-    return true;
+    return core::result<assets::asset_hash, persistence_error>::success(hash);
 }
 
-std::string write_reflected_json(
+json_archive_result write_reflected_json(
     const archive_document& document,
-    bool pretty,
-    std::string& error)
+    bool pretty)
 {
     if (!document.id.valid())
-    {
-        error = "persistence document has no valid identity";
-        return {};
-    }
+        return json_archive_result::failure({
+            .code = persistence_error_code::invalid_argument,
+            .message = "persistence document has no valid identity"
+        });
     auto payload = document_payload_json(canonical_document(document)).dump();
     auto sealed = seal_json_document(payload, pretty);
     if (!sealed.succeeded())
     {
-        error = std::move(sealed.error);
-        return {};
+        return json_archive_result::failure({
+            .code = persistence_error_code::encode_failed,
+            .message = std::move(sealed.error)
+        });
     }
-    return std::move(sealed.text);
+    return json_archive_result::success(std::move(sealed.text));
 }
 
 archive_result read_reflected_json(
@@ -990,9 +1031,12 @@ archive_result read_reflected_json(
         result.error = "document exceeds the configured archive size limit";
         return result;
     }
-    assets::asset_hash payload_hash;
-    if (!verify_json_document(text, &payload_hash, result.error))
+    auto verified = verify_json_document(text, false);
+    if (!verified)
+    {
+        result.error = verified.error().message;
         return result;
+    }
     const auto source = json::parse(text, nullptr, false);
     result.integrity_verified = source.contains("integrity");
     if (!result.integrity_verified)
@@ -1131,9 +1175,13 @@ archive_result read_reflected_json(
             if (registered && migrations &&
                 component.schema_version < registered->component->schema_version)
             {
-                if (!migrations->migrate(
-                    component, registered->component->schema_version, result.error))
+                auto migrated = migrations->migrate(
+                    component, registered->component->schema_version);
+                if (!migrated)
+                {
+                    result.error = migrated.error().message;
                     return result;
+                }
                 result.migrated = true;
             }
             entity.components.push_back(std::move(component));
@@ -1222,8 +1270,12 @@ archive_result read_reflected_json(
         ? archive_document::current_scene_version : archive_document::current_prefab_version;
     if (migrations && result.document.format_version < target_version)
     {
-        if (!migrations->migrate(result.document, target_version, result.error))
+        auto migrated = migrations->migrate(result.document, target_version);
+        if (!migrated)
+        {
+            result.error = migrated.error().message;
             return result;
+        }
         result.migrated = true;
     }
     return result;
@@ -1281,21 +1333,25 @@ document_save_result document_store::save_json(
         return result;
     }
     const auto temporary_text = read_text(temporary);
-    assets::asset_hash verified_hash;
-    if (!temporary_text ||
-        !verify_json_document(*temporary_text, &verified_hash, result.error) ||
-        verified_hash != sealed.payload_hash)
+    auto verified = temporary_text
+        ? verify_json_document(*temporary_text)
+        : core::result<assets::asset_hash, persistence_error>::failure({
+            .code = persistence_error_code::integrity_failed,
+            .message = "temporary document could not be read"
+        });
+    if (!verified || verified.value() != sealed.payload_hash)
     {
         std::filesystem::remove(temporary, filesystem_error);
-        if (result.error.empty()) result.error = "temporary document verification failed";
+        result.error = verified
+            ? "temporary document verification failed"
+            : verified.error().message;
         return result;
     }
 
     if (std::filesystem::exists(path, filesystem_error))
     {
         const auto current = read_text(path);
-        std::string verification_error;
-        if (current && verify_json_document(*current, nullptr, verification_error))
+        if (current && verify_json_document(*current))
         {
             if (backup_generations_ > 0)
             {
@@ -1345,13 +1401,12 @@ document_load_result document_store::load_json(const std::filesystem::path& path
         const auto source = candidate == 0 ? path : backup_path(path, candidate);
         const auto text = read_text(source);
         if (!text) continue;
-        std::string verification_error;
-        assets::asset_hash hash;
-        if (!verify_json_document(*text, &hash, verification_error))
+        auto verified = verify_json_document(*text);
+        if (!verified)
         {
             result.diagnostics.push_back({
                 "persistence.corruption",
-                source.generic_string() + ": " + verification_error
+                source.generic_string() + ": " + verified.error().message
             });
             continue;
         }

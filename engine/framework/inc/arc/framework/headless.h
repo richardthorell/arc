@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string>
 
-namespace arc
+namespace arc::framework
 {
 
 struct headless_runtime_options
@@ -18,7 +18,7 @@ struct headless_runtime_options
     bool enable_debug_time_controls{};
 };
 
-struct headless_runtime_result
+struct [[nodiscard]] headless_runtime_result
 {
     bool succeeded{};
     std::uint64_t completed_ticks{};
@@ -26,6 +26,8 @@ struct headless_runtime_result
 };
 
 /** Run an application without a window, input device, renderer, or platform host. */
-headless_runtime_result run_headless(application& app, headless_runtime_options options = {});
+[[nodiscard]] headless_runtime_result run_headless(
+    application& app,
+    headless_runtime_options options = {});
 
-} // namespace arc
+} // namespace arc::framework

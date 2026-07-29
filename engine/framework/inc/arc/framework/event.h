@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace arc
+namespace arc::framework
 {
 
 /**
@@ -55,4 +55,4 @@ struct event
     bool repeat{};
 };
 
-} // namespace arc
+} // namespace arc::framework

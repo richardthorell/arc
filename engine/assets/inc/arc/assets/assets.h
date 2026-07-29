@@ -1,6 +1,11 @@
 #pragma once
 
+/** @namespace arc::assets
+ * @brief Persistent asset identity, importing, loading, residency, and diagnostics.
+ */
+
 #include <arc/framework/service.h>
+#include <arc/core/id.h>
 #include <arc/io/io.h>
 #include <arc/jobs/jobs.h>
 #include <arc/memory/memory.h>
@@ -25,32 +30,19 @@
 namespace arc::assets
 {
 
-struct asset_guid
-{
-    std::uint64_t high{};
-    std::uint64_t low{};
+struct asset_guid_tag;
+struct asset_type_id_tag;
+struct asset_importer_id_tag;
 
-    constexpr bool valid() const noexcept { return high != 0 || low != 0; }
-    friend constexpr auto operator<=>(const asset_guid&, const asset_guid&) noexcept = default;
-};
+using asset_guid = core::uuid<asset_guid_tag>;
+using asset_type_id = core::uuid<asset_type_id_tag>;
+using asset_importer_id = core::uuid<asset_importer_id_tag>;
 
-struct asset_type_id
-{
-    std::uint64_t high{};
-    std::uint64_t low{};
-
-    constexpr bool valid() const noexcept { return high != 0 || low != 0; }
-    friend constexpr auto operator<=>(const asset_type_id&, const asset_type_id&) noexcept = default;
-};
-
-struct asset_importer_id
-{
-    std::uint64_t high{};
-    std::uint64_t low{};
-
-    constexpr bool valid() const noexcept { return high != 0 || low != 0; }
-    friend constexpr auto operator<=>(const asset_importer_id&, const asset_importer_id&) noexcept = default;
-};
+static_assert(sizeof(asset_guid) == 16);
+static_assert(sizeof(asset_type_id) == 16);
+static_assert(sizeof(asset_importer_id) == 16);
+static_assert(std::is_standard_layout_v<asset_guid>);
+static_assert(std::is_trivially_copyable_v<asset_guid>);
 
 struct asset_guid_hash
 {
@@ -93,7 +85,6 @@ struct asset_hash
 std::string to_string(const asset_hash& value);
 std::optional<asset_hash> parse_asset_hash(std::string_view text) noexcept;
 asset_hash hash_bytes(std::span<const std::byte> bytes) noexcept;
-asset_hash hash_file(const std::filesystem::path& path, std::string* error = nullptr);
 asset_hash combine_hashes(std::span<const asset_hash> hashes) noexcept;
 
 namespace asset_types
@@ -214,6 +205,16 @@ struct asset_error
     explicit operator bool() const noexcept { return code != asset_error_code::none; }
 };
 
+struct asset_source_metadata;
+
+/** @brief Hash one source file, returning structured I/O failure context. */
+using asset_hash_result = core::result<asset_hash, asset_error>;
+
+/** @brief Status returned by asset metadata writes. */
+using asset_status = core::status<asset_error>;
+
+[[nodiscard]] asset_hash_result hash_file(const std::filesystem::path& path);
+
 struct asset_subasset_metadata
 {
     std::string persistent_key;
@@ -235,6 +236,9 @@ struct asset_source_metadata
     std::string canonical_settings{ "{}" };
     std::vector<asset_subasset_metadata> subassets;
 };
+
+/** @brief Result of loading authored asset metadata. */
+using asset_metadata_result = core::result<asset_source_metadata, asset_error>;
 
 struct asset_importer_snapshot
 {
@@ -315,7 +319,7 @@ struct asset_importer_descriptor
     std::string name;
     std::uint32_t version{ 1 };
     std::uint32_t settings_version{ 1 };
-    job_affinity affinity{ job_affinity::any_worker };
+    jobs::job_affinity affinity{ jobs::job_affinity::any_worker };
     std::vector<std::string> extensions;
     std::vector<asset_type_id> output_types;
 };
@@ -381,10 +385,10 @@ struct asset_import_context
     asset_hash source_hash{};
     asset_streaming_priority priority{ asset_streaming_priority::normal };
     asset_residency requested_residency{ asset_residency::cpu };
-    cancellation_token cancellation;
+    jobs::cancellation_token cancellation;
 };
 
-struct asset_import_result
+struct [[nodiscard]] asset_import_result
 {
     asset_payload payload;
     std::vector<asset_reference> dependencies;
@@ -422,7 +426,7 @@ struct asset_manager_config
     std::chrono::milliseconds change_debounce{ 200 };
 };
 
-struct asset_scan_result
+struct [[nodiscard]] asset_scan_result
 {
     std::size_t discovered{};
     std::size_t updated{};
@@ -434,7 +438,7 @@ struct asset_scan_result
     bool succeeded() const noexcept { return !error; }
 };
 
-struct asset_move_result
+struct [[nodiscard]] asset_move_result
 {
     asset_guid guid{};
     std::filesystem::path previous_path;
@@ -449,7 +453,7 @@ struct asset_load_request
     asset_reference reference;
     asset_streaming_priority priority{ asset_streaming_priority::normal };
     asset_residency residency{ asset_residency::cpu };
-    cancellation_token cancellation;
+    jobs::cancellation_token cancellation;
     bool allow_fallback{ true };
 };
 
@@ -535,7 +539,7 @@ private:
 };
 
 template <class T>
-struct asset_load_result
+struct [[nodiscard]] asset_load_result
 {
     asset_handle<T> asset;
     asset_error error;
@@ -552,7 +556,7 @@ public:
 
     bool valid() const noexcept { return future_.valid(); }
     bool ready() const { return future_.ready(); }
-    job_status status() const noexcept { return future_.status(); }
+    jobs::job_status status() const noexcept { return future_.status(); }
     float progress() const noexcept
     {
         return progress_ ? progress_->load(std::memory_order_relaxed) : 0.0f;
@@ -562,7 +566,7 @@ public:
         return cancellation_ && cancellation_->request_cancel();
     }
     asset_load_result<T> get() const { return future_.get(); }
-    const job_handle& job() const noexcept { return future_.handle(); }
+    const jobs::job_handle& job() const noexcept { return future_.handle(); }
 
 #if defined(ARC_ENABLE_JOB_COROUTINES)
     auto operator co_await() const { return future_.operator co_await(); }
@@ -570,16 +574,16 @@ public:
 
 private:
     explicit asset_load_handle(
-        job_future<asset_load_result<T>> future,
-        std::shared_ptr<cancellation_source> cancellation,
+        jobs::job_future<asset_load_result<T>> future,
+        std::shared_ptr<jobs::cancellation_source> cancellation,
         std::shared_ptr<std::atomic<float>> progress)
         : future_(std::move(future))
         , cancellation_(std::move(cancellation))
         , progress_(std::move(progress))
     {
     }
-    job_future<asset_load_result<T>> future_;
-    std::shared_ptr<cancellation_source> cancellation_;
+    jobs::job_future<asset_load_result<T>> future_;
+    std::shared_ptr<jobs::cancellation_source> cancellation_;
     std::shared_ptr<std::atomic<float>> progress_;
     friend class asset_manager;
 };
@@ -610,25 +614,26 @@ struct asset_event
 
 using asset_event_callback = std::function<void(const asset_event&)>;
 
-class asset_manager final : public runtime_service
+class asset_manager final : public framework::runtime_service
 {
 public:
-    static constexpr runtime_service_id service_id = make_runtime_service_id("arc.assets");
+    static constexpr framework::runtime_service_id service_id =
+        framework::make_runtime_service_id("arc.assets");
 
     asset_manager(
         asset_manager_config config,
-        job_system& jobs,
+        jobs::job_system& jobs,
         io::async_file_service& files,
-        memory_system& memory);
+        memory::memory_system& memory);
     ~asset_manager() override;
 
     asset_manager(const asset_manager&) = delete;
     asset_manager& operator=(const asset_manager&) = delete;
 
-    runtime_service_id id() const noexcept override { return service_id; }
+    framework::runtime_service_id id() const noexcept override { return service_id; }
     std::string_view name() const noexcept override { return "ARC Assets"; }
-    void on_start(runtime_service_context&) override;
-    void on_shutdown(runtime_service_context&) noexcept override;
+    void on_start(framework::runtime_service_context&) override;
+    void on_shutdown(framework::runtime_service_context&) noexcept override;
 
     bool register_importer(std::unique_ptr<asset_importer> importer);
     bool register_virtual_asset(
@@ -662,10 +667,10 @@ public:
 
     bool set_dependencies(asset_guid guid, std::span<const asset_reference> dependencies);
     bool mark_stale(asset_guid guid, std::string reason);
-    job_handle reimport(
+    jobs::job_handle reimport(
         asset_guid guid,
         asset_streaming_priority priority = asset_streaming_priority::normal,
-        cancellation_token cancellation = {});
+        jobs::cancellation_token cancellation = {});
     bool cancel_import(asset_guid guid);
     asset_move_result move(asset_guid guid, std::filesystem::path destination);
     asset_move_result rename(asset_guid guid, std::string filename);
@@ -673,10 +678,10 @@ public:
     template <class T>
     asset_load_handle<T> load(asset_load_request request)
     {
-        std::shared_ptr<cancellation_source> owned_cancellation;
+        std::shared_ptr<jobs::cancellation_source> owned_cancellation;
         if (!request.cancellation.valid())
         {
-            owned_cancellation = std::make_shared<cancellation_source>();
+            owned_cancellation = std::make_shared<jobs::cancellation_source>();
             request.cancellation = owned_cancellation->token();
         }
         auto progress = std::make_shared<std::atomic<float>>(0.0f);
@@ -712,7 +717,7 @@ public:
             std::move(future), std::move(owned_cancellation), std::move(progress));
     }
 
-    job_handle prefetch(asset_load_request request);
+    jobs::job_handle prefetch(asset_load_request request);
     asset_pin pin(asset_guid guid);
     std::size_t evict_unused(asset_residency maximum_residency = asset_residency::device);
 
@@ -721,31 +726,28 @@ public:
     std::vector<asset_event> events_since(std::uint64_t sequence) const;
 
     const asset_manager_config& config() const noexcept;
-    job_system& jobs() const noexcept;
-    static job_priority to_job_priority(asset_streaming_priority priority) noexcept;
+    jobs::job_system& jobs() const noexcept;
+    static jobs::job_priority to_job_priority(asset_streaming_priority priority) noexcept;
 
 private:
-    struct untyped_load_result
+    struct [[nodiscard]] untyped_load_result
     {
         std::shared_ptr<detail::asset_slot> slot;
         asset_error error;
     };
 
-    job_future<untyped_load_result> load_untyped(asset_load_request request);
+    jobs::job_future<untyped_load_result> load_untyped(asset_load_request request);
 
     struct implementation;
     std::unique_ptr<implementation> implementation_;
 };
 
 std::filesystem::path metadata_path_for(const std::filesystem::path& source_path);
-bool load_asset_metadata(
+[[nodiscard]] asset_metadata_result load_asset_metadata(
+    const std::filesystem::path& path);
+[[nodiscard]] asset_status save_asset_metadata(
     const std::filesystem::path& path,
-    asset_source_metadata& metadata,
-    std::string& error);
-bool save_asset_metadata(
-    const std::filesystem::path& path,
-    const asset_source_metadata& metadata,
-    std::string& error);
+    const asset_source_metadata& metadata);
 std::string normalize_asset_path(const std::filesystem::path& path);
 std::optional<std::pair<asset_type_id, asset_importer_id>> classify_asset_path(
     const std::filesystem::path& path) noexcept;

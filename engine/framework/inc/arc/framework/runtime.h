@@ -9,7 +9,7 @@
 #include <chrono>
 #include <vector>
 
-namespace arc
+namespace arc::framework
 {
 
 /**
@@ -80,18 +80,18 @@ public:
     /**
      * @brief Return the shared runtime job system.
      */
-    job_system& jobs() noexcept;
+    jobs::job_system& jobs() noexcept;
 
     /**
      * @brief Return the runtime-owned memory service.
      */
-    memory_system& memory() noexcept;
+    memory::memory_system& memory() noexcept;
 
     /**
      * @brief Return transient CPU arenas with frame and tick lifetimes.
      */
-    frame_arena& frame_memory() noexcept;
-    tick_arena& tick_memory() noexcept;
+    memory::frame_arena& frame_memory() noexcept;
+    memory::tick_arena& tick_memory() noexcept;
 
     /**
      * @brief Return the shared runtime module manager.
@@ -118,12 +118,12 @@ private:
 
     application* app_{};
     application_config config_{};
-    memory_system memory_{};
-    system_memory_resource frame_memory_resource_{ memory_, memory_domain::frame, make_memory_tag("runtime.frame") };
-    system_memory_resource tick_memory_resource_{ memory_, memory_domain::tick, make_memory_tag("runtime.tick") };
-    frame_arena frame_arena_{ 256u * 1024u, &frame_memory_resource_ };
-    tick_arena tick_arena_{ 128u * 1024u, &tick_memory_resource_ };
-    job_system jobs_{};
+    memory::memory_system memory_{};
+    memory::system_memory_resource frame_memory_resource_{ memory_, memory::memory_domain::frame, memory::make_memory_tag("runtime.frame") };
+    memory::system_memory_resource tick_memory_resource_{ memory_, memory::memory_domain::tick, memory::make_memory_tag("runtime.tick") };
+    memory::frame_arena frame_arena_{ 256u * 1024u, &frame_memory_resource_ };
+    memory::tick_arena tick_arena_{ 128u * 1024u, &tick_memory_resource_ };
+    jobs::job_system jobs_{};
     runtime_service_registry services_;
     runtime_world_manager worlds_{ memory_ };
     module_context module_context_;
@@ -147,4 +147,4 @@ private:
     std::uint64_t input_revision_{};
 };
 
-} // namespace arc
+} // namespace arc::framework

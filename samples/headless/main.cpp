@@ -8,12 +8,12 @@
 namespace
 {
 
-class headless_application final : public arc::application
+class headless_application final : public arc::framework::application
 {
 public:
-    arc::application_config configure() const override
+    arc::framework::application_config configure() const override
     {
-        arc::application_config config{};
+        arc::framework::application_config config{};
         config.title = "ARC Headless Runtime";
         return config;
     }
@@ -31,14 +31,14 @@ bool parse_u64(std::string_view text, std::uint64_t& value)
 
 int main(int argc, char** argv)
 {
-    arc::headless_runtime_options options{};
+    arc::framework::headless_runtime_options options{};
     for (int index = 1; index < argc; ++index)
     {
         const std::string_view argument(argv[index]);
         if (argument == "--no-sleep")
             options.sleep_to_clock = false;
         else if (argument == "--client")
-            options.default_world_role = arc::runtime_world_role::client;
+            options.default_world_role = arc::framework::runtime_world_role::client;
         else if (argument == "--debug-time-controls")
             options.enable_debug_time_controls = true;
         else if (argument == "--ticks" && index + 1 < argc)
@@ -59,7 +59,7 @@ int main(int argc, char** argv)
     }
 
     headless_application app;
-    const arc::headless_runtime_result result = arc::run_headless(app, options);
+    const arc::framework::headless_runtime_result result = arc::framework::run_headless(app, options);
     if (!result.succeeded)
     {
         std::cerr << result.error << '\n';

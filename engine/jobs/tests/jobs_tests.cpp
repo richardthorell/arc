@@ -13,7 +13,7 @@
 
 TEST_CASE("job system runs submitted work")
 {
-    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
     int value = 0;
 
     auto handle = jobs.submit([&]() { value = 42; });
@@ -26,7 +26,7 @@ TEST_CASE("job system runs submitted work")
 
 TEST_CASE("job handle rethrows task exceptions")
 {
-    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
     auto handle = jobs.submit([]() { throw std::runtime_error("boom"); });
 
     REQUIRE_THROWS_AS(handle.wait(), std::runtime_error);
@@ -34,10 +34,10 @@ TEST_CASE("job handle rethrows task exceptions")
 
 TEST_CASE("parallel_for covers the requested range")
 {
-    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
     std::vector<int> values(17);
 
-    arc::parallel_for(jobs, 0, values.size(), 4, [&](std::size_t begin, std::size_t end) {
+    arc::jobs::parallel_for(jobs, 0, values.size(), 4, [&](std::size_t begin, std::size_t end) {
         for (std::size_t index = begin; index < end; ++index)
             values[index] = static_cast<int>(index + 1);
     });
@@ -47,21 +47,21 @@ TEST_CASE("parallel_for covers the requested range")
 
 TEST_CASE("worker job system executes queued work")
 {
-    arc::job_system jobs({ .worker_count = 2, .run_inline = false });
+    arc::jobs::job_system jobs({ .worker_count = 2, .run_inline = false });
     std::atomic<int> count{ 0 };
-    std::vector<arc::job_handle> handles;
+    std::vector<arc::jobs::job_handle> handles;
 
     for (int index = 0; index < 32; ++index)
         handles.push_back(jobs.submit([&]() { count.fetch_add(1); }));
 
-    arc::wait_all(handles);
+    arc::jobs::wait_all(handles);
 
     REQUIRE(count.load() == 32);
 }
 
 TEST_CASE("jobs wait for every dependency before running")
 {
-    arc::job_system jobs({ .worker_count = 3, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 3, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
     std::mutex mutex;
     std::vector<int> order;
 
@@ -88,7 +88,7 @@ TEST_CASE("jobs wait for every dependency before running")
 
 TEST_CASE("dependency failure cancels normal continuations and run always executes")
 {
-    arc::job_system jobs({ .worker_count = 2, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 2, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
     auto failed = jobs.submit({ .name = "failure" }, [] { throw std::runtime_error("expected"); });
     std::atomic_bool normal_ran{};
     std::atomic_bool cleanup_ran{};
@@ -99,18 +99,18 @@ TEST_CASE("dependency failure cancels normal continuations and run always execut
     auto cleanup = jobs.submit({
         .name = "cleanup continuation",
         .dependencies = { failed },
-        .dependency_policy = arc::job_dependency_policy::run_always
+        .dependency_policy = arc::jobs::job_dependency_policy::run_always
     }, [&] { cleanup_ran = true; });
 
-    REQUIRE(normal.wait_result().status == arc::job_status::cancelled);
-    REQUIRE(cleanup.wait_result().status == arc::job_status::succeeded);
+    REQUIRE(normal.wait_result().status == arc::jobs::job_status::cancelled);
+    REQUIRE(cleanup.wait_result().status == arc::jobs::job_status::succeeded);
     REQUIRE_FALSE(normal_ran.load());
     REQUIRE(cleanup_ran.load());
 }
 
 TEST_CASE("parent completion includes dynamically submitted children")
 {
-    arc::job_system jobs({ .worker_count = 3, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 3, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
     std::atomic_int children{};
     auto parent = jobs.submit({ .name = "parent" }, [&] {
         for (int index = 0; index < 12; ++index)
@@ -119,12 +119,12 @@ TEST_CASE("parent completion includes dynamically submitted children")
 
     parent.wait();
     REQUIRE(children.load() == 12);
-    REQUIRE(parent.status() == arc::job_status::succeeded);
+    REQUIRE(parent.status() == arc::jobs::job_status::succeeded);
 }
 
 TEST_CASE("child dependencies cannot create an ancestor wait cycle")
 {
-    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
     bool rejected{};
     auto parent = jobs.submit({ .name = "parent" }, [&] {
         const auto current = jobs.current_job();
@@ -146,9 +146,9 @@ TEST_CASE("child dependencies cannot create an ancestor wait cycle")
 
 TEST_CASE("queued cancellation prevents task execution")
 {
-    arc::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
     std::atomic_bool release{};
-    auto blocker = jobs.submit({ .name = "blocker", .priority = arc::job_priority::critical }, [&] {
+    auto blocker = jobs.submit({ .name = "blocker", .priority = arc::jobs::job_priority::critical }, [&] {
         while (!release.load())
             std::this_thread::yield();
     });
@@ -157,26 +157,26 @@ TEST_CASE("queued cancellation prevents task execution")
     REQUIRE(cancelled.request_cancel());
     release = true;
     blocker.wait();
-    REQUIRE(cancelled.wait_result().status == arc::job_status::cancelled);
+    REQUIRE(cancelled.wait_result().status == arc::jobs::job_status::cancelled);
     REQUIRE_FALSE(ran.load());
 }
 
 TEST_CASE("main render and IO affinities stay on their executors")
 {
-    arc::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = true });
+    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = true });
     jobs.register_main_thread();
     const auto main_id = std::this_thread::get_id();
     std::thread::id observed_main;
     std::thread::id observed_render;
     std::thread::id observed_io;
 
-    auto main = jobs.submit({ .name = "main", .affinity = arc::job_affinity::main_thread }, [&] {
+    auto main = jobs.submit({ .name = "main", .affinity = arc::jobs::job_affinity::main_thread }, [&] {
         observed_main = std::this_thread::get_id();
     });
-    auto render = jobs.submit({ .name = "render", .affinity = arc::job_affinity::render_thread }, [&] {
+    auto render = jobs.submit({ .name = "render", .affinity = arc::jobs::job_affinity::render_thread }, [&] {
         observed_render = std::this_thread::get_id();
     });
-    auto io = jobs.submit({ .name = "io", .affinity = arc::job_affinity::io_thread }, [&] {
+    auto io = jobs.submit({ .name = "io", .affinity = arc::jobs::job_affinity::io_thread }, [&] {
         observed_io = std::this_thread::get_id();
     });
 
@@ -191,7 +191,7 @@ TEST_CASE("main render and IO affinities stay on their executors")
 
 TEST_CASE("typed futures return values and propagate failures")
 {
-    arc::job_system jobs(arc::job_system::single_threaded_config());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
     auto value = jobs.submit_future({ .name = "answer" }, [] { return 42; });
     REQUIRE(value.get() == 42);
 
@@ -203,7 +203,7 @@ TEST_CASE("typed futures return values and propagate failures")
 
 TEST_CASE("fire and forget tasks remain alive and are profiled")
 {
-    arc::job_system jobs({ .worker_count = 2, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 2, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
     std::atomic_int completed{};
     for (int index = 0; index < 64; ++index)
         jobs.dispatch({ .name = "detached" }, [&] { ++completed; });
@@ -220,7 +220,7 @@ TEST_CASE("fire and forget tasks remain alive and are profiled")
 #if defined(ARC_ENABLE_JOB_COROUTINES)
 namespace
 {
-arc::job_task<int> await_job(arc::job_system& jobs)
+arc::jobs::job_task<int> await_job(arc::jobs::job_system& jobs)
 {
     auto future = jobs.submit_future({ .name = "awaited" }, [] { return 21; });
     const int value = co_await future;
@@ -230,7 +230,7 @@ arc::job_task<int> await_job(arc::job_system& jobs)
 
 TEST_CASE("job futures can be awaited by built in coroutine tasks")
 {
-    arc::job_system jobs({ .worker_count = 2, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 2, .run_inline = false, .io_worker_count = 0, .enable_render_thread = false });
     auto task = await_job(jobs);
     REQUIRE(task.get() == 42);
 }

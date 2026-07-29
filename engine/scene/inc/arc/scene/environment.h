@@ -1,7 +1,7 @@
 #pragma once
 
+#include <arc/ecs/world.h>
 #include <arc/scene/components.h>
-#include <arc/scene/registry.h>
 
 #include <optional>
 #include <string>
@@ -18,7 +18,7 @@ struct solar_position
     math::vector3f light_direction{ 0.0f, -1.0f, 0.0f };
 };
 
-struct environment_validation_result
+struct [[nodiscard]] environment_validation_result
 {
     bool valid{ true };
     std::vector<std::string> errors;
@@ -69,13 +69,13 @@ environment_validation_result validate_world_environment(
 
 /** @brief Read a complete environment, or nullopt when any required component is missing. */
 std::optional<world_environment_settings> read_world_environment_settings(
-    const registry& scene,
-    entity environment);
+    const ecs::world& scene,
+    ecs::entity environment);
 
 /** @brief Validate first, then replace all six environment components as one logical update. */
 bool set_world_environment_settings(
-    registry& scene,
-    entity environment,
+    ecs::world& scene,
+    ecs::entity environment,
     const world_environment_settings& settings);
 
 void apply_world_environment_preset(
@@ -85,6 +85,6 @@ void apply_world_environment_preset(
 /**
  * @brief Advance simulated clocks and drive linked geographic sun lights.
  */
-void update_world_environments(registry& scene, float delta_seconds);
+void update_world_environments(ecs::world& scene, float delta_seconds);
 
 } // namespace arc::scene

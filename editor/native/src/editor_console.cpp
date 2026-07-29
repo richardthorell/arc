@@ -8,7 +8,7 @@ editor_console_sink::editor_console_sink(std::size_t max_entries)
 {
 }
 
-void editor_console_sink::write(const log_record& record)
+void editor_console_sink::write(const diagnostics::log_record& record)
 {
     std::lock_guard lock(mutex_);
     if (entries_.size() == max_entries_)

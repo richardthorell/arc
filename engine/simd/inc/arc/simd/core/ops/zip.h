@@ -4,7 +4,7 @@
 
 #include <utility>
 
-namespace arc
+namespace arc::simd
 {
 namespace detail
 {
@@ -37,4 +37,4 @@ constexpr simd<T, N> zip_hi(const simd<T, N>& a, const simd<T, N>& b) noexcept
     return detail::zip_hi_impl(a, b, std::make_index_sequence<N>{});
 }
 
-} // namespace arc
+} // namespace arc::simd

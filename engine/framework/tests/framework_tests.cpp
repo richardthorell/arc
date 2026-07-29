@@ -13,15 +13,15 @@
 namespace
 {
 
-class recording_application : public arc::application
+class recording_application : public arc::framework::application
 {
 public:
-    explicit recording_application(arc::application_config config = {})
+    explicit recording_application(arc::framework::application_config config = {})
         : config_(std::move(config))
     {
     }
 
-    arc::application_config configure() const override
+    arc::framework::application_config configure() const override
     {
         return config_;
     }
@@ -31,13 +31,13 @@ public:
         calls.push_back("start");
     }
 
-    void on_update(const arc::frame_time& time) override
+    void on_update(const arc::framework::frame_time& time) override
     {
         calls.push_back("update");
         last_time = time;
     }
 
-    void on_event(const arc::event& value) override
+    void on_event(const arc::framework::event& value) override
     {
         calls.push_back("event");
         last_event = value;
@@ -49,14 +49,14 @@ public:
     }
 
     std::vector<std::string> calls;
-    arc::frame_time last_time{};
-    arc::event last_event{};
+    arc::framework::frame_time last_time{};
+    arc::framework::event last_event{};
 
 private:
-    arc::application_config config_;
+    arc::framework::application_config config_;
 };
 
-class recording_module final : public arc::module
+class recording_module final : public arc::framework::module
 {
 public:
     recording_module(std::string module_name, std::vector<std::string>* calls, std::vector<std::string> deps = {})
@@ -76,23 +76,23 @@ public:
         return deps_;
     }
 
-    void on_start(arc::module_context& context) override
+    void on_start(arc::framework::module_context& context) override
     {
         REQUIRE(context.jobs().run_inline() == false);
         calls_->push_back(module_name_ + ":start");
     }
 
-    void on_update(arc::module_context&, const arc::frame_time&) override
+    void on_update(arc::framework::module_context&, const arc::framework::frame_time&) override
     {
         calls_->push_back(module_name_ + ":update");
     }
 
-    void on_event(arc::module_context&, const arc::event&) override
+    void on_event(arc::framework::module_context&, const arc::framework::event&) override
     {
         calls_->push_back(module_name_ + ":event");
     }
 
-    void on_shutdown(arc::module_context&) override
+    void on_shutdown(arc::framework::module_context&) override
     {
         calls_->push_back(module_name_ + ":shutdown");
     }
@@ -103,10 +103,10 @@ private:
     std::vector<std::string> deps_;
 };
 
-class modular_application final : public arc::application
+class modular_application final : public arc::framework::application
 {
 public:
-    void register_modules(arc::module_registry& registry) override
+    void register_modules(arc::framework::module_registry& registry) override
     {
         calls.push_back("register");
         registry.add(std::make_unique<recording_module>("graphics", &calls));
@@ -118,12 +118,12 @@ public:
         calls.push_back("app:start");
     }
 
-    void on_update(const arc::frame_time&) override
+    void on_update(const arc::framework::frame_time&) override
     {
         calls.push_back("app:update");
     }
 
-    void on_event(const arc::event&) override
+    void on_event(const arc::framework::event&) override
     {
         calls.push_back("app:event");
     }
@@ -141,25 +141,25 @@ struct counter_component
     int value{};
 };
 
-class headless_test_application final : public arc::application
+class headless_test_application final : public arc::framework::application
 {
 public:
-    arc::application_config configure() const override
+    arc::framework::application_config configure() const override
     {
-        arc::application_config result{};
+        arc::framework::application_config result{};
         result.simulation.fixed_tick_rate = 60.0;
         return result;
     }
 };
 
-class failing_headless_application final : public arc::application
+class failing_headless_application final : public arc::framework::application
 {
 public:
-    void register_worlds(arc::runtime_world_manager& worlds) override
+    void register_worlds(arc::framework::runtime_world_manager& worlds) override
     {
-        arc::runtime_world& world = worlds.create({
+        arc::framework::runtime_world& world = worlds.create({
             .name = "Failing Headless World",
-            .role = arc::runtime_world_role::server,
+            .role = arc::framework::runtime_world_role::server,
             .install_placeholder_systems = false,
             .presentation_enabled = false
         });
@@ -173,14 +173,14 @@ public:
     }
 };
 
-class lifecycle_service final : public arc::runtime_service
+class lifecycle_service final : public arc::framework::runtime_service
 {
 public:
     lifecycle_service(
-        arc::runtime_service_id service_id,
+        arc::framework::runtime_service_id service_id,
         std::string service_name,
         std::vector<std::string>* calls,
-        std::vector<arc::runtime_service_id> dependencies = {})
+        std::vector<arc::framework::runtime_service_id> dependencies = {})
         : id_(service_id)
         , name_(std::move(service_name))
         , calls_(calls)
@@ -188,48 +188,49 @@ public:
     {
     }
 
-    arc::runtime_service_id id() const noexcept override { return id_; }
+    arc::framework::runtime_service_id id() const noexcept override { return id_; }
     std::string_view name() const noexcept override { return name_; }
-    std::vector<arc::runtime_service_id> dependencies() const override { return dependencies_; }
-    void on_start(arc::runtime_service_context&) override { calls_->push_back(name_ + ":start"); }
-    void on_shutdown(arc::runtime_service_context&) noexcept override { calls_->push_back(name_ + ":stop"); }
+    std::vector<arc::framework::runtime_service_id> dependencies() const override { return dependencies_; }
+    void on_start(arc::framework::runtime_service_context&) override { calls_->push_back(name_ + ":start"); }
+    void on_shutdown(arc::framework::runtime_service_context&) noexcept override { calls_->push_back(name_ + ":stop"); }
 
 private:
-    arc::runtime_service_id id_{};
+    arc::framework::runtime_service_id id_{};
     std::string name_;
     std::vector<std::string>* calls_{};
-    std::vector<arc::runtime_service_id> dependencies_;
+    std::vector<arc::framework::runtime_service_id> dependencies_;
 };
 
-class deterministic_service final : public arc::runtime_service
+class deterministic_service final : public arc::framework::runtime_service
 {
 public:
-    static constexpr arc::runtime_service_id service_id =
-        arc::make_runtime_service_id("tests.deterministic");
+    static constexpr arc::framework::runtime_service_id service_id =
+        arc::framework::make_runtime_service_id("tests.deterministic");
 
-    arc::runtime_service_id id() const noexcept override { return service_id; }
+    arc::framework::runtime_service_id id() const noexcept override { return service_id; }
     std::string_view name() const noexcept override { return "deterministic"; }
     bool has_deterministic_state() const noexcept override { return true; }
 
-    bool capture_deterministic_state(
-        std::uint64_t,
-        std::vector<std::byte>& bytes,
-        std::string&) const override
+    arc::framework::runtime_service_blob_result capture_deterministic_state(
+        std::uint64_t) const override
     {
-        bytes = { static_cast<std::byte>(value) };
-        return true;
+        return arc::framework::runtime_service_blob_result::success(
+            { static_cast<std::byte>(value) });
     }
 
-    bool validate_deterministic_state(
-        std::uint64_t,
+    arc::framework::runtime_service_status validate_deterministic_state(
+        std::uint64_t world,
         std::uint32_t version,
-        const std::vector<std::byte>& bytes,
-        std::string& error) const override
+        const std::vector<std::byte>& bytes) const override
     {
         if (version == 1 && bytes.size() == 1)
-            return true;
-        error = "invalid deterministic test service snapshot";
-        return false;
+            return arc::framework::runtime_service_status::success();
+        return arc::framework::runtime_service_status::failure({
+            .code = arc::framework::runtime_service_error_code::validation_failed,
+            .service = id(),
+            .world = world,
+            .message = "invalid deterministic test service snapshot"
+        });
     }
 
     void restore_deterministic_state(
@@ -247,14 +248,14 @@ public:
 
 TEST_CASE("runtime normalizes application config")
 {
-    arc::application_config config{};
+    arc::framework::application_config config{};
     config.title.clear();
     config.initial_width = 0;
     config.initial_height = 0;
     config.resizable = false;
     config.visible = false;
 
-    const auto normalized = arc::runtime::normalize_config(config);
+    const auto normalized = arc::framework::runtime::normalize_config(config);
     REQUIRE(normalized.title == "ARC Application");
     REQUIRE(normalized.initial_width == 1280);
     REQUIRE(normalized.initial_height == 720);
@@ -265,7 +266,7 @@ TEST_CASE("runtime normalizes application config")
 TEST_CASE("runtime calls lifecycle hooks in order")
 {
     recording_application app;
-    arc::runtime runtime(app);
+    arc::framework::runtime runtime(app);
 
     REQUIRE_FALSE(runtime.started());
     REQUIRE_FALSE(runtime.running());
@@ -286,38 +287,38 @@ TEST_CASE("runtime calls lifecycle hooks in order")
 TEST_CASE("runtime dispatches events and close requests stop")
 {
     recording_application app;
-    arc::runtime runtime(app);
+    arc::framework::runtime runtime(app);
 
     runtime.start();
-    arc::event resize{};
-    resize.type = arc::event_type::resized;
+    arc::framework::event resize{};
+    resize.type = arc::framework::event_type::resized;
     resize.width = 1920;
     resize.height = 1080;
     runtime.dispatch(resize);
 
     REQUIRE(runtime.running());
-    REQUIRE(app.last_event.type == arc::event_type::resized);
+    REQUIRE(app.last_event.type == arc::framework::event_type::resized);
     REQUIRE(app.last_event.width == 1920);
     REQUIRE(app.last_event.height == 1080);
 
-    arc::event close{};
-    close.type = arc::event_type::close_requested;
+    arc::framework::event close{};
+    close.type = arc::framework::event_type::close_requested;
     runtime.dispatch(close);
 
     REQUIRE_FALSE(runtime.running());
-    REQUIRE(app.last_event.type == arc::event_type::close_requested);
+    REQUIRE(app.last_event.type == arc::framework::event_type::close_requested);
     runtime.shutdown();
 }
 
 TEST_CASE("runtime uses application provided config")
 {
-    arc::application_config config{};
+    arc::framework::application_config config{};
     config.title = "Test App";
     config.initial_width = 800;
     config.initial_height = 600;
 
     recording_application app(config);
-    arc::runtime runtime(app);
+    arc::framework::runtime runtime(app);
 
     REQUIRE(runtime.config().title == "Test App");
     REQUIRE(runtime.config().initial_width == 800);
@@ -327,13 +328,13 @@ TEST_CASE("runtime uses application provided config")
 TEST_CASE("runtime starts, updates, dispatches, and shuts modules in order")
 {
     modular_application app;
-    arc::runtime runtime(app);
+    arc::framework::runtime runtime(app);
 
     runtime.start();
     runtime.tick();
 
-    arc::event event{};
-    event.type = arc::event_type::resized;
+    arc::framework::event event{};
+    event.type = arc::framework::event_type::resized;
     runtime.dispatch(event);
     runtime.shutdown();
 
@@ -355,12 +356,12 @@ TEST_CASE("runtime starts, updates, dispatches, and shuts modules in order")
 
 TEST_CASE("module manager rejects dependency problems")
 {
-    arc::job_system jobs(arc::job_system::single_threaded_config());
-    arc::module_context context(jobs, arc::default_logger(), arc::default_tracked_memory_resource());
+    arc::jobs::job_system jobs(arc::jobs::job_system::single_threaded_config());
+    arc::framework::module_context context(jobs, arc::diagnostics::default_logger(), arc::memory::default_tracked_memory_resource());
 
     SECTION("unknown dependency")
     {
-        arc::module_manager manager;
+        arc::framework::module_manager manager;
         std::vector<std::string> calls;
         manager.registry().add(std::make_unique<recording_module>("physics", &calls, std::vector<std::string>{ "graphics" }));
 
@@ -369,7 +370,7 @@ TEST_CASE("module manager rejects dependency problems")
 
     SECTION("duplicate names")
     {
-        arc::module_manager manager;
+        arc::framework::module_manager manager;
         std::vector<std::string> calls;
         manager.registry().add(std::make_unique<recording_module>("graphics", &calls));
         manager.registry().add(std::make_unique<recording_module>("graphics", &calls));
@@ -379,7 +380,7 @@ TEST_CASE("module manager rejects dependency problems")
 
     SECTION("dependency cycles")
     {
-        arc::module_manager manager;
+        arc::framework::module_manager manager;
         std::vector<std::string> calls;
         manager.registry().add(std::make_unique<recording_module>("a", &calls, std::vector<std::string>{ "b" }));
         manager.registry().add(std::make_unique<recording_module>("b", &calls, std::vector<std::string>{ "a" }));
@@ -391,16 +392,16 @@ TEST_CASE("module manager rejects dependency problems")
 TEST_CASE("runtime advances a deterministic fixed-step clock")
 {
     recording_application app;
-    arc::application_config config{};
+    arc::framework::application_config config{};
     config.simulation.fixed_tick_rate = 60.0;
     config.simulation.maximum_catch_up_ticks = 8;
-    arc::runtime host(app, config);
+    arc::framework::runtime host(app, config);
 
-    const arc::frame_time first = host.advance(1.0 / 120.0);
+    const arc::framework::frame_time first = host.advance(1.0 / 120.0);
     REQUIRE(first.completed_ticks == 0);
     REQUIRE(first.interpolation_alpha == Catch::Approx(0.5));
 
-    const arc::frame_time second = host.advance(1.0 / 120.0);
+    const arc::framework::frame_time second = host.advance(1.0 / 120.0);
     REQUIRE(second.completed_ticks == 1);
     REQUIRE(second.last_completed_tick.value == 1);
     REQUIRE(second.interpolation_alpha == Catch::Approx(0.0).margin(1e-8));
@@ -410,7 +411,7 @@ TEST_CASE("runtime advances a deterministic fixed-step clock")
 TEST_CASE("runtime pause and single-step preserve fixed delta")
 {
     recording_application app;
-    arc::runtime host(app);
+    arc::framework::runtime host(app);
     host.start();
     host.pause();
     REQUIRE(host.paused());
@@ -430,11 +431,11 @@ TEST_CASE("runtime pause and single-step preserve fixed delta")
 TEST_CASE("runtime executes server worlds before client and preview worlds")
 {
     recording_application app;
-    arc::runtime host(app);
-    std::vector<arc::runtime_world_role> order;
+    arc::framework::runtime host(app);
+    std::vector<arc::framework::runtime_world_role> order;
 
-    auto add_world = [&](arc::runtime_world_role role, std::string name) {
-        arc::runtime_world& world = host.worlds().create({
+    auto add_world = [&](arc::framework::runtime_world_role role, std::string name) {
+        arc::framework::runtime_world& world = host.worlds().create({
             .name = std::move(name),
             .role = role,
             .install_placeholder_systems = false
@@ -448,26 +449,26 @@ TEST_CASE("runtime executes server worlds before client and preview worlds")
         }));
     };
 
-    add_world(arc::runtime_world_role::client, "Client");
-    add_world(arc::runtime_world_role::editor_preview, "Preview");
-    add_world(arc::runtime_world_role::server, "Server");
+    add_world(arc::framework::runtime_world_role::client, "Client");
+    add_world(arc::framework::runtime_world_role::editor_preview, "Preview");
+    add_world(arc::framework::runtime_world_role::server, "Server");
     host.start();
     host.advance(1.0 / 60.0);
 
-    REQUIRE(order == std::vector<arc::runtime_world_role>{
-        arc::runtime_world_role::server,
-        arc::runtime_world_role::client,
-        arc::runtime_world_role::editor_preview });
+    REQUIRE(order == std::vector<arc::framework::runtime_world_role>{
+        arc::framework::runtime_world_role::server,
+        arc::framework::runtime_world_role::client,
+        arc::framework::runtime_world_role::editor_preview });
     host.shutdown();
 }
 
 TEST_CASE("systems flush structural commands at phase boundaries")
 {
     recording_application app;
-    arc::runtime host(app);
-    arc::runtime_world& world = host.worlds().create({
+    arc::framework::runtime host(app);
+    arc::framework::runtime_world& world = host.worlds().create({
         .name = "Structural world",
-        .role = arc::runtime_world_role::client,
+        .role = arc::framework::runtime_world_role::client,
         .install_placeholder_systems = false
     });
     const arc::ecs::entity entity = world.entities().create();
@@ -499,10 +500,10 @@ TEST_CASE("systems flush structural commands at phase boundaries")
 TEST_CASE("runtime executes fixed phases in order and presentation once per frame")
 {
     recording_application app;
-    arc::runtime host(app);
-    arc::runtime_world& world = host.worlds().create({
+    arc::framework::runtime host(app);
+    arc::framework::runtime_world& world = host.worlds().create({
         .name = "Phase world",
-        .role = arc::runtime_world_role::client,
+        .role = arc::framework::runtime_world_role::client,
         .install_placeholder_systems = false
     });
     std::vector<arc::ecs::system_phase> phases;
@@ -546,12 +547,12 @@ TEST_CASE("runtime executes fixed phases in order and presentation once per fram
 TEST_CASE("input commands are sampled once and retained until a fixed tick")
 {
     recording_application app;
-    arc::runtime host(app);
-    arc::runtime_world& world = host.worlds().create({
+    arc::framework::runtime host(app);
+    arc::framework::runtime_world& world = host.worlds().create({
         .name = "Input world",
         .install_placeholder_systems = false
     });
-    std::vector<arc::simulation_input_command> observed;
+    std::vector<arc::framework::simulation_input_command> observed;
     std::uint64_t observed_revision{};
     REQUIRE(world.systems().add({
         .name = "Input consumer",
@@ -564,7 +565,7 @@ TEST_CASE("input commands are sampled once and retained until a fixed tick")
 
     host.start();
     host.dispatch({
-        .type = arc::event_type::key_down,
+        .type = arc::framework::event_type::key_down,
         .key_code = 87,
         .modifiers = 2,
         .repeat = false
@@ -573,8 +574,8 @@ TEST_CASE("input commands are sampled once and retained until a fixed tick")
     REQUIRE(observed.empty());
     REQUIRE(host.advance(1.0 / 60.0).completed_ticks == 1);
     REQUIRE(observed.size() == 1);
-    REQUIRE(observed.front().kind == arc::simulation_input_kind::key);
-    REQUIRE(observed.front().action == arc::simulation_input_action::pressed);
+    REQUIRE(observed.front().kind == arc::framework::simulation_input_kind::key);
+    REQUIRE(observed.front().action == arc::framework::simulation_input_action::pressed);
     REQUIRE(observed.front().code == 87);
     REQUIRE(observed.front().modifiers == 2);
     REQUIRE(observed_revision == 1);
@@ -589,15 +590,15 @@ TEST_CASE("input commands are sampled once and retained until a fixed tick")
 TEST_CASE("a failed world does not prevent later interactive worlds from ticking")
 {
     recording_application app;
-    arc::runtime host(app);
-    arc::runtime_world& server = host.worlds().create({
+    arc::framework::runtime host(app);
+    arc::framework::runtime_world& server = host.worlds().create({
         .name = "Faulted server",
-        .role = arc::runtime_world_role::server,
+        .role = arc::framework::runtime_world_role::server,
         .install_placeholder_systems = false
     });
-    arc::runtime_world& client = host.worlds().create({
+    arc::framework::runtime_world& client = host.worlds().create({
         .name = "Responsive client",
-        .role = arc::runtime_world_role::client,
+        .role = arc::framework::runtime_world_role::client,
         .install_placeholder_systems = false
     });
     bool client_ran{};
@@ -614,9 +615,9 @@ TEST_CASE("a failed world does not prevent later interactive worlds from ticking
 
     host.start();
     host.advance(1.0 / 60.0);
-    REQUIRE(server.state() == arc::runtime_world_state::faulted);
+    REQUIRE(server.state() == arc::framework::runtime_world_state::faulted);
     REQUIRE(server.fault_message().find("test fault") != std::string::npos);
-    REQUIRE(client.state() == arc::runtime_world_state::running);
+    REQUIRE(client.state() == arc::framework::runtime_world_state::running);
     REQUIRE(client_ran);
     REQUIRE(host.running());
     host.shutdown();
@@ -638,10 +639,10 @@ TEST_CASE("deterministic random streams are stable and independent")
 TEST_CASE("runtime world snapshots restore state atomically")
 {
     recording_application app;
-    arc::application_config config{};
+    arc::framework::application_config config{};
     config.simulation.snapshot_budget_bytes = 1024u * 1024u;
-    arc::runtime host(app, config);
-    arc::runtime_world& world = host.worlds().create({
+    arc::framework::runtime host(app, config);
+    arc::framework::runtime_world& world = host.worlds().create({
         .name = "Snapshot world",
         .install_placeholder_systems = false
     });
@@ -650,12 +651,12 @@ TEST_CASE("runtime world snapshots restore state atomically")
     world.entities().prepare_query<counter_component>();
     host.start();
 
-    const arc::world_snapshot_result captured = host.capture_snapshot(world.id(), "checkpoint");
+    const arc::framework::world_snapshot_result captured = host.capture_snapshot(world.id(), "checkpoint");
     REQUIRE(captured.succeeded);
     world.entities().get<counter_component>(entity).value = 99;
 
     const std::uint64_t prior_epoch = world.epoch();
-    const arc::world_snapshot_result restored = host.restore_snapshot(captured.metadata.id);
+    const arc::framework::world_snapshot_result restored = host.restore_snapshot(captured.metadata.id);
     REQUIRE(restored.succeeded);
     REQUIRE(world.epoch() == prior_epoch + 1);
     REQUIRE(std::as_const(world.entities()).get<counter_component>(entity).value == 7);
@@ -669,17 +670,17 @@ TEST_CASE("runtime snapshots include registered deterministic service state")
     {
     public:
         using recording_application::recording_application;
-        void register_services(arc::runtime_service_registry& services) override
+        void register_services(arc::framework::runtime_service_registry& services) override
         {
             state = &services.emplace<deterministic_service>();
         }
         deterministic_service* state{};
     } app;
 
-    arc::application_config config{};
+    arc::framework::application_config config{};
     config.simulation.snapshot_budget_bytes = 1024u * 1024u;
-    arc::runtime host(app, config);
-    arc::runtime_world& world = host.worlds().create({
+    arc::framework::runtime host(app, config);
+    arc::framework::runtime_world& world = host.worlds().create({
         .name = "Service snapshot world",
         .install_placeholder_systems = false
     });
@@ -687,7 +688,7 @@ TEST_CASE("runtime snapshots include registered deterministic service state")
     REQUIRE(app.state != nullptr);
     app.state->value = 42;
 
-    const arc::world_snapshot_result captured = host.capture_snapshot(world.id());
+    const arc::framework::world_snapshot_result captured = host.capture_snapshot(world.id());
     REQUIRE(captured.succeeded);
     app.state->value = 7;
     REQUIRE(host.restore_snapshot(captured.metadata.id).succeeded);
@@ -698,14 +699,14 @@ TEST_CASE("runtime snapshots include registered deterministic service state")
 TEST_CASE("runtime snapshots are explicitly disabled by a zero budget")
 {
     recording_application app;
-    arc::runtime host(app);
-    arc::runtime_world& world = host.worlds().create({
+    arc::framework::runtime host(app);
+    arc::framework::runtime_world& world = host.worlds().create({
         .name = "No snapshots",
         .install_placeholder_systems = false
     });
     host.start();
 
-    const arc::world_snapshot_result captured = host.capture_snapshot(world.id(), "disabled");
+    const arc::framework::world_snapshot_result captured = host.capture_snapshot(world.id(), "disabled");
     REQUIRE_FALSE(captured.succeeded);
     REQUIRE(captured.error == "runtime snapshots are disabled");
     REQUIRE(host.worlds().snapshots().empty());
@@ -714,13 +715,13 @@ TEST_CASE("runtime snapshots are explicitly disabled by a zero budget")
 
 TEST_CASE("headless simulation preserves catch-up debt")
 {
-    arc::application_config config{};
+    arc::framework::application_config config{};
     config.simulation.headless = true;
     config.simulation.presentation_enabled = false;
     config.simulation.maximum_catch_up_ticks = 8;
-    config.simulation.overrun_policy = arc::simulation_overrun_policy::preserve_debt;
+    config.simulation.overrun_policy = arc::framework::simulation_overrun_policy::preserve_debt;
     recording_application app(config);
-    arc::runtime host(app, config);
+    arc::framework::runtime host(app, config);
 
     REQUIRE(host.advance(1.0).completed_ticks == 8);
     REQUIRE(host.discarded_ticks() == 0);
@@ -733,16 +734,16 @@ TEST_CASE("headless simulation preserves catch-up debt")
 
 TEST_CASE("runtime services start in dependency order and stop in reverse")
 {
-    constexpr arc::runtime_service_id storage = arc::make_runtime_service_id("tests.storage");
-    constexpr arc::runtime_service_id gameplay = arc::make_runtime_service_id("tests.gameplay");
+    constexpr arc::framework::runtime_service_id storage = arc::framework::make_runtime_service_id("tests.storage");
+    constexpr arc::framework::runtime_service_id gameplay = arc::framework::make_runtime_service_id("tests.gameplay");
     std::vector<std::string> calls;
-    arc::runtime_service_registry services;
+    arc::framework::runtime_service_registry services;
     REQUIRE(services.add(std::make_unique<lifecycle_service>(storage, "storage", &calls)));
     REQUIRE(services.add(std::make_unique<lifecycle_service>(
         gameplay,
         "gameplay",
         &calls,
-        std::vector<arc::runtime_service_id>{ storage })));
+        std::vector<arc::framework::runtime_service_id>{ storage })));
 
     services.start();
     services.shutdown();
@@ -753,7 +754,7 @@ TEST_CASE("runtime services start in dependency order and stop in reverse")
 TEST_CASE("headless runtime executes finite renderer-free runs")
 {
     headless_test_application app;
-    const arc::headless_runtime_result result = arc::run_headless(app, {
+    const arc::framework::headless_runtime_result result = arc::framework::run_headless(app, {
         .maximum_ticks = 5,
         .sleep_to_clock = false
     });
@@ -764,7 +765,7 @@ TEST_CASE("headless runtime executes finite renderer-free runs")
 TEST_CASE("headless runtime reports a world fault as process failure")
 {
     failing_headless_application app;
-    const arc::headless_runtime_result result = arc::run_headless(app, {
+    const arc::framework::headless_runtime_result result = arc::framework::run_headless(app, {
         .maximum_ticks = 5,
         .sleep_to_clock = false
     });

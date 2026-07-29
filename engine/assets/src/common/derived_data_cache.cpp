@@ -221,7 +221,7 @@ std::string canonical_cook_target(const cook_target& target)
     return stream.str();
 }
 
-asset_build_key make_asset_build_key(const asset_build_key_desc& description)
+asset_build_key make_asset_build_key(const asset_build_key_descriptor& description)
 {
     std::vector<std::byte> bytes;
     append(bytes, "arc.asset-build-key.v1");
@@ -765,8 +765,8 @@ std::size_t derived_data_cache::verify(std::vector<std::string>* diagnostics)
         if (!it->is_regular_file(error) || it->path().extension() == ".corrupt")
             continue;
         const auto expected = parse_asset_hash(it->path().filename().string());
-        std::string hash_error;
-        if (expected && hash_file(it->path(), &hash_error) == *expected)
+        auto hashed = hash_file(it->path());
+        if (expected && hashed && hashed.value() == *expected)
             ++valid;
         else
         {

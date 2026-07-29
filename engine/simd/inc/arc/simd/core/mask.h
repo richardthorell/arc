@@ -2,7 +2,7 @@
 
 #include <arc/simd/core/simd.h>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -102,4 +102,4 @@ private:
     data_type data;
 };
 
-} // namespace arc
+} // namespace arc::simd

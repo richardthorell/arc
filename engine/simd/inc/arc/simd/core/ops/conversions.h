@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class To, class From, std::size_t N>
@@ -105,4 +105,4 @@ inline simd<T, N> copysign(const simd<T, N>& magnitude, const simd<T, N>& sign) 
     return detail::simd_from_array<T, N>(result);
 }
 
-} // namespace arc
+} // namespace arc::simd

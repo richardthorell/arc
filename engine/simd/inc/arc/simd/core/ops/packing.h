@@ -8,7 +8,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace arc
+namespace arc::simd
 {
 
 namespace detail
@@ -225,4 +225,4 @@ inline simd<uint32_t, N> pack_argb8(
     return detail::simd_from_array<uint32_t, N>(result);
 }
 
-} // namespace arc
+} // namespace arc::simd

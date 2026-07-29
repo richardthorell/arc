@@ -18,7 +18,7 @@ std::filesystem::path test_path(std::string_view name)
 
 TEST_CASE("async file service writes reads ranges and stats files")
 {
-    arc::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false });
     arc::io::async_file_service files(jobs, { .chunk_size = 4096 });
     const auto path = test_path("roundtrip.bin");
     const std::array<std::byte, 8> bytes{
@@ -45,7 +45,7 @@ TEST_CASE("async file service writes reads ranges and stats files")
 
 TEST_CASE("atomic writes replace destinations without leaving temporary files")
 {
-    arc::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
     arc::io::async_file_service files(jobs);
     const auto path = test_path("atomic.bin");
     const std::array<std::byte, 2> first{ std::byte{ 1 }, std::byte{ 2 } };
@@ -61,7 +61,7 @@ TEST_CASE("atomic writes replace destinations without leaving temporary files")
 
 TEST_CASE("async file service reports missing files and invalid ranges")
 {
-    arc::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
     arc::io::async_file_service files(jobs);
     const auto missing = test_path("missing.bin");
     std::filesystem::remove(missing);
@@ -83,11 +83,11 @@ TEST_CASE("async file service reports missing files and invalid ranges")
 
 TEST_CASE("cancelled async operations do not execute")
 {
-    arc::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
+    arc::jobs::job_system jobs({ .worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false });
     arc::io::async_file_service files(jobs);
-    arc::cancellation_source cancellation;
+    arc::jobs::cancellation_source cancellation;
     cancellation.request_cancel();
 
     auto future = files.read_all(test_path("cancelled.bin"), cancellation.token());
-    REQUIRE(future.handle().wait_result().status == arc::job_status::cancelled);
+    REQUIRE(future.handle().wait_result().status == arc::jobs::job_status::cancelled);
 }

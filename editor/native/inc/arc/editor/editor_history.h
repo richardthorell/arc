@@ -26,7 +26,7 @@ struct editor_history_snapshot
 
 struct editor_terrain_history_change
 {
-    scene::entity_guid entity;
+    ecs::entity_guid entity;
     scene::terrain_dirty_region region;
 };
 
@@ -42,7 +42,7 @@ public:
     bool commit_terrain(
         std::uint64_t transaction_id,
         const editor_scene_state& current_scene,
-        scene::entity_guid terrain_guid);
+        ecs::entity_guid terrain_guid);
     bool cancel(std::uint64_t transaction_id, editor_scene_state& scene);
     bool transaction_matches(std::uint64_t transaction_id) const noexcept;
     void mark_saved() noexcept;
@@ -54,7 +54,7 @@ private:
     {
         struct terrain_delta
         {
-            scene::entity_guid entity;
+            ecs::entity_guid entity;
             std::uint32_t min_x{};
             std::uint32_t min_z{};
             std::uint32_t max_x{};

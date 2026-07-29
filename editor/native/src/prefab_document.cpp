@@ -14,20 +14,20 @@ namespace
 using json = nlohmann::json;
 
 template <class Component>
-void copy_component(const editor_scene_state& source, editor_scene_state& target, scene::entity from, scene::entity to)
+void copy_component(const editor_scene_state& source, editor_scene_state& target, ecs::entity from, ecs::entity to)
 {
     if (const auto* value = source.scene.try_get<Component>(from))
         target.scene.emplace<Component>(to, *value);
 }
 
-scene::entity clone_subtree(
+ecs::entity clone_subtree(
     const editor_scene_state& source,
     editor_scene_state& target,
-    scene::entity source_entity,
-    scene::entity parent,
-    std::vector<std::pair<scene::entity_guid, scene::entity_guid>>& mapping)
+    ecs::entity source_entity,
+    ecs::entity parent,
+    std::vector<std::pair<ecs::entity_guid, ecs::entity_guid>>& mapping)
 {
-    const scene::entity result = target.scene.create();
+    const ecs::entity result = target.scene.create();
     copy_component<scene::name_component>(source, target, source_entity, result);
     copy_component<scene::tag_component>(source, target, source_entity, result);
     copy_component<scene::active_component>(source, target, source_entity, result);
@@ -53,7 +53,7 @@ scene::entity clone_subtree(
     copy_component<scene::vegetation_component>(source, target, source_entity, result);
     copy_component<scene::decal_component>(source, target, source_entity, result);
     copy_component<scene::world_region_component>(source, target, source_entity, result);
-    target.scene.emplace<scene::persistent_id_component>(result, scene::generate_entity_guid());
+    target.scene.emplace<scene::persistent_id_component>(result, ecs::generate_entity_guid());
     target.scene.emplace<scene::hierarchy_component>(result);
     target.scene.emplace<scene::selection_component>(result, false);
 
@@ -76,7 +76,7 @@ scene::entity clone_subtree(
             });
     if (target.scene.alive(parent))
         scene::reparent(target.scene, result, parent, {}, scene::reparent_transform_policy::preserve_local);
-    for (const scene::entity child : scene::children(source.scene, source_entity))
+    for (const ecs::entity child : scene::children(source.scene, source_entity))
         clone_subtree(source, target, child, result, mapping);
     return result;
 }
@@ -108,8 +108,8 @@ std::optional<json> read_prefab(const std::filesystem::path& path, std::string& 
     const auto& metadata = document["prefab"];
     if (!metadata.contains("id") || !metadata["id"].is_string() ||
         !metadata.contains("root") || !metadata["root"].is_string() ||
-        !scene::parse_entity_guid(metadata["id"].get<std::string>()) ||
-        !scene::parse_entity_guid(metadata["root"].get<std::string>()))
+        !ecs::parse_entity_guid(metadata["id"].get<std::string>()) ||
+        !ecs::parse_entity_guid(metadata["root"].get<std::string>()))
     {
         error = "prefab identity is invalid";
         return std::nullopt;
@@ -129,7 +129,7 @@ std::string project_relative_path(
 std::filesystem::path resolve_prefab_path(
     const std::filesystem::path& project_root,
     const std::filesystem::path& path,
-    scene::entity_guid guid = {},
+    ecs::entity_guid guid = {},
     assets::asset_manager* asset_registry = nullptr)
 {
     if (asset_registry && guid.valid())
@@ -146,13 +146,13 @@ std::filesystem::path resolve_prefab_path(
 prefab_document_result save_prefab_document(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    scene::entity root,
+    ecs::entity root,
     const std::filesystem::path& path,
     assets::asset_manager*)
 {
     if (path.empty() || path.extension() != ".arcprefab")
         return { .message = "prefab path must use the .arcprefab extension" };
-    scene::entity_guid prefab_guid = scene::generate_entity_guid();
+    ecs::entity_guid prefab_guid = ecs::generate_entity_guid();
     if (const auto* instance = state.scene.try_get<scene::prefab_instance_component>(root);
         instance && instance->prefab_guid.valid())
         prefab_guid = instance->prefab_guid;
@@ -168,7 +168,7 @@ prefab_document_result save_prefab_document(
     instance.prefab_path = project_relative_path(project_root, path);
     instance.source_root = entity_guid_of(state, root);
     instance.source_to_instance.clear();
-    for (const scene::entity value : scene::subtree(state.scene, root))
+    for (const ecs::entity value : scene::subtree(state.scene, root))
     {
         const auto guid = entity_guid_of(state, value);
         instance.source_to_instance.emplace_back(guid, guid);
@@ -182,7 +182,7 @@ prefab_document_result instantiate_prefab_document(
     render::renderer& renderer,
     const std::filesystem::path& project_root,
     const std::filesystem::path& path,
-    scene::entity parent,
+    ecs::entity parent,
     assets::asset_manager* asset_registry)
 {
     std::string error;
@@ -193,7 +193,7 @@ prefab_document_result instantiate_prefab_document(
         { "format", "arc.scene" },
         { "formatVersion", arc_scene_format_version },
         { "scene", {
-            { "id", scene::to_string(scene::generate_entity_guid()) },
+            { "id", ecs::to_string(ecs::generate_entity_guid()) },
             { "name", document->at("prefab").value("name", path.stem().string()) }
         } },
         { "entities", document->at("entities") },
@@ -209,15 +209,15 @@ prefab_document_result instantiate_prefab_document(
     if (!loaded_result.succeeded)
         return { .message = loaded_result.message, .diagnostics = loaded_result.diagnostics };
 
-    const auto source_root_guid = *scene::parse_entity_guid(document->at("prefab").at("root").get<std::string>());
-    const scene::entity source_root = find_entity_by_guid(loaded, source_root_guid);
+    const auto source_root_guid = *ecs::parse_entity_guid(document->at("prefab").at("root").get<std::string>());
+    const ecs::entity source_root = find_entity_by_guid(loaded, source_root_guid);
     if (!loaded.scene.alive(source_root))
         return { .message = "prefab root entity is missing" };
 
-    std::vector<std::pair<scene::entity_guid, scene::entity_guid>> mapping;
-    const scene::entity root = clone_subtree(loaded, state, source_root, parent, mapping);
+    std::vector<std::pair<ecs::entity_guid, ecs::entity_guid>> mapping;
+    const ecs::entity root = clone_subtree(loaded, state, source_root, parent, mapping);
     auto& instance = state.scene.emplace<scene::prefab_instance_component>(root);
-    instance.prefab_guid = *scene::parse_entity_guid(document->at("prefab").at("id").get<std::string>());
+    instance.prefab_guid = *ecs::parse_entity_guid(document->at("prefab").at("id").get<std::string>());
     instance.prefab_path = project_relative_path(project_root, path);
     instance.source_root = source_root_guid;
     instance.source_to_instance = std::move(mapping);
@@ -232,7 +232,7 @@ prefab_document_result instantiate_prefab_document(
 prefab_document_result apply_prefab_instance(
     editor_scene_state& state,
     const std::filesystem::path& project_root,
-    scene::entity root,
+    ecs::entity root,
     assets::asset_manager* asset_registry)
 {
     auto* instance = state.scene.try_get<scene::prefab_instance_component>(root);
@@ -252,7 +252,7 @@ prefab_document_result revert_prefab_instance(
     editor_scene_state& state,
     render::renderer& renderer,
     const std::filesystem::path& project_root,
-    scene::entity root,
+    ecs::entity root,
     assets::asset_manager* asset_registry)
 {
     const auto* instance = state.scene.try_get<scene::prefab_instance_component>(root);
@@ -261,18 +261,18 @@ prefab_document_result revert_prefab_instance(
         return { .message = "entity is not a prefab instance" };
     const std::filesystem::path source = resolve_prefab_path(
         project_root, instance->prefab_path, instance->prefab_guid, asset_registry);
-    const scene::entity parent = hierarchy ? hierarchy->parent : scene::entity{};
+    const ecs::entity parent = hierarchy ? hierarchy->parent : ecs::entity{};
     const auto replacement = instantiate_prefab_document(
         state, renderer, project_root, source, parent, asset_registry);
     if (!replacement.succeeded)
         return replacement;
     const auto removed = scene::subtree(state.scene, root);
-    std::vector<scene::entity_guid> removed_guids;
+    std::vector<ecs::entity_guid> removed_guids;
     removed_guids.reserve(removed.size());
-    for (const scene::entity entity : removed)
+    for (const ecs::entity entity : removed)
         removed_guids.push_back(entity_guid_of(state, entity));
     scene::destroy_subtree(state.scene, root);
-    for (const scene::entity_guid guid : removed_guids)
+    for (const ecs::entity_guid guid : removed_guids)
     {
         state.asset_bindings.erase(std::remove_if(state.asset_bindings.begin(), state.asset_bindings.end(),
             [guid](const auto& binding) { return binding.entity == guid; }), state.asset_bindings.end());
@@ -280,7 +280,7 @@ prefab_document_result revert_prefab_instance(
     return replacement;
 }
 
-bool unpack_prefab_instance(editor_scene_state& state, scene::entity root)
+bool unpack_prefab_instance(editor_scene_state& state, ecs::entity root)
 {
     return state.scene.remove<scene::prefab_instance_component>(root);
 }

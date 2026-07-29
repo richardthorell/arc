@@ -98,7 +98,7 @@ struct component_traits<prefab_instance_component>
     };
 };
 
-struct prefab_propagation_result
+struct [[nodiscard]] prefab_propagation_result
 {
     std::size_t fields_updated{};
     std::size_t entities_added{};

@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::memory
+ * @brief Tagged allocation, budgets, arenas, pools, and leak diagnostics.
+ */
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -11,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-namespace arc
+namespace arc::memory
 {
 
 enum class memory_domain : std::uint8_t
@@ -185,7 +189,7 @@ enum class allocation_error : std::uint8_t
     upstream_failure
 };
 
-struct allocation_result
+struct [[nodiscard]] allocation_result
 {
     void* pointer{};
     allocation_error error{ allocation_error::none };
@@ -453,4 +457,4 @@ private:
     std::unique_ptr<implementation> implementation_;
 };
 
-} // namespace arc
+} // namespace arc::memory

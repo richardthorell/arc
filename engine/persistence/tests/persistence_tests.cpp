@@ -89,11 +89,10 @@ public:
 TEST_CASE("reflected JSON preserves unknown fields and verifies integrity")
 {
     const auto document = make_document();
-    std::string error;
-    const auto json = arc::persistence::write_reflected_json(document, true, error);
-    REQUIRE(error.empty());
-    arc::assets::asset_hash hash;
-    REQUIRE(arc::persistence::verify_json_document(json, &hash, error));
+    const auto json_result = arc::persistence::write_reflected_json(document, true);
+    REQUIRE(json_result);
+    const auto& json = json_result.value();
+    REQUIRE(arc::persistence::verify_json_document(json));
     const auto registry = make_registry();
     const auto loaded = arc::persistence::read_reflected_json(json, registry);
     REQUIRE(loaded.succeeded());
@@ -111,24 +110,26 @@ TEST_CASE("ordinary reflected components use generated field access codecs")
     const auto registry = make_registry();
     const test_value_component source{ 19.75 };
     arc::persistence::archive_component_record encoded;
-    std::string error;
-    REQUIRE(registry.encode(test_component.id, &source, encoded, error));
+    REQUIRE(registry.encode(test_component.id, &source, encoded));
     REQUIRE(encoded.fields.size() == 1);
     REQUIRE(encoded.fields[0].value.floating_point == Catch::Approx(19.75));
 
     test_value_component destination;
-    REQUIRE(registry.decode(test_component.id, &destination, encoded, error));
+    REQUIRE(registry.decode(test_component.id, &destination, encoded));
     REQUIRE(destination.value == Catch::Approx(source.value));
 }
 
 TEST_CASE("tagged binary is deterministic and rejects component corruption")
 {
     const auto document = make_document();
-    std::string error;
-    const auto first = arc::persistence::write_tagged_binary(document, "windows-x64-vulkan12", error);
-    REQUIRE(error.empty());
-    const auto second = arc::persistence::write_tagged_binary(document, "windows-x64-vulkan12", error);
-    REQUIRE(first == second);
+    const auto first_result = arc::persistence::write_tagged_binary(
+        document, "windows-x64-vulkan12");
+    const auto second_result = arc::persistence::write_tagged_binary(
+        document, "windows-x64-vulkan12");
+    REQUIRE(first_result);
+    REQUIRE(second_result);
+    const auto& first = first_result.value();
+    REQUIRE(first == second_result.value());
     const auto registry = make_registry();
     const auto loaded = arc::persistence::read_tagged_binary(first, registry);
     REQUIRE(loaded.succeeded());
@@ -144,43 +145,41 @@ TEST_CASE("migration registry requires consecutive edges")
 {
     arc::persistence::schema_migration_registry migrations;
     REQUIRE_FALSE(migrations.register_component(test_component.id, 1, 3,
-        [](auto&, auto&) { return true; }));
-    std::string error;
-    REQUIRE(migrations.freeze(error));
+        [](auto&) { return arc::persistence::persistence_status::success(); }));
+    REQUIRE(migrations.freeze());
 }
 
 TEST_CASE("migration registry applies consecutive component and document migrations")
 {
     arc::persistence::schema_migration_registry migrations;
     REQUIRE(migrations.register_component(test_component.id, 1, 2,
-        [](auto& component, auto&) {
+        [](auto& component) {
             component.name = "Migrated Test";
-            return true;
+            return arc::persistence::persistence_status::success();
         }));
     REQUIRE(migrations.register_document(
         arc::persistence::document_kind::scene, 1, 2,
-        [](auto& document, auto&) {
+        [](auto& document) {
             document.name += " v2";
-            return true;
+            return arc::persistence::persistence_status::success();
         }));
     REQUIRE(migrations.register_document(
         arc::persistence::document_kind::scene, 2, 3,
-        [](auto& document, auto&) {
+        [](auto& document) {
             document.name += " v3";
-            return true;
+            return arc::persistence::persistence_status::success();
         }));
-    std::string error;
-    REQUIRE(migrations.freeze(error));
+    REQUIRE(migrations.freeze());
 
     auto component = make_document().entities[0].components[0];
     component.schema_version = 1;
-    REQUIRE(migrations.migrate(component, 2, error));
+    REQUIRE(migrations.migrate(component, 2));
     REQUIRE(component.schema_version == 2);
     REQUIRE(component.name == "Migrated Test");
 
     auto document = make_document();
     document.format_version = 1;
-    REQUIRE(migrations.migrate(document, 3, error));
+    REQUIRE(migrations.migrate(document, 3));
     REQUIRE(document.format_version == 3);
     REQUIRE(document.name.ends_with("v2 v3"));
 }
@@ -189,23 +188,22 @@ TEST_CASE("migration registry rejects gaps within a registered chain")
 {
     arc::persistence::schema_migration_registry migrations;
     REQUIRE(migrations.register_component(test_component.id, 1, 2,
-        [](auto&, auto&) { return true; }));
+        [](auto&) { return arc::persistence::persistence_status::success(); }));
     REQUIRE(migrations.register_component(test_component.id, 3, 4,
-        [](auto&, auto&) { return true; }));
-    std::string error;
-    REQUIRE_FALSE(migrations.freeze(error));
-    REQUIRE(error.find("gap") != std::string::npos);
+        [](auto&) { return arc::persistence::persistence_status::success(); }));
+    const auto frozen = migrations.freeze();
+    REQUIRE_FALSE(frozen);
+    REQUIRE(frozen.error().message.find("gap") != std::string::npos);
 }
 
 TEST_CASE("archives reject unresolved parents without mutating a document")
 {
     auto document = make_document();
     document.entities[0].parent = { 99, 100 };
-    std::string error;
-    const auto text = arc::persistence::write_reflected_json(document, false, error);
-    REQUIRE(error.empty());
+    const auto text_result = arc::persistence::write_reflected_json(document, false);
+    REQUIRE(text_result);
     const auto registry = make_registry();
-    const auto loaded = arc::persistence::read_reflected_json(text, registry);
+    const auto loaded = arc::persistence::read_reflected_json(text_result.value(), registry);
     REQUIRE_FALSE(loaded.succeeded());
     REQUIRE(loaded.error.find("parent") != std::string::npos);
 }
@@ -216,14 +214,12 @@ TEST_CASE("document store rotates backups and recovers the newest valid generati
     const auto destination = directory.path / "scene.arcscene";
     arc::persistence::document_store store;
     auto document = make_document();
-    std::string error;
-
     for (int generation = 0; generation < 4; ++generation)
     {
         document.name = "generation-" + std::to_string(generation);
-        const auto text = arc::persistence::write_reflected_json(document, true, error);
-        REQUIRE(error.empty());
-        REQUIRE(store.save_json(destination, text).succeeded);
+        const auto text = arc::persistence::write_reflected_json(document, true);
+        REQUIRE(text);
+        REQUIRE(store.save_json(destination, text.value()).succeeded);
     }
     REQUIRE(std::filesystem::exists(destination.string() + ".bak1"));
     REQUIRE(std::filesystem::exists(destination.string() + ".bak2"));

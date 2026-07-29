@@ -1,9 +1,9 @@
 #pragma once
 
+#include <arc/ecs/world.h>
 #include <arc/render/renderer.h>
 #include <arc/render/render_world.h>
 #include <arc/scene/components.h>
-#include <arc/scene/registry.h>
 
 #include <cstdint>
 
@@ -13,7 +13,7 @@ namespace arc::scene
 /**
  * @brief Summary of one scene render extraction.
  */
-struct render_scene_result
+struct [[nodiscard]] render_scene_result
 {
     bool camera_found{};
     std::size_t renderable_count{};
@@ -58,13 +58,13 @@ struct scene_render_visibility
 };
 
 /** Prewarm all extraction queries so subsequent frames perform no query allocation. */
-void prepare_render_scene_queries(registry& scene);
+void prepare_render_scene_queries(ecs::world& scene);
 
 /**
  * @brief Extract visible scene renderers into renderer frame events.
  */
 render_scene_result render_scene(
-    registry& scene,
+    ecs::world& scene,
     render::renderer& renderer,
     std::uint32_t viewport_width,
     std::uint32_t viewport_height,
@@ -75,6 +75,6 @@ render_scene_result render_scene(
     scene_render_visibility environment_visibility = {},
     float delta_seconds = 0.0f,
     render::debug_overlay_stream debug_overlay = {},
-    entity preferred_camera = {});
+    ecs::entity preferred_camera = {});
 
 } // namespace arc::scene

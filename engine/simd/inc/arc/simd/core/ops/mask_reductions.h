@@ -2,7 +2,7 @@
 
 #include <arc/simd/core/ops/detail.h>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -60,4 +60,4 @@ constexpr bool none(const simd_mask<N>& mask) noexcept
     return !any(mask);
 }
 
-} // namespace arc
+} // namespace arc::simd

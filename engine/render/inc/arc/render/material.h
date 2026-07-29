@@ -53,7 +53,7 @@ enum class texture_semantic : std::uint8_t
     environment
 };
 
-struct terrain_layer_desc
+struct terrain_layer_descriptor
 {
     std::string name;
     texture_handle base_color_texture{};
@@ -163,7 +163,7 @@ struct texture_data
 /**
  * @brief Texture creation metadata.
  */
-struct texture_desc
+struct texture_descriptor
 {
     std::string name;
     std::uint32_t width{};
@@ -189,7 +189,7 @@ enum class material_displacement_mode : std::uint8_t
 /**
  * @brief Renderer material description used by scene rendering.
  */
-struct material_desc
+struct material_descriptor
 {
     material_handle handle{};
     std::string name;
@@ -241,7 +241,7 @@ struct material_desc
     material_displacement_mode displacement_mode{ material_displacement_mode::none };
 
     resource_handle material_graph{};
-    std::array<terrain_layer_desc, 4> terrain_layers{};
+    std::array<terrain_layer_descriptor, 4> terrain_layers{};
 };
 
 /**
@@ -279,7 +279,7 @@ struct shader_permutation_key
  * @brief Build a shader permutation key from a material and viewport mode.
  */
 shader_permutation_key make_shader_permutation_key(
-    const material_desc& material,
+    const material_descriptor& material,
     std::uint8_t debug_view = 0,
     bool wireframe = false) noexcept;
 

@@ -1,6 +1,11 @@
 #pragma once
 
+/** @namespace arc::persistence
+ * @brief Reflected authoring archives, runtime archives, migrations, and recovery.
+ */
+
 #include <arc/assets/assets.h>
+#include <arc/core/core.h>
 #include <arc/ecs/reflection.h>
 #include <arc/ecs/identity.h>
 
@@ -17,6 +22,28 @@
 
 namespace arc::persistence
 {
+
+enum class persistence_error_code : std::uint8_t
+{
+    invalid_argument,
+    codec_missing,
+    encode_failed,
+    decode_failed,
+    migration_invalid,
+    migration_missing,
+    integrity_failed,
+    malformed_archive
+};
+
+struct persistence_error
+{
+    persistence_error_code code{ persistence_error_code::invalid_argument };
+    ecs::component_type_id component{};
+    ecs::component_field_id field{};
+    std::string message;
+};
+
+using persistence_status = core::status<persistence_error>;
 
 enum class document_kind : std::uint8_t { scene, prefab };
 enum class archive_value_kind : std::uint8_t
@@ -112,14 +139,12 @@ struct component_persistence_descriptor
 {
     const ecs::component_descriptor* component{};
     std::vector<std::string> legacy_names;
-    std::function<bool(
+    std::function<persistence_status(
         const void* component,
-        archive_component_record& output,
-        std::string& error)> encode;
-    std::function<bool(
+        archive_component_record& output)> encode;
+    std::function<persistence_status(
         void* component,
-        const archive_component_record& input,
-        std::string& error)> decode;
+        const archive_component_record& input)> decode;
 };
 
 class component_persistence_registry
@@ -130,24 +155,22 @@ public:
     bool frozen() const noexcept;
     const component_persistence_descriptor* find(ecs::component_type_id type) const noexcept;
     const component_persistence_descriptor* find(std::string_view name) const noexcept;
-    bool encode(
+    [[nodiscard]] persistence_status encode(
         ecs::component_type_id type,
         const void* component,
-        archive_component_record& output,
-        std::string& error) const;
-    bool decode(
+        archive_component_record& output) const;
+    [[nodiscard]] persistence_status decode(
         ecs::component_type_id type,
         void* component,
-        const archive_component_record& input,
-        std::string& error) const;
+        const archive_component_record& input) const;
 
 private:
     std::vector<component_persistence_descriptor> descriptors_;
     bool frozen_{};
 };
 
-using component_migration = std::function<bool(archive_component_record&, std::string&)>;
-using document_migration = std::function<bool(archive_document&, std::string&)>;
+using component_migration = std::function<persistence_status(archive_component_record&)>;
+using document_migration = std::function<persistence_status(archive_document&)>;
 
 class schema_migration_registry
 {
@@ -162,9 +185,13 @@ public:
         std::uint32_t from_version,
         std::uint32_t to_version,
         document_migration migration);
-    bool freeze(std::string& error);
-    bool migrate(archive_component_record& component, std::uint32_t target_version, std::string& error) const;
-    bool migrate(archive_document& document, std::uint32_t target_version, std::string& error) const;
+    [[nodiscard]] persistence_status freeze();
+    [[nodiscard]] persistence_status migrate(
+        archive_component_record& component,
+        std::uint32_t target_version) const;
+    [[nodiscard]] persistence_status migrate(
+        archive_document& document,
+        std::uint32_t target_version) const;
 
 private:
     struct component_edge
@@ -201,7 +228,7 @@ struct archive_diagnostic
     std::string message;
 };
 
-struct archive_result
+struct [[nodiscard]] archive_result
 {
     archive_document document;
     std::string target_identity;
@@ -212,27 +239,28 @@ struct archive_result
     bool succeeded() const noexcept { return error.empty(); }
 };
 
-std::string write_reflected_json(
+using json_archive_result = core::result<std::string, persistence_error>;
+using binary_archive_result = core::result<std::vector<std::byte>, persistence_error>;
+
+[[nodiscard]] json_archive_result write_reflected_json(
     const archive_document& document,
-    bool pretty,
-    std::string& error);
+    bool pretty);
 archive_result read_reflected_json(
     std::string_view text,
     const component_persistence_registry& components,
     const schema_migration_registry* migrations = nullptr,
     archive_limits limits = {});
 
-std::vector<std::byte> write_tagged_binary(
+[[nodiscard]] binary_archive_result write_tagged_binary(
     const archive_document& document,
-    std::string_view target_identity,
-    std::string& error);
+    std::string_view target_identity);
 archive_result read_tagged_binary(
     std::span<const std::byte> bytes,
     const component_persistence_registry& components,
     const schema_migration_registry* migrations = nullptr,
     archive_limits limits = {});
 
-struct json_seal_result
+struct [[nodiscard]] json_seal_result
 {
     std::string text;
     assets::asset_hash payload_hash{};
@@ -241,19 +269,18 @@ struct json_seal_result
 };
 
 json_seal_result seal_json_document(std::string_view unsealed_text, bool pretty = true);
-bool verify_json_document(
+[[nodiscard]] core::result<assets::asset_hash, persistence_error> verify_json_document(
     std::string_view text,
-    assets::asset_hash* payload_hash,
-    std::string& error);
+    bool require_integrity = true);
 
-struct document_save_result
+struct [[nodiscard]] document_save_result
 {
     bool succeeded{};
     assets::asset_hash payload_hash{};
     std::string error;
 };
 
-struct document_load_result
+struct [[nodiscard]] document_load_result
 {
     bool succeeded{};
     bool recovered{};

@@ -16,19 +16,21 @@ namespace arc::scene
 namespace
 {
 
-bool entity_is_active(const registry& scene, entity value)
+using ecs::entity;
+
+bool entity_is_active(const ecs::world& scene, entity value)
 {
     const auto* active = scene.try_get<active_component>(value);
     return !active || active->active;
 }
 
-std::string entity_label(const registry& scene, entity value)
+std::string entity_label(const ecs::world& scene, entity value)
 {
     const auto* name = scene.try_get<name_component>(value);
     return name ? name->value : std::string{};
 }
 
-std::uint32_t render_layer_mask(const registry& scene, entity value)
+std::uint32_t render_layer_mask(const ecs::world& scene, entity value)
 {
     const auto* layer = scene.try_get<render_layer_component>(value);
     return layer ? layer->mask : 1u;
@@ -66,7 +68,10 @@ geometric::box3f cluster_bounds(const render::virtual_mesh_cluster& cluster, con
         world);
 }
 
-geometric::box3f world_bounds_for(const registry& scene, entity value, const transform_component& transform)
+geometric::box3f world_bounds_for(
+    const ecs::world& scene,
+    entity value,
+    const transform_component& transform)
 {
     const auto* bounds = scene.try_get<bounds_component>(value);
     if (bounds)
@@ -77,7 +82,7 @@ geometric::box3f world_bounds_for(const registry& scene, entity value, const tra
     };
 }
 
-bool entity_selected(const registry& scene, entity value)
+bool entity_selected(const ecs::world& scene, entity value)
 {
     const auto* selection = scene.try_get<selection_component>(value);
     return selection && selection->selected;
@@ -90,7 +95,7 @@ math::vector3f effective_light_color(const math::vector3f& color, bool use_tempe
     return math::mul(color, render::color_temperature_rgb(kelvin));
 }
 
-render::render_mobility entity_mobility(const registry& scene, entity value) noexcept
+render::render_mobility entity_mobility(const ecs::world& scene, entity value) noexcept
 {
     if (const auto* mobility = scene.try_get<mobility_component>(value))
         return mobility->value;
@@ -98,7 +103,7 @@ render::render_mobility entity_mobility(const registry& scene, entity value) noe
 }
 
 void append_mesh_item(
-    registry& scene,
+    ecs::world& scene,
     render::render_world_packet& packet,
     render_scene_result& result,
     entity value,
@@ -150,7 +155,7 @@ void append_mesh_item(
 }
 
 void append_virtual_mesh_items(
-    registry& scene,
+    ecs::world& scene,
     render::renderer& renderer,
     render::render_world_packet& packet,
     render_scene_result& result,
@@ -203,7 +208,7 @@ void append_virtual_mesh_items(
 }
 
 bool environment_mesh_visible(
-    const registry& scene,
+    const ecs::world& scene,
     entity value,
     const scene_render_visibility& visibility,
     bool& transparent)
@@ -222,7 +227,7 @@ bool environment_mesh_visible(
 }
 
 void apply_lod(
-    const registry& scene,
+    const ecs::world& scene,
     entity value,
     render::mesh_handle& mesh,
     render::material_handle& material)
@@ -261,7 +266,7 @@ render::cloud_layer_data to_render_cloud_layer(const cloud_layer_settings& layer
 }
 
 render::world_environment_data to_render_environment(
-    const registry& scene,
+    const ecs::world& scene,
     entity value,
     const world_environment_settings& settings,
     const scene_render_visibility& visibility)
@@ -372,7 +377,7 @@ render::world_environment_data to_render_environment(
 
 } // namespace
 
-void prepare_render_scene_queries(registry& scene)
+void prepare_render_scene_queries(ecs::world& scene)
 {
     scene.prepare_query<world_environment_component, celestial_sky_component>();
     scene.prepare_query<transform_component, camera_component>();
@@ -394,7 +399,7 @@ void prepare_render_scene_queries(registry& scene)
 }
 
 render_scene_result render_scene(
-    registry& scene,
+    ecs::world& scene,
     render::renderer& renderer,
     std::uint32_t viewport_width,
     std::uint32_t viewport_height,
@@ -438,7 +443,7 @@ render_scene_result render_scene(
         static bool warned{};
         if (!warned)
         {
-            arc::warn("scene", "No active camera found for render extraction");
+            arc::diagnostics::warn("scene", "No active camera found for render extraction");
             warned = true;
         }
         return result;
@@ -458,7 +463,7 @@ render_scene_result render_scene(
     world_packet.camera.view_projection = vp;
     world_packet.camera.previous_view_projection = vp;
     if (!math::try_inverse(vp, world_packet.camera.inverse_view_projection))
-        arc::warn("scene", "Active camera produced a singular view-projection matrix");
+        arc::diagnostics::warn("scene", "Active camera produced a singular view-projection matrix");
     world_packet.camera.position = world_position(*camera_transform);
     world_packet.camera.forward = world_forward_direction(*camera_transform);
     world_packet.camera.up = world_up_direction(*camera_transform);

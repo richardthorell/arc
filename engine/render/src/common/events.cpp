@@ -106,7 +106,7 @@ void render_event_writer::texture_upload(texture_handle handle, std::shared_ptr<
     buffer_->push(std::move(event));
 }
 
-void render_event_writer::material_upload(material_handle handle, std::shared_ptr<const material_desc> material, std::string label)
+void render_event_writer::material_upload(material_handle handle, std::shared_ptr<const material_descriptor> material, std::string label)
 {
     render_event event{};
     event.payload = material_upload_event{ .handle = handle, .material = std::move(material), .label = std::move(label) };
@@ -115,7 +115,7 @@ void render_event_writer::material_upload(material_handle handle, std::shared_pt
 
 void render_event_writer::environment_upload(
     environment_handle handle,
-    std::shared_ptr<const environment_desc> environment,
+    std::shared_ptr<const environment_descriptor> environment,
     std::string label)
 {
     render_event event{};

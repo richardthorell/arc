@@ -60,7 +60,7 @@ constexpr std::array<std::uint32_t, 15> material_image_bindings{
 void log_vk_result(VkResult result)
 {
     if (result != VK_SUCCESS)
-        arc::error("render.vulkan", "Vulkan call failed");
+        arc::diagnostics::error("render.vulkan", "Vulkan call failed");
 }
 
 const char* vk_result_name(VkResult result) noexcept
@@ -286,7 +286,7 @@ struct graph_image
     std::uint32_t height{};
 };
 
-class vulkan_render_backend final : public vulkan_backend
+class vulkan_render_backend final : public render_backend
 {
 public:
     vulkan_render_backend(
@@ -379,7 +379,7 @@ public:
             if (vkCreateSemaphore(device_, &semaphore, nullptr, &upload_timeline_) != VK_SUCCESS)
             {
                 upload_timeline_ = VK_NULL_HANDLE;
-                arc::warn("render.vulkan", "timeline upload completion is unavailable; using the fence fallback");
+                arc::diagnostics::warn("render.vulkan", "timeline upload completion is unavailable; using the fence fallback");
             }
         }
         upload_timeline_enabled_ =
@@ -394,31 +394,6 @@ public:
                 scaled_dimension(output_viewport_height_));
         }
 #endif
-    }
-
-    VkInstance instance() const noexcept override
-    {
-        return instance_;
-    }
-
-    VkPhysicalDevice physical_device() const noexcept override
-    {
-        return physical_device_;
-    }
-
-    VkDevice device() const noexcept override
-    {
-        return device_;
-    }
-
-    std::uint32_t queue_family() const noexcept override
-    {
-        return graphics_queue_family_;
-    }
-
-    VkQueue queue() const noexcept override
-    {
-        return queue_;
     }
 
     render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) override
@@ -498,7 +473,7 @@ public:
         last_profile_.summary += std::to_string(packet.events.size());
         last_profile_.summary += " render event(s)";
 
-        const environment_desc* lighting_environment = active_environment();
+        const environment_descriptor* lighting_environment = active_environment();
         if (frame_environment_.lighting.environment.valid())
         {
             const auto found = environments_.find(resource_key(frame_environment_.lighting.environment));
@@ -577,9 +552,12 @@ public:
         if (upload_batch_failed_)
         {
             message << "; one or more resource upload batches failed";
-            return { .submitted = false, .message = message.str() };
+            return render_submit_result::failure({
+                render_submit_error_code::backend_failure,
+                message.str()
+            });
         }
-        return { .submitted = true, .message = message.str() };
+        return render_submit_result::success();
     }
 
     void resize_viewport(std::uint32_t width, std::uint32_t height) override
@@ -635,7 +613,7 @@ public:
         return last_capture_result_;
     }
 
-    bool initialize_imgui(std::uint32_t width, std::uint32_t height, std::string& message) override
+    bool initialize_imgui(std::uint32_t width, std::uint32_t height, std::string& message)
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
         if (surface_ == VK_NULL_HANDLE)
@@ -717,7 +695,7 @@ public:
 #endif
     }
 
-    void new_imgui_frame() override
+    void new_imgui_frame()
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
         if (imgui_initialized_)
@@ -725,7 +703,7 @@ public:
 #endif
     }
 
-    bool render_imgui_frame(void* draw_data, std::uint32_t width, std::uint32_t height, std::string& message) override
+    bool render_imgui_frame(void* draw_data, std::uint32_t width, std::uint32_t height, std::string& message)
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
         if (!imgui_initialized_)
@@ -897,7 +875,24 @@ public:
 #endif
     }
 
-    bool render_native_viewport_frame(std::uint32_t width, std::uint32_t height, std::string& message) override
+    surface_frame_result present_surface_frame(std::uint32_t width, std::uint32_t height) override
+    {
+        std::string message;
+        if (render_native_viewport_frame(width, height, message))
+            return surface_frame_result::success();
+
+        surface_frame_error_code code = surface_frame_error_code::backend_failure;
+        if (device_lost_)
+            code = surface_frame_error_code::device_lost;
+        else if (surface_ == VK_NULL_HANDLE)
+            code = surface_frame_error_code::unavailable;
+        else if (message.find("out of date") != std::string::npos ||
+            message.find("suboptimal") != std::string::npos)
+            code = surface_frame_error_code::out_of_date;
+        return surface_frame_result::failure({ code, std::move(message) });
+    }
+
+    bool render_native_viewport_frame(std::uint32_t width, std::uint32_t height, std::string& message)
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
         message.clear();
@@ -1198,7 +1193,7 @@ public:
 #endif
     }
 
-    void shutdown_imgui() noexcept override
+    void shutdown_imgui() noexcept
     {
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
         if (!imgui_initialized_ && !native_swapchain_initialized_)
@@ -1324,12 +1319,12 @@ private:
 
     struct gpu_environment
     {
-        environment_desc data;
+        environment_descriptor data;
     };
 
     struct gpu_material
     {
-        material_desc data;
+        material_descriptor data;
         std::vector<gpu_buffer> parameter_buffers;
         std::vector<VkDescriptorSet> descriptor_sets;
     };
@@ -1583,7 +1578,7 @@ private:
             }
         }
 
-        descriptor_slots_.allocate(descriptor_resource_type::sampled_image);
+        (void)descriptor_slots_.allocate(descriptor_resource_type::sampled_image);
 
         if (!create_buffer(
                 upload_staging_capacity,
@@ -1594,7 +1589,7 @@ private:
         {
             destroy_buffer(upload_staging_);
             upload_staging_mapped_ = nullptr;
-            arc::error("render.vulkan", "failed to create the persistent upload staging buffer");
+            arc::diagnostics::error("render.vulkan", "failed to create the persistent upload staging buffer");
             return;
         }
 
@@ -1610,7 +1605,7 @@ private:
         if (vkCreateCommandPool(device_, &pool_info, nullptr, &upload_command_pool_) != VK_SUCCESS)
         {
             destroy_upload_objects();
-            arc::error("render.vulkan", "failed to create the persistent upload command pool");
+            arc::diagnostics::error("render.vulkan", "failed to create the persistent upload command pool");
             return;
         }
 
@@ -1622,7 +1617,7 @@ private:
         if (vkAllocateCommandBuffers(device_, &allocate, &upload_command_buffer_) != VK_SUCCESS)
         {
             destroy_upload_objects();
-            arc::error("render.vulkan", "failed to allocate the persistent upload command buffer");
+            arc::diagnostics::error("render.vulkan", "failed to allocate the persistent upload command buffer");
             return;
         }
 
@@ -1631,7 +1626,7 @@ private:
         if (vkCreateFence(device_, &fence_info, nullptr, &upload_fence_) != VK_SUCCESS)
         {
             destroy_upload_objects();
-            arc::error("render.vulkan", "failed to create the persistent upload fence");
+            arc::diagnostics::error("render.vulkan", "failed to create the persistent upload fence");
         }
     }
 
@@ -1900,7 +1895,7 @@ private:
             {
                 draw.mobility = render_mobility::movable;
                 if (reported_moved_static_objects_.insert(key).second)
-                    arc::warn(
+                    arc::diagnostics::warn(
                         "render.vulkan",
                         "A static shadow caster moved at runtime; treating it as movable while rebuilding caches");
             }
@@ -2954,7 +2949,7 @@ private:
             for (auto& vertices : mesh.dynamic_vertices)
                 destroy_buffer(vertices);
             destroy_buffer(mesh.indices);
-            arc::error("render.vulkan", "Failed to upload mesh '" + event.label + "'");
+            arc::diagnostics::error("render.vulkan", "Failed to upload mesh '" + event.label + "'");
             return;
         }
 
@@ -3014,7 +3009,7 @@ private:
                 {
                     if (!create_buffer(bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                             VMA_MEMORY_USAGE_CPU_TO_GPU, vertices))
-                        arc::error("render.vulkan", "Failed to resize per-frame dynamic mesh buffers");
+                        arc::diagnostics::error("render.vulkan", "Failed to resize per-frame dynamic mesh buffers");
                 }
             }
             if (!mesh.dynamic || slot >= mesh.dynamic_vertices.size() ||
@@ -3045,7 +3040,7 @@ private:
         {
             destroy_buffer(mesh.vertices);
             destroy_buffer(mesh.indices);
-            arc::error("render.vulkan", "Failed to upload virtual mesh '" + event.label + "'");
+            arc::diagnostics::error("render.vulkan", "Failed to upload virtual mesh '" + event.label + "'");
             return;
         }
 
@@ -3069,13 +3064,13 @@ private:
         const bool uploaded = upload_texture_image(*event.texture, texture);
         if (!uploaded && event.texture->dds && event.texture->compressed)
         {
-            arc::warn(
+            arc::diagnostics::warn(
                 "render.vulkan",
                 "DDS texture '" + event.label + "' uses a compressed format unsupported by this Vulkan device; using fallback descriptors");
         }
         else if (!uploaded && !event.texture->has_pixels() && !event.texture->encoded.empty())
         {
-            arc::debug("render.vulkan", "Texture '" + event.label + "' kept as encoded data until image decoding is available");
+            arc::diagnostics::debug("render.vulkan", "Texture '" + event.label + "' kept as encoded data until image decoding is available");
         }
 
         const std::uint64_t key = resource_key(event.handle);
@@ -3108,13 +3103,13 @@ private:
         active_environment_ = event.handle;
     }
 
-    const environment_desc* active_environment() const noexcept
+    const environment_descriptor* active_environment() const noexcept
     {
         const auto found = environments_.find(resource_key(active_environment_));
         return found == environments_.end() ? nullptr : &found->second.data;
     }
 
-    void update_environment_profile(const environment_desc* lighting_environment)
+    void update_environment_profile(const environment_descriptor* lighting_environment)
     {
         auto& profile = last_profile_.environment;
         profile = {};
@@ -3182,7 +3177,7 @@ private:
                     VMA_MEMORY_USAGE_CPU_TO_GPU,
                     light_buffer_))
             {
-                arc::warn("render.vulkan", "Failed to allocate scene light buffer");
+                arc::diagnostics::warn("render.vulkan", "Failed to allocate scene light buffer");
                 return;
             }
         }
@@ -3198,11 +3193,11 @@ private:
     void warn_about_skipped_lights(const scene_lighting_data& lighting)
     {
         if (lighting.skipped_directional_count > 0)
-            arc::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_directional_count) + " directional light(s) over the v1 cap");
+            arc::diagnostics::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_directional_count) + " directional light(s) over the v1 cap");
         if (lighting.skipped_point_count > 0)
-            arc::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_point_count) + " point light(s) over the v1 cap");
+            arc::diagnostics::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_point_count) + " point light(s) over the v1 cap");
         if (lighting.skipped_spot_count > 0)
-            arc::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_spot_count) + " spot light(s) over the v1 cap");
+            arc::diagnostics::warn("render.vulkan", "Skipped " + std::to_string(lighting.skipped_spot_count) + " spot light(s) over the v1 cap");
     }
 
     static math::vector3f vector_sub(const math::vector3f& lhs, const math::vector3f& rhs) noexcept
@@ -3869,7 +3864,7 @@ private:
         allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
         if (vmaCreateImage(allocator_, &image, &allocation, &shadow_atlas_.image, &shadow_atlas_.allocation, nullptr) != VK_SUCCESS)
         {
-            arc::warn("render.vulkan", "Failed to allocate directional shadow atlas");
+            arc::diagnostics::warn("render.vulkan", "Failed to allocate directional shadow atlas");
             return false;
         }
 
@@ -3922,7 +3917,7 @@ private:
         return true;
     }
 
-    material_uniform_data build_material_parameters(const material_desc* material) const noexcept
+    material_uniform_data build_material_parameters(const material_descriptor* material) const noexcept
     {
         material_uniform_data parameters{};
         if (material == nullptr || material->domain == material_domain::terrain)
@@ -3960,7 +3955,7 @@ private:
         return parameters;
     }
 
-    bool update_material_parameter_buffer(gpu_buffer& buffer, const material_desc* material)
+    bool update_material_parameter_buffer(gpu_buffer& buffer, const material_descriptor* material)
     {
         if (buffer.buffer == VK_NULL_HANDLE &&
             !create_buffer(
@@ -3980,7 +3975,7 @@ private:
         return true;
     }
 
-    bool ensure_material_parameter_buffers(std::vector<gpu_buffer>& buffers, const material_desc* material)
+    bool ensure_material_parameter_buffers(std::vector<gpu_buffer>& buffers, const material_descriptor* material)
     {
         const auto count = frame_resource_count();
         if (buffers.size() != count)
@@ -4099,7 +4094,7 @@ private:
 
     void update_material_descriptor_set(
         VkDescriptorSet descriptor_set,
-        const material_desc* material,
+        const material_descriptor* material,
         const gpu_buffer* material_parameters,
         std::uint32_t frame_slot)
     {
@@ -4129,7 +4124,7 @@ private:
                         resource_key(handle) ^ (static_cast<std::uint64_t>(*expected) << 56u);
                     if (texture_semantic_diagnostics_.insert(diagnostic_key).second)
                     {
-                        arc::warn(
+                        arc::diagnostics::warn(
                             "render.vulkan",
                             "Texture '" + found->second.data.name +
                                 "' has a color space incompatible with its material slot; binding the explicit fallback");
@@ -4483,7 +4478,7 @@ private:
         {
             if (!push_constant_limit_warning_reported_)
             {
-                arc::error(
+                arc::diagnostics::error(
                     "render.vulkan",
                     "The selected adapter exposes only " + std::to_string(max_push_constant_bytes_) +
                         " push-constant bytes; ARC's raster mesh path currently requires " +
@@ -4621,7 +4616,7 @@ private:
             color_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
             const VkResult blend_result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &mesh_transparent_pipeline_);
             if (blend_result != VK_SUCCESS)
-                arc::warn("render.vulkan", "Vulkan transparent mesh pipeline creation failed; blended materials will render opaque");
+                arc::diagnostics::warn("render.vulkan", "Vulkan transparent mesh pipeline creation failed; blended materials will render opaque");
             color_attachment = {};
             color_attachment.colorWriteMask =
                 VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -4633,11 +4628,11 @@ private:
             depth.depthWriteEnable = VK_FALSE;
             const VkResult wire_result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &mesh_wire_pipeline_);
             if (wire_result != VK_SUCCESS)
-                arc::warn("render.vulkan", "Vulkan wireframe pipeline creation failed; shaded rendering will continue");
+                arc::diagnostics::warn("render.vulkan", "Vulkan wireframe pipeline creation failed; shaded rendering will continue");
         }
         else if (result == VK_SUCCESS && !capabilities_.fill_mode_non_solid && !wireframe_warning_reported_)
         {
-            arc::warn("render.vulkan", "Vulkan device does not support fillModeNonSolid; wireframe rendering is disabled");
+            arc::diagnostics::warn("render.vulkan", "Vulkan device does not support fillModeNonSolid; wireframe rendering is disabled");
             wireframe_warning_reported_ = true;
         }
 
@@ -4659,13 +4654,13 @@ private:
                         device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &terrain_pipeline_) != VK_SUCCESS)
                 {
                     terrain_pipeline_ = VK_NULL_HANDLE;
-                    arc::warn("render.vulkan", "Vulkan terrain forward pipeline creation failed; using the surface fallback");
+                    arc::diagnostics::warn("render.vulkan", "Vulkan terrain forward pipeline creation failed; using the surface fallback");
                 }
                 vkDestroyShaderModule(device_, terrain_frag, nullptr);
             }
             else
             {
-                arc::warn("render.vulkan", "Vulkan terrain shader module creation failed; using the surface fallback");
+                arc::diagnostics::warn("render.vulkan", "Vulkan terrain shader module creation failed; using the surface fallback");
             }
         }
         vkDestroyShaderModule(device_, vert, nullptr);
@@ -4758,7 +4753,7 @@ private:
         vkDestroyShaderModule(device_, frag, nullptr);
         if (tested_result != VK_SUCCESS || always_result != VK_SUCCESS)
         {
-            arc::warn("render.vulkan", "Vulkan debug-overlay pipeline creation failed");
+            arc::diagnostics::warn("render.vulkan", "Vulkan debug-overlay pipeline creation failed");
             if (debug_overlay_always_pipeline_ != VK_NULL_HANDLE)
                 vkDestroyPipeline(device_, debug_overlay_always_pipeline_, nullptr);
             if (debug_overlay_pipeline_ != VK_NULL_HANDLE)
@@ -4899,7 +4894,7 @@ private:
                     device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &terrain_gbuffer_pipeline_) != VK_SUCCESS)
             {
                 terrain_gbuffer_pipeline_ = VK_NULL_HANDLE;
-                arc::warn("render.vulkan", "Vulkan terrain G-buffer pipeline creation failed; using the surface fallback");
+                arc::diagnostics::warn("render.vulkan", "Vulkan terrain G-buffer pipeline creation failed; using the surface fallback");
             }
         }
         vkDestroyShaderModule(device_, vert, nullptr);
@@ -4907,7 +4902,7 @@ private:
         if (terrain_frag != VK_NULL_HANDLE)
             vkDestroyShaderModule(device_, terrain_frag, nullptr);
         if (result != VK_SUCCESS)
-            arc::warn("render.vulkan", "Vulkan G-buffer pipeline creation failed; falling back to forward rendering");
+            arc::diagnostics::warn("render.vulkan", "Vulkan G-buffer pipeline creation failed; falling back to forward rendering");
         return result == VK_SUCCESS;
     }
 
@@ -5209,7 +5204,7 @@ private:
         vkDestroyShaderModule(device_, vert, nullptr);
         vkDestroyShaderModule(device_, frag, nullptr);
         if (result != VK_SUCCESS)
-            arc::warn("render.vulkan", "Vulkan deferred lighting pipeline creation failed; falling back to forward rendering");
+            arc::diagnostics::warn("render.vulkan", "Vulkan deferred lighting pipeline creation failed; falling back to forward rendering");
         return result == VK_SUCCESS;
     }
 
@@ -5377,7 +5372,7 @@ private:
         vkDestroyShaderModule(device_, vert, nullptr);
         vkDestroyShaderModule(device_, frag, nullptr);
         if (result != VK_SUCCESS)
-            arc::warn("render.vulkan", "Vulkan output-transform pipeline creation failed");
+            arc::diagnostics::warn("render.vulkan", "Vulkan output-transform pipeline creation failed");
         return result == VK_SUCCESS;
     }
 
@@ -5442,6 +5437,32 @@ private:
     {
         if (!ensure_exposure_pipelines())
             return;
+
+        // The exposure state is persistent and shared between frames.
+        // Serialize the transfer clear after the previous frame's resolve and
+        // output-transform read before reusing the buffer.
+        VkBufferMemoryBarrier reuse_barrier{};
+        reuse_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        reuse_barrier.srcAccessMask =
+            VK_ACCESS_SHADER_READ_BIT |
+            VK_ACCESS_SHADER_WRITE_BIT;
+        reuse_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        reuse_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        reuse_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        reuse_barrier.buffer = exposure_buffer_.buffer;
+        reuse_barrier.size = exposure_buffer_bytes;
+        vkCmdPipelineBarrier(
+            command_buffer,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            nullptr,
+            1,
+            &reuse_barrier,
+            0,
+            nullptr);
 
         const VkDeviceSize clear_size = exposure_needs_reset_
             ? exposure_buffer_bytes
@@ -5727,7 +5748,13 @@ private:
         else if (image.layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
         {
             barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            // Graph images are consumed by both raster passes and compute
+            // post-processing (notably the luminance histogram). Restricting
+            // this dependency to fragment shaders lets the next frame start
+            // overwriting scene_color while the histogram still reads it.
+            src_stage =
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         }
 
         if (new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
@@ -5738,7 +5765,9 @@ private:
         else if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
         {
             barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dst_stage =
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         }
         else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
         {
@@ -6428,7 +6457,7 @@ private:
         vkDestroyShaderModule(device_, frag, nullptr);
         if (result != VK_SUCCESS)
         {
-            arc::warn("render.vulkan", "Vulkan shadow pipeline creation failed; rendering will continue without shadows");
+            arc::diagnostics::warn("render.vulkan", "Vulkan shadow pipeline creation failed; rendering will continue without shadows");
             return false;
         }
         return true;
@@ -7553,7 +7582,7 @@ private:
         transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         if (!ensure_output_transform_pipeline())
         {
-            arc::warn("render.vulkan", "Output transform unavailable; the viewport retains its previous valid image");
+            arc::diagnostics::warn("render.vulkan", "Output transform unavailable; the viewport retains its previous valid image");
             return;
         }
         dispatch_exposure(command_buffer);
@@ -8034,7 +8063,10 @@ bool vulkan_loader_available() noexcept
 render_backend_create_result create_vulkan_backend(const vulkan_backend_config& config)
 {
     if (volkInitialize() != VK_SUCCESS)
-        return { .message = "failed to initialize Vulkan loader" };
+        return render_backend_create_result::failure({
+            render_backend_create_error_code::loader_unavailable,
+            "failed to initialize Vulkan loader"
+        });
 
     VkApplicationInfo app_info{};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -8060,7 +8092,10 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
 
     VkInstance instance = VK_NULL_HANDLE;
     if (vkCreateInstance(&instance_info, nullptr, &instance) != VK_SUCCESS)
-        return { .message = "failed to create Vulkan instance" };
+        return render_backend_create_result::failure({
+            render_backend_create_error_code::instance_creation_failed,
+            "failed to create Vulkan instance"
+        });
 
     volkLoadInstance(instance);
 
@@ -8070,7 +8105,10 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         if (!config.create_surface(instance, &surface, config.surface_user_data) || surface == VK_NULL_HANDLE)
         {
             vkDestroyInstance(instance, nullptr);
-            return { .message = "failed to create Vulkan presentation surface" };
+            return render_backend_create_result::failure({
+                render_backend_create_error_code::surface_creation_failed,
+                "failed to create Vulkan presentation surface"
+            });
         }
     }
 
@@ -8081,7 +8119,10 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         if (surface != VK_NULL_HANDLE)
             vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
-        return { .message = "no Vulkan physical devices found" };
+        return render_backend_create_result::failure({
+            render_backend_create_error_code::adapter_unavailable,
+            "no Vulkan physical devices found"
+        });
     }
 
     std::vector<VkPhysicalDevice> physical_devices(physical_device_count);
@@ -8119,7 +8160,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
 
         if (!rejection.empty())
         {
-            arc::warn("render.vulkan", "Rejected adapter " + std::to_string(adapter_index) + " (" +
+            arc::diagnostics::warn("render.vulkan", "Rejected adapter " + std::to_string(adapter_index) + " (" +
                 capabilities.adapter_name + "): " + rejection);
             continue;
         }
@@ -8140,7 +8181,10 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         if (surface != VK_NULL_HANDLE)
             vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
-        return { .message = "no Vulkan 1.2 graphics/compute device with required attachment formats and dynamic rendering found" };
+        return render_backend_create_result::failure({
+            render_backend_create_error_code::adapter_unavailable,
+            "no Vulkan 1.2 graphics/compute device with required attachment formats and dynamic rendering found"
+        });
     }
 
     float queue_priority = 1.0f;
@@ -8193,7 +8237,10 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         if (surface != VK_NULL_HANDLE)
             vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
-        return { .message = "failed to create Vulkan device" };
+        return render_backend_create_result::failure({
+            render_backend_create_error_code::device_creation_failed,
+            "failed to create Vulkan device"
+        });
     }
 
     volkLoadDevice(device);
@@ -8213,17 +8260,20 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
         if (surface != VK_NULL_HANDLE)
             vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
-        return { .message = "failed to create Vulkan memory allocator" };
+        return render_backend_create_result::failure({
+            render_backend_create_error_code::memory_allocator_creation_failed,
+            "failed to create Vulkan memory allocator"
+        });
     }
 
-    arc::info("render.vulkan", "Selected adapter " + selected_capabilities.adapter_name + " (Vulkan " +
+    arc::diagnostics::info("render.vulkan", "Selected adapter " + selected_capabilities.adapter_name + " (Vulkan " +
         std::to_string(selected_capabilities.api_major) + "." + std::to_string(selected_capabilities.api_minor) +
         ", " + std::to_string(selected_capabilities.memory_budget / (1024ull * 1024ull)) + " MiB budget)");
     if (config.force_disable_optional_features)
-        arc::info("render.vulkan", "Developer compatibility override left all non-required Vulkan features disabled");
-    arc::info("render.vulkan", "Created Vulkan backend");
-    return {
-        .backend = std::make_unique<vulkan_render_backend>(
+        arc::diagnostics::info("render.vulkan", "Developer compatibility override left all non-required Vulkan features disabled");
+    arc::diagnostics::info("render.vulkan", "Created Vulkan backend");
+    return render_backend_create_result::success(
+        std::make_unique<vulkan_render_backend>(
             instance,
             surface,
             selected_device,
@@ -8231,14 +8281,7 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
             queue,
             allocator,
             graphics_queue_family,
-            selected_capabilities),
-        .message = "created Vulkan backend"
-    };
-}
-
-vulkan_backend* as_vulkan_backend(render_backend* backend) noexcept
-{
-    return dynamic_cast<vulkan_backend*>(backend);
+            selected_capabilities));
 }
 
 } // namespace arc::render::vulkan

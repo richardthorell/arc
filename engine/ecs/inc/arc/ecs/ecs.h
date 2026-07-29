@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::ecs
+ * @brief Stable-address entity/component storage, queries, scheduling, and reflection.
+ */
+
 #include <arc/ecs/archive.h>
 #include <arc/ecs/command_buffer.h>
 #include <arc/ecs/entity.h>

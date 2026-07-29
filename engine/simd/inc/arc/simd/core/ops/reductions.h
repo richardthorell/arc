@@ -2,7 +2,7 @@
 
 #include <arc/simd/core/ops/detail.h>
 
-namespace arc
+namespace arc::simd
 {
 
 /// @brief Return the sum of all SIMD lanes.
@@ -62,4 +62,4 @@ constexpr T max_element(const simd<T, N>& a) noexcept
     );
 }
 
-} // namespace arc
+} // namespace arc::simd

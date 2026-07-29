@@ -4,7 +4,7 @@
 
 #include <arm_neon.h>
 
-namespace arc
+namespace arc::simd
 {
 
 #if defined(ARC_SIMD_NEON)
@@ -102,4 +102,4 @@ template <>
 inline constexpr std::size_t simd_max_lanes<double> = 2;
 #endif
 
-} // namespace arc
+} // namespace arc::simd

@@ -44,7 +44,7 @@ public:
     /**
      * @brief Allocate a new handle slot.
      */
-    resource_handle allocate();
+    [[nodiscard]] resource_handle allocate();
 
     /**
      * @brief Release a handle if it still matches the live generation.

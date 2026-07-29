@@ -42,7 +42,7 @@ struct editor_ray
 
 struct editor_pick_result
 {
-    scene::entity entity{};
+    ecs::entity entity{};
     float distance{};
     bool exact{};
     bool background{};
@@ -127,23 +127,23 @@ void apply_tool_shortcuts(const input::input_manager& input, editor_tool& tool) 
 /**
  * @brief Clear the current selection and all scene selection components.
  */
-void clear_selection(scene::registry& registry, scene::entity& selected) noexcept;
+void clear_selection(ecs::world& registry, ecs::entity& selected) noexcept;
 
 /**
  * @brief Select a live entity and synchronize `selection_component`.
  */
-bool select_entity(scene::registry& registry, scene::entity entity, scene::entity& selected);
+bool select_entity(ecs::world& registry, ecs::entity entity, ecs::entity& selected);
 
 /**
  * @brief Pick the nearest bounded entity hit by a ray.
  */
-scene::entity pick_bounded_entity(const scene::registry& registry, const editor_ray& ray) noexcept;
+ecs::entity pick_bounded_entity(const ecs::world& registry, const editor_ray& ray) noexcept;
 
 /**
  * @brief Pick the nearest exact terrain or static-mesh surface, with bounds fallback.
  */
 editor_pick_result pick_scene_entity(
-    const scene::registry& registry,
+    const ecs::world& registry,
     const render::renderer& renderer,
     const editor_ray& ray) noexcept;
 
@@ -171,8 +171,8 @@ geometric::box3f transformed_bounds(const geometric::box3f& local_bounds, const 
  * @brief Focus a camera controller on the selected entity.
  */
 bool focus_selected_entity(
-    const scene::registry& registry,
-    scene::entity selected,
+    const ecs::world& registry,
+    ecs::entity selected,
     editor_camera_controller& camera) noexcept;
 
 /**

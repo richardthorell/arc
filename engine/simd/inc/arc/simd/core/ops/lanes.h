@@ -2,7 +2,7 @@
 
 #include <arc/simd/core/ops/memory.h>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -76,4 +76,4 @@ constexpr simd<T, N> broadcast(const simd<T, N>& value) noexcept
     return fill<T, N>(extract<I>(value));
 }
 
-} // namespace arc
+} // namespace arc::simd

@@ -65,15 +65,14 @@ bool register_persistence_components(
     return result && registry.freeze();
 }
 
-bool register_persistence_migrations(
-    persistence::schema_migration_registry& registry,
-    std::string& error)
+persistence::persistence_status register_persistence_migrations(
+    persistence::schema_migration_registry& registry)
 {
-    const auto document_upgrade = [](persistence::archive_document&, std::string&) {
-        return true;
+    const auto document_upgrade = [](persistence::archive_document&) {
+        return persistence::persistence_status::success();
     };
-    const auto component_upgrade = [](persistence::archive_component_record&, std::string&) {
-        return true;
+    const auto component_upgrade = [](persistence::archive_component_record&) {
+        return persistence::persistence_status::success();
     };
     if (!registry.register_document(
             persistence::document_kind::scene, 1, 2, document_upgrade) ||
@@ -94,8 +93,10 @@ bool register_persistence_migrations(
             ecs::component_metadata<vegetation_component>().id, 1, 2,
             component_upgrade))
     {
-        error = "failed to register scene document migrations";
-        return false;
+        return persistence::persistence_status::failure({
+            .code = persistence::persistence_error_code::migration_invalid,
+            .message = "failed to register scene document migrations"
+        });
     }
     const auto register_light = [&](ecs::component_type_id type) {
         return registry.register_component(type, 1, 2, component_upgrade) &&
@@ -106,10 +107,12 @@ bool register_persistence_migrations(
         !register_light(ecs::component_metadata<spot_light_component>().id) ||
         !register_light(ecs::component_metadata<area_light_component>().id))
     {
-        error = "failed to register scene light migrations";
-        return false;
+        return persistence::persistence_status::failure({
+            .code = persistence::persistence_error_code::migration_invalid,
+            .message = "failed to register scene light migrations"
+        });
     }
-    return registry.freeze(error);
+    return registry.freeze();
 }
 
 } // namespace arc::scene

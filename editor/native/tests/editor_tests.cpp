@@ -45,7 +45,7 @@ public:
     arc::render::render_submit_result submit(
         const arc::render::render_frame_packet&, const arc::render::compiled_render_graph&) override
     {
-        return { .submitted = true };
+        return arc::render::render_submit_result::success();
     }
     void request_object_pick(arc::render::render_object_pick_request request) override { request_ = request; }
     arc::render::render_object_pick_result last_object_pick() const override { return result; }
@@ -114,25 +114,25 @@ TEST_CASE("editor console sink captures bounded log records")
 {
     arc::editor::editor_console_sink sink(2);
 
-    sink.write({ .level = arc::log_level::info, .category = "one", .message = "first" });
-    sink.write({ .level = arc::log_level::warn, .category = "two", .message = "second" });
-    sink.write({ .level = arc::log_level::error, .category = "three", .message = "third" });
+    sink.write({ .level = arc::diagnostics::log_level::info, .category = "one", .message = "first" });
+    sink.write({ .level = arc::diagnostics::log_level::warn, .category = "two", .message = "second" });
+    sink.write({ .level = arc::diagnostics::log_level::error, .category = "three", .message = "third" });
 
     const auto entries = sink.entries();
     REQUIRE(entries.size() == 2);
     REQUIRE(entries[0].category == "two");
-    REQUIRE(entries[1].level == arc::log_level::error);
+    REQUIRE(entries[1].level == arc::diagnostics::log_level::error);
     REQUIRE(entries[1].message == "third");
 }
 
 TEST_CASE("editor selection keeps one selected entity")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     auto first = scene.create();
     auto second = scene.create();
     scene.emplace<arc::scene::selection_component>(first, true);
 
-    arc::scene::entity selected = first;
+    arc::ecs::entity selected = first;
     REQUIRE(arc::editor::select_entity(scene, second, selected));
     REQUIRE(selected == second);
     REQUIRE_FALSE(scene.get<arc::scene::selection_component>(first).selected);
@@ -146,7 +146,7 @@ TEST_CASE("editor selection keeps one selected entity")
 
 TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
 {
-    arc::scene::registry registry;
+    arc::ecs::world registry;
     const auto camera_entity = registry.create();
     arc::scene::transform_component camera_transform;
     camera_transform.position = { 0.0f, 0.0f, 5.0f };
@@ -184,7 +184,7 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
 
 TEST_CASE("editor picking hits bounded entities")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto terrain = scene.create();
     scene.emplace<arc::scene::transform_component>(terrain);
     scene.emplace<arc::scene::terrain_component>(terrain);
@@ -385,7 +385,7 @@ TEST_CASE("exact scene picking selects the nearest surface instead of terrain bo
 {
     arc::render::renderer renderer;
     const auto cube_mesh = renderer.create_mesh(arc::render::make_cube_mesh(1.0f));
-    arc::scene::registry scene;
+    arc::ecs::world scene;
 
     const auto terrain_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(terrain_entity);
@@ -476,12 +476,12 @@ TEST_CASE("editor tool shortcuts update active tool")
 
     auto tool = arc::editor::editor_tool::select;
     input.begin_frame();
-    input.process_event({ .type = arc::event_type::key_down, .key_code = 'W' });
+    input.process_event({ .type = arc::framework::event_type::key_down, .key_code = 'W' });
     arc::editor::apply_tool_shortcuts(input, tool);
     REQUIRE(tool == arc::editor::editor_tool::translate);
 
     input.begin_frame();
-    input.process_event({ .type = arc::event_type::key_down, .key_code = 'R' });
+    input.process_event({ .type = arc::framework::event_type::key_down, .key_code = 'R' });
     arc::editor::apply_tool_shortcuts(input, tool);
     REQUIRE(tool == arc::editor::editor_tool::scale);
 }
@@ -490,7 +490,7 @@ TEST_CASE("editor can add a selected primitive mesh entity")
 {
     arc::editor::editor_scene_state scene;
     arc::render::renderer renderer;
-    arc::render::material_desc imported_material;
+    arc::render::material_descriptor imported_material;
     imported_material.name = "Imported Mesh Material";
     imported_material.base_color = { 1.0f, 0.72f, 0.05f, 1.0f };
     scene.default_material = renderer.create_material(imported_material);
@@ -1130,7 +1130,7 @@ TEST_CASE("viewport picking resolves the asynchronous ObjectID result before CPU
     const auto original = host->selected_entity_snapshot().entity;
     const auto target = host->scene_state().water_entity;
     REQUIRE(host->scene_state().scene.alive(target));
-    REQUIRE(target != (arc::scene::entity{ original.index, original.generation }));
+    REQUIRE(target != (arc::ecs::entity{ original.index, original.generation }));
     REQUIRE(host->execute(arc::editor::host_viewport_pick_command{ .x = 24, .y = 36 }).succeeded);
     REQUIRE(host->selected_entity_snapshot().entity == original);
     REQUIRE(backend_ptr->request_.x == 24);
@@ -2124,7 +2124,7 @@ TEST_CASE("material version three round trips advanced PBR lobes and validates r
 
 TEST_CASE("editor material library applies materials to selected mesh renderer")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto selected = scene.create();
     scene.emplace<arc::scene::mesh_renderer_component>(selected);
 
@@ -2219,7 +2219,7 @@ TEST_CASE("editor viewport material drop applies to hit entity and ignores misse
 
     arc::render::renderer renderer;
     arc::editor::editor_material_library library;
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto entity = scene.create();
     scene.emplace<arc::scene::transform_component>(entity);
     scene.emplace<arc::scene::mesh_renderer_component>(entity);
@@ -2229,7 +2229,7 @@ TEST_CASE("editor viewport material drop applies to hit entity and ignores misse
         arc::geometric::box3f{},
         true);
 
-    arc::scene::entity selected{};
+    arc::ecs::entity selected{};
     const arc::editor::editor_ray hit_ray{
         .origin = arc::math::vector3f{ 0.0f, 0.0f, 5.0f },
         .direction = arc::math::vector3f{ 0.0f, 0.0f, -1.0f }

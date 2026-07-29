@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 template <class T, std::size_t N>
@@ -47,4 +47,4 @@ constexpr simd<double, N> xor_sign(const simd<double, N>& value, const simd<doub
     return bit_cast<double>(bitwise_xor(bits, sign));
 }
 
-} // namespace arc
+} // namespace arc::simd

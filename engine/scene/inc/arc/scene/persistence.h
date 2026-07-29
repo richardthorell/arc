@@ -17,8 +17,7 @@ bool register_persistence_components(
  * Registers the consecutive migrations currently required by scene and prefab
  * authoring documents.
  */
-bool register_persistence_migrations(
-    persistence::schema_migration_registry& registry,
-    std::string& error);
+[[nodiscard]] persistence::persistence_status register_persistence_migrations(
+    persistence::schema_migration_registry& registry);
 
 } // namespace arc::scene

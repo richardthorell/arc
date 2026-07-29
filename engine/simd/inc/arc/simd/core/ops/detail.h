@@ -4,7 +4,7 @@
 #include <arc/simd/core/simd.h>
 #include <arc/simd/core/mask.h>
 
-namespace arc
+namespace arc::simd
 {
 namespace detail
 {
@@ -233,4 +233,4 @@ constexpr simd<T, N> masked(const simd_mask<N>& mask, const simd<T, N>& a, Op op
     return masked(mask, a, std::make_index_sequence<simd<T, N>::blocks()>{}, op);
 }
 
-} // namespace arc
+} // namespace arc::simd

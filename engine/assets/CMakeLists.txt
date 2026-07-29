@@ -1,7 +1,7 @@
 arc_add_module(
     NAME arc-assets
     TYPE STATIC
-    DEPS arc-framework arc-io arc-jobs arc-memory arc-diagnostics
+    DEPS arc-core arc-framework arc-io arc-jobs arc-memory arc-diagnostics
     NO_TESTS
 )
 

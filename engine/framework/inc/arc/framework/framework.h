@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::framework
+ * @brief Application, service, world, and deterministic runtime lifecycle.
+ */
+
 /**
  * @file arc/framework/framework.h
  * @brief Aggregate include for ARC framework lifecycle APIs.

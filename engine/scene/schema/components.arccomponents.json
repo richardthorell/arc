@@ -1,131 +1,564 @@
 {
-  "namespace": "arc::scene",
-  "components": [
-    {
-      "type": "name_component",
-      "id": "a7c00000000000010000000000000001",
-      "display": "Name",
-      "fields": [
-        { "name": "value", "id": "0000000000000001", "kind": "string" }
-      ]
-    },
-    {
-      "type": "transform_component",
-      "id": "a7c00000000000010000000000000002",
-      "display": "Transform",
-      "fields": [
-        { "name": "position", "id": "0000000000000001", "kind": "vector3", "display": "Location" },
-        { "name": "rotation", "id": "0000000000000002", "kind": "quaternion" },
-        { "name": "scale", "id": "0000000000000003", "kind": "vector3" },
-        { "name": "world", "id": "0000000000000004", "kind": "matrix", "flags": ["transient"] },
-        { "name": "dirty", "id": "0000000000000005", "kind": "bool", "flags": ["transient"] }
-      ]
-    },
-    {
-      "type": "tag_component",
-      "id": "a7c00000000000010000000000000003",
-      "display": "Tag",
-      "fields": [
-        { "name": "value", "id": "0000000000000001", "kind": "string" }
-      ]
-    },
-    {
-      "type": "active_component",
-      "id": "a7c00000000000010000000000000004",
-      "display": "Active",
-      "fields": [
-        { "name": "active", "id": "0000000000000001", "kind": "bool" }
-      ]
-    },
-    {
-      "type": "selection_component",
-      "id": "a7c00000000000010000000000000005",
-      "display": "Selection",
-      "fields": [
-        { "name": "selected", "id": "0000000000000001", "kind": "bool", "flags": ["transient", "editable"] }
-      ]
-    },
-    {
-      "type": "bounds_component",
-      "id": "a7c00000000000010000000000000006",
-      "display": "Bounds",
-      "customSerialization": true,
-      "fields": [
-        { "name": "local_bounds", "id": "0000000000000001", "kind": "struct" },
-        { "name": "world_bounds", "id": "0000000000000002", "kind": "struct", "flags": ["transient"] },
-        { "name": "dirty", "id": "0000000000000003", "kind": "bool", "flags": ["transient"] }
-      ]
-    },
-    {
-      "type": "camera_component",
-      "id": "a7c00000000000010000000000000007",
-      "display": "Camera",
-      "version": 2,
-      "customSerialization": true,
-      "fields": [
-        { "name": "projection", "id": "0000000000000001", "kind": "enum" },
-        { "name": "fov_y_radians", "id": "0000000000000002", "kind": "float", "display": "Field of View" },
-        { "name": "near_plane", "id": "0000000000000003", "kind": "float", "display": "Near Clip" },
-        { "name": "far_plane", "id": "0000000000000004", "kind": "float", "display": "Far Clip" },
-        { "name": "orthographic_height", "id": "0000000000000005", "kind": "float", "display": "Orthographic Size" },
-        { "name": "active", "id": "0000000000000006", "kind": "bool", "display": "Active Camera" },
-        { "name": "clear_color", "id": "0000000000000007", "kind": "vector4", "display": "Clear Color" },
-        { "name": "exposure", "id": "0000000000000008", "kind": "struct", "display": "Exposure" }
-      ]
-    },
-    {
-      "type": "mesh_renderer_component",
-      "id": "a7c00000000000010000000000000008",
-      "display": "Mesh Renderer",
-      "version": 2,
-      "customSerialization": true,
-      "fields": [
-        { "name": "mesh", "id": "0000000000000001", "kind": "asset" },
-        { "name": "material", "id": "0000000000000002", "kind": "asset" },
-        { "name": "visible", "id": "0000000000000003", "kind": "bool" },
-        { "name": "base_color_tint", "id": "0000000000000004", "kind": "vector4" },
-        { "name": "casts_shadows", "id": "0000000000000005", "kind": "bool", "display": "Cast Shadows" },
-        { "name": "receives_shadows", "id": "0000000000000006", "kind": "bool", "display": "Receive Shadows" },
-        { "name": "shadow_lod_bias", "id": "0000000000000007", "kind": "float", "display": "Shadow LOD Bias" },
-        { "name": "maximum_shadow_distance", "id": "0000000000000008", "kind": "float", "display": "Maximum Shadow Distance" }
-      ]
-    },
-    { "type": "virtual_mesh_renderer_component", "id": "a7c00000000000010000000000000009", "display": "Virtual Mesh Renderer", "customSerialization": true },
-    { "type": "skinned_mesh_renderer_component", "id": "a7c0000000000001000000000000000a", "display": "Skinned Mesh Renderer", "customSerialization": true },
-    { "type": "lod_component", "id": "a7c0000000000001000000000000000b", "display": "LOD", "customSerialization": true },
-    { "type": "instance_group_component", "id": "a7c0000000000001000000000000000c", "display": "Instance Group", "customSerialization": true },
-    {
-      "type": "render_layer_component",
-      "id": "a7c0000000000001000000000000000d",
-      "display": "Render Layer",
-      "fields": [
-        { "name": "mask", "id": "0000000000000001", "kind": "uint" }
-      ]
-    },
-    {
-      "type": "mobility_component",
-      "id": "a7c0000000000001000000000000001e",
-      "display": "Mobility",
-      "fields": [
-        { "name": "value", "id": "0000000000000001", "kind": "enum", "display": "Mobility" }
-      ]
-    },
-    { "type": "directional_light_component", "id": "a7c0000000000001000000000000000e", "display": "Directional Light", "version": 3, "customSerialization": true },
-    { "type": "point_light_component", "id": "a7c0000000000001000000000000000f", "display": "Point Light", "version": 3, "customSerialization": true },
-    { "type": "spot_light_component", "id": "a7c00000000000010000000000000010", "display": "Spot Light", "version": 3, "customSerialization": true },
-    { "type": "reflection_probe_component", "id": "a7c00000000000010000000000000011", "display": "Reflection Probe" },
-    { "type": "irradiance_probe_component", "id": "a7c00000000000010000000000000012", "display": "Irradiance Probe" },
-    { "type": "world_environment_component", "id": "a7c00000000000010000000000000013", "display": "World Environment", "customSerialization": true },
-    { "type": "sky_atmosphere_component", "id": "a7c00000000000010000000000000014", "display": "Sky Atmosphere", "customSerialization": true },
-    { "type": "celestial_sky_component", "id": "a7c00000000000010000000000000015", "display": "Celestial Sky", "customSerialization": true },
-    { "type": "cloud_layers_component", "id": "a7c00000000000010000000000000016", "display": "Cloud Layers", "customSerialization": true },
-    { "type": "environment_lighting_component", "id": "a7c00000000000010000000000000017", "display": "Environment Lighting", "customSerialization": true },
-    { "type": "height_fog_component", "id": "a7c00000000000010000000000000018", "display": "Height Fog", "customSerialization": true },
-    { "type": "terrain_component", "id": "a7c00000000000010000000000000019", "display": "Terrain", "version": 2, "customSerialization": true },
-    { "type": "water_component", "id": "a7c0000000000001000000000000001a", "display": "Water", "customSerialization": true },
-    { "type": "vegetation_component", "id": "a7c0000000000001000000000000001b", "display": "Vegetation", "version": 2, "customSerialization": true },
-    { "type": "decal_component", "id": "a7c0000000000001000000000000001c", "display": "Decal", "customSerialization": true }
-    ,
-    { "type": "area_light_component", "id": "a7c0000000000001000000000000001d", "display": "Area Light", "version": 3, "customSerialization": true }
-  ]
+    "namespace":  "arc::scene",
+    "components":  [
+                       {
+                           "type":  "name_component",
+                           "id":  "a7c00000000000010000000000000001",
+                           "display":  "Name",
+                           "fields":  [
+                                          {
+                                              "name":  "value",
+                                              "id":  "0000000000000001",
+                                              "kind":  "string",
+                                              "description":  "Authored value value for Name.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Name component."
+                       },
+                       {
+                           "type":  "transform_component",
+                           "id":  "a7c00000000000010000000000000002",
+                           "display":  "Transform",
+                           "fields":  [
+                                          {
+                                              "name":  "position",
+                                              "id":  "0000000000000001",
+                                              "kind":  "vector3",
+                                              "display":  "Location",
+                                              "description":  "Authored Location value for Transform.",
+                                              "unit":  "meters",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "rotation",
+                                              "id":  "0000000000000002",
+                                              "kind":  "quaternion",
+                                              "description":  "Authored rotation value for Transform.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "scale",
+                                              "id":  "0000000000000003",
+                                              "kind":  "vector3",
+                                              "description":  "Authored scale value for Transform.",
+                                              "unit":  "ratio",
+                                              "constraints":  {
+                                                                  "minimum":  0
+                                                              }
+                                          },
+                                          {
+                                              "name":  "world",
+                                              "id":  "0000000000000004",
+                                              "kind":  "matrix",
+                                              "flags":  [
+                                                            "transient"
+                                                        ],
+                                              "description":  "Authored world value for Transform.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "dirty",
+                                              "id":  "0000000000000005",
+                                              "kind":  "bool",
+                                              "flags":  [
+                                                            "transient"
+                                                        ],
+                                              "description":  "Authored dirty value for Transform.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Transform component."
+                       },
+                       {
+                           "type":  "tag_component",
+                           "id":  "a7c00000000000010000000000000003",
+                           "display":  "Tag",
+                           "fields":  [
+                                          {
+                                              "name":  "value",
+                                              "id":  "0000000000000001",
+                                              "kind":  "string",
+                                              "description":  "Authored value value for Tag.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Tag component."
+                       },
+                       {
+                           "type":  "active_component",
+                           "id":  "a7c00000000000010000000000000004",
+                           "display":  "Active",
+                           "fields":  [
+                                          {
+                                              "name":  "active",
+                                              "id":  "0000000000000001",
+                                              "kind":  "bool",
+                                              "description":  "Authored active value for Active.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Active component."
+                       },
+                       {
+                           "type":  "selection_component",
+                           "id":  "a7c00000000000010000000000000005",
+                           "display":  "Selection",
+                           "fields":  [
+                                          {
+                                              "name":  "selected",
+                                              "id":  "0000000000000001",
+                                              "kind":  "bool",
+                                              "flags":  [
+                                                            "transient",
+                                                            "editable"
+                                                        ],
+                                              "description":  "Authored selected value for Selection.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Selection component."
+                       },
+                       {
+                           "type":  "bounds_component",
+                           "id":  "a7c00000000000010000000000000006",
+                           "display":  "Bounds",
+                           "customSerialization":  true,
+                           "fields":  [
+                                          {
+                                              "name":  "local_bounds",
+                                              "id":  "0000000000000001",
+                                              "kind":  "struct",
+                                              "description":  "Authored local bounds value for Bounds.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "world_bounds",
+                                              "id":  "0000000000000002",
+                                              "kind":  "struct",
+                                              "flags":  [
+                                                            "transient"
+                                                        ],
+                                              "description":  "Authored world bounds value for Bounds.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "dirty",
+                                              "id":  "0000000000000003",
+                                              "kind":  "bool",
+                                              "flags":  [
+                                                            "transient"
+                                                        ],
+                                              "description":  "Authored dirty value for Bounds.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Bounds component."
+                       },
+                       {
+                           "type":  "camera_component",
+                           "id":  "a7c00000000000010000000000000007",
+                           "display":  "Camera",
+                           "version":  2,
+                           "customSerialization":  true,
+                           "fields":  [
+                                          {
+                                              "name":  "projection",
+                                              "id":  "0000000000000001",
+                                              "kind":  "enum",
+                                              "description":  "Authored projection value for Camera.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "fov_y_radians",
+                                              "id":  "0000000000000002",
+                                              "kind":  "float",
+                                              "display":  "Field of View",
+                                              "description":  "Authored Field of View value for Camera.",
+                                              "unit":  "radians",
+                                              "constraints":  {
+                                                                  "minimum":  0.0174532925199433,
+                                                                  "maximum":  3.12413936106985
+                                                              }
+                                          },
+                                          {
+                                              "name":  "near_plane",
+                                              "id":  "0000000000000003",
+                                              "kind":  "float",
+                                              "display":  "Near Clip",
+                                              "description":  "Authored Near Clip value for Camera.",
+                                              "unit":  "meters",
+                                              "constraints":  {
+                                                                  "minimum":  0
+                                                              }
+                                          },
+                                          {
+                                              "name":  "far_plane",
+                                              "id":  "0000000000000004",
+                                              "kind":  "float",
+                                              "display":  "Far Clip",
+                                              "description":  "Authored Far Clip value for Camera.",
+                                              "unit":  "meters",
+                                              "constraints":  {
+                                                                  "minimum":  0
+                                                              }
+                                          },
+                                          {
+                                              "name":  "orthographic_height",
+                                              "id":  "0000000000000005",
+                                              "kind":  "float",
+                                              "display":  "Orthographic Size",
+                                              "description":  "Authored Orthographic Size value for Camera.",
+                                              "unit":  "meters",
+                                              "constraints":  {
+                                                                  "minimum":  0
+                                                              }
+                                          },
+                                          {
+                                              "name":  "active",
+                                              "id":  "0000000000000006",
+                                              "kind":  "bool",
+                                              "display":  "Active Camera",
+                                              "description":  "Authored Active Camera value for Camera.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "clear_color",
+                                              "id":  "0000000000000007",
+                                              "kind":  "vector4",
+                                              "display":  "Clear Color",
+                                              "description":  "Authored Clear Color value for Camera.",
+                                              "unit":  "linear-rgba",
+                                              "constraints":  {
+                                                                  "minimum":  0
+                                                              }
+                                          },
+                                          {
+                                              "name":  "exposure",
+                                              "id":  "0000000000000008",
+                                              "kind":  "struct",
+                                              "display":  "Exposure",
+                                              "description":  "Authored Exposure value for Camera.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Camera component."
+                       },
+                       {
+                           "type":  "mesh_renderer_component",
+                           "id":  "a7c00000000000010000000000000008",
+                           "display":  "Mesh Renderer",
+                           "version":  2,
+                           "customSerialization":  true,
+                           "fields":  [
+                                          {
+                                              "name":  "mesh",
+                                              "id":  "0000000000000001",
+                                              "kind":  "asset",
+                                              "description":  "Authored mesh value for Mesh Renderer.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "material",
+                                              "id":  "0000000000000002",
+                                              "kind":  "asset",
+                                              "description":  "Authored material value for Mesh Renderer.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "visible",
+                                              "id":  "0000000000000003",
+                                              "kind":  "bool",
+                                              "description":  "Authored visible value for Mesh Renderer.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "base_color_tint",
+                                              "id":  "0000000000000004",
+                                              "kind":  "vector4",
+                                              "description":  "Authored base color tint value for Mesh Renderer.",
+                                              "unit":  "linear-rgba",
+                                              "constraints":  {
+                                                                  "minimum":  0
+                                                              }
+                                          },
+                                          {
+                                              "name":  "casts_shadows",
+                                              "id":  "0000000000000005",
+                                              "kind":  "bool",
+                                              "display":  "Cast Shadows",
+                                              "description":  "Authored Cast Shadows value for Mesh Renderer.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "receives_shadows",
+                                              "id":  "0000000000000006",
+                                              "kind":  "bool",
+                                              "display":  "Receive Shadows",
+                                              "description":  "Authored Receive Shadows value for Mesh Renderer.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "shadow_lod_bias",
+                                              "id":  "0000000000000007",
+                                              "kind":  "float",
+                                              "display":  "Shadow LOD Bias",
+                                              "description":  "Authored Shadow LOD Bias value for Mesh Renderer.",
+                                              "unit":  "lod-levels",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "maximum_shadow_distance",
+                                              "id":  "0000000000000008",
+                                              "kind":  "float",
+                                              "display":  "Maximum Shadow Distance",
+                                              "description":  "Authored Maximum Shadow Distance value for Mesh Renderer.",
+                                              "unit":  "meters",
+                                              "constraints":  {
+                                                                  "minimum":  0
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Mesh Renderer component."
+                       },
+                       {
+                           "type":  "virtual_mesh_renderer_component",
+                           "id":  "a7c00000000000010000000000000009",
+                           "display":  "Virtual Mesh Renderer",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Virtual Mesh Renderer component."
+                       },
+                       {
+                           "type":  "skinned_mesh_renderer_component",
+                           "id":  "a7c0000000000001000000000000000a",
+                           "display":  "Skinned Mesh Renderer",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Skinned Mesh Renderer component."
+                       },
+                       {
+                           "type":  "lod_component",
+                           "id":  "a7c0000000000001000000000000000b",
+                           "display":  "LOD",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the LOD component."
+                       },
+                       {
+                           "type":  "instance_group_component",
+                           "id":  "a7c0000000000001000000000000000c",
+                           "display":  "Instance Group",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Instance Group component."
+                       },
+                       {
+                           "type":  "render_layer_component",
+                           "id":  "a7c0000000000001000000000000000d",
+                           "display":  "Render Layer",
+                           "fields":  [
+                                          {
+                                              "name":  "mask",
+                                              "id":  "0000000000000001",
+                                              "kind":  "uint",
+                                              "description":  "Authored mask value for Render Layer.",
+                                              "unit":  "bitmask",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Render Layer component."
+                       },
+                       {
+                           "type":  "mobility_component",
+                           "id":  "a7c0000000000001000000000000001e",
+                           "display":  "Mobility",
+                           "fields":  [
+                                          {
+                                              "name":  "value",
+                                              "id":  "0000000000000001",
+                                              "kind":  "enum",
+                                              "display":  "Mobility",
+                                              "description":  "Authored Mobility value for Mobility.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          }
+                                      ],
+                           "description":  "Reflected scene data for the Mobility component."
+                       },
+                       {
+                           "type":  "directional_light_component",
+                           "id":  "a7c0000000000001000000000000000e",
+                           "display":  "Directional Light",
+                           "version":  3,
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Directional Light component."
+                       },
+                       {
+                           "type":  "point_light_component",
+                           "id":  "a7c0000000000001000000000000000f",
+                           "display":  "Point Light",
+                           "version":  3,
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Point Light component."
+                       },
+                       {
+                           "type":  "spot_light_component",
+                           "id":  "a7c00000000000010000000000000010",
+                           "display":  "Spot Light",
+                           "version":  3,
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Spot Light component."
+                       },
+                       {
+                           "type":  "reflection_probe_component",
+                           "id":  "a7c00000000000010000000000000011",
+                           "display":  "Reflection Probe",
+                           "description":  "Reflected scene data for the Reflection Probe component."
+                       },
+                       {
+                           "type":  "irradiance_probe_component",
+                           "id":  "a7c00000000000010000000000000012",
+                           "display":  "Irradiance Probe",
+                           "description":  "Reflected scene data for the Irradiance Probe component."
+                       },
+                       {
+                           "type":  "world_environment_component",
+                           "id":  "a7c00000000000010000000000000013",
+                           "display":  "World Environment",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the World Environment component."
+                       },
+                       {
+                           "type":  "sky_atmosphere_component",
+                           "id":  "a7c00000000000010000000000000014",
+                           "display":  "Sky Atmosphere",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Sky Atmosphere component."
+                       },
+                       {
+                           "type":  "celestial_sky_component",
+                           "id":  "a7c00000000000010000000000000015",
+                           "display":  "Celestial Sky",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Celestial Sky component."
+                       },
+                       {
+                           "type":  "cloud_layers_component",
+                           "id":  "a7c00000000000010000000000000016",
+                           "display":  "Cloud Layers",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Cloud Layers component."
+                       },
+                       {
+                           "type":  "environment_lighting_component",
+                           "id":  "a7c00000000000010000000000000017",
+                           "display":  "Environment Lighting",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Environment Lighting component."
+                       },
+                       {
+                           "type":  "height_fog_component",
+                           "id":  "a7c00000000000010000000000000018",
+                           "display":  "Height Fog",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Height Fog component."
+                       },
+                       {
+                           "type":  "terrain_component",
+                           "id":  "a7c00000000000010000000000000019",
+                           "display":  "Terrain",
+                           "version":  2,
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Terrain component."
+                       },
+                       {
+                           "type":  "water_component",
+                           "id":  "a7c0000000000001000000000000001a",
+                           "display":  "Water",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Water component."
+                       },
+                       {
+                           "type":  "vegetation_component",
+                           "id":  "a7c0000000000001000000000000001b",
+                           "display":  "Vegetation",
+                           "version":  2,
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Vegetation component."
+                       },
+                       {
+                           "type":  "decal_component",
+                           "id":  "a7c0000000000001000000000000001c",
+                           "display":  "Decal",
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Decal component."
+                       },
+                       {
+                           "type":  "area_light_component",
+                           "id":  "a7c0000000000001000000000000001d",
+                           "display":  "Area Light",
+                           "version":  3,
+                           "customSerialization":  true,
+                           "description":  "Reflected scene data for the Area Light component."
+                       }
+                   ]
 }

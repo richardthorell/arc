@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -31,7 +31,7 @@ struct simd_op;
 template <class T>
 inline constexpr std::size_t simd_max_lanes = 1;
 
-} // namespace arc
+} // namespace arc::simd
 
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -47,7 +47,7 @@ inline constexpr std::size_t simd_max_lanes = 1;
     #error "Unsupported SIMD architecture"
 #endif
 
-namespace arc
+namespace arc::simd
 {
 
 /**
@@ -59,4 +59,4 @@ namespace arc
 template <class T, std::size_t N>
 using simd_register_t = typename simd_register<T, N>::type;
 
-} // namespace arc
+} // namespace arc::simd

@@ -15,19 +15,19 @@ std::uint64_t key_for(input_binding binding)
         | static_cast<std::uint32_t>(binding.code);
 }
 
-input_binding binding_from_event(const arc::event& event)
+input_binding binding_from_event(const framework::event& event)
 {
     switch (event.type)
     {
-    case arc::event_type::key_down:
-    case arc::event_type::key_up:
+    case framework::event_type::key_down:
+    case framework::event_type::key_up:
         return input_binding{
             .device = input_device_type::keyboard,
             .code = event.key_code,
             .player = 0
         };
-    case arc::event_type::mouse_button_down:
-    case arc::event_type::mouse_button_up:
+    case framework::event_type::mouse_button_down:
+    case framework::event_type::mouse_button_up:
         return input_binding{
             .device = input_device_type::mouse,
             .code = static_cast<int>(event.button),
@@ -46,18 +46,19 @@ void input_manager::begin_frame()
     released_.clear();
 }
 
-void input_manager::process_event(const arc::event& event)
+void input_manager::process_event(const framework::event& event)
 {
-    if (event.type != arc::event_type::key_down
-        && event.type != arc::event_type::key_up
-        && event.type != arc::event_type::mouse_button_down
-        && event.type != arc::event_type::mouse_button_up)
+    if (event.type != framework::event_type::key_down
+        && event.type != framework::event_type::key_up
+        && event.type != framework::event_type::mouse_button_down
+        && event.type != framework::event_type::mouse_button_up)
     {
         return;
     }
 
     const auto key = key_for(binding_from_event(event));
-    if (event.type == arc::event_type::key_down || event.type == arc::event_type::mouse_button_down)
+    if (event.type == framework::event_type::key_down ||
+        event.type == framework::event_type::mouse_button_down)
     {
         const auto [_, inserted] = held_.insert(key);
         if (inserted && !event.repeat)

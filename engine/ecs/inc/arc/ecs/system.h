@@ -89,8 +89,8 @@ public:
         static constexpr simulation_input_snapshot empty{};
         return execution_.input ? *execution_.input : empty;
     }
-    tick_arena* tick_memory() const noexcept { return execution_.tick_memory; }
-    frame_arena* frame_memory() const noexcept { return execution_.frame_memory; }
+    memory::tick_arena* tick_memory() const noexcept { return execution_.tick_memory; }
+    memory::frame_arena* frame_memory() const noexcept { return execution_.frame_memory; }
     runtime_service_provider* services() const noexcept { return execution_.services; }
 
     template <class Service>
@@ -153,8 +153,8 @@ struct system_descriptor
 {
     std::string name;
     system_phase phase{ system_phase::gameplay_commands };
-    job_priority priority{ job_priority::normal };
-    job_affinity affinity{ job_affinity::any_worker };
+    jobs::job_priority priority{ jobs::job_priority::normal };
+    jobs::job_affinity affinity{ jobs::job_affinity::any_worker };
     std::vector<component_access> components;
     std::vector<std::string> before;
     std::vector<std::string> after;
@@ -183,7 +183,7 @@ struct system_schedule_error
     std::string message;
 };
 
-struct system_run_result
+struct [[nodiscard]] system_run_result
 {
     std::size_t systems_executed{};
     command_flush_result commands;
@@ -249,7 +249,7 @@ public:
 
     system_run_result run(
         world& owner,
-        job_system& jobs,
+        jobs::job_system& jobs,
         float delta_seconds)
     {
         system_execution_info execution{};
@@ -278,7 +278,7 @@ public:
 
     system_run_result run_phase(
         world& owner,
-        job_system& jobs,
+        jobs::job_system& jobs,
         system_phase phase,
         const system_execution_info& execution)
     {
@@ -292,7 +292,7 @@ public:
         if (!result.errors.empty())
             return result;
 
-        for (job_handle& handle : schedule.handles)
+        for (jobs::job_handle& handle : schedule.handles)
             handle = {};
         {
             owner.begin_scheduled_execution();
@@ -306,7 +306,7 @@ public:
             {
                 for (const std::size_t index : schedule.execution_order)
                 {
-                    std::vector<job_handle>& prerequisites = schedule.prerequisites[index];
+                    std::vector<jobs::job_handle>& prerequisites = schedule.prerequisites[index];
                     prerequisites.clear();
                     for (const std::size_t dependency : schedule.dependencies[index])
                         prerequisites.push_back(schedule.handles[dependency]);
@@ -325,7 +325,7 @@ public:
 
                 for (const std::size_t index : schedule.selected)
                 {
-                    const job_wait_result wait = schedule.handles[index].wait_result();
+                    const jobs::job_wait_result wait = schedule.handles[index].wait_result();
                     if (wait.succeeded())
                     {
                         ++result.systems_executed;
@@ -333,7 +333,7 @@ public:
                     }
 
                     std::string message =
-                        wait.status == job_status::cancelled
+                        wait.status == jobs::job_status::cancelled
                         ? "system was cancelled"
                         : "system execution failed";
                     if (wait.exception)
@@ -356,9 +356,9 @@ public:
             }
             catch (const std::exception& error)
             {
-                for (const job_handle& handle : schedule.handles)
+                for (const jobs::job_handle& handle : schedule.handles)
                     if (handle.valid())
-                        handle.wait_result();
+                        (void)handle.wait_result();
                 result.errors.push_back({ {}, std::string("system scheduling failed: ") + error.what() });
             }
         }
@@ -383,8 +383,8 @@ private:
         std::vector<std::size_t> execution_order;
         std::vector<std::unique_ptr<entity_command_buffer>> command_buffers;
         std::vector<entity_command_buffer*> buffer_views;
-        std::vector<job_handle> handles;
-        std::vector<std::vector<job_handle>> prerequisites;
+        std::vector<jobs::job_handle> handles;
+        std::vector<std::vector<jobs::job_handle>> prerequisites;
         std::vector<system_schedule_error> errors;
     };
 

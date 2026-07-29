@@ -11,7 +11,7 @@
 #include <limits>
 #include <type_traits>
 
-namespace arc
+namespace arc::simd
 {
 
 #if defined(ARC_SIMD_RISCV)
@@ -378,4 +378,4 @@ private:
 
 #endif
 
-} // namespace arc
+} // namespace arc::simd

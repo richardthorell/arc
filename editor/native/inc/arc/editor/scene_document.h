@@ -28,8 +28,8 @@ struct scene_document_text_result
 scene_document_text_result serialize_scene_subtree_as_prefab(
     editor_scene_state& scene,
     const std::filesystem::path& project_root,
-    scene::entity root,
-    scene::entity_guid prefab_guid,
+    ecs::entity root,
+    ecs::entity_guid prefab_guid,
     std::string_view prefab_name);
 
 scene_document_result save_scene_document(

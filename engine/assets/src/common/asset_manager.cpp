@@ -70,12 +70,21 @@ bool publish_artifact(
     const asset_hash& expected_hash,
     std::string& error)
 {
+    const auto matches_hash = [&](const std::filesystem::path& path) {
+        auto hashed = hash_file(path);
+        if (!hashed)
+        {
+            error = hashed.error().message;
+            return false;
+        }
+        return hashed.value() == expected_hash;
+    };
     std::error_code filesystem_error;
     if (std::filesystem::exists(destination, filesystem_error) && !filesystem_error)
     {
         const auto existing_size = std::filesystem::file_size(destination, filesystem_error);
         if (!filesystem_error && existing_size == bytes.size() &&
-            hash_file(destination, &error) == expected_hash)
+            matches_hash(destination))
             return true;
         error = "derived artifact already exists with unexpected contents";
         return false;
@@ -102,7 +111,7 @@ bool publish_artifact(
             return false;
         }
     }
-    if (hash_file(temporary, &error) != expected_hash)
+    if (!matches_hash(temporary))
     {
         std::filesystem::remove(temporary, filesystem_error);
         error = "derived artifact failed hash verification";
@@ -114,7 +123,7 @@ bool publish_artifact(
         filesystem_error.clear();
         if (std::filesystem::exists(destination, filesystem_error) && !filesystem_error &&
             std::filesystem::file_size(destination, filesystem_error) == bytes.size() &&
-            !filesystem_error && hash_file(destination, &error) == expected_hash)
+            !filesystem_error && matches_hash(destination))
         {
             std::filesystem::remove(temporary, filesystem_error);
             return true;
@@ -400,8 +409,8 @@ struct asset_manager::implementation
         std::filesystem::file_time_type modified{};
         std::uint64_t file_size{};
         std::shared_ptr<detail::asset_slot> slot = std::make_shared<detail::asset_slot>();
-        job_handle active_import;
-        cancellation_source import_cancellation;
+        jobs::job_handle active_import;
+        jobs::cancellation_source import_cancellation;
         std::chrono::steady_clock::time_point last_used{};
         std::filesystem::file_time_type pending_modified{};
         std::uint64_t pending_file_size{};
@@ -412,10 +421,10 @@ struct asset_manager::implementation
     };
 
     asset_manager_config config;
-    job_system* jobs{};
+    jobs::job_system* jobs{};
     io::async_file_service* files{};
-    memory_system* memory{};
-    std::unique_ptr<streaming_heap> streaming;
+    memory::memory_system* memory{};
+    std::unique_ptr<memory::streaming_heap> streaming;
     std::uint64_t pressure_handler{};
     mutable std::shared_mutex mutex;
     sqlite3* database{};
@@ -435,9 +444,9 @@ struct asset_manager::implementation
 
     implementation(
         asset_manager_config value,
-        job_system& scheduler,
+        jobs::job_system& scheduler,
         io::async_file_service& file_service,
-        memory_system& memory_system)
+        memory::memory_system& memory_system)
         : config(std::move(value))
         , jobs(&scheduler)
         , files(&file_service)
@@ -461,7 +470,7 @@ struct asset_manager::implementation
         std::erase_if(config.additional_source_roots, [&](const auto& root) {
             return !path_within(config.project_root, root);
         });
-        streaming = std::make_unique<streaming_heap>(*memory, config.streaming_heap_bytes);
+        streaming = std::make_unique<memory::streaming_heap>(*memory, config.streaming_heap_bytes);
         for (auto& importer : default_importers())
             importers.emplace(importer->descriptor().id, std::move(importer));
     }
@@ -503,7 +512,7 @@ struct asset_manager::implementation
         if (!callbacks.empty() && jobs)
             jobs->dispatch({
                 .name = "assets.event",
-                .priority = job_priority::low
+                .priority = jobs::job_priority::low
             }, [callbacks = std::move(callbacks), event] {
                 for (const auto& callback : callbacks)
                     callback(event);
@@ -728,10 +737,10 @@ struct asset_manager::implementation
                 const auto size = static_cast<std::uint64_t>(
                     sqlite3_column_int64(artifacts_statement.get(), 4));
                 std::error_code artifact_error;
-                std::string hash_error;
+                auto hashed = hash_file(path);
                 if (!std::filesystem::exists(path, artifact_error) ||
                     std::filesystem::file_size(path, artifact_error) != size ||
-                    artifact_error || hash_file(path, &hash_error) != *hash)
+                    artifact_error || !hashed || hashed.value() != *hash)
                 {
                     found->second.snapshot.state = asset_state::stale;
                     found->second.snapshot.diagnostics.push_back(diagnostic(
@@ -965,10 +974,10 @@ struct asset_manager::implementation
         }
     }
 
-    job_handle ensure_import(
+    jobs::job_handle ensure_import(
         asset_guid guid,
         asset_streaming_priority priority,
-        cancellation_token cancellation,
+        jobs::cancellation_token cancellation,
         asset_residency requested_residency = asset_residency::cpu)
     {
         std::unique_lock lock(mutex);
@@ -992,7 +1001,7 @@ struct asset_manager::implementation
             return {};
         }
 
-        value.import_cancellation = cancellation_source{};
+        value.import_cancellation = jobs::cancellation_source{};
         value.snapshot.state = asset_state::queued;
         value.snapshot.revision = ++revision;
         persist_record(value);
@@ -1010,7 +1019,7 @@ struct asset_manager::implementation
             asset_hash source_hash;
             asset_residency import_residency{ asset_residency::cpu };
             std::vector<asset_guid> dependencies;
-            cancellation_token effective_cancellation = cancellation;
+            jobs::cancellation_token effective_cancellation = cancellation;
             {
                 std::unique_lock state_lock(mutex);
                 const auto current = records.find(guid);
@@ -1255,10 +1264,10 @@ struct asset_manager::implementation
                 }
                 target.metadata.subassets = std::move(merged);
                 target.snapshot.subassets = target.metadata.subassets;
-                std::string metadata_error;
-                if (!save_asset_metadata(metadata_path_for(target.absolute_path), target.metadata, metadata_error))
+                auto saved = save_asset_metadata(metadata_path_for(target.absolute_path), target.metadata);
+                if (!saved)
                     target.snapshot.diagnostics.push_back(diagnostic(
-                        guid, asset_diagnostic_severity::warning, "metadata", metadata_error));
+                        guid, asset_diagnostic_severity::warning, "metadata", saved.error().message));
             }
 
             std::vector<asset_hash> dependency_hashes;
@@ -1381,9 +1390,9 @@ void asset_pin::reset() noexcept
 
 asset_manager::asset_manager(
     asset_manager_config config,
-    job_system& jobs,
+    jobs::job_system& jobs,
     io::async_file_service& files,
-    memory_system& memory)
+    memory::memory_system& memory)
     : implementation_(std::make_unique<implementation>(
         std::move(config), jobs, files, memory))
 {
@@ -1391,7 +1400,7 @@ asset_manager::asset_manager(
 
 asset_manager::~asset_manager() = default;
 
-void asset_manager::on_start(runtime_service_context&)
+void asset_manager::on_start(framework::runtime_service_context&)
 {
     std::string error;
     {
@@ -1420,18 +1429,18 @@ void asset_manager::on_start(runtime_service_context&)
         implementation_->next_poll = std::chrono::steady_clock::now() +
             implementation_->config.source_poll_interval;
     }
-    scan();
+    (void)scan();
     implementation_->pressure_handler = implementation_->memory->add_pressure_handler(
-        [this](memory_pressure_level, memory_domain domain, std::size_t) {
-            if (domain == memory_domain::assets || domain == memory_domain::streaming ||
-                domain == memory_domain::general)
+        [this](memory::memory_pressure_level, memory::memory_domain domain, std::size_t) {
+            if (domain == memory::memory_domain::assets || domain == memory::memory_domain::streaming ||
+                domain == memory::memory_domain::general)
                 evict_unused();
         });
 }
 
-void asset_manager::on_shutdown(runtime_service_context&) noexcept
+void asset_manager::on_shutdown(framework::runtime_service_context&) noexcept
 {
-    std::vector<job_handle> active;
+    std::vector<jobs::job_handle> active;
     {
         std::unique_lock lock(implementation_->mutex);
         if (!implementation_->started)
@@ -1445,7 +1454,7 @@ void asset_manager::on_shutdown(runtime_service_context&) noexcept
         }
     }
     for (const auto& job : active)
-        job.wait_result();
+        (void)job.wait_result();
 
     std::unique_lock lock(implementation_->mutex);
     if (implementation_->pressure_handler)
@@ -1614,15 +1623,15 @@ asset_scan_result asset_manager::scan()
             source.modified = iterator->last_write_time(error);
             source.size = iterator->file_size(error);
             const auto metadata_path = metadata_path_for(source.absolute);
-            std::string metadata_error;
-            if (!load_asset_metadata(metadata_path, source.metadata, metadata_error))
+            auto loaded_metadata = load_asset_metadata(metadata_path);
+            if (!loaded_metadata)
             {
                 if (std::filesystem::exists(metadata_path))
                 {
                     result.diagnostics.push_back({
                         .severity = asset_diagnostic_severity::error,
                         .category = "metadata",
-                        .message = normalize_asset_path(relative) + ": " + metadata_error
+                        .message = normalize_asset_path(relative) + ": " + loaded_metadata.error().message
                     });
                     continue;
                 }
@@ -1632,18 +1641,21 @@ asset_scan_result asset_manager::scan()
                     .value_or(generate_asset_guid());
                 source.metadata.type = classification->first;
                 source.metadata.importer = classification->second;
-                if (!save_asset_metadata(metadata_path, source.metadata, metadata_error))
+                auto saved = save_asset_metadata(metadata_path, source.metadata);
+                if (!saved)
                 {
                     result.diagnostics.push_back({
                         .severity = asset_diagnostic_severity::error,
                         .category = "metadata",
-                        .message = normalize_asset_path(relative) + ": " + metadata_error
+                        .message = normalize_asset_path(relative) + ": " + saved.error().message
                     });
                     continue;
                 }
                 source.metadata_created = true;
                 ++result.metadata_created;
             }
+            else
+                source.metadata = std::move(loaded_metadata).value();
             bool hash_source = true;
             if (!source.metadata_created && implementation_->config.enable_source_monitor)
             {
@@ -1674,15 +1686,22 @@ asset_scan_result asset_manager::scan()
                     }
                 }
             }
+            std::string hash_error;
             if (hash_source)
-                source.hash = hash_file(source.absolute, &metadata_error);
+            {
+                auto hashed = hash_file(source.absolute);
+                if (hashed)
+                    source.hash = std::move(hashed).value();
+                else
+                    hash_error = hashed.error().message;
+            }
             if (!source.hash_deferred && source.hash.empty())
             {
                 result.diagnostics.push_back({
                     .severity = asset_diagnostic_severity::error,
                     .guid = source.metadata.guid,
                     .category = "hash",
-                    .message = normalize_asset_path(relative) + ": " + metadata_error
+                    .message = normalize_asset_path(relative) + ": " + hash_error
                 });
                 continue;
             }
@@ -1710,14 +1729,15 @@ asset_scan_result asset_manager::scan()
             if (move_candidates.size() == 1)
             {
                 source.metadata.guid = move_candidates.front();
-                std::string metadata_error;
-                if (!save_asset_metadata(
-                        metadata_path_for(source.absolute), source.metadata, metadata_error))
+                auto saved = save_asset_metadata(
+                    metadata_path_for(source.absolute), source.metadata);
+                if (!saved)
                     result.diagnostics.push_back(implementation_->diagnostic(
                         source.metadata.guid,
                         asset_diagnostic_severity::warning,
                         "move-reconciliation",
-                        "Matched a source-only move but could not preserve its sidecar: " + metadata_error));
+                        "Matched a source-only move but could not preserve its sidecar: " +
+                            saved.error().message));
             }
             else if (move_candidates.size() > 1)
                 result.diagnostics.push_back(implementation_->diagnostic(
@@ -1912,7 +1932,7 @@ void asset_manager::poll()
         std::unique_lock lock(implementation_->mutex);
         implementation_->next_poll = now + implementation_->config.source_poll_interval;
     }
-    scan();
+    (void)scan();
 }
 
 std::optional<asset_snapshot> asset_manager::find(asset_guid guid) const
@@ -2123,10 +2143,10 @@ bool asset_manager::mark_stale(asset_guid guid, std::string reason)
     return true;
 }
 
-job_handle asset_manager::reimport(
+jobs::job_handle asset_manager::reimport(
     asset_guid guid,
     asset_streaming_priority priority,
-    cancellation_token cancellation)
+    jobs::cancellation_token cancellation)
 {
     return implementation_->ensure_import(guid, priority, cancellation);
 }
@@ -2224,7 +2244,7 @@ asset_move_result asset_manager::rename(asset_guid guid, std::string filename)
     return move(guid, found->source_path.parent_path() / filename);
 }
 
-job_future<asset_manager::untyped_load_result> asset_manager::load_untyped(asset_load_request request)
+jobs::job_future<asset_manager::untyped_load_result> asset_manager::load_untyped(asset_load_request request)
 {
     asset_guid guid = request.reference.guid;
     asset_error immediate_error;
@@ -2281,13 +2301,13 @@ job_future<asset_manager::untyped_load_result> asset_manager::load_untyped(asset
 
     // A request token cancels only this waiter. The shared import generation is
     // cancelled explicitly through cancel_import(), never by one of several clients.
-    const job_handle imported = implementation_->ensure_import(
+    const jobs::job_handle imported = implementation_->ensure_import(
         guid, request.priority, {}, request.residency);
     return implementation_->jobs->submit_future({
         .name = "assets.load.complete",
         .priority = to_job_priority(request.priority),
-        .dependencies = imported.valid() ? std::vector<job_handle>{ imported } : std::vector<job_handle>{},
-        .dependency_policy = job_dependency_policy::run_always
+        .dependencies = imported.valid() ? std::vector<jobs::job_handle>{ imported } : std::vector<jobs::job_handle>{},
+        .dependency_policy = jobs::job_dependency_policy::run_always
     }, [this, guid, request] {
         if (request.cancellation.stop_requested())
             return untyped_load_result{ .error = {
@@ -2341,7 +2361,7 @@ job_future<asset_manager::untyped_load_result> asset_manager::load_untyped(asset
     });
 }
 
-job_handle asset_manager::prefetch(asset_load_request request)
+jobs::job_handle asset_manager::prefetch(asset_load_request request)
 {
     return load_untyped(std::move(request)).handle();
 }
@@ -2411,19 +2431,19 @@ std::vector<asset_event> asset_manager::events_since(std::uint64_t sequence) con
 }
 
 const asset_manager_config& asset_manager::config() const noexcept { return implementation_->config; }
-job_system& asset_manager::jobs() const noexcept { return *implementation_->jobs; }
+jobs::job_system& asset_manager::jobs() const noexcept { return *implementation_->jobs; }
 
-job_priority asset_manager::to_job_priority(asset_streaming_priority priority) noexcept
+jobs::job_priority asset_manager::to_job_priority(asset_streaming_priority priority) noexcept
 {
     switch (priority)
     {
-    case asset_streaming_priority::background: return job_priority::background;
-    case asset_streaming_priority::low: return job_priority::low;
-    case asset_streaming_priority::normal: return job_priority::normal;
-    case asset_streaming_priority::high: return job_priority::high;
-    case asset_streaming_priority::critical: return job_priority::critical;
+    case asset_streaming_priority::background: return jobs::job_priority::background;
+    case asset_streaming_priority::low: return jobs::job_priority::low;
+    case asset_streaming_priority::normal: return jobs::job_priority::normal;
+    case asset_streaming_priority::high: return jobs::job_priority::high;
+    case asset_streaming_priority::critical: return jobs::job_priority::critical;
     }
-    return job_priority::normal;
+    return jobs::job_priority::normal;
 }
 
 } // namespace arc::assets

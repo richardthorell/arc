@@ -9,14 +9,16 @@ namespace arc::scene
 namespace
 {
 
-hierarchy_component& links(registry& scene, entity value)
+using ecs::entity;
+
+hierarchy_component& links(ecs::world& scene, entity value)
 {
     if (auto* existing = scene.try_get<hierarchy_component>(value))
         return *existing;
     return scene.emplace<hierarchy_component>(value);
 }
 
-void rebuild_root_links(registry& scene, const std::vector<entity>& order)
+void rebuild_root_links(ecs::world& scene, const std::vector<entity>& order)
 {
     for (std::size_t index = 0; index < order.size(); ++index)
     {
@@ -28,7 +30,7 @@ void rebuild_root_links(registry& scene, const std::vector<entity>& order)
 }
 
 void update_subtree(
-    registry& scene,
+    ecs::world& scene,
     entity value,
     const math::matrix4f* parent_world,
     std::unordered_set<entity, ecs::entity_hash>& visited) noexcept
@@ -59,7 +61,7 @@ void update_subtree(
 
 } // namespace
 
-bool is_descendant(const registry& scene, entity candidate, entity ancestor) noexcept
+bool is_descendant(const ecs::world& scene, entity candidate, entity ancestor) noexcept
 {
     if (!scene.alive(candidate) || !scene.alive(ancestor))
         return false;
@@ -75,7 +77,7 @@ bool is_descendant(const registry& scene, entity candidate, entity ancestor) noe
     return false;
 }
 
-std::vector<entity> roots(const registry& scene)
+std::vector<entity> roots(const ecs::world& scene)
 {
     std::vector<entity> candidates;
     std::uint32_t maximum_index{};
@@ -123,7 +125,7 @@ std::vector<entity> roots(const registry& scene)
     return result;
 }
 
-std::vector<entity> children(const registry& scene, entity parent)
+std::vector<entity> children(const ecs::world& scene, entity parent)
 {
     if (!scene.alive(parent))
         return roots(scene);
@@ -140,7 +142,7 @@ std::vector<entity> children(const registry& scene, entity parent)
     return result;
 }
 
-void detach(registry& scene, entity child) noexcept
+void detach(ecs::world& scene, entity child) noexcept
 {
     auto* child_links = scene.try_get<hierarchy_component>(child);
     if (!child_links)
@@ -163,7 +165,12 @@ void detach(registry& scene, entity child) noexcept
     child_links->next_sibling = {};
 }
 
-bool reparent(registry& scene, entity child, entity parent, entity before_sibling, reparent_transform_policy policy) noexcept
+bool reparent(
+    ecs::world& scene,
+    entity child,
+    entity parent,
+    entity before_sibling,
+    reparent_transform_policy policy) noexcept
 {
     if (!scene.alive(child) || child == parent || (parent.valid() && !scene.alive(parent)) ||
         arc::scene::is_descendant(scene, parent, child))
@@ -249,7 +256,7 @@ bool reparent(registry& scene, entity child, entity parent, entity before_siblin
     return true;
 }
 
-bool reorder(registry& scene, entity child, entity before_sibling) noexcept
+bool reorder(ecs::world& scene, entity child, entity before_sibling) noexcept
 {
     if (!scene.alive(child))
         return false;
@@ -257,7 +264,7 @@ bool reorder(registry& scene, entity child, entity before_sibling) noexcept
     return reparent(scene, child, value ? value->parent : entity{}, before_sibling, reparent_transform_policy::preserve_local);
 }
 
-void mark_transform_subtree_dirty(registry& scene, entity root) noexcept
+void mark_transform_subtree_dirty(ecs::world& scene, entity root) noexcept
 {
     for (entity value : subtree(scene, root))
     {
@@ -268,14 +275,14 @@ void mark_transform_subtree_dirty(registry& scene, entity root) noexcept
     }
 }
 
-void update_world_transforms(registry& scene) noexcept
+void update_world_transforms(ecs::world& scene) noexcept
 {
     std::unordered_set<entity, ecs::entity_hash> visited;
     for (const entity value : roots(scene))
         update_subtree(scene, value, nullptr, visited);
 }
 
-std::vector<entity> subtree(const registry& scene, entity root)
+std::vector<entity> subtree(const ecs::world& scene, entity root)
 {
     std::vector<entity> result;
     if (!scene.alive(root))
@@ -292,7 +299,7 @@ std::vector<entity> subtree(const registry& scene, entity root)
     return result;
 }
 
-bool destroy_subtree(registry& scene, entity root) noexcept
+bool destroy_subtree(ecs::world& scene, entity root) noexcept
 {
     auto values = subtree(scene, root);
     if (values.empty())

@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 
-namespace arc
+namespace arc::framework
 {
 
 application::~application() = default;
@@ -58,9 +58,9 @@ runtime::runtime(application& app, application_config config)
     , jobs_({ .memory = &memory_ })
     , module_context_(
         jobs_,
-        default_logger(),
+        diagnostics::default_logger(),
         memory_,
-        default_tracked_memory_resource(),
+        memory::default_tracked_memory_resource(),
         &services_,
         &worlds_)
 {
@@ -260,7 +260,7 @@ frame_time runtime::advance(double wall_delta_seconds)
             const auto discarded = static_cast<std::uint64_t>(accumulator_seconds_ / fixed_delta);
             discarded_ticks_ += discarded;
             accumulator_seconds_ = std::fmod(accumulator_seconds_, fixed_delta);
-            warn("runtime", "Simulation catch-up limit reached; excess fixed ticks were discarded");
+            diagnostics::warn("runtime", "Simulation catch-up limit reached; excess fixed ticks were discarded");
         }
     }
 
@@ -271,7 +271,7 @@ frame_time runtime::advance(double wall_delta_seconds)
         : 0.0;
     if (config_.simulation.presentation_enabled)
     {
-        worlds_.run_presentation(
+        (void)worlds_.run_presentation(
             jobs_,
             current_tick_,
             static_cast<float>(clamped_delta),
@@ -402,22 +402,22 @@ const application_config& runtime::config() const noexcept
     return config_;
 }
 
-job_system& runtime::jobs() noexcept
+jobs::job_system& runtime::jobs() noexcept
 {
     return jobs_;
 }
 
-memory_system& runtime::memory() noexcept
+memory::memory_system& runtime::memory() noexcept
 {
     return memory_;
 }
 
-frame_arena& runtime::frame_memory() noexcept
+memory::frame_arena& runtime::frame_memory() noexcept
 {
     return frame_arena_;
 }
 
-tick_arena& runtime::tick_memory() noexcept
+memory::tick_arena& runtime::tick_memory() noexcept
 {
     return tick_arena_;
 }
@@ -514,4 +514,4 @@ world_snapshot_result runtime::restore_snapshot(world_snapshot_id snapshot)
     return worlds_.restore_snapshot(snapshot, &services_);
 }
 
-} // namespace arc
+} // namespace arc::framework

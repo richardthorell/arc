@@ -21,6 +21,7 @@ option(ARC_BUILD_PLATFORM_WINDOWS "Build ARC Windows platform entry targets" ${_
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/arc_module.cmake")
 
+add_subdirectory(core)
 add_subdirectory(simd)
 add_subdirectory(math)
 add_subdirectory(geometric)

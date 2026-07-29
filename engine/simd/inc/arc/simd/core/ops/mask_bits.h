@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace arc
+namespace arc::simd
 {
 
 template <std::size_t N>
@@ -91,4 +91,4 @@ constexpr simd<T, N> expand(const simd<T, N>& compacted, const simd_mask<N>& mas
     return detail::simd_from_array<T, N>(result);
 }
 
-} // namespace arc
+} // namespace arc::simd

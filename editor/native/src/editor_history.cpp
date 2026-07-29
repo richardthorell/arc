@@ -20,7 +20,7 @@ std::size_t editor_history::estimate(const editor_scene_state& scene) noexcept
         result += unknown.size();
     for (const auto& preserved : scene.preserved_component_records)
         result += sizeof(preserved) + preserved.component_name.size() + preserved.json.size();
-    scene.scene.view<scene::terrain_component>().each([&](scene::entity, const scene::terrain_component& terrain) {
+    scene.scene.view<scene::terrain_component>().each([&](ecs::entity, const scene::terrain_component& terrain) {
         result += terrain.heights.size() * sizeof(float) +
             terrain.layer_weights.size() * sizeof(std::array<std::uint8_t, 4>);
     });
@@ -140,7 +140,7 @@ bool editor_history::commit(std::uint64_t transaction_id, const editor_scene_sta
 bool editor_history::commit_terrain(
     std::uint64_t transaction_id,
     const editor_scene_state& current_scene,
-    scene::entity_guid terrain_guid)
+    ecs::entity_guid terrain_guid)
 {
     if (!transaction_matches(transaction_id) || !terrain_guid.valid())
         return false;

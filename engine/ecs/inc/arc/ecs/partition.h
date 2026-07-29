@@ -72,7 +72,7 @@ struct component_traits<world_region_component>
     };
 };
 
-struct region_load_result
+struct [[nodiscard]] region_load_result
 {
     world_region_id region{};
     bool succeeded{};
@@ -83,12 +83,12 @@ class world_partition_provider
 {
 public:
     virtual ~world_partition_provider() = default;
-    virtual job_future<region_load_result> request_load(
+    virtual jobs::job_future<region_load_result> request_load(
         const world_region_descriptor& region,
-        cancellation_token cancellation = {}) = 0;
-    virtual job_future<region_load_result> request_unload(
+        jobs::cancellation_token cancellation = {}) = 0;
+    virtual jobs::job_future<region_load_result> request_unload(
         const world_region_descriptor& region,
-        cancellation_token cancellation = {}) = 0;
+        jobs::cancellation_token cancellation = {}) = 0;
 };
 
 class world_partition

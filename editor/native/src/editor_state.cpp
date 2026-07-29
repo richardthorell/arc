@@ -66,7 +66,7 @@ render::material_handle ensure_default_material(editor_scene_state& scene, rende
     if (scene.primitive_material.valid())
         return scene.primitive_material;
 
-    render::material_desc material;
+    render::material_descriptor material;
     material.name = "Default Primitive Material";
     material.base_color = math::vector4f{ 0.76f, 0.79f, 0.83f, 1.0f };
     material.roughness = 0.62f;
@@ -79,7 +79,7 @@ render::material_handle ensure_terrain_material(editor_scene_state& scene, rende
     if (scene.terrain_material.valid())
         return scene.terrain_material;
 
-    render::material_desc material;
+    render::material_descriptor material;
     material.name = "Default Terrain Material";
     material.domain = render::material_domain::terrain;
     material.base_color = math::vector4f::one;
@@ -88,7 +88,7 @@ render::material_handle ensure_terrain_material(editor_scene_state& scene, rende
     material.terrain_layers[1] = { .name = "Dirt", .tint = { 0.72f, 0.59f, 0.43f, 1.0f }, .world_scale = 2.2f, .roughness = 0.88f };
     material.terrain_layers[2] = { .name = "Rock", .tint = { 0.82f, 0.83f, 0.80f, 1.0f }, .world_scale = 3.6f, .roughness = 0.72f };
     material.terrain_layers[3] = { .name = "Sand", .tint = { 0.90f, 0.80f, 0.58f, 1.0f }, .world_scale = 1.8f, .roughness = 0.91f };
-    scene.terrain_material_desc = material;
+    scene.terrain_material_descriptor = material;
     scene.terrain_material = renderer.create_material(material);
     return scene.terrain_material;
 }
@@ -135,7 +135,7 @@ render::texture_handle load_first_texture(
         auto loaded = render::load_texture_asset(path);
         if (!loaded.succeeded())
         {
-            arc::warn("editor.terrain", "Terrain " + std::string(layer) + " texture failed to decode: " + loaded.message);
+            arc::diagnostics::warn("editor.terrain", "Terrain " + std::string(layer) + " texture failed to decode: " + loaded.message);
             continue;
         }
         const auto handle = renderer.create_texture(std::move(loaded.texture));
@@ -147,7 +147,7 @@ render::texture_handle load_first_texture(
             return handle;
         }
     }
-    arc::warn("editor.terrain", "Terrain " + std::string(layer) + " texture is unavailable; using the explicit shader fallback");
+    arc::diagnostics::warn("editor.terrain", "Terrain " + std::string(layer) + " texture is unavailable; using the explicit shader fallback");
     return {};
 }
 
@@ -156,7 +156,7 @@ render::material_handle ensure_water_material(editor_scene_state& scene, render:
     if (scene.water_material.valid())
         return scene.water_material;
 
-    render::material_desc material;
+    render::material_descriptor material;
     material.name = "Default Water Material";
     material.base_color = math::vector4f{ 0.16f, 0.35f, 0.48f, 0.55f };
     material.roughness = 0.18f;
@@ -170,7 +170,7 @@ render::material_handle ensure_vegetation_material(editor_scene_state& scene, re
     if (scene.vegetation_material.valid())
         return scene.vegetation_material;
 
-    render::material_desc material;
+    render::material_descriptor material;
     material.name = "Default Vegetation Material";
     material.base_color = math::vector4f{ 0.22f, 0.46f, 0.18f, 1.0f };
     material.roughness = 0.9f;
@@ -179,9 +179,9 @@ render::material_handle ensure_vegetation_material(editor_scene_state& scene, re
     return scene.vegetation_material;
 }
 
-void add_selectable_common(editor_scene_state& scene, scene::entity entity, const char* name, const char* tag)
+void add_selectable_common(editor_scene_state& scene, ecs::entity entity, const char* name, const char* tag)
 {
-    scene.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+    scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
     scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.scene.emplace<scene::name_component>(entity, name);
     scene.scene.emplace<scene::tag_component>(entity, tag);
@@ -190,14 +190,14 @@ void add_selectable_common(editor_scene_state& scene, scene::entity entity, cons
     select_entity(scene.scene, entity, scene.selected_entity);
 }
 
-void destroy_entity_if_alive(editor_scene_state& state, scene::entity& entity)
+void destroy_entity_if_alive(editor_scene_state& state, ecs::entity& entity)
 {
     if (state.scene.alive(entity))
         state.scene.destroy(entity);
     entity = {};
 }
 
-void destroy_entities(editor_scene_state& state, std::vector<scene::entity>& entities)
+void destroy_entities(editor_scene_state& state, std::vector<ecs::entity>& entities)
 {
     for (auto entity : entities)
     {
@@ -264,7 +264,7 @@ editor_asset_state load_default_editor_assets(const std::filesystem::path& asset
         assets.default_materials = loaded.materials;
         assets.default_mesh_message = loaded.message;
         assets.default_mesh_loaded = true;
-        arc::info("editor.assets", "Loaded terrain hero rock '" + assets.default_mesh_path.generic_string() + "'");
+        arc::diagnostics::info("editor.assets", "Loaded terrain hero rock '" + assets.default_mesh_path.generic_string() + "'");
     }
     else
     {
@@ -276,7 +276,7 @@ editor_asset_state load_default_editor_assets(const std::filesystem::path& asset
         assets.default_materials.push_back(std::move(rock_material));
         assets.default_mesh_message = "hero_rock.glb unavailable (" + loaded.message + "); deterministic procedural rock fallback generated";
         assets.default_mesh_loaded = true;
-        arc::warn("editor.assets", assets.default_mesh_message);
+        arc::diagnostics::warn("editor.assets", assets.default_mesh_message);
     }
     return assets;
 }
@@ -293,7 +293,7 @@ render::material_handle create_default_terrain_material(
     if (authored_handle.valid() && authored.material.domain == render::material_domain::terrain)
     {
         scene.terrain_material = authored_handle;
-        scene.terrain_material_desc = authored.material;
+        scene.terrain_material_descriptor = authored.material;
         for (std::size_t layer = 0; layer < authored.terrain_layers.size(); ++layer)
         {
             scene.terrain_layer_paths[layer] = resolve_material_texture_path(
@@ -302,7 +302,7 @@ render::material_handle create_default_terrain_material(
         return authored_handle;
     }
 
-    render::material_desc material;
+    render::material_descriptor material;
     material.name = "ARC Layered Terrain";
     material.domain = render::material_domain::terrain;
     material.base_color = math::vector4f::one;
@@ -325,7 +325,7 @@ render::material_handle create_default_terrain_material(
     material.terrain_layers[3].base_color_texture = load_first_texture(scene, renderer, {
         terrain_root / "sand" / "sand_basecolor_2k.jpg" }, "sand", &scene.terrain_layer_paths[3]);
 
-    scene.terrain_material_desc = material;
+    scene.terrain_material_descriptor = material;
     scene.terrain_material = renderer.create_material(material);
     return scene.terrain_material;
 }
@@ -333,17 +333,17 @@ render::material_handle create_default_terrain_material(
 void ensure_scene_authoring_metadata(editor_scene_state& state)
 {
     if (!state.scene_guid.valid())
-        state.scene_guid = scene::generate_entity_guid();
+        state.scene_guid = ecs::generate_entity_guid();
     for (const auto entity : state.scene.entities())
     {
         if (!state.scene.has<scene::persistent_id_component>(entity))
-            state.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+            state.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
         if (!state.scene.has<scene::hierarchy_component>(entity))
             state.scene.emplace<scene::hierarchy_component>(entity);
     }
 }
 
-scene::entity find_entity_by_guid(const editor_scene_state& state, scene::entity_guid guid) noexcept
+ecs::entity find_entity_by_guid(const editor_scene_state& state, ecs::entity_guid guid) noexcept
 {
     if (!guid.valid())
         return {};
@@ -354,20 +354,20 @@ scene::entity find_entity_by_guid(const editor_scene_state& state, scene::entity
     return {};
 }
 
-scene::entity_guid entity_guid_of(const editor_scene_state& state, scene::entity entity) noexcept
+ecs::entity_guid entity_guid_of(const editor_scene_state& state, ecs::entity entity) noexcept
 {
     const auto* id = state.scene.try_get<scene::persistent_id_component>(entity);
-    return id ? id->value : scene::entity_guid{};
+    return id ? id->value : ecs::entity_guid{};
 }
 
-editor_scene_state::asset_binding* find_asset_binding(editor_scene_state& state, scene::entity_guid guid) noexcept
+editor_scene_state::asset_binding* find_asset_binding(editor_scene_state& state, ecs::entity_guid guid) noexcept
 {
     const auto found = std::find_if(state.asset_bindings.begin(), state.asset_bindings.end(),
         [guid](const auto& value) { return value.entity == guid; });
     return found == state.asset_bindings.end() ? nullptr : &*found;
 }
 
-const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& state, scene::entity_guid guid) noexcept
+const editor_scene_state::asset_binding* find_asset_binding(const editor_scene_state& state, ecs::entity_guid guid) noexcept
 {
     const auto found = std::find_if(state.asset_bindings.begin(), state.asset_bindings.end(),
         [guid](const auto& value) { return value.entity == guid; });
@@ -399,7 +399,7 @@ const char* primitive_type_name(editor_primitive_type type) noexcept
     return "Primitive";
 }
 
-scene::entity add_primitive_to_scene(
+ecs::entity add_primitive_to_scene(
     editor_scene_state& scene,
     render::renderer& renderer,
     editor_primitive_type type)
@@ -427,7 +427,7 @@ scene::entity add_primitive_to_scene(
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
     scene.scene.emplace<scene::mesh_renderer_component>(entity, mesh_handle, material, true);
-    scene.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+    scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
     scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.asset_bindings.push_back({
         .entity = scene.scene.get<scene::persistent_id_component>(entity).value,
@@ -438,7 +438,7 @@ scene::entity add_primitive_to_scene(
     return entity;
 }
 
-scene::entity add_world_environment_to_scene(editor_scene_state& scene)
+ecs::entity add_world_environment_to_scene(editor_scene_state& scene)
 {
     if (scene.scene.alive(scene.world_environment_entity))
     {
@@ -459,7 +459,7 @@ scene::entity add_world_environment_to_scene(editor_scene_state& scene)
     return entity;
 }
 
-scene::entity add_terrain_to_scene(
+ecs::entity add_terrain_to_scene(
     editor_scene_state& scene,
     render::renderer& renderer,
     render::material_handle material)
@@ -498,7 +498,7 @@ scene::entity add_terrain_to_scene(
 bool rebuild_terrain_chunks(
     editor_scene_state& scene,
     render::renderer& renderer,
-    scene::entity entity,
+    ecs::entity entity,
     const scene::terrain_dirty_region* dirty_region)
 {
     auto* terrain = scene.scene.try_get<scene::terrain_component>(entity);
@@ -554,7 +554,7 @@ bool rebuild_terrain_chunks(
     return true;
 }
 
-scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer)
+ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer)
 {
     auto mesh = render::make_plane_mesh(defaults::default_water_size);
     const auto local_bounds = bounds_for_mesh(mesh);
@@ -586,7 +586,7 @@ scene::entity add_water_to_scene(editor_scene_state& scene, render::renderer& re
     return entity;
 }
 
-scene::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer& renderer)
+ecs::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer& renderer)
 {
     auto mesh = render::make_grass_patch_mesh(20.0f, 320, 0.85f);
     const auto local_bounds = bounds_for_mesh(mesh);
@@ -618,7 +618,7 @@ scene::entity add_grass_patch_to_scene(editor_scene_state& scene, render::render
     return entity;
 }
 
-scene::entity add_decal_to_scene(editor_scene_state& scene)
+ecs::entity add_decal_to_scene(editor_scene_state& scene)
 {
     const auto entity = scene.scene.create();
     add_selectable_common(scene, entity, "Decal", "Environment");
@@ -660,7 +660,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
     if (!imported.succeeded())
     {
         for (const auto& diagnostic : imported.diagnostics)
-            arc::warn("editor.assets", diagnostic);
+            arc::diagnostics::warn("editor.assets", diagnostic);
         return {
             .message = imported.message.empty() ? "scene asset could not be imported" : imported.message
         };
@@ -692,7 +692,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
     }
 
     std::size_t created{};
-    scene::entity first_entity{};
+    ecs::entity first_entity{};
     for (const auto& node : imported.nodes)
     {
         if (node.mesh_index >= meshes.size() || !meshes[node.mesh_index].valid())
@@ -719,7 +719,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
             meshes[node.mesh_index],
             materials[material_index],
             true);
-        scene.scene.emplace<scene::persistent_id_component>(entity, scene::generate_entity_guid());
+        scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
         scene.scene.emplace<scene::hierarchy_component>(entity);
         scene.asset_bindings.push_back({
             .entity = scene.scene.get<scene::persistent_id_component>(entity).value,
@@ -739,7 +739,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
         scene.focus_imported_scene_requested = true;
     }
 
-    arc::info(
+    arc::diagnostics::info(
         "editor.assets",
         std::string(mode == editor_scene_open_mode::replace ? "Opened scene asset '" : "Imported scene asset '") +
             source_path.filename().string() + "' with " + std::to_string(created) + " entity(s)");
@@ -753,7 +753,7 @@ editor_scene_open_result apply_scene_import_result_to_editor(
 
 bool start_scene_import(
     editor_scene_import_state& state,
-    job_system& jobs,
+    jobs::job_system& jobs,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& path,
     editor_scene_open_mode mode)
@@ -777,8 +777,8 @@ bool start_scene_import(
     state.modal_open = true;
     state.task = jobs.submit_future({
         .name = "editor.import_scene",
-        .priority = job_priority::normal,
-        .affinity = job_affinity::io_thread,
+        .priority = jobs::job_priority::normal,
+        .affinity = jobs::job_affinity::io_thread,
         .cancellation = state.cancellation.token()
     }, [resolved_path, options, shared]() mutable {
         return render::load_scene_asset(resolved_path, options, [shared](const render::scene_import_progress& progress) {
@@ -803,7 +803,7 @@ bool poll_scene_import(editor_scene_import_state& state)
         return false;
 
     const auto completion = state.task.handle().wait_result();
-    if (completion.status == job_status::cancelled)
+    if (completion.status == jobs::job_status::cancelled)
     {
         state.status = editor_scene_import_status::cancelled;
         state.result_ready = true;
@@ -815,7 +815,7 @@ bool poll_scene_import(editor_scene_import_state& state)
         }
         return true;
     }
-    if (completion.status == job_status::failed)
+    if (completion.status == jobs::job_status::failed)
     {
         state.status = editor_scene_import_status::failed;
         state.result_ready = true;

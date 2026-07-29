@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace arc
+namespace arc::simd
 {
 
 #if defined(ARC_SIMD_RISCV)
@@ -54,4 +54,4 @@ inline constexpr std::size_t simd_max_lanes<uint64_t> = 2;
 
 #endif
 
-} // namespace arc
+} // namespace arc::simd

@@ -12,10 +12,9 @@ deterministic structural command buffers, access-aware system scheduling,
 intrusive hierarchy, entity templates, prefab metadata, archive and replication
 visitors, and initial world-partition contracts.
 
-Scene-specific components remain in `arc-scene`. Existing
-`arc::scene::registry`, `entity`, `entity_guid`, pools, and views are
-compatibility aliases over ECS types so runtime and editor code can migrate
-incrementally.
+Scene-specific components remain in `arc-scene`. Scene-facing APIs use
+`arc::ecs::world`, `arc::ecs::entity`, and `arc::ecs::entity_guid` directly;
+the obsolete scene compatibility aliases have been removed.
 
 Reflected scene component IDs and editor field metadata originate in
 `engine/scene/schema/components.arccomponents.json`. CMake runs

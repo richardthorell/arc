@@ -324,16 +324,15 @@ void sort_document(archive_document& document)
 
 }
 
-std::vector<std::byte> write_tagged_binary(
+binary_archive_result write_tagged_binary(
     const archive_document& source,
-    std::string_view target_identity,
-    std::string& error)
+    std::string_view target_identity)
 {
     if (!source.id.valid())
-    {
-        error = "persistence document has no valid identity";
-        return {};
-    }
+        return binary_archive_result::failure({
+            .code = persistence_error_code::invalid_argument,
+            .message = "persistence document has no valid identity"
+        });
     archive_document document = source;
     sort_document(document);
     std::vector<std::byte> payload;
@@ -401,7 +400,7 @@ std::vector<std::byte> write_tagged_binary(
     output.insert(output.end(), payload_hash.bytes.begin(), payload_hash.bytes.end());
     write_integer(output, static_cast<std::uint64_t>(payload.size()));
     output.insert(output.end(), payload.begin(), payload.end());
-    return output;
+    return binary_archive_result::success(std::move(output));
 }
 
 archive_result read_tagged_binary(
@@ -590,9 +589,13 @@ archive_result read_tagged_binary(
             if (registered && migrations &&
                 component.schema_version < registered->component->schema_version)
             {
-                if (!migrations->migrate(
-                    component, registered->component->schema_version, result.error))
+                auto migrated = migrations->migrate(
+                    component, registered->component->schema_version);
+                if (!migrated)
+                {
+                    result.error = migrated.error().message;
                     return result;
+                }
                 result.migrated = true;
             }
             entity.components.push_back(std::move(component));
@@ -659,8 +662,12 @@ archive_result read_tagged_binary(
         ? archive_document::current_scene_version : archive_document::current_prefab_version;
     if (migrations && result.document.format_version < target_version)
     {
-        if (!migrations->migrate(result.document, target_version, result.error))
+        auto migrated = migrations->migrate(result.document, target_version);
+        if (!migrated)
+        {
+            result.error = migrated.error().message;
             return result;
+        }
         result.migrated = true;
     }
     return result;

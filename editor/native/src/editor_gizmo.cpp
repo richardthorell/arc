@@ -91,8 +91,8 @@ float editor_gizmo_world_scale(const scene::camera_component& camera, const scen
     return std::max(0.001f, 2.0f * distance * std::tan(camera.fov_y_radians * 0.5f) * editor_gizmo_pixel_length / height);
 }
 
-render::debug_overlay_stream build_editor_gizmo_overlay(const scene::registry& registry, scene::entity selected,
-    scene::entity camera_entity, const editor_gizmo_context& context)
+render::debug_overlay_stream build_editor_gizmo_overlay(const ecs::world& registry, ecs::entity selected,
+    ecs::entity camera_entity, const editor_gizmo_context& context)
 {
     render::debug_overlay_stream stream;
     const auto* transform = registry.try_get<scene::transform_component>(selected);
@@ -134,7 +134,7 @@ render::debug_overlay_stream build_editor_gizmo_overlay(const scene::registry& r
     return stream;
 }
 
-gizmo_axis hit_test_editor_gizmo(const scene::registry& registry, scene::entity selected, scene::entity camera_entity,
+gizmo_axis hit_test_editor_gizmo(const ecs::world& registry, ecs::entity selected, ecs::entity camera_entity,
     const editor_gizmo_context& context, float screen_x, float screen_y) noexcept
 {
     const auto* transform = registry.try_get<scene::transform_component>(selected);

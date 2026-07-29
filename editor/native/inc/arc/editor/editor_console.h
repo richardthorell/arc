@@ -17,7 +17,7 @@ namespace arc::editor
  */
 struct console_log_entry
 {
-    log_level level{ log_level::info };
+    diagnostics::log_level level{ diagnostics::log_level::info };
     std::string category;
     std::string message;
     std::chrono::system_clock::time_point timestamp{};
@@ -26,7 +26,7 @@ struct console_log_entry
 /**
  * @brief Thread-safe log sink used by the editor console panel.
  */
-class editor_console_sink final : public log_sink
+class editor_console_sink final : public diagnostics::log_sink
 {
 public:
     explicit editor_console_sink(std::size_t max_entries = 1000);
@@ -34,7 +34,7 @@ public:
     /**
      * @brief Capture one diagnostic record.
      */
-    void write(const log_record& record) override;
+    void write(const diagnostics::log_record& record) override;
 
     /**
      * @brief Return a snapshot of captured entries.

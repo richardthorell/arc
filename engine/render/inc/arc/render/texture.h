@@ -13,7 +13,7 @@ namespace arc::render
 /**
  * @brief Result from loading a texture asset into renderer-owned CPU metadata.
  */
-struct texture_load_result
+struct [[nodiscard]] texture_load_result
 {
     texture_data texture;
     std::string message;
@@ -54,10 +54,10 @@ texture_load_result load_texture_asset_bytes(
 /**
  * @brief Read and decode a texture without blocking the submitting thread.
  */
-job_future<texture_load_result> load_texture_asset_async(
+jobs::job_future<texture_load_result> load_texture_asset_async(
     io::async_file_service& files,
     std::filesystem::path path,
-    cancellation_token cancellation = {});
+    jobs::cancellation_token cancellation = {});
 
 /**
  * @brief Return whether an extension is accepted by the renderer texture loader.

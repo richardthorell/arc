@@ -7,7 +7,7 @@
 #include <memory>
 #include <string>
 
-namespace arc
+namespace arc::framework
 {
 
 class module_registry;
@@ -97,6 +97,6 @@ using application_ptr = std::unique_ptr<application>;
 /**
  * @brief Factory implemented by editor, sample, or game executable code.
  */
-application_ptr create_application();
+[[nodiscard]] application_ptr create_application();
 
-} // namespace arc
+} // namespace arc::framework

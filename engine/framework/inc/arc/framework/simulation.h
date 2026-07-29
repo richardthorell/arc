@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace arc
+namespace arc::framework
 {
 
 using simulation_tick_id = ecs::simulation_tick_id;
@@ -66,4 +66,4 @@ inline bool valid_simulation_config(const simulation_config& value) noexcept
         value.time_scale <= 16.0;
 }
 
-} // namespace arc
+} // namespace arc::framework

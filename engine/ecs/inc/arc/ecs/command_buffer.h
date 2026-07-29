@@ -62,7 +62,7 @@ struct command_error
     std::string message;
 };
 
-struct command_flush_result
+struct [[nodiscard]] command_flush_result
 {
     std::size_t applied{};
     std::vector<command_error> errors;

@@ -10,7 +10,7 @@
 
 TEST_CASE("registry creates destroys and rejects stale entities")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto first = scene.create();
 
     REQUIRE(scene.alive(first));
@@ -28,7 +28,7 @@ TEST_CASE("registry creates destroys and rejects stale entities")
 
 TEST_CASE("registry stores removes and clears components on destroy")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto entity = scene.create();
 
     auto& name = scene.emplace<arc::scene::name_component>(entity, "Camera");
@@ -47,7 +47,7 @@ TEST_CASE("registry stores removes and clears components on destroy")
 
 TEST_CASE("registry view returns entities with all requested components")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto camera = scene.create();
     const auto mesh = scene.create();
 
@@ -58,7 +58,7 @@ TEST_CASE("registry view returns entities with all requested components")
 
     std::size_t count{};
     scene.view<arc::scene::transform_component, arc::scene::camera_component>().each(
-        [&](arc::scene::entity value, const auto&, const auto&) {
+        [&](arc::ecs::entity value, const auto&, const auto&) {
             REQUIRE(value == camera);
             ++count;
         });
@@ -67,10 +67,10 @@ TEST_CASE("registry view returns entities with all requested components")
 
 TEST_CASE("registry copies component pools without sharing storage")
 {
-    arc::scene::registry original;
+    arc::ecs::world original;
     const auto value = original.create();
     original.emplace<arc::scene::name_component>(value, "Original");
-    arc::scene::registry copy = original;
+    arc::ecs::world copy = original;
     copy.get<arc::scene::name_component>(value).value = "Copy";
     REQUIRE(original.get<arc::scene::name_component>(value).value == "Original");
     REQUIRE(copy.get<arc::scene::name_component>(value).value == "Copy");
@@ -78,12 +78,12 @@ TEST_CASE("registry copies component pools without sharing storage")
 
 TEST_CASE("paged component pools keep live component addresses stable while growing")
 {
-    arc::memory_system memory({
+    arc::memory::memory_system memory({
         .physical_memory_override = 16 * 1024 * 1024,
         .track_live_allocations = true,
         .capture_call_stacks = false
     });
-    arc::scene::registry scene(memory, 99);
+    arc::ecs::world scene(memory, 99);
     const auto first = scene.create();
     auto* stable = &scene.emplace<arc::scene::name_component>(first, "Stable");
 
@@ -98,7 +98,7 @@ TEST_CASE("paged component pools keep live component addresses stable while grow
     REQUIRE(scene.memory().world_id() == 99);
     const auto snapshot = memory.snapshot();
     const auto component_domain = std::find_if(snapshot.domains.begin(), snapshot.domains.end(), [](const auto& value) {
-        return value.domain == arc::memory_domain::components;
+        return value.domain == arc::memory::memory_domain::components;
     });
     REQUIRE(component_domain != snapshot.domains.end());
     REQUIRE(component_domain->stats.bytes_outstanding > 0);
@@ -106,7 +106,7 @@ TEST_CASE("paged component pools keep live component addresses stable while grow
 
 TEST_CASE("paged component removal only invalidates the removed component")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto first = scene.create();
     const auto second = scene.create();
     auto* first_component = &scene.emplace<arc::scene::name_component>(first, "First");
@@ -123,19 +123,19 @@ TEST_CASE("paged component removal only invalidates the removed component")
 
 TEST_CASE("entity GUIDs round trip and reject malformed values")
 {
-    const auto guid = arc::scene::generate_entity_guid();
+    const auto guid = arc::ecs::generate_entity_guid();
     REQUIRE(guid.valid());
-    const auto text = arc::scene::to_string(guid);
+    const auto text = arc::ecs::to_string(guid);
     REQUIRE(text.size() == 36);
-    REQUIRE(arc::scene::parse_entity_guid(text) == guid);
-    REQUIRE_FALSE(arc::scene::parse_entity_guid("not-a-guid").has_value());
-    REQUIRE_FALSE(arc::scene::parse_entity_guid("01234567-89ab-cdef-0123-456789abcdeg").has_value());
-    REQUIRE_FALSE(arc::scene::parse_entity_guid("00000000-0000-0000-0000-000000000000").has_value());
+    REQUIRE(arc::ecs::parse_entity_guid(text) == guid);
+    REQUIRE_FALSE(arc::ecs::parse_entity_guid("not-a-guid").has_value());
+    REQUIRE_FALSE(arc::ecs::parse_entity_guid("01234567-89ab-cdef-0123-456789abcdeg").has_value());
+    REQUIRE_FALSE(arc::ecs::parse_entity_guid("00000000-0000-0000-0000-000000000000").has_value());
 }
 
 TEST_CASE("scene hierarchy reparents orders and preserves world transforms")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto parent = scene.create();
     const auto first = scene.create();
     const auto second = scene.create();
@@ -146,7 +146,7 @@ TEST_CASE("scene hierarchy reparents orders and preserves world transforms")
     REQUIRE(arc::scene::reparent(scene, first, parent));
     REQUIRE(arc::scene::reparent(scene, second, parent, first));
     const auto ordered = arc::scene::children(scene, parent);
-    REQUIRE(ordered == std::vector<arc::scene::entity>{ second, first });
+    REQUIRE(ordered == std::vector<arc::ecs::entity>{ second, first });
     REQUIRE(scene.get<arc::scene::hierarchy_component>(parent).child_count == 2);
     arc::scene::update_world_transforms(scene);
     REQUIRE(arc::scene::world_position(scene.get<arc::scene::transform_component>(first))[0] == Catch::Approx(2.0f));
@@ -170,7 +170,7 @@ TEST_CASE("scene hierarchy reparents orders and preserves world transforms")
 
 TEST_CASE("scene hierarchy propagates transforms and destroys complete subtrees")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     const auto logical_root = scene.create();
     const auto root = scene.create();
     const auto child = scene.create();
@@ -275,7 +275,7 @@ TEST_CASE("camera world view agrees with the quaternion view matrix")
 
 TEST_CASE("render scene extracts visible mesh draw events from active camera")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
     const arc::render::mesh_handle mesh{ .index = 2, .generation = 1 };
 
@@ -322,7 +322,7 @@ TEST_CASE("render scene extracts visible mesh draw events from active camera")
 
 TEST_CASE("render scene honors an explicitly selected editor camera")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
 
     const auto game_camera = scene.create();
@@ -453,7 +453,7 @@ TEST_CASE("world environment presets preserve runtime identity and aggregate wri
         REQUIRE(arc::scene::validate_world_environment(settings).valid);
     }
 
-    arc::scene::registry registry;
+    arc::ecs::world registry;
     const auto entity = registry.create();
     REQUIRE(arc::scene::set_world_environment_settings(registry, entity, settings));
     const auto stored = arc::scene::read_world_environment_settings(registry, entity);
@@ -472,7 +472,7 @@ TEST_CASE("world environment presets preserve runtime identity and aggregate wri
 
 TEST_CASE("simulated geographic environment advances time and drives its linked sun")
 {
-    arc::scene::registry registry;
+    arc::ecs::world registry;
     const auto sun = registry.create();
     registry.emplace<arc::scene::transform_component>(sun);
     registry.emplace<arc::scene::directional_light_component>(sun);
@@ -512,7 +512,7 @@ TEST_CASE("simulated geographic environment advances time and drives its linked 
 
 TEST_CASE("automatic geographic sun writes physically meaningful lux")
 {
-    arc::scene::registry registry;
+    arc::ecs::world registry;
     const auto sun = registry.create();
     registry.emplace<arc::scene::transform_component>(sun);
     registry.emplace<arc::scene::directional_light_component>(sun);
@@ -541,7 +541,7 @@ TEST_CASE("automatic geographic sun writes physically meaningful lux")
 
 TEST_CASE("world environment clocks handle reverse midnight leap years and fixed time")
 {
-    arc::scene::registry registry;
+    arc::ecs::world registry;
     const auto environment = registry.create();
     registry.emplace<arc::scene::world_environment_component>(environment);
     arc::scene::celestial_sky_component celestial;
@@ -581,7 +581,7 @@ TEST_CASE("world environment clocks handle reverse midnight leap years and fixed
 
 TEST_CASE("render scene extracts one authoritative world environment snapshot")
 {
-    arc::scene::registry registry;
+    arc::ecs::world registry;
     arc::render::renderer renderer;
     const auto camera = registry.create();
     registry.emplace<arc::scene::transform_component>(camera);
@@ -615,7 +615,7 @@ TEST_CASE("render scene extracts one authoritative world environment snapshot")
 
 TEST_CASE("render scene rejects legacy and incomplete environments and selects duplicates deterministically")
 {
-    arc::scene::registry registry;
+    arc::ecs::world registry;
     arc::render::renderer renderer;
     const auto camera = registry.create();
     registry.emplace<arc::scene::transform_component>(camera);
@@ -668,7 +668,7 @@ TEST_CASE("render scene rejects legacy and incomplete environments and selects d
 
 TEST_CASE("render scene culling uses transformed dirty local bounds")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
     const arc::render::mesh_handle mesh{ .index = 2, .generation = 1 };
 
@@ -705,7 +705,7 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
 
 TEST_CASE("render scene extracts and culls virtual mesh clusters")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
 
     const auto camera_entity = scene.create();
@@ -774,7 +774,7 @@ TEST_CASE("render scene extracts and culls virtual mesh clusters")
 
 TEST_CASE("render scene can request wireframe overlay for every draw")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
     const arc::render::mesh_handle mesh{ .index = 2, .generation = 1 };
 
@@ -809,7 +809,7 @@ TEST_CASE("render scene can request wireframe overlay for every draw")
 
 TEST_CASE("render scene skips extraction without active camera")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
 
     const auto mesh_entity = scene.create();
@@ -824,7 +824,7 @@ TEST_CASE("render scene skips extraction without active camera")
 
 TEST_CASE("render scene extracts active lights and skips inactive renderers")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
     const arc::render::mesh_handle mesh{ .index = 3, .generation = 1 };
 
@@ -921,7 +921,7 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
 
 TEST_CASE("render scene extracts skinned and instanced render items")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
 
     const auto camera_entity = scene.create();
@@ -966,7 +966,7 @@ TEST_CASE("render scene extracts skinned and instanced render items")
 
 TEST_CASE("render scene applies first valid LOD mesh")
 {
-    arc::scene::registry scene;
+    arc::ecs::world scene;
     arc::render::renderer renderer;
     const arc::render::mesh_handle base_mesh{ .index = 1, .generation = 1 };
     const arc::render::mesh_handle lod_mesh{ .index = 9, .generation = 1 };
@@ -1073,13 +1073,12 @@ TEST_CASE("generated scene metadata provides ordinary persistence field codecs")
     source.position = { 3.0f, -2.0f, 7.5f };
     source.scale = { 2.0f, 3.0f, 4.0f };
     arc::persistence::archive_component_record encoded;
-    std::string error;
     const auto type = arc::ecs::component_metadata<arc::scene::transform_component>().id;
-    REQUIRE(registry.encode(type, &source, encoded, error));
+    REQUIRE(registry.encode(type, &source, encoded));
     REQUIRE(encoded.fields.size() == 3);
 
     arc::scene::transform_component destination;
-    REQUIRE(registry.decode(type, &destination, encoded, error));
+    REQUIRE(registry.decode(type, &destination, encoded));
     for (std::size_t component = 0; component < 3; ++component)
     {
         REQUIRE(destination.position[component] == Catch::Approx(source.position[component]));

@@ -4,7 +4,7 @@
 
 #include <array>
 
-namespace arc
+namespace arc::simd
 {
 
 namespace detail
@@ -61,4 +61,4 @@ constexpr simd_mask<N> range_mask(std::size_t first, std::size_t last) noexcept
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }
 
-} // namespace arc
+} // namespace arc::simd

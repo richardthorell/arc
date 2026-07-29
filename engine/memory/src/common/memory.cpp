@@ -20,7 +20,7 @@
 #include <unistd.h>
 #endif
 
-namespace arc
+namespace arc::memory
 {
 namespace
 {
@@ -1006,7 +1006,7 @@ world_memory_context::~world_memory_context()
         std::size_t bytes{};
         for (const auto& leak : outstanding)
             bytes += leak.bytes;
-        warn(
+        diagnostics::warn(
             "memory.world",
             "World " + std::to_string(world_id_) + " released with " +
                 std::to_string(outstanding.size()) + " tracked allocation(s), " +
@@ -1184,4 +1184,4 @@ bool streaming_heap::do_is_equal(const std::pmr::memory_resource& other) const n
     return this == &other;
 }
 
-} // namespace arc
+} // namespace arc::memory

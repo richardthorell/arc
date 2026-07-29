@@ -102,8 +102,8 @@ bool update_material_editor_live_material(
     std::string* message = nullptr);
 
 bool apply_material_to_selected(
-    scene::registry& scene,
-    scene::entity selected,
+    ecs::world& scene,
+    ecs::entity selected,
     render::material_handle material);
 
 bool apply_material_asset_to_entity(
@@ -111,18 +111,18 @@ bool apply_material_asset_to_entity(
     render::renderer& renderer,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& material_path,
-    scene::registry& scene,
-    scene::entity entity,
+    ecs::world& scene,
+    ecs::entity entity,
     std::string* message = nullptr);
 
-scene::entity apply_material_asset_to_viewport_hit(
+ecs::entity apply_material_asset_to_viewport_hit(
     editor_material_library& library,
     render::renderer& renderer,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& material_path,
-    scene::registry& scene,
+    ecs::world& scene,
     const editor_ray& ray,
-    scene::entity& selected,
+    ecs::entity& selected,
     std::string* message = nullptr);
 
 } // namespace arc::editor

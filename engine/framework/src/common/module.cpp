@@ -7,22 +7,22 @@
 #include <stdexcept>
 #include <unordered_map>
 
-namespace arc
+namespace arc::framework
 {
 
-module_context::module_context(job_system& jobs, logger& diagnostics, tracked_memory_resource& memory) noexcept
+module_context::module_context(jobs::job_system& jobs, diagnostics::logger& diagnostics, memory::tracked_memory_resource& memory) noexcept
     : jobs_(&jobs)
     , diagnostics_(&diagnostics)
     , memory_(&memory)
-    , memory_service_(&default_memory_system())
+    , memory_service_(&memory::default_memory_system())
 {
 }
 
 module_context::module_context(
-    job_system& jobs,
-    logger& diagnostics,
-    memory_system& memory,
-    tracked_memory_resource& compatibility_memory,
+    jobs::job_system& jobs,
+    diagnostics::logger& diagnostics,
+    memory::memory_system& memory,
+    memory::tracked_memory_resource& compatibility_memory,
     runtime_service_registry* services,
     runtime_world_manager* worlds) noexcept
     : jobs_(&jobs)
@@ -44,22 +44,22 @@ runtime_world_manager* module_context::worlds() const noexcept
     return worlds_;
 }
 
-job_system& module_context::jobs() const noexcept
+jobs::job_system& module_context::jobs() const noexcept
 {
     return *jobs_;
 }
 
-logger& module_context::diagnostics() const noexcept
+diagnostics::logger& module_context::diagnostics() const noexcept
 {
     return *diagnostics_;
 }
 
-tracked_memory_resource& module_context::memory() const noexcept
+memory::tracked_memory_resource& module_context::memory() const noexcept
 {
     return *memory_;
 }
 
-memory_system& module_context::memory_service() const noexcept
+memory::memory_system& module_context::memory_service() const noexcept
 {
     return *memory_service_;
 }
@@ -235,4 +235,4 @@ void module_manager::resolve_order()
     ordered_ = true;
 }
 
-} // namespace arc
+} // namespace arc::framework

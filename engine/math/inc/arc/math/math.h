@@ -1,5 +1,9 @@
 #pragma once
 
+/** @namespace arc::math
+ * @brief Vectors, matrices, quaternions, constants, and transformations.
+ */
+
 /**
  * @file arc/math/math.h
  * @brief Aggregate include for ARC math constants, vectors, matrices, and quaternions.

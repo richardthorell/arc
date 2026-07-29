@@ -13,29 +13,6 @@ namespace
 
 constexpr char hex_digits[] = "0123456789abcdef";
 
-template <class Id>
-std::string id_to_string(Id value)
-{
-    std::array<std::byte, 16> bytes{};
-    for (std::size_t index = 0; index < 8; ++index)
-    {
-        bytes[index] = static_cast<std::byte>(value.high >> ((7 - index) * 8));
-        bytes[8 + index] = static_cast<std::byte>(value.low >> ((7 - index) * 8));
-    }
-
-    std::string result;
-    result.reserve(36);
-    for (std::size_t index = 0; index < bytes.size(); ++index)
-    {
-        if (index == 4 || index == 6 || index == 8 || index == 10)
-            result.push_back('-');
-        const auto byte = std::to_integer<unsigned>(bytes[index]);
-        result.push_back(hex_digits[byte >> 4]);
-        result.push_back(hex_digits[byte & 0x0f]);
-    }
-    return result;
-}
-
 constexpr int from_hex(char value) noexcept
 {
     if (value >= '0' && value <= '9')
@@ -45,41 +22,6 @@ constexpr int from_hex(char value) noexcept
     if (value >= 'A' && value <= 'F')
         return value - 'A' + 10;
     return -1;
-}
-
-template <class Id>
-std::optional<Id> parse_id(std::string_view text) noexcept
-{
-    std::array<std::byte, 16> bytes{};
-    std::size_t output{};
-    int high_nibble = -1;
-    for (const char character : text)
-    {
-        if (character == '-')
-            continue;
-        const int digit = from_hex(character);
-        if (digit < 0)
-            return std::nullopt;
-        if (high_nibble < 0)
-        {
-            high_nibble = digit;
-            continue;
-        }
-        if (output >= bytes.size())
-            return std::nullopt;
-        bytes[output++] = static_cast<std::byte>((high_nibble << 4) | digit);
-        high_nibble = -1;
-    }
-    if (output != bytes.size() || high_nibble >= 0)
-        return std::nullopt;
-
-    Id result{};
-    for (std::size_t index = 0; index < 8; ++index)
-    {
-        result.high = (result.high << 8) | std::to_integer<std::uint8_t>(bytes[index]);
-        result.low = (result.low << 8) | std::to_integer<std::uint8_t>(bytes[8 + index]);
-    }
-    return result.valid() ? std::optional<Id>{ result } : std::nullopt;
 }
 
 constexpr std::array<std::uint32_t, 64> sha256_constants{{
@@ -203,35 +145,52 @@ private:
     std::uint64_t bit_count_{};
 };
 
-std::size_t hash_id(std::uint64_t high, std::uint64_t low) noexcept
-{
-    high ^= low + 0x9e3779b97f4a7c15ull + (high << 6) + (high >> 2);
-    return static_cast<std::size_t>(high);
-}
-
 }
 
 std::size_t asset_guid_hash::operator()(asset_guid value) const noexcept
 {
-    return hash_id(value.high, value.low);
+    return core::uuid_hash<asset_guid_tag>{}(value);
 }
 
 std::size_t asset_type_id_hash::operator()(asset_type_id value) const noexcept
 {
-    return hash_id(value.high, value.low);
+    return core::uuid_hash<asset_type_id_tag>{}(value);
 }
 
 std::size_t asset_importer_id_hash::operator()(asset_importer_id value) const noexcept
 {
-    return hash_id(value.high, value.low);
+    return core::uuid_hash<asset_importer_id_tag>{}(value);
 }
 
-std::string to_string(asset_guid value) { return id_to_string(value); }
-std::string to_string(asset_type_id value) { return id_to_string(value); }
-std::string to_string(asset_importer_id value) { return id_to_string(value); }
-std::optional<asset_guid> parse_asset_guid(std::string_view text) noexcept { return parse_id<asset_guid>(text); }
-std::optional<asset_type_id> parse_asset_type_id(std::string_view text) noexcept { return parse_id<asset_type_id>(text); }
-std::optional<asset_importer_id> parse_asset_importer_id(std::string_view text) noexcept { return parse_id<asset_importer_id>(text); }
+std::string to_string(asset_guid value)
+{
+    return core::to_string(value, core::uuid_text_format::hyphenated);
+}
+
+std::string to_string(asset_type_id value)
+{
+    return core::to_string(value, core::uuid_text_format::hyphenated);
+}
+
+std::string to_string(asset_importer_id value)
+{
+    return core::to_string(value, core::uuid_text_format::hyphenated);
+}
+
+std::optional<asset_guid> parse_asset_guid(std::string_view text) noexcept
+{
+    return core::parse_uuid<asset_guid_tag>(text);
+}
+
+std::optional<asset_type_id> parse_asset_type_id(std::string_view text) noexcept
+{
+    return core::parse_uuid<asset_type_id_tag>(text);
+}
+
+std::optional<asset_importer_id> parse_asset_importer_id(std::string_view text) noexcept
+{
+    return core::parse_uuid<asset_importer_id_tag>(text);
+}
 
 asset_guid generate_asset_guid() noexcept
 {
@@ -285,15 +244,15 @@ asset_hash hash_bytes(std::span<const std::byte> bytes) noexcept
     return hash.finish();
 }
 
-asset_hash hash_file(const std::filesystem::path& path, std::string* error)
+asset_hash_result hash_file(const std::filesystem::path& path)
 {
     std::ifstream input(path, std::ios::binary);
     if (!input)
-    {
-        if (error)
-            *error = "Could not open source file for hashing";
-        return {};
-    }
+        return asset_hash_result::failure({
+            .code = asset_error_code::io_failed,
+            .path = path,
+            .message = "Could not open source file for hashing"
+        });
     sha256 hash;
     std::array<std::byte, 64u * 1024u> buffer{};
     while (input)
@@ -304,12 +263,12 @@ asset_hash hash_file(const std::filesystem::path& path, std::string* error)
             hash.update(std::span<const std::byte>(buffer.data(), static_cast<std::size_t>(count)));
     }
     if (!input.eof())
-    {
-        if (error)
-            *error = "Source file hashing failed";
-        return {};
-    }
-    return hash.finish();
+        return asset_hash_result::failure({
+            .code = asset_error_code::io_failed,
+            .path = path,
+            .message = "Source file hashing failed"
+        });
+    return asset_hash_result::success(hash.finish());
 }
 
 asset_hash combine_hashes(std::span<const asset_hash> hashes) noexcept

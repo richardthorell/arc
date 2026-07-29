@@ -27,7 +27,7 @@ void require_terrain_frame_submission(arc::render::renderer& renderer)
     texture.pixels.assign(16, std::byte{ 0x7f });
     const auto texture_handle = renderer.create_texture(std::move(texture));
 
-    arc::render::material_desc terrain;
+    arc::render::material_descriptor terrain;
     terrain.name = "Vulkan terrain sampler smoke";
     terrain.domain = arc::render::material_domain::terrain;
     terrain.base_color_texture = texture_handle;
@@ -41,7 +41,7 @@ void require_terrain_frame_submission(arc::render::renderer& renderer)
 
     const auto submitted = renderer.render_frame(
         1u, arc::render::make_scene_draw_graph("vulkan terrain smoke", arc::render::render_path::deferred));
-    REQUIRE(submitted.submitted);
+    REQUIRE(submitted.has_value());
 }
 
 } // namespace
@@ -115,11 +115,11 @@ TEST_CASE("Vulkan loader availability can be queried")
 TEST_CASE("Vulkan backend creation either succeeds or reports a reason")
 {
     auto result = arc::render::vulkan::create_vulkan_backend();
-    if (result.succeeded())
+    if (result)
     {
         arc::render::renderer renderer;
-        REQUIRE(result.backend->type() == arc::render::render_backend_type::vulkan);
-        const auto capabilities = result.backend->capabilities();
+        REQUIRE(result.value()->type() == arc::render::render_backend_type::vulkan);
+        const auto capabilities = result.value()->capabilities();
         REQUIRE(capabilities.api_major >= 1);
         REQUIRE((capabilities.api_major > 1 || capabilities.api_minor >= 2));
         REQUIRE_FALSE(capabilities.adapter_name.empty());
@@ -127,12 +127,12 @@ TEST_CASE("Vulkan backend creation either succeeds or reports a reason")
         REQUIRE(capabilities.compute_queue);
         REQUIRE(capabilities.dynamic_rendering);
         REQUIRE(capabilities.max_color_attachments >= 5);
-        renderer.set_backend(std::move(result.backend));
+        renderer.set_backend(std::move(result).value());
         require_terrain_frame_submission(renderer);
     }
     else
     {
-        REQUIRE_FALSE(result.message.empty());
+        REQUIRE_FALSE(result.error().message.empty());
     }
 }
 
@@ -141,10 +141,10 @@ TEST_CASE("Vulkan compatibility override leaves optional device paths disabled")
     arc::render::vulkan::vulkan_backend_config config{};
     config.force_disable_optional_features = true;
     auto result = arc::render::vulkan::create_vulkan_backend(config);
-    if (result.succeeded())
+    if (result)
     {
         arc::render::renderer renderer({ .force_disable_optional_features = true });
-        renderer.set_backend(std::move(result.backend));
+        renderer.set_backend(std::move(result).value());
         REQUIRE_FALSE(renderer.resolved_config().features.synchronization2);
         REQUIRE_FALSE(renderer.resolved_config().features.timeline_semaphores);
         REQUIRE_FALSE(renderer.resolved_config().features.descriptor_indexing);
@@ -152,6 +152,6 @@ TEST_CASE("Vulkan compatibility override leaves optional device paths disabled")
     }
     else
     {
-        REQUIRE_FALSE(result.message.empty());
+        REQUIRE_FALSE(result.error().message.empty());
     }
 }

@@ -3,12 +3,12 @@
 namespace
 {
 
-class smoke_application final : public arc::application
+class smoke_application final : public arc::framework::application
 {
 public:
-    arc::application_config configure() const override
+    arc::framework::application_config configure() const override
     {
-        arc::application_config config{};
+        arc::framework::application_config config{};
         config.title = "ARC Windows Smoke";
         config.initial_width = 640;
         config.initial_height = 360;
@@ -23,7 +23,7 @@ public:
 
 } // namespace
 
-arc::application_ptr arc::create_application()
+arc::framework::application_ptr arc::framework::create_application()
 {
     return std::make_unique<smoke_application>();
 }

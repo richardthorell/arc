@@ -26,6 +26,10 @@ add_subdirectory(third_party)
 
 add_subdirectory(engine)
 
+if(BUILD_TESTING)
+    add_subdirectory(tests/public_api)
+endif()
+
 if(ARC_BUILD_ASSET_COOKER)
     add_subdirectory(tools/asset_cooker)
 endif()

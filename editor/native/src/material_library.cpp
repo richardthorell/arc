@@ -43,7 +43,7 @@ render::texture_handle ensure_texture(
     auto texture_result = render::load_texture_asset(path);
     if (!texture_result.succeeded())
     {
-        arc::warn(
+        arc::diagnostics::warn(
             "editor.materials",
             "Texture asset could not be loaded: " + path.string() + " (" + texture_result.message + ")");
         return {};
@@ -91,7 +91,7 @@ render::texture_handle ensure_packed_terrain_surface(
         auto loaded = render::load_texture_asset(path);
         if (!loaded.succeeded() || !loaded.texture.has_pixels())
         {
-            arc::warn("editor.materials", "Terrain " + std::string(channel) +
+            arc::diagnostics::warn("editor.materials", "Terrain " + std::string(channel) +
                 " map could not be packed: " + path.generic_string());
             return std::nullopt;
         }
@@ -111,7 +111,7 @@ render::texture_handle ensure_packed_terrain_surface(
             source->pixels.size() >= pixel_count * 4u;
     };
     if ((ao && !channel_usable(ao)) || (roughness && !channel_usable(roughness)) || (height && !channel_usable(height)))
-        arc::warn("editor.materials", "Terrain AORH source dimensions differ; mismatched channels use explicit defaults");
+        arc::diagnostics::warn("editor.materials", "Terrain AORH source dimensions differ; mismatched channels use explicit defaults");
 
     render::texture_data packed;
     packed.name = asset.name + " " + asset.material.terrain_layers[layer_index].name + " AORH";
@@ -330,7 +330,7 @@ render::material_handle load_material_for_editor(
     std::string message;
     if (!load_material_asset(path, asset_root, asset, message))
     {
-        arc::error("editor.materials", "Failed to load material '" + path.string() + "': " + message);
+        arc::diagnostics::error("editor.materials", "Failed to load material '" + path.string() + "': " + message);
         return {};
     }
 
@@ -444,8 +444,8 @@ bool update_material_editor_live_material(
 }
 
 bool apply_material_to_selected(
-    scene::registry& scene,
-    scene::entity selected,
+    ecs::world& scene,
+    ecs::entity selected,
     render::material_handle material)
 {
     if (!material.valid())
@@ -462,8 +462,8 @@ bool apply_material_asset_to_entity(
     render::renderer& renderer,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& material_path,
-    scene::registry& scene,
-    scene::entity entity,
+    ecs::world& scene,
+    ecs::entity entity,
     std::string* message)
 {
     if (!is_material_asset_path(material_path))
@@ -497,14 +497,14 @@ bool apply_material_asset_to_entity(
     return true;
 }
 
-scene::entity apply_material_asset_to_viewport_hit(
+ecs::entity apply_material_asset_to_viewport_hit(
     editor_material_library& library,
     render::renderer& renderer,
     const std::filesystem::path& asset_root,
     const std::filesystem::path& material_path,
-    scene::registry& scene,
+    ecs::world& scene,
     const editor_ray& ray,
-    scene::entity& selected,
+    ecs::entity& selected,
     std::string* message)
 {
     const auto picked = pick_bounded_entity(scene, ray);

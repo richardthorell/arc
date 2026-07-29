@@ -60,17 +60,18 @@ std::filesystem::path metadata_path_for(const std::filesystem::path& source_path
         std::filesystem::path(".arcmeta").native());
 }
 
-bool load_asset_metadata(
-    const std::filesystem::path& path,
-    asset_source_metadata& metadata,
-    std::string& error)
+asset_metadata_result load_asset_metadata(const std::filesystem::path& path)
 {
+    const auto failure = [&](std::string message) {
+        return asset_metadata_result::failure({
+            .code = asset_error_code::invalid_metadata,
+            .path = path,
+            .message = std::move(message)
+        });
+    };
     std::ifstream input(path, std::ios::binary);
     if (!input)
-    {
-        error = "Could not open asset metadata";
-        return false;
-    }
+        return failure("Could not open asset metadata");
 
     json document;
     try
@@ -79,16 +80,14 @@ bool load_asset_metadata(
     }
     catch (const std::exception& exception)
     {
-        error = std::string("Invalid asset metadata JSON: ") + exception.what();
-        return false;
+        return failure(std::string("Invalid asset metadata JSON: ") + exception.what());
     }
 
     if (!document.is_object() ||
         document.value("format", std::string{}) != "arc.asset-meta" ||
         document.value("formatVersion", 0u) != asset_source_metadata::current_format_version)
     {
-        error = "Unsupported ARC asset metadata format or version";
-        return false;
+        return failure("Unsupported ARC asset metadata format or version");
     }
 
     const auto guid = parse_asset_guid(document.value("guid", std::string{}));
@@ -96,8 +95,7 @@ bool load_asset_metadata(
     const auto importer = parse_asset_importer_id(document.value("importer", std::string{}));
     if (!guid || !type || !importer)
     {
-        error = "Asset metadata contains an invalid GUID, type, or importer ID";
-        return false;
+        return failure("Asset metadata contains an invalid GUID, type, or importer ID");
     }
 
     asset_source_metadata parsed;
@@ -107,8 +105,7 @@ bool load_asset_metadata(
     parsed.settings_version = document.value("settingsVersion", 1u);
     if (parsed.settings_version == 0)
     {
-        error = "Asset metadata settings version must be positive";
-        return false;
+        return failure("Asset metadata settings version must be positive");
     }
     const auto settings = document.find("settings");
     parsed.canonical_settings = settings == document.end() ? "{}" : settings->dump();
@@ -117,31 +114,27 @@ bool load_asset_metadata(
     {
         if (!subassets->is_array())
         {
-            error = "Asset metadata subassets must be an array";
-            return false;
+            return failure("Asset metadata subassets must be an array");
         }
         for (const auto& record : *subassets)
         {
             if (!record.is_object())
             {
-                error = "Asset metadata contains a malformed subasset";
-                return false;
+                return failure("Asset metadata contains a malformed subasset");
             }
             const auto subasset_guid = parse_asset_guid(record.value("guid", std::string{}));
             const auto subasset_type = parse_asset_type_id(record.value("type", std::string{}));
             const std::string key = record.value("key", std::string{});
             if (!subasset_guid || !subasset_type || key.empty())
             {
-                error = "Asset metadata contains an invalid subasset";
-                return false;
+                return failure("Asset metadata contains an invalid subasset");
             }
             if (std::any_of(parsed.subassets.begin(), parsed.subassets.end(),
                     [&](const asset_subasset_metadata& value) {
                         return value.persistent_key == key || value.guid == *subasset_guid;
                     }))
             {
-                error = "Asset metadata contains duplicate subasset keys or GUIDs";
-                return false;
+                return failure("Asset metadata contains duplicate subasset keys or GUIDs");
             }
             parsed.subassets.push_back({
                 .persistent_key = key,
@@ -152,27 +145,30 @@ bool load_asset_metadata(
             });
         }
     }
-    metadata = std::move(parsed);
-    return true;
+    return asset_metadata_result::success(std::move(parsed));
 }
 
-bool save_asset_metadata(
+asset_status save_asset_metadata(
     const std::filesystem::path& path,
-    const asset_source_metadata& metadata,
-    std::string& error)
+    const asset_source_metadata& metadata)
 {
+    const auto failure = [&](std::string message) {
+        return asset_status::failure({
+            .code = asset_error_code::invalid_metadata,
+            .path = path,
+            .message = std::move(message)
+        });
+    };
     if (!metadata.guid.valid() || !metadata.type.valid() || !metadata.importer.valid() ||
         metadata.settings_version == 0)
     {
-        error = "Asset metadata is incomplete";
-        return false;
+        return failure("Asset metadata is incomplete");
     }
 
     json settings = json::parse(metadata.canonical_settings, nullptr, false);
     if (settings.is_discarded())
     {
-        error = "Asset import settings are not valid JSON";
-        return false;
+        return failure("Asset import settings are not valid JSON");
     }
 
     json document{
@@ -191,10 +187,7 @@ bool save_asset_metadata(
     std::error_code directory_error;
     std::filesystem::create_directories(path.parent_path(), directory_error);
     if (directory_error)
-    {
-        error = "Could not create the asset metadata directory";
-        return false;
-    }
+        return failure("Could not create the asset metadata directory");
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
     const auto temporary = path.parent_path() /
@@ -202,26 +195,21 @@ bool save_asset_metadata(
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
         if (!output)
-        {
-            error = "Could not create temporary asset metadata";
-            return false;
-        }
+            return failure("Could not create temporary asset metadata");
         output << document.dump(2) << '\n';
         output.flush();
         if (!output)
         {
-            error = "Could not flush asset metadata";
             std::filesystem::remove(temporary, directory_error);
-            return false;
+            return failure("Could not flush asset metadata");
         }
     }
     if (!replace_file(temporary, path))
     {
         std::filesystem::remove(temporary, directory_error);
-        error = "Could not atomically replace asset metadata";
-        return false;
+        return failure("Could not atomically replace asset metadata");
     }
-    return true;
+    return asset_status::success();
 }
 
 std::string normalize_asset_path(const std::filesystem::path& path)

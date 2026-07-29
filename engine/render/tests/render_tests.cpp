@@ -61,7 +61,7 @@ public:
             .overflow_count = 1,
             .available = true
         };
-        return { .submitted = true, .message = "submitted" };
+        return arc::render::render_submit_result::success();
     }
 
     void resize_viewport(std::uint32_t width, std::uint32_t height) override
@@ -327,7 +327,7 @@ TEST_CASE("render event writer emits mesh upload and draw events")
     mesh_data->name = "triangle";
     auto texture_data = std::make_shared<arc::render::texture_data>();
     texture_data->name = "white";
-    auto material_data = std::make_shared<arc::render::material_desc>();
+    auto material_data = std::make_shared<arc::render::material_descriptor>();
     material_data->name = "default";
 
     writer.mesh_upload(mesh, mesh_data, "triangle");
@@ -887,7 +887,7 @@ TEST_CASE("renderer submits committed packets to attached backend")
 
     const auto result = renderer.render_frame(42, arc::render::make_clear_present_graph("viewport"));
 
-    REQUIRE(result.submitted);
+    REQUIRE(result.has_value());
     REQUIRE(backend_ptr->last_frame == 42);
     REQUIRE(backend_ptr->last_event_count == 1);
     REQUIRE(backend_ptr->last_pass_count == 2);
@@ -995,7 +995,7 @@ TEST_CASE("renderer exposes compiled render graph snapshots through frame profil
 
     const auto result = renderer.render_frame(7, arc::render::make_scene_draw_graph("viewport"));
 
-    REQUIRE(result.submitted);
+    REQUIRE(result.has_value());
     const auto profile = renderer.last_frame_profile();
     REQUIRE(profile.frame_index == 7);
     REQUIRE(profile.summary == "recorded");
@@ -1058,7 +1058,7 @@ TEST_CASE("renderer forwards viewport resize events to backend")
     renderer.frame_queue().submit(std::move(buffer));
 
     const auto result = renderer.render_frame(1, arc::render::make_clear_present_graph("viewport"));
-    REQUIRE(result.submitted);
+    REQUIRE(result.has_value());
     REQUIRE(backend_ptr->viewport_width == 800);
     REQUIRE(backend_ptr->viewport_height == 450);
     REQUIRE(renderer.viewport_texture().valid());
@@ -1155,7 +1155,7 @@ TEST_CASE("renderer creates texture and material resources")
     const auto texture_handle = renderer.create_texture(std::move(texture));
     REQUIRE(renderer.texture_alive(texture_handle));
 
-    arc::render::material_desc material;
+    arc::render::material_descriptor material;
     material.name = "pbr";
     material.base_color_texture = texture_handle;
     material.metallic = 0.25f;
@@ -1209,7 +1209,7 @@ TEST_CASE("renderer creates texture and material resources")
 TEST_CASE("renderer creates environment resources")
 {
     arc::render::renderer renderer;
-    arc::render::environment_desc environment;
+    arc::render::environment_descriptor environment;
     environment.name = "studio";
     environment.fallback_color = { 0.20f, 0.22f, 0.25f };
     environment.intensity = 1.5f;
@@ -1258,7 +1258,7 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
         { .position = { 0.0f, 1.0f, 0.0f }, .direction = { 0.0f, -1.0f, 0.0f }, .color = { 0.8f, 0.9f, 1.0f }, .intensity = 3.0f, .range = 10.0f, .inner_angle = 0.2f, .outer_angle = 0.7f }
     };
 
-    arc::render::environment_desc environment;
+    arc::render::environment_descriptor environment;
     environment.fallback_color = { 0.1f, 0.2f, 0.3f };
     environment.intensity = 1.25f;
 
@@ -1483,7 +1483,7 @@ TEST_CASE("pipeline handle cache reuses equivalent keys")
 
 TEST_CASE("shader permutation keys capture material features")
 {
-    arc::render::material_desc material;
+    arc::render::material_descriptor material;
     material.alpha_mode = arc::render::material_alpha_mode::blend;
     material.normal_texture = { .index = 1, .generation = 1 };
     material.emissive_texture = { .index = 2, .generation = 1 };
@@ -1511,12 +1511,10 @@ public:
     arc::render::shader_compile_result compile(const arc::render::shader_compile_request& request) override
     {
         ++count;
-        return {
-            .succeeded = true,
-            .diagnostics = request.source_path,
+        return arc::render::shader_compile_result::success({
             .bytecode = { std::uint8_t(count) },
             .reflection = { .entry_points = { request.entry_point } }
-        };
+        });
     }
 
     int count{};
@@ -1544,8 +1542,8 @@ TEST_CASE("shader library cache reuses unchanged source requests")
     const auto first = cache.compile_or_get(compiler, request);
     const auto second = cache.compile_or_get(compiler, request);
 
-    REQUIRE(first.succeeded);
-    REQUIRE(second.succeeded);
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
     REQUIRE(compiler.count == 1);
     REQUIRE(cache.size() == 1);
     REQUIRE_FALSE(cache.source_changed(request));
