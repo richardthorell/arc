@@ -116,38 +116,40 @@ def prepare_native_host(args, repo_root):
     if cmake is None:
         raise RuntimeError("could not find CMake executable '{}'".format(args.cmake))
 
-    host = find_host_executable(build_dir, args.config)
     cache_matches = cmake_cache_matches(build_dir, args.vulkan_render)
-    if args.force_build or host is None or not cache_matches:
-        if not cache_matches:
-            run(
-                [
-                    cmake,
-                    "-B",
-                    build_dir,
-                    "-S",
-                    repo_root,
-                    "-DCMAKE_BUILD_TYPE={}".format(args.config),
-                    "-DARC_BUILD_EDITOR=ON",
-                    "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
-                ],
-                repo_root,
-            )
+    if not cache_matches:
         run(
             [
                 cmake,
-                "--build",
+                "-B",
                 build_dir,
-                "--config",
-                args.config,
-                "--target",
-                "arc_host_process",
-                "--parallel",
-                args.parallel or str(cpu_count()),
+                "-S",
+                repo_root,
+                "-DCMAKE_BUILD_TYPE={}".format(args.config),
+                "-DARC_BUILD_EDITOR=ON",
+                "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
             ],
             repo_root,
         )
-        host = find_host_executable(build_dir, args.config)
+
+    # Always ask the build system for the host. CMake/MSBuild/Ninja perform an
+    # incremental no-op when it is current, while checking timestamps prevents
+    # Electron from speaking a newer protocol to a stale executable.
+    run(
+        [
+            cmake,
+            "--build",
+            build_dir,
+            "--config",
+            args.config,
+            "--target",
+            "arc_host_process",
+            "--parallel",
+            args.parallel or str(cpu_count()),
+        ],
+        repo_root,
+    )
+    host = find_host_executable(build_dir, args.config)
 
     if host is None:
         raise RuntimeError("arc_host_process was not found after the native build")
