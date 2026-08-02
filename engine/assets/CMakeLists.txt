@@ -7,7 +7,7 @@ arc_add_module(
 
 target_link_libraries(arc-assets
     PRIVATE
-        arc-third-party-json
+        "$<BUILD_INTERFACE:arc-third-party-json>"
         arc-third-party-sqlite
 )
 

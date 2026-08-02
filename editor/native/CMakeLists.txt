@@ -12,6 +12,7 @@ add_library(arc-editor-host STATIC
     src/material_library.cpp
     src/material_preview.cpp
     src/prefab_document.cpp
+    src/project_module_loader.cpp
     src/scene_document.cpp
     src/world_environment_host.cpp
 )
@@ -39,6 +40,7 @@ target_link_libraries(arc-editor-host
         arc
     PRIVATE
         arc-third-party-json
+        ${CMAKE_DL_LIBS}
 )
 
 if(NOT TARGET arc::editor-host)
@@ -64,16 +66,29 @@ if(ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
     target_link_libraries(arc_host_process
         PRIVATE
             arc-render-vulkan
+            arc-third-party-volk
     )
     target_compile_definitions(arc_host_process
         PRIVATE
             ARC_EDITOR_HOST_ENABLE_VULKAN_RENDER=1
+            VK_NO_PROTOTYPES=1
     )
+    add_custom_command(TARGET arc_host_process POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:arc-render-vulkan>"
+            "$<TARGET_FILE_DIR:arc_host_process>"
+        COMMENT "Copying the Vulkan backend beside the native editor host"
+        VERBATIM)
 endif()
 
 install(TARGETS arc_host_process
     RUNTIME DESTINATION native
     COMPONENT editor-host)
+if(ARC_BUILD_RENDER_VULKAN AND TARGET arc-render-vulkan)
+    install(FILES "$<TARGET_FILE:arc-render-vulkan>"
+        DESTINATION native
+        COMPONENT editor-host)
+endif()
 if(MSVC)
     install(FILES "$<TARGET_PDB_FILE:arc_host_process>"
         DESTINATION symbols

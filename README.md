@@ -163,6 +163,47 @@ python3 tools/generate_coverage.py
 
 Reports are written under `out/coverage`; coverage CI publishes them as an artifact without enforcing a percentage threshold.
 
+## Installed SDK and external projects
+
+ARC projects are standalone repositories described by a version-2
+`<Project>.arcproject` file. Generate one of the installed templates with the
+native project tool:
+
+```bash
+arc-project create --name MyGame --destination MyGame \
+  --template blank-3d --templates <ARC>/share/arc/templates --engine 0.1.0
+arc-project validate --project MyGame/MyGame.arcproject --require-paths
+arc-project configure --project MyGame/MyGame.arcproject --sdk <ARC>
+arc-project build --project MyGame/MyGame.arcproject --config RelWithDebInfo
+```
+
+Available templates are Blank 3D, Blank Headless, Rendering Sample, and Empty
+C++. Generated projects keep source-controlled files in `Source/`, `Content/`,
+`Config/`, and `Plugins/`; transient editor state, caches, recovery generations,
+and products live in `Saved/`, `Intermediate/`, and `Build/`.
+
+External CMake projects consume the relocatable SDK without referencing the ARC
+checkout:
+
+```cmake
+find_package(ARC 0.1.0 EXACT CONFIG REQUIRED COMPONENTS Runtime Vulkan)
+target_link_libraries(MyGame PRIVATE ARC::Runtime ARC::RenderVulkan)
+```
+
+Engine installations are discovered through the per-user installation registry,
+whose entries point to an installed `arc-installation.json` manifest:
+
+```bash
+arc-project engine register --manifest <ARC>/arc-installation.json
+arc-project engine list
+arc-project engine verify
+arc-project toolchains
+```
+
+The same CLI owns descriptor upgrades, toolchain probing, CMake configure/build,
+and Visual Studio, VS Code, and CLion generation so the start screen and command
+line use identical validation and template behavior.
+
 ## CI
 
 arc is built continuously across pinned runner and compiler families:

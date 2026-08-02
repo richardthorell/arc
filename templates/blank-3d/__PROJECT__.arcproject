@@ -1,0 +1,23 @@
+{
+  "format": "arc-project",
+  "formatVersion": 2,
+  "guid": "{{PROJECT_GUID}}",
+  "name": "{{PROJECT_NAME}}",
+  "engineVersion": "{{ENGINE_VERSION}}",
+  "paths": {"source":"Source","content":"Content","config":"Config","plugins":"Plugins","saved":"Saved","intermediate":"Intermediate","build":"Build"},
+  "assetRoots": ["Content"],
+  "modules": [
+    {"id":"{{PROJECT_TOKEN}}.runtime","kind":"runtime","target":"{{PROJECT_TOKEN}}Runtime","sourceRoot":"Source/{{PROJECT_TOKEN}}Runtime","enabled":true,"dependencies":[{"kind":"engine","id":"ARC.Runtime","version":"{{ENGINE_VERSION}}"}]},
+    {"id":"{{PROJECT_TOKEN}}.editor","kind":"editor","target":"{{PROJECT_TOKEN}}Editor","sourceRoot":"Source/{{PROJECT_TOKEN}}Editor","enabled":true,"dependencies":[{"kind":"project","id":"{{PROJECT_TOKEN}}.runtime","version":""},{"kind":"engine","id":"ARC.EditorModuleSDK","version":"{{ENGINE_VERSION}}"}]}
+  ],
+  "plugins": [],
+  "defaultScene": {"guid":"{{SCENE_ASSET_GUID}}","expectedType":"scene","pathHint":"Content/Scenes/Startup.arcscene"},
+  "startupScenes": [{"guid":"{{SCENE_ASSET_GUID}}","expectedType":"scene","pathHint":"Content/Scenes/Startup.arcscene"}],
+  "targetPlatforms": [{"id":"windows-x64-vulkan","enabled":true}],
+  "toolchain": {"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
+  "buildConfigurations": ["Debug","RelWithDebInfo","Shipping"],
+  "renderer": {"backend":"vulkan","api":"1.2","quality":"standard"},
+  "cookProfiles": [{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textureFamily":"bc","configuration":"Shipping"}],
+  "package": {"applicationName":"{{PROJECT_NAME}}","companyName":"","output":"Build/Packages","regionChunks":true},
+  "settings": {"editor":"Config/Editor.json","renderer":"Config/Renderer.json","input":"Config/Input.json"}
+}

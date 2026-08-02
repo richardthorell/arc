@@ -1,0 +1,6 @@
+/Saved/
+/Intermediate/
+/Build/
+/CMakeUserPresets.json
+*.user
+*.suo

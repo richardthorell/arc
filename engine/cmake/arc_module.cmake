@@ -155,7 +155,8 @@ function(arc_add_module)
 
         target_include_directories(${ARC_NAME}
             INTERFACE
-                "${_module_dir}/inc"
+                "$<BUILD_INTERFACE:${_module_dir}/inc>"
+                "$<INSTALL_INTERFACE:include>"
         )
 
         target_compile_features(${ARC_NAME}
@@ -174,11 +175,8 @@ function(arc_add_module)
         # Interface libraries cannot own source files in the same way as compiled
         # targets, but these help IDE organization in some generators.
         #
-        target_sources(${ARC_NAME}
-            INTERFACE
-                ${_public_headers}
-                ${_private_headers}
-        )
+        # Public headers are installed separately. Avoid exporting absolute
+        # source-tree paths through INTERFACE_SOURCES.
     else()
         add_library(${ARC_NAME} ${ARC_TYPE}
             ${_public_headers}
@@ -189,7 +187,8 @@ function(arc_add_module)
 
         target_include_directories(${ARC_NAME}
             PUBLIC
-                "${_module_dir}/inc"
+                "$<BUILD_INTERFACE:${_module_dir}/inc>"
+                "$<INSTALL_INTERFACE:include>"
             PRIVATE
                 "${_module_dir}/src"
         )
@@ -205,6 +204,57 @@ function(arc_add_module)
                     ${ARC_DEPS}
             )
         endif()
+    endif()
+
+    string(REPLACE "arc-" "" _export_suffix "${ARC_NAME}")
+    if(_export_suffix STREQUAL "core")
+        set(_export_name "Core")
+    elseif(_export_suffix STREQUAL "simd")
+        set(_export_name "SIMD")
+    elseif(_export_suffix STREQUAL "math")
+        set(_export_name "Math")
+    elseif(_export_suffix STREQUAL "geometric")
+        set(_export_name "Geometric")
+    elseif(_export_suffix STREQUAL "diagnostics")
+        set(_export_name "Diagnostics")
+    elseif(_export_suffix STREQUAL "jobs")
+        set(_export_name "Jobs")
+    elseif(_export_suffix STREQUAL "memory")
+        set(_export_name "Memory")
+    elseif(_export_suffix STREQUAL "io")
+        set(_export_name "IO")
+    elseif(_export_suffix STREQUAL "framework")
+        set(_export_name "Framework")
+    elseif(_export_suffix STREQUAL "assets")
+        set(_export_name "Assets")
+    elseif(_export_suffix STREQUAL "input")
+        set(_export_name "Input")
+    elseif(_export_suffix STREQUAL "ecs")
+        set(_export_name "ECS")
+    elseif(_export_suffix STREQUAL "persistence")
+        set(_export_name "Persistence")
+    elseif(_export_suffix STREQUAL "project")
+        set(_export_name "Project")
+    elseif(_export_suffix STREQUAL "render")
+        set(_export_name "Render")
+    elseif(_export_suffix STREQUAL "scene")
+        set(_export_name "Scene")
+    else()
+        set(_export_name "${_export_suffix}")
+    endif()
+    set_target_properties(${ARC_NAME} PROPERTIES EXPORT_NAME "${_export_name}")
+
+    install(TARGETS ${ARC_NAME}
+        EXPORT ARCTargets
+        ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+        LIBRARY DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+        RUNTIME DESTINATION "bin/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+        COMPONENT sdk
+        INCLUDES DESTINATION include)
+    if(EXISTS "${_module_dir}/inc")
+        install(DIRECTORY "${_module_dir}/inc/"
+            DESTINATION include
+            COMPONENT sdk-headers)
     endif()
 
     #

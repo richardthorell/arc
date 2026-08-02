@@ -49,7 +49,21 @@ file(COPY
     "${ARC_SOURCE_ROOT}/assets/environments/autumn_field_puresky_1k.hdr.arcmeta"
     DESTINATION "${ARC_TEST_ROOT}/assets/environments"
 )
-file(COPY "${ARC_SOURCE_ROOT}/arc.cook.json" DESTINATION "${ARC_TEST_ROOT}")
+file(WRITE "${ARC_TEST_ROOT}/CookFixture.arcproject" [=[
+{
+  "format":"arc-project","formatVersion":2,
+  "guid":"00000000-0000-4000-8000-00000000c001","name":"Cook Fixture","engineVersion":"0.1.0",
+  "paths":{"source":"Source","content":"assets","config":"Config","plugins":"Plugins","saved":"Saved","intermediate":"Intermediate","build":"Build"},
+  "assetRoots":["assets"],"modules":[],"plugins":[],"startupScenes":[],
+  "targetPlatforms":[{"id":"windows-x64-vulkan","enabled":true}],
+  "toolchain":{"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
+  "buildConfigurations":["Debug","RelWithDebInfo","Shipping"],
+  "renderer":{"backend":"vulkan","api":"1.2","quality":"standard"},
+  "cookProfiles":[{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textureFamily":"bc","configuration":"Shipping"}],
+  "package":{"applicationName":"Cook Fixture","companyName":"","output":"Build/Packages","regionChunks":true},
+  "settings":{"editor":"Config/Editor.json","renderer":"Config/Renderer.json","input":"Config/Input.json"}
+}
+]=])
 
 set(output "${ARC_TEST_ROOT}/out")
 set(manifest "${output}/windows-x64-vulkan.arccookmanifest")

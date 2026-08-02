@@ -1,0 +1,34 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+if("Vulkan" IN_LIST ARC_FIND_COMPONENTS)
+    find_dependency(Vulkan REQUIRED)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/ARCTargets.cmake")
+
+foreach(_arc_component IN ITEMS
+        Core Framework Assets Persistence ECS Input Render Scene Project
+        Runtime Server EditorModuleSDK PlatformWindows)
+    if(TARGET "ARC::${_arc_component}")
+        set("ARC_${_arc_component}_FOUND" TRUE)
+    else()
+        set("ARC_${_arc_component}_FOUND" FALSE)
+    endif()
+endforeach()
+if(TARGET ARC::RenderVulkan)
+    set(ARC_Vulkan_FOUND TRUE)
+else()
+    set(ARC_Vulkan_FOUND FALSE)
+endif()
+
+set(ARC_VERSION "@PROJECT_VERSION@")
+set(ARC_INSTALLATION_ROOT "${PACKAGE_PREFIX_DIR}")
+set(ARC_TEMPLATES_DIR "${PACKAGE_PREFIX_DIR}/share/arc/templates")
+set(ARC_PROJECT_TOOL "${PACKAGE_PREFIX_DIR}/bin/arc-project@CMAKE_EXECUTABLE_SUFFIX@")
+set(ARC_COOKER "${PACKAGE_PREFIX_DIR}/bin/arc-cook@CMAKE_EXECUTABLE_SUFFIX@")
+
+check_required_components(ARC)
+
+unset(_arc_component)

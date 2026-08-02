@@ -7,6 +7,9 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import { VitePlugin } from '@electron-forge/plugin-vite';
 
 const bundledHost = process.env.ARC_PACKAGED_HOST_PATH;
+const bundledProjectTool = process.env.ARC_PACKAGED_PROJECT_TOOL_PATH;
+const bundledTemplates = process.env.ARC_PACKAGED_TEMPLATES_PATH;
+const bundledRenderVulkan = process.env.ARC_PACKAGED_RENDER_VULKAN_PATH;
 if (process.env.ARC_REQUIRE_PACKAGED_HOST === '1' && !bundledHost) {
   throw new Error('ARC_PACKAGED_HOST_PATH is required for packaged editor builds');
 }
@@ -15,7 +18,9 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'arc-editor',
-    extraResource: bundledHost ? [bundledHost] : [],
+    extraResource: [bundledHost, bundledProjectTool, bundledTemplates, bundledRenderVulkan].filter(
+      (entry): entry is string => Boolean(entry),
+    ),
   },
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerDeb({}), new MakerRpm({})],

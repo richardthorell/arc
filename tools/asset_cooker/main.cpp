@@ -3,6 +3,7 @@
 #include <arc/io/io.h>
 #include <arc/memory/memory.h>
 #include <arc/persistence/persistence.h>
+#include <arc/project/project.h>
 #include <arc/render/mesh.h>
 #include <arc/render/texture.h>
 #include <arc/render/virtual_mesh.h>
@@ -475,13 +476,39 @@ std::optional<command_line> parse_command_line(int argc, char** argv)
             return std::nullopt;
     }
     result.project = std::filesystem::absolute(result.project).lexically_normal();
-    if (result.output.empty()) result.output = result.project / "out" / "cooked" / result.profile;
     return result;
 }
 
-cook_target target_for(std::string_view profile)
+cook_target target_for(const project::cook_profile_descriptor& profile)
 {
-    return profile == "linux-x64-vulkan" ? linux_vulkan_cook_target() : windows_vulkan_cook_target();
+    cook_target result;
+    result.name = profile.id;
+    result.platform = profile.platform == "linux" ? cook_platform::linux_os
+                      : profile.platform == "macos" ? cook_platform::macos
+                                                     : cook_platform::windows;
+    result.architecture = profile.architecture == "arm64" ? cook_architecture::arm64 : cook_architecture::x86_64;
+    result.renderer = profile.renderer == "none" ? cook_renderer::none
+                      : profile.renderer == "direct3d12" ? cook_renderer::direct3d12
+                      : profile.renderer == "metal" ? cook_renderer::metal
+                                                     : cook_renderer::vulkan;
+    result.textures = profile.texture_family == "astc" ? cook_texture_family::astc
+                      : profile.texture_family == "etc2" ? cook_texture_family::etc2
+                      : profile.texture_family == "portable" ? cook_texture_family::portable
+                                                             : cook_texture_family::bc;
+    result.configuration = profile.configuration == "Shipping" ? cook_configuration::shipping
+                                                                  : cook_configuration::development;
+    const auto separator = profile.api.find('.');
+    if (separator != std::string::npos)
+    {
+        result.api_major = static_cast<std::uint32_t>(std::stoul(profile.api.substr(0, separator)));
+        result.api_minor = static_cast<std::uint32_t>(std::stoul(profile.api.substr(separator + 1)));
+    }
+    else if (profile.api.empty())
+    {
+        result.api_major = 0;
+        result.api_minor = 0;
+    }
+    return result;
 }
 
 void register_processors(asset_cooker& cooker)
@@ -508,17 +535,27 @@ void register_processors(asset_cooker& cooker)
         std::make_unique<unsupported_processor>(asset_types::audio_clip, cook_processor_ids::audio, "Audio encoding"));
 }
 
-std::vector<asset_guid> resolve_roots(asset_manager& assets, const command_line& command)
+std::filesystem::path find_project_descriptor(const std::filesystem::path& candidate)
+{
+    if (std::filesystem::is_regular_file(candidate) && candidate.extension() == ".arcproject") return candidate;
+    if (!std::filesystem::is_directory(candidate)) return {};
+    std::vector<std::filesystem::path> descriptors;
+    for (const auto& entry : std::filesystem::directory_iterator(candidate))
+        if (entry.is_regular_file() && entry.path().extension() == ".arcproject") descriptors.push_back(entry.path());
+    return descriptors.size() == 1 ? descriptors.front() : std::filesystem::path{};
+}
+
+std::vector<asset_guid> resolve_roots(asset_manager& assets, const command_line& command,
+                                      const project::project_descriptor& descriptor)
 {
     std::vector<std::string> authored = command.roots;
-    const auto config_path = command.project / "arc.cook.json";
     if (authored.empty())
     {
-        std::ifstream stream(config_path);
-        const auto config = stream ? nlohmann::json::parse(stream, nullptr, false) : nlohmann::json{};
-        if (config.is_object() && config.contains("roots") && config["roots"].is_array())
-            for (const auto& root : config["roots"])
-                if (root.is_string()) authored.push_back(root.get<std::string>());
+        if (descriptor.default_scene) authored.push_back(descriptor.default_scene->guid.empty()
+                                                             ? descriptor.default_scene->path_hint
+                                                             : descriptor.default_scene->guid);
+        for (const auto& scene : descriptor.startup_scenes)
+            authored.push_back(scene.guid.empty() ? scene.path_hint : scene.guid);
     }
     std::vector<asset_guid> result;
     for (const auto& root : authored)
@@ -527,8 +564,6 @@ std::vector<asset_guid> resolve_roots(asset_manager& assets, const command_line&
             result.push_back(*guid);
         else if (const auto asset = assets.find(normalize_asset_path(root)))
             result.push_back(asset->guid);
-        else if (const auto prefixed_asset = assets.find(normalize_asset_path(std::filesystem::path("assets") / root)))
-            result.push_back(prefixed_asset->guid);
     }
     std::sort(result.begin(), result.end());
     result.erase(std::unique(result.begin(), result.end()), result.end());
@@ -551,8 +586,37 @@ int main(int argc, char** argv)
         print_usage();
         return 2;
     }
-    const auto& command = *parsed;
-    const auto cache_root = command.project / ".arc" / "cache";
+    auto command = *parsed;
+    const auto descriptor_path = find_project_descriptor(command.project);
+    if (descriptor_path.empty())
+    {
+        std::cerr << "--project must identify a directory containing exactly one .arcproject descriptor\n";
+        return 2;
+    }
+    const auto descriptor = project::load_descriptor(descriptor_path);
+    if (!descriptor)
+    {
+        std::cerr << descriptor.error().message << '\n';
+        return 1;
+    }
+    const auto project_context = project::resolve_context(descriptor_path, descriptor.value());
+    if (!project_context)
+    {
+        std::cerr << project_context.error().message << '\n';
+        return 1;
+    }
+    command.project = project_context.value().root;
+    const auto selected_profile = std::find_if(descriptor.value().cook_profiles.begin(),
+                                               descriptor.value().cook_profiles.end(),
+                                               [&](const auto& profile) { return profile.id == command.profile; });
+    if ((command.command == "cook" || (command.command == "package" && command.manifest.empty())) &&
+        selected_profile == descriptor.value().cook_profiles.end())
+    {
+        std::cerr << "Cook profile '" << command.profile << "' is not declared by the project\n";
+        return 2;
+    }
+    if (command.output.empty()) command.output = project_context.value().build_root / "Cooked" / command.profile;
+    const auto cache_root = project_context.value().asset_cache_root;
 
     if (command.command == "clean")
     {
@@ -648,11 +712,39 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    if (command.command == "package" && !command.manifest.empty() && std::filesystem::is_regular_file(command.manifest))
+    {
+        auto manifest = load_cook_manifest(command.manifest);
+        if (!manifest)
+        {
+            std::cerr << manifest.error().message << '\n';
+            return 1;
+        }
+        auto package = build_asset_packages(manifest.value(), cache, command.output);
+        if (!package.succeeded())
+        {
+            std::cerr << package.error << '\n';
+            return 1;
+        }
+        if (command.json)
+            std::cout << nlohmann::json{{"event", "package.complete"},
+                                        {"artifacts", manifest.value().artifacts.size()},
+                                        {"chunks", package.chunks.size()}}
+                             .dump()
+                      << '\n';
+        else
+            std::cout << "packaged " << manifest.value().artifacts.size() << " artifacts\n";
+        return 0;
+    }
+
     memory::memory_system memory;
     jobs::job_system jobs({.memory = &memory});
     io::async_file_service files(jobs);
+    const auto& asset_roots = project_context.value().asset_roots;
     asset_manager assets({.project_root = command.project,
-                          .asset_root = command.project / "assets",
+                          .asset_root = asset_roots.front(),
+                          .additional_source_roots = std::vector<std::filesystem::path>(asset_roots.begin() + 1,
+                                                                                       asset_roots.end()),
                           .cache_root = cache_root,
                           .target_profile = command.profile,
                           .enable_source_monitor = false},
@@ -663,15 +755,15 @@ int main(int argc, char** argv)
 
     asset_cooker cooker(assets, cache);
     register_processors(cooker);
-    const auto roots = resolve_roots(assets, command);
+    const auto roots = resolve_roots(assets, command, descriptor.value());
     if (roots.empty())
     {
-        std::cerr << "No cook roots resolved. Add roots to arc.cook.json or pass --root.\n";
+        std::cerr << "No cook roots resolved. Add a default/startup scene to .arcproject or pass --root.\n";
         assets.on_shutdown(context);
         return 1;
     }
     const auto cooked = cooker.cook({.roots = roots,
-                                     .target = target_for(command.profile),
+                                     .target = target_for(*selected_profile),
                                      .output = command.output,
                                      .fail_on_warning = command.fail_on_warning});
     if (!cooked.succeeded())

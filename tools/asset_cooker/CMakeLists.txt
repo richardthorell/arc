@@ -8,12 +8,16 @@ target_link_libraries(arc-cook
     PRIVATE
         arc-assets
         arc-persistence
+        arc-project
         arc-render
         arc-scene
         arc-third-party-json
 )
 
 set_target_properties(arc-cook PROPERTIES FOLDER "Tools")
+install(TARGETS arc-cook
+    RUNTIME DESTINATION bin
+    COMPONENT tools)
 
 if(BUILD_TESTING)
     add_test(

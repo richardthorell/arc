@@ -1,0 +1,1 @@
+{"format":"arc-project-template","formatVersion":1,"id":"empty-cpp","name":"Empty C++ Project","description":"Editor, runtime, and server module scaffolding without authored content or launchers.","engineVersion":"{{ENGINE_VERSION}}"}

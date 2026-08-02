@@ -685,6 +685,14 @@ struct host_open_project_command
 {
     std::string name;
     std::filesystem::path root;
+    std::filesystem::path descriptor_path;
+    std::vector<std::filesystem::path> content_roots;
+    std::filesystem::path cache_root;
+    std::filesystem::path default_scene;
+    std::string project_guid;
+    std::string engine_version;
+    std::string editor_module_id;
+    std::filesystem::path editor_module_path;
     bool read_only{};
 };
 

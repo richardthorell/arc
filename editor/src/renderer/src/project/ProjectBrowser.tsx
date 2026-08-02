@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Box, FolderOpen, GitBranch, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Box,
+  FolderOpen,
+  GitBranch,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+  Settings,
+} from 'lucide-react';
 
 import type {
   ArcProjectBrowserSnapshot,
@@ -7,6 +17,7 @@ import type {
   ArcProjectOperationResult,
 } from '../../../common/projectTypes';
 import type { RecoverySnapshot } from '../../../common/editorWorkflowTypes';
+import { WindowControls } from '../layout/WindowControls';
 import { UiButton, UiIconButton } from '../ui';
 
 import './projectBrowser.css';
@@ -34,10 +45,12 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
   const [snapshot, setSnapshot] = useState<ArcProjectBrowserSnapshot | null>(null);
   const [mode, setMode] = useState<'recent' | 'create' | 'clone'>('recent');
   const [projectName, setProjectName] = useState('New ARC Project');
+  const [projectTemplate, setProjectTemplate] = useState('blank-3d');
   const [cloneSource, setCloneSource] = useState('');
   const [destination, setDestination] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('');
   const [recoveries, setRecoveries] = useState<Record<string, RecoverySnapshot>>({});
 
   const refresh = async () => {
@@ -46,7 +59,8 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
     if (!next) return;
     const entries = await Promise.all(
       next.recentProjects.map(
-        async (project) => [project.guid, await window.arc.recovery.snapshot(project.guid)] as const,
+        async (project) =>
+          [project.guid, await window.arc.recovery.snapshot(project.guid, project.projectRoot)] as const,
       ),
     );
     setRecoveries(
@@ -78,6 +92,24 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
     if (!selected) return;
     setBusy(true);
     let result = await window.arc.projects.open(selected);
+    const requiredVersion = result.project?.descriptor.engineVersion;
+    const matchingInstallation = snapshot?.installations.find(
+      (installation) => installation.version === requiredVersion && !installation.current && installation.editorPath,
+    );
+    if (
+      !result.succeeded &&
+      matchingInstallation &&
+      window.confirm(`Open this project in its matching ARC ${requiredVersion} editor?`)
+    ) {
+      const launched = await window.arc.projects.launchMatchingEngine(selected);
+      setBusy(false);
+      setMessage(
+        launched.succeeded
+          ? `Launched ARC ${requiredVersion}.`
+          : launched.error || 'Could not launch the matching editor',
+      );
+      return;
+    }
     if (!result.succeeded && result.project?.compatibility === 'upgradeRequired') {
       const approved = window.confirm(
         `Upgrade ${result.project.descriptor.name} from ARC ${result.project.descriptor.engineVersion} to ${snapshot?.currentEngineVersion}? A validated descriptor backup will be created first.`,
@@ -93,6 +125,26 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
   };
 
   const openRecent = async (descriptorPath: string, compatibility: string) => {
+    const recent = snapshot?.recentProjects.find((entry) => entry.descriptorPath === descriptorPath);
+    const matchingInstallation = snapshot?.installations.find(
+      (installation) =>
+        installation.version === recent?.engineVersion && !installation.current && installation.editorPath,
+    );
+    if (
+      compatibility !== 'compatible' &&
+      matchingInstallation &&
+      window.confirm(`Open this project in ARC ${recent?.engineVersion}?`)
+    ) {
+      setBusy(true);
+      const launched = await window.arc.projects.launchMatchingEngine(descriptorPath);
+      setBusy(false);
+      setMessage(
+        launched.succeeded
+          ? `Launched ARC ${recent?.engineVersion}.`
+          : launched.error || 'Could not launch the matching editor',
+      );
+      return;
+    }
     if (
       compatibility === 'upgradeRequired' &&
       !window.confirm(
@@ -138,7 +190,7 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
     const created = await window.arc.projects.create({
       name: projectName.trim(),
       destination,
-      template: 'mountain',
+      template: projectTemplate,
     });
     if (!created.succeeded || !created.project) return finish(created);
     await finish(await window.arc.projects.open(created.project.descriptorPath));
@@ -167,6 +219,15 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
     );
   };
 
+  const recentProjects = (snapshot?.recentProjects ?? []).filter((project) => {
+    const query = search.trim().toLocaleLowerCase();
+    return (
+      !query ||
+      project.name.toLocaleLowerCase().includes(query) ||
+      project.projectRoot.toLocaleLowerCase().includes(query)
+    );
+  });
+
   return (
     <main className="project-browser-shell">
       <header className="project-browser-header">
@@ -179,7 +240,8 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
             <span>Production Editor</span>
           </div>
         </div>
-        <span>Engine {snapshot?.currentEngineVersion ?? '...'}</span>
+        <span className="project-browser-engine-version">Engine {snapshot?.currentEngineVersion ?? '...'}</span>
+        <WindowControls />
       </header>
 
       <section className="project-browser-body">
@@ -193,28 +255,40 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
           <button className={mode === 'clone' ? 'active' : ''} onClick={() => setMode('clone')} type="button">
             <GitBranch size={17} /> Clone
           </button>
+          <button
+            className="project-browser-settings"
+            onClick={() => setMessage('Editor settings are available after opening a project.')}
+            type="button"
+          >
+            <Settings size={17} /> Settings
+          </button>
         </aside>
 
         <section className="project-browser-content">
           <div className="project-browser-title">
             <div>
-              <h1>{mode === 'recent' ? 'Your projects' : mode === 'create' ? 'Create project' : 'Clone project'}</h1>
+              <h1>{mode === 'recent' ? 'Welcome to ARC' : mode === 'create' ? 'Create project' : 'Clone project'}</h1>
               <p>
                 {mode === 'recent'
-                  ? 'Open a recent workspace or choose an ARC project descriptor.'
+                  ? 'Open a recent workspace or create a new ARC project.'
                   : mode === 'create'
-                    ? 'Create a version-pinned project from the ARC mountain template.'
+                    ? 'Create a complete external C++ repository from an installed ARC template.'
                     : 'Clone a Git repository or copy a local project directory.'}
               </p>
             </div>
             {mode === 'recent' && (
               <div className="project-browser-actions">
-                <UiIconButton label="Refresh projects" onClick={() => void refresh()}>
-                  <RefreshCw size={15} />
-                </UiIconButton>
-                <UiButton onClick={() => void openDescriptor()} variant="primary">
-                  Open project
-                </UiButton>
+                <button
+                  className="project-browser-open-action"
+                  disabled={busy}
+                  onClick={() => void openDescriptor()}
+                  type="button"
+                >
+                  <FolderOpen size={18} /> Open Project
+                </button>
+                <button className="project-browser-create-action" onClick={() => setMode('create')} type="button">
+                  <Plus size={20} /> Create Project
+                </button>
               </div>
             )}
           </div>
@@ -231,7 +305,24 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
 
           {mode === 'recent' && (
             <div className="project-list">
-              {(snapshot?.recentProjects ?? []).map((recent) => {
+              <div className="project-list-header">
+                <h2>Recent Projects</h2>
+                <div className="project-list-tools">
+                  <button aria-label="Refresh projects" onClick={() => void refresh()} type="button">
+                    <RefreshCw size={17} />
+                  </button>
+                  <label className="project-browser-search">
+                    <Search size={16} />
+                    <input
+                      aria-label="Search projects"
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Search projects..."
+                      value={search}
+                    />
+                  </label>
+                </div>
+              </div>
+              {recentProjects.map((recent) => {
                 const recovery = recoveries[recent.guid];
                 const comparison = compareEngineVersions(
                   recent.engineVersion,
@@ -249,7 +340,7 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
                       type="button"
                     >
                       <span className="project-card-icon">
-                        <Box size={19} />
+                        <Box size={30} strokeWidth={1.7} />
                       </span>
                       <span className="project-card-copy">
                         <strong>{recent.name}</strong>
@@ -271,21 +362,26 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
                       </UiButton>
                     )}
                     <UiIconButton
+                      className="project-card-menu"
                       label={`Remove ${recent.name} from recent projects`}
                       onClick={() => {
                         void window.arc.projects.removeRecent(recent.descriptorPath).then(refresh);
                       }}
                     >
-                      <Trash2 size={14} />
+                      <MoreHorizontal size={18} />
                     </UiIconButton>
                   </article>
                 );
               })}
-              {!snapshot?.recentProjects.length && (
+              {!recentProjects.length && (
                 <div className="project-browser-empty">
-                  <FolderOpen size={28} />
-                  <strong>No recent projects</strong>
-                  <span>Create a project or open an existing .arcproject descriptor.</span>
+                  <FolderOpen size={40} strokeWidth={1.3} />
+                  <strong>{search ? 'No matching projects' : 'No projects yet'}</strong>
+                  <span>
+                    {search
+                      ? 'Try a different project name or location.'
+                      : 'Create a new project or open an existing one to get started.'}
+                  </span>
                 </div>
               )}
             </div>
@@ -294,10 +390,25 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
           {mode !== 'recent' && (
             <div className="project-form">
               {mode === 'create' ? (
-                <label>
-                  Project name
-                  <input value={projectName} onChange={(event) => setProjectName(event.target.value)} />
-                </label>
+                <>
+                  <label>
+                    Project name
+                    <input value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+                  </label>
+                  <label>
+                    Project template
+                    <select value={projectTemplate} onChange={(event) => setProjectTemplate(event.target.value)}>
+                      {(snapshot?.templates ?? []).map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                    <small>
+                      {snapshot?.templates.find((template) => template.id === projectTemplate)?.description}
+                    </small>
+                  </label>
+                </>
               ) : (
                 <label>
                   Git URL or local project directory

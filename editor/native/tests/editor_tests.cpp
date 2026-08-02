@@ -9,6 +9,7 @@
 #include <arc/editor/material_preview.h>
 #include <arc/editor/scene_document.h>
 #include <arc/editor/world_environment_host.h>
+#include <arc/project/project.h>
 #include <arc/render/primitives.h>
 
 #include <catch2/catch_approx.hpp>
@@ -586,7 +587,9 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
                                                                .scene_color = true,
                                                                .base_color = true,
                                                                .material_properties = true,
-                                                               .emissive = true}}};
+                                                               .emissive = true}},
+        {.request_id = 25,
+         .payload = arc::editor::host_autosave_scene_command{.path = "Saved/Recovery/protocol.arcscene"}}};
 
     for (const auto& command : commands)
     {
@@ -629,7 +632,8 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
          .payload = arc::editor::host_entity_by_guid_query{.guid = "00112233445566778899aabbccddeeff"}},
         {.request_id = 26, .payload = arc::editor::host_component_schema_query{}},
         {.request_id = 27,
-         .payload = arc::editor::host_scene_spatial_query{.kind = arc::editor::host_spatial_query_kind::frustum}}};
+         .payload = arc::editor::host_scene_spatial_query{.kind = arc::editor::host_spatial_query_kind::frustum}},
+        {.request_id = 28, .payload = arc::editor::host_workspace_documents_query{}}};
 
     for (const auto& query : queries)
     {
@@ -1865,12 +1869,12 @@ TEST_CASE("editor preview checkpoints operate on the authoritative authoring wor
                         }));
 }
 
-TEST_CASE("arc host resolves a project assets directory for protocol-opened projects")
+TEST_CASE("arc host resolves the default Content directory for descriptor-free test projects")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-host-project-assets-test";
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
-    std::filesystem::create_directories(root / "assets", ec);
+    std::filesystem::create_directories(root / "Content", ec);
     REQUIRE_FALSE(ec);
 
     auto renderer = std::make_unique<arc::render::renderer>();
@@ -1880,7 +1884,80 @@ TEST_CASE("arc host resolves a project assets directory for protocol-opened proj
         .request_id = 1, .payload = arc::editor::host_open_project_command{.name = "Asset Root Test", .root = root}});
 
     REQUIRE(response.succeeded);
-    REQUIRE(host->project_assets_snapshot().asset_root == root / "assets");
+    REQUIRE(host->project_assets_snapshot().asset_root == root / "Content");
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("arc host derives project roots from the validated descriptor")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-host-project-context-test";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root / "Content", ec);
+    REQUIRE_FALSE(ec);
+    const auto descriptor = root / "Context.arcproject";
+    std::ofstream(descriptor)
+        << R"({"format":"arc-project","formatVersion":2,"guid":"12345678-1234-4234-8234-123456789abc","name":"Context","engineVersion":"0.1.0","assetRoots":["Content"],"modules":[],"plugins":[],"targetPlatforms":[{"id":"windows-x64-vulkan","enabled":true}],"renderer":{"backend":"vulkan","api":"1.2","quality":"standard"}})";
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    const auto response = host->execute(arc::editor::host_command_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_open_project_command{
+            .name = "Forged Name",
+            .root = root / "wrong-root",
+            .descriptor_path = descriptor,
+            .content_roots = {root / "wrong-content"},
+            .cache_root = root / "wrong-cache"}});
+
+    INFO(response.error);
+    REQUIRE(response.succeeded);
+    REQUIRE(host->project_assets_snapshot().asset_root == root / "Content");
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("blank 3D project template opens its persisted startup scene")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-blank-3d-template-host-test";
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    const auto created = arc::project::create_project({.name = "TemplateHost",
+                                                        .destination = root,
+                                                        .template_id = "blank-3d",
+                                                        .templates_root = std::filesystem::path(ARC_SOURCE_ROOT) / "templates",
+                                                        .engine_version = "0.1.0"});
+    REQUIRE(created.has_value());
+    const auto descriptor_path = root / "TemplateHost.arcproject";
+    const auto descriptor = arc::project::load_descriptor(descriptor_path);
+    REQUIRE(descriptor.has_value());
+    REQUIRE(descriptor.value().default_scene.has_value());
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    const auto response = host->execute(arc::editor::host_command_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_open_project_command{
+            .name = descriptor.value().name,
+            .root = root,
+            .descriptor_path = descriptor_path,
+            .content_roots = {root / "Content"},
+            .cache_root = root / "Intermediate" / "Cache",
+            .default_scene = descriptor.value().default_scene->path_hint,
+            .project_guid = descriptor.value().guid,
+            .engine_version = descriptor.value().engine_version}});
+
+    INFO(response.error);
+    REQUIRE(response.succeeded);
+    const auto snapshot = host->scene_snapshot();
+    REQUIRE(snapshot.entities.size() == 3u);
+    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
+                        [](const auto& entity) { return entity.name == "Main Camera"; }));
+    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
+                        [](const auto& entity) { return entity.name == "Sun"; }));
+    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
+                        [](const auto& entity) { return entity.name == "World Environment"; }));
     std::filesystem::remove_all(root, ec);
 }
 

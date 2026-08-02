@@ -37,10 +37,10 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .arc/cache/cas
-            .arc/cache/actions
-          key: arc-ddc-windows-v2-${{ hashFiles('arc.cook.json', 'editor/package-lock.json', 'engine/assets/**', 'engine/render/**') }}
-          restore-keys: arc-ddc-windows-v2-
+            out/cook-fixture/Intermediate/Cache/cas
+            out/cook-fixture/Intermediate/Cache/actions
+          key: arc-ddc-windows-v3-${{ hashFiles('templates/**/*.arcproject', 'editor/package-lock.json', 'engine/assets/**', 'engine/render/**') }}
+          restore-keys: arc-ddc-windows-v3-
 
       - name: Install Electron dependencies
         working-directory: editor
@@ -73,21 +73,46 @@ jobs:
 
       - name: Cook and verify fixture
         run: |
-          Remove-Item -Recurse -Force .arc/cache, out/cooked -ErrorAction SilentlyContinue
-          out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project . --profile windows-x64-vulkan
-          out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project . --profile windows-x64-vulkan
-          $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project . --profile windows-x64-vulkan --json | ConvertFrom-Json)
+          out/build/ci-windows/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
+          out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan
+          out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan
+          $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --json | ConvertFrom-Json)
           if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
+
+      - name: Install SDK and build an external Blank 3D project
+        run: |
+          cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake --build out/build/sdk-debug --parallel
+          cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake --build out/build/sdk-shipping --parallel
+          cmake --install out/build/ci-windows --prefix out/sdk/arc-0.1.0
+          cmake --install out/build/sdk-debug --prefix out/sdk/arc-0.1.0
+          cmake --install out/build/sdk-shipping --prefix out/sdk/arc-0.1.0
+          out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+          cmake -S out/external-game -B out/external-game/Build/ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake --build out/external-game/Build/ci --parallel
+          cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake --build out/external-game/Build/ci-debug --parallel
+          cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake --build out/external-game/Build/ci-shipping --parallel
+          $tracked = Get-ChildItem out/external-game,out/sdk/arc-0.1.0/lib/cmake/ARC -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/]Build[\\/]' }
+          if ($tracked | Select-String -SimpleMatch "${{ github.workspace }}") { throw "Installed SDK or generated project embeds the ARC checkout path" }
 
       - name: Package Electron editor with native host
         working-directory: editor
         env:
           ARC_PACKAGED_HOST_PATH: ${{ github.workspace }}\out\build\ci-windows\editor\native\arc_host_process.exe
+          ARC_PACKAGED_PROJECT_TOOL_PATH: ${{ github.workspace }}\out\build\ci-windows\tools\project_cli\arc-project.exe
+          ARC_PACKAGED_TEMPLATES_PATH: ${{ github.workspace }}\templates
+          ARC_PACKAGED_RENDER_VULKAN_PATH: ${{ github.workspace }}\out\build\ci-windows\engine\render-vulkan\arc-render-vulkan.dll
           ARC_REQUIRE_PACKAGED_HOST: "1"
         run: npm run build
 
       - name: Smoke packaged editor and sample
         run: |
+          Copy-Item editor/out/arc-editor-win32-x64 out/sdk/arc-0.1.0/editor -Recurse
+          out/sdk/arc-0.1.0/bin/arc-project.exe engine register --manifest out/sdk/arc-0.1.0/arc-installation.json --registry out/sdk/installations.v1.json
+          out/sdk/arc-0.1.0/bin/arc-project.exe engine verify --registry out/sdk/installations.v1.json
           python tools/verify_distribution.py editor/out/arc-editor-win32-x64 --require resources/arc_host_process.exe --require resources/app.asar
           python tools/run_process_smoke.py --timeout 45 editor/out/arc-editor-win32-x64/arc-editor.exe --ci-smoke
           python tools/run_process_smoke.py --timeout 30 out/build/ci-windows/samples/arc_sample_game.exe --ci-smoke

@@ -7,6 +7,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ArcProjectCandidate } from '../common/projectTypes';
 import { ExtensionService } from './extensionService';
 
+const projectWithExtensions = (projectRoot: string, extensions: string[]): ArcProjectCandidate =>
+  ({ projectRoot, descriptor: { plugins: extensions.map((entry) => ({ enabled: true, path: entry })) } }) as unknown as ArcProjectCandidate;
+
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
@@ -33,10 +36,7 @@ describe('ExtensionService', () => {
         capabilities: ['scene.read', 'scene.mutate'],
       }),
     );
-    const project = {
-      projectRoot: root,
-      descriptor: { extensions: ['extensions/sample'] },
-    } as ArcProjectCandidate;
+    const project = projectWithExtensions(root, ['extensions/sample']);
     const service = new ExtensionService(() => project, '1.2.3');
     const snapshot = service.snapshot();
     expect(snapshot.extensions[0].enabled).toBe(true);
@@ -61,7 +61,7 @@ describe('ExtensionService', () => {
         capabilities: [],
       }),
     );
-    const project = { projectRoot: root, descriptor: { extensions: ['extension'] } } as ArcProjectCandidate;
+    const project = projectWithExtensions(root, ['extension']);
     const extension = new ExtensionService(() => project, '1').snapshot().extensions[0];
     expect(extension.enabled).toBe(false);
     expect(extension.diagnostics[0]).toContain('entry point');
@@ -70,10 +70,7 @@ describe('ExtensionService', () => {
   it('isolates invalid configured paths instead of failing extension discovery', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-extensions-'));
     roots.push(root);
-    const project = {
-      projectRoot: root,
-      descriptor: { extensions: ['../outside', 'extensions/missing'] },
-    } as ArcProjectCandidate;
+    const project = projectWithExtensions(root, ['../outside', 'extensions/missing']);
     const snapshot = new ExtensionService(() => project, '1.0.0').snapshot();
     expect(snapshot.extensions).toHaveLength(2);
     expect(snapshot.extensions.every((extension) => !extension.enabled)).toBe(true);
@@ -82,7 +79,7 @@ describe('ExtensionService', () => {
   });
 
   it('does not discover project code when extensions are disabled', () => {
-    const project = { projectRoot: 'unused', descriptor: { extensions: ['extension'] } } as ArcProjectCandidate;
+    const project = projectWithExtensions('unused', ['extension']);
     expect(
       new ExtensionService(
         () => project,

@@ -230,7 +230,7 @@ export class SettingsService {
   ) {}
 
   snapshot(): EditorSettingsSnapshot {
-    const user = this.validEntries(readObject(this.userSettingsPath));
+    const user = this.validEntries(readObject(this.resolvedUserSettingsPath()));
     const project = this.validEntries(this.readProjectSettings());
     const values = { ...defaults, ...user, ...project };
     const sources: EditorSettingsSnapshot['sources'] = {};
@@ -259,14 +259,16 @@ export class SettingsService {
       if (!descriptor.scopes.includes(scope)) throw new Error(`${key} cannot be stored in ${scope} settings`);
       if (value !== undefined) validateValue(descriptor, value);
     }
-    const target = scope === 'user' ? this.userSettingsPath : this.projectSettingsPath();
-    if (!target) throw new Error('No writable project settings file is available');
-    const next = { ...readObject(target) };
+    const updates = new Map<string, Record<string, unknown>>();
     for (const [key, value] of Object.entries(changes)) {
+      const target = scope === 'user' ? this.resolvedUserSettingsPath() : this.projectSettingsPathForKey(key);
+      if (!target) throw new Error('No writable project settings file is available');
+      const next = updates.get(target) ?? { ...readObject(target) };
       if (value === undefined) delete next[key];
       else next[key] = value;
+      updates.set(target, next);
     }
-    writeAtomic(target, next);
+    for (const [target, values] of updates) writeAtomic(target, values);
     ++this.revision;
     return this.snapshot();
   }
@@ -286,13 +288,31 @@ export class SettingsService {
     return result;
   }
 
-  private projectSettingsPath(): string | null {
+  private projectSettingsPathForKey(key: string): string | null {
     const project = this.activeProject();
-    return project ? path.join(project.projectRoot, project.descriptor.settings.editor) : null;
+    if (!project) return null;
+    const relative = key.startsWith('renderer.')
+      ? project.descriptor.settings.renderer
+      : key.startsWith('input.')
+        ? project.descriptor.settings.input
+        : project.descriptor.settings.editor;
+    return path.join(project.projectRoot, relative);
+  }
+
+  private resolvedUserSettingsPath(): string {
+    const project = this.activeProject();
+    return project
+      ? path.join(project.projectRoot, project.descriptor.paths.saved, 'Editor', 'settings.v1.json')
+      : this.userSettingsPath;
   }
 
   private readProjectSettings(): Record<string, unknown> {
-    const target = this.projectSettingsPath();
-    return target ? readObject(target) : {};
+    const project = this.activeProject();
+    if (!project) return {};
+    return {
+      ...readObject(path.join(project.projectRoot, project.descriptor.settings.editor)),
+      ...readObject(path.join(project.projectRoot, project.descriptor.settings.renderer)),
+      ...readObject(path.join(project.projectRoot, project.descriptor.settings.input)),
+    };
   }
 }

@@ -24,6 +24,7 @@ endforeach()
 set(ARC_PUBLIC_UMBRELLA_HEADERS
     arc/scene/scene.h
     arc/render/render.h
+    arc/project/project.h
     arc/persistence/persistence.h
     arc/ecs/ecs.h
     arc/assets/assets.h
@@ -61,7 +62,7 @@ arc_configure_first_party_target(arc-public-header-tests)
 target_compile_features(arc-public-header-tests PRIVATE cxx_std_20)
 foreach(target
     arc-core arc-simd arc-math arc-geometric arc-diagnostics arc-jobs arc-memory
-    arc-io arc-framework arc-assets arc-input arc-ecs arc-persistence arc-render
+    arc-io arc-framework arc-assets arc-input arc-ecs arc-persistence arc-project arc-render
     arc-render-vulkan arc-scene)
     if(TARGET ${target})
         target_link_libraries(arc-public-header-tests PRIVATE ${target})

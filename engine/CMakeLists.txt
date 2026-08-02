@@ -34,6 +34,7 @@ add_subdirectory(assets)
 add_subdirectory(input)
 add_subdirectory(ecs)
 add_subdirectory(persistence)
+add_subdirectory(project)
 add_subdirectory(render)
 
 if(ARC_BUILD_RENDER_VULKAN)
@@ -48,12 +49,36 @@ target_link_libraries(arc
         arc-scene
         arc-assets
         arc-persistence
+        arc-project
         arc-input
 )
 
 if(NOT TARGET arc::arc)
     add_library(arc::arc ALIAS arc)
 endif()
+
+set_target_properties(arc PROPERTIES EXPORT_NAME Engine)
+install(TARGETS arc EXPORT ARCTargets COMPONENT sdk)
+
+add_library(arc-runtime INTERFACE)
+target_link_libraries(arc-runtime INTERFACE
+    arc-framework arc-assets arc-persistence arc-input arc-ecs)
+set_target_properties(arc-runtime PROPERTIES EXPORT_NAME Runtime)
+install(TARGETS arc-runtime EXPORT ARCTargets COMPONENT sdk)
+add_library(arc::runtime ALIAS arc-runtime)
+
+add_library(arc-server INTERFACE)
+target_link_libraries(arc-server INTERFACE
+    arc-framework arc-assets arc-persistence arc-ecs)
+set_target_properties(arc-server PROPERTIES EXPORT_NAME Server)
+install(TARGETS arc-server EXPORT ARCTargets COMPONENT sdk)
+add_library(arc::server ALIAS arc-server)
+
+add_library(arc-editor-module-sdk INTERFACE)
+target_link_libraries(arc-editor-module-sdk INTERFACE arc-project arc-runtime)
+set_target_properties(arc-editor-module-sdk PROPERTIES EXPORT_NAME EditorModuleSDK)
+install(TARGETS arc-editor-module-sdk EXPORT ARCTargets COMPONENT sdk)
+add_library(arc::editor-module-sdk ALIAS arc-editor-module-sdk)
 
 if(NOT TARGET arc::engine)
     add_library(arc::engine ALIAS arc)

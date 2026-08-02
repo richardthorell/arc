@@ -9,11 +9,13 @@
 #include <arc/editor/material_preview.h>
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/scene_document.h>
+#include "project_module_loader.h"
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
 #include <arc/assets/cook.h>
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
+#include <arc/project/project.h>
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
 
@@ -1094,173 +1096,24 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
     return snapshot;
 }
 
-editor_scene_state create_default_scene(const editor_asset_state& assets, render::renderer& renderer)
+editor_scene_state create_blank_scene()
 {
     editor_scene_state state;
-
-    math::vector3f center{};
-    math::vector3f local_min = defaults::fallback_mesh_bounds_min;
-    math::vector3f local_max = defaults::fallback_mesh_bounds_max;
-    float radius = defaults::fallback_mesh_radius;
-    if (assets.default_mesh_loaded && !assets.default_mesh.vertices.empty())
-    {
-        local_min =
-            math::vector3f{assets.default_mesh.vertices[0].position[0], assets.default_mesh.vertices[0].position[1],
-                           assets.default_mesh.vertices[0].position[2]};
-        local_max = local_min;
-        for (const auto& vertex : assets.default_mesh.vertices)
-        {
-            for (std::size_t axis = 0; axis < 3; ++axis)
-            {
-                local_min[axis] = std::min(local_min[axis], vertex.position[axis]);
-                local_max[axis] = std::max(local_max[axis], vertex.position[axis]);
-            }
-        }
-
-        center = math::mul(math::add(local_min, local_max), 0.5f);
-        const auto span = math::sub(local_max, local_min);
-        radius = std::max({span[0], span[1], span[2], defaults::fallback_mesh_radius}) * 0.5f;
-    }
-
-    if (assets.default_mesh_loaded)
-    {
-        state.default_textures.reserve(assets.default_textures.size());
-        for (const auto& texture : assets.default_textures)
-            state.default_textures.push_back(renderer.create_texture(texture));
-
-        render::material_descriptor material;
-        material.name = assets.default_mesh.name + " Material";
-        if (!assets.default_materials.empty())
-        {
-            const auto material_index = assets.default_mesh.material_index < assets.default_materials.size()
-                                            ? assets.default_mesh.material_index
-                                            : std::size_t{0};
-            const auto& imported = assets.default_materials[material_index];
-            material = imported.material;
-
-            const auto assign_texture = [&](std::size_t index, render::texture_handle& handle)
-            {
-                if (index != render::material_texture_indices::invalid && index < state.default_textures.size())
-                    handle = state.default_textures[index];
-            };
-
-            assign_texture(imported.textures.base_color, material.base_color_texture);
-            assign_texture(imported.textures.metallic_roughness, material.metallic_roughness_texture);
-            assign_texture(imported.textures.normal, material.normal_texture);
-            assign_texture(imported.textures.occlusion, material.occlusion_texture);
-            assign_texture(imported.textures.emissive, material.emissive_texture);
-            assign_texture(imported.textures.clear_coat, material.clear_coat_texture);
-            assign_texture(imported.textures.clear_coat_roughness, material.clear_coat_roughness_texture);
-            assign_texture(imported.textures.clear_coat_normal, material.clear_coat_normal_texture);
-            assign_texture(imported.textures.anisotropy, material.anisotropy_texture);
-            assign_texture(imported.textures.thickness, material.thickness_texture);
-            assign_texture(imported.textures.transmission, material.transmission_texture);
-        }
-        state.default_material = renderer.create_material(material);
-        state.default_mesh = renderer.create_mesh(assets.default_mesh);
-        state.mesh_uploaded = state.default_mesh.valid();
-    }
-
     const auto camera = state.scene.create();
     state.camera_entity = camera;
-    scene::transform_component camera_transform;
-    camera_transform.position = defaults::default_camera_position;
+    state.game_camera_entity = camera;
+    scene::transform_component transform;
+    transform.position = defaults::default_camera_position;
     state.scene.emplace<scene::name_component>(camera, "Editor Camera");
-    state.scene.emplace<scene::tag_component>(camera, "Editor");
+    state.scene.emplace<scene::tag_component>(camera, "Camera");
     state.scene.emplace<scene::active_component>(camera);
-    state.scene.emplace<scene::transform_component>(camera, camera_transform);
-    scene::camera_component editor_camera;
-    editor_camera.near_plane = defaults::default_camera_near_plane;
-    editor_camera.far_plane = defaults::default_camera_far_plane;
-    editor_camera.clear_color = math::vector4f{0.055f, 0.12f, 0.22f, 1.0f};
-    state.scene.emplace<scene::camera_component>(camera, editor_camera);
-
-    const auto game_camera = state.scene.create();
-    state.game_camera_entity = game_camera;
-    scene::transform_component game_camera_transform;
-    game_camera_transform.position = defaults::default_camera_position;
-    state.scene.emplace<scene::name_component>(game_camera, "Main Camera");
-    state.scene.emplace<scene::tag_component>(game_camera, "Camera");
-    state.scene.emplace<scene::active_component>(game_camera);
-    state.scene.emplace<scene::transform_component>(game_camera, game_camera_transform);
-    scene::camera_component main_camera;
-    main_camera.active = false;
-    main_camera.near_plane = defaults::default_camera_near_plane;
-    main_camera.far_plane = defaults::default_camera_far_plane;
-    state.scene.emplace<scene::camera_component>(game_camera, main_camera);
-
-    const auto sun = state.scene.create();
-    state.sun_entity = sun;
-    scene::transform_component sun_transform;
-    sun_transform.rotation = quaternion_from_euler_degrees(defaults::default_sun_rotation_degrees);
-    state.scene.emplace<scene::name_component>(sun, "Sun");
-    state.scene.emplace<scene::tag_component>(sun, "Light");
-    state.scene.emplace<scene::active_component>(sun);
-    state.scene.emplace<scene::transform_component>(sun, sun_transform);
-    state.scene.emplace<scene::mobility_component>(sun, render::render_mobility::stationary);
-    state.scene.emplace<scene::directional_light_component>(sun, defaults::default_sun_color,
-                                                            defaults::default_sun_intensity, true);
-    auto& sun_light = state.scene.get<scene::directional_light_component>(sun);
-    sun_light.intensity_unit = render::light_intensity_unit::lux;
-    sun_light.shadow.resolution = defaults::default_sun_shadow_resolution;
-    sun_light.shadow.filter = defaults::default_sun_shadow_filter;
-    sun_light.shadow.bias = defaults::default_sun_shadow_bias;
-    sun_light.shadow.normal_bias = defaults::default_sun_shadow_normal_bias;
-
-    add_world_environment_to_scene(state);
-
-    render::environment_descriptor environment_lighting;
-    environment_lighting.name = "Default Mountain Daylight";
-    environment_lighting.fallback_color = math::vector3f{0.16f, 0.22f, 0.30f};
-    environment_lighting.intensity = 1.1f;
-    environment_lighting.diffuse_irradiance = math::vector3f{0.18f, 0.23f, 0.29f};
-    environment_lighting.diffuse_intensity = 1.0f;
-    state.environment_lighting_resource = renderer.create_environment(environment_lighting);
-    if (auto* lighting = state.scene.try_get<scene::environment_lighting_component>(state.world_environment_entity))
-        lighting->environment = state.environment_lighting_resource;
-
-    const auto terrain_material = create_default_terrain_material(state, renderer, assets.root);
-    const auto terrain = add_terrain_to_scene(state, renderer, terrain_material);
-    state.scene.emplace<scene::mobility_component>(terrain, render::render_mobility::static_object);
-    add_water_to_scene(state, renderer);
-    add_grass_patch_to_scene(state, renderer);
-
-    if (state.default_mesh.valid())
-    {
-        const auto* terrain_data = state.scene.try_get<scene::terrain_component>(terrain);
-        const auto create_rock = [&](const char* name, float x, float z, float scale_factor, float yaw)
-        {
-            const auto mesh = state.scene.create();
-            const float scale = (defaults::imported_mesh_fit_size / radius) * scale_factor;
-            const float terrain_height =
-                terrain_data != nullptr ? scene::sample_terrain_height(*terrain_data, x, z) : 0.0f;
-            scene::transform_component transform;
-            transform.position =
-                math::vector3f{x - center[0] * scale, terrain_height - local_min[1] * scale, z - center[2] * scale};
-            transform.rotation = quaternion_from_euler_degrees({0.0f, yaw, 0.0f});
-            transform.scale = math::vector3f{scale, scale, scale};
-            state.scene.emplace<scene::name_component>(mesh, name);
-            state.scene.emplace<scene::tag_component>(mesh, "Mesh");
-            state.scene.emplace<scene::active_component>(mesh);
-            state.scene.emplace<scene::selection_component>(mesh, false);
-            state.scene.emplace<scene::bounds_component>(
-                mesh, geometric::box3f{geometric::point3f(local_min), geometric::point3f(local_max)},
-                geometric::box3f{geometric::point3f(local_min), geometric::point3f(local_max)}, true);
-            state.scene.emplace<scene::transform_component>(mesh, transform);
-            state.scene.emplace<scene::mobility_component>(mesh, render::render_mobility::static_object);
-            state.scene.emplace<scene::mesh_renderer_component>(mesh, state.default_mesh, state.default_material, true);
-            state.world_feature_entities.push_back(mesh);
-            return mesh;
-        };
-        state.mesh_entity = create_rock("Hero Rock Formation", -5.0f, 5.0f, 1.0f, 18.0f);
-        create_rock("Rock Formation East", 11.0f, -2.0f, 0.56f, -34.0f);
-        create_rock("Rock Formation Shore", -13.0f, -10.0f, 0.42f, 57.0f);
-    }
-
-    if (state.scene.alive(terrain)) select_entity(state.scene, terrain, state.selected_entity);
-
+    state.scene.emplace<scene::transform_component>(camera, transform);
+    scene::camera_component camera_settings;
+    camera_settings.near_plane = defaults::default_camera_near_plane;
+    camera_settings.far_plane = defaults::default_camera_far_plane;
+    state.scene.emplace<scene::camera_component>(camera, camera_settings);
+    select_entity(state.scene, camera, state.selected_entity);
     ensure_scene_authoring_metadata(state);
-
     return state;
 }
 
@@ -1309,6 +1162,7 @@ struct arc_host::state
     std::unique_ptr<io::async_file_service> asset_files;
     std::unique_ptr<arc::assets::asset_manager> asset_registry;
     std::unique_ptr<arc::assets::derived_data_cache> derived_cache;
+    project_module_loader project_module;
     std::uint64_t asset_event_cursor{};
     std::uint64_t runtime_revision{1};
     std::uint64_t last_runtime_tick_event{};
@@ -1358,6 +1212,7 @@ arc_host::~arc_host()
 {
     if (state_)
     {
+        state_->project_module.unload();
         arc::diagnostics::info("editor.host", "Arc Host shutdown");
         push_event(state_->events, state_->event_sequence, host_event_type::host_shutdown, "Arc Host shutdown");
         if (state_->asset_registry)
@@ -1375,6 +1230,14 @@ arc_host::~arc_host()
 host_response arc_host::open_project(const host_open_project_command& command, const editor_asset_state& assets,
                                      std::uint64_t request_id)
 {
+    state_->project_module.unload();
+    if (!command.read_only && !command.editor_module_path.empty())
+    {
+        std::string module_error;
+        if (!state_->project_module.load(command.editor_module_path, command.engine_version, command.project_guid,
+                                         command.editor_module_id, module_error))
+            return {.request_id = request_id, .succeeded = false, .error = std::move(module_error)};
+    }
     state_->assets = assets;
     state_->project.name = command.name.empty() ? "Arc Project" : command.name;
     state_->project.root = command.root;
@@ -1384,24 +1247,43 @@ host_response arc_host::open_project(const host_open_project_command& command, c
         state_->asset_registry->on_shutdown(context);
     }
     state_->asset_registry.reset();
+    const auto cache_root = command.cache_root.empty() ? command.root / "Intermediate" / "Cache" : command.cache_root;
+    std::vector<std::filesystem::path> content_roots = command.content_roots;
+    if (content_roots.empty()) content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
     state_->derived_cache = std::make_unique<arc::assets::derived_data_cache>(
-        arc::assets::derived_data_cache_config{.root = command.root / ".arc" / "cache"});
+        arc::assets::derived_data_cache_config{.root = cache_root});
     state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
     state_->asset_registry = std::make_unique<arc::assets::asset_manager>(
         arc::assets::asset_manager_config{
             .project_root = command.root,
-            .asset_root = assets.root,
-            .additional_source_roots = {command.root / "scenes", command.root / "prefabs"},
-            .cache_root = command.root / ".arc" / "cache"},
+            .asset_root = content_roots.front(),
+            .additional_source_roots = std::vector<std::filesystem::path>(content_roots.begin() + 1, content_roots.end()),
+            .cache_root = cache_root},
         state_->simulation.jobs(), *state_->asset_files, state_->simulation.memory());
     {
         framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_start(context);
     }
     state_->asset_event_cursor = 0;
-    state_->scene = create_default_scene(assets, *state_->renderer);
+    // Project opening never synthesizes sample content. Rendering samples are
+    // ordinary persisted scenes supplied by the selected project template.
+    state_->scene = create_blank_scene();
     register_editor_asset_fallbacks(state_->scene, *state_->asset_registry);
     resolve_editor_asset_bindings(state_->scene, *state_->asset_registry, state_->project.root);
+    std::string loaded_scene_message = "Blank authoring scene created";
+    if (!command.default_scene.empty())
+    {
+        const auto scene_path = command.default_scene.is_absolute() ? command.default_scene
+                                                                    : command.root / command.default_scene;
+        const auto loaded = load_scene_document(state_->scene, *state_->renderer, state_->project.root,
+                                                scene_path, state_->asset_registry.get());
+        if (!loaded.succeeded)
+        {
+            state_->project_module.unload();
+            return {.request_id = request_id, .succeeded = false, .error = loaded.message};
+        }
+        loaded_scene_message = "Project default scene loaded";
+    }
     ++state_->scene_revision;
     ++state_->world_epoch;
     state_->history.clear(state_->scene, false);
@@ -1416,7 +1298,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     const std::string message = "Opened project '" + state_->project.name + "'";
     arc::diagnostics::info("editor.host", message);
     push_event(state_->events, state_->event_sequence, host_event_type::project_opened, message);
-    push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Default editor scene loaded");
+    push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, loaded_scene_message);
     return {.request_id = request_id,
             .succeeded = true,
             .payload_json = "{\"entity\":" + to_json(to_host_entity(state_->scene.selected_entity)) + '}'};
@@ -1502,9 +1384,46 @@ host_response arc_host::execute(const host_command_envelope& command)
 
             if constexpr (std::is_same_v<command_type, host_open_project_command>)
             {
-                const auto project_assets = payload.root / "assets";
-                const auto asset_root = std::filesystem::is_directory(project_assets) ? project_assets : payload.root;
-                return open_project(payload, load_default_editor_assets(asset_root), request_id);
+                auto resolved = payload;
+                if (!payload.descriptor_path.empty())
+                {
+                    const auto descriptor = project::load_descriptor(payload.descriptor_path);
+                    if (!descriptor) return fail(descriptor.error().message);
+                    const auto validation = project::validate_descriptor(
+                        payload.descriptor_path, descriptor.value(), {.require_paths = true});
+                    if (!validation) return fail(validation.error().message);
+                    const auto context = project::resolve_context(payload.descriptor_path, descriptor.value());
+                    if (!context) return fail(context.error().message);
+                    if (!payload.project_guid.empty() && payload.project_guid != descriptor.value().guid)
+                        return fail("Project GUID does not match the selected descriptor");
+                    if (!payload.engine_version.empty() && payload.engine_version != descriptor.value().engine_version)
+                        return fail("Project engine version does not match the selected descriptor");
+                    if (!payload.editor_module_path.empty())
+                    {
+                        const auto editor_module = std::find_if(
+                            descriptor.value().modules.begin(), descriptor.value().modules.end(),
+                            [&](const auto& module)
+                            {
+                                return module.enabled && module.kind == project::module_kind::editor &&
+                                       module.id == payload.editor_module_id;
+                            });
+                        if (editor_module == descriptor.value().modules.end())
+                            return fail("Editor module is not declared by the selected project");
+                    }
+                    resolved.name = descriptor.value().name;
+                    resolved.root = context.value().root;
+                    resolved.content_roots = context.value().asset_roots;
+                    resolved.cache_root = context.value().asset_cache_root;
+                    resolved.default_scene = descriptor.value().default_scene
+                                                 ? descriptor.value().default_scene->path_hint
+                                                 : std::filesystem::path{};
+                    resolved.project_guid = descriptor.value().guid;
+                    resolved.engine_version = descriptor.value().engine_version;
+                }
+                const auto asset_root = !resolved.content_roots.empty()
+                                            ? resolved.content_roots.front()
+                                            : resolved.root / "Content";
+                return open_project(resolved, load_default_editor_assets(asset_root), request_id);
             }
             else if constexpr (std::is_same_v<command_type, host_close_project_command>)
             {
@@ -1519,6 +1438,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->derived_cache.reset();
                     state_->asset_files.reset();
                 }
+                state_->project_module.unload();
                 state_->scene = {};
                 state_->project = {};
                 state_->project_open = false;
@@ -1726,7 +1646,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_new_scene_command>)
             {
-                state_->scene = create_default_scene(state_->assets, *state_->renderer);
+                state_->scene = create_blank_scene();
                 state_->scene.scene_name = payload.name.empty() ? "Untitled" : payload.name;
                 state_->scene.active_scene_path.clear();
                 state_->history.clear(state_->scene, false);

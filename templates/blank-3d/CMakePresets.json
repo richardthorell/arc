@@ -1,0 +1,1 @@
+{"version":6,"configurePresets":[{"name":"default","displayName":"ARC Development","generator":"Ninja","binaryDir":"${sourceDir}/Build/default","cacheVariables":{"CMAKE_BUILD_TYPE":"RelWithDebInfo","CMAKE_PREFIX_PATH":"$env{ARC_SDK_ROOT}"}}],"buildPresets":[{"name":"default","configurePreset":"default"}]}

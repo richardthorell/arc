@@ -39,6 +39,8 @@ std::string renderer_name(cook_renderer value)
 {
     switch (value)
     {
+        case cook_renderer::none:
+            return "none";
         case cook_renderer::vulkan:
             return "vulkan";
         case cook_renderer::direct3d12:
@@ -90,7 +92,8 @@ bool parse_target(const json& value, cook_target& target)
     target.architecture =
         value.value("architecture", "x86_64") == "arm64" ? cook_architecture::arm64 : cook_architecture::x86_64;
     const auto renderer = value.value("renderer", "vulkan");
-    target.renderer = renderer == "direct3d12" ? cook_renderer::direct3d12
+    target.renderer = renderer == "none"       ? cook_renderer::none
+                      : renderer == "direct3d12" ? cook_renderer::direct3d12
                       : renderer == "metal"    ? cook_renderer::metal
                                                : cook_renderer::vulkan;
     const auto textures = value.value("textures", "bc");

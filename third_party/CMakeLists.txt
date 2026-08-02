@@ -59,7 +59,8 @@ elseif(ARC_FETCH_THIRD_PARTY)
     )
     target_include_directories(arc-third-party-sqlite-static
         PUBLIC
-            "${sqlite_amalgamation_SOURCE_DIR}"
+            "$<BUILD_INTERFACE:${sqlite_amalgamation_SOURCE_DIR}>"
+            "$<INSTALL_INTERFACE:include/arc/private/sqlite>"
     )
     target_compile_definitions(arc-third-party-sqlite-static
         PUBLIC
@@ -75,6 +76,14 @@ elseif(ARC_FETCH_THIRD_PARTY)
         target_compile_options(arc-third-party-sqlite-static PRIVATE -w)
     endif()
     target_link_libraries(arc-third-party-sqlite INTERFACE arc-third-party-sqlite-static)
+    set_target_properties(arc-third-party-sqlite PROPERTIES EXPORT_NAME _SQLite)
+    set_target_properties(arc-third-party-sqlite-static PROPERTIES EXPORT_NAME _SQLiteStatic)
+    install(TARGETS arc-third-party-sqlite arc-third-party-sqlite-static
+        EXPORT ARCTargets
+        ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+        COMPONENT sdk-private)
+    install(FILES "${sqlite_amalgamation_SOURCE_DIR}/sqlite3.h"
+        DESTINATION include/arc/private/sqlite COMPONENT sdk-private)
 else()
     message(FATAL_ERROR "ARC_FETCH_THIRD_PARTY is OFF and ARC_USE_SYSTEM_SQLITE is OFF")
 endif()
@@ -125,8 +134,17 @@ elseif(ARC_FETCH_THIRD_PARTY AND ARC_FETCH_UFBX)
 
     if(EXISTS "${ufbx_SOURCE_DIR}/ufbx.c" AND EXISTS "${ufbx_SOURCE_DIR}/ufbx.h")
         add_library(arc-third-party-ufbx-static STATIC "${ufbx_SOURCE_DIR}/ufbx.c")
-        target_include_directories(arc-third-party-ufbx-static PUBLIC "${ufbx_SOURCE_DIR}")
+        target_include_directories(arc-third-party-ufbx-static PUBLIC
+            "$<BUILD_INTERFACE:${ufbx_SOURCE_DIR}>"
+            "$<INSTALL_INTERFACE:include/arc/private/ufbx>")
         target_link_libraries(arc-third-party-ufbx INTERFACE arc-third-party-ufbx-static)
+        set_target_properties(arc-third-party-ufbx PROPERTIES EXPORT_NAME _Ufbx)
+        set_target_properties(arc-third-party-ufbx-static PROPERTIES EXPORT_NAME _UfbxStatic)
+        install(TARGETS arc-third-party-ufbx arc-third-party-ufbx-static
+            EXPORT ARCTargets
+            ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+            COMPONENT sdk-private)
+        install(FILES "${ufbx_SOURCE_DIR}/ufbx.h" DESTINATION include/arc/private/ufbx COMPONENT sdk-private)
         set(ARC_THIRD_PARTY_UFBX_AVAILABLE ON CACHE INTERNAL "Whether ufbx is available for ARC importers" FORCE)
     endif()
 else()

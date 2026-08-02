@@ -26,7 +26,12 @@ arc_add_module(
 )
 
 target_sources(arc-scene PRIVATE "${ARC_SCENE_GENERATED_METADATA}")
-target_include_directories(arc-scene PUBLIC "${ARC_SCENE_GENERATED_ROOT}")
+target_include_directories(arc-scene PUBLIC
+    "$<BUILD_INTERFACE:${ARC_SCENE_GENERATED_ROOT}>"
+    "$<INSTALL_INTERFACE:include>")
+install(FILES "${ARC_SCENE_GENERATED_METADATA}"
+    DESTINATION include/arc/scene
+    COMPONENT sdk-headers)
 
 if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
     add_subdirectory(tests)

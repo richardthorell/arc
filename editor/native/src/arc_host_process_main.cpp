@@ -7,12 +7,12 @@
 #include <arc/render/render.h>
 
 #if defined(_WIN32) && defined(ARC_EDITOR_HOST_ENABLE_VULKAN_RENDER)
-#define VK_USE_PLATFORM_WIN32_KHR
-#include <arc/render/vulkan/vulkan_backend.h>
-
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+#define VK_USE_PLATFORM_WIN32_KHR
+#include <arc/render/vulkan/vulkan_backend.h>
+
 #include <windows.h>
 #include <windowsx.h>
 #include <volk.h>

@@ -12,6 +12,10 @@ target_compile_features(arc-platform-windows
         cxx_std_20
 )
 
+target_include_directories(arc-platform-windows PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>"
+    "$<INSTALL_INTERFACE:include>")
+
 target_link_libraries(arc-platform-windows
     PUBLIC
         arc
@@ -25,6 +29,15 @@ target_compile_definitions(arc-platform-windows
 
 if(NOT TARGET arc::platform-windows)
     add_library(arc::platform-windows ALIAS arc-platform-windows)
+endif()
+
+set_target_properties(arc-platform-windows PROPERTIES EXPORT_NAME PlatformWindows)
+install(TARGETS arc-platform-windows
+    EXPORT ARCTargets
+    ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+    COMPONENT sdk)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/inc")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/inc/" DESTINATION include COMPONENT sdk-headers)
 endif()
 
 function(arc_add_windows_app)

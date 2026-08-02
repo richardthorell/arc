@@ -1,4 +1,4 @@
-add_library(arc-render-vulkan STATIC
+add_library(arc-render-vulkan SHARED
     inc/arc/render/vulkan/vulkan_backend.h
     src/vma_impl.cpp
     src/vulkan_backend.cpp
@@ -23,12 +23,15 @@ target_compile_features(arc-render-vulkan
 
 target_include_directories(arc-render-vulkan
     PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/inc"
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>"
+        "$<INSTALL_INTERFACE:include>"
 )
 
 target_link_libraries(arc-render-vulkan
     PUBLIC
         arc-render
+        "$<INSTALL_INTERFACE:Vulkan::Vulkan>"
+    PRIVATE
         arc-third-party-vulkan
         arc-third-party-volk
         arc-third-party-vma
@@ -38,13 +41,14 @@ target_link_libraries(arc-render-vulkan
 
 target_compile_definitions(arc-render-vulkan
     PRIVATE
+        VK_NO_PROTOTYPES=1
         VMA_STATIC_VULKAN_FUNCTIONS=1
         VMA_DYNAMIC_VULKAN_FUNCTIONS=0
 )
 
 if(ARC_BUILD_EDITOR AND TARGET arc-third-party-imgui)
     target_link_libraries(arc-render-vulkan
-        PUBLIC
+        PRIVATE
             arc-third-party-imgui
     )
     target_compile_definitions(arc-render-vulkan
@@ -56,6 +60,17 @@ endif()
 if(NOT TARGET arc::render-vulkan)
     add_library(arc::render-vulkan ALIAS arc-render-vulkan)
 endif()
+
+set_target_properties(arc-render-vulkan PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    EXPORT_NAME RenderVulkan)
+install(TARGETS arc-render-vulkan
+    EXPORT ARCTargets
+    ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+    LIBRARY DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+    RUNTIME DESTINATION "bin/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+    COMPONENT sdk)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/inc/" DESTINATION include COMPONENT sdk-headers)
 
 if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS)
     add_subdirectory(tests)

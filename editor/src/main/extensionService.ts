@@ -36,7 +36,9 @@ export class ExtensionService {
     const extensions: ArcExtensionSnapshot['extensions'] = [];
     const extensionIds = new Set<string>();
     if (project && this.enabled()) {
-      for (const configured of project.descriptor.extensions) {
+      for (const configured of project.descriptor.plugins
+        .filter((plugin) => plugin.enabled && plugin.path)
+        .map((plugin) => plugin.path as string)) {
         let root = path.resolve(project.projectRoot, configured);
         const diagnostics: string[] = [];
         try {

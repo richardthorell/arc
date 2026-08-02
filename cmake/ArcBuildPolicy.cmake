@@ -50,6 +50,8 @@ endif()
 
 add_library(arc-build-config INTERFACE)
 add_library(arc::build-config ALIAS arc-build-config)
+set_target_properties(arc-build-config PROPERTIES EXPORT_NAME BuildConfig)
+install(TARGETS arc-build-config EXPORT ARCTargets COMPONENT sdk)
 
 target_compile_definitions(arc-build-config INTERFACE
     "$<$<CONFIG:Debug>:ARC_BUILD_DEBUG=1;ARC_BUILD_DEVELOPMENT=1>"
@@ -74,12 +76,13 @@ target_compile_options(arc-build-config INTERFACE ${_arc_sanitizer_compile_optio
 target_link_options(arc-build-config INTERFACE ${_arc_sanitizer_link_options})
 if(MSVC)
     target_compile_options(arc-build-config INTERFACE
-        "$<$<CONFIG:Shipping>:/Brepro;/experimental:deterministic;/pathmap:${CMAKE_SOURCE_DIR}=.>")
+        "$<BUILD_INTERFACE:$<$<CONFIG:Shipping>:/Brepro;/experimental:deterministic;/pathmap:${CMAKE_SOURCE_DIR}=.>>"
+        "$<INSTALL_INTERFACE:$<$<CONFIG:Shipping>:/Brepro;/experimental:deterministic>>")
     target_link_options(arc-build-config INTERFACE
         "$<$<CONFIG:Shipping>:/Brepro;/PDBALTPATH:%_PDB%>")
 else()
     target_compile_options(arc-build-config INTERFACE
-        "$<$<CONFIG:Shipping>:-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.;-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=.>")
+        "$<BUILD_INTERFACE:$<$<CONFIG:Shipping>:-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.;-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=.>>")
 endif()
 
 function(arc_configure_first_party_target target)

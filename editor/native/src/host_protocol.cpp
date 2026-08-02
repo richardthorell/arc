@@ -53,6 +53,18 @@ std::string bool_json(bool value)
     return value ? "true" : "false";
 }
 
+std::string path_array_json(const std::vector<std::filesystem::path>& values)
+{
+    std::string result{"["};
+    for (std::size_t index = 0; index < values.size(); ++index)
+    {
+        if (index != 0) result.push_back(',');
+        result += quote(values[index].generic_string());
+    }
+    result.push_back(']');
+    return result;
+}
+
 template <class Enum>
 bool enum_from_string(std::string_view text, const std::pair<std::string_view, Enum>* values, std::size_t count,
                       Enum& out)
@@ -129,6 +141,37 @@ bool string_value(std::string_view json, std::string_view key, std::string& out)
         }
     }
     return false;
+}
+
+bool string_array_value(std::string_view json, std::string_view key, std::vector<std::filesystem::path>& out)
+{
+    auto pos = skip_ws(json, find_key(json, key));
+    if (pos == std::string_view::npos || pos >= json.size() || json[pos] != '[') return false;
+    ++pos;
+    std::vector<std::filesystem::path> values;
+    while (true)
+    {
+        pos = skip_ws(json, pos);
+        if (pos >= json.size()) return false;
+        if (json[pos] == ']')
+        {
+            out = std::move(values);
+            return true;
+        }
+        if (json[pos] != '"') return false;
+        ++pos;
+        std::string value;
+        while (pos < json.size() && json[pos] != '"')
+        {
+            if (json[pos] == '\\' && pos + 1 < json.size()) ++pos;
+            value.push_back(json[pos++]);
+        }
+        if (pos >= json.size()) return false;
+        ++pos;
+        values.emplace_back(std::move(value));
+        pos = skip_ws(json, pos);
+        if (pos < json.size() && json[pos] == ',') ++pos;
+    }
 }
 
 template <class Number> bool number_value(std::string_view json, std::string_view key, Number& out)
@@ -1247,6 +1290,14 @@ std::string to_json(const host_command_envelope& envelope)
             using type = std::decay_t<decltype(payload)>;
             if constexpr (std::is_same_v<type, host_open_project_command>)
                 return "{\"name\":" + quote(payload.name) + ",\"root\":" + quote(payload.root.generic_string()) +
+                       ",\"descriptorPath\":" + quote(payload.descriptor_path.generic_string()) +
+                       ",\"contentRoots\":" + path_array_json(payload.content_roots) +
+                       ",\"cacheRoot\":" + quote(payload.cache_root.generic_string()) +
+                       ",\"defaultScene\":" + quote(payload.default_scene.generic_string()) +
+                       ",\"projectGuid\":" + quote(payload.project_guid) +
+                       ",\"engineVersion\":" + quote(payload.engine_version) +
+                       ",\"editorModuleId\":" + quote(payload.editor_module_id) +
+                       ",\"editorModulePath\":" + quote(payload.editor_module_path.generic_string()) +
                        ",\"readOnly\":" + bool_json(payload.read_only) + '}';
             else if constexpr (std::is_same_v<type, host_open_scene_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) +
@@ -1708,6 +1759,22 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         std::string root;
         string_value(payload, "root", root);
         command.root = root;
+        std::string descriptor_path;
+        std::string cache_root;
+        std::string default_scene;
+        string_value(payload, "descriptorPath", descriptor_path);
+        string_value(payload, "cacheRoot", cache_root);
+        string_value(payload, "defaultScene", default_scene);
+        std::string editor_module_path;
+        string_value(payload, "projectGuid", command.project_guid);
+        string_value(payload, "engineVersion", command.engine_version);
+        string_value(payload, "editorModuleId", command.editor_module_id);
+        string_value(payload, "editorModulePath", editor_module_path);
+        command.descriptor_path = descriptor_path;
+        command.cache_root = cache_root;
+        command.default_scene = default_scene;
+        command.editor_module_path = editor_module_path;
+        string_array_value(payload, "contentRoots", command.content_roots);
         bool_value(payload, "readOnly", command.read_only);
         envelope.payload = std::move(command);
     }

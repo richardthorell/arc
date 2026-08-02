@@ -1,0 +1,17 @@
+{
+  "format":"arc-project","formatVersion":2,"guid":"{{PROJECT_GUID}}","name":"{{PROJECT_NAME}}","engineVersion":"{{ENGINE_VERSION}}",
+  "paths":{"source":"Source","content":"Content","config":"Config","plugins":"Plugins","saved":"Saved","intermediate":"Intermediate","build":"Build"},
+  "assetRoots":["Content"],
+  "modules":[
+    {"id":"{{PROJECT_TOKEN}}.runtime","kind":"runtime","target":"{{PROJECT_TOKEN}}Runtime","sourceRoot":"Source/{{PROJECT_TOKEN}}Runtime","enabled":true,"dependencies":[{"kind":"engine","id":"ARC.Runtime","version":"{{ENGINE_VERSION}}"}]},
+    {"id":"{{PROJECT_TOKEN}}.server","kind":"server","target":"{{PROJECT_TOKEN}}Server","sourceRoot":"Source/{{PROJECT_TOKEN}}Server","enabled":true,"dependencies":[{"kind":"project","id":"{{PROJECT_TOKEN}}.runtime","version":""},{"kind":"engine","id":"ARC.Server","version":"{{ENGINE_VERSION}}"}]}
+  ],
+  "plugins":[],"defaultScene":null,"startupScenes":[],
+  "targetPlatforms":[{"id":"windows-x64-headless","enabled":true},{"id":"linux-x64-headless","enabled":true}],
+  "toolchain":{"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
+  "buildConfigurations":["Debug","RelWithDebInfo","Shipping"],
+  "renderer":{"backend":"none","api":"","quality":"low"},
+  "cookProfiles":[{"id":"windows-x64-headless","platform":"windows","architecture":"x86_64","renderer":"none","api":"","textureFamily":"bc","configuration":"Shipping"},{"id":"linux-x64-headless","platform":"linux","architecture":"x86_64","renderer":"none","api":"","textureFamily":"bc","configuration":"Shipping"}],
+  "package":{"applicationName":"{{PROJECT_NAME}} Server","companyName":"","output":"Build/Packages","regionChunks":true},
+  "settings":{"editor":"Config/Editor.json","renderer":"Config/Renderer.json","input":"Config/Input.json"}
+}

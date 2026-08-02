@@ -7,6 +7,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ProjectService } from './projectService';
 
 const temporaryRoots: string[] = [];
+const projectToolName = process.platform === 'win32' ? 'arc-project.exe' : 'arc-project';
+const projectToolPath = [
+  path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli/RelWithDebInfo', projectToolName),
+  path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli', projectToolName),
+].find((candidate) => fs.existsSync(candidate)) ?? '';
+const templatesRoot = path.resolve(import.meta.dirname, '../../../templates');
+const nativeProjectAuthority = { projectToolPath, templatesRoot };
 const temporary = () => {
   const value = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-project-service-'));
   temporaryRoots.push(value);
@@ -22,6 +29,7 @@ describe('ProjectService', () => {
     const root = temporary();
     const commands: Array<{ type: string; payload: Record<string, unknown> }> = [];
     const service = new ProjectService({
+      ...nativeProjectAuthority,
       userDataPath: path.join(root, 'user'),
       currentEngineVersion: '1.2.3',
       currentEditorPath: 'arc-editor',
@@ -35,7 +43,7 @@ describe('ProjectService', () => {
       },
     });
     const created = service.create({ name: 'Alpine', destination: path.join(root, 'project'), template: 'mountain' });
-    expect(created.succeeded).toBe(true);
+    expect(created.succeeded, created.error).toBe(true);
     expect(created.project?.descriptor.engineVersion).toBe('1.2.3');
     const opened = await service.open(created.project!.descriptorPath);
     expect(opened.succeeded).toBe(true);
@@ -65,6 +73,7 @@ describe('ProjectService', () => {
       }),
     );
     const service = new ProjectService({
+      ...nativeProjectAuthority,
       userDataPath: path.join(root, 'user'),
       currentEngineVersion: '1.0.0',
       currentEditorPath: 'arc-editor',
@@ -76,6 +85,7 @@ describe('ProjectService', () => {
 
   it('requires explicit upgrade mode and keeps a validated descriptor backup', async () => {
     const root = temporary();
+    fs.mkdirSync(path.join(root, 'assets'));
     const descriptor = path.join(root, 'Legacy.arcproject');
     fs.writeFileSync(
       descriptor,
@@ -93,6 +103,7 @@ describe('ProjectService', () => {
       }),
     );
     const service = new ProjectService({
+      ...nativeProjectAuthority,
       userDataPath: path.join(root, 'user'),
       currentEngineVersion: '2.0.0',
       currentEditorPath: 'arc-editor',
@@ -100,8 +111,10 @@ describe('ProjectService', () => {
     });
 
     expect((await service.open(descriptor)).succeeded).toBe(false);
-    expect((await service.open(descriptor, { upgrade: true })).project?.descriptor.engineVersion).toBe('2.0.0');
-    const backup = JSON.parse(fs.readFileSync(`${descriptor}.pre-2.0.0.bak`, 'utf8')) as { engineVersion: string };
+    const upgraded = await service.open(descriptor, { upgrade: true });
+    expect(upgraded.succeeded, upgraded.error).toBe(true);
+    expect(upgraded.project?.descriptor.engineVersion).toBe('2.0.0');
+    const backup = JSON.parse(fs.readFileSync(`${descriptor}.v1.bak`, 'utf8')) as { engineVersion: string };
     expect(backup.engineVersion).toBe('1.0.0');
   });
 
@@ -109,13 +122,15 @@ describe('ProjectService', () => {
     const root = temporary();
     const host = { connected: true, error: '', command: async () => ({ succeeded: true }) };
     const service = new ProjectService({
+      ...nativeProjectAuthority,
       userDataPath: path.join(root, 'user'),
       currentEngineVersion: '1.2.3',
       currentEditorPath: 'arc-editor',
       host,
     });
     const source = path.join(root, 'source');
-    expect(service.create({ name: 'Source', destination: source }).succeeded).toBe(true);
+    const created = service.create({ name: 'Source', destination: source });
+    expect(created.succeeded, created.error).toBe(true);
     const destination = path.join(root, 'clone');
     fs.mkdirSync(destination);
 
@@ -130,13 +145,15 @@ describe('ProjectService', () => {
   it('rejects cloning a local project into its own subtree', async () => {
     const root = temporary();
     const service = new ProjectService({
+      ...nativeProjectAuthority,
       userDataPath: path.join(root, 'user'),
       currentEngineVersion: '1.2.3',
       currentEditorPath: 'arc-editor',
       host: { connected: true, error: '', command: async () => ({ succeeded: true }) },
     });
     const source = path.join(root, 'source');
-    expect(service.create({ name: 'Source', destination: source }).succeeded).toBe(true);
+    const created = service.create({ name: 'Source', destination: source });
+    expect(created.succeeded, created.error).toBe(true);
 
     const cloned = await service.clone({ source, destination: path.join(source, 'copy') });
 

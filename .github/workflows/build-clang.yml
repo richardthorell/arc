@@ -45,6 +45,24 @@ jobs:
           cpack --config out/build/clang-vulkan/CPackConfig.cmake -C RelWithDebInfo
           python3 tools/run_process_smoke.py out/dist/linux/bin/arc_headless --ticks 10 --no-sleep
           python3 tools/verify_distribution.py out/dist/linux --require bin/arc_headless --require build-manifest.json
+      - name: Install Debug and Shipping SDK configurations
+        run: |
+          cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_EDITOR=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake --build out/build/sdk-debug --parallel
+          cmake --install out/build/sdk-debug --prefix out/dist/linux
+          cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Shipping -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake --build out/build/sdk-shipping --parallel
+          cmake --install out/build/sdk-shipping --prefix out/dist/linux
+      - name: Build an external headless project from the installed SDK
+        run: |
+          out/dist/linux/bin/arc-project create --name ExternalServer --destination out/external-server --template blank-headless --templates out/dist/linux/share/arc/templates --engine 0.1.0
+          cmake -S out/external-server -B out/external-server/Build/ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/dist/linux
+          cmake --build out/external-server/Build/ci --parallel
+          cmake -S out/external-server -B out/external-server/Build/ci-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/dist/linux
+          cmake --build out/external-server/Build/ci-debug --parallel
+          cmake -S out/external-server -B out/external-server/Build/ci-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/dist/linux
+          cmake --build out/external-server/Build/ci-shipping --parallel
+          ! grep -R -F "${{ github.workspace }}" out/dist/linux/lib/cmake/ARC out/external-server --exclude-dir=Build
       - name: Upload headless package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

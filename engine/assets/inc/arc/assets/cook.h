@@ -85,6 +85,7 @@ enum class cook_architecture : std::uint8_t
 };
 enum class cook_renderer : std::uint8_t
 {
+    none,
     vulkan,
     direct3d12,
     metal

@@ -152,6 +152,35 @@ const parseHostLogLine = (line: string, stream: 'stdout' | 'stderr'): Omit<HostL
 };
 
 const hostExecutableName = process.platform === 'win32' ? 'arc_host_process.exe' : 'arc_host_process';
+const projectToolExecutableName = process.platform === 'win32' ? 'arc-project.exe' : 'arc-project';
+
+const firstExistingPath = (candidates: Array<string | undefined>): string | null =>
+  candidates.find((candidate): candidate is string => Boolean(candidate && fs.existsSync(candidate))) ?? null;
+
+const resolveProjectToolPath = (): string | null => {
+  const candidates: Array<string | undefined> = [
+    process.env.ARC_PROJECT_TOOL_PATH,
+    app.isPackaged ? path.join(process.resourcesPath, projectToolExecutableName) : undefined,
+    app.isPackaged ? path.join(process.resourcesPath, 'native', projectToolExecutableName) : undefined,
+  ];
+  for (const root of [path.resolve(process.cwd(), '..'), path.resolve(process.cwd())]) {
+    for (const preset of ['editor-vulkan', 'default', 'editor-no-vulkan']) {
+      for (const configuration of ['RelWithDebInfo', 'Release', 'Debug'])
+        candidates.push(path.join(root, 'out', 'build', preset, 'tools', 'project_cli', configuration, projectToolExecutableName));
+      candidates.push(path.join(root, 'out', 'build', preset, 'tools', 'project_cli', projectToolExecutableName));
+    }
+  }
+  return firstExistingPath(candidates);
+};
+
+const resolveTemplatesRoot = (): string | null =>
+  firstExistingPath([
+    process.env.ARC_PROJECT_TEMPLATES_PATH,
+    app.isPackaged ? path.join(process.resourcesPath, 'templates') : undefined,
+    app.isPackaged ? path.join(process.resourcesPath, 'share', 'arc', 'templates') : undefined,
+    path.resolve(process.cwd(), '..', 'templates'),
+    path.resolve(process.cwd(), 'templates'),
+  ]);
 
 const resolveHostProcessPath = (): string | null => {
   const candidates: Array<string | undefined> = [
@@ -169,7 +198,7 @@ const resolveHostProcessPath = (): string | null => {
     }
   }
 
-  return candidates.find((candidate): candidate is string => Boolean(candidate && fs.existsSync(candidate))) ?? null;
+  return firstExistingPath(candidates);
 };
 
 export class ArcHostClient {
@@ -540,6 +569,8 @@ void app.whenReady().then(async () => {
     userDataPath: app.getPath('userData'),
     currentEngineVersion: app.getVersion(),
     currentEditorPath: app.getPath('exe'),
+    projectToolPath: resolveProjectToolPath() ?? '',
+    templatesRoot: resolveTemplatesRoot() ?? '',
     host: hostClient,
   });
   settingsService = new SettingsService(
@@ -557,7 +588,7 @@ void app.whenReady().then(async () => {
     () => settingsService?.snapshot().values['extensions.allowProjectExtensions'] !== false,
   );
   recoveryService = new RecoveryService(
-    path.join(app.getPath('userData'), 'recovery'),
+    path.join(app.getPath('userData'), 'bootstrap-recovery'),
     hostClient,
     () => settingsService?.snapshot().values ?? {},
   );
@@ -659,6 +690,9 @@ void app.whenReady().then(async () => {
     return result;
   });
   ipcMain.handle('project:create', (_event, request: ArcCreateProjectRequest) => projectService?.create(request));
+  ipcMain.handle('project:launchMatchingEngine', (_event, candidate: string) =>
+    projectService?.launchMatchingEngine(candidate),
+  );
   ipcMain.handle('project:clone', (_event, request: ArcCloneProjectRequest) => projectService?.clone(request));
   ipcMain.handle('project:removeRecent', (_event, descriptorPath: string) =>
     projectService?.removeRecent(descriptorPath),
@@ -735,7 +769,7 @@ void app.whenReady().then(async () => {
   ipcMain.handle('vcs:pull', () => sourceControlService?.pull());
   ipcMain.handle('vcs:push', () => sourceControlService?.push());
   ipcMain.handle('vcs:commit', (_event, message: string) => sourceControlService?.commit(message));
-  ipcMain.handle('recovery:snapshot', (_event, projectGuid?: string) => recoveryService?.snapshot(projectGuid) ?? null);
+  ipcMain.handle('recovery:snapshot', (_event, projectGuid?: string, projectRoot?: string) => recoveryService?.snapshot(projectGuid, projectRoot) ?? null);
   ipcMain.handle('recovery:restore', (_event, id: string) => recoveryService?.restore(id));
   ipcMain.handle('recovery:discard', (_event, id: string) => recoveryService?.discard(id) ?? false);
   ipcMain.handle('extensions:snapshot', (_event, force = false) => extensionService?.snapshot(force) ?? null);
@@ -777,17 +811,13 @@ void app.whenReady().then(async () => {
       };
     }
     if (project) {
-      const reopened = await hostClient.command('project.open', {
-        name: project.descriptor.name,
-        root: project.projectRoot,
-        readOnly: !project.writable,
-      });
-      if (!reopened.succeeded) {
+      const reopened = await projectService?.open(project.descriptorPath, { readOnly: !project.writable });
+      if (!reopened?.succeeded) {
         return {
           appVersion: app.getVersion(),
           engineHostConnected: false,
           viewportMode: 'unavailable',
-          hostError: reopened.error || 'Native host could not reopen the active project',
+          hostError: reopened?.error || 'Native host could not reopen the active project',
           activeProject: project,
         };
       }

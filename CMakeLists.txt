@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
-project(arc LANGUAGES CXX)
+project(arc VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(CTest)
+include(CMakePackageConfigHelpers)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 option(ARC_BUILD_EDITOR "Build ARC editor targets" OFF)
@@ -13,6 +14,7 @@ option(ARC_BUILD_SAMPLES "Build ARC sample targets" OFF)
 option(ARC_BUILD_HIGH_LEVEL_TESTS "Build ARC high-level integration tests" OFF)
 option(ARC_BUILD_RENDER_VULKAN "Build ARC Vulkan render backend" OFF)
 option(ARC_BUILD_ASSET_COOKER "Build the headless ARC asset cooker" ON)
+option(ARC_BUILD_PROJECT_TOOL "Build the ARC external project command-line tool" ON)
 option(ARC_BUILD_BENCHMARKS "Build deterministic ARC subsystem benchmarks" OFF)
 option(ARC_ENABLE_COVERAGE "Instrument Clang builds for LLVM source coverage" OFF)
 set(ARC_SHIPPING_CONTENT_DIR "" CACHE PATH
@@ -59,6 +61,10 @@ endif()
 
 if(ARC_BUILD_ASSET_COOKER)
     add_subdirectory(tools/asset_cooker)
+endif()
+
+if(ARC_BUILD_PROJECT_TOOL)
+    add_subdirectory(tools/project_cli)
 endif()
 
 if(ARC_BUILD_EDITOR)
@@ -123,5 +129,60 @@ if(ARC_SHIPPING_CONTENT_DIR)
             PATTERN "*.arccookmanifest"
             PATTERN "*.arcpak")
 endif()
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ARCConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/ARCConfig.cmake"
+    INSTALL_DESTINATION "lib/cmake/ARC"
+    NO_SET_AND_CHECK_MACRO)
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/ARCConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY ExactVersion)
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/ARCConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/ARCConfigVersion.cmake"
+    DESTINATION "lib/cmake/ARC"
+    COMPONENT sdk)
+install(EXPORT ARCTargets
+    FILE ARCTargets.cmake
+    NAMESPACE ARC::
+    DESTINATION "lib/cmake/ARC"
+    COMPONENT sdk)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/templates/"
+    DESTINATION "share/arc/templates"
+    COMPONENT project-templates)
+
+if(WIN32)
+    set(_arc_installation_editor "editor/arc-editor.exe")
+    set(_arc_installation_platforms "\"windows-x64-vulkan\", \"windows-x64-headless\"")
+else()
+    set(_arc_installation_editor "")
+    set(_arc_installation_platforms "\"linux-x64-headless\"")
+endif()
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/arc-installation.json" CONTENT
+"{
+  \"format\": \"arc-installation\",
+  \"formatVersion\": 1,
+  \"installationId\": \"arc-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}\",
+  \"engineVersion\": \"${PROJECT_VERSION}\",
+  \"editor\": \"${_arc_installation_editor}\",
+  \"sdk\": \".\",
+  \"cooker\": \"bin/arc-cook${CMAKE_EXECUTABLE_SUFFIX}\",
+  \"projectTool\": \"bin/arc-project${CMAKE_EXECUTABLE_SUFFIX}\",
+  \"supportedPlatforms\": [${_arc_installation_platforms}],
+  \"configurations\": [\"Debug\", \"RelWithDebInfo\", \"Shipping\"],
+  \"plugins\": [{\"id\":\"arc.renderer.vulkan\",\"version\":\"${PROJECT_VERSION}\",\"platforms\":[\"windows-x64-vulkan\"]}],
+  \"templates\": [
+    {\"id\":\"blank-3d\",\"name\":\"Blank 3D\",\"path\":\"share/arc/templates/blank-3d\"},
+    {\"id\":\"blank-headless\",\"name\":\"Blank Headless\",\"path\":\"share/arc/templates/blank-headless\"},
+    {\"id\":\"rendering-sample\",\"name\":\"Rendering Sample\",\"path\":\"share/arc/templates/rendering-sample\"},
+    {\"id\":\"empty-cpp\",\"name\":\"Empty C++ Project\",\"path\":\"share/arc/templates/empty-cpp\"}
+  ],
+  \"toolchain\": {\"compiler\":\"auto\",\"minimumVersion\":\"\",\"generator\":\"auto\",\"architecture\":\"x86_64\",\"cppStandard\":20}
+}
+")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/arc-installation.json"
+    DESTINATION . COMPONENT manifests)
 
 include(ArcPackaging)

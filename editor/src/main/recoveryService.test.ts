@@ -62,15 +62,16 @@ describe('RecoveryService', () => {
     });
     const project = (guid: string) =>
       ({
-        descriptor: { guid },
+        projectRoot: root,
+        descriptor: { guid, paths: { saved: 'Saved' } },
       }) as Parameters<RecoveryService['start']>[0];
 
     service.start(project('first'));
     service.start(project('second'));
 
-    expect(service.snapshot('first').uncleanShutdown).toBe(false);
+    expect(service.snapshot('first', root).uncleanShutdown).toBe(false);
     expect(service.snapshot('second').uncleanShutdown).toBe(true);
     service.stop(true);
-    expect(service.snapshot('second').uncleanShutdown).toBe(false);
+    expect(service.snapshot('second', root).uncleanShutdown).toBe(false);
   });
 });

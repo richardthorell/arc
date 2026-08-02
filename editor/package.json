@@ -17,7 +17,7 @@
     "build": "electron-forge package",
     "package": "electron-forge package",
     "make": "electron-forge make",
-    "test": "vitest run --pool=threads",
+    "test": "vitest run --pool=threads --maxWorkers=1",
     "mcp": "node .vite/build/arc-mcp-stdio.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",

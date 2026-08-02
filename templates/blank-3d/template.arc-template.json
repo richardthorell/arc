@@ -1,0 +1,8 @@
+{
+  "format": "arc-project-template",
+  "formatVersion": 1,
+  "id": "blank-3d",
+  "name": "Blank 3D",
+  "description": "A minimal rendered ARC game with an editor module and starter scene.",
+  "engineVersion": "{{ENGINE_VERSION}}"
+}

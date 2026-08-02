@@ -132,6 +132,8 @@ const arcApi = {
       options: { readOnly?: boolean; upgrade?: boolean } = {},
     ): Promise<ArcProjectOperationResult> => ipcRenderer.invoke('project:open', candidate, options),
     close: (): Promise<ArcProjectOperationResult> => ipcRenderer.invoke('project:close'),
+    launchMatchingEngine: (candidate: string): Promise<ArcProjectOperationResult> =>
+      ipcRenderer.invoke('project:launchMatchingEngine', candidate),
     create: (request: ArcCreateProjectRequest): Promise<ArcProjectOperationResult> =>
       ipcRenderer.invoke('project:create', request),
     clone: (request: ArcCloneProjectRequest): Promise<ArcProjectOperationResult> =>
@@ -164,8 +166,8 @@ const arcApi = {
     commit: (message: string): Promise<SourceControlResult | undefined> => ipcRenderer.invoke('vcs:commit', message),
   },
   recovery: {
-    snapshot: (projectGuid?: string): Promise<RecoverySnapshot | null> =>
-      ipcRenderer.invoke('recovery:snapshot', projectGuid),
+    snapshot: (projectGuid?: string, projectRoot?: string): Promise<RecoverySnapshot | null> =>
+      ipcRenderer.invoke('recovery:snapshot', projectGuid, projectRoot),
     restore: (id: string): Promise<unknown> => ipcRenderer.invoke('recovery:restore', id),
     discard: (id: string): Promise<boolean> => ipcRenderer.invoke('recovery:discard', id),
   },
