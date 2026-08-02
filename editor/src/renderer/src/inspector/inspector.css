@@ -258,7 +258,7 @@
 
 .inspector-menu-button,
 .inspector-search-row > button,
-.inspector-component-card header button,
+.inspector-component-card > header > button,
 .inspector-scale-link {
   display: inline-grid;
   padding: 0;
@@ -275,7 +275,7 @@
 
 .inspector-menu-button:hover,
 .inspector-search-row > button:hover,
-.inspector-component-card header button:hover {
+.inspector-component-card > header > button:hover {
   color: #f2f5f8;
   background: rgba(255, 255, 255, 0.055);
 }
@@ -384,6 +384,27 @@
   font-size: 12px;
 }
 
+.inspector-mixed-components {
+  margin: 6px 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(202, 159, 74, 0.35);
+  border-radius: 3px;
+  color: #cfb47b;
+  background: rgba(118, 82, 29, 0.18);
+  font-size: 11px;
+}
+
+.inspector-number input.is-mixed {
+  color: #9da8b4;
+  font-style: italic;
+}
+
+.inspector-color-swatch > span.is-mixed {
+  background:
+    linear-gradient(135deg, transparent 45%, rgba(255, 255, 255, 0.42) 46% 54%, transparent 55%),
+    repeating-conic-gradient(#65707c 0 25%, #343c46 0 50%) 50% / 8px 8px;
+}
+
 .inspector-component-list {
   display: grid;
   gap: 2px;
@@ -400,9 +421,64 @@
 .inspector-component-card > header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 25px;
+  position: relative;
   min-height: 28px;
   border-bottom: 1px solid #2d363e;
   background: linear-gradient(180deg, var(--inspector-bg-header-top), var(--inspector-bg-header-bottom));
+}
+
+.inspector-component-menu {
+  width: 190px;
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: 28px;
+  right: 4px;
+  z-index: 20;
+  padding: 4px;
+  border: 1px solid #3c4b55;
+  border-radius: 3px;
+  background: #172129;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+.inspector-component-menu button,
+.inspector-add-component button {
+  min-height: 27px;
+  padding: 4px 8px;
+  color: var(--arc-text-secondary);
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  text-align: left;
+}
+
+.inspector-component-menu button:hover,
+.inspector-add-component button:hover {
+  color: var(--arc-text-primary);
+  background: #293842;
+}
+
+.inspector-component-menu button.danger {
+  color: #e99a95;
+}
+
+.inspector-add-component {
+  margin: 8px 3px;
+  padding: 5px;
+  border: 1px solid var(--arc-border-subtle);
+  border-radius: 3px;
+  background: #172129;
+}
+
+.inspector-add-component summary {
+  padding: 4px 7px;
+  color: var(--arc-text-primary);
+  cursor: pointer;
+}
+
+.inspector-add-component[open] {
+  display: grid;
 }
 
 .inspector-component-card > header svg {
@@ -414,7 +490,7 @@
   border-bottom: 0;
 }
 
-.inspector-component-card header button:first-child {
+.inspector-component-card > header > button:first-child {
   display: flex;
   justify-content: flex-start;
   gap: 6px;
@@ -425,7 +501,7 @@
   font-weight: 600;
 }
 
-.inspector-component-card header button:first-child small {
+.inspector-component-card > header > button:first-child small {
   margin-left: auto;
   padding: 1px 5px;
   border: 1px solid #3a454d;

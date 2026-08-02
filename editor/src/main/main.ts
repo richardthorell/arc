@@ -6,6 +6,12 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { SceneGatewayCore } from './aiGatewayCore';
 import { AiGatewayServer } from './aiGatewayServer';
+import { ProjectService } from './projectService';
+import { RecoveryService } from './recoveryService';
+import { ExtensionService } from './extensionService';
+import { SettingsService } from './settingsService';
+import { SourceControlService } from './sourceControlService';
+import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';
 
 const isDevelopment = !app.isPackaged;
 const isCiSmoke =
@@ -18,12 +24,37 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 let mainWindow: BrowserWindow | null = null;
 let hostClient: ArcHostClient | null = null;
 let aiGateway: AiGatewayServer | null = null;
+let projectService: ProjectService | null = null;
+let settingsService: SettingsService | null = null;
+let sourceControlService: SourceControlService | null = null;
+let recoveryService: RecoveryService | null = null;
+let extensionService: ExtensionService | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
 let shutdownPending = false;
 let shutdownComplete = false;
 
 const activeWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+
+const resolveProjectFile = (relativePath: string): string => {
+  const project = projectService?.active();
+  if (!project) throw new Error('No project is open');
+  const projectRoot = fs.realpathSync(project.projectRoot);
+  const normalized = relativePath.replaceAll('\\', '/').replace(/^\/+/, '');
+  if (!normalized || normalized === '..' || normalized.startsWith('../') || path.isAbsolute(normalized))
+    throw new Error('Project file path must be relative');
+  const resolved = path.resolve(projectRoot, normalized);
+  const relative = path.relative(projectRoot, resolved);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+    throw new Error('Project file path escapes the project');
+  const containmentTarget = fs.existsSync(resolved)
+    ? fs.realpathSync(resolved)
+    : fs.realpathSync(path.dirname(resolved));
+  const realRelative = path.relative(projectRoot, containmentTarget);
+  if (realRelative === '..' || realRelative.startsWith(`..${path.sep}`) || path.isAbsolute(realRelative))
+    throw new Error('Project file path resolves outside the project');
+  return resolved;
+};
 
 export type HostResponse = {
   kind: 'response';
@@ -193,7 +224,8 @@ export class ArcHostClient {
       }
     });
     child.on('exit', (code, signal) => {
-      this.process = null;
+      const wasCurrentProcess = this.process === child;
+      if (wasCurrentProcess) this.process = null;
       const exitDetail =
         this.lastError ||
         `arc_host_process exited${code === null ? '' : ` with code ${code}`}${signal ? ` (${signal})` : ''}`;
@@ -202,27 +234,40 @@ export class ArcHostClient {
         source: 'host.process',
         message: exitDetail,
       });
-      for (const pending of this.pending.values()) {
-        pending.reject(new Error(exitDetail));
+      if (wasCurrentProcess) {
+        for (const pending of this.pending.values()) {
+          pending.reject(new Error(exitDetail));
+        }
+        this.pending.clear();
       }
-      this.pending.clear();
     });
 
-    void this.command('project.open', {
-      name: 'Arc Sandbox',
-      root: (() => {
-        if (!isCiSmoke) return path.resolve(process.cwd(), '..');
-        ciSmokeProjectRoot ??= fs.mkdtempSync(path.join(app.getPath('temp'), 'arc-editor-smoke-'));
-        return ciSmokeProjectRoot;
-      })(),
-    }).catch((error) => {
-      this.lastError = error instanceof Error ? error.message : String(error);
-    });
+    if (isCiSmoke) {
+      void this.command('project.open', {
+        name: 'ARC CI Smoke',
+        root: (() => {
+          ciSmokeProjectRoot ??= fs.mkdtempSync(path.join(app.getPath('temp'), 'arc-editor-smoke-'));
+          return ciSmokeProjectRoot;
+        })(),
+      }).catch((error) => {
+        this.lastError = error instanceof Error ? error.message : String(error);
+      });
+    }
   }
 
   stop(): void {
-    this.process?.kill();
+    const child = this.process;
     this.process = null;
+    child?.kill();
+    const error = new Error('arc_host_process was stopped');
+    for (const pending of this.pending.values()) pending.reject(error);
+    this.pending.clear();
+  }
+
+  restart(): void {
+    this.stop();
+    this.lastError = '';
+    this.start();
   }
 
   command(
@@ -491,6 +536,51 @@ const createMainWindow = (): void => {
 void app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   hostClient = new ArcHostClient();
+  projectService = new ProjectService({
+    userDataPath: app.getPath('userData'),
+    currentEngineVersion: app.getVersion(),
+    currentEditorPath: app.getPath('exe'),
+    host: hostClient,
+  });
+  settingsService = new SettingsService(
+    path.join(app.getPath('userData'), 'editor-settings.v1.json'),
+    () => projectService?.active() ?? null,
+  );
+  sourceControlService = new SourceControlService(
+    () => projectService?.active()?.projectRoot ?? null,
+    () => settingsService?.snapshot().values['sourceControl.provider'] !== 'none',
+    () => projectService?.active()?.writable ?? false,
+  );
+  extensionService = new ExtensionService(
+    () => projectService?.active() ?? null,
+    app.getVersion(),
+    () => settingsService?.snapshot().values['extensions.allowProjectExtensions'] !== false,
+  );
+  recoveryService = new RecoveryService(
+    path.join(app.getPath('userData'), 'recovery'),
+    hostClient,
+    () => settingsService?.snapshot().values ?? {},
+  );
+  hostClient.onEvent((event) => {
+    if (
+      event.type === 'component.changed' ||
+      event.type === 'scene.changed' ||
+      event.type === 'hierarchy.changed' ||
+      event.type === 'terrain.strokeCommitted'
+    )
+      recoveryService?.noteMutation();
+  });
+  const suppliedProject = process.argv.find((argument) => argument.toLowerCase().endsWith('.arcproject'));
+  if (suppliedProject) {
+    const opened = await projectService.open(suppliedProject);
+    if (opened.succeeded && opened.project) recoveryService.start(opened.project);
+    else
+      sendHostLog({
+        level: 'error',
+        source: 'project.browser',
+        message: opened.error || 'The supplied project could not be opened',
+      });
+  }
   if (!isCiSmoke) {
     const gatewayCore = new SceneGatewayCore(hostClient);
     hostClient.onEvent((event) => {
@@ -522,14 +612,194 @@ void app.whenReady().then(async () => {
   ipcMain.handle('editor:getStartupState', () => ({
     appVersion: app.getVersion(),
     engineHostConnected: hostClient?.connected ?? false,
-    viewportMode: hostClient?.connected ? 'native' : 'placeholder',
+    viewportMode: hostClient?.connected ? 'native' : 'unavailable',
     hostError: hostClient?.error ?? '',
+    activeProject: projectService?.snapshot().activeProject ?? null,
     ciSmoke: isCiSmoke,
   }));
+  ipcMain.handle('project:snapshot', () => projectService?.snapshot() ?? null);
+  ipcMain.handle(
+    'project:open',
+    async (_event, candidate: string, options: { readOnly?: boolean; upgrade?: boolean } = {}) => {
+      const result = await projectService?.open(candidate, options);
+      if (result?.succeeded && result.project) {
+        recoveryService?.start(result.project);
+        extensionService?.invalidate();
+      }
+      return result;
+    },
+  );
+  ipcMain.handle('project:close', async () => {
+    const target = activeWindow();
+    let scene: SceneDocumentState | undefined;
+    try {
+      scene = (await hostClient?.query('scene.hierarchy'))?.payload as SceneDocumentState | undefined;
+    } catch {
+      // A crashed host cannot report dirty state; closing the project remains available.
+    }
+    if (target && scene?.dirty) {
+      const choice = await dialog.showMessageBox(target, {
+        type: 'warning',
+        title: 'Close ARC Project',
+        message: `Save changes to ${scene.sceneName || 'Untitled'} before closing the project?`,
+        detail: 'Unsaved scene authoring changes will be lost.',
+        buttons: ['Save', "Don't Save", 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+      if (choice.response === 2) return { succeeded: false, error: 'Project close cancelled' };
+      if (choice.response === 0) {
+        const saved = await saveSceneWithDialog(target, scene.activeScenePath);
+        if (!saved?.succeeded) return { succeeded: false, error: saved?.error || 'Scene save failed' };
+      }
+    }
+    const result = await projectService?.close();
+    if (result?.succeeded) recoveryService?.stop(true);
+    return result;
+  });
+  ipcMain.handle('project:create', (_event, request: ArcCreateProjectRequest) => projectService?.create(request));
+  ipcMain.handle('project:clone', (_event, request: ArcCloneProjectRequest) => projectService?.clone(request));
+  ipcMain.handle('project:removeRecent', (_event, descriptorPath: string) =>
+    projectService?.removeRecent(descriptorPath),
+  );
+  ipcMain.handle('project:readText', (_event, relativePath: string) => {
+    const target = resolveProjectFile(relativePath);
+    const stats = fs.statSync(target);
+    if (!stats.isFile() || stats.size > 8 * 1024 * 1024)
+      throw new Error('Project text file is unavailable or too large');
+    return {
+      path: relativePath.replaceAll('\\', '/'),
+      text: fs.readFileSync(target, 'utf8'),
+      modifiedAt: stats.mtime.toISOString(),
+    };
+  });
+  ipcMain.handle('project:writeText', (_event, relativePath: string, text: string) => {
+    if (!projectService?.active()?.writable) throw new Error('The active project is read-only');
+    if (Buffer.byteLength(text, 'utf8') > 8 * 1024 * 1024) throw new Error('Project text file is too large');
+    const target = resolveProjectFile(relativePath);
+    const temporary = `${target}.tmp-${process.pid}`;
+    fs.writeFileSync(temporary, text, 'utf8');
+    fs.renameSync(temporary, target);
+    return { succeeded: true };
+  });
+  ipcMain.handle('settings:snapshot', () => settingsService?.snapshot() ?? null);
+  ipcMain.handle(
+    'settings:update',
+    (_event, scope: 'user' | 'project', changes: Record<string, unknown>, expectedRevision: number) => {
+      const updated = settingsService?.update(scope, changes, expectedRevision);
+      if (Object.hasOwn(changes, 'extensions.allowProjectExtensions')) extensionService?.invalidate();
+      return updated;
+    },
+  );
+  ipcMain.handle('vcs:snapshot', () => sourceControlService?.snapshot());
+  ipcMain.handle('vcs:diff', (_event, filePath: string, staged = false) =>
+    sourceControlService?.diff(filePath, staged),
+  );
+  ipcMain.handle('vcs:stage', (_event, paths: string[]) => sourceControlService?.stage(paths));
+  ipcMain.handle('vcs:unstage', (_event, paths: string[]) => sourceControlService?.unstage(paths));
+  ipcMain.handle('vcs:discard', async (_event, paths: string[]) => {
+    const target = activeWindow();
+    if (!target) throw new Error('No active editor window');
+    const confirmation = await dialog.showMessageBox(target, {
+      type: 'warning',
+      title: 'Discard local changes?',
+      message: `Discard changes in ${paths.length} file(s)?`,
+      detail: 'This operation cannot be undone by ARC.',
+      buttons: ['Discard', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    return confirmation.response === 0
+      ? sourceControlService?.discard(paths)
+      : { succeeded: false, output: '', error: 'Discard cancelled' };
+  });
+  ipcMain.handle('vcs:checkout', async (_event, reference: string) => {
+    const target = activeWindow();
+    if (!target) throw new Error('No active editor window');
+    const confirmation = await dialog.showMessageBox(target, {
+      type: 'question',
+      title: 'Switch Git reference?',
+      message: `Checkout '${reference}'?`,
+      detail: 'Unsaved working tree changes may prevent or complicate the checkout.',
+      buttons: ['Checkout', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+    });
+    return confirmation.response === 0
+      ? sourceControlService?.checkout(reference)
+      : { succeeded: false, output: '', error: 'Checkout cancelled' };
+  });
+  ipcMain.handle('vcs:pull', () => sourceControlService?.pull());
+  ipcMain.handle('vcs:push', () => sourceControlService?.push());
+  ipcMain.handle('vcs:commit', (_event, message: string) => sourceControlService?.commit(message));
+  ipcMain.handle('recovery:snapshot', (_event, projectGuid?: string) => recoveryService?.snapshot(projectGuid) ?? null);
+  ipcMain.handle('recovery:restore', (_event, id: string) => recoveryService?.restore(id));
+  ipcMain.handle('recovery:discard', (_event, id: string) => recoveryService?.discard(id) ?? false);
+  ipcMain.handle('extensions:snapshot', (_event, force = false) => extensionService?.snapshot(force) ?? null);
+  ipcMain.handle('dialog:openProject', async () => {
+    const target = activeWindow();
+    if (!target) throw new Error('No active editor window');
+    const result = await dialog.showOpenDialog(target, {
+      title: 'Open ARC Project',
+      buttonLabel: 'Open Project',
+      properties: ['openFile'],
+      filters: [{ name: 'ARC Project', extensions: ['arcproject'] }],
+    });
+    return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+  });
+  ipcMain.handle('dialog:projectDestination', async (_event, title = 'Select Project Destination') => {
+    const target = activeWindow();
+    if (!target) throw new Error('No active editor window');
+    const result = await dialog.showOpenDialog(target, {
+      title,
+      buttonLabel: 'Select Folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled || !result.filePaths.length ? null : result.filePaths[0];
+  });
 
   ipcMain.handle('host:query', (_event, type: string, payload: Record<string, unknown> = {}) =>
     hostClient?.query(type, payload),
   );
+  ipcMain.handle('host:reconnect', async () => {
+    hostClient?.restart();
+    const project = projectService?.active() ?? null;
+    if (!hostClient?.connected) {
+      return {
+        appVersion: app.getVersion(),
+        engineHostConnected: false,
+        viewportMode: 'unavailable',
+        hostError: hostClient?.error || 'Native editor host is unavailable',
+        activeProject: project,
+      };
+    }
+    if (project) {
+      const reopened = await hostClient.command('project.open', {
+        name: project.descriptor.name,
+        root: project.projectRoot,
+        readOnly: !project.writable,
+      });
+      if (!reopened.succeeded) {
+        return {
+          appVersion: app.getVersion(),
+          engineHostConnected: false,
+          viewportMode: 'unavailable',
+          hostError: reopened.error || 'Native host could not reopen the active project',
+          activeProject: project,
+        };
+      }
+    }
+    return {
+      appVersion: app.getVersion(),
+      engineHostConnected: true,
+      viewportMode: 'native',
+      hostError: '',
+      activeProject: project,
+    };
+  });
   ipcMain.handle(
     'host:command',
     (_event, type: string, payload: Record<string, unknown>, edit?: Record<string, unknown>) =>
@@ -685,6 +955,12 @@ app.on('before-quit', (event) => {
       await aiGateway?.stop();
     } finally {
       aiGateway = null;
+      projectService = null;
+      settingsService = null;
+      sourceControlService = null;
+      recoveryService?.stop(true);
+      recoveryService = null;
+      extensionService = null;
       hostClient?.stop();
       hostClient = null;
       shutdownComplete = true;

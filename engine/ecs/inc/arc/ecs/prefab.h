@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -27,13 +28,32 @@ struct prefab_entity_record
     std::vector<prefab_component_record> components;
 };
 
+/**
+ * @brief GUID-authoritative reference to a prefab source.
+ *
+ * The path is a refreshable editor hint and must never be used as the
+ * persistent identity of the source.
+ */
+struct prefab_reference
+{
+    entity_guid guid{};
+    std::string path_hint;
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return guid.valid();
+    }
+};
+
 struct prefab_asset
 {
-    static constexpr std::uint32_t current_format_version = 2;
+    static constexpr std::uint32_t current_format_version = 3;
     std::uint32_t format_version{current_format_version};
     entity_guid guid{};
     std::string name;
     std::string project_relative_path;
+    /// Optional base source. A value makes this asset a prefab variant.
+    prefab_reference base_prefab;
     std::vector<prefab_entity_record> entities;
 };
 
@@ -70,6 +90,10 @@ struct prefab_instance_component
     std::vector<std::pair<entity_guid, entity_guid>> source_to_instance;
     std::vector<prefab_override> overrides;
     bool source_missing{};
+    /// True when the source instance is nested inside another live prefab.
+    bool nested{};
+    /// Source-local entity that owns this nested instance.
+    entity_guid nested_owner{};
 };
 
 template <> struct component_traits<prefab_instance_component>
@@ -77,24 +101,42 @@ template <> struct component_traits<prefab_instance_component>
     static constexpr bool reflected = true;
     static constexpr std::string_view canonical_name = "arc.ecs.prefab_instance";
     static constexpr component_type_id id{0xa7c0000000000000ull, 0x0000000000000003ull};
-    static constexpr std::array<component_field_descriptor, 6> fields{
+    static constexpr std::array<component_field_descriptor, 8> fields{
         {{1, "prefab_guid", "Prefab GUID", reflected_field_kind::structure, reflected_field_flags::serialized},
          {2, "prefab_path", "Prefab", reflected_field_kind::asset_reference,
           reflected_field_flags::serialized | reflected_field_flags::editable},
          {3, "source_root", "Source Root", reflected_field_kind::structure, reflected_field_flags::serialized},
          {4, "source_to_instance", "Entity Mapping", reflected_field_kind::sequence, reflected_field_flags::serialized},
          {5, "overrides", "Overrides", reflected_field_kind::sequence, reflected_field_flags::serialized},
-         {6, "source_missing", "Source Missing", reflected_field_kind::boolean, reflected_field_flags::transient}}};
+         {6, "source_missing", "Source Missing", reflected_field_kind::boolean, reflected_field_flags::transient},
+         {7, "nested", "Nested Instance", reflected_field_kind::boolean, reflected_field_flags::serialized},
+         {8, "nested_owner", "Nested Owner", reflected_field_kind::entity_reference,
+          reflected_field_flags::serialized}}};
     static constexpr component_descriptor descriptor{id,
                                                      canonical_name,
                                                      "Prefab Instance",
-                                                     1,
+                                                     2,
                                                      sizeof(prefab_instance_component),
                                                      alignof(prefab_instance_component),
                                                      fields,
                                                      true,
                                                      false};
 };
+
+/**
+ * @brief Validates a proposed base-prefab ancestry.
+ * @param asset Prefab being authored.
+ * @param proposed_base Proposed direct base prefab.
+ * @param base_ancestry Ordered ancestry of @p proposed_base.
+ * @return False when the relationship would introduce a direct or transitive cycle.
+ */
+[[nodiscard]] inline bool valid_prefab_base(const prefab_asset& asset, const prefab_reference& proposed_base,
+                                            std::span<const entity_guid> base_ancestry) noexcept
+{
+    if (!proposed_base.valid()) return true;
+    if (proposed_base.guid == asset.guid) return false;
+    return std::find(base_ancestry.begin(), base_ancestry.end(), asset.guid) == base_ancestry.end();
+}
 
 struct [[nodiscard]] prefab_propagation_result
 {

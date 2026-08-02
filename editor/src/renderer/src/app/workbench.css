@@ -23,8 +23,50 @@
 .editor-region.foundation-editor-region {
   grid-column: 3;
   grid-row: 1;
-  grid-template-rows: minmax(0, 1fr);
+  display: grid;
+  grid-template-rows: 29px minmax(0, 1fr);
   overflow: hidden;
+}
+
+.scene-document-tabs {
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  gap: 1px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  background: #151e24;
+}
+
+.scene-document-tabs button {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  color: var(--arc-color-text-muted);
+  border: 0;
+  border-right: 1px solid var(--arc-color-border-subtle);
+  background: #19242b;
+  white-space: nowrap;
+}
+
+.scene-document-tabs button.active {
+  color: var(--arc-color-text);
+  border-top: 1px solid #55a8dd;
+  background: #202d35;
+}
+
+.scene-document-tabs button small {
+  padding: 1px 4px;
+  color: #e3b76d;
+  border-radius: 6px;
+  background: #3b3020;
+}
+
+.scene-document-tabs button b {
+  color: #73b8e4;
+  font-size: 8px;
 }
 
 .main-toolbar {

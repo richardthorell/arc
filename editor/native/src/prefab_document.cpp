@@ -48,6 +48,7 @@ ecs::entity clone_subtree(const editor_scene_state& source, editor_scene_state& 
     copy_component<scene::vegetation_component>(source, target, source_entity, result);
     copy_component<scene::decal_component>(source, target, source_entity, result);
     copy_component<scene::world_region_component>(source, target, source_entity, result);
+    copy_component<scene::prefab_instance_component>(source, target, source_entity, result);
     target.scene.emplace<scene::persistent_id_component>(result, ecs::generate_entity_guid());
     target.scene.emplace<scene::hierarchy_component>(result);
     target.scene.emplace<scene::selection_component>(result, false);
@@ -71,6 +72,26 @@ ecs::entity clone_subtree(const editor_scene_state& source, editor_scene_state& 
     for (const ecs::entity child : scene::children(source.scene, source_entity))
         clone_subtree(source, target, child, result, mapping);
     return result;
+}
+
+void remap_nested_prefab_instances(editor_scene_state& state,
+                                   const std::vector<std::pair<ecs::entity_guid, ecs::entity_guid>>& mapping)
+{
+    const std::unordered_map<ecs::entity_guid, ecs::entity_guid, ecs::entity_guid_hash> remap(mapping.begin(),
+                                                                                              mapping.end());
+    for (const auto& [source_guid, instance_guid] : mapping)
+    {
+        (void)source_guid;
+        const auto entity = find_entity_by_guid(state, instance_guid);
+        auto* nested = state.scene.try_get<scene::prefab_instance_component>(entity);
+        if (!nested) continue;
+        nested->nested = true;
+        for (auto& [source, instance] : nested->source_to_instance)
+        {
+            (void)source;
+            if (const auto found = remap.find(instance); found != remap.end()) instance = found->second;
+        }
+    }
 }
 
 std::optional<json> read_prefab(const std::filesystem::path& path, std::string& error)
@@ -189,6 +210,7 @@ prefab_document_result instantiate_prefab_document(editor_scene_state& state, re
 
     std::vector<std::pair<ecs::entity_guid, ecs::entity_guid>> mapping;
     const ecs::entity root = clone_subtree(loaded, state, source_root, parent, mapping);
+    remap_nested_prefab_instances(state, mapping);
     auto& instance = state.scene.emplace<scene::prefab_instance_component>(root);
     instance.prefab_guid = *ecs::parse_entity_guid(document->at("prefab").at("id").get<std::string>());
     instance.prefab_path = project_relative_path(project_root, path);

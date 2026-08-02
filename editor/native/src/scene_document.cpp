@@ -212,7 +212,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     const auto component_version = value["version"].get<std::uint32_t>();
     const bool supports_v2 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" || name == "Vegetation" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
-                             name == "AreaLight";
+                             name == "AreaLight" || name == "PrefabInstance";
     const bool supports_v3 = name == "Terrain" || name == "DirectionalLight" || name == "PointLight" ||
                              name == "SpotLight" || name == "AreaLight";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
@@ -250,6 +250,13 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             !ecs::parse_entity_guid(value["sourceRoot"].get<std::string>()) || !value.contains("mapping") ||
             !value["mapping"].is_array() || !value.contains("overrides") || !value["overrides"].is_array())
             return fail("has malformed prefab identity or override data");
+        if (component_version >= 2u &&
+            (!value.contains("nested") || !value["nested"].is_boolean() || !value.contains("nestedOwner") ||
+             !value["nestedOwner"].is_string()))
+            return fail("has malformed nested prefab data");
+        if (component_version >= 2u && value["nested"].get<bool>() &&
+            !ecs::parse_entity_guid(value["nestedOwner"].get<std::string>()))
+            return fail("has an invalid nested prefab owner");
         return true;
     }
     if (name == "Transform")
@@ -694,12 +701,14 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                  {"value", base64_encode(bytes)}});
         }
         components["PrefabInstance"] = {
-            {"version", 1},
+            {"version", 2},
             {"prefabGuid", ecs::to_string(component->prefab_guid)},
             {"prefabPath", relative_asset_path(component->prefab_path, project_root).generic_string()},
             {"sourceRoot", ecs::to_string(component->source_root)},
             {"mapping", std::move(mapping)},
-            {"overrides", std::move(overrides)}};
+            {"overrides", std::move(overrides)},
+            {"nested", component->nested},
+            {"nestedOwner", component->nested ? ecs::to_string(component->nested_owner) : std::string{}}};
     }
     if (const auto* component = state.scene.try_get<scene::transform_component>(value))
         components["Transform"] = {{"version", 1},
@@ -916,7 +925,7 @@ scene_document_text_result serialize_scene_subtree_as_prefab(editor_scene_state&
         for (const ecs::entity value : values)
         {
             json record = serialize_entity(state, value, project_root);
-            record["components"].erase("PrefabInstance");
+            if (value == root) record["components"].erase("PrefabInstance");
             record["order"] = order++;
             const auto* hierarchy = state.scene.try_get<scene::hierarchy_component>(value);
             if (!hierarchy || !included.contains(hierarchy->parent)) record["parent"] = nullptr;
@@ -1195,6 +1204,13 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 scene::prefab_instance_component instance;
                 instance.prefab_guid = *ecs::parse_entity_guid(source.value("prefabGuid", ""));
                 instance.source_root = *ecs::parse_entity_guid(source.value("sourceRoot", ""));
+                instance.nested = source.value("nested", false);
+                if (instance.nested)
+                {
+                    const auto nested_owner = ecs::parse_entity_guid(source.value("nestedOwner", ""));
+                    if (!nested_owner) throw std::runtime_error("invalid nested prefab owner");
+                    instance.nested_owner = *nested_owner;
+                }
                 const auto prefab_path = resolve_document_asset_path(source.value("prefabPath", ""), project_root);
                 if (!prefab_path) throw std::runtime_error("invalid prefab asset path");
                 instance.prefab_path = prefab_path->generic_string();

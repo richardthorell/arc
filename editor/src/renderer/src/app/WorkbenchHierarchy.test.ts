@@ -46,7 +46,7 @@ describe('host scene hierarchy reconstruction', () => {
       'none',
     );
     expect(classifyHostEventRefresh({ type: 'entity.selected', entity: { index: 8, generation: 1 } }, selected)).toBe(
-      'selection',
+      'all',
     );
     expect(classifyHostEventRefresh({ type: 'component.changed', entity: { index: 7, generation: 1 } }, selected)).toBe(
       'selected',

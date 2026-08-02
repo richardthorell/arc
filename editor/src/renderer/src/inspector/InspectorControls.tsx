@@ -17,6 +17,7 @@ type NumericInputProps = {
   max?: number;
   scrubLabel?: string;
   scrubClassName?: string;
+  mixed?: boolean;
   onPreview?: (value: number) => void;
   onCommit: (value: number) => void;
 };
@@ -36,16 +37,17 @@ export function NumericInput({
   max,
   scrubLabel,
   scrubClassName,
+  mixed = false,
   onPreview,
   onCommit,
 }: NumericInputProps) {
-  const [draft, setDraft] = useState(() => formatNumber(value, precision));
+  const [draft, setDraft] = useState(() => (mixed ? '' : formatNumber(value, precision)));
   const [scrubbing, setScrubbing] = useState(false);
   const cancelBlur = useRef(false);
   const latestScrub = useRef(value);
   const frame = useRef<number | null>(null);
 
-  useLayoutEffect(() => setDraft(formatNumber(value, precision)), [precision, value]);
+  useLayoutEffect(() => setDraft(mixed ? '' : formatNumber(value, precision)), [mixed, precision, value]);
 
   const commitDraft = () => {
     if (cancelBlur.current) {
@@ -129,6 +131,7 @@ export function NumericInput({
       )}
       <input
         aria-label={ariaLabel}
+        className={mixed ? 'is-mixed' : undefined}
         inputMode="decimal"
         onBlur={commitDraft}
         onChange={(event) => setDraft(event.target.value)}
@@ -148,6 +151,7 @@ export function Vector3Control({
   onToggleLinked,
   onPreview,
   onCommit,
+  mixed = false,
 }: {
   field: Pick<Vector3FieldSchema, 'label' | 'precision' | 'step' | 'scrubSensitivity' | 'unit' | 'linked'>;
   value: Vec3;
@@ -155,6 +159,7 @@ export function Vector3Control({
   onToggleLinked?: () => void;
   onPreview: (axis: VectorAxis, value: number) => void;
   onCommit: (axis: VectorAxis, value: number) => void;
+  mixed?: boolean;
 }) {
   return (
     <div className="inspector-property inspector-vector-property">
@@ -184,6 +189,7 @@ export function Vector3Control({
             step={field.step}
             unit={field.unit}
             value={value[axis]}
+            mixed={mixed}
             onCommit={(next) => onCommit(axis, next)}
             onPreview={(next) => onPreview(axis, next)}
           />
@@ -198,11 +204,13 @@ export function NumberControl({
   value,
   onPreview,
   onCommit,
+  mixed = false,
 }: {
   field: Pick<NumberFieldSchema, 'label' | 'precision' | 'step' | 'scrubSensitivity' | 'unit' | 'min' | 'max'>;
   value: number;
   onPreview: (value: number) => void;
   onCommit: (value: number) => void;
+  mixed?: boolean;
 }) {
   return (
     <div className="inspector-property inspector-number-property">
@@ -217,6 +225,7 @@ export function NumberControl({
         step={field.step}
         unit={field.unit}
         value={value}
+        mixed={mixed}
         onCommit={onCommit}
         onPreview={onPreview}
       />
@@ -230,12 +239,14 @@ export function ColorControl({
   showAlpha = true,
   onPreview,
   onCommit,
+  mixed = false,
 }: {
   label: string;
   value: Vec4;
   showAlpha?: boolean;
   onPreview: (value: Vec4) => void;
   onCommit: (value: Vec4) => void;
+  mixed?: boolean;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const swatchRef = useRef<HTMLButtonElement>(null);
@@ -256,7 +267,10 @@ export function ColorControl({
           title="Open the advanced linear color picker"
           type="button"
         >
-          <span style={{ background: colorToCss(value) }} />
+          <span
+            className={mixed ? 'is-mixed' : undefined}
+            style={{ background: mixed ? undefined : colorToCss(value) }}
+          />
         </button>
         {(showAlpha ? (['x', 'y', 'z', 'w'] as const) : (['x', 'y', 'z'] as const)).map((channel, index) => (
           <NumericInput
@@ -268,6 +282,7 @@ export function ColorControl({
             scrubSensitivity={0.005}
             step={0.01}
             value={value[channel]}
+            mixed={mixed}
             onCommit={(next) => update(channel, next)}
           />
         ))}

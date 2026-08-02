@@ -25,6 +25,7 @@ const baseMenuCommands: Partial<Record<MenuItem, MenuCommand[]>> = {
     { label: 'Save Scene', command: 'file.save', shortcut: 'Ctrl+S' },
     { label: 'Save Scene As...', command: 'file.saveAs', shortcut: 'Ctrl+Shift+S' },
     { label: 'Import Scene Into Current...', command: 'file.importScene' },
+    { label: 'Close Project', command: 'project.close' },
   ],
   Edit: [],
   Window: [{ label: 'Reset Layout', command: 'layout.reset' }],

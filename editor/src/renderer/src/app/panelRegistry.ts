@@ -63,14 +63,17 @@ export const activityRegistry: ActivityRegistration[] = [
   { id: 'scene', title: 'Scene', icon: FolderTree, panelId: 'hierarchy' },
   { id: 'assets', title: 'Assets', icon: Database, panelId: 'assetExplorer' },
   { id: 'search', title: 'Search', icon: Search, panelId: 'search' },
+  { id: 'renderGraph', title: 'Render Graph', icon: Layers3, panelId: 'renderGraph' },
+  { id: 'versionControl', title: 'Version Control', icon: GitBranch, panelId: 'versionControl' },
+  { id: 'profiler', title: 'Profiler', icon: Gauge, panelId: 'profiler' },
   { id: 'aiAssistant', title: 'AI Gateway', icon: Bot, panelId: 'aiAssistant' },
   { id: 'settings', title: 'Settings', icon: Settings, panelId: 'settings' },
 ];
 
 export const dockPanelIds = {
-  center: ['viewport'] satisfies WorkbenchPanelId[],
+  center: ['viewport', 'renderGraph', 'shaderEditor'] satisfies WorkbenchPanelId[],
   right: ['inspector', 'lighting', 'worldSettings'] satisfies WorkbenchPanelId[],
-  bottom: ['contentBrowser', 'console', 'profiler', 'aiAssistant'] satisfies WorkbenchPanelId[],
+  bottom: ['contentBrowser', 'console', 'versionControl', 'profiler', 'aiAssistant'] satisfies WorkbenchPanelId[],
 };
 
 export const getPanel = (id: WorkbenchPanelId) => panelRegistry[id];

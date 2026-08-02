@@ -464,6 +464,8 @@ struct host_scene_snapshot
 struct host_selected_entity_snapshot
 {
     host_entity_id entity{};
+    std::size_t selection_count{};
+    std::vector<std::string> selected_guids;
     std::string guid;
     std::string name;
     std::string tag;
@@ -583,6 +585,8 @@ struct host_asset_snapshot
     std::uint32_t strong_references{};
     std::uint32_t pins{};
     std::string diagnostic;
+    std::vector<std::string> dependencies;
+    std::vector<std::string> reverse_dependencies;
     bool imported{};
     bool import_running{};
 };
@@ -681,6 +685,7 @@ struct host_open_project_command
 {
     std::string name;
     std::filesystem::path root;
+    bool read_only{};
 };
 
 struct host_close_project_command
@@ -703,6 +708,15 @@ struct host_save_scene_command
 struct host_save_scene_as_command
 {
     std::filesystem::path path;
+};
+struct host_autosave_scene_command
+{
+    std::filesystem::path path;
+};
+struct host_open_recovery_scene_command
+{
+    std::filesystem::path path;
+    std::filesystem::path original_path;
 };
 struct host_asset_reimport_command
 {
@@ -782,6 +796,8 @@ struct host_rename_entity_command
 struct host_select_entity_command
 {
     host_entity_id entity{};
+    bool additive{};
+    bool toggle{};
 };
 
 struct host_clear_selection_command
@@ -792,42 +808,49 @@ struct host_set_active_command
 {
     host_entity_id entity{};
     bool active{true};
+    bool apply_to_selection{};
 };
 
 struct host_set_tag_command
 {
     host_entity_id entity{};
     std::string tag;
+    bool apply_to_selection{};
 };
 
 struct host_set_transform_command
 {
     host_entity_id entity{};
     host_transform transform;
+    bool apply_to_selection{};
 };
 
 struct host_set_render_layer_command
 {
     host_entity_id entity{};
     std::uint32_t render_layer_mask{host_default_render_layer};
+    bool apply_to_selection{};
 };
 
 struct host_set_mobility_command
 {
     host_entity_id entity{};
     host_mobility mobility{host_mobility::movable};
+    bool apply_to_selection{};
 };
 
 struct host_set_camera_command
 {
     host_entity_id entity{};
     host_camera_snapshot camera;
+    bool apply_to_selection{};
 };
 
 struct host_set_light_command
 {
     host_entity_id entity{};
     host_light_snapshot light;
+    bool apply_to_selection{};
 };
 
 struct host_set_mesh_renderer_command
@@ -839,6 +862,7 @@ struct host_set_mesh_renderer_command
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
     host_vec4 base_color_tint{1.0f, 1.0f, 1.0f, 1.0f};
+    bool apply_to_selection{};
 };
 
 struct host_set_terrain_command
@@ -889,6 +913,20 @@ struct host_set_entity_material_command
 {
     host_entity_id entity{};
     std::filesystem::path path;
+    bool apply_to_selection{};
+};
+
+enum class host_component_operation : std::uint8_t
+{
+    add,
+    remove,
+    reset
+};
+
+struct host_component_operation_command
+{
+    host_component_operation operation{host_component_operation::reset};
+    std::string component;
 };
 
 struct host_set_world_environment_command
@@ -1035,7 +1073,8 @@ struct host_viewport_capture_command
 
 using host_command_payload = std::variant<
     host_open_project_command, host_close_project_command, host_open_scene_command, host_new_scene_command,
-    host_save_scene_command, host_save_scene_as_command, host_asset_reimport_command, host_asset_cancel_import_command,
+    host_save_scene_command, host_save_scene_as_command, host_autosave_scene_command,
+    host_open_recovery_scene_command, host_asset_reimport_command, host_asset_cancel_import_command,
     host_asset_move_command, host_asset_rename_command, host_create_entity_command, host_delete_entity_command,
     host_duplicate_entity_command, host_create_prefab_command, host_instantiate_prefab_command,
     host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command, host_reparent_entity_command,
@@ -1044,6 +1083,7 @@ using host_command_payload = std::variant<
     host_set_mobility_command, host_set_camera_command, host_set_light_command, host_set_mesh_renderer_command,
     host_set_terrain_command, host_set_terrain_brush_command, host_set_terrain_layer_command,
     host_terrain_stroke_command, host_terrain_hover_command, host_set_entity_material_command,
+    host_component_operation_command,
     host_set_world_environment_command, host_apply_world_environment_preset_command, host_set_environment_hdri_command,
     host_set_camera_projection_command, host_viewport_attach_command, host_viewport_resize_command,
     host_viewport_set_camera_mode_command, host_viewport_set_render_options_command, host_viewport_camera_input_command,
@@ -1113,6 +1153,10 @@ struct host_component_schema_query
 {
 };
 
+struct host_workspace_documents_query
+{
+};
+
 struct host_gateway_diagnostics_query
 {
 };
@@ -1153,6 +1197,7 @@ struct host_terrain_tool_state_query
 using host_query_payload =
     std::variant<host_scene_hierarchy_query, host_selected_entity_query, host_scene_entities_query,
                  host_entity_by_guid_query, host_scene_spatial_query, host_component_schema_query,
+                 host_workspace_documents_query,
                  host_gateway_diagnostics_query, host_viewport_capture_query, host_project_assets_query,
                  host_asset_thumbnail_query, host_viewport_state_query, host_world_environment_query,
                  host_history_state_query, host_runtime_state_query, host_terrain_tool_state_query>;

@@ -16,7 +16,7 @@ export function StatusBar({ startupState, activeScene, lastCommand, aiControl }:
         <GitBranch size={13} /> main
       </span>
       <span>
-        <Circle size={10} /> {startupState?.engineHostConnected ? 'host connected' : 'mock host'}
+        <Circle size={10} /> {startupState?.engineHostConnected ? 'host connected' : 'host unavailable'}
       </span>
       <span>{activeScene ?? 'no scene'}</span>
       {aiControl && <span className="status-ai-control">{aiControl}</span>}

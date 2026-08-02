@@ -1,4 +1,4 @@
-import type { CommandId, WorkbenchCommandResult } from './workbenchTypes';
+import type { CommandId } from './workbenchTypes';
 
 export type CommandRegistration = {
   id: CommandId;
@@ -19,6 +19,11 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
     id: 'file.importScene',
     label: 'Import Scene Into Current',
     description: 'Append a scene asset to the current scene.',
+  },
+  'project.close': {
+    id: 'project.close',
+    label: 'Close Project',
+    description: 'Close the active project and return to the project browser.',
   },
   'edit.undo': { id: 'edit.undo', label: 'Undo', description: 'Undo the last scene edit.' },
   'edit.redo': { id: 'edit.redo', label: 'Redo', description: 'Redo the last undone scene edit.' },
@@ -55,16 +60,4 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
   'vcs.push': { id: 'vcs.push', label: 'Push', description: 'Push to remote.' },
   'ai.newChat': { id: 'ai.newChat', label: 'New AI Chat', description: 'Start a new assistant chat.' },
   'settings.open': { id: 'settings.open', label: 'Open Settings', description: 'Open editor settings.' },
-};
-
-export const executeWorkbenchCommand = async (command: CommandId): Promise<WorkbenchCommandResult> => {
-  const registration = commandRegistry[command];
-  await new Promise((resolve) => window.setTimeout(resolve, 40));
-
-  return {
-    command,
-    label: registration.label,
-    succeeded: true,
-    message: `${registration.label} queued`,
-  };
 };

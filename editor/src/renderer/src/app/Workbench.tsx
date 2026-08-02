@@ -10,19 +10,18 @@ import {
   FileText,
   Folder,
   FolderTree,
+  Lightbulb,
   Copy,
   Eye,
   EyeOff,
   MoreVertical,
   Plus,
-  Lightbulb,
   Search,
   Settings,
   Trash2,
   X,
 } from 'lucide-react';
 
-import { executeWorkbenchCommand } from './commandRegistry';
 import { activityRegistry, dockPanelIds, getPanel } from './panelRegistry';
 import { defaultWorkbenchLayout, useWorkbenchLayout } from './workbenchStore';
 import type { ActivityId, CommandId, StartupState, WorkbenchPanelId } from './workbenchTypes';
@@ -31,8 +30,8 @@ import { DockHost } from '../layout/DockHost';
 import { MainToolbar } from '../layout/MainToolbar';
 import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
-import { flattenScene, mockHost } from '../services/mockHost';
-import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/mockHost';
+import { flattenScene } from '../services/editorHostTypes';
+import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/editorHostTypes';
 import { UiButton, UiIconButton, UiPanel, UiTab, UiTabs, UiTreeRow } from '../ui';
 import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
@@ -41,7 +40,7 @@ import { InspectorPanel as DataDrivenInspector } from '../inspector/InspectorPan
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
-import { eulerDegreesToQuaternion, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
+import { aggregateInspectorSnapshots, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
 import { ProfilerPanel } from '../profiler/ProfilerPanel';
 import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
 import { TerrainToolsPanel } from '../terrain/TerrainToolsPanel';
@@ -49,6 +48,12 @@ import type { TerrainToolState } from '../terrain/TerrainToolsPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
+import { RenderGraphPanel } from '../renderGraph/RenderGraphPanel';
+import { ShaderEditorPanel } from '../shader/ShaderEditorPanel';
+import { LightingPanel } from '../lighting/LightingPanel';
+import { SearchPanel } from '../search/SearchPanel';
+import { SettingsPanel } from '../settings/SettingsPanel';
+import { VersionControlPanel } from '../versionControl/VersionControlPanel';
 
 import './workbench.css';
 
@@ -77,6 +82,24 @@ type HostSceneSnapshot = {
 
 type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
 
+type WorkspaceDocument = {
+  guid: string;
+  name: string;
+  path: string;
+  dirty: boolean;
+  recovered: boolean;
+  readOnly: boolean;
+  active: boolean;
+  pinned: boolean;
+  entityCount: number;
+  revision: number;
+};
+
+type WorkspaceDocumentsSnapshot = {
+  activeDocument: string;
+  documents: WorkspaceDocument[];
+};
+
 type HostRuntimeSnapshot = {
   state: 'stopped' | 'running' | 'paused' | 'faulted';
   tickId: number;
@@ -99,6 +122,8 @@ type HostAssetSnapshot = {
   strongReferences: number;
   pins: number;
   diagnostic: string;
+  dependencies: string[];
+  reverseDependencies: string[];
   imported: boolean;
   importRunning: boolean;
 };
@@ -129,7 +154,7 @@ type HostAssetThumbnailSnapshot = {
 const fallbackStartupState: StartupState = {
   appVersion: 'dev',
   engineHostConnected: false,
-  viewportMode: 'placeholder',
+  viewportMode: 'unavailable',
 };
 
 const sceneKindFromHost = (kind: HostSceneEntity['kind']): SceneEntity['kind'] => {
@@ -215,7 +240,7 @@ const validHostEntity = (entity: HostEntityId | undefined): entity is HostEntity
 export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId: string): HostEventRefreshAction => {
   if (event.type === 'entity.selected') {
     const nextSelection = validHostEntity(event.entity) ? hostEntityKey(event.entity) : '';
-    return nextSelection === selectedEntityId ? 'none' : 'selection';
+    return nextSelection === selectedEntityId ? 'none' : 'all';
   }
   if (event.type === 'component.changed') {
     if (!validHostEntity(event.entity)) return 'none';
@@ -259,68 +284,6 @@ const parseHostEntityId = (id: string): HostEntityId | null => {
   return { index, generation };
 };
 
-const snapshotFromMockEntity = (entity: SceneEntity | null): InspectorEntitySnapshot | null => {
-  if (!entity || !entity.transform) return null;
-  const hostEntity = parseHostEntityId(entity.id) ?? { index: 0, generation: 0 };
-  const rotationQuaternion = eulerDegreesToQuaternion(entity.transform.rotation);
-  return {
-    entity: hostEntity,
-    name: entity.name,
-    tag: entity.kind === 'camera' ? 'Camera' : 'Untagged',
-    active: entity.active,
-    renderLayerMask: 1,
-    transform: {
-      position: entity.transform.position,
-      rotationDegrees: entity.transform.rotation,
-      scale: entity.transform.scale,
-      rotationQuaternion,
-    },
-    camera:
-      entity.kind === 'camera'
-        ? {
-            projection: 'perspective',
-            fovYDegrees: 60,
-            orthographicHeight: 10,
-            nearPlane: 0.1,
-            farPlane: 2000,
-            active: true,
-            clearColor: { x: 0.055, y: 0.12, z: 0.22, w: 1 },
-            exposureMode: 'automatic',
-            exposureMetering: 'average',
-            manualEV100: 10,
-            exposureCompensation: 0,
-            minimumEV100: -8,
-            maximumEV100: 20,
-            brightenSpeed: 3,
-            darkenSpeed: 1,
-          }
-        : null,
-    light: null,
-    meshRenderer:
-      entity.kind === 'mesh'
-        ? {
-            visible: true,
-            castsShadows: true,
-            receivesShadows: true,
-            shadowLodBias: 0,
-            maximumShadowDistance: 0,
-            baseColorTint: { x: 1, y: 1, z: 1, w: 1 },
-            hasMaterial: true,
-            assetBackedMaterial: true,
-            materialName: 'Default Material',
-            materialPath: 'materials/default.arcmat',
-          }
-        : null,
-    terrain: null,
-    prefab: null,
-    components: [
-      { kind: 'transform', label: 'Transform', editable: true },
-      ...(entity.kind === 'camera' ? [{ kind: 'camera', label: 'Camera', editable: true }] : []),
-      ...(entity.kind === 'mesh' ? [{ kind: 'meshRenderer', label: 'Mesh Renderer', editable: true }] : []),
-    ],
-  };
-};
-
 const terrainToolStateFromSnapshot = (snapshot: InspectorEntitySnapshot): TerrainToolState | null => {
   if (!snapshot.terrain) return null;
   return {
@@ -335,7 +298,7 @@ const terrainToolStateFromSnapshot = (snapshot: InspectorEntitySnapshot): Terrai
   };
 };
 
-export function Workbench() {
+export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } = {}) {
   const { layout, setLayout, resetLayout } = useWorkbenchLayout();
   const [startupState, setStartupState] = useState<StartupState | null>(null);
   const [project, setProject] = useState<ProjectSnapshot | null>(null);
@@ -343,9 +306,10 @@ export function Workbench() {
   const [consoleLocked, setConsoleLocked] = useState(true);
   const [clearedConsoleIds, setClearedConsoleIds] = useState<ReadonlySet<string>>(new Set());
   const [aiGatewayStatus, setAiGatewayStatus] = useState<ArcAiGatewayStatus | null>(null);
-  const [selectedEntityId, setSelectedEntityId] = useState('camera-main');
+  const [selectedEntityId, setSelectedEntityId] = useState('');
+  const [selectedEntityIds, setSelectedEntityIds] = useState<ReadonlySet<string>>(new Set());
   const selectedEntityIdRef = useRef(selectedEntityId);
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>('asset-scene-demo');
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [assetCache, setAssetCache] = useState<HostProjectAssetsSnapshot | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<InspectorEntitySnapshot | null>(null);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
@@ -362,6 +326,10 @@ export function Workbench() {
     canRedo: false,
     undoLabel: '',
     redoLabel: '',
+  });
+  const [workspaceDocuments, setWorkspaceDocuments] = useState<WorkspaceDocumentsSnapshot>({
+    activeDocument: '',
+    documents: [],
   });
   const [activeTool, setActiveTool] = useState<'select' | 'translate' | 'rotate' | 'scale' | 'terrain'>('translate');
   const [terrainToolState, setTerrainToolState] = useState<TerrainToolState | null>(null);
@@ -612,12 +580,7 @@ export function Workbench() {
   ) => {
     const requestRevision = ++selectedSnapshotRevision.current;
     if (!connected || !window.arc?.host) {
-      const mockEntity = project
-        ? (flattenScene(project.scene).find((entity) => entity.id === entityId) ?? null)
-        : null;
-      if (requestRevision === selectedSnapshotRevision.current) {
-        setSelectedSnapshot(snapshotFromMockEntity(mockEntity));
-      }
+      if (requestRevision === selectedSnapshotRevision.current) setSelectedSnapshot(null);
       return;
     }
     const replacingSelection = !selectedSnapshot || hostEntityKey(selectedSnapshot.entity) !== entityId;
@@ -630,7 +593,23 @@ export function Workbench() {
         setLastCommand(response.error || 'Could not read selected entity');
         return;
       }
-      setSelectedSnapshot(parseSelectedEntitySnapshot(response.payload));
+      let next = parseSelectedEntitySnapshot(response.payload);
+      if ((next.selectionCount ?? 1) > 1 && next.selectedGuids?.length) {
+        const responses = await Promise.all(
+          next.selectedGuids.map(
+            (guid) => window.arc.host.query('gateway.entity', { guid }) as Promise<HostResponse<unknown>>,
+          ),
+        );
+        if (requestRevision !== selectedSnapshotRevision.current) return;
+        const snapshots = responses
+          .filter((entry) => entry.succeeded && entry.payload)
+          .map((entry) => parseSelectedEntitySnapshot(entry.payload));
+        if (snapshots.length !== next.selectedGuids.length)
+          throw new Error('Selection changed while the aggregate Inspector snapshot was being built');
+        const primary = snapshots.find((entry) => hostEntityKey(entry.entity) === entityId) ?? next;
+        next = aggregateInspectorSnapshots(primary, snapshots);
+      }
+      setSelectedSnapshot(next);
     } catch (error) {
       if (requestRevision !== selectedSnapshotRevision.current) return;
       if (replacingSelection) setSelectedSnapshot(null);
@@ -662,6 +641,20 @@ export function Workbench() {
     if (command === 'layout.reset') {
       resetLayout();
       setLastCommand('Layout reset');
+      return;
+    }
+
+    if (command === 'project.close') {
+      try {
+        const result = await window.arc.projects.close();
+        if (!result.succeeded) {
+          setLastCommand(result.error || 'Project close cancelled');
+          return;
+        }
+        onProjectClosed?.();
+      } catch (error) {
+        setLastCommand(error instanceof Error ? error.message : String(error));
+      }
       return;
     }
 
@@ -778,8 +771,11 @@ export function Workbench() {
       }
     }
 
-    const result = await executeWorkbenchCommand(command);
-    setLastCommand(result.message);
+    setLastCommand(
+      startupState?.engineHostConnected
+        ? `${command} is not implemented by the native host`
+        : 'Native editor host is unavailable',
+    );
   };
 
   const refreshProjectFromHost = async (activeScene?: string, refreshSelection = true) => {
@@ -787,9 +783,10 @@ export function Workbench() {
       return;
     }
 
-    const [sceneResponse, assetsResponse] = await Promise.all([
+    const [sceneResponse, assetsResponse, documentsResponse] = await Promise.all([
       window.arc.host.query('scene.hierarchy') as Promise<HostResponse<HostSceneSnapshot>>,
       window.arc.host.query('project.assets') as Promise<HostResponse<HostProjectAssetsSnapshot>>,
+      window.arc.host.query('workspace.documents') as Promise<HostResponse<WorkspaceDocumentsSnapshot>>,
     ]);
 
     if (!sceneResponse.succeeded || !sceneResponse.payload) {
@@ -802,6 +799,7 @@ export function Workbench() {
     const { entities: _entities, ...nextDocumentState } = scenePayload;
     void _entities;
     setDocumentState(nextDocumentState);
+    if (documentsResponse.succeeded && documentsResponse.payload) setWorkspaceDocuments(documentsResponse.payload);
 
     const hostAssets = assetsResponse.succeeded && assetsResponse.payload ? assetsResponse.payload : null;
     setAssetCache(hostAssets);
@@ -818,11 +816,16 @@ export function Workbench() {
         residency: asset.residency,
         generation: asset.generation,
         diagnostic: asset.diagnostic,
+        dependencies: asset.dependencies,
+        reverseDependencies: asset.reverseDependencies,
       })) ??
       project?.assets ??
       [];
 
     const selected = hostEntities.find((entity) => entity.selected);
+    setSelectedEntityIds(
+      new Set(hostEntities.filter((entity) => entity.selected).map((entity) => hostEntityKey(entity.entity))),
+    );
     if (selected && refreshSelection) {
       const selectedKey = hostEntityKey(selected.entity);
       selectedEntityIdRef.current = selectedKey;
@@ -831,6 +834,7 @@ export function Workbench() {
     } else if (refreshSelection) {
       selectedEntityIdRef.current = '';
       setSelectedEntityId('');
+      setSelectedEntityIds(new Set());
       ++selectedSnapshotRevision.current;
       setSelectedSnapshot(null);
     }
@@ -842,7 +846,7 @@ export function Workbench() {
 
     setProject((current) => ({
       ...(current ?? {
-        name: hostAssets?.projectName || 'Arc Sandbox',
+        name: hostAssets?.projectName || 'Project',
         root: hostAssets?.projectRoot || '',
         assetRoot: hostAssets?.assetRoot || '',
         activeScene: activeScene ?? '',
@@ -859,7 +863,7 @@ export function Workbench() {
           gpuMemoryMb: 0,
         },
       }),
-      name: hostAssets?.projectName || current?.name || 'Arc Sandbox',
+      name: hostAssets?.projectName || current?.name || 'Project',
       root: hostAssets?.projectRoot || current?.root || '',
       assetRoot: hostAssets?.assetRoot || current?.assetRoot || '',
       activeScene: activeScene ?? scenePayload.activeScenePath ?? current?.activeScene ?? '',
@@ -867,6 +871,28 @@ export function Workbench() {
       assets,
       console: current?.console ?? [],
     }));
+  };
+
+  const reconnectHost = async () => {
+    setLastCommand('Reconnecting native editor host...');
+    try {
+      const state = await window.arc.host.reconnect();
+      setStartupState(state);
+      if (!state.engineHostConnected) {
+        setProject(null);
+        setLastCommand(state.hostError || 'Native editor host is unavailable');
+        return;
+      }
+      const runtimeResponse = (await window.arc.host.query('runtime.state')) as HostResponse<HostRuntimeSnapshot>;
+      if (runtimeResponse.succeeded) acceptRuntimeSnapshot(runtimeResponse.payload);
+      await refreshProjectFromHost();
+      setLastCommand('Native editor host reconnected');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStartupState({ ...fallbackStartupState, hostError: message });
+      setProject(null);
+      setLastCommand(message);
+    }
   };
 
   useEffect(() => {
@@ -880,34 +906,26 @@ export function Workbench() {
           await refreshProjectFromHost();
           return;
         }
-
-        const snapshot = await mockHost.getProjectSnapshot();
-        setProject(snapshot);
-        const selected = flattenScene(snapshot.scene).find((entity) => entity.id === selectedEntityId) ?? null;
-        setSelectedSnapshot(snapshotFromMockEntity(selected));
+        setProject(null);
+        setLastCommand(state.hostError || 'Native editor host is unavailable');
       })
-      .catch(async () => {
+      .catch((error) => {
         setStartupState(fallbackStartupState);
-        setProject(await mockHost.getProjectSnapshot());
+        setProject(null);
+        setLastCommand(error instanceof Error ? error.message : String(error));
       });
     // Startup owns the first authoritative refresh; later refreshes are event-driven.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acceptRuntimeSnapshot]);
 
-  const selectEntity = async (entityId: string) => {
-    const result = await mockHost.selectEntity(entityId);
-    if (result.selectedEntityId === selectedEntityIdRef.current) return;
-    selectedEntityIdRef.current = result.selectedEntityId;
-    setSelectedEntityId(result.selectedEntityId);
+  const selectEntity = async (entityId: string, additive = false) => {
+    if (!additive && entityId === selectedEntityIdRef.current && selectedEntityIds.size === 1) return;
     const hostEntity = parseHostEntityId(entityId);
     if (startupState?.engineHostConnected && hostEntity) {
-      await window.arc.host.command('entity.select', { entity: hostEntity });
-      await refreshSelectedEntity(entityId, true);
-    } else {
-      const mockEntity = project
-        ? (flattenScene(project.scene).find((entity) => entity.id === entityId) ?? null)
-        : null;
-      setSelectedSnapshot(snapshotFromMockEntity(mockEntity));
+      selectedEntityIdRef.current = entityId;
+      setSelectedEntityId(entityId);
+      await window.arc.host.command('entity.select', { entity: hostEntity, additive, toggle: additive });
+      await refreshProjectFromHost(undefined, true);
     }
   };
 
@@ -1002,8 +1020,11 @@ export function Workbench() {
   };
 
   const updateWorldEnvironment = (next: HostWorldEnvironment) => {
+    if (!startupState?.engineHostConnected) {
+      setLastCommand('Native editor host is unavailable');
+      return;
+    }
     setWorldEnvironment(next);
-    if (!startupState?.engineHostConnected) return;
     void window.arc.host
       .command('environment.update', { environment: next })
       .then((response) => {
@@ -1025,8 +1046,11 @@ export function Workbench() {
 
   const applyWorldEnvironmentHdri = async (path: string): Promise<boolean> => {
     if (!worldEnvironment) return false;
+    if (!startupState?.engineHostConnected) {
+      setLastCommand('Native editor host is unavailable');
+      return false;
+    }
     setWorldEnvironment({ ...worldEnvironment, hdriPath: path });
-    if (!startupState?.engineHostConnected) return true;
     const response = (await window.arc.host.command('environment.setHdri', {
       entity: worldEnvironment.entity,
       path,
@@ -1065,17 +1089,16 @@ export function Workbench() {
     nextRotationSnap = rotationSnap,
     nextScaleSnap = scaleSnap,
   ) => {
-    if (startupState?.engineHostConnected) {
-      const response = (await window.arc.host.command('viewport.setTool', {
-        tool: activeTool,
-        coordinateSpace: nextSpace,
-        snapping: nextSnapping,
-        translationSnap: nextTranslationSnap,
-        rotationSnapDegrees: nextRotationSnap,
-        scaleSnap: nextScaleSnap,
-      })) as HostResponse;
-      if (!response.succeeded) return setLastCommand(response.error || 'Viewport tool update failed');
-    }
+    if (!startupState?.engineHostConnected) return setLastCommand('Native editor host is unavailable');
+    const response = (await window.arc.host.command('viewport.setTool', {
+      tool: activeTool,
+      coordinateSpace: nextSpace,
+      snapping: nextSnapping,
+      translationSnap: nextTranslationSnap,
+      rotationSnapDegrees: nextRotationSnap,
+      scaleSnap: nextScaleSnap,
+    })) as HostResponse;
+    if (!response.succeeded) return setLastCommand(response.error || 'Viewport tool update failed');
     setCoordinateSpace(nextSpace);
     setSnapping(nextSnapping);
     setTranslationSnap(nextTranslationSnap);
@@ -1154,8 +1177,8 @@ export function Workbench() {
           command={async (type, payload) => {
             if (!startupState?.engineHostConnected)
               return {
-                succeeded: true,
-                payload: { ...visibleTerrainState, ...(payload as Partial<TerrainToolState>) },
+                succeeded: false,
+                error: 'Native editor host is unavailable',
               };
             return window.arc.host.command(type, payload as Record<string, unknown>) as Promise<
               HostResponse<TerrainToolState>
@@ -1170,6 +1193,7 @@ export function Workbench() {
         <ExplorerPanel
           project={project}
           selectedEntityId={selectedEntityId}
+          selectedEntityIds={selectedEntityIds}
           onSelectEntity={selectEntity}
           onRenameEntity={renameHierarchyEntity}
           onSetEntityActive={setHierarchyEntityActive}
@@ -1191,10 +1215,15 @@ export function Workbench() {
 
     if (layout.activeActivity === 'search') {
       return (
-        <PlaceholderPanel
-          icon={<Search />}
-          title="Search"
-          text="Search is mocked until the native host is connected."
+        <SearchPanel
+          entities={project.scene}
+          assets={project.assets}
+          onSelectEntity={(entityId) => void selectEntity(entityId)}
+          onSelectAsset={(assetId) => {
+            setSelectedAssetId(assetId);
+            if (project.assets.find((asset) => asset.id === assetId)?.kind === 'shader')
+              setLayout((current) => ({ ...current, activeCenterPanel: 'shaderEditor' }));
+          }}
         />
       );
     }
@@ -1216,10 +1245,20 @@ export function Workbench() {
 
   const renderCenterPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'viewport') {
-      return <ViewportPanel project={project} startupState={startupState} onCommand={runCommand} />;
+      return (
+        <ViewportPanel
+          project={project}
+          startupState={startupState}
+          onCommand={runCommand}
+          onReconnect={reconnectHost}
+        />
+      );
     }
 
-    return <ViewportPanel project={project} startupState={startupState} onCommand={runCommand} />;
+    if (panel === 'renderGraph') return <RenderGraphPanel />;
+    if (panel === 'shaderEditor')
+      return <ShaderEditorPanel asset={project?.assets.find((asset) => asset.id === selectedAssetId) ?? null} />;
+    return <div className="tool-empty">Panel unavailable.</div>;
   };
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
@@ -1227,7 +1266,8 @@ export function Workbench() {
       return (
         <DataDrivenInspector
           command={async (type, payload, edit) => {
-            if (!startupState?.engineHostConnected) return { succeeded: true };
+            if (!startupState?.engineHostConnected)
+              return { succeeded: false, error: 'Native editor host is unavailable' };
             return window.arc.host.command(type, payload, edit) as Promise<HostResponse>;
           }}
           loading={selectedSnapshotLoading}
@@ -1253,7 +1293,7 @@ export function Workbench() {
         />
       );
     }
-    return <LightingPanel />;
+    return <LightingPanel entities={project?.scene ?? []} onSelect={(id) => void selectEntity(id)} />;
   };
 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
@@ -1294,6 +1334,8 @@ export function Workbench() {
         />
       );
     }
+
+    if (panel === 'versionControl') return <VersionControlPanel />;
 
     if (panel === 'profiler') {
       return <ProfilerPanel samples={profilerSamples} />;
@@ -1360,7 +1402,7 @@ export function Workbench() {
         onCycleTimeScale={() => {
           const next = nextSnapOption(timeScaleOptions, runtimeState.timeScale);
           if (!startupState?.engineHostConnected) {
-            setRuntimeState((current) => ({ ...current, timeScale: next }));
+            setLastCommand('Native editor host is unavailable');
             return;
           }
           void window.arc.host.command('runtime.setTimeScale', { value: next }).then((response) => {
@@ -1439,6 +1481,30 @@ export function Workbench() {
         )}
 
         <section className="editor-region foundation-editor-region">
+          <div className="scene-document-tabs" role="tablist" aria-label="Open scenes">
+            {workspaceDocuments.documents.map((document) => (
+              <button
+                aria-selected={document.guid === workspaceDocuments.activeDocument}
+                className={document.guid === workspaceDocuments.activeDocument ? 'active' : ''}
+                key={document.guid}
+                role="tab"
+                title={[
+                  document.path || 'Unsaved scene',
+                  document.readOnly && 'Read-only',
+                  document.recovered && 'Recovered',
+                ]
+                  .filter(Boolean)
+                  .join('\n')}
+                type="button"
+              >
+                <FileText size={12} />
+                <span>{document.name}</span>
+                {document.readOnly && <small>RO</small>}
+                {document.recovered && <small>Recovered</small>}
+                {document.dirty && <b aria-label="Unsaved changes">●</b>}
+              </button>
+            ))}
+          </div>
           <DockHost
             region="center"
             panelIds={dockPanelIds.center}
@@ -1504,6 +1570,7 @@ export function Workbench() {
 function ExplorerPanel({
   project,
   selectedEntityId,
+  selectedEntityIds,
   onSelectEntity,
   onRenameEntity,
   onSetEntityActive,
@@ -1516,7 +1583,8 @@ function ExplorerPanel({
 }: {
   project: ProjectSnapshot;
   selectedEntityId: string;
-  onSelectEntity: (entityId: string) => void;
+  selectedEntityIds: ReadonlySet<string>;
+  onSelectEntity: (entityId: string, additive?: boolean) => void;
   onRenameEntity: (entityId: string, name: string) => void;
   onSetEntityActive: (entityId: string, active: boolean) => void;
   onMoveEntity: (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => void;
@@ -1531,7 +1599,7 @@ function ExplorerPanel({
   const filteredScene = useMemo(() => filterSceneTree(sceneTree, filter), [sceneTree, filter]);
   const allEntities = useMemo(() => flattenScene(project.scene), [project.scene]);
   const actorCount = allEntities.length;
-  const selectedCount = allEntities.some((entity) => entity.id === selectedEntityId) ? 1 : 0;
+  const selectedCount = selectedEntityIds.size;
 
   return (
     <div className="explorer-view">
@@ -1569,6 +1637,7 @@ function ExplorerPanel({
               entity={entity}
               depth={0}
               selectedEntityId={selectedEntityId}
+              selectedEntityIds={selectedEntityIds}
               onSelectEntity={onSelectEntity}
               onRenameEntity={onRenameEntity}
               onSetEntityActive={onSetEntityActive}
@@ -1696,16 +1765,6 @@ function WorldSettingsPanel({
   );
 }
 
-function LightingPanel() {
-  return (
-    <section className="lighting-panel-placeholder">
-      <Lightbulb size={25} />
-      <h3>Lighting</h3>
-      <p>Lighting component editing will use the same schema-driven controls in a later milestone.</p>
-    </section>
-  );
-}
-
 function ContentBrowserPanel({
   project,
   cache,
@@ -1790,6 +1849,20 @@ function ContentBrowserPanel({
             Residency <b>{selectedAsset.residency ?? 'metadata'}</b> · Generation {selectedAsset.generation ?? 0}
           </span>
           {selectedAsset.diagnostic && <span className="asset-registry-diagnostic">{selectedAsset.diagnostic}</span>}
+          <details>
+            <summary>Dependencies ({selectedAsset.dependencies?.length ?? 0})</summary>
+            {(selectedAsset.dependencies ?? []).map((guid) => (
+              <code key={guid}>{guid}</code>
+            ))}
+            {!selectedAsset.dependencies?.length && <small>No direct dependencies.</small>}
+          </details>
+          <details>
+            <summary>References ({selectedAsset.reverseDependencies?.length ?? 0})</summary>
+            {(selectedAsset.reverseDependencies ?? []).map((guid) => (
+              <code key={guid}>{guid}</code>
+            ))}
+            {!selectedAsset.reverseDependencies?.length && <small>No registered reverse dependencies.</small>}
+          </details>
           {selectedAsset.guid && (
             <div className="asset-registry-actions">
               <UiButton onClick={() => onAssetAction('asset.reimport', selectedAsset.guid!)} variant="toolbar">
@@ -1805,18 +1878,6 @@ function ContentBrowserPanel({
         </div>
       )}
     </section>
-  );
-}
-
-function SettingsPanel({ onResetLayout }: { onResetLayout: () => void }) {
-  return (
-    <Panel icon={<Settings size={14} />} title="Settings">
-      <UiButton className="settings-action" onClick={onResetLayout} variant="toolbar">
-        Reset Layout
-      </UiButton>
-      <PropertyRow label="Theme" value="Arc Dark" />
-      <PropertyRow label="Host" value="Mock" />
-    </Panel>
   );
 }
 
@@ -1869,6 +1930,7 @@ function SceneTreeItem({
   entity,
   depth,
   selectedEntityId,
+  selectedEntityIds,
   onSelectEntity,
   onRenameEntity,
   onSetEntityActive,
@@ -1878,7 +1940,8 @@ function SceneTreeItem({
   entity: SceneEntity;
   depth: number;
   selectedEntityId: string;
-  onSelectEntity: (entityId: string) => void;
+  selectedEntityIds: ReadonlySet<string>;
+  onSelectEntity: (entityId: string, additive?: boolean) => void;
   onRenameEntity: (entityId: string, name: string) => void;
   onSetEntityActive: (entityId: string, active: boolean) => void;
   onMoveEntity: (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => void;
@@ -1900,7 +1963,7 @@ function SceneTreeItem({
         className={`tree-row entity-row entity-${entity.kind}`}
         depth={depth}
         draggable={selectable}
-        selected={selectable && entity.id === selectedEntityId}
+        selected={selectable && selectedEntityIds.has(entity.id)}
         meta={
           selectable && (
             <button
@@ -1917,7 +1980,7 @@ function SceneTreeItem({
             </button>
           )
         }
-        onClick={() => selectable && onSelectEntity(entity.id)}
+        onClick={(event) => selectable && onSelectEntity(entity.id, event.ctrlKey || event.metaKey)}
         onKeyDown={(event) => {
           if (selectable && (event.key === 'Enter' || event.key === ' ')) {
             event.preventDefault();
@@ -1983,6 +2046,7 @@ function SceneTreeItem({
             entity={child}
             depth={depth + 1}
             selectedEntityId={selectedEntityId}
+            selectedEntityIds={selectedEntityIds}
             onSelectEntity={onSelectEntity}
             onRenameEntity={onRenameEntity}
             onSetEntityActive={onSetEntityActive}
@@ -2056,15 +2120,6 @@ function AssetIcon({ kind }: { kind: AssetItem['kind'] }) {
   if (kind === 'shader') return <FileCode2 size={14} />;
   if (kind === 'folder') return <Folder size={14} />;
   return <Database size={14} />;
-}
-
-function PropertyRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="ui-property-row property-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
 }
 
 function PlaceholderPanel({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {

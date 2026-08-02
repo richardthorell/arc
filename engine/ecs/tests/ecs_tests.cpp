@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -355,6 +356,15 @@ TEST_CASE("Templates, prefab overrides, and regions expose stable contracts")
     REQUIRE(set_prefab_override(instance, override_value));
     REQUIRE(has_prefab_override(instance, override_value.key));
     REQUIRE(revert_prefab_override(instance, override_value.key));
+
+    prefab_asset variant;
+    variant.guid = generate_entity_guid();
+    const prefab_reference direct_base{.guid = generate_entity_guid(), .path_hint = "prefabs/base.arcprefab"};
+    REQUIRE(valid_prefab_base(variant, direct_base, {}));
+    const std::array cyclic_ancestry{generate_entity_guid(), variant.guid};
+    REQUIRE_FALSE(valid_prefab_base(variant, direct_base, cyclic_ancestry));
+    REQUIRE_FALSE(valid_prefab_base(
+        variant, prefab_reference{.guid = variant.guid, .path_hint = "prefabs/self.arcprefab"}, {}));
 
     world_partition partition;
     const world_region_id region{generate_entity_guid()};

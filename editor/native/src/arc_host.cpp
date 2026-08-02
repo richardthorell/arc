@@ -188,9 +188,19 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_terrain_stroke_command> ||
            std::is_same_v<Command, host_set_terrain_layer_command> ||
            std::is_same_v<Command, host_set_entity_material_command> ||
+           std::is_same_v<Command, host_component_operation_command> ||
            std::is_same_v<Command, host_set_world_environment_command> ||
            std::is_same_v<Command, host_apply_world_environment_preset_command> ||
            std::is_same_v<Command, host_set_environment_hdri_command>;
+}
+
+template <class Command> constexpr bool is_project_mutation() noexcept
+{
+    return is_authoring_command<Command>() || std::is_same_v<Command, host_save_scene_command> ||
+           std::is_same_v<Command, host_save_scene_as_command> ||
+           std::is_same_v<Command, host_asset_reimport_command> ||
+           std::is_same_v<Command, host_asset_cancel_import_command> ||
+           std::is_same_v<Command, host_asset_move_command> || std::is_same_v<Command, host_asset_rename_command>;
 }
 
 std::string history_label(const host_command_payload& command)
@@ -894,6 +904,26 @@ bool entity_active(const editor_scene_state& state, ecs::entity entity)
     return !active || active->active;
 }
 
+std::vector<ecs::entity> edit_targets(ecs::world& world, ecs::entity primary, bool apply_to_selection)
+{
+    if (!world.alive(primary)) return {};
+    if (!apply_to_selection) return {primary};
+    std::vector<ecs::entity> targets;
+    world.view<scene::selection_component>().each(
+        [&](ecs::entity entity, const scene::selection_component& selection)
+        {
+            if (selection.selected) targets.push_back(entity);
+        });
+    if (std::find(targets.begin(), targets.end(), primary) == targets.end()) return {};
+    std::sort(targets.begin(), targets.end(),
+              [](ecs::entity left, ecs::entity right)
+              {
+                  if (left.index != right.index) return left.index < right.index;
+                  return left.generation < right.generation;
+              });
+    return targets;
+}
+
 void push_event(std::vector<host_event>& events, std::uint64_t& sequence, host_event_type type, std::string message,
                 ecs::entity entity = {}, std::string payload_json = {})
 {
@@ -1315,6 +1345,7 @@ struct arc_host::state
     std::uint64_t scene_revision{1};
     std::uint64_t world_epoch{1};
     bool project_open{};
+    bool project_read_only{};
 };
 
 arc_host::arc_host(std::unique_ptr<render::renderer> renderer) : state_(std::make_unique<state>(std::move(renderer)))
@@ -1380,6 +1411,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
         state_->camera_controller.apply_to(*camera_transform);
     state_->project_open = true;
+    state_->project_read_only = command.read_only;
 
     const std::string message = "Opened project '" + state_->project.name + "'";
     arc::diagnostics::info("editor.host", message);
@@ -1399,6 +1431,15 @@ host_response arc_host::execute(const host_command_envelope& command)
 {
     const bool authoring = std::visit(
         [](const auto& payload) { return is_authoring_command<std::decay_t<decltype(payload)>>(); }, command.payload);
+    const bool project_mutation = std::visit(
+        [](const auto& payload) { return is_project_mutation<std::decay_t<decltype(payload)>>(); }, command.payload);
+    if (state_->project_read_only && project_mutation)
+        return {.request_id = command.request_id,
+                .succeeded = false,
+                .error = "The project is open read-only",
+                .scene_revision = state_->scene_revision,
+                .world_epoch = state_->world_epoch,
+                .frame_revision = state_->viewport_frame_index};
     const std::string edit_label =
         command.edit && !command.edit->label.empty() ? command.edit->label : history_label(command.payload);
     if (command.expected_scene_revision && *command.expected_scene_revision != state_->scene_revision)
@@ -1481,6 +1522,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->scene = {};
                 state_->project = {};
                 state_->project_open = false;
+                state_->project_read_only = false;
                 arc::diagnostics::info("editor.host", message);
                 push_event(state_->events, state_->event_sequence, host_event_type::project_closed, message);
                 return success();
@@ -1647,6 +1689,40 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, message,
                            state_->scene.selected_entity);
                 return success("{\"entityCount\":" + std::to_string(result.entity_count) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_autosave_scene_command>)
+            {
+                if (!state_->project_open) return fail("Cannot autosave before a project is open");
+                const auto path = payload.path.is_absolute() ? payload.path : state_->project.root / payload.path;
+                auto snapshot = state_->scene;
+                const auto saved =
+                    save_scene_document(snapshot, state_->project.root, path, state_->asset_registry.get());
+                if (!saved.succeeded) return fail(saved.message.empty() ? "Scene autosave failed" : saved.message);
+                return success("{\"path\":" + to_json_string(path.generic_string()) +
+                               ",\"sceneGuid\":" + to_json_string(ecs::to_string(state_->scene.scene_guid)) +
+                               ",\"historyRevision\":" +
+                               std::to_string(state_->history.snapshot().revision) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_open_recovery_scene_command>)
+            {
+                if (!state_->project_open) return fail("Cannot recover a scene before a project is open");
+                const auto recovery_path =
+                    payload.path.is_absolute() ? payload.path : state_->project.root / payload.path;
+                const auto loaded = load_scene_document(state_->scene, *state_->renderer, state_->project.root,
+                                                        recovery_path, state_->asset_registry.get());
+                if (!loaded.succeeded) return fail(loaded.message);
+                state_->scene.active_scene_path = payload.original_path;
+                state_->scene.recovered_document = true;
+                state_->history.clear(state_->scene, false);
+                if (auto* camera_transform =
+                        state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
+                    state_->camera_controller.synchronize_from(*camera_transform);
+                ++state_->scene_revision;
+                ++state_->world_epoch;
+                push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
+                           "Recovery scene loaded", state_->scene.selected_entity);
+                return success("{\"entityCount\":" + std::to_string(loaded.entity_count) +
+                               ",\"recovered\":true}");
             }
             else if constexpr (std::is_same_v<command_type, host_new_scene_command>)
             {
@@ -1896,13 +1972,46 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_select_entity_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (entity == state_->scene.selected_entity && state_->scene.scene.alive(entity))
+                if (!state_->scene.scene.alive(entity)) return fail("Cannot select a missing entity", entity);
+                const auto* current = state_->scene.scene.try_get<scene::selection_component>(entity);
+                const bool was_selected = current && current->selected;
+                if (!payload.additive && entity == state_->scene.selected_entity && was_selected)
                     return success("{\"entity\":" + to_json(payload.entity) + '}');
-                if (!select_entity(state_->scene.scene, entity, state_->scene.selected_entity))
-                    return fail("Cannot select a missing entity", entity);
+
+                bool changed{};
+                if (!payload.additive)
+                {
+                    changed = select_entity(state_->scene.scene, entity, state_->scene.selected_entity);
+                }
+                else
+                {
+                    const bool next_selected = payload.toggle ? !was_selected : true;
+                    state_->scene.scene.emplace<scene::selection_component>(entity, next_selected);
+                    changed = next_selected != was_selected;
+                    if (next_selected)
+                    {
+                        state_->scene.selected_entity = entity;
+                    }
+                    else if (state_->scene.selected_entity == entity)
+                    {
+                        state_->scene.selected_entity = {};
+                        for (const auto candidate : state_->scene.scene.entities())
+                        {
+                            const auto* selection =
+                                state_->scene.scene.try_get<scene::selection_component>(candidate);
+                            if (selection && selection->selected)
+                            {
+                                state_->scene.selected_entity = candidate;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!changed) return success("{\"entity\":" + to_json(payload.entity) + '}');
 
                 const std::string message = "Selected entity: " + entity_name(state_->scene, entity, "Entity");
-                push_event(state_->events, state_->event_sequence, host_event_type::entity_selected, message, entity);
+                push_event(state_->events, state_->event_sequence, host_event_type::entity_selected, message,
+                           state_->scene.selected_entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_clear_selection_command>)
@@ -1916,175 +2025,205 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_set_active_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!state_->scene.scene.alive(entity)) return fail("Cannot edit a missing entity", entity);
-
-                state_->scene.scene.emplace<scene::active_component>(entity, payload.active);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);
+                for (const auto target : targets)
+                    state_->scene.scene.emplace<scene::active_component>(target, payload.active);
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity active state changed", entity);
+                           "Entity active state changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_tag_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!state_->scene.scene.alive(entity)) return fail("Cannot edit a missing entity", entity);
-
-                state_->scene.scene.emplace<scene::tag_component>(entity, payload.tag);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);
+                for (const auto target : targets)
+                    state_->scene.scene.emplace<scene::tag_component>(target, payload.tag);
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity tag changed", entity);
+                           "Entity tag changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_transform_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!state_->scene.scene.alive(entity)) return fail("Cannot edit a missing entity", entity);
-
-                state_->scene.scene.emplace<scene::transform_component>(entity, to_scene_transform(payload.transform));
-                scene::mark_transform_subtree_dirty(state_->scene.scene, entity);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);
+                const auto transform = to_scene_transform(payload.transform);
+                for (const auto target : targets)
+                {
+                    state_->scene.scene.emplace<scene::transform_component>(target, transform);
+                    scene::mark_transform_subtree_dirty(state_->scene.scene, target);
+                }
                 scene::update_world_transforms(state_->scene.scene);
-                if (entity == state_->scene.camera_entity)
+                if (std::find(targets.begin(), targets.end(), state_->scene.camera_entity) != targets.end())
                     state_->camera_controller.synchronize_from(
-                        state_->scene.scene.get<scene::transform_component>(entity));
+                        state_->scene.scene.get<scene::transform_component>(state_->scene.camera_entity));
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity transform changed", entity);
+                           "Entity transform changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_render_layer_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!state_->scene.scene.alive(entity)) return fail("Cannot edit a missing entity", entity);
                 if (payload.render_layer_mask == 0u)
                     return fail("Render layer mask must contain at least one layer", entity);
-
-                state_->scene.scene.emplace<scene::render_layer_component>(entity, payload.render_layer_mask);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);
+                for (const auto target : targets)
+                    state_->scene.scene.emplace<scene::render_layer_component>(target, payload.render_layer_mask);
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity render layer changed", entity);
+                           "Entity render layer changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_mobility_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!state_->scene.scene.alive(entity))
-                    return fail("Cannot edit mobility for a missing entity", entity);
-                state_->scene.scene.emplace<scene::mobility_component>(entity, to_render_mobility(payload.mobility));
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit mobility for a missing or unselected entity", entity);
+                for (const auto target : targets)
+                    state_->scene.scene.emplace<scene::mobility_component>(target, to_render_mobility(payload.mobility));
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity mobility changed", entity);
+                           "Entity mobility changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_camera_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                auto* camera = state_->scene.scene.try_get<scene::camera_component>(entity);
-                if (!camera) return fail("Entity does not have an editable camera component", entity);
                 if (!valid_camera(payload.camera))
                     return fail("Camera values are outside their valid authored ranges", entity);
-
-                *camera = to_scene_camera(payload.camera);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected camera", entity);
+                if (std::any_of(targets.begin(), targets.end(),
+                                [&](ecs::entity target)
+                                { return !state_->scene.scene.has<scene::camera_component>(target); }))
+                    return fail("Every selected entity must have an editable camera component", entity);
+                const auto camera = to_scene_camera(payload.camera);
+                for (const auto target : targets)
+                    state_->scene.scene.get<scene::camera_component>(target) = camera;
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity camera changed", entity);
+                           "Entity camera changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_light_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!state_->scene.scene.alive(entity)) return fail("Cannot edit a missing light entity", entity);
                 if (!valid_light(payload.light))
                     return fail("Light values are outside their valid authored ranges", entity);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected light entity", entity);
+                const auto matches_kind = [&](ecs::entity target)
+                {
+                    return (payload.light.kind == host_light_kind::directional &&
+                            state_->scene.scene.has<scene::directional_light_component>(target)) ||
+                           (payload.light.kind == host_light_kind::point &&
+                            state_->scene.scene.has<scene::point_light_component>(target)) ||
+                           (payload.light.kind == host_light_kind::spot &&
+                            state_->scene.scene.has<scene::spot_light_component>(target)) ||
+                           ((payload.light.kind == host_light_kind::rectangle ||
+                             payload.light.kind == host_light_kind::disk) &&
+                            state_->scene.scene.has<scene::area_light_component>(target));
+                };
+                if (!std::all_of(targets.begin(), targets.end(), matches_kind))
+                    return fail("Every selected entity must have the same editable light component", entity);
 
                 const auto unit = to_render_light_unit(payload.light.unit);
                 const auto color = to_math_vec3(payload.light.color);
-                if (auto* directional_light = state_->scene.scene.try_get<scene::directional_light_component>(entity))
+                for (const auto target : targets)
                 {
-                    if (payload.light.kind != host_light_kind::directional)
-                        return fail("Light kind does not match the directional light component", entity);
-                    directional_light->color = color;
-                    directional_light->intensity = payload.light.intensity;
-                    directional_light->intensity_unit = unit;
-                    directional_light->enabled = payload.light.enabled;
-                    directional_light->casts_shadows = payload.light.casts_shadows;
-                    directional_light->use_color_temperature = payload.light.use_color_temperature;
-                    directional_light->temperature_kelvin = payload.light.temperature_kelvin;
-                    copy_shadow_from_host(directional_light->shadow, payload.light);
-                    directional_light->cascades.cascade_count = payload.light.cascade_count;
-                    directional_light->cascades.maximum_distance = payload.light.shadow_distance;
-                    directional_light->cascades.split_lambda = payload.light.cascade_split_lambda;
-                    directional_light->cascades.blend_fraction = payload.light.cascade_blend_fraction;
-                    directional_light->cascades.stable = payload.light.stable_cascades;
+                    if (auto* directional_light =
+                            state_->scene.scene.try_get<scene::directional_light_component>(target))
+                    {
+                        directional_light->color = color;
+                        directional_light->intensity = payload.light.intensity;
+                        directional_light->intensity_unit = unit;
+                        directional_light->enabled = payload.light.enabled;
+                        directional_light->casts_shadows = payload.light.casts_shadows;
+                        directional_light->use_color_temperature = payload.light.use_color_temperature;
+                        directional_light->temperature_kelvin = payload.light.temperature_kelvin;
+                        copy_shadow_from_host(directional_light->shadow, payload.light);
+                        directional_light->cascades.cascade_count = payload.light.cascade_count;
+                        directional_light->cascades.maximum_distance = payload.light.shadow_distance;
+                        directional_light->cascades.split_lambda = payload.light.cascade_split_lambda;
+                        directional_light->cascades.blend_fraction = payload.light.cascade_blend_fraction;
+                        directional_light->cascades.stable = payload.light.stable_cascades;
+                    }
+                    else if (auto* point_light = state_->scene.scene.try_get<scene::point_light_component>(target))
+                    {
+                        point_light->color = color;
+                        point_light->intensity = payload.light.intensity;
+                        point_light->range = payload.light.range;
+                        point_light->intensity_unit = unit;
+                        point_light->enabled = payload.light.enabled;
+                        point_light->casts_shadows = payload.light.casts_shadows;
+                        point_light->use_color_temperature = payload.light.use_color_temperature;
+                        point_light->temperature_kelvin = payload.light.temperature_kelvin;
+                        copy_shadow_from_host(point_light->shadow, payload.light);
+                    }
+                    else if (auto* spot_light = state_->scene.scene.try_get<scene::spot_light_component>(target))
+                    {
+                        spot_light->color = color;
+                        spot_light->intensity = payload.light.intensity;
+                        spot_light->range = payload.light.range;
+                        spot_light->inner_angle = math::to_radians(payload.light.inner_angle_degrees);
+                        spot_light->outer_angle = math::to_radians(payload.light.outer_angle_degrees);
+                        spot_light->intensity_unit = unit;
+                        spot_light->enabled = payload.light.enabled;
+                        spot_light->casts_shadows = payload.light.casts_shadows;
+                        spot_light->use_color_temperature = payload.light.use_color_temperature;
+                        spot_light->temperature_kelvin = payload.light.temperature_kelvin;
+                        copy_shadow_from_host(spot_light->shadow, payload.light);
+                    }
+                    else if (auto* area_light = state_->scene.scene.try_get<scene::area_light_component>(target))
+                    {
+                        area_light->shape = payload.light.kind == host_light_kind::disk
+                                                ? render::area_light_shape::disk
+                                                : render::area_light_shape::rectangle;
+                        area_light->color = color;
+                        area_light->intensity = payload.light.intensity;
+                        area_light->width = payload.light.width;
+                        area_light->height = payload.light.height;
+                        area_light->two_sided = payload.light.two_sided;
+                        area_light->intensity_unit = unit;
+                        area_light->enabled = payload.light.enabled;
+                        area_light->casts_shadows = payload.light.casts_shadows;
+                        area_light->use_color_temperature = payload.light.use_color_temperature;
+                        area_light->temperature_kelvin = payload.light.temperature_kelvin;
+                        copy_shadow_from_host(area_light->shadow, payload.light);
+                    }
                 }
-                else if (auto* point_light = state_->scene.scene.try_get<scene::point_light_component>(entity))
-                {
-                    if (payload.light.kind != host_light_kind::point)
-                        return fail("Light kind does not match the point light component", entity);
-                    point_light->color = color;
-                    point_light->intensity = payload.light.intensity;
-                    point_light->range = payload.light.range;
-                    point_light->intensity_unit = unit;
-                    point_light->enabled = payload.light.enabled;
-                    point_light->casts_shadows = payload.light.casts_shadows;
-                    point_light->use_color_temperature = payload.light.use_color_temperature;
-                    point_light->temperature_kelvin = payload.light.temperature_kelvin;
-                    copy_shadow_from_host(point_light->shadow, payload.light);
-                }
-                else if (auto* spot_light = state_->scene.scene.try_get<scene::spot_light_component>(entity))
-                {
-                    if (payload.light.kind != host_light_kind::spot)
-                        return fail("Light kind does not match the spot light component", entity);
-                    spot_light->color = color;
-                    spot_light->intensity = payload.light.intensity;
-                    spot_light->range = payload.light.range;
-                    spot_light->inner_angle = math::to_radians(payload.light.inner_angle_degrees);
-                    spot_light->outer_angle = math::to_radians(payload.light.outer_angle_degrees);
-                    spot_light->intensity_unit = unit;
-                    spot_light->enabled = payload.light.enabled;
-                    spot_light->casts_shadows = payload.light.casts_shadows;
-                    spot_light->use_color_temperature = payload.light.use_color_temperature;
-                    spot_light->temperature_kelvin = payload.light.temperature_kelvin;
-                    copy_shadow_from_host(spot_light->shadow, payload.light);
-                }
-                else if (auto* area_light = state_->scene.scene.try_get<scene::area_light_component>(entity))
-                {
-                    if (payload.light.kind != host_light_kind::rectangle && payload.light.kind != host_light_kind::disk)
-                        return fail("Light kind does not match the area light component", entity);
-                    area_light->shape = payload.light.kind == host_light_kind::disk
-                                            ? render::area_light_shape::disk
-                                            : render::area_light_shape::rectangle;
-                    area_light->color = color;
-                    area_light->intensity = payload.light.intensity;
-                    area_light->width = payload.light.width;
-                    area_light->height = payload.light.height;
-                    area_light->two_sided = payload.light.two_sided;
-                    area_light->intensity_unit = unit;
-                    area_light->enabled = payload.light.enabled;
-                    area_light->casts_shadows = payload.light.casts_shadows;
-                    area_light->use_color_temperature = payload.light.use_color_temperature;
-                    area_light->temperature_kelvin = payload.light.temperature_kelvin;
-                    copy_shadow_from_host(area_light->shadow, payload.light);
-                }
-                else
-                    return fail("Entity does not have an editable light component", entity);
 
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity light changed", entity);
+                           "Entity light changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_mesh_renderer_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                auto* mesh_renderer = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity);
-                if (!mesh_renderer) return fail("Entity does not have an editable mesh renderer component", entity);
                 if (!valid_base_color_tint(payload.base_color_tint))
                     return fail("Mesh renderer tint channels must be finite and between 0 and 1", entity);
                 if (!std::isfinite(payload.shadow_lod_bias) || !std::isfinite(payload.maximum_shadow_distance) ||
                     payload.shadow_lod_bias < -4.0f || payload.shadow_lod_bias > 8.0f ||
                     payload.maximum_shadow_distance < 0.0f)
                     return fail("Mesh renderer shadow values are outside supported ranges", entity);
-                mesh_renderer->visible = payload.visible;
-                mesh_renderer->casts_shadows = payload.casts_shadows;
-                mesh_renderer->receives_shadows = payload.receives_shadows;
-                mesh_renderer->shadow_lod_bias = payload.shadow_lod_bias;
-                mesh_renderer->maximum_shadow_distance = payload.maximum_shadow_distance;
-                mesh_renderer->base_color_tint = to_math_vec4(payload.base_color_tint);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected mesh renderer", entity);
+                if (std::any_of(targets.begin(), targets.end(),
+                                [&](ecs::entity target)
+                                { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
+                    return fail("Every selected entity must have an editable mesh renderer component", entity);
+                for (const auto target : targets)
+                {
+                    auto& mesh_renderer = state_->scene.scene.get<scene::mesh_renderer_component>(target);
+                    mesh_renderer.visible = payload.visible;
+                    mesh_renderer.casts_shadows = payload.casts_shadows;
+                    mesh_renderer.receives_shadows = payload.receives_shadows;
+                    mesh_renderer.shadow_lod_bias = payload.shadow_lod_bias;
+                    mesh_renderer.maximum_shadow_distance = payload.maximum_shadow_distance;
+                    mesh_renderer.base_color_tint = to_math_vec4(payload.base_color_tint);
+                }
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
-                           "Entity mesh renderer changed", entity);
+                           "Entity mesh renderer changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_terrain_command>)
@@ -2250,32 +2389,130 @@ host_response arc_host::execute(const host_command_envelope& command)
             else if constexpr (std::is_same_v<command_type, host_set_entity_material_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
-                if (!state_->scene.scene.has<scene::mesh_renderer_component>(entity))
-                    return fail("Entity does not have an editable mesh renderer component", entity);
+                const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
+                if (targets.empty()) return fail("Cannot edit a missing or unselected mesh renderer", entity);
+                if (std::any_of(targets.begin(), targets.end(),
+                                [&](ecs::entity target)
+                                { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
+                    return fail("Every selected entity must have an editable mesh renderer component", entity);
                 const auto path = resolve_project_asset(state_->assets.root, payload.path);
                 if (!path || !is_material_asset_path(*path))
                     return fail("Material must be an .arcmat project asset", entity);
                 std::string message;
-                if (!apply_material_asset_to_entity(state_->scene.material_library, *state_->renderer,
-                                                    state_->assets.root, *path, state_->scene.scene, entity, &message))
-                    return fail(message.empty() ? "Material assignment failed" : message, entity);
-                ensure_scene_authoring_metadata(state_->scene);
-                const auto guid = entity_guid_of(state_->scene, entity);
-                auto* binding = find_asset_binding(state_->scene, guid);
-                if (!binding)
+                for (const auto target : targets)
                 {
-                    state_->scene.asset_bindings.push_back({.entity = guid});
-                    binding = &state_->scene.asset_bindings.back();
+                    if (!apply_material_asset_to_entity(state_->scene.material_library, *state_->renderer,
+                                                        state_->assets.root, *path, state_->scene.scene, target,
+                                                        &message))
+                        return fail(message.empty() ? "Material assignment failed" : message, target);
                 }
-                binding->material =
+                ensure_scene_authoring_metadata(state_->scene);
+                const auto material =
                     state_->asset_registry
                         ? state_->asset_registry->resolve(
                               arc::assets::normalize_asset_path(path->lexically_relative(state_->project.root)),
                               arc::assets::asset_types::material)
                         : arc::assets::asset_reference{.expected_type = arc::assets::asset_types::material,
                                                        .path_hint = path->generic_string()};
+                for (const auto target : targets)
+                {
+                    const auto guid = entity_guid_of(state_->scene, target);
+                    auto* binding = find_asset_binding(state_->scene, guid);
+                    if (!binding)
+                    {
+                        state_->scene.asset_bindings.push_back({.entity = guid});
+                        binding = &state_->scene.asset_bindings.back();
+                    }
+                    binding->material = material;
+                }
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed, message, entity);
-                return success("{\"entity\":" + to_json(payload.entity) + '}');
+                return success("{\"entity\":" + to_json(payload.entity) +
+                               ",\"changed\":" + std::to_string(targets.size()) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_component_operation_command>)
+            {
+                std::vector<ecs::entity> targets;
+                state_->scene.scene.view<scene::selection_component>().each(
+                    [&](ecs::entity entity, const scene::selection_component& selection)
+                    {
+                        if (selection.selected) targets.push_back(entity);
+                    });
+                if (targets.empty() && state_->scene.scene.alive(state_->scene.selected_entity))
+                    targets.push_back(state_->scene.selected_entity);
+                if (targets.empty()) return fail("Component operation requires a selected entity");
+
+                const bool known = payload.component == "transform" || payload.component == "camera" ||
+                                   payload.component == "meshRenderer" ||
+                                   payload.component == "directionalLight" || payload.component == "pointLight" ||
+                                   payload.component == "spotLight" || payload.component == "areaLight" ||
+                                   payload.component == "renderLayer" || payload.component == "mobility";
+                if (!known) return fail("Component is not supported by generic operations");
+                if (payload.operation == host_component_operation::remove && payload.component == "transform")
+                    return fail("Transform is required and cannot be removed");
+                if (payload.operation == host_component_operation::remove && payload.component == "camera" &&
+                    std::find(targets.begin(), targets.end(), state_->scene.camera_entity) != targets.end())
+                    return fail("The editor viewport camera cannot be removed");
+
+                const auto apply = [&]<class Component>(ecs::entity entity, Component reset_value)
+                {
+                    if (payload.operation == host_component_operation::remove)
+                        return state_->scene.scene.remove<Component>(entity);
+                    if (auto* current = state_->scene.scene.try_get<Component>(entity))
+                    {
+                        if (payload.operation == host_component_operation::add) return false;
+                        *current = std::move(reset_value);
+                        return true;
+                    }
+                    state_->scene.scene.emplace<Component>(entity, std::move(reset_value));
+                    return true;
+                };
+
+                std::size_t changed = 0;
+                for (const auto entity : targets)
+                {
+                    bool entity_changed = false;
+                    if (payload.component == "transform")
+                    {
+                        scene::transform_component value{};
+                        value.dirty = true;
+                        entity_changed = apply(entity, std::move(value));
+                    }
+                    else if (payload.component == "camera")
+                        entity_changed = apply(entity, scene::camera_component{});
+                    else if (payload.component == "meshRenderer")
+                    {
+                        scene::mesh_renderer_component value{
+                            state_->scene.default_mesh, state_->scene.default_material, true};
+                        if (const auto* current = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity))
+                        {
+                            value.mesh = current->mesh;
+                            value.material = current->material;
+                        }
+                        entity_changed = apply(entity, std::move(value));
+                    }
+                    else if (payload.component == "directionalLight")
+                        entity_changed = apply(entity, scene::directional_light_component{});
+                    else if (payload.component == "pointLight")
+                        entity_changed = apply(entity, scene::point_light_component{});
+                    else if (payload.component == "spotLight")
+                        entity_changed = apply(entity, scene::spot_light_component{});
+                    else if (payload.component == "areaLight")
+                        entity_changed = apply(entity, scene::area_light_component{});
+                    else if (payload.component == "renderLayer")
+                        entity_changed = apply(entity, scene::render_layer_component{});
+                    else if (payload.component == "mobility")
+                        entity_changed = apply(entity, scene::mobility_component{});
+                    if (entity_changed) ++changed;
+                }
+                if (!changed)
+                    return fail(payload.operation == host_component_operation::add
+                                    ? "Every selected entity already has this component"
+                                    : "No selected entity has this component");
+                scene::update_world_transforms(state_->scene.scene);
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Component operation applied to " + std::to_string(changed) + " entity(s)",
+                           state_->scene.selected_entity);
+                return success("{\"changed\":" + std::to_string(changed) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_world_environment_command>)
             {
@@ -2573,8 +2810,13 @@ host_response arc_host::execute(const host_command_envelope& command)
         },
         command.payload);
 
-    if (authoring && !response.succeeded && command.edit)
-        state_->history.cancel(command.edit->id, state_->scene);
+    if (authoring && !response.succeeded)
+    {
+        if (command.edit)
+            state_->history.cancel(command.edit->id, state_->scene);
+        else if (before)
+            state_->scene = std::move(*before);
+    }
     else if (authoring && response.succeeded)
     {
         ++state_->scene_revision;
@@ -2618,6 +2860,24 @@ host_response arc_host::query(const host_query_envelope& query) const
             {
                 return {
                     .request_id = request_id, .succeeded = true, .payload_json = to_json(selected_entity_snapshot())};
+            }
+            else if constexpr (std::is_same_v<query_type, host_workspace_documents_query>)
+            {
+                const auto history = state_->history.snapshot();
+                const std::string guid =
+                    state_->scene.scene_guid.valid() ? ecs::to_string(state_->scene.scene_guid) : std::string{};
+                return {.request_id = request_id,
+                        .succeeded = true,
+                        .payload_json =
+                            "{\"activeDocument\":" + to_json_string(guid) + ",\"documents\":[{\"guid\":" +
+                            to_json_string(guid) + ",\"name\":" + to_json_string(state_->scene.scene_name) +
+                            ",\"path\":" + to_json_string(state_->scene.active_scene_path.generic_string()) +
+                            ",\"dirty\":" + std::string(history.dirty ? "true" : "false") +
+                            ",\"recovered\":" + std::string(state_->scene.recovered_document ? "true" : "false") +
+                            ",\"readOnly\":" + std::string(state_->project_read_only ? "true" : "false") +
+                            ",\"active\":true,\"pinned\":false,\"entityCount\":" +
+                            std::to_string(state_->scene.scene.live_count()) +
+                            ",\"revision\":" + std::to_string(history.revision) + "}]}"};
             }
             else if constexpr (std::is_same_v<query_type, host_scene_entities_query>)
             {
@@ -2750,6 +3010,52 @@ host_response arc_host::query(const host_query_envelope& query) const
             else if constexpr (std::is_same_v<query_type, host_gateway_diagnostics_query>)
             {
                 const auto profile = state_->renderer->last_frame_profile();
+                const auto usage_name = [](render::render_resource_usage usage)
+                {
+                    switch (usage)
+                    {
+                        case render::render_resource_usage::color_attachment:
+                            return "colorAttachment";
+                        case render::render_resource_usage::depth_attachment:
+                            return "depthAttachment";
+                        case render::render_resource_usage::sampled:
+                            return "sampled";
+                        case render::render_resource_usage::storage:
+                            return "storage";
+                        case render::render_resource_usage::transfer_src:
+                            return "transferSource";
+                        case render::render_resource_usage::transfer_dst:
+                            return "transferDestination";
+                        case render::render_resource_usage::vertex_buffer:
+                            return "vertexBuffer";
+                        case render::render_resource_usage::index_buffer:
+                            return "indexBuffer";
+                        case render::render_resource_usage::uniform_buffer:
+                            return "uniformBuffer";
+                        case render::render_resource_usage::storage_buffer:
+                            return "storageBuffer";
+                        case render::render_resource_usage::indirect_buffer:
+                            return "indirectBuffer";
+                        case render::render_resource_usage::present:
+                            return "present";
+                        case render::render_resource_usage::unknown:
+                            break;
+                    }
+                    return "unknown";
+                };
+                const auto queue_name = [](render::render_queue_type queue)
+                {
+                    switch (queue)
+                    {
+                        case render::render_queue_type::graphics:
+                            return "graphics";
+                        case render::render_queue_type::compute:
+                            return "compute";
+                        case render::render_queue_type::transfer:
+                            return "transfer";
+                    }
+                    return "graphics";
+                };
                 std::string json = "{\"frameIndex\":" + std::to_string(profile.frame_index) +
                                    ",\"summary\":" + to_json_string(profile.summary) + ",\"passes\":[";
                 for (std::size_t index = 0; index < profile.pass_timings.size(); ++index)
@@ -2768,6 +3074,35 @@ host_response arc_host::query(const host_query_envelope& query) const
                 std::uint64_t transient_bytes{};
                 for (const auto& lifetime : profile.graph.lifetimes)
                     transient_bytes += lifetime.estimated_bytes;
+                json += "],\"resources\":[";
+                for (std::size_t index = 0; index < profile.graph.lifetimes.size(); ++index)
+                {
+                    if (index != 0) json += ',';
+                    const auto& lifetime = profile.graph.lifetimes[index];
+                    const auto* resource = lifetime.handle.valid() && lifetime.handle.index < profile.graph.resources.size()
+                                               ? &profile.graph.resources[lifetime.handle.index]
+                                               : nullptr;
+                    json += "{\"name\":" + to_json_string(resource ? resource->name : std::string{}) +
+                            ",\"format\":" +
+                            to_json_string(resource ? render::render_format_name(resource->format) : "unknown") +
+                            ",\"firstPass\":" + std::to_string(lifetime.first_pass) +
+                            ",\"lastPass\":" + std::to_string(lifetime.last_pass) +
+                            ",\"physicalResource\":" + std::to_string(lifetime.physical_resource) +
+                            ",\"estimatedBytes\":" + std::to_string(lifetime.estimated_bytes) + '}';
+                }
+                json += "],\"transitions\":[";
+                for (std::size_t index = 0; index < profile.graph.transitions.size(); ++index)
+                {
+                    if (index != 0) json += ',';
+                    const auto& transition = profile.graph.transitions[index];
+                    json += "{\"resource\":" + to_json_string(transition.resource) +
+                            ",\"before\":" + to_json_string(usage_name(transition.before)) +
+                            ",\"after\":" + to_json_string(usage_name(transition.after)) +
+                            ",\"beforePass\":" + std::to_string(transition.before_pass) +
+                            ",\"afterPass\":" + std::to_string(transition.after_pass) +
+                            ",\"beforeQueue\":" + to_json_string(queue_name(transition.before_queue)) +
+                            ",\"afterQueue\":" + to_json_string(queue_name(transition.after_queue)) + '}';
+                }
                 json +=
                     "],\"resourceCount\":" + std::to_string(profile.graph.resources.size()) +
                     ",\"barrierCount\":" + std::to_string(profile.graph.transitions.size()) +
@@ -3156,7 +3491,12 @@ host_scene_snapshot arc_host::scene_snapshot() const
                                      .name = entity_name(state_->scene, entity, "Entity"),
                                      .kind = kind,
                                      .active = entity_active(state_->scene, entity),
-                                     .selected = entity == state_->scene.selected_entity});
+                                     .selected = [&]
+                                     {
+                                         const auto* selection =
+                                             state_->scene.scene.try_get<scene::selection_component>(entity);
+                                         return selection && selection->selected;
+                                     }()});
     };
 
     for (const auto entity : state_->scene.scene.entities())
@@ -3184,6 +3524,13 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
     if (!state_->scene.scene.alive(selected)) return snapshot;
 
     snapshot.entity = to_host_entity(selected);
+    for (const auto candidate : state_->scene.scene.entities())
+    {
+        const auto* selection = state_->scene.scene.try_get<scene::selection_component>(candidate);
+        if (!selection || !selection->selected) continue;
+        ++snapshot.selection_count;
+        snapshot.selected_guids.push_back(ecs::to_string(entity_guid_of(state_->scene, candidate)));
+    }
     snapshot.guid = ecs::to_string(entity_guid_of(state_->scene, selected));
     snapshot.name = entity_name(state_->scene, selected, "Unnamed Entity");
     if (const auto* tag = state_->scene.scene.try_get<scene::tag_component>(selected)) snapshot.tag = tag->value;
@@ -3398,20 +3745,27 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             auto display_path = absolute_path.lexically_relative(state_->assets.root);
             if (display_path.empty() || display_path.native().starts_with(std::filesystem::path("..").native()))
                 display_path = asset.source_path;
-            snapshot.assets.push_back(
-                {.guid = arc::assets::to_string(asset.guid),
-                 .path = arc::assets::normalize_asset_path(display_path),
-                 .kind = kind_name(asset.type),
-                 .type_id = arc::assets::to_string(asset.type),
-                 .importer_id = arc::assets::to_string(asset.importer),
-                 .state = state_name(asset.state),
-                 .residency = residency_name(asset.residency),
-                 .generation = asset.generation,
-                 .strong_references = asset.strong_references,
-                 .pins = asset.pins,
-                 .diagnostic = asset.diagnostics.empty() ? std::string{} : asset.diagnostics.back().message,
-                 .imported = asset.state == arc::assets::asset_state::ready,
-                 .import_running = running});
+            host_asset_snapshot host_asset{
+                .guid = arc::assets::to_string(asset.guid),
+                .path = arc::assets::normalize_asset_path(display_path),
+                .kind = kind_name(asset.type),
+                .type_id = arc::assets::to_string(asset.type),
+                .importer_id = arc::assets::to_string(asset.importer),
+                .state = state_name(asset.state),
+                .residency = residency_name(asset.residency),
+                .generation = asset.generation,
+                .strong_references = asset.strong_references,
+                .pins = asset.pins,
+                .diagnostic = asset.diagnostics.empty() ? std::string{} : asset.diagnostics.back().message};
+            host_asset.dependencies.reserve(asset.dependencies.size());
+            for (const auto dependency : asset.dependencies)
+                host_asset.dependencies.push_back(arc::assets::to_string(dependency));
+            host_asset.reverse_dependencies.reserve(asset.reverse_dependencies.size());
+            for (const auto dependency : asset.reverse_dependencies)
+                host_asset.reverse_dependencies.push_back(arc::assets::to_string(dependency));
+            host_asset.imported = asset.state == arc::assets::asset_state::ready;
+            host_asset.import_running = running;
+            snapshot.assets.push_back(std::move(host_asset));
         }
         return snapshot;
     }

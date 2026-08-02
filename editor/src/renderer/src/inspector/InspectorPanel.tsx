@@ -33,7 +33,9 @@ const defaultLayerMask = 1;
 const environmentLayerMask = 2;
 
 function entityPayload(snapshot: InspectorEntitySnapshot) {
-  return { entity: snapshot.entity };
+  return (snapshot.selectionCount ?? 1) > 1
+    ? { entity: snapshot.entity, applyToSelection: true }
+    : { entity: snapshot.entity };
 }
 
 function TextCommitInput({
@@ -41,11 +43,15 @@ function TextCommitInput({
   value,
   onCommit,
   list,
+  disabled = false,
+  placeholder,
 }: {
   ariaLabel: string;
   value: string;
   onCommit: (value: string) => void;
   list?: string;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   const [draft, setDraft] = useState(value);
   const cancelBlur = useRef(false);
@@ -63,6 +69,7 @@ function TextCommitInput({
     <input
       aria-label={ariaLabel}
       className="inspector-text-commit"
+      disabled={disabled}
       list={list}
       onBlur={commit}
       onChange={(event) => setDraft(event.target.value)}
@@ -75,6 +82,7 @@ function TextCommitInput({
           event.currentTarget.blur();
         }
       }}
+      placeholder={placeholder}
       value={draft}
     />
   );
@@ -97,6 +105,7 @@ export function InspectorPanel({
   const revision = useRef(0);
   const nextTransactionId = useRef(1);
   const activeTransaction = useRef<{ id: number; key: string } | null>(null);
+  const componentClipboard = useRef<{ component: InspectorComponentId; value: unknown } | null>(null);
 
   useEffect(() => {
     confirmed.current = snapshot;
@@ -272,16 +281,60 @@ export function InspectorPanel({
   const schemas = useMemo(() => {
     if (!draft) return [];
     const needle = filter.trim().toLocaleLowerCase();
-    return schemaForSnapshot(draft).filter(
-      (schema) =>
+    const common = new Set(draft.aggregate?.commonComponents ?? []);
+    return schemaForSnapshot(draft).filter((schema) => {
+      const componentKey = schema.id.endsWith('Light') ? 'light' : schema.id;
+      if ((draft.selectionCount ?? 1) > 1 && !common.has(componentKey)) return false;
+      return (
         !needle ||
         schema.title.toLocaleLowerCase().includes(needle) ||
-        schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle)),
-    );
+        schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle))
+      );
+    });
   }, [draft, filter]);
 
   const runComponentAction = (component: InspectorComponentId, action: string) => {
-    if (!draft || component !== 'prefab') return;
+    if (!draft) return;
+    const componentKey: Partial<Record<InspectorComponentId, keyof InspectorEntitySnapshot>> = {
+      transform: 'transform',
+      camera: 'camera',
+      meshRenderer: 'meshRenderer',
+      directionalLight: 'light',
+      pointLight: 'light',
+      spotLight: 'light',
+      areaLight: 'light',
+      terrain: 'terrain',
+      prefab: 'prefab',
+    };
+    const key = componentKey[component];
+    if (action === 'copy' && key) {
+      componentClipboard.current = { component, value: structuredClone(draft[key]) };
+      onStatus?.(`${component} copied`);
+      return;
+    }
+    if (action === 'paste') {
+      const copied = componentClipboard.current;
+      if (!key || !copied || copied.component !== component) {
+        setError('The component clipboard does not contain a compatible component.');
+        return;
+      }
+      const next = { ...draft, [key]: structuredClone(copied.value) } as InspectorEntitySnapshot;
+      updateComponent(component, String(key), next, true);
+      return;
+    }
+    if (action === 'reset' || action === 'remove') {
+      void (async () => {
+        const response = await command(`component.${action}`, { component });
+        if (!response.succeeded) {
+          setError(response.error || `Could not ${action} ${component}`);
+          return;
+        }
+        onStatus?.(`${component} ${action === 'reset' ? 'reset' : 'removed'}`);
+        await refresh();
+      })();
+      return;
+    }
+    if (component !== 'prefab') return;
     const commandType =
       action === 'apply'
         ? 'prefab.apply'
@@ -314,13 +367,17 @@ export function InspectorPanel({
   if (loading && !draft) return <div className="inspector-state">Loading selection…</div>;
   if (!draft) return <div className="inspector-state">Select an entity to inspect its components.</div>;
 
-  const layerValue =
-    draft.renderLayerMask === defaultLayerMask
+  const layerValue = draft.aggregate?.mixedFields.includes('renderLayerMask')
+    ? 'mixed'
+    : draft.renderLayerMask === defaultLayerMask
       ? String(defaultLayerMask)
       : draft.renderLayerMask === environmentLayerMask
         ? String(environmentLayerMask)
         : `custom:${draft.renderLayerMask}`;
   const tagOptions = knownTags.includes(draft.tag || 'Untagged') ? knownTags : [...knownTags, draft.tag];
+  const activeMixed = draft.aggregate?.mixedFields.includes('active') ?? false;
+  const tagMixed = draft.aggregate?.mixedFields.includes('tag') ?? false;
+  const mobilityMixed = draft.aggregate?.mixedFields.includes('mobility') ?? false;
 
   return (
     <section className="data-inspector">
@@ -328,7 +385,10 @@ export function InspectorPanel({
         <div className="inspector-entity-title-row">
           <input
             aria-label="Entity active"
-            checked={draft.active}
+            checked={activeMixed ? false : draft.active}
+            ref={(input) => {
+              if (input) input.indeterminate = activeMixed;
+            }}
             onChange={(event) =>
               updateHeader({ ...draft, active: event.target.checked }, 'entity.setActive', {
                 active: event.target.checked,
@@ -338,7 +398,8 @@ export function InspectorPanel({
           />
           <TextCommitInput
             ariaLabel="Entity name"
-            value={draft.name}
+            disabled={(draft.selectionCount ?? 1) > 1}
+            value={(draft.selectionCount ?? 1) > 1 ? `${draft.selectionCount} entities selected` : draft.name}
             onCommit={(name) => updateHeader({ ...draft, name }, 'entity.rename', { name })}
           />
           <label className="inspector-static" title={`Mobility: ${draft.mobility ?? 'movable'}`}>
@@ -346,7 +407,7 @@ export function InspectorPanel({
               aria-label="Static"
               checked={draft.mobility === 'static'}
               ref={(input) => {
-                if (input) input.indeterminate = draft.mobility === 'stationary';
+                if (input) input.indeterminate = mobilityMixed || draft.mobility === 'stationary';
               }}
               onChange={(event) => {
                 const mobility = event.target.checked ? 'static' : 'movable';
@@ -366,7 +427,8 @@ export function InspectorPanel({
             <TextCommitInput
               ariaLabel="Tag"
               list="arc-inspector-tags"
-              value={draft.tag || 'Untagged'}
+              placeholder={tagMixed ? 'Mixed' : undefined}
+              value={tagMixed ? '' : draft.tag || 'Untagged'}
               onCommit={(value) => {
                 const tag = value === 'Untagged' ? '' : value;
                 updateHeader({ ...draft, tag }, 'entity.setTag', { tag });
@@ -384,11 +446,12 @@ export function InspectorPanel({
               aria-label="Layer"
               value={layerValue}
               onChange={(event) => {
-                if (event.target.value.startsWith('custom:')) return;
+                if (event.target.value === 'mixed' || event.target.value.startsWith('custom:')) return;
                 const renderLayerMask = Number(event.target.value);
                 updateHeader({ ...draft, renderLayerMask }, 'entity.setRenderLayer', { renderLayerMask });
               }}
             >
+              {layerValue === 'mixed' && <option value="mixed">Mixed</option>}
               <option value={String(defaultLayerMask)}>Default</option>
               <option value={String(environmentLayerMask)}>Environment</option>
               {layerValue.startsWith('custom:') && (
@@ -419,6 +482,11 @@ export function InspectorPanel({
           {error}
         </div>
       )}
+      {(draft.aggregate?.partialComponents.length ?? 0) > 0 && (
+        <div className="inspector-mixed-components">
+          Partial components: {draft.aggregate?.partialComponents.join(', ')}. Add or remove them to edit together.
+        </div>
+      )}
       <div className="inspector-component-list">
         {schemas.map((schema) => (
           <SchemaComponentCard
@@ -441,6 +509,30 @@ export function InspectorPanel({
           />
         ))}
         {!schemas.length && <div className="inspector-state compact">No components match “{filter}”.</div>}
+        <details className="inspector-add-component">
+          <summary>Add Component</summary>
+          {[
+            ['camera', 'Camera'],
+            ['meshRenderer', 'Mesh Renderer'],
+            ['directionalLight', 'Directional Light'],
+            ['pointLight', 'Point Light'],
+            ['spotLight', 'Spot Light'],
+            ['areaLight', 'Area Light'],
+          ].map(([component, label]) => (
+            <button
+              key={component}
+              onClick={() =>
+                void command('component.add', { component }).then(async (response) => {
+                  if (!response.succeeded) setError(response.error || `Could not add ${label}`);
+                  else await refresh();
+                })
+              }
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </details>
       </div>
     </section>
   );

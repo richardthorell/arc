@@ -1,4 +1,4 @@
-import type { Vec3 } from '../services/mockHost';
+import type { Vec3 } from '../services/editorHostTypes';
 
 export type HostEntityId = {
   index: number;

@@ -3,7 +3,7 @@ import { Mountain, Paintbrush, SlidersHorizontal, Waves } from 'lucide-react';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostResponse, InspectorTerrain } from '../inspector/inspectorTypes';
-import type { AssetItem } from '../services/mockHost';
+import type { AssetItem } from '../services/editorHostTypes';
 
 export type TerrainToolState = {
   entity: { index: number; generation: number };

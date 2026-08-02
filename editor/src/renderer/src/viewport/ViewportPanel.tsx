@@ -1,24 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent, WheelEvent } from 'react';
-import {
-  Box,
-  Camera,
-  Crosshair,
-  Eye,
-  Focus,
-  Grid3X3,
-  Hand,
-  Maximize2,
-  MousePointer2,
-  Move3D,
-  Orbit,
-  RotateCw,
-  Scaling,
-} from 'lucide-react';
+import { Box, Camera, Eye, Focus, Maximize2, RefreshCw } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
 import type { StartupState } from '../app/workbenchTypes';
-import type { ProjectSnapshot } from '../services/mockHost';
+import type { ProjectSnapshot } from '../services/editorHostTypes';
 
 import './viewport.css';
 
@@ -26,6 +12,7 @@ type ViewportPanelProps = {
   project: ProjectSnapshot | null;
   startupState: StartupState | null;
   onCommand: (command: CommandId) => void;
+  onReconnect: () => Promise<void>;
 };
 
 type DragState = {
@@ -67,7 +54,7 @@ const formatNumber = (value: number) => Math.max(0, value).toLocaleString();
 const formatFps = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(0) : '--');
 const formatFrameTime = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(2) : '--');
 
-export function ViewportPanel({ project, startupState, onCommand }: ViewportPanelProps) {
+export function ViewportPanel({ project, startupState, onCommand, onReconnect }: ViewportPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [viewportError, setViewportError] = useState('');
@@ -263,6 +250,9 @@ export function ViewportPanel({ project, startupState, onCommand }: ViewportPane
           <button title="Realtime">
             <Eye size={13} />
           </button>
+          <button title="Frame selected" onClick={frameSelected}>
+            <Focus size={13} />
+          </button>
           <button title="Maximize">
             <Maximize2 size={13} />
           </button>
@@ -280,110 +270,21 @@ export function ViewportPanel({ project, startupState, onCommand }: ViewportPane
         onContextMenu={(event) => event.preventDefault()}
       >
         {!nativeActive && (
-          <>
-            <div className="arc-viewport-scene-bg" />
-            <div className="arc-viewport-depth-fog" />
-            <div className="arc-viewport-terrain" />
-            <div className="arc-viewport-object-shadow" />
-            <div className="arc-viewport-selected-object">
-              <div className="arc-selected-roof" />
-              <div className="arc-selected-body" />
-              <div className="arc-selection-outline" />
-            </div>
-            <div className="arc-transform-gizmo" aria-label="Transform gizmo">
-              <span className="axis-y" />
-              <span className="axis-x" />
-              <span className="axis-z" />
-              <strong />
-            </div>
-          </>
-        )}
-
-        {!nativeActive && (
-          <aside className="arc-viewport-tool-strip">
-            <button title="Select" onClick={() => onCommand('viewport.select')}>
-              <MousePointer2 size={16} />
+          <div className="arc-viewport-unavailable" role="alert">
+            <Box size={32} />
+            <h3>Native renderer unavailable</h3>
+            <p>{viewportError || startupState?.hostError || 'The ARC native host is not connected.'}</p>
+            <button onClick={() => void onReconnect()}>
+              <RefreshCw size={14} />
+              Reconnect host
             </button>
-            <button title="Pan">
-              <Hand size={16} />
-            </button>
-            <button className="active" title="Translate" onClick={() => onCommand('viewport.translate')}>
-              <Move3D size={16} />
-            </button>
-            <button title="Rotate" onClick={() => onCommand('viewport.rotate')}>
-              <RotateCw size={16} />
-            </button>
-            <button title="Scale" onClick={() => onCommand('viewport.scale')}>
-              <Scaling size={16} />
-            </button>
-            <button title="Frame selected" onClick={frameSelected}>
-              <Focus size={16} />
-            </button>
-          </aside>
-        )}
-
-        {!nativeActive && (
-          <aside className="arc-viewport-stats">
-            <dl>
-              <div>
-                <dt>FPS</dt>
-                <dd>{formatFps(stats.fps)}</dd>
-              </div>
-              <div>
-                <dt>Frame</dt>
-                <dd>{formatFrameTime(stats.frameTimeMs)} ms</dd>
-              </div>
-              <div>
-                <dt>Draw Calls</dt>
-                <dd>{formatNumber(stats.drawCalls)}</dd>
-              </div>
-              <div>
-                <dt>Mode</dt>
-                <dd>Placeholder</dd>
-              </div>
-            </dl>
-          </aside>
-        )}
-
-        {!nativeActive && (
-          <div className="arc-viewport-overlay-top-left">
-            <span>
-              <Grid3X3 size={13} /> Grid
-            </span>
-            <span>
-              <Crosshair size={13} /> Snapping 0.25
-            </span>
-            <span>
-              <Orbit size={13} /> Global
-            </span>
           </div>
         )}
 
-        {!nativeActive && (
-          <div className="arc-viewport-breadcrumb">
-            <span>World</span>
-            <span>Buildings</span>
-            <span>Cabin_01</span>
-            <strong>SM_Cabin</strong>
-          </div>
-        )}
-
-        {!nativeActive && (
-          <div className="arc-axis-gizmo-large">
-            <span className="axis-label-y">Y</span>
-            <span className="axis-label-x">X</span>
-            <span className="axis-label-z">Z</span>
-          </div>
-        )}
-
-        {(!nativeActive || viewportError || startupState?.hostError) && (
+        {nativeActive && (viewportError || startupState?.hostError) && (
           <div className="arc-viewport-note">
             <Box size={18} />
-            <span>
-              {viewportError ||
-                startupState?.hostError ||
-                'Viewport shell only. Native engine rendering is not connected.'}
-            </span>
+            <span>{viewportError || startupState?.hostError}</span>
           </div>
         )}
       </div>

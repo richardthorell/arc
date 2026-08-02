@@ -28,6 +28,7 @@ export function SchemaComponentCard<TContext extends object>({
   onAction?: (action: string) => void;
 }) {
   const [linked, setLinked] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const visibleFields = schema.fields.filter((field) => !field.visible || field.visible(context));
   return (
     <section className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
@@ -37,9 +38,32 @@ export function SchemaComponentCard<TContext extends object>({
           <span>{schema.title}</span>
           {schema.badge && <small>{schema.badge}</small>}
         </button>
-        <button aria-label={`${schema.title} component actions`} type="button">
+        <button
+          aria-expanded={actionsOpen}
+          aria-label={`${schema.title} component actions`}
+          onClick={() => setActionsOpen((value) => !value)}
+          type="button"
+        >
           <ChevronDown size={15} />
         </button>
+        {actionsOpen && (
+          <div className="inspector-component-menu">
+            <button onClick={() => onAction?.('copy')} type="button">
+              Copy Component
+            </button>
+            <button onClick={() => onAction?.('paste')} type="button">
+              Paste Component Values
+            </button>
+            <button onClick={() => onAction?.('reset')} type="button">
+              Reset Component
+            </button>
+            {schema.id !== 'transform' && schema.id !== 'prefab' && (
+              <button className="danger" onClick={() => onAction?.('remove')} type="button">
+                Remove Component
+              </button>
+            )}
+          </div>
+        )}
       </header>
       {!collapsed && (
         <div className="inspector-component-content">
@@ -85,6 +109,9 @@ function SchemaField<TContext extends object>({
   onAction: (action: string) => void;
 }) {
   const value = getPathValue(context, field.path);
+  const aggregate = (context as { aggregate?: { mixedFields?: string[] } }).aggregate;
+  const mixed =
+    aggregate?.mixedFields?.some((path) => path === field.path || path.startsWith(`${field.path}.`)) ?? false;
   if (field.type === 'vector3') {
     const vector = value as Vec3;
     const updateAxis = (axis: VectorAxis, nextValue: number) => {
@@ -98,6 +125,7 @@ function SchemaField<TContext extends object>({
       <Vector3Control
         field={field}
         linked={linked}
+        mixed={mixed}
         value={vector}
         onToggleLinked={onToggleLinked}
         onCommit={(axis, next) => onValue(updateAxis(axis, next), true)}
@@ -109,6 +137,7 @@ function SchemaField<TContext extends object>({
     return (
       <NumberControl
         field={field}
+        mixed={mixed}
         value={value as number}
         onCommit={(next) => onValue(next, true)}
         onPreview={(next) => onValue(next, false)}
@@ -121,7 +150,10 @@ function SchemaField<TContext extends object>({
         <span className="inspector-property-label">{field.label}</span>
         <input
           aria-label={field.ariaLabel ?? field.label}
-          checked={value as boolean}
+          checked={mixed ? false : (value as boolean)}
+          ref={(input) => {
+            if (input) input.indeterminate = mixed;
+          }}
           onChange={(event) => onValue(event.target.checked, true)}
           type="checkbox"
         />
@@ -134,9 +166,10 @@ function SchemaField<TContext extends object>({
         <span className="inspector-property-label">{field.label}</span>
         <select
           aria-label={field.ariaLabel ?? field.label}
-          value={value as string}
+          value={mixed ? '' : (value as string)}
           onChange={(event) => onValue(event.target.value, true)}
         >
+          {mixed && <option value="">Mixed</option>}
           {field.options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -155,6 +188,7 @@ function SchemaField<TContext extends object>({
         allowEmpty={field.allowEmpty}
         assets={assets}
         label={field.label}
+        mixed={mixed}
         thumbnailProvider={thumbnailProvider}
         value={(value as string) || ''}
         onChange={(next) => onValue(next, true)}
@@ -203,6 +237,7 @@ function SchemaField<TContext extends object>({
   return (
     <ColorControl
       label={field.label}
+      mixed={mixed}
       showAlpha={hasAlpha}
       value={rgba}
       onCommit={(next) => onValue(colorValue(next), true)}

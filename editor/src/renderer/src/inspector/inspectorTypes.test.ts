@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  aggregateInspectorSnapshots,
   eulerDegreesToQuaternion,
   parseSelectedEntitySnapshot,
   quaternionToEulerDegrees,
@@ -103,5 +104,48 @@ describe('inspector host bindings', () => {
     expect(payload.position).toEqual([1, 2, 3]);
     expect(payload.scale).toEqual([2, 3, 4]);
     expect(payload.rotation).toHaveLength(4);
+  });
+
+  it('reports mixed fields and partial components for aggregate selections', () => {
+    const first = parseSelectedEntitySnapshot({
+      entity: { index: 1, generation: 1 },
+      name: 'First',
+      tag: 'Mesh',
+      active: true,
+      renderLayerMask: 1,
+      transform: { position: [1, 2, 3], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+      camera: null,
+      light: null,
+      meshRenderer: null,
+      components: [{ kind: 'transform', label: 'Transform', editable: true }],
+    });
+    const second = structuredClone(first);
+    second.entity = { index: 2, generation: 1 };
+    second.tag = 'Environment';
+    second.transform!.position.x = 9;
+    second.camera = {
+      projection: 'perspective',
+      fovYDegrees: 60,
+      orthographicHeight: 10,
+      nearPlane: 0.1,
+      farPlane: 1000,
+      active: true,
+      clearColor: { x: 0, y: 0, z: 0, w: 1 },
+      exposureMode: 'automatic',
+      exposureMetering: 'average',
+      manualEV100: 10,
+      exposureCompensation: 0,
+      minimumEV100: -8,
+      maximumEV100: 20,
+      brightenSpeed: 3,
+      darkenSpeed: 1,
+    };
+
+    const aggregate = aggregateInspectorSnapshots(first, [first, second]);
+
+    expect(aggregate.aggregate?.mixedFields).toContain('tag');
+    expect(aggregate.aggregate?.mixedFields).toContain('transform.position.x');
+    expect(aggregate.aggregate?.commonComponents).toContain('transform');
+    expect(aggregate.aggregate?.partialComponents).toContain('camera');
   });
 });

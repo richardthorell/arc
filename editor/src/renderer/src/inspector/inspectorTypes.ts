@@ -107,6 +107,8 @@ export type HostComponentSnapshot = {
 
 export type InspectorEntitySnapshot = {
   entity: HostEntityId;
+  selectionCount?: number;
+  selectedGuids?: string[];
   name: string;
   tag: string;
   active: boolean;
@@ -119,6 +121,11 @@ export type InspectorEntitySnapshot = {
   terrain: InspectorTerrain | null;
   prefab: InspectorPrefab | null;
   components: HostComponentSnapshot[];
+  aggregate?: {
+    mixedFields: string[];
+    commonComponents: string[];
+    partialComponents: string[];
+  };
 };
 
 export type HostResponse<T = unknown> = {
@@ -138,6 +145,8 @@ const quaternionTuple = z.tuple([finiteNumber, finiteNumber, finiteNumber, finit
 
 const hostSelectedEntitySchema = z.object({
   entity: entityIdSchema,
+  selectionCount: z.number().int().nonnegative().default(1),
+  selectedGuids: z.array(z.string()).default([]),
   name: z.string(),
   tag: z.string(),
   active: z.boolean(),
@@ -334,6 +343,56 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
           baseColorTint: tupleToVec4(parsed.meshRenderer.baseColorTint),
         }
       : null,
+  };
+}
+
+const aggregateComponentKeys = ['transform', 'camera', 'light', 'meshRenderer', 'terrain', 'prefab'] as const;
+
+const flattenSnapshotValues = (value: unknown, prefix: string, output: Map<string, string>): void => {
+  if (value === null || typeof value !== 'object') {
+    output.set(prefix, JSON.stringify(value) ?? 'undefined');
+    return;
+  }
+  if (Array.isArray(value)) {
+    output.set(prefix, JSON.stringify(value));
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>))
+    flattenSnapshotValues(child, prefix ? `${prefix}.${key}` : key, output);
+};
+
+export function aggregateInspectorSnapshots(
+  primary: InspectorEntitySnapshot,
+  snapshots: ReadonlyArray<InspectorEntitySnapshot>,
+): InspectorEntitySnapshot {
+  if (snapshots.length <= 1) return primary;
+  const fields = snapshots.map((snapshot) => {
+    const values = new Map<string, string>();
+    for (const key of ['active', 'tag', 'renderLayerMask', 'mobility', ...aggregateComponentKeys])
+      flattenSnapshotValues(snapshot[key as keyof InspectorEntitySnapshot], key, values);
+    return values;
+  });
+  const paths = new Set(fields.flatMap((values) => [...values.keys()]));
+  const mixedFields = [...paths]
+    .filter((path) => {
+      const expected = fields[0].get(path);
+      return fields.some((values) => values.get(path) !== expected);
+    })
+    .sort();
+  const presence = aggregateComponentKeys.map((key) => ({
+    key,
+    count: snapshots.filter((snapshot) => snapshot[key] !== null).length,
+  }));
+  return {
+    ...primary,
+    selectionCount: snapshots.length,
+    aggregate: {
+      mixedFields,
+      commonComponents: presence.filter((entry) => entry.count === snapshots.length).map((entry) => entry.key),
+      partialComponents: presence
+        .filter((entry) => entry.count > 0 && entry.count < snapshots.length)
+        .map((entry) => entry.key),
+    },
   };
 }
 

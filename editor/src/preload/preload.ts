@@ -1,10 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  ArcCloneProjectRequest,
+  ArcCreateProjectRequest,
+  ArcProjectBrowserSnapshot,
+  ArcProjectCandidate,
+  ArcProjectOperationResult,
+} from '../common/projectTypes';
+import type {
+  EditorSettingsSnapshot,
+  ProjectTextFile,
+  RecoverySnapshot,
+  SourceControlResult,
+  SourceControlSnapshot,
+} from '../common/editorWorkflowTypes';
+import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 
 export type ArcStartupState = {
   appVersion: string;
   engineHostConnected: boolean;
-  viewportMode: 'placeholder' | 'native' | 'streamed';
+  viewportMode: 'unavailable' | 'native' | 'streamed';
   hostError?: string;
+  activeProject?: ArcProjectCandidate | null;
 };
 
 export type NativeViewportBounds = {
@@ -109,7 +125,55 @@ export type ArcAiGatewayStatus = {
 const arcApi = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getStartupState: (): Promise<ArcStartupState> => ipcRenderer.invoke('editor:getStartupState'),
+  projects: {
+    snapshot: (): Promise<ArcProjectBrowserSnapshot | null> => ipcRenderer.invoke('project:snapshot'),
+    open: (
+      candidate: string,
+      options: { readOnly?: boolean; upgrade?: boolean } = {},
+    ): Promise<ArcProjectOperationResult> => ipcRenderer.invoke('project:open', candidate, options),
+    close: (): Promise<ArcProjectOperationResult> => ipcRenderer.invoke('project:close'),
+    create: (request: ArcCreateProjectRequest): Promise<ArcProjectOperationResult> =>
+      ipcRenderer.invoke('project:create', request),
+    clone: (request: ArcCloneProjectRequest): Promise<ArcProjectOperationResult> =>
+      ipcRenderer.invoke('project:clone', request),
+    removeRecent: (descriptorPath: string): Promise<void> => ipcRenderer.invoke('project:removeRecent', descriptorPath),
+    readText: (path: string): Promise<ProjectTextFile> => ipcRenderer.invoke('project:readText', path),
+    writeText: (path: string, text: string): Promise<{ succeeded: boolean }> =>
+      ipcRenderer.invoke('project:writeText', path, text),
+  },
+  settings: {
+    snapshot: (): Promise<EditorSettingsSnapshot | null> => ipcRenderer.invoke('settings:snapshot'),
+    update: (
+      scope: 'user' | 'project',
+      changes: Record<string, unknown>,
+      expectedRevision: number,
+    ): Promise<EditorSettingsSnapshot | null> =>
+      ipcRenderer.invoke('settings:update', scope, changes, expectedRevision),
+  },
+  sourceControl: {
+    snapshot: (): Promise<SourceControlSnapshot | undefined> => ipcRenderer.invoke('vcs:snapshot'),
+    diff: (path: string, staged = false): Promise<SourceControlResult | undefined> =>
+      ipcRenderer.invoke('vcs:diff', path, staged),
+    stage: (paths: string[]): Promise<SourceControlResult | undefined> => ipcRenderer.invoke('vcs:stage', paths),
+    unstage: (paths: string[]): Promise<SourceControlResult | undefined> => ipcRenderer.invoke('vcs:unstage', paths),
+    discard: (paths: string[]): Promise<SourceControlResult | undefined> => ipcRenderer.invoke('vcs:discard', paths),
+    checkout: (reference: string): Promise<SourceControlResult | undefined> =>
+      ipcRenderer.invoke('vcs:checkout', reference),
+    pull: (): Promise<SourceControlResult | undefined> => ipcRenderer.invoke('vcs:pull'),
+    push: (): Promise<SourceControlResult | undefined> => ipcRenderer.invoke('vcs:push'),
+    commit: (message: string): Promise<SourceControlResult | undefined> => ipcRenderer.invoke('vcs:commit', message),
+  },
+  recovery: {
+    snapshot: (projectGuid?: string): Promise<RecoverySnapshot | null> =>
+      ipcRenderer.invoke('recovery:snapshot', projectGuid),
+    restore: (id: string): Promise<unknown> => ipcRenderer.invoke('recovery:restore', id),
+    discard: (id: string): Promise<boolean> => ipcRenderer.invoke('recovery:discard', id),
+  },
+  extensions: {
+    snapshot: (force = false): Promise<ArcExtensionSnapshot | null> => ipcRenderer.invoke('extensions:snapshot', force),
+  },
   host: {
+    reconnect: (): Promise<ArcStartupState> => ipcRenderer.invoke('host:reconnect'),
     query: (type: string, payload: Record<string, unknown> = {}): Promise<unknown> =>
       ipcRenderer.invoke('host:query', type, payload),
     command: (type: string, payload: Record<string, unknown> = {}, edit?: HostEditTransaction): Promise<unknown> =>
@@ -140,6 +204,9 @@ const arcApi = {
     },
   },
   dialog: {
+    openProject: (): Promise<string | null> => ipcRenderer.invoke('dialog:openProject'),
+    projectDestination: (title?: string): Promise<string | null> =>
+      ipcRenderer.invoke('dialog:projectDestination', title),
     openScene: (options: OpenSceneDialogOptions = {}): Promise<OpenSceneDialogResult> =>
       ipcRenderer.invoke('dialog:openScene', options),
     saveScene: (): Promise<SaveSceneDialogResult> => ipcRenderer.invoke('dialog:saveScene'),

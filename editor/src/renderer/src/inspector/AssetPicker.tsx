@@ -20,6 +20,7 @@ export type AssetPickerProps = {
   assetTypeLabel?: string;
   allowedExtensions?: ReadonlyArray<string>;
   allowEmpty?: boolean;
+  mixed?: boolean;
   thumbnailProvider?: AssetThumbnailProvider;
   onChange: (path: string) => void;
 };
@@ -49,6 +50,7 @@ export function AssetPicker({
   assetTypeLabel = 'Asset',
   allowedExtensions,
   allowEmpty = true,
+  mixed = false,
   thumbnailProvider,
   onChange,
 }: AssetPickerProps) {
@@ -87,14 +89,18 @@ export function AssetPicker({
           ref={anchorRef}
           type="button"
         >
-          <AssetThumbnail asset={selected} path={value} provider={thumbnailProvider} />
+          <AssetThumbnail asset={selected} path={mixed ? '' : value} provider={thumbnailProvider} />
           <span className="asset-reference-copy">
-            <strong>{selected?.name || (value ? value.split(/[\\/]/).pop() : 'None')}</strong>
-            <small>{value || `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}</small>
+            <strong>{mixed ? 'Mixed' : selected?.name || (value ? value.split(/[\\/]/).pop() : 'None')}</strong>
+            <small>
+              {mixed
+                ? 'Choose an asset to replace all values'
+                : value || `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
+            </small>
           </span>
           <ChevronDown size={13} />
         </button>
-        {allowEmpty && value && (
+        {allowEmpty && value && !mixed && (
           <button
             aria-label={`Clear ${label}`}
             className="asset-reference-clear"

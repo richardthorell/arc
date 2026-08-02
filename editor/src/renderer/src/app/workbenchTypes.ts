@@ -3,7 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 export type StartupState = {
   appVersion: string;
   engineHostConnected: boolean;
-  viewportMode: 'placeholder' | 'native' | 'streamed';
+  viewportMode: 'unavailable' | 'native' | 'streamed';
   hostError?: string;
 };
 
@@ -35,6 +35,7 @@ export type CommandId =
   | 'file.save'
   | 'file.saveAs'
   | 'file.importScene'
+  | 'project.close'
   | 'edit.undo'
   | 'edit.redo'
   | 'entity.duplicate'

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { Lock, LockOpen, Trash2 } from 'lucide-react';
 
-import type { ConsoleEvent } from '../services/mockHost';
+import type { ConsoleEvent } from '../services/editorHostTypes';
 
 type ConsolePanelProps = {
   events: ReadonlyArray<ConsoleEvent>;

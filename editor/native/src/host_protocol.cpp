@@ -879,6 +879,10 @@ std::string command_type(const host_command_payload& payload)
                 return "scene.save";
             else if constexpr (std::is_same_v<type, host_save_scene_as_command>)
                 return "scene.saveAs";
+            else if constexpr (std::is_same_v<type, host_autosave_scene_command>)
+                return "scene.autosave";
+            else if constexpr (std::is_same_v<type, host_open_recovery_scene_command>)
+                return "scene.openRecovery";
             else if constexpr (std::is_same_v<type, host_asset_reimport_command>)
                 return "asset.reimport";
             else if constexpr (std::is_same_v<type, host_asset_cancel_import_command>)
@@ -941,6 +945,19 @@ std::string command_type(const host_command_payload& payload)
                 return "terrain.hover";
             else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
                 return "entity.setMaterial";
+            else if constexpr (std::is_same_v<type, host_component_operation_command>)
+            {
+                switch (value.operation)
+                {
+                    case host_component_operation::add:
+                        return "component.add";
+                    case host_component_operation::remove:
+                        return "component.remove";
+                    case host_component_operation::reset:
+                        return "component.reset";
+                }
+                return "component.reset";
+            }
             else if constexpr (std::is_same_v<type, host_set_world_environment_command>)
                 return "environment.update";
             else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>)
@@ -1015,6 +1032,8 @@ std::string query_type(const host_query_payload& payload)
                 return "gateway.spatialQuery";
             else if constexpr (std::is_same_v<type, host_component_schema_query>)
                 return "gateway.componentSchemas";
+            else if constexpr (std::is_same_v<type, host_workspace_documents_query>)
+                return "workspace.documents";
             else if constexpr (std::is_same_v<type, host_gateway_diagnostics_query>)
                 return "gateway.diagnostics";
             else if constexpr (std::is_same_v<type, host_viewport_capture_query>)
@@ -1227,7 +1246,8 @@ std::string to_json(const host_command_envelope& envelope)
         {
             using type = std::decay_t<decltype(payload)>;
             if constexpr (std::is_same_v<type, host_open_project_command>)
-                return "{\"name\":" + quote(payload.name) + ",\"root\":" + quote(payload.root.generic_string()) + '}';
+                return "{\"name\":" + quote(payload.name) + ",\"root\":" + quote(payload.root.generic_string()) +
+                       ",\"readOnly\":" + bool_json(payload.read_only) + '}';
             else if constexpr (std::is_same_v<type, host_open_scene_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) +
                        ",\"append\":" + bool_json(payload.append) + '}';
@@ -1235,6 +1255,11 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"name\":" + quote(payload.name) + '}';
             else if constexpr (std::is_same_v<type, host_save_scene_as_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) + '}';
+            else if constexpr (std::is_same_v<type, host_autosave_scene_command>)
+                return "{\"path\":" + quote(payload.path.generic_string()) + '}';
+            else if constexpr (std::is_same_v<type, host_open_recovery_scene_command>)
+                return "{\"path\":" + quote(payload.path.generic_string()) +
+                       ",\"originalPath\":" + quote(payload.original_path.generic_string()) + '}';
             else if constexpr (std::is_same_v<type, host_asset_reimport_command> ||
                                std::is_same_v<type, host_asset_cancel_import_command>)
                 return "{\"guid\":" + quote(payload.guid) + '}';
@@ -1245,9 +1270,12 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_create_entity_command>)
                 return "{\"kind\":" + quote(to_string(payload.kind)) + ",\"parent\":" + to_json(payload.parent) + '}';
             else if constexpr (std::is_same_v<type, host_delete_entity_command> ||
-                               std::is_same_v<type, host_select_entity_command> ||
                                std::is_same_v<type, host_duplicate_entity_command>)
                 return "{\"entity\":" + to_json(payload.entity) + '}';
+            else if constexpr (std::is_same_v<type, host_select_entity_command>)
+                return "{\"entity\":" + to_json(payload.entity) +
+                       ",\"additive\":" + bool_json(payload.additive) +
+                       ",\"toggle\":" + bool_json(payload.toggle) + '}';
             else if constexpr (std::is_same_v<type, host_create_prefab_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
                        '}';
@@ -1327,6 +1355,8 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
                        '}';
+            else if constexpr (std::is_same_v<type, host_component_operation_command>)
+                return "{\"component\":" + quote(payload.component) + '}';
             else if constexpr (std::is_same_v<type, host_set_world_environment_command>)
                 return "{\"environment\":" + to_json(payload.environment) + '}';
             else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>)
@@ -1555,7 +1585,15 @@ std::string to_json(const host_scene_snapshot& snapshot)
 
 std::string to_json(const host_selected_entity_snapshot& snapshot)
 {
-    std::string json = "{\"entity\":" + to_json(snapshot.entity) + ",\"guid\":" + quote(snapshot.guid) +
+    std::string json = "{\"entity\":" + to_json(snapshot.entity) +
+                       ",\"selectionCount\":" + std::to_string(snapshot.selection_count) +
+                       ",\"selectedGuids\":[";
+    for (std::size_t index = 0; index < snapshot.selected_guids.size(); ++index)
+    {
+        if (index != 0) json += ',';
+        json += quote(snapshot.selected_guids[index]);
+    }
+    json += "],\"guid\":" + quote(snapshot.guid) +
                        ",\"name\":" + quote(snapshot.name) + ",\"tag\":" + quote(snapshot.tag) +
                        ",\"active\":" + bool_json(snapshot.active) +
                        ",\"renderLayerMask\":" + std::to_string(snapshot.render_layer_mask) +
@@ -1626,8 +1664,20 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
                 ",\"generation\":" + std::to_string(asset.generation) +
                 ",\"strongReferences\":" + std::to_string(asset.strong_references) +
                 ",\"pins\":" + std::to_string(asset.pins) + ",\"diagnostic\":" + quote(asset.diagnostic) +
-                ",\"imported\":" + bool_json(asset.imported) + ",\"importRunning\":" + bool_json(asset.import_running) +
-                '}';
+                ",\"dependencies\":[";
+        for (std::size_t dependency = 0; dependency < asset.dependencies.size(); ++dependency)
+        {
+            if (dependency != 0) json += ',';
+            json += quote(asset.dependencies[dependency]);
+        }
+        json += "],\"reverseDependencies\":[";
+        for (std::size_t dependency = 0; dependency < asset.reverse_dependencies.size(); ++dependency)
+        {
+            if (dependency != 0) json += ',';
+            json += quote(asset.reverse_dependencies[dependency]);
+        }
+        json += "],\"imported\":" + bool_json(asset.imported) +
+                ",\"importRunning\":" + bool_json(asset.import_running) + '}';
     }
     json += "]}";
     return json;
@@ -1658,6 +1708,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         std::string root;
         string_value(payload, "root", root);
         command.root = root;
+        bool_value(payload, "readOnly", command.read_only);
         envelope.payload = std::move(command);
     }
     else if (type == "project.close")
@@ -1695,6 +1746,33 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         command.path = std::move(path);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "scene.autosave")
+    {
+        host_autosave_scene_command command;
+        std::string path;
+        if (!string_value(payload, "path", path) || path.empty())
+        {
+            error = "Scene autosave command requires path";
+            return false;
+        }
+        command.path = std::move(path);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "scene.openRecovery")
+    {
+        host_open_recovery_scene_command command;
+        std::string recovery_path;
+        std::string original_path;
+        if (!string_value(payload, "path", recovery_path) || recovery_path.empty())
+        {
+            error = "Scene recovery command requires path";
+            return false;
+        }
+        string_value(payload, "originalPath", original_path);
+        command.path = std::move(recovery_path);
+        command.original_path = std::move(original_path);
         envelope.payload = std::move(command);
     }
     else if (type == "asset.reimport" || type == "asset.cancelImport")
@@ -1762,7 +1840,12 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         if (type == "entity.delete")
             envelope.payload = host_delete_entity_command{.entity = entity};
         else
-            envelope.payload = host_select_entity_command{.entity = entity};
+        {
+            host_select_entity_command command{.entity = entity};
+            bool_value(payload, "additive", command.additive);
+            bool_value(payload, "toggle", command.toggle);
+            envelope.payload = command;
+        }
     }
     else if (type == "entity.duplicate")
     {
@@ -1862,6 +1945,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         bool_value(payload, "active", command.active);
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = command;
     }
     else if (type == "entity.setTag")
@@ -1873,6 +1957,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         string_value(payload, "tag", command.tag);
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = std::move(command);
     }
     else if (type == "entity.setTransform")
@@ -1884,6 +1969,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             error = "Transform command requires entity and transform";
             return false;
         }
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = command;
     }
     else if (type == "entity.setRenderLayer")
@@ -1895,6 +1981,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             error = "Render layer command requires entity and renderLayerMask";
             return false;
         }
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = command;
     }
     else if (type == "entity.setMobility")
@@ -1910,6 +1997,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         command.mobility = mobility == "static"       ? host_mobility::static_object
                            : mobility == "stationary" ? host_mobility::stationary
                                                       : host_mobility::movable;
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = command;
     }
     else if (type == "entity.setCamera")
@@ -1920,6 +2008,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             error = "Camera command requires entity and a typed camera snapshot";
             return false;
         }
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = command;
     }
     else if (type == "entity.setLight")
@@ -1930,6 +2019,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             error = "Light command requires entity and a typed light snapshot";
             return false;
         }
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = command;
     }
     else if (type == "entity.setMeshRenderer")
@@ -1946,6 +2036,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             error = "Mesh renderer command requires entity, visible, and baseColorTint";
             return false;
         }
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
         envelope.payload = command;
     }
     else if (type == "terrain.update")
@@ -2035,6 +2126,21 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         command.path = std::move(path);
+        bool_value(payload, "applyToSelection", command.apply_to_selection);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "component.add" || type == "component.remove" || type == "component.reset")
+    {
+        host_component_operation_command command;
+        if (!string_value(payload, "component", command.component) || command.component.empty())
+        {
+            error = "Component operation requires a component name";
+            return false;
+        }
+        command.operation = type == "component.add"
+                                ? host_component_operation::add
+                                : type == "component.remove" ? host_component_operation::remove
+                                                             : host_component_operation::reset;
         envelope.payload = std::move(command);
     }
     else if (type == "environment.update")
@@ -2351,6 +2457,8 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
     }
     else if (type == "gateway.componentSchemas")
         envelope.payload = host_component_schema_query{};
+    else if (type == "workspace.documents")
+        envelope.payload = host_workspace_documents_query{};
     else if (type == "gateway.diagnostics")
         envelope.payload = host_gateway_diagnostics_query{};
     else if (type == "viewport.captureResult")

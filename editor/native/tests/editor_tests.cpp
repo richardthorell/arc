@@ -1020,6 +1020,133 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
                         { return event.event_type == arc::editor::host_event_type::entity_deleted; }));
 }
 
+TEST_CASE("workspace documents component operations and read only projects are host authoritative")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-workspace-contract-test";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::create_directories(root, error);
+    REQUIRE_FALSE(error);
+
+    {
+        arc::editor::arc_host_manager manager;
+        auto host = manager.acquire(std::make_unique<arc::render::renderer>());
+        REQUIRE(host->open_project({.name = "Workspace", .root = root}, {}).succeeded);
+        REQUIRE(host->execute(
+                    arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                    .succeeded);
+
+        REQUIRE(host
+                    ->execute(arc::editor::host_component_operation_command{
+                        .operation = arc::editor::host_component_operation::add, .component = "camera"})
+                    .succeeded);
+        REQUIRE(host->selected_entity_snapshot().camera.has_value());
+        REQUIRE(host
+                    ->execute(arc::editor::host_component_operation_command{
+                        .operation = arc::editor::host_component_operation::reset, .component = "camera"})
+                    .succeeded);
+        REQUIRE(host
+                    ->execute(arc::editor::host_component_operation_command{
+                        .operation = arc::editor::host_component_operation::remove, .component = "camera"})
+                    .succeeded);
+        REQUIRE_FALSE(host->selected_entity_snapshot().camera.has_value());
+        REQUIRE_FALSE(host
+                          ->execute(arc::editor::host_component_operation_command{
+                              .operation = arc::editor::host_component_operation::remove,
+                              .component = "transform"})
+                          .succeeded);
+
+        const auto workspace =
+            host->query({.request_id = 9, .payload = arc::editor::host_workspace_documents_query{}});
+        REQUIRE(workspace.succeeded);
+        REQUIRE(workspace.payload_json.find("\"documents\":[{") != std::string::npos);
+        REQUIRE(workspace.payload_json.find("\"dirty\":true") != std::string::npos);
+
+        const auto recovery_path = root / "recovery" / "scene.arcscene";
+        REQUIRE(host->execute(arc::editor::host_autosave_scene_command{.path = recovery_path}).succeeded);
+        REQUIRE(std::filesystem::is_regular_file(recovery_path));
+        REQUIRE(host
+                    ->execute(arc::editor::host_open_recovery_scene_command{
+                        .path = recovery_path, .original_path = root / "assets" / "scene.arcscene"})
+                    .succeeded);
+        REQUIRE(host->scene_snapshot().dirty);
+    }
+
+    {
+        arc::editor::arc_host_manager manager;
+        auto host = manager.acquire(std::make_unique<arc::render::renderer>());
+        REQUIRE(host->open_project({.name = "Read Only", .root = root, .read_only = true}, {}).succeeded);
+        REQUIRE_FALSE(host
+                          ->execute(
+                              arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube})
+                          .succeeded);
+        REQUIRE(host->execute(arc::editor::host_viewport_camera_input_command{.forward = 1.0f}).succeeded);
+    }
+
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("multi selection property edits are atomic and apply through the host")
+{
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::make_unique<arc::render::renderer>());
+    REQUIRE(host->open_project({.name = "Multi Edit", .root = {}}, {}).succeeded);
+
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{
+                              .kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+    const auto first = host->selected_entity_snapshot().entity;
+    REQUIRE(host
+                ->execute(arc::editor::host_component_operation_command{
+                    .operation = arc::editor::host_component_operation::add, .component = "camera"})
+                .succeeded);
+
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{
+                              .kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+    const auto second = host->selected_entity_snapshot().entity;
+    REQUIRE(host
+                ->execute(arc::editor::host_component_operation_command{
+                    .operation = arc::editor::host_component_operation::add, .component = "camera"})
+                .succeeded);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{
+                              .entity = first, .additive = true, .toggle = false})
+                .succeeded);
+    REQUIRE(host->selected_entity_snapshot().selection_count == 2);
+
+    arc::editor::host_camera_snapshot camera;
+    camera.fov_y_degrees = 72.0f;
+    REQUIRE(host->execute(arc::editor::host_set_camera_command{
+                              .entity = first, .camera = camera, .apply_to_selection = true})
+                .succeeded);
+    REQUIRE(host->entity_snapshot(first).camera->fov_y_degrees == Catch::Approx(72.0f));
+    REQUIRE(host->entity_snapshot(second).camera->fov_y_degrees == Catch::Approx(72.0f));
+
+    arc::editor::host_transform transform;
+    transform.position = {3.0f, 4.0f, 5.0f};
+    REQUIRE(host->execute(arc::editor::host_set_transform_command{
+                              .entity = first, .transform = transform, .apply_to_selection = true})
+                .succeeded);
+    REQUIRE(host->entity_snapshot(first).transform->position.x == Catch::Approx(3.0f));
+    REQUIRE(host->entity_snapshot(second).transform->position.z == Catch::Approx(5.0f));
+
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = second}).succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_component_operation_command{
+                    .operation = arc::editor::host_component_operation::remove, .component = "camera"})
+                .succeeded);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{
+                              .entity = first, .additive = true, .toggle = false})
+                .succeeded);
+    camera.fov_y_degrees = 80.0f;
+    REQUIRE_FALSE(host
+                      ->execute(arc::editor::host_set_camera_command{
+                          .entity = first, .camera = camera, .apply_to_selection = true})
+                      .succeeded);
+    REQUIRE(host->entity_snapshot(first).camera->fov_y_degrees == Catch::Approx(72.0f));
+    REQUIRE_FALSE(host->entity_snapshot(second).camera.has_value());
+}
+
 TEST_CASE("arc host hierarchy and history preserve subtrees and group edit transactions")
 {
     auto renderer = std::make_unique<arc::render::renderer>();
@@ -2447,13 +2574,24 @@ TEST_CASE("prefab authoring creates, instantiates, persists, reverts, and unpack
     REQUIRE_FALSE(host->selected_entity_snapshot().prefab.has_value());
     REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
     REQUIRE(host->selected_entity_snapshot().prefab.has_value());
+    const auto nested_owner = arc::ecs::generate_entity_guid();
+    auto& nested_instance = host->scene_state().scene.get<arc::scene::prefab_instance_component>(
+        arc::ecs::entity{reverted.index, reverted.generation});
+    nested_instance.nested = true;
+    nested_instance.nested_owner = nested_owner;
 
     const auto scene_path = root / "prefab_scene.arcscene";
     REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = scene_path}).succeeded);
     REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = scene_path}).succeeded);
     const auto reopened = host->scene_snapshot();
-    REQUIRE(std::any_of(reopened.entities.begin(), reopened.entities.end(),
-                        [](const auto& value) { return value.name == "Changed Prefab Instance"; }));
+    const auto reopened_instance =
+        std::find_if(reopened.entities.begin(), reopened.entities.end(),
+                     [](const auto& value) { return value.name == "Changed Prefab Instance"; });
+    REQUIRE(reopened_instance != reopened.entities.end());
+    const auto& nested_round_trip = host->scene_state().scene.get<arc::scene::prefab_instance_component>(
+        arc::ecs::entity{reopened_instance->entity.index, reopened_instance->entity.generation});
+    REQUIRE(nested_round_trip.nested);
+    REQUIRE(nested_round_trip.nested_owner == nested_owner);
 
     std::filesystem::remove_all(root, error);
 }
