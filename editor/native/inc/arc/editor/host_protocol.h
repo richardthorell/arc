@@ -70,6 +70,7 @@ enum class host_event_type : std::uint8_t
     host_shutdown,
     project_opened,
     project_closed,
+    project_module_reloaded,
     scene_changed,
     entity_created,
     entity_deleted,
@@ -282,6 +283,15 @@ struct host_component_snapshot
     bool editable{true};
 };
 
+struct host_project_component_snapshot
+{
+    std::string type_id;
+    std::string canonical_name;
+    std::string display_name;
+    std::uint32_t schema_version{1};
+    std::string values_json{"{}"};
+};
+
 struct host_bounds_snapshot
 {
     host_vec3 minimum{};
@@ -480,6 +490,7 @@ struct host_selected_entity_snapshot
     std::optional<host_terrain_snapshot> terrain;
     std::optional<host_prefab_snapshot> prefab;
     std::vector<host_component_snapshot> components;
+    std::vector<host_project_component_snapshot> project_components;
 };
 
 struct host_cloud_layer
@@ -698,6 +709,14 @@ struct host_open_project_command
 
 struct host_close_project_command
 {
+};
+
+struct host_reload_project_module_command
+{
+    std::filesystem::path path;
+    std::string engine_version;
+    std::string project_guid;
+    std::string module_id;
 };
 
 struct host_open_scene_command
@@ -937,6 +956,13 @@ struct host_component_operation_command
     std::string component;
 };
 
+struct host_patch_project_component_command
+{
+    std::string component;
+    std::string field;
+    std::string value_json;
+};
+
 struct host_set_world_environment_command
 {
     host_world_environment_snapshot environment;
@@ -1080,7 +1106,8 @@ struct host_viewport_capture_command
 };
 
 using host_command_payload = std::variant<
-    host_open_project_command, host_close_project_command, host_open_scene_command, host_new_scene_command,
+    host_open_project_command, host_close_project_command, host_reload_project_module_command,
+    host_open_scene_command, host_new_scene_command,
     host_save_scene_command, host_save_scene_as_command, host_autosave_scene_command,
     host_open_recovery_scene_command, host_asset_reimport_command, host_asset_cancel_import_command,
     host_asset_move_command, host_asset_rename_command, host_create_entity_command, host_delete_entity_command,
@@ -1091,7 +1118,7 @@ using host_command_payload = std::variant<
     host_set_mobility_command, host_set_camera_command, host_set_light_command, host_set_mesh_renderer_command,
     host_set_terrain_command, host_set_terrain_brush_command, host_set_terrain_layer_command,
     host_terrain_stroke_command, host_terrain_hover_command, host_set_entity_material_command,
-    host_component_operation_command,
+    host_component_operation_command, host_patch_project_component_command,
     host_set_world_environment_command, host_apply_world_environment_preset_command, host_set_environment_hdri_command,
     host_set_camera_projection_command, host_viewport_attach_command, host_viewport_resize_command,
     host_viewport_set_camera_mode_command, host_viewport_set_render_options_command, host_viewport_camera_input_command,

@@ -5,6 +5,8 @@
  */
 
 #include <arc/core/result.h>
+#include <arc/project/project_module.h>
+#include <arc/project/reflection.h>
 
 #include <cstdint>
 #include <filesystem>

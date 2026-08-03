@@ -1,9 +1,13 @@
 #include <arc/project/project.h>
+#include "arc_project_test.reflection.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <iterator>
+#include <string>
 
 namespace
 {
@@ -27,6 +31,21 @@ private:
     std::filesystem::path path_;
 };
 } // namespace
+
+TEST_CASE("generated project reflection supplies stable ECS component metadata")
+{
+    using component = arc::project::tests::reflected_stats;
+    const auto& metadata = arc::ecs::component_metadata<component>();
+    CHECK(arc::ecs::to_string(metadata.id) == "cb3208e9cd18443693a80cbed1099ccd");
+    CHECK(metadata.schema_version == 3);
+    REQUIRE(metadata.fields.size() == 2);
+    CHECK(metadata.fields[0].id == 0x2b880a80f9e8fd40ull);
+    CHECK(arc::ecs::has_flag(metadata.fields[0].flags, arc::ecs::reflected_field_flags::replicated));
+    CHECK(metadata.fields[0].minimum == 0.0);
+    CHECK(metadata.fields[0].maximum == 100.0);
+    CHECK(arc::project::tests::generated::components.front().stable_id ==
+          std::string_view{"cb3208e9cd18443693a80cbed1099ccd"});
+}
 
 TEST_CASE("version two project descriptors round trip and resolve project local paths")
 {
@@ -119,6 +138,21 @@ TEST_CASE("all installed project templates generate complete repositories")
         CHECK(arc::project::validate_descriptor(destination / "GeneratedGame.arcproject", descriptor.value(),
                                                  {.engine_version = "0.1.0", .require_exact_engine = true,
                                                   .require_paths = true}));
+        if (std::any_of(descriptor.value().modules.begin(), descriptor.value().modules.end(),
+                        [](const auto& module) { return module.kind == arc::project::module_kind::editor; }))
+        {
+            const auto component_header = destination / "Source" / "GeneratedGameRuntime" / "Components.h";
+            REQUIRE(std::filesystem::is_regular_file(component_header));
+            std::ifstream component_input(component_header);
+            const std::string component_source((std::istreambuf_iterator<char>(component_input)),
+                                               std::istreambuf_iterator<char>());
+            CHECK(component_source.find("ARC_COMPONENT(\"") != std::string::npos);
+            CHECK(component_source.find("ARC_PROPERTY(\"") != std::string::npos);
+            std::ifstream cmake_input(destination / "CMakeLists.txt");
+            const std::string cmake_source((std::istreambuf_iterator<char>(cmake_input)),
+                                           std::istreambuf_iterator<char>());
+            CHECK(cmake_source.find("arc_generate_reflection") != std::string::npos);
+        }
     }
 }
 

@@ -73,7 +73,9 @@ enum class reflected_field_flags : std::uint16_t
     replicated = 1u << 1u,
     editable = 1u << 2u,
     transient = 1u << 3u,
-    prefab_override = 1u << 4u
+    prefab_override = 1u << 4u,
+    read_only = 1u << 5u,
+    save_game = 1u << 6u
 };
 
 constexpr reflected_field_flags operator|(reflected_field_flags lhs, reflected_field_flags rhs) noexcept
@@ -102,6 +104,9 @@ struct component_field_descriptor
     std::string_view unit;
     std::optional<double> minimum;
     std::optional<double> maximum;
+    std::string_view category;
+    std::string_view asset_type_restriction;
+    std::string_view entity_component_restriction;
 };
 
 struct component_descriptor

@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project({{PROJECT_TOKEN}} LANGUAGES CXX)
-find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime Server EditorSDK)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime Server EditorModuleSDK)
 add_library({{PROJECT_TOKEN}}Runtime STATIC Source/{{PROJECT_TOKEN}}Runtime/Runtime.cpp)
 target_link_libraries({{PROJECT_TOKEN}}Runtime PUBLIC ARC::Runtime)
+arc_generate_reflection(TARGET {{PROJECT_TOKEN}}Runtime NAMESPACE {{PROJECT_TOKEN}}::generated
+  COMPONENT_NAMESPACE {{PROJECT_TOKEN}} HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/Source/{{PROJECT_TOKEN}}Runtime/Components.h")
 add_library({{PROJECT_TOKEN}}Server STATIC Source/{{PROJECT_TOKEN}}Server/Server.cpp)
 target_link_libraries({{PROJECT_TOKEN}}Server PUBLIC {{PROJECT_TOKEN}}Runtime ARC::Server)
 add_library({{PROJECT_TOKEN}}Editor MODULE Source/{{PROJECT_TOKEN}}Editor/Editor.cpp)

@@ -178,7 +178,13 @@ arc-project build --project MyGame/MyGame.arcproject --config RelWithDebInfo
 ```
 
 Available templates are Blank 3D, Blank Headless, Rendering Sample, and Empty
-C++. Generated projects keep source-controlled files in `Source/`, `Content/`,
+C++.
+
+Project Runtime, Editor, and Server modules use ARC's generated reflection and
+generation-based native reload workflow. See
+[C++ project modules](docs/project-modules.md) for the stable ABI, annotations,
+schema compatibility rules, and editor Build workflow.
+Generated projects keep source-controlled files in `Source/`, `Content/`,
 `Config/`, and `Plugins/`; transient editor state, caches, recovery generations,
 and products live in `Saved/`, `Intermediate/`, and `Build/`.
 

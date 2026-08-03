@@ -1,4 +1,5 @@
 #include <arc/framework/framework.h>
+#include "{{PROJECT_TOKEN}}Runtime.reflection.h"
 
 namespace {{PROJECT_TOKEN}}
 {

@@ -142,7 +142,11 @@ write_basic_package_version_file(
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/ARCConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/ARCConfigVersion.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ARCProjectReflection.cmake"
     DESTINATION "lib/cmake/ARC"
+    COMPONENT sdk)
+install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/tools/project_reflection.py"
+    DESTINATION tools
     COMPONENT sdk)
 install(EXPORT ARCTargets
     FILE ARCTargets.cmake

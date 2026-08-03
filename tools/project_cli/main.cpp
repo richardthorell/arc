@@ -213,7 +213,14 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
     const auto build_directory = context.value().build_root / args.option("--build-dir").value_or("default");
     std::vector<std::string> command;
     if (build)
+    {
         command = {"--build", build_directory.string(), "--config", args.option("--config").value_or("RelWithDebInfo")};
+        if (const auto target = args.option("--target"))
+        {
+            command.push_back("--target");
+            command.push_back(*target);
+        }
+    }
     else
     {
         command = {"-S", context.value().root.string(), "-B", build_directory.string()};

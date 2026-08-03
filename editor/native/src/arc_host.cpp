@@ -37,6 +37,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 namespace arc::editor
 {
@@ -191,6 +192,7 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_set_terrain_layer_command> ||
            std::is_same_v<Command, host_set_entity_material_command> ||
            std::is_same_v<Command, host_component_operation_command> ||
+           std::is_same_v<Command, host_patch_project_component_command> ||
            std::is_same_v<Command, host_set_world_environment_command> ||
            std::is_same_v<Command, host_apply_world_environment_preset_command> ||
            std::is_same_v<Command, host_set_environment_hdri_command>;
@@ -200,6 +202,7 @@ template <class Command> constexpr bool is_project_mutation() noexcept
 {
     return is_authoring_command<Command>() || std::is_same_v<Command, host_save_scene_command> ||
            std::is_same_v<Command, host_save_scene_as_command> ||
+           std::is_same_v<Command, host_reload_project_module_command> ||
            std::is_same_v<Command, host_asset_reimport_command> ||
            std::is_same_v<Command, host_asset_cancel_import_command> ||
            std::is_same_v<Command, host_asset_move_command> || std::is_same_v<Command, host_asset_rename_command>;
@@ -1031,7 +1034,84 @@ template <class Component> void append_component_schema(std::string& json, bool&
     json += "]}";
 }
 
-std::string component_schema_json()
+std::string_view reflected_kind_name(project::game_field_kind_v1 kind)
+{
+    using enum project::game_field_kind_v1;
+    switch (kind)
+    {
+    case boolean: return "boolean";
+    case signed_integer: return "signedInteger";
+    case unsigned_integer: return "unsignedInteger";
+    case floating_point: return "number";
+    case string: return "string";
+    case enumeration: return "enum";
+    case vector2: return "vector2";
+    case vector3: return "vector3";
+    case vector4: return "vector4";
+    case quaternion: return "quaternion";
+    case entity_reference: return "entity";
+    case asset_reference: return "asset";
+    case structure: return "struct";
+    case sequence: return "sequence";
+    }
+    return "unknown";
+}
+
+bool has_flag(project::game_field_flags_v1 value, project::game_field_flags_v1 flag)
+{
+    return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(flag)) != 0;
+}
+
+void append_project_component_schema(std::string& json, bool& first, const project_component_schema& component)
+{
+    if (!first) json += ',';
+    first = false;
+    json += "{\"id\":" + to_json_string(component.stable_id) +
+            ",\"name\":" + to_json_string(component.canonical_name) +
+            ",\"displayName\":" + to_json_string(component.display_name) +
+            ",\"category\":" + to_json_string(component.category) +
+            ",\"tooltip\":" + to_json_string(component.tooltip) +
+            ",\"schemaVersion\":" + std::to_string(component.schema_version) +
+            ",\"projectComponent\":true,\"customSerialization\":false,\"fields\":[";
+    for (std::size_t index = 0; index < component.fields.size(); ++index)
+    {
+        if (index) json += ',';
+        const auto& field = component.fields[index];
+        std::ostringstream id;
+        id << std::hex << std::setfill('0') << std::setw(16) << field.stable_id;
+        json += "{\"id\":" + to_json_string(id.str()) + ",\"name\":" + to_json_string(field.name) +
+                ",\"displayName\":" + to_json_string(field.display_name) +
+                ",\"category\":" + to_json_string(field.category) +
+                ",\"tooltip\":" + to_json_string(field.tooltip) +
+                ",\"kind\":" + to_json_string(reflected_kind_name(field.kind)) +
+                ",\"editable\":" +
+                std::string(has_flag(field.flags, project::game_field_flags_v1::editable) &&
+                                    !has_flag(field.flags, project::game_field_flags_v1::read_only)
+                                ? "true"
+                                : "false") +
+                ",\"readOnly\":" +
+                std::string(has_flag(field.flags, project::game_field_flags_v1::read_only) ? "true" : "false") +
+                ",\"transient\":" +
+                std::string(has_flag(field.flags, project::game_field_flags_v1::transient) ? "true" : "false") +
+                ",\"saveGame\":" +
+                std::string(has_flag(field.flags, project::game_field_flags_v1::save_game) ? "true" : "false") +
+                ",\"prefabOverride\":" +
+                std::string(has_flag(field.flags, project::game_field_flags_v1::prefab_override) ? "true" : "false") +
+                ",\"replicated\":" +
+                std::string(has_flag(field.flags, project::game_field_flags_v1::replicated) ? "true" : "false") +
+                ",\"default\":" + field.default_json;
+        if (field.has_minimum) json += ",\"minimum\":" + std::to_string(field.minimum);
+        if (field.has_maximum) json += ",\"maximum\":" + std::to_string(field.maximum);
+        if (!field.asset_type_restriction.empty())
+            json += ",\"assetType\":" + to_json_string(field.asset_type_restriction);
+        if (!field.entity_component_restriction.empty())
+            json += ",\"entityComponent\":" + to_json_string(field.entity_component_restriction);
+        json += '}';
+    }
+    json += "]}";
+}
+
+std::string component_schema_json(const std::vector<project_component_schema>& project_components)
 {
     std::string json = "{\"schemaVersion\":1,\"components\":[";
     bool first = true;
@@ -1058,8 +1138,159 @@ std::string component_schema_json()
     append_component_schema<scene::water_component>(json, first);
     append_component_schema<scene::vegetation_component>(json, first);
     append_component_schema<scene::decal_component>(json, first);
+    for (const auto& component : project_components) append_project_component_schema(json, first, component);
     json += "]}";
     return json;
+}
+
+const project_component_schema* find_project_component(const project_module_loader& module, std::string_view identity)
+{
+    const auto& components = module.component_schemas();
+    const auto found = std::find_if(components.begin(), components.end(), [&](const auto& component)
+                                    { return component.stable_id == identity || component.canonical_name == identity; });
+    return found == components.end() ? nullptr : &*found;
+}
+
+nlohmann::json project_component_records(const editor_scene_state& scene, ecs::entity_guid guid)
+{
+    const auto record = std::find_if(scene.unknown_component_records.begin(), scene.unknown_component_records.end(),
+                                     [guid](const auto& candidate) { return candidate.first == guid; });
+    if (record == scene.unknown_component_records.end()) return nlohmann::json::object();
+    auto parsed = nlohmann::json::parse(record->second, nullptr, false);
+    return parsed.is_object() ? std::move(parsed) : nlohmann::json::object();
+}
+
+void set_project_component_records(editor_scene_state& scene, ecs::entity_guid guid, const nlohmann::json& records)
+{
+    const auto record = std::find_if(scene.unknown_component_records.begin(), scene.unknown_component_records.end(),
+                                     [guid](const auto& candidate) { return candidate.first == guid; });
+    if (records.empty())
+    {
+        if (record != scene.unknown_component_records.end()) scene.unknown_component_records.erase(record);
+        return;
+    }
+    if (record == scene.unknown_component_records.end())
+        scene.unknown_component_records.emplace_back(guid, records.dump());
+    else
+        record->second = records.dump();
+}
+
+nlohmann::json default_project_component(const project_component_schema& schema)
+{
+    nlohmann::json component{{"typeId", schema.stable_id}, {"version", schema.schema_version},
+                             {"_arcFieldIds", nlohmann::json::object()}};
+    for (const auto& field : schema.fields)
+    {
+        std::ostringstream id;
+        id << std::hex << std::setfill('0') << std::setw(16) << field.stable_id;
+        component["_arcFieldIds"][id.str()] = field.name;
+        if (has_flag(field.flags, project::game_field_flags_v1::transient)) continue;
+        auto value = nlohmann::json::parse(field.default_json, nullptr, false);
+        if (!value.is_discarded()) component[field.name] = std::move(value);
+    }
+    return component;
+}
+
+std::optional<std::string> project_component_record_key(const nlohmann::json& records,
+                                                        const project_component_schema& schema)
+{
+    if (records.contains(schema.canonical_name) && records.at(schema.canonical_name).is_object())
+        return schema.canonical_name;
+    for (const auto& [name, component] : records.items())
+    {
+        if (component.is_object() && component.value("typeId", std::string{}) == schema.stable_id) return name;
+    }
+    return std::nullopt;
+}
+
+void migrate_project_component_records(editor_scene_state& scene,
+                                       const std::vector<project_component_schema>& schemas)
+{
+    for (auto& [_, record_text] : scene.unknown_component_records)
+    {
+        auto records = nlohmann::json::parse(record_text, nullptr, false);
+        if (!records.is_object()) continue;
+        bool changed{};
+        for (const auto& schema : schemas)
+        {
+            const auto record_key = project_component_record_key(records, schema);
+            if (!record_key) continue;
+            if (*record_key != schema.canonical_name)
+            {
+                records[schema.canonical_name] = std::move(records[*record_key]);
+                records.erase(*record_key);
+                changed = true;
+            }
+            auto& component = records[schema.canonical_name];
+            const auto defaults = default_project_component(schema);
+            const auto previous_ids = component.value("_arcFieldIds", nlohmann::json::object());
+            for (const auto& field : schema.fields)
+            {
+                std::ostringstream id;
+                id << std::hex << std::setfill('0') << std::setw(16) << field.stable_id;
+                if (previous_ids.contains(id.str()) && previous_ids[id.str()].is_string())
+                {
+                    const auto previous_name = previous_ids[id.str()].get<std::string>();
+                    if (previous_name != field.name && component.contains(previous_name) && !component.contains(field.name))
+                    {
+                        component[field.name] = std::move(component[previous_name]);
+                        component.erase(previous_name);
+                        changed = true;
+                    }
+                }
+                if (!component.contains(field.name) && defaults.contains(field.name))
+                {
+                    component[field.name] = defaults[field.name];
+                    changed = true;
+                }
+            }
+            component["_arcFieldIds"] = defaults["_arcFieldIds"];
+            component["typeId"] = schema.stable_id;
+            component["version"] = schema.schema_version;
+            changed = true;
+        }
+        if (changed) record_text = records.dump();
+    }
+}
+
+bool validate_project_field_value(const project_field_schema& field, const nlohmann::json& value, std::string& error)
+{
+    using enum project::game_field_kind_v1;
+    const bool type_matches =
+        (field.kind == boolean && value.is_boolean()) ||
+        ((field.kind == signed_integer || field.kind == unsigned_integer) && value.is_number_integer()) ||
+        (field.kind == floating_point && value.is_number()) ||
+        ((field.kind == string || field.kind == enumeration || field.kind == entity_reference ||
+          field.kind == asset_reference) && (value.is_string() || value.is_null())) ||
+        ((field.kind == vector2 || field.kind == vector3 || field.kind == vector4 || field.kind == quaternion) &&
+         value.is_array()) ||
+        (field.kind == structure && value.is_object()) || (field.kind == sequence && value.is_array());
+    if (!type_matches)
+    {
+        error = "Project component field value has the wrong reflected type";
+        return false;
+    }
+    if (value.is_number())
+    {
+        const double number = value.get<double>();
+        if (!std::isfinite(number) || (field.kind == unsigned_integer && number < 0.0) ||
+            (field.has_minimum && number < field.minimum) ||
+            (field.has_maximum && number > field.maximum))
+        {
+            error = "Project component field value is outside its authored range";
+            return false;
+        }
+    }
+    const auto expected_elements = field.kind == vector2 ? 2u : field.kind == vector3 ? 3u :
+                                   (field.kind == vector4 || field.kind == quaternion) ? 4u : 0u;
+    if (expected_elements && (value.size() != expected_elements ||
+                              !std::all_of(value.begin(), value.end(), [](const auto& item)
+                                           { return item.is_number() && std::isfinite(item.template get<double>()); })))
+    {
+        error = "Project vector field has an invalid element count or non-finite value";
+        return false;
+    }
+    return true;
 }
 
 host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& state, const editor_asset_state& assets,
@@ -1233,10 +1464,14 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->project_module.unload();
     if (!command.read_only && !command.editor_module_path.empty())
     {
-        std::string module_error;
-        if (!state_->project_module.load(command.editor_module_path, command.engine_version, command.project_guid,
-                                         command.editor_module_id, module_error))
-            return {.request_id = request_id, .succeeded = false, .error = std::move(module_error)};
+        const auto module_path = resolve_project_document(command.root, command.editor_module_path, true);
+        if (!module_path)
+            return {.request_id = request_id, .succeeded = false,
+                    .error = "Project editor module must be a file contained by the project root"};
+        const auto module_result = state_->project_module.load(*module_path, command.engine_version,
+                                                               command.project_guid, command.editor_module_id);
+        if (!module_result.succeeded)
+            return {.request_id = request_id, .succeeded = false, .error = module_result.message};
     }
     state_->assets = assets;
     state_->project.name = command.name.empty() ? "Arc Project" : command.name;
@@ -1247,20 +1482,26 @@ host_response arc_host::open_project(const host_open_project_command& command, c
         state_->asset_registry->on_shutdown(context);
     }
     state_->asset_registry.reset();
-    const auto cache_root = command.cache_root.empty() ? command.root / "Intermediate" / "Cache" : command.cache_root;
-    std::vector<std::filesystem::path> content_roots = command.content_roots;
-    if (content_roots.empty()) content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
-    state_->derived_cache = std::make_unique<arc::assets::derived_data_cache>(
-        arc::assets::derived_data_cache_config{.root = cache_root});
-    state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
-    state_->asset_registry = std::make_unique<arc::assets::asset_manager>(
-        arc::assets::asset_manager_config{
-            .project_root = command.root,
-            .asset_root = content_roots.front(),
-            .additional_source_roots = std::vector<std::filesystem::path>(content_roots.begin() + 1, content_roots.end()),
-            .cache_root = cache_root},
-        state_->simulation.jobs(), *state_->asset_files, state_->simulation.memory());
+    state_->derived_cache.reset();
+    state_->asset_files.reset();
+    if (!command.root.empty())
     {
+        const auto cache_root = command.cache_root.empty() ? command.root / "Intermediate" / "Cache"
+                                                            : command.cache_root;
+        std::vector<std::filesystem::path> content_roots = command.content_roots;
+        if (content_roots.empty())
+            content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
+        state_->derived_cache = std::make_unique<arc::assets::derived_data_cache>(
+            arc::assets::derived_data_cache_config{.root = cache_root});
+        state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
+        state_->asset_registry = std::make_unique<arc::assets::asset_manager>(
+            arc::assets::asset_manager_config{
+                .project_root = command.root,
+                .asset_root = content_roots.front(),
+                .additional_source_roots =
+                    std::vector<std::filesystem::path>(content_roots.begin() + 1, content_roots.end()),
+                .cache_root = cache_root},
+            state_->simulation.jobs(), *state_->asset_files, state_->simulation.memory());
         framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_start(context);
     }
@@ -1268,8 +1509,11 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     // Project opening never synthesizes sample content. Rendering samples are
     // ordinary persisted scenes supplied by the selected project template.
     state_->scene = create_blank_scene();
-    register_editor_asset_fallbacks(state_->scene, *state_->asset_registry);
-    resolve_editor_asset_bindings(state_->scene, *state_->asset_registry, state_->project.root);
+    if (state_->asset_registry)
+    {
+        register_editor_asset_fallbacks(state_->scene, *state_->asset_registry);
+        resolve_editor_asset_bindings(state_->scene, *state_->asset_registry, state_->project.root);
+    }
     std::string loaded_scene_message = "Blank authoring scene created";
     if (!command.default_scene.empty())
     {
@@ -1446,6 +1690,49 @@ host_response arc_host::execute(const host_command_envelope& command)
                 arc::diagnostics::info("editor.host", message);
                 push_event(state_->events, state_->event_sequence, host_event_type::project_closed, message);
                 return success();
+            }
+            else if constexpr (std::is_same_v<command_type, host_reload_project_module_command>)
+            {
+                if (!state_->project_open) return fail("No project is open");
+                if (state_->project_read_only) return fail("Project module reload is disabled in read-only mode");
+                const auto module_path = resolve_project_document(state_->project.root, payload.path, true);
+                if (!module_path) return fail("Project module must be a file contained by the project root");
+                const bool was_running = !state_->simulation.paused();
+                if (was_running) state_->simulation.pause();
+                const auto result = state_->project_module.reload(*module_path, payload.engine_version,
+                                                                  payload.project_guid, payload.module_id);
+                if (was_running && result.succeeded &&
+                    result.classification == module_reload_classification::safe_hot_reload)
+                    state_->simulation.resume();
+                const char* classification =
+                    result.classification == module_reload_classification::safe_hot_reload
+                        ? "safeHotReload"
+                    : result.classification == module_reload_classification::play_session_restart_required
+                        ? "playSessionRestartRequired"
+                    : result.classification == module_reload_classification::native_host_restart_required
+                        ? "nativeHostRestartRequired"
+                        : "initialLoad";
+                if (!result.succeeded)
+                {
+                    if (result.generation &&
+                        result.classification == module_reload_classification::native_host_restart_required)
+                    {
+                        push_event(state_->events, state_->event_sequence, host_event_type::project_module_reloaded,
+                                   result.message);
+                        return success("{\"generation\":" + std::to_string(result.generation) +
+                                       ",\"classification\":" + to_json_string(classification) +
+                                       ",\"message\":" + to_json_string(result.message) + '}');
+                    }
+                    return fail(result.message);
+                }
+                migrate_project_component_records(state_->scene, state_->project_module.component_schemas());
+                push_event(state_->events, state_->event_sequence, host_event_type::project_module_reloaded,
+                           result.message);
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Project component metadata refreshed");
+                return success("{\"generation\":" + std::to_string(result.generation) +
+                               ",\"classification\":" + to_json_string(classification) +
+                               ",\"message\":" + to_json_string(result.message) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_asset_reimport_command> ||
                                std::is_same_v<command_type, host_asset_cancel_import_command> ||
@@ -2366,7 +2653,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                                    payload.component == "directionalLight" || payload.component == "pointLight" ||
                                    payload.component == "spotLight" || payload.component == "areaLight" ||
                                    payload.component == "renderLayer" || payload.component == "mobility";
-                if (!known) return fail("Component is not supported by generic operations");
+                const auto* project_schema = find_project_component(state_->project_module, payload.component);
+                if (!known && !project_schema) return fail("Component is not supported by generic operations");
                 if (payload.operation == host_component_operation::remove && payload.component == "transform")
                     return fail("Transform is required and cannot be removed");
                 if (payload.operation == host_component_operation::remove && payload.component == "camera" &&
@@ -2391,7 +2679,31 @@ host_response arc_host::execute(const host_command_envelope& command)
                 for (const auto entity : targets)
                 {
                     bool entity_changed = false;
-                    if (payload.component == "transform")
+                    if (project_schema)
+                    {
+                        const auto guid = entity_guid_of(state_->scene, entity);
+                        auto records = project_component_records(state_->scene, guid);
+                        const auto existing_key = project_component_record_key(records, *project_schema);
+                        const bool exists = existing_key.has_value();
+                        if (payload.operation == host_component_operation::remove && exists)
+                        {
+                            records.erase(*existing_key);
+                            entity_changed = true;
+                        }
+                        else if (payload.operation == host_component_operation::add && !exists)
+                        {
+                            records[project_schema->canonical_name] = default_project_component(*project_schema);
+                            entity_changed = true;
+                        }
+                        else if (payload.operation == host_component_operation::reset && exists)
+                        {
+                            if (*existing_key != project_schema->canonical_name) records.erase(*existing_key);
+                            records[project_schema->canonical_name] = default_project_component(*project_schema);
+                            entity_changed = true;
+                        }
+                        if (entity_changed) set_project_component_records(state_->scene, guid, records);
+                    }
+                    else if (payload.component == "transform")
                     {
                         scene::transform_component value{};
                         value.dirty = true;
@@ -2432,6 +2744,82 @@ host_response arc_host::execute(const host_command_envelope& command)
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Component operation applied to " + std::to_string(changed) + " entity(s)",
                            state_->scene.selected_entity);
+                return success("{\"changed\":" + std::to_string(changed) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_patch_project_component_command>)
+            {
+                const auto* schema = find_project_component(state_->project_module, payload.component);
+                if (!schema) return fail("Project component schema is not loaded");
+                const auto field = std::find_if(schema->fields.begin(), schema->fields.end(), [&](const auto& candidate)
+                                                { return candidate.name == payload.field; });
+                if (field == schema->fields.end()) return fail("Project component field is unknown");
+                if (!has_flag(field->flags, project::game_field_flags_v1::editable) ||
+                    has_flag(field->flags, project::game_field_flags_v1::read_only))
+                    return fail("Project component field is read-only");
+                auto value = nlohmann::json::parse(payload.value_json, nullptr, false);
+                std::string validation_error;
+                if (value.is_discarded() || !validate_project_field_value(*field, value, validation_error))
+                    return fail(validation_error.empty() ? "Project component field contains invalid JSON"
+                                                         : validation_error);
+                if (field->kind == project::game_field_kind_v1::entity_reference && value.is_string() &&
+                    !value.get_ref<const std::string&>().empty())
+                {
+                    const auto referenced_guid = ecs::parse_entity_guid(value.get<std::string>());
+                    const auto referenced_entity = referenced_guid ? find_entity_by_guid(state_->scene, *referenced_guid)
+                                                                   : ecs::entity{};
+                    if (!referenced_guid || !state_->scene.scene.alive(referenced_entity))
+                        return fail("Project entity reference does not resolve in the open scene");
+                    if (!field->entity_component_restriction.empty())
+                    {
+                        const auto* required = find_project_component(state_->project_module,
+                                                                      field->entity_component_restriction);
+                        const auto records = project_component_records(state_->scene, *referenced_guid);
+                        if (!required || !project_component_record_key(records, *required))
+                            return fail("Project entity reference does not satisfy its component restriction");
+                    }
+                }
+                if (field->kind == project::game_field_kind_v1::asset_reference && value.is_string() &&
+                    !value.get_ref<const std::string&>().empty())
+                {
+                    const auto referenced_guid = assets::parse_asset_guid(value.get<std::string>());
+                    const auto referenced_asset = referenced_guid && state_->asset_registry
+                                                      ? state_->asset_registry->find(*referenced_guid)
+                                                      : std::nullopt;
+                    if (!referenced_guid || !referenced_asset)
+                        return fail("Project asset reference does not resolve in the selected project");
+                    if (!field->asset_type_restriction.empty())
+                    {
+                        const auto required_type = assets::parse_asset_type_id(field->asset_type_restriction);
+                        if (!required_type || referenced_asset->type != *required_type)
+                            return fail("Project asset reference has the wrong asset type");
+                    }
+                }
+
+                std::vector<ecs::entity> targets;
+                state_->scene.scene.view<scene::selection_component>().each(
+                    [&](ecs::entity entity, const scene::selection_component& selection)
+                    {
+                        if (selection.selected) targets.push_back(entity);
+                    });
+                if (targets.empty() && state_->scene.scene.alive(state_->scene.selected_entity))
+                    targets.push_back(state_->scene.selected_entity);
+                std::size_t changed{};
+                for (const auto entity : targets)
+                {
+                    const auto guid = entity_guid_of(state_->scene, entity);
+                    auto records = project_component_records(state_->scene, guid);
+                    const auto record_key = project_component_record_key(records, *schema);
+                    if (!record_key) continue;
+                    auto& component = records[*record_key];
+                    component[field->name] = value;
+                    component["typeId"] = schema->stable_id;
+                    component["version"] = schema->schema_version;
+                    set_project_component_records(state_->scene, guid, records);
+                    ++changed;
+                }
+                if (!changed) return fail("No selected entity has this project component");
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Project component field updated", state_->scene.selected_entity);
                 return success("{\"changed\":" + std::to_string(changed) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_set_world_environment_command>)
@@ -2925,7 +3313,9 @@ host_response arc_host::query(const host_query_envelope& query) const
             }
             else if constexpr (std::is_same_v<query_type, host_component_schema_query>)
             {
-                return {.request_id = request_id, .succeeded = true, .payload_json = component_schema_json()};
+                return {.request_id = request_id,
+                        .succeeded = true,
+                        .payload_json = component_schema_json(state_->project_module.component_schemas())};
             }
             else if constexpr (std::is_same_v<query_type, host_gateway_diagnostics_query>)
             {
@@ -3574,6 +3964,22 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         add_component_snapshot<scene::prefab_instance_component>(state_->scene.scene, selected, snapshot.components,
                                                                  host_component_kind::prefab_instance,
                                                                  "Prefab Instance");
+    }
+    const auto project_records = project_component_records(state_->scene, entity_guid_of(state_->scene, selected));
+    for (const auto& schema : state_->project_module.component_schemas())
+    {
+        const auto record_key = project_component_record_key(project_records, schema);
+        if (!record_key) continue;
+        auto values = default_project_component(schema);
+        values.update(project_records.at(*record_key));
+        values.erase("typeId");
+        values.erase("version");
+        values.erase("_arcFieldIds");
+        snapshot.project_components.push_back({.type_id = schema.stable_id,
+                                               .canonical_name = schema.canonical_name,
+                                               .display_name = schema.display_name,
+                                               .schema_version = schema.schema_version,
+                                               .values_json = values.dump()});
     }
     return snapshot;
 }

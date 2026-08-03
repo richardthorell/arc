@@ -6,6 +6,7 @@
 #include <iterator>
 #include <sstream>
 #include <type_traits>
+#include <nlohmann/json.hpp>
 
 namespace arc::editor
 {
@@ -619,6 +620,8 @@ const char* to_string(host_event_type value) noexcept
             return "project.opened";
         case host_event_type::project_closed:
             return "project.closed";
+        case host_event_type::project_module_reloaded:
+            return "project.moduleReloaded";
         case host_event_type::scene_changed:
             return "scene.changed";
         case host_event_type::entity_created:
@@ -914,6 +917,8 @@ std::string command_type(const host_command_payload& payload)
                 return "project.open";
             else if constexpr (std::is_same_v<type, host_close_project_command>)
                 return "project.close";
+            else if constexpr (std::is_same_v<type, host_reload_project_module_command>)
+                return "project.reloadModule";
             else if constexpr (std::is_same_v<type, host_open_scene_command>)
                 return "scene.open";
             else if constexpr (std::is_same_v<type, host_new_scene_command>)
@@ -1001,6 +1006,8 @@ std::string command_type(const host_command_payload& payload)
                 }
                 return "component.reset";
             }
+            else if constexpr (std::is_same_v<type, host_patch_project_component_command>)
+                return "component.patchField";
             else if constexpr (std::is_same_v<type, host_set_world_environment_command>)
                 return "environment.update";
             else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>)
@@ -1299,6 +1306,11 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"editorModuleId\":" + quote(payload.editor_module_id) +
                        ",\"editorModulePath\":" + quote(payload.editor_module_path.generic_string()) +
                        ",\"readOnly\":" + bool_json(payload.read_only) + '}';
+            else if constexpr (std::is_same_v<type, host_reload_project_module_command>)
+                return "{\"path\":" + quote(payload.path.generic_string()) +
+                       ",\"engineVersion\":" + quote(payload.engine_version) +
+                       ",\"projectGuid\":" + quote(payload.project_guid) +
+                       ",\"moduleId\":" + quote(payload.module_id) + '}';
             else if constexpr (std::is_same_v<type, host_open_scene_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) +
                        ",\"append\":" + bool_json(payload.append) + '}';
@@ -1408,6 +1420,9 @@ std::string to_json(const host_command_envelope& envelope)
                        '}';
             else if constexpr (std::is_same_v<type, host_component_operation_command>)
                 return "{\"component\":" + quote(payload.component) + '}';
+            else if constexpr (std::is_same_v<type, host_patch_project_component_command>)
+                return "{\"component\":" + quote(payload.component) + ",\"field\":" + quote(payload.field) +
+                       ",\"value\":" + payload.value_json + '}';
             else if constexpr (std::is_same_v<type, host_set_world_environment_command>)
                 return "{\"environment\":" + to_json(payload.environment) + '}';
             else if constexpr (std::is_same_v<type, host_apply_world_environment_preset_command>)
@@ -1684,6 +1699,17 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
                 ",\"dirtyFields\":" + std::to_string(component.dirty_fields) +
                 ",\"editable\":" + bool_json(component.editable) + '}';
     }
+    json += "],\"projectComponents\":[";
+    for (std::size_t index = 0; index < snapshot.project_components.size(); ++index)
+    {
+        if (index) json += ',';
+        const auto& component = snapshot.project_components[index];
+        json += "{\"typeId\":" + quote(component.type_id) +
+                ",\"canonicalName\":" + quote(component.canonical_name) +
+                ",\"displayName\":" + quote(component.display_name) +
+                ",\"schemaVersion\":" + std::to_string(component.schema_version) +
+                ",\"values\":" + component.values_json + '}';
+    }
     json += "]}";
     return json;
 }
@@ -1781,6 +1807,21 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     else if (type == "project.close")
     {
         envelope.payload = host_close_project_command{};
+    }
+    else if (type == "project.reloadModule")
+    {
+        host_reload_project_module_command command;
+        std::string path;
+        if (!string_value(payload, "path", path) || path.empty() ||
+            !string_value(payload, "engineVersion", command.engine_version) || command.engine_version.empty() ||
+            !string_value(payload, "projectGuid", command.project_guid) || command.project_guid.empty() ||
+            !string_value(payload, "moduleId", command.module_id) || command.module_id.empty())
+        {
+            error = "Project module reload requires path and module identity";
+            return false;
+        }
+        command.path = std::move(path);
+        envelope.payload = std::move(command);
     }
     else if (type == "scene.open")
     {
@@ -2208,6 +2249,20 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                                 ? host_component_operation::add
                                 : type == "component.remove" ? host_component_operation::remove
                                                              : host_component_operation::reset;
+        envelope.payload = std::move(command);
+    }
+    else if (type == "component.patchField")
+    {
+        host_patch_project_component_command command;
+        const auto document = nlohmann::json::parse(payload, nullptr, false);
+        if (!document.is_object() || !document.contains("value") ||
+            !string_value(payload, "component", command.component) || command.component.empty() ||
+            !string_value(payload, "field", command.field) || command.field.empty())
+        {
+            error = "Project component patch requires component, field, and value";
+            return false;
+        }
+        command.value_json = document.at("value").dump();
         envelope.payload = std::move(command);
     }
     else if (type == "environment.update")

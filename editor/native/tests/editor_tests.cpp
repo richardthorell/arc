@@ -11,6 +11,7 @@
 #include <arc/editor/world_environment_host.h>
 #include <arc/project/project.h>
 #include <arc/render/primitives.h>
+#include "../src/project_module_loader.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -33,8 +34,128 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
+
 #include <windows.h>
 #endif
+
+TEST_CASE("project module generations expose stable schemas and classify compatible reloads")
+{
+    arc::editor::project_module_loader loader;
+    const auto initial = loader.load(ARC_TEST_GAME_MODULE_V1, "0.1.0",
+                                     "12345678-1234-4234-8234-123456789abc", "fixture.editor");
+    REQUIRE(initial.succeeded);
+    CHECK(initial.classification == arc::editor::module_reload_classification::initial_load);
+    REQUIRE(loader.component_schemas().size() == 1);
+    CHECK(loader.component_schemas().front().canonical_name == "old_component");
+    REQUIRE(loader.registrations().size() == 1);
+    CHECK(loader.registrations().front().stable_id == "fixture.echo");
+    CHECK(loader.registrations().front().kind == arc::project::game_registration_kind_v1::console_command);
+
+    const auto reloaded = loader.reload(ARC_TEST_GAME_MODULE_V2, "0.1.0",
+                                        "12345678-1234-4234-8234-123456789abc", "fixture.editor");
+    REQUIRE(reloaded.succeeded);
+    CHECK(reloaded.classification == arc::editor::module_reload_classification::safe_hot_reload);
+    CHECK(reloaded.generation == 2);
+    CHECK(loader.component_schemas().front().canonical_name == "renamed_component");
+    CHECK(loader.component_schemas().front().fields.front().name == "renamed_value");
+
+    const auto play_restart = loader.reload(ARC_TEST_GAME_MODULE_V3, "0.1.0",
+                                            "12345678-1234-4234-8234-123456789abc", "fixture.editor");
+    REQUIRE(play_restart.succeeded);
+    CHECK(play_restart.classification == arc::editor::module_reload_classification::play_session_restart_required);
+
+    const auto host_restart = loader.reload(ARC_TEST_GAME_MODULE_V4, "0.1.0",
+                                            "12345678-1234-4234-8234-123456789abc", "fixture.editor");
+    CHECK_FALSE(host_restart.succeeded);
+    CHECK(host_restart.classification == arc::editor::module_reload_classification::native_host_restart_required);
+    CHECK(loader.generation() == 3);
+
+    const auto rejected = loader.reload(ARC_TEST_GAME_MODULE_REJECTED, "0.1.0",
+                                        "12345678-1234-4234-8234-123456789abc", "fixture.editor");
+    CHECK_FALSE(rejected.succeeded);
+    CHECK(rejected.message.find("last-good generation restored") != std::string::npos);
+    CHECK(loader.loaded());
+    CHECK(loader.generation() == 3);
+}
+
+TEST_CASE("project components add edit persist and migrate through the native host")
+{
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("arc-project-component-" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root / "Content");
+    std::filesystem::create_directories(root / "Build");
+    const auto module_v1 = root / "Build" / std::filesystem::path(ARC_TEST_GAME_MODULE_V1).filename();
+    const auto module_v2 = root / "Build" / std::filesystem::path(ARC_TEST_GAME_MODULE_V2).filename();
+    std::filesystem::copy_file(ARC_TEST_GAME_MODULE_V1, module_v1,
+                               std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::copy_file(ARC_TEST_GAME_MODULE_V2, module_v2,
+                               std::filesystem::copy_options::overwrite_existing);
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "Content";
+    REQUIRE(host->open_project({.name = "Project Component",
+                                .root = root,
+                                .project_guid = "12345678-1234-4234-8234-123456789abc",
+                                .engine_version = "0.1.0",
+                                .editor_module_id = "fixture.editor",
+                                .editor_module_path = module_v1},
+                               assets)
+                .succeeded);
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+                              .request_id = 1,
+                              .payload = arc::editor::host_create_entity_command{
+                                  .kind = arc::editor::host_create_entity_kind::empty}})
+                .succeeded);
+    const auto entity = host->selected_entity_snapshot().entity;
+    const auto entity_guid = host->selected_entity_snapshot().guid;
+    REQUIRE(entity.valid());
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+                              .request_id = 2,
+                              .payload = arc::editor::host_component_operation_command{
+                                  .operation = arc::editor::host_component_operation::add,
+                                  .component = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})
+                .succeeded);
+    REQUIRE(host->execute(arc::editor::host_command_envelope{
+                              .request_id = 3,
+                              .payload = arc::editor::host_patch_project_component_command{
+                                  .component = "old_component", .field = "old_value", .value_json = "4.5"}})
+                .succeeded);
+    REQUIRE(host->selected_entity_snapshot().project_components.size() == 1);
+    CHECK(host->selected_entity_snapshot().project_components.front().values_json.find("4.5") != std::string::npos);
+
+    const auto scene_path = root / "Content" / "ProjectComponent.arcscene";
+    REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = scene_path}).succeeded);
+    const auto reloaded = host->execute(arc::editor::host_command_envelope{
+        .request_id = 4,
+        .payload = arc::editor::host_reload_project_module_command{.path = module_v2,
+                                                                   .engine_version = "0.1.0",
+                                                                   .project_guid = "12345678-1234-4234-8234-123456789abc",
+                                                                   .module_id = "fixture.editor"}});
+    REQUIRE(reloaded.succeeded);
+    const auto migrated = host->selected_entity_snapshot();
+    REQUIRE(migrated.project_components.size() == 1);
+    CHECK(migrated.project_components.front().canonical_name == "renamed_component");
+    CHECK(migrated.project_components.front().values_json.find("\"renamed_value\":4.5") != std::string::npos);
+    REQUIRE(host->execute(arc::editor::host_save_scene_command{}).succeeded);
+    REQUIRE(host->execute(arc::editor::host_open_scene_command{.path = scene_path}).succeeded);
+    const auto scene = host->scene_snapshot();
+    const auto persisted = std::find_if(scene.entities.begin(), scene.entities.end(),
+                                        [&](const auto& candidate) { return candidate.guid == entity_guid; });
+    REQUIRE(persisted != scene.entities.end());
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = persisted->entity}).succeeded);
+    REQUIRE(host->selected_entity_snapshot().project_components.size() == 1);
+    CHECK(host->selected_entity_snapshot().project_components.front().values_json.find("4.5") != std::string::npos);
+
+    std::ifstream input(scene_path, std::ios::binary);
+    const std::string document((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    CHECK(document.find("renamed_component") != std::string::npos);
+    CHECK(document.find("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") != std::string::npos);
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+}
 
 namespace
 {
@@ -728,6 +849,10 @@ TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
     REQUIRE(response.succeeded);
     REQUIRE(response.payload_json.find("data:image/bmp;base64,") != std::string::npos);
 
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{
+                              .kind = arc::editor::host_create_entity_kind::world_environment})
+                .succeeded);
+
     const auto hierarchy = host->scene_snapshot();
     const auto environment = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity)
                                           { return entity.kind == arc::editor::host_entity_kind::environment; });
@@ -1084,6 +1209,13 @@ TEST_CASE("workspace documents component operations and read only projects are h
                           ->execute(
                               arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube})
                           .succeeded);
+        REQUIRE_FALSE(host
+                          ->execute(arc::editor::host_reload_project_module_command{
+                              .path = root / "Build" / "ReadOnlyEditor.dll",
+                              .engine_version = "0.1.0",
+                              .project_guid = "12345678-1234-4234-8234-123456789abc",
+                              .module_id = "read-only.editor"})
+                          .succeeded);
         REQUIRE(host->execute(arc::editor::host_viewport_camera_input_command{.forward = 1.0f}).succeeded);
     }
 
@@ -1300,10 +1432,16 @@ TEST_CASE("viewport picking resolves the asynchronous ObjectID result before CPU
     host->renderer_service().set_backend(std::move(backend));
     host->poll_events();
 
-    const auto original = host->selected_entity_snapshot().entity;
+    const arc::editor::host_entity_id original{host->scene_state().camera_entity.index,
+                                               host->scene_state().camera_entity.generation};
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{
+                              .kind = arc::editor::host_create_entity_kind::water})
+                .succeeded);
     const auto target = host->scene_state().water_entity;
     REQUIRE(host->scene_state().scene.alive(target));
     REQUIRE(target != (arc::ecs::entity{original.index, original.generation}));
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = original}).succeeded);
+    host->poll_events();
     REQUIRE(host->execute(arc::editor::host_viewport_pick_command{.x = 24, .y = 36}).succeeded);
     REQUIRE(host->selected_entity_snapshot().entity == original);
     REQUIRE(backend_ptr->request_.x == 24);
@@ -1398,6 +1536,12 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
     arc::editor::editor_asset_state assets;
     assets.root = root / "assets";
     REQUIRE(host->open_project({.name = "Persistence Test", .root = root}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_component_operation_command{
+                    .operation = arc::editor::host_component_operation::add, .component = "camera"})
+                .succeeded);
     const auto selected = host->selected_entity_snapshot().entity;
     REQUIRE(host->execute(arc::editor::host_rename_entity_command{.entity = selected, .name = "Persisted Entity"})
                 .succeeded);
@@ -1406,6 +1550,9 @@ TEST_CASE("ARC scene documents save atomically, round trip hierarchy, and reject
                                               [selected](const auto& value) { return value.entity == selected; });
     REQUIRE(selected_record != initial_snapshot.entities.end());
     const auto selected_guid = selected_record->guid;
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = selected}).succeeded);
 
     const auto path = root / "scenes" / "mountain.arcscene";
     REQUIRE(host->execute(arc::editor::host_save_scene_as_command{.path = path}).succeeded);
@@ -1554,8 +1701,15 @@ TEST_CASE("selected camera snapshots and entity-specific edits round trip atomic
     REQUIRE(
         host->open_project({.name = "Inspector Camera Test", .root = std::filesystem::temp_directory_path()}, assets)
             .succeeded);
-    const auto game_camera = host->scene_state().game_camera_entity;
     const auto editor_camera = host->scene_state().camera_entity;
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_component_operation_command{
+                    .operation = arc::editor::host_component_operation::add, .component = "camera"})
+                .succeeded);
+    const auto game_camera = arc::ecs::entity{host->selected_entity_snapshot().entity.index,
+                                               host->selected_entity_snapshot().entity.generation};
     const arc::editor::host_entity_id game_camera_id{game_camera.index, game_camera.generation};
 
     REQUIRE(host
@@ -1672,7 +1826,14 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
     REQUIRE(host->open_project({.name = "Inspector Light Test", .root = std::filesystem::temp_directory_path()}, assets)
                 .succeeded);
 
-    const auto sun = host->scene_state().sun_entity;
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+    REQUIRE(host
+                ->execute(arc::editor::host_component_operation_command{
+                    .operation = arc::editor::host_component_operation::add, .component = "directionalLight"})
+                .succeeded);
+    const auto sun = arc::ecs::entity{host->selected_entity_snapshot().entity.index,
+                                      host->selected_entity_snapshot().entity.generation};
     const arc::editor::host_entity_id sun_id{sun.index, sun.generation};
     REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = sun_id}).succeeded);
     const auto selected = host->selected_entity_snapshot();
@@ -2023,6 +2184,9 @@ TEST_CASE("arc host validates and applies world environment commands")
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     REQUIRE(host->open_project({.name = "Environment Host Test", .root = {}}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{
+                              .kind = arc::editor::host_create_entity_kind::world_environment})
+                .succeeded);
 
     const auto hierarchy = host->scene_snapshot();
     const auto found = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(), [](const auto& entity)
@@ -2463,6 +2627,9 @@ TEST_CASE("terrain host snapshots validate brush settings and group a stroke int
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     REQUIRE(host->open_project({.name = "Terrain Authoring", .root = {}}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{
+                              .kind = arc::editor::host_create_entity_kind::terrain})
+                .succeeded);
     const auto terrain_entity = host->scene_state().terrain_entity;
     REQUIRE(host->execute(arc::editor::host_select_entity_command{
                               .entity = {terrain_entity.index, terrain_entity.generation}})
@@ -2555,6 +2722,9 @@ TEST_CASE("terrain scene version 2 payload round trips quantized heights and rej
     arc::editor::editor_asset_state assets;
     assets.root = root;
     REQUIRE(host->open_project({.name = "Terrain Persistence", .root = root}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{
+                              .kind = arc::editor::host_create_entity_kind::terrain})
+                .succeeded);
     auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(host->scene_state().terrain_entity);
     arc::scene::terrain_brush_settings brush;
     brush.tool = arc::scene::terrain_brush_tool::sculpt;
