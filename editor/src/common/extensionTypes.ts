@@ -34,5 +34,7 @@ export type ArcExtensionSnapshot = {
     enabled: boolean;
     grantedCapabilities: ArcExtensionCapability[];
     diagnostics: string[];
+    active?: boolean;
+    registeredCommands?: string[];
   }>;
 };

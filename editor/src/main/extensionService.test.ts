@@ -8,7 +8,10 @@ import type { ArcProjectCandidate } from '../common/projectTypes';
 import { ExtensionService } from './extensionService';
 
 const projectWithExtensions = (projectRoot: string, extensions: string[]): ArcProjectCandidate =>
-  ({ projectRoot, descriptor: { plugins: extensions.map((entry) => ({ enabled: true, path: entry })) } }) as unknown as ArcProjectCandidate;
+  ({
+    projectRoot,
+    descriptor: { plugins: extensions.map((entry) => ({ enabled: true, path: entry })) },
+  }) as unknown as ArcProjectCandidate;
 
 const roots: string[] = [];
 afterEach(() => {
@@ -21,7 +24,10 @@ describe('ExtensionService', () => {
     roots.push(root);
     const extensionRoot = path.join(root, 'extensions', 'sample');
     fs.mkdirSync(extensionRoot, { recursive: true });
-    fs.writeFileSync(path.join(extensionRoot, 'main.js'), 'export {};\n');
+    fs.writeFileSync(
+      path.join(extensionRoot, 'main.js'),
+      'module.exports.activate = (arc) => arc.registerCommand("arc.sample.echo", (value) => `echo:${value}`);\n',
+    );
     fs.writeFileSync(
       path.join(extensionRoot, 'arc-extension.json'),
       JSON.stringify({
@@ -40,7 +46,10 @@ describe('ExtensionService', () => {
     const service = new ExtensionService(() => project, '1.2.3');
     const snapshot = service.snapshot();
     expect(snapshot.extensions[0].enabled).toBe(true);
+    expect(snapshot.extensions[0].active).toBe(true);
+    expect(snapshot.extensions[0].registeredCommands).toEqual(['arc.sample.echo']);
     expect(snapshot.extensions[0].grantedCapabilities).toEqual(['scene.read']);
+    expect(service.executeCommand('arc.sample.echo', 'ready')).toBe('echo:ready');
   });
 
   it('rejects extension entry points that escape the extension root', () => {

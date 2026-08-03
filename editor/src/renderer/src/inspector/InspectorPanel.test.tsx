@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { InspectorPanel } from './InspectorPanel';
+import type { HostProjectComponentSchema } from './componentSchemas';
 import type { InspectorEntitySnapshot } from './inspectorTypes';
 
 const cameraSnapshot = (): InspectorEntitySnapshot => ({
@@ -41,6 +42,7 @@ const cameraSnapshot = (): InspectorEntitySnapshot => ({
   meshRenderer: null,
   terrain: null,
   prefab: null,
+  projectComponents: [],
   components: [
     { kind: 'transform', label: 'Transform', editable: true },
     { kind: 'camera', label: 'Camera', editable: true },
@@ -190,6 +192,68 @@ describe('data-driven InspectorPanel', () => {
         camera: expect.objectContaining({ projection: 'orthographic' }),
       }),
     );
+  });
+
+  it('renders loaded project schemas, patches fields, and populates Add Component', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    const schema: HostProjectComponentSchema = {
+      id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      name: 'gameplay_stats_component',
+      displayName: 'Gameplay Stats',
+      category: 'Gameplay',
+      schemaVersion: 2,
+      projectComponent: true,
+      fields: [
+        {
+          id: '1111111111111111',
+          name: 'health',
+          displayName: 'Health',
+          kind: 'number',
+          editable: true,
+          minimum: 0,
+          maximum: 1000,
+        },
+      ],
+    };
+    const attached = cameraSnapshot();
+    attached.projectComponents = [
+      {
+        typeId: schema.id,
+        canonicalName: schema.name,
+        displayName: schema.displayName,
+        schemaVersion: schema.schemaVersion,
+        values: { health: 100 },
+      },
+    ];
+    const { rerender } = render(
+      <InspectorPanel
+        snapshot={attached}
+        command={command}
+        projectSchemas={[schema]}
+        refresh={async () => undefined}
+      />,
+    );
+    expect(screen.getByLabelText('Collapse Gameplay Stats')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Health'), { target: { value: '125' } });
+    fireEvent.blur(screen.getByLabelText('Health'));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'component.patchField',
+        expect.objectContaining({ component: schema.id, field: 'health', value: 125 }),
+      ),
+    );
+
+    rerender(
+      <InspectorPanel
+        snapshot={cameraSnapshot()}
+        command={command}
+        projectSchemas={[schema]}
+        refresh={async () => undefined}
+      />,
+    );
+    await userEvent.click(screen.getByText('Add Component'));
+    await userEvent.click(screen.getByRole('button', { name: 'Gameplay / Gameplay Stats' }));
+    await waitFor(() => expect(command).toHaveBeenCalledWith('component.add', { component: schema.id }));
   });
 
   it('renders persistent terrain fields without transient brush controls', async () => {

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 
 import type { ArcExtensionCapability, ArcExtensionManifest, ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
@@ -23,6 +24,10 @@ export class ExtensionService {
   private readonly enabled: () => boolean;
   private revision = 0;
   private current: ArcExtensionSnapshot = { revision: 0, extensions: [] };
+  private readonly activeExtensions = new Map<
+    string,
+    { deactivate?: () => void; commands: Map<string, (...arguments_: unknown[]) => unknown> }
+  >();
 
   constructor(project: () => ArcProjectCandidate | null, engineVersion: string, enabled: () => boolean = () => true) {
     this.project = project;
@@ -49,7 +54,7 @@ export class ExtensionService {
           extensionIds.add(manifest.id);
           const compatible = manifest.engineVersion === this.engineVersion;
           if (!compatible) diagnostics.push(`Requires ARC ${manifest.engineVersion}; running ${this.engineVersion}`);
-          extensions.push({
+          const extension = {
             manifest,
             root,
             compatible,
@@ -58,7 +63,11 @@ export class ExtensionService {
               (capability) => capability === 'asset.read' || capability === 'scene.read',
             ),
             diagnostics,
-          });
+            active: false,
+            registeredCommands: [] as string[],
+          };
+          if (compatible) this.activateExtension(extension);
+          extensions.push(extension);
         } catch (error) {
           diagnostics.push(error instanceof Error ? error.message : String(error));
           extensions.push({
@@ -87,7 +96,64 @@ export class ExtensionService {
   }
 
   invalidate(): void {
+    for (const extension of this.activeExtensions.values()) {
+      try {
+        extension.deactivate?.();
+      } catch {
+        /* Extensions cannot block project teardown. */
+      }
+    }
+    this.activeExtensions.clear();
     this.current = { revision: 0, extensions: [] };
+  }
+
+  executeCommand(id: string, ...arguments_: unknown[]): unknown {
+    for (const extension of this.activeExtensions.values()) {
+      const callback = extension.commands.get(id);
+      if (callback) return callback(...arguments_);
+    }
+    throw new Error(`Extension command '${id}' is not registered`);
+  }
+
+  private activateExtension(extension: ArcExtensionSnapshot['extensions'][number]): void {
+    if (this.activeExtensions.has(extension.manifest.id)) return;
+    try {
+      const entry = this.resolveExtensionEntry(extension.root, extension.manifest.main, 'Extension entry point');
+      const source = fs.readFileSync(entry, 'utf8');
+      const commands = new Map<string, (...arguments_: unknown[]) => unknown>();
+      type ExtensionExports = { activate?: (api: unknown) => unknown; deactivate?: () => void };
+      const extensionModule: { exports: ExtensionExports } = { exports: {} };
+      const context = vm.createContext({ console: Object.freeze({ log() {}, warn() {}, error() {} }) });
+      const wrapper = new vm.Script(`(function(module, exports, arc) { "use strict";\n${source}\n})`, {
+        filename: entry,
+      });
+      const api = Object.freeze({
+        registerCommand: (id: string, callback: unknown) => {
+          if (typeof id !== 'string' || !id.startsWith(`${extension.manifest.id}.`) || typeof callback !== 'function')
+            throw new Error('Extension commands require a namespaced ID and function callback');
+          if (commands.has(id)) throw new Error(`Extension command '${id}' is already registered`);
+          commands.set(id, callback as (...arguments_: unknown[]) => unknown);
+        },
+        engineVersion: this.engineVersion,
+        extensionId: extension.manifest.id,
+      });
+      const invoke = wrapper.runInContext(context, { timeout: 1000 }) as (
+        module: { exports: ExtensionExports },
+        exports: ExtensionExports,
+        api: unknown,
+      ) => void;
+      invoke(extensionModule, extensionModule.exports, api);
+      const activation = extensionModule.exports.activate?.(api);
+      if (activation && typeof (activation as Promise<unknown>).then === 'function')
+        throw new Error('Extension activation must complete synchronously in this milestone');
+      this.activeExtensions.set(extension.manifest.id, { deactivate: extensionModule.exports.deactivate, commands });
+      extension.active = true;
+      extension.registeredCommands = [...commands.keys()];
+    } catch (error) {
+      extension.enabled = false;
+      extension.active = false;
+      extension.diagnostics.push(`Activation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private parse(value: unknown, root: string): ArcExtensionManifest {

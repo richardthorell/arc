@@ -3,16 +3,32 @@ import type { PropertyComponentSchema, PropertyFieldSchema } from './propertySch
 import { generatedEcsComponents } from './generatedEcsMetadata';
 export { getPathValue, setPathValue } from './propertySchema';
 
-export type InspectorComponentId =
-  | 'transform'
-  | 'camera'
-  | 'directionalLight'
-  | 'pointLight'
-  | 'spotLight'
-  | 'areaLight'
-  | 'meshRenderer'
-  | 'terrain'
-  | 'prefab';
+export type InspectorComponentId = string;
+export type HostProjectFieldSchema = {
+  id: string;
+  name: string;
+  displayName: string;
+  category?: string;
+  tooltip?: string;
+  kind: string;
+  editable: boolean;
+  readOnly?: boolean;
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  assetType?: string;
+  entityComponent?: string;
+};
+export type HostProjectComponentSchema = {
+  id: string;
+  name: string;
+  displayName: string;
+  category?: string;
+  tooltip?: string;
+  schemaVersion: number;
+  projectComponent?: boolean;
+  fields: HostProjectFieldSchema[];
+};
 export type InspectorFieldSchema = PropertyFieldSchema<InspectorEntitySnapshot>;
 export type InspectorComponentSchema = PropertyComponentSchema<InspectorEntitySnapshot, InspectorComponentId>;
 
@@ -675,8 +691,46 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
   },
 ];
 
-export const schemaForSnapshot = (snapshot: InspectorEntitySnapshot) =>
-  inspectorComponentSchemas.filter((schema) =>
+const projectField = (field: HostProjectFieldSchema, path: string): InspectorFieldSchema => {
+  if (!field.editable || field.readOnly)
+    return { id: field.id, label: field.displayName, path, type: 'readonly', tooltip: field.tooltip };
+  if (field.kind === 'boolean')
+    return { id: field.id, label: field.displayName, path, type: 'boolean', tooltip: field.tooltip };
+  if (['number', 'signedInteger', 'unsignedInteger'].includes(field.kind))
+    return {
+      id: field.id,
+      label: field.displayName,
+      path,
+      type: 'number',
+      precision: field.kind === 'number' ? 3 : 0,
+      step: field.kind === 'number' ? 0.1 : 1,
+      scrubSensitivity: field.kind === 'number' ? 0.02 : 0.2,
+      min: field.minimum,
+      max: field.maximum,
+      tooltip: field.tooltip,
+    };
+  if (field.kind === 'asset')
+    return {
+      id: field.id,
+      label: field.displayName,
+      path,
+      type: 'asset',
+      assetKind: 'asset',
+      assetTypeId: field.assetType,
+      referenceMode: 'guid',
+      allowEmpty: true,
+      tooltip: field.tooltip,
+    };
+  if (['string', 'enum', 'entity'].includes(field.kind))
+    return { id: field.id, label: field.displayName, path, type: 'text', tooltip: field.tooltip };
+  return { id: field.id, label: field.displayName, path, type: 'readonly', tooltip: field.tooltip };
+};
+
+export const schemaForSnapshot = (
+  snapshot: InspectorEntitySnapshot,
+  projectSchemas: ReadonlyArray<HostProjectComponentSchema> = [],
+) => {
+  const builtins = inspectorComponentSchemas.filter((schema) =>
     schema.id === 'transform'
       ? snapshot.transform !== null
       : schema.id === 'camera'
@@ -695,3 +749,17 @@ export const schemaForSnapshot = (snapshot: InspectorEntitySnapshot) =>
                     ? snapshot.prefab !== null
                     : snapshot.terrain !== null,
   );
+  const dynamic = snapshot.projectComponents.flatMap((component, index) => {
+    const schema = projectSchemas.find((candidate) => candidate.id === component.typeId);
+    if (!schema) return [];
+    return [
+      {
+        id: schema.id,
+        title: schema.displayName,
+        badge: schema.category || 'Project',
+        fields: schema.fields.map((field) => projectField(field, `projectComponents.${index}.values.${field.name}`)),
+      } satisfies InspectorComponentSchema,
+    ];
+  });
+  return [...builtins, ...dynamic];
+};

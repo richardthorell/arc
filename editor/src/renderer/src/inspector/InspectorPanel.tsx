@@ -4,7 +4,7 @@ import { Filter, MoreVertical, Search } from 'lucide-react';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 
 import { schemaForSnapshot, setPathValue } from './componentSchemas';
-import type { InspectorComponentId } from './componentSchemas';
+import type { HostProjectComponentSchema, InspectorComponentId } from './componentSchemas';
 import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
 import { cameraHostPayload, lightHostPayload, transformHostPayload } from './inspectorTypes';
 import { SchemaComponentCard } from './SchemaComponents';
@@ -26,6 +26,7 @@ export type InspectorPanelProps = {
   onStatus?: (message: string) => void;
   assets?: ReadonlyArray<AssetPickerItem>;
   thumbnailProvider?: AssetThumbnailProvider;
+  projectSchemas?: ReadonlyArray<HostProjectComponentSchema>;
 };
 
 const knownTags = ['Untagged', 'Camera', 'Light', 'Mesh', 'Environment'];
@@ -96,6 +97,7 @@ export function InspectorPanel({
   onStatus,
   assets = [],
   thumbnailProvider,
+  projectSchemas = [],
 }: InspectorPanelProps) {
   const [draft, setDraft] = useState(snapshot);
   const [filter, setFilter] = useState('');
@@ -275,6 +277,19 @@ export function InspectorPanel({
           transactionLabel,
         );
       }
+    } else {
+      const match = /^projectComponents\.(\d+)\.values\.(.+)$/.exec(path);
+      if (!match) return;
+      const projectComponent = next.projectComponents[Number(match[1])];
+      if (!projectComponent) return;
+      void runMutation(
+        next,
+        'component.patchField',
+        { component: projectComponent.typeId, field: match[2], value: projectComponent.values[match[2]] },
+        settled,
+        transactionKey,
+        `Edit ${projectComponent.displayName}`,
+      );
     }
   };
 
@@ -282,7 +297,7 @@ export function InspectorPanel({
     if (!draft) return [];
     const needle = filter.trim().toLocaleLowerCase();
     const common = new Set(draft.aggregate?.commonComponents ?? []);
-    return schemaForSnapshot(draft).filter((schema) => {
+    return schemaForSnapshot(draft, projectSchemas).filter((schema) => {
       const componentKey = schema.id.endsWith('Light') ? 'light' : schema.id;
       if ((draft.selectionCount ?? 1) > 1 && !common.has(componentKey)) return false;
       return (
@@ -291,7 +306,7 @@ export function InspectorPanel({
         schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle))
       );
     });
-  }, [draft, filter]);
+  }, [draft, filter, projectSchemas]);
 
   const runComponentAction = (component: InspectorComponentId, action: string) => {
     if (!draft) return;
@@ -532,6 +547,27 @@ export function InspectorPanel({
               {label}
             </button>
           ))}
+          {projectSchemas
+            .filter(
+              (schema) =>
+                schema.projectComponent && !draft.projectComponents.some((component) => component.typeId === schema.id),
+            )
+            .map((schema) => (
+              <button
+                key={schema.id}
+                onClick={() =>
+                  void command('component.add', { component: schema.id }).then(async (response) => {
+                    if (!response.succeeded) setError(response.error || `Could not add ${schema.displayName}`);
+                    else await refresh();
+                  })
+                }
+                title={schema.tooltip}
+                type="button"
+              >
+                {schema.category ? `${schema.category} / ` : ''}
+                {schema.displayName}
+              </button>
+            ))}
         </details>
       </div>
     </section>

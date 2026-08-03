@@ -36,7 +36,16 @@ const resolveDevelopmentProjectTool = (): string => {
   const repository = path.resolve(process.cwd(), '..');
   for (const preset of ['editor-vulkan', 'default', 'editor-no-vulkan'])
     for (const configuration of ['RelWithDebInfo', 'Release', 'Debug', '']) {
-      const candidate = path.join(repository, 'out', 'build', preset, 'tools', 'project_cli', configuration, executable);
+      const candidate = path.join(
+        repository,
+        'out',
+        'build',
+        preset,
+        'tools',
+        'project_cli',
+        configuration,
+        executable,
+      );
       if (fs.existsSync(candidate)) return candidate;
     }
   return '';
@@ -101,23 +110,35 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
   const modules: ArcProjectDescriptor['modules'] = Array.isArray(raw.modules)
     ? raw.modules.flatMap((entry, index) => {
         if (typeof entry === 'string')
-          return [{ id: entry, kind: 'runtime' as const, target: entry, sourceRoot: 'Source', enabled: true, dependencies: [] }];
+          return [
+            {
+              id: entry,
+              kind: 'runtime' as const,
+              target: entry,
+              sourceRoot: 'Source',
+              enabled: true,
+              dependencies: [],
+            },
+          ];
         const module = objectValue(entry);
         const kind = module.kind === 'editor' || module.kind === 'server' ? module.kind : 'runtime';
-        return [{
-          id: stringValue(module.id, legacyModules[index] ?? ''),
-          kind,
-          target: stringValue(module.target),
-          sourceRoot: stringValue(module.sourceRoot, 'Source'),
-          enabled: module.enabled !== false,
-          dependencies: Array.isArray(module.dependencies)
-            ? module.dependencies.map((dependency) => {
-                const item = objectValue(dependency);
-                const dependencyKind: 'engine' | 'project' | 'plugin' = item.kind === 'project' || item.kind === 'plugin' ? item.kind : 'engine';
-                return { kind: dependencyKind, id: stringValue(item.id), version: stringValue(item.version) };
-              })
-            : [],
-        }];
+        return [
+          {
+            id: stringValue(module.id, legacyModules[index] ?? ''),
+            kind,
+            target: stringValue(module.target),
+            sourceRoot: stringValue(module.sourceRoot, 'Source'),
+            enabled: module.enabled !== false,
+            dependencies: Array.isArray(module.dependencies)
+              ? module.dependencies.map((dependency) => {
+                  const item = objectValue(dependency);
+                  const dependencyKind: 'engine' | 'project' | 'plugin' =
+                    item.kind === 'project' || item.kind === 'plugin' ? item.kind : 'engine';
+                  return { kind: dependencyKind, id: stringValue(item.id), version: stringValue(item.version) };
+                })
+              : [],
+          },
+        ];
       })
     : [];
   const startupScenes = Array.isArray(raw.startupScenes)
@@ -139,30 +160,85 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
     engineVersion: source.engineVersion,
     paths: {
       source: normalizeProjectRelativePath(stringValue(paths.source, 'Source'), 'paths.source'),
-      content: normalizeProjectRelativePath(stringValue(paths.content, source.formatVersion === 1 ? 'assets' : 'Content'), 'paths.content'),
-      config: normalizeProjectRelativePath(stringValue(paths.config, source.formatVersion === 1 ? 'config' : 'Config'), 'paths.config'),
+      content: normalizeProjectRelativePath(
+        stringValue(paths.content, source.formatVersion === 1 ? 'assets' : 'Content'),
+        'paths.content',
+      ),
+      config: normalizeProjectRelativePath(
+        stringValue(paths.config, source.formatVersion === 1 ? 'config' : 'Config'),
+        'paths.config',
+      ),
       plugins: normalizeProjectRelativePath(stringValue(paths.plugins, 'Plugins'), 'paths.plugins'),
       saved: normalizeProjectRelativePath(stringValue(paths.saved, 'Saved'), 'paths.saved'),
       intermediate: normalizeProjectRelativePath(stringValue(paths.intermediate, 'Intermediate'), 'paths.intermediate'),
       build: normalizeProjectRelativePath(stringValue(paths.build, 'Build'), 'paths.build'),
     },
-    assetRoots: normalizeStringArray(source.assetRoots).length ? normalizeProjectRelativePaths(source.assetRoots, 'assetRoots') : ['Content'],
+    assetRoots: normalizeStringArray(source.assetRoots).length
+      ? normalizeProjectRelativePaths(source.assetRoots, 'assetRoots')
+      : ['Content'],
     modules,
-    plugins: Array.isArray(raw.plugins) ? raw.plugins.map((entry) => {
-      const plugin = objectValue(entry);
-      return { id: stringValue(plugin.id), version: stringValue(plugin.version), origin: stringValue(plugin.origin, 'engine'), required: plugin.required !== false, enabled: plugin.enabled !== false, path: typeof plugin.path === 'string' ? plugin.path : undefined };
-    }) : [],
+    plugins: Array.isArray(raw.plugins)
+      ? raw.plugins.map((entry) => {
+          const plugin = objectValue(entry);
+          return {
+            id: stringValue(plugin.id),
+            version: stringValue(plugin.version),
+            origin: stringValue(plugin.origin, 'engine'),
+            required: plugin.required !== false,
+            enabled: plugin.enabled !== false,
+            path: typeof plugin.path === 'string' ? plugin.path : undefined,
+          };
+        })
+      : [],
     defaultScene: assetReference(raw.defaultScene) ?? startupScenes[0] ?? null,
     startupScenes,
-    targetPlatforms: Array.isArray(raw.targetPlatforms) ? raw.targetPlatforms.map((entry) => { const platform = objectValue(entry); return { id: stringValue(platform.id), enabled: platform.enabled !== false }; }) : [],
-    toolchain: { compiler: stringValue(toolchain.compiler, 'auto'), minimumVersion: stringValue(toolchain.minimumVersion), generator: stringValue(toolchain.generator, 'auto'), architecture: stringValue(toolchain.architecture, 'x86_64'), cppStandard: typeof toolchain.cppStandard === 'number' ? toolchain.cppStandard : 20 },
-    buildConfigurations: normalizeStringArray(raw.buildConfigurations).length ? normalizeStringArray(raw.buildConfigurations) : ['Debug', 'RelWithDebInfo', 'Shipping'],
-    renderer: { backend: renderer.backend === 'none' ? 'none' : 'vulkan', api: stringValue(renderer.api, renderer.backend === 'none' ? '' : '1.2'), quality: stringValue(renderer.quality, 'standard') },
-    cookProfiles: Array.isArray(raw.cookProfiles) ? raw.cookProfiles.map((entry) => { const profile = objectValue(entry); return { id: stringValue(profile.id), platform: stringValue(profile.platform), architecture: stringValue(profile.architecture, 'x86_64'), renderer: stringValue(profile.renderer, 'vulkan'), api: stringValue(profile.api, '1.2'), textureFamily: stringValue(profile.textureFamily, 'bc'), configuration: stringValue(profile.configuration, 'Shipping') }; }) : [],
-    package: { applicationName: stringValue(packageSettings.applicationName, source.name.trim()), companyName: stringValue(packageSettings.companyName), output: stringValue(packageSettings.output, 'Build/Packages'), regionChunks: packageSettings.regionChunks !== false },
+    targetPlatforms: Array.isArray(raw.targetPlatforms)
+      ? raw.targetPlatforms.map((entry) => {
+          const platform = objectValue(entry);
+          return { id: stringValue(platform.id), enabled: platform.enabled !== false };
+        })
+      : [],
+    toolchain: {
+      compiler: stringValue(toolchain.compiler, 'auto'),
+      minimumVersion: stringValue(toolchain.minimumVersion),
+      generator: stringValue(toolchain.generator, 'auto'),
+      architecture: stringValue(toolchain.architecture, 'x86_64'),
+      cppStandard: typeof toolchain.cppStandard === 'number' ? toolchain.cppStandard : 20,
+    },
+    buildConfigurations: normalizeStringArray(raw.buildConfigurations).length
+      ? normalizeStringArray(raw.buildConfigurations)
+      : ['Debug', 'RelWithDebInfo', 'Shipping'],
+    renderer: {
+      backend: renderer.backend === 'none' ? 'none' : 'vulkan',
+      api: stringValue(renderer.api, renderer.backend === 'none' ? '' : '1.2'),
+      quality: stringValue(renderer.quality, 'standard'),
+    },
+    cookProfiles: Array.isArray(raw.cookProfiles)
+      ? raw.cookProfiles.map((entry) => {
+          const profile = objectValue(entry);
+          return {
+            id: stringValue(profile.id),
+            platform: stringValue(profile.platform),
+            architecture: stringValue(profile.architecture, 'x86_64'),
+            renderer: stringValue(profile.renderer, 'vulkan'),
+            api: stringValue(profile.api, '1.2'),
+            textureFamily: stringValue(profile.textureFamily, 'bc'),
+            configuration: stringValue(profile.configuration, 'Shipping'),
+          };
+        })
+      : [],
+    package: {
+      applicationName: stringValue(packageSettings.applicationName, source.name.trim()),
+      companyName: stringValue(packageSettings.companyName),
+      output: stringValue(packageSettings.output, 'Build/Packages'),
+      regionChunks: packageSettings.regionChunks !== false,
+    },
     settings: {
       editor: normalizeProjectRelativePath(stringValue(settings.editor, 'Config/Editor.json'), 'settings.editor'),
-      renderer: normalizeProjectRelativePath(stringValue(settings.renderer, 'Config/Renderer.json'), 'settings.renderer'),
+      renderer: normalizeProjectRelativePath(
+        stringValue(settings.renderer, 'Config/Renderer.json'),
+        'settings.renderer',
+      ),
       input: normalizeProjectRelativePath(stringValue(settings.input, 'Config/Input.json'), 'settings.input'),
     },
   };
@@ -223,7 +299,8 @@ export class ProjectService {
     this.recentPath = path.join(options.userDataPath, recentFileName);
     this.currentEngineVersion = options.currentEngineVersion;
     this.currentEditorPath = options.currentEditorPath;
-    this.projectToolPath = options.projectToolPath ?? process.env.ARC_PROJECT_TOOL_PATH ?? resolveDevelopmentProjectTool();
+    this.projectToolPath =
+      options.projectToolPath ?? process.env.ARC_PROJECT_TOOL_PATH ?? resolveDevelopmentProjectTool();
     this.templatesRoot = options.templatesRoot ?? path.resolve(process.cwd(), '..', 'templates');
     this.installationRegistryPath = options.installationRegistryPath;
     this.host = options.host;
@@ -243,6 +320,10 @@ export class ProjectService {
 
   active(): ArcProjectCandidate | null {
     return this.activeProject;
+  }
+
+  projectTool(): string {
+    return this.projectToolPath;
   }
 
   inspect(candidate: string): ArcProjectCandidate {
@@ -318,9 +399,7 @@ export class ProjectService {
       const project = this.inspect(candidate);
       const installation = this.engineInstallations().find(
         (entry) =>
-          entry.version === project.descriptor.engineVersion &&
-          entry.editorPath &&
-          fs.existsSync(entry.editorPath),
+          entry.version === project.descriptor.engineVersion && entry.editorPath && fs.existsSync(entry.editorPath),
       );
       if (!installation) throw new Error(`No registered ARC ${project.descriptor.engineVersion} editor is available`);
       const child = spawn(installation.editorPath, [project.descriptorPath], {
@@ -340,8 +419,25 @@ export class ProjectService {
     try {
       const safeName = request.name.trim();
       if (!safeName) throw new Error('Project name is required');
-      const template = request.template === 'mountain' ? 'rendering-sample' : request.template === 'empty' ? 'empty-cpp' : request.template ?? 'blank-3d';
-      this.runProjectTool(['create', '--name', safeName, '--destination', path.resolve(request.destination), '--template', template, '--templates', this.templatesRoot, '--engine', this.currentEngineVersion]);
+      const template =
+        request.template === 'mountain'
+          ? 'rendering-sample'
+          : request.template === 'empty'
+            ? 'empty-cpp'
+            : (request.template ?? 'blank-3d');
+      this.runProjectTool([
+        'create',
+        '--name',
+        safeName,
+        '--destination',
+        path.resolve(request.destination),
+        '--template',
+        template,
+        '--templates',
+        this.templatesRoot,
+        '--engine',
+        this.currentEngineVersion,
+      ]);
       return { succeeded: true, project: this.inspect(request.destination) };
     } catch (error) {
       return { succeeded: false, error: error instanceof Error ? error.message : String(error) };
@@ -418,23 +514,64 @@ export class ProjectService {
       const args = ['engine', 'list'];
       if (this.installationRegistryPath) args.push('--registry', this.installationRegistryPath);
       const result = this.runProjectTool(args) as { installations?: Array<Record<string, string>> };
-      const installations = (result.installations ?? []).map((entry) => ({ installationId: entry.installationId ?? '', version: entry.engineVersion ?? '', manifestPath: entry.manifest ?? '', root: entry.root ?? '', editorPath: entry.editor ?? '', current: entry.engineVersion === this.currentEngineVersion && path.resolve(entry.editor ?? '') === path.resolve(this.currentEditorPath) }));
-      if (!installations.some((entry) => entry.current)) installations.unshift({ installationId: 'running-editor', version: this.currentEngineVersion, manifestPath: '', root: path.dirname(this.currentEditorPath), editorPath: this.currentEditorPath, current: true });
+      const installations = (result.installations ?? []).map((entry) => ({
+        installationId: entry.installationId ?? '',
+        version: entry.engineVersion ?? '',
+        manifestPath: entry.manifest ?? '',
+        root: entry.root ?? '',
+        editorPath: entry.editor ?? '',
+        current:
+          entry.engineVersion === this.currentEngineVersion &&
+          path.resolve(entry.editor ?? '') === path.resolve(this.currentEditorPath),
+      }));
+      if (!installations.some((entry) => entry.current))
+        installations.unshift({
+          installationId: 'running-editor',
+          version: this.currentEngineVersion,
+          manifestPath: '',
+          root: path.dirname(this.currentEditorPath),
+          editorPath: this.currentEditorPath,
+          current: true,
+        });
       return installations;
     } catch {
-      return [{ installationId: 'running-editor', version: this.currentEngineVersion, manifestPath: '', root: path.dirname(this.currentEditorPath), editorPath: this.currentEditorPath, current: true }];
+      return [
+        {
+          installationId: 'running-editor',
+          version: this.currentEngineVersion,
+          manifestPath: '',
+          root: path.dirname(this.currentEditorPath),
+          editorPath: this.currentEditorPath,
+          current: true,
+        },
+      ];
     }
   }
 
   private projectTemplates(): ArcProjectTemplate[] {
     try {
-      return fs.readdirSync(this.templatesRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory()).flatMap((entry) => {
-        try {
-          const manifest = JSON.parse(fs.readFileSync(path.join(this.templatesRoot, entry.name, 'template.arc-template.json'), 'utf8')) as Record<string, unknown>;
-          return [{ id: stringValue(manifest.id, entry.name), name: stringValue(manifest.name, entry.name), description: stringValue(manifest.description) }];
-        } catch { return []; }
-      });
-    } catch { return []; }
+      return fs
+        .readdirSync(this.templatesRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .flatMap((entry) => {
+          try {
+            const manifest = JSON.parse(
+              fs.readFileSync(path.join(this.templatesRoot, entry.name, 'template.arc-template.json'), 'utf8'),
+            ) as Record<string, unknown>;
+            return [
+              {
+                id: stringValue(manifest.id, entry.name),
+                name: stringValue(manifest.name, entry.name),
+                description: stringValue(manifest.description),
+              },
+            ];
+          } catch {
+            return [];
+          }
+        });
+    } catch {
+      return [];
+    }
   }
 
   private resolveEditorModule(project: ArcProjectCandidate): { id: string; path: string } | null {
@@ -442,12 +579,25 @@ export class ProjectService {
     const selectionPath = path.join(project.projectRoot, project.descriptor.paths.saved, 'Editor', 'active-build.json');
     try {
       const selection = JSON.parse(fs.readFileSync(selectionPath, 'utf8')) as Record<string, unknown>;
-      if (selection.format !== 'arc-active-build' || selection.formatVersion !== 1 || typeof selection.moduleManifest !== 'string') return null;
+      if (
+        selection.format !== 'arc-active-build' ||
+        selection.formatVersion !== 1 ||
+        typeof selection.moduleManifest !== 'string'
+      )
+        return null;
       const manifestPath = path.resolve(project.projectRoot, selection.moduleManifest);
       const relativeManifest = path.relative(project.projectRoot, manifestPath);
       if (relativeManifest.startsWith(`..${path.sep}`) || path.isAbsolute(relativeManifest)) return null;
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { projectGuid?: string; engineVersion?: string; modules?: Array<{ id?: string; path?: string }> };
-      if (manifest.projectGuid !== project.descriptor.guid || manifest.engineVersion !== project.descriptor.engineVersion) return null;
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+        projectGuid?: string;
+        engineVersion?: string;
+        modules?: Array<{ id?: string; path?: string }>;
+      };
+      if (
+        manifest.projectGuid !== project.descriptor.guid ||
+        manifest.engineVersion !== project.descriptor.engineVersion
+      )
+        return null;
       const configuredId = project.descriptor.modules.find((module) => module.kind === 'editor' && module.enabled)?.id;
       const module = manifest.modules?.find((entry) => entry.id === configuredId && typeof entry.path === 'string');
       if (!configuredId || !module?.path || !fs.existsSync(module.path)) return null;
@@ -462,12 +612,22 @@ export class ProjectService {
   }
 
   private runProjectTool(arguments_: string[]): unknown {
-    if (!this.projectToolPath || !fs.existsSync(this.projectToolPath)) throw new Error('The ARC project generator is unavailable');
-    const result = spawnSync(this.projectToolPath, [...arguments_, '--json'], { cwd: process.cwd(), encoding: 'utf8', shell: false, windowsHide: true });
+    if (!this.projectToolPath || !fs.existsSync(this.projectToolPath))
+      throw new Error('The ARC project generator is unavailable');
+    const result = spawnSync(this.projectToolPath, [...arguments_, '--json'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      shell: false,
+      windowsHide: true,
+    });
     const stdout = typeof result.stdout === 'string' ? result.stdout.trim() : '';
     const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : '';
     let response: { succeeded?: boolean; error?: string } = {};
-    try { response = JSON.parse(stdout || '{}') as typeof response; } catch { /* diagnostic below */ }
+    try {
+      response = JSON.parse(stdout || '{}') as typeof response;
+    } catch {
+      /* diagnostic below */
+    }
     if (result.error || result.status !== 0 || !response.succeeded)
       throw new Error(response.error || stderr || result.error?.message || 'ARC project command failed');
     return response;

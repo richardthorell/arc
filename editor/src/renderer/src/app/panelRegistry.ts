@@ -41,6 +41,7 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
     activityId: 'assets',
   },
   console: { id: 'console', title: 'Console', icon: FileText, defaultRegion: 'bottom' },
+  buildOutput: { id: 'buildOutput', title: 'Build Output', icon: FileCode2, defaultRegion: 'bottom' },
   versionControl: {
     id: 'versionControl',
     title: 'Version Control',
@@ -73,7 +74,14 @@ export const activityRegistry: ActivityRegistration[] = [
 export const dockPanelIds = {
   center: ['viewport', 'renderGraph', 'shaderEditor'] satisfies WorkbenchPanelId[],
   right: ['inspector', 'lighting', 'worldSettings'] satisfies WorkbenchPanelId[],
-  bottom: ['contentBrowser', 'console', 'versionControl', 'profiler', 'aiAssistant'] satisfies WorkbenchPanelId[],
+  bottom: [
+    'contentBrowser',
+    'console',
+    'buildOutput',
+    'versionControl',
+    'profiler',
+    'aiAssistant',
+  ] satisfies WorkbenchPanelId[],
 };
 
 export const getPanel = (id: WorkbenchPanelId) => panelRegistry[id];

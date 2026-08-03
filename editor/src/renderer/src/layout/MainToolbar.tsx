@@ -20,6 +20,7 @@ type MainToolbarProps = {
   runtimeState?: 'stopped' | 'running' | 'paused' | 'faulted';
   timeScale?: number;
   onCycleTimeScale?: () => void;
+  onBuild?: () => void;
 };
 
 export function MainToolbar({
@@ -39,6 +40,7 @@ export function MainToolbar({
   runtimeState = 'stopped',
   timeScale = 1,
   onCycleTimeScale,
+  onBuild,
 }: MainToolbarProps) {
   return (
     <section className="main-toolbar" aria-label="Editor toolbar">
@@ -165,7 +167,7 @@ export function MainToolbar({
       <div className="toolbar-right">
         <UiSelectButton className="toolbar-select toolbar-select-wide">Default Layout</UiSelectButton>
         <UiSelectButton className="toolbar-select">Windows</UiSelectButton>
-        <UiButton className="toolbar-button build" variant="primary">
+        <UiButton className="toolbar-button build" onClick={onBuild} variant="primary">
           Build
         </UiButton>
       </div>

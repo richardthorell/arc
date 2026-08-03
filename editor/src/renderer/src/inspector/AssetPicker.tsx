@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 
 export type AssetPickerItem = {
   id: string;
+  guid?: string;
+  typeId?: string;
   name: string;
   path: string;
   kind: string;
@@ -17,10 +19,12 @@ export type AssetPickerProps = {
   value: string;
   label: string;
   assetKinds: ReadonlyArray<string>;
+  assetTypeIds?: ReadonlyArray<string>;
   assetTypeLabel?: string;
   allowedExtensions?: ReadonlyArray<string>;
   allowEmpty?: boolean;
   mixed?: boolean;
+  referenceMode?: 'path' | 'guid';
   thumbnailProvider?: AssetThumbnailProvider;
   onChange: (path: string) => void;
 };
@@ -47,10 +51,12 @@ export function AssetPicker({
   value,
   label,
   assetKinds,
+  assetTypeIds,
   assetTypeLabel = 'Asset',
   allowedExtensions,
   allowEmpty = true,
   mixed = false,
+  referenceMode = 'path',
   thumbnailProvider,
   onChange,
 }: AssetPickerProps) {
@@ -62,11 +68,13 @@ export function AssetPicker({
       assets.filter(
         (asset) =>
           assetKinds.includes(asset.kind) &&
+          (!assetTypeIds?.length || Boolean(asset.typeId && assetTypeIds.includes(asset.typeId))) &&
           (!allowedExtensions?.length || allowedExtensions.includes(extensionOf(asset.path))),
       ),
-    [allowedExtensions, assetKinds, assets],
+    [allowedExtensions, assetKinds, assetTypeIds, assets],
   );
-  const selected = assets.find((asset) => asset.path === value);
+  const valueFor = (asset: AssetPickerItem) => (referenceMode === 'guid' ? asset.guid || asset.id : asset.path);
+  const selected = assets.find((asset) => valueFor(asset) === value);
 
   const acceptDrop = (event: React.DragEvent) => {
     event.preventDefault();
@@ -74,7 +82,7 @@ export function AssetPicker({
       event.dataTransfer.getData('application/x-arc-asset') ||
       event.dataTransfer.getData('application/x-arc-environment');
     const candidate = candidates.find((asset) => asset.path === path);
-    if (candidate) onChange(candidate.path);
+    if (candidate) onChange(valueFor(candidate));
   };
 
   return (
@@ -119,12 +127,13 @@ export function AssetPicker({
           assetTypeLabel={assetTypeLabel}
           filter={filter}
           label={label}
-          selectedPath={value}
+          selectedValue={value}
           thumbnailProvider={thumbnailProvider}
           onClose={() => setOpen(false)}
           onFilter={setFilter}
-          onSelect={(path) => {
-            onChange(path);
+          valueFor={valueFor}
+          onSelect={(asset) => {
+            onChange(valueFor(asset));
             setOpen(false);
           }}
         />
@@ -175,22 +184,24 @@ function AssetPickerPopover({
   assetTypeLabel,
   filter,
   label,
-  selectedPath,
+  selectedValue,
   thumbnailProvider,
   onClose,
   onFilter,
   onSelect,
+  valueFor,
 }: {
   anchorRef: React.RefObject<HTMLElement | null>;
   assets: ReadonlyArray<AssetPickerItem>;
   assetTypeLabel: string;
   filter: string;
   label: string;
-  selectedPath: string;
+  selectedValue: string;
   thumbnailProvider?: AssetThumbnailProvider;
   onClose: () => void;
   onFilter: (value: string) => void;
-  onSelect: (path: string) => void;
+  onSelect: (asset: AssetPickerItem) => void;
+  valueFor: (asset: AssetPickerItem) => string;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
@@ -252,9 +263,9 @@ function AssetPickerPopover({
         {shown.map((asset) => (
           <button
             aria-label={`Select ${asset.name}`}
-            className={asset.path === selectedPath ? 'is-selected' : ''}
+            className={valueFor(asset) === selectedValue ? 'is-selected' : ''}
             key={asset.id}
-            onClick={() => onSelect(asset.path)}
+            onClick={() => onSelect(asset)}
             type="button"
           >
             <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />

@@ -37,6 +37,7 @@ import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
 import type { HostWorldEnvironment } from '../environment/environmentTypes';
 import { InspectorPanel as DataDrivenInspector } from '../inspector/InspectorPanel';
+import type { HostProjectComponentSchema } from '../inspector/componentSchemas';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
@@ -46,6 +47,8 @@ import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
 import { TerrainToolsPanel } from '../terrain/TerrainToolsPanel';
 import type { TerrainToolState } from '../terrain/TerrainToolsPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
+import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
+import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
 import { RenderGraphPanel } from '../renderGraph/RenderGraphPanel';
@@ -255,6 +258,7 @@ export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId:
     event.type === 'entity.created' ||
     event.type === 'entity.deleted' ||
     event.type === 'project.opened' ||
+    event.type === 'project.moduleReloaded' ||
     event.type === 'project.closed' ||
     event.type === 'asset.changed'
   )
@@ -312,6 +316,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [assetCache, setAssetCache] = useState<HostProjectAssetsSnapshot | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<InspectorEntitySnapshot | null>(null);
+  const [projectComponentSchemas, setProjectComponentSchemas] = useState<HostProjectComponentSchema[]>([]);
+  const [buildSnapshot, setBuildSnapshot] = useState<ArcBuildSnapshot | null>(null);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
   const selectedSnapshotRevision = useRef(0);
   const hostEventRefreshTimer = useRef<number | null>(null);
@@ -426,6 +432,12 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     if (!window.arc?.aiGateway) return;
     void window.arc.aiGateway.status().then(setAiGatewayStatus);
     return window.arc.aiGateway.onStatus(setAiGatewayStatus);
+  }, []);
+
+  useEffect(() => {
+    if (!window.arc?.build) return;
+    void window.arc.build.snapshot().then(setBuildSnapshot);
+    return window.arc.build.onState(setBuildSnapshot);
   }, []);
 
   useEffect(
@@ -783,10 +795,13 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return;
     }
 
-    const [sceneResponse, assetsResponse, documentsResponse] = await Promise.all([
+    const [sceneResponse, assetsResponse, documentsResponse, schemasResponse] = await Promise.all([
       window.arc.host.query('scene.hierarchy') as Promise<HostResponse<HostSceneSnapshot>>,
       window.arc.host.query('project.assets') as Promise<HostResponse<HostProjectAssetsSnapshot>>,
       window.arc.host.query('workspace.documents') as Promise<HostResponse<WorkspaceDocumentsSnapshot>>,
+      window.arc.host.query('gateway.componentSchemas') as Promise<
+        HostResponse<{ components: HostProjectComponentSchema[] }>
+      >,
     ]);
 
     if (!sceneResponse.succeeded || !sceneResponse.payload) {
@@ -800,6 +815,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     void _entities;
     setDocumentState(nextDocumentState);
     if (documentsResponse.succeeded && documentsResponse.payload) setWorkspaceDocuments(documentsResponse.payload);
+    if (schemasResponse.succeeded && schemasResponse.payload)
+      setProjectComponentSchemas(schemasResponse.payload.components.filter((component) => component.projectComponent));
 
     const hostAssets = assetsResponse.succeeded && assetsResponse.payload ? assetsResponse.payload : null;
     setAssetCache(hostAssets);
@@ -1274,6 +1291,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           snapshot={selectedSnapshot}
           assets={project?.assets ?? []}
           thumbnailProvider={loadAssetThumbnail}
+          projectSchemas={projectComponentSchemas}
           onStatus={setLastCommand}
           refresh={async () => {
             if (startupState?.engineHostConnected) await refreshSelectedEntity(selectedEntityId, true);
@@ -1331,6 +1349,27 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             })
           }
           onLockedChange={setConsoleLocked}
+        />
+      );
+    }
+
+    if (panel === 'buildOutput') {
+      return (
+        <BuildOutputPanel
+          snapshot={buildSnapshot}
+          onOpenDiagnostic={(diagnostic) => {
+            if (diagnostic.file)
+              void window.arc.build.openDiagnostic(diagnostic.file, diagnostic.line, diagnostic.column);
+          }}
+          onExecute={(request: ArcBuildRequest) => {
+            setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
+            void window.arc.build
+              .execute(request)
+              .then(setBuildSnapshot)
+              .catch((reason: unknown) => {
+                setLastCommand(reason instanceof Error ? reason.message : String(reason));
+              });
+          }}
         />
       );
     }
@@ -1397,6 +1436,15 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         rotationSnap={rotationSnap}
         scaleSnap={scaleSnap}
         onCommand={runCommand}
+        onBuild={() => {
+          setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
+          void window.arc.build
+            .execute({ action: 'build' })
+            .then(setBuildSnapshot)
+            .catch((reason: unknown) => {
+              setLastCommand(reason instanceof Error ? reason.message : String(reason));
+            });
+        }}
         runtimeState={runtimeState.state}
         timeScale={runtimeState.timeScale}
         onCycleTimeScale={() => {

@@ -32,6 +32,7 @@ export type NumberFieldSchema<TContext = object> = FieldBase<TContext> & {
 };
 
 export type BooleanFieldSchema<TContext = object> = FieldBase<TContext> & { type: 'boolean' };
+export type TextFieldSchema<TContext = object> = FieldBase<TContext> & { type: 'text'; readOnly?: boolean };
 export type EnumFieldSchema<TContext = object> = FieldBase<TContext> & {
   type: 'enum';
   options: ReadonlyArray<{ value: string; label: string }>;
@@ -45,7 +46,9 @@ export type ColorFieldSchema<TContext = object> = FieldBase<TContext> & {
 };
 export type AssetReferenceFieldSchema<TContext = object> = FieldBase<TContext> & {
   type: 'asset';
-  assetKind: 'texture' | 'material' | 'prefab';
+  assetKind: 'texture' | 'material' | 'prefab' | 'asset';
+  assetTypeId?: string;
+  referenceMode?: 'path' | 'guid';
   allowedExtensions?: ReadonlyArray<string>;
   allowEmpty?: boolean;
 };
@@ -73,6 +76,7 @@ export type PropertyFieldSchema<TContext = object> =
   | Vector3FieldSchema<TContext>
   | NumberFieldSchema<TContext>
   | BooleanFieldSchema<TContext>
+  | TextFieldSchema<TContext>
   | EnumFieldSchema<TContext>
   | ColorFieldSchema<TContext>
   | AssetReferenceFieldSchema<TContext>

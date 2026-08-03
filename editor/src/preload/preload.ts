@@ -14,6 +14,7 @@ import type {
   SourceControlSnapshot,
 } from '../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
+import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
 
 export type ArcStartupState = {
   appVersion: string;
@@ -173,6 +174,20 @@ const arcApi = {
   },
   extensions: {
     snapshot: (force = false): Promise<ArcExtensionSnapshot | null> => ipcRenderer.invoke('extensions:snapshot', force),
+    executeCommand: (id: string, arguments_: unknown[] = []): Promise<unknown> =>
+      ipcRenderer.invoke('extensions:executeCommand', id, arguments_),
+  },
+  build: {
+    snapshot: (): Promise<ArcBuildSnapshot | null> => ipcRenderer.invoke('build:snapshot'),
+    execute: (request: ArcBuildRequest): Promise<ArcBuildSnapshot | null> =>
+      ipcRenderer.invoke('build:execute', request),
+    openDiagnostic: (file: string, line?: number, column?: number): Promise<string> =>
+      ipcRenderer.invoke('build:openDiagnostic', file, line, column),
+    onState: (callback: (snapshot: ArcBuildSnapshot) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, snapshot: ArcBuildSnapshot) => callback(snapshot);
+      ipcRenderer.on('build:state', listener);
+      return () => ipcRenderer.removeListener('build:state', listener);
+    },
   },
   host: {
     reconnect: (): Promise<ArcStartupState> => ipcRenderer.invoke('host:reconnect'),

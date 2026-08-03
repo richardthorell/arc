@@ -24,6 +24,7 @@ export type WorkbenchPanelId =
   | 'worldSettings'
   | 'contentBrowser'
   | 'console'
+  | 'buildOutput'
   | 'versionControl'
   | 'aiAssistant'
   | 'profiler'

@@ -11,6 +11,8 @@ import { RecoveryService } from './recoveryService';
 import { ExtensionService } from './extensionService';
 import { SettingsService } from './settingsService';
 import { SourceControlService } from './sourceControlService';
+import { BuildService } from './buildService';
+import type { ArcBuildRequest } from '../common/buildTypes';
 import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';
 
 const isDevelopment = !app.isPackaged;
@@ -29,6 +31,7 @@ let settingsService: SettingsService | null = null;
 let sourceControlService: SourceControlService | null = null;
 let recoveryService: RecoveryService | null = null;
 let extensionService: ExtensionService | null = null;
+let buildService: BuildService | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
 let shutdownPending = false;
@@ -166,7 +169,9 @@ const resolveProjectToolPath = (): string | null => {
   for (const root of [path.resolve(process.cwd(), '..'), path.resolve(process.cwd())]) {
     for (const preset of ['editor-vulkan', 'default', 'editor-no-vulkan']) {
       for (const configuration of ['RelWithDebInfo', 'Release', 'Debug'])
-        candidates.push(path.join(root, 'out', 'build', preset, 'tools', 'project_cli', configuration, projectToolExecutableName));
+        candidates.push(
+          path.join(root, 'out', 'build', preset, 'tools', 'project_cli', configuration, projectToolExecutableName),
+        );
       candidates.push(path.join(root, 'out', 'build', preset, 'tools', 'project_cli', projectToolExecutableName));
     }
   }
@@ -573,6 +578,12 @@ void app.whenReady().then(async () => {
     templatesRoot: resolveTemplatesRoot() ?? '',
     host: hostClient,
   });
+  buildService = new BuildService(
+    () => projectService?.active() ?? null,
+    () => projectService?.projectTool() ?? '',
+    hostClient,
+    (snapshot) => activeWindow()?.webContents.send('build:state', snapshot),
+  );
   settingsService = new SettingsService(
     path.join(app.getPath('userData'), 'editor-settings.v1.json'),
     () => projectService?.active() ?? null,
@@ -604,8 +615,10 @@ void app.whenReady().then(async () => {
   const suppliedProject = process.argv.find((argument) => argument.toLowerCase().endsWith('.arcproject'));
   if (suppliedProject) {
     const opened = await projectService.open(suppliedProject);
-    if (opened.succeeded && opened.project) recoveryService.start(opened.project);
-    else
+    if (opened.succeeded && opened.project) {
+      recoveryService.start(opened.project);
+      buildService.watchProject();
+    } else
       sendHostLog({
         level: 'error',
         source: 'project.browser',
@@ -656,6 +669,7 @@ void app.whenReady().then(async () => {
       if (result?.succeeded && result.project) {
         recoveryService?.start(result.project);
         extensionService?.invalidate();
+        buildService?.watchProject();
       }
       return result;
     },
@@ -686,7 +700,10 @@ void app.whenReady().then(async () => {
       }
     }
     const result = await projectService?.close();
-    if (result?.succeeded) recoveryService?.stop(true);
+    if (result?.succeeded) {
+      recoveryService?.stop(true);
+      buildService?.watchProject();
+    }
     return result;
   });
   ipcMain.handle('project:create', (_event, request: ArcCreateProjectRequest) => projectService?.create(request));
@@ -716,6 +733,19 @@ void app.whenReady().then(async () => {
     fs.writeFileSync(temporary, text, 'utf8');
     fs.renameSync(temporary, target);
     return { succeeded: true };
+  });
+  ipcMain.handle('build:snapshot', () => buildService?.snapshot() ?? null);
+  ipcMain.handle('build:execute', (_event, request: ArcBuildRequest) => buildService?.execute(request));
+  ipcMain.handle('build:openDiagnostic', async (_event, file: string) => {
+    const project = projectService?.active();
+    if (!project || typeof file !== 'string' || !file.trim()) throw new Error('Build diagnostic path is invalid');
+    const root = fs.realpathSync(project.projectRoot);
+    const candidate = path.isAbsolute(file) ? path.normalize(file) : path.resolve(root, file);
+    const relative = path.relative(root, candidate);
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+      throw new Error('Build diagnostic path escapes the active project');
+    if (!fs.statSync(candidate).isFile()) throw new Error('Build diagnostic file does not exist');
+    return shell.openPath(candidate);
   });
   ipcMain.handle('settings:snapshot', () => settingsService?.snapshot() ?? null);
   ipcMain.handle(
@@ -769,10 +799,18 @@ void app.whenReady().then(async () => {
   ipcMain.handle('vcs:pull', () => sourceControlService?.pull());
   ipcMain.handle('vcs:push', () => sourceControlService?.push());
   ipcMain.handle('vcs:commit', (_event, message: string) => sourceControlService?.commit(message));
-  ipcMain.handle('recovery:snapshot', (_event, projectGuid?: string, projectRoot?: string) => recoveryService?.snapshot(projectGuid, projectRoot) ?? null);
+  ipcMain.handle(
+    'recovery:snapshot',
+    (_event, projectGuid?: string, projectRoot?: string) => recoveryService?.snapshot(projectGuid, projectRoot) ?? null,
+  );
   ipcMain.handle('recovery:restore', (_event, id: string) => recoveryService?.restore(id));
   ipcMain.handle('recovery:discard', (_event, id: string) => recoveryService?.discard(id) ?? false);
   ipcMain.handle('extensions:snapshot', (_event, force = false) => extensionService?.snapshot(force) ?? null);
+  ipcMain.handle('extensions:executeCommand', (_event, id: string, arguments_: unknown[] = []) => {
+    if (!extensionService) throw new Error('Extension service is unavailable');
+    if (typeof id !== 'string' || !Array.isArray(arguments_)) throw new Error('Extension command request is invalid');
+    return extensionService.executeCommand(id, ...arguments_);
+  });
   ipcMain.handle('dialog:openProject', async () => {
     const target = activeWindow();
     if (!target) throw new Error('No active editor window');
@@ -991,6 +1029,8 @@ app.on('before-quit', (event) => {
       recoveryService?.stop(true);
       recoveryService = null;
       extensionService = null;
+      buildService?.dispose();
+      buildService = null;
       hostClient?.stop();
       hostClient = null;
       shutdownComplete = true;

@@ -1,0 +1,100 @@
+.build-output-panel {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--arc-panel-bg, #101820);
+  color: #c9d5e3;
+}
+.build-output-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #273544;
+  background: #17222c;
+}
+.build-output-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 25px;
+  padding: 0 8px;
+  color: #bdcad7;
+  border: 1px solid #34485a;
+  border-radius: 3px;
+  background: #1b2a36;
+}
+.build-output-toolbar button:hover:not(:disabled) {
+  border-color: #438cd8;
+  color: #fff;
+}
+.build-output-toolbar button:disabled {
+  opacity: 0.45;
+}
+.build-state {
+  margin-left: auto;
+  text-transform: capitalize;
+  color: #8fa4b8;
+}
+.build-state.failed,
+.build-notice.error {
+  color: #ff7979;
+}
+.build-state.succeeded {
+  color: #69c98c;
+}
+.build-notice {
+  padding-left: 7px;
+  border-left: 1px solid #34485a;
+  color: #e8ba62;
+}
+.build-output-lines {
+  min-height: 0;
+  overflow: auto;
+  padding: 3px 0 8px;
+}
+.build-output-line {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 58px minmax(150px, auto) 1fr;
+  gap: 8px;
+  padding: 3px 10px;
+  text-align: left;
+  color: inherit;
+  border: 0;
+  background: transparent;
+}
+.build-output-line:hover:not(:disabled) {
+  background: #1d2a35;
+}
+.build-output-line span {
+  text-transform: uppercase;
+  font-size: 10px;
+  color: #8fa4b8;
+}
+.build-output-line.warning span {
+  color: #e8ba62;
+}
+.build-output-line.error span {
+  color: #ff7979;
+}
+.build-output-line code {
+  color: #76aee8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.build-output-line p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.build-output-empty {
+  padding: 18px;
+  text-align: center;
+  color: #718396;
+}

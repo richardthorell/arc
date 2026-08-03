@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
-import { AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
+import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
 import type { Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
@@ -160,6 +160,25 @@ function SchemaField<TContext extends object>({
       </label>
     );
   }
+
+  if (field.type === 'text') {
+    return (
+      <label className="inspector-property" title={field.tooltip}>
+        <span className="inspector-property-label">{field.label}</span>
+        <input
+          aria-label={field.ariaLabel ?? field.label}
+          className="property-text-input"
+          disabled={field.readOnly}
+          value={mixed ? '' : typeof value === 'string' ? value : ''}
+          onChange={(event) => onValue(event.target.value, false)}
+          onBlur={(event) => onValue(event.target.value, true)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
+        />
+      </label>
+    );
+  }
   if (field.type === 'enum') {
     return (
       <label className="inspector-property" title={field.tooltip}>
@@ -180,6 +199,23 @@ function SchemaField<TContext extends object>({
     );
   }
   if (field.type === 'asset') {
+    if (field.assetKind === 'asset') {
+      return (
+        <AssetPicker
+          allowEmpty={field.allowEmpty}
+          assetKinds={['scene', 'mesh', 'material', 'texture', 'shader', 'prefab']}
+          assetTypeIds={field.assetTypeId ? [field.assetTypeId] : undefined}
+          assetTypeLabel="Asset"
+          assets={assets}
+          label={field.label}
+          mixed={mixed}
+          referenceMode={field.referenceMode}
+          thumbnailProvider={thumbnailProvider}
+          value={(value as string) || ''}
+          onChange={(next) => onValue(next, true)}
+        />
+      );
+    }
     const Picker =
       field.assetKind === 'material' ? MaterialPicker : field.assetKind === 'prefab' ? PrefabPicker : TexturePicker;
     return (
@@ -189,6 +225,7 @@ function SchemaField<TContext extends object>({
         assets={assets}
         label={field.label}
         mixed={mixed}
+        referenceMode={field.referenceMode}
         thumbnailProvider={thumbnailProvider}
         value={(value as string) || ''}
         onChange={(next) => onValue(next, true)}

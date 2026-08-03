@@ -105,6 +105,14 @@ export type HostComponentSnapshot = {
   editable: boolean;
 };
 
+export type InspectorProjectComponent = {
+  typeId: string;
+  canonicalName: string;
+  displayName: string;
+  schemaVersion: number;
+  values: Record<string, unknown>;
+};
+
 export type InspectorEntitySnapshot = {
   entity: HostEntityId;
   selectionCount?: number;
@@ -121,6 +129,7 @@ export type InspectorEntitySnapshot = {
   terrain: InspectorTerrain | null;
   prefab: InspectorPrefab | null;
   components: HostComponentSnapshot[];
+  projectComponents: InspectorProjectComponent[];
   aggregate?: {
     mixedFields: string[];
     commonComponents: string[];
@@ -261,6 +270,17 @@ const hostSelectedEntitySchema = z.object({
       editable: z.boolean(),
     }),
   ),
+  projectComponents: z
+    .array(
+      z.object({
+        typeId: z.string().length(32),
+        canonicalName: z.string(),
+        displayName: z.string(),
+        schemaVersion: z.number().int().positive(),
+        values: z.record(z.string(), z.unknown()),
+      }),
+    )
+    .default([]),
 });
 
 const tupleToVec3 = (value: [number, number, number]): Vec3 => ({ x: value[0], y: value[1], z: value[2] });
