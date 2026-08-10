@@ -1327,25 +1327,128 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
     return snapshot;
 }
 
-editor_scene_state create_blank_scene()
+ecs::entity add_default_sky_to_scene(editor_scene_state& state)
+{
+    const auto sky = state.scene.create();
+    state.sun_entity = sky;
+    state.world_environment_entity = sky;
+
+    scene::transform_component transform;
+    transform.position = {0.0f, 5.0f, 0.0f};
+    transform.rotation = math::normalize(math::quatf{-0.258819f, 0.0f, 0.0f, 0.965926f});
+    scene::directional_light_component light;
+    light.color = {1.0f, 0.95f, 0.88f};
+    light.intensity = 85000.0f;
+    light.casts_shadows = true;
+    light.use_color_temperature = true;
+    light.temperature_kelvin = 5500.0f;
+    light.shadow.enabled = true;
+
+    state.scene.emplace<scene::persistent_id_component>(sky, ecs::generate_entity_guid());
+    state.scene.emplace<scene::hierarchy_component>(sky);
+    state.scene.emplace<scene::name_component>(sky, "Default Sky");
+    state.scene.emplace<scene::tag_component>(sky, "Environment");
+    state.scene.emplace<scene::active_component>(sky);
+    state.scene.emplace<scene::selection_component>(sky, false);
+    state.scene.emplace<scene::transform_component>(sky, transform);
+    state.scene.emplace<scene::directional_light_component>(sky, light);
+
+    scene::world_environment_settings settings;
+    scene::apply_world_environment_preset(scene::world_environment_preset::alpine_late_morning, settings);
+    settings.celestial.sun_mode = scene::sun_position_mode::manual_light;
+    settings.celestial.sun_light = sky;
+    settings.celestial.automatic_sun_light = false;
+    scene::set_world_environment_settings(state.scene, sky, settings);
+    state.world_feature_entities.push_back(sky);
+    return sky;
+}
+
+void append_editor_world_grid(render::debug_overlay_stream& overlay)
+{
+    constexpr int half_extent = 20;
+    constexpr float spacing = 1.0f;
+    constexpr float height = 0.005f;
+    constexpr int major_interval = 5;
+    constexpr math::vector4f minor_color{0.22f, 0.25f, 0.29f, 0.72f};
+    constexpr math::vector4f major_color{0.32f, 0.36f, 0.41f, 0.86f};
+    constexpr math::vector4f x_axis_color{0.72f, 0.25f, 0.22f, 0.95f};
+    constexpr math::vector4f z_axis_color{0.22f, 0.42f, 0.76f, 0.95f};
+    const float extent = static_cast<float>(half_extent) * spacing;
+
+    for (int line = -half_extent; line <= half_extent; ++line)
+    {
+        const float offset = static_cast<float>(line) * spacing;
+        const auto x_color = line == 0 ? x_axis_color : line % major_interval == 0 ? major_color : minor_color;
+        const auto z_color = line == 0 ? z_axis_color : line % major_interval == 0 ? major_color : minor_color;
+        overlay.lines.push_back({.start = {-extent, height, offset},
+                                 .end = {extent, height, offset},
+                                 .color = x_color,
+                                 .depth = render::debug_overlay_depth_mode::tested});
+        overlay.lines.push_back({.start = {offset, height, -extent},
+                                 .end = {offset, height, extent},
+                                 .color = z_color,
+                                 .depth = render::debug_overlay_depth_mode::tested});
+    }
+}
+
+editor_scene_state create_blank_scene(render::renderer& renderer, bool include_floor = true)
 {
     editor_scene_state state;
-    const auto camera = state.scene.create();
-    state.camera_entity = camera;
-    state.game_camera_entity = camera;
-    scene::transform_component transform;
-    transform.position = defaults::default_camera_position;
-    state.scene.emplace<scene::name_component>(camera, "Editor Camera");
-    state.scene.emplace<scene::tag_component>(camera, "Camera");
-    state.scene.emplace<scene::active_component>(camera);
-    state.scene.emplace<scene::transform_component>(camera, transform);
-    scene::camera_component camera_settings;
-    camera_settings.near_plane = defaults::default_camera_near_plane;
-    camera_settings.far_plane = defaults::default_camera_far_plane;
-    state.scene.emplace<scene::camera_component>(camera, camera_settings);
-    select_entity(state.scene, camera, state.selected_entity);
+    const auto editor_camera = state.scene.create();
+    state.camera_entity = editor_camera;
+    scene::transform_component editor_transform;
+    editor_transform.position = defaults::default_camera_position;
+    state.scene.emplace<scene::name_component>(editor_camera, "Editor Camera");
+    state.scene.emplace<scene::tag_component>(editor_camera, "EditorOnly");
+    state.scene.emplace<scene::active_component>(editor_camera);
+    state.scene.emplace<scene::transform_component>(editor_camera, editor_transform);
+    scene::camera_component editor_camera_settings;
+    editor_camera_settings.near_plane = defaults::default_camera_near_plane;
+    editor_camera_settings.far_plane = defaults::default_camera_far_plane;
+    state.scene.emplace<scene::camera_component>(editor_camera, editor_camera_settings);
+
+    const auto game_camera = state.scene.create();
+    state.game_camera_entity = game_camera;
+    scene::transform_component game_transform;
+    game_transform.position = {0.0f, 2.0f, 6.0f};
+    scene::camera_component game_camera_settings;
+    game_camera_settings.near_plane = 0.1f;
+    game_camera_settings.far_plane = 2000.0f;
+    state.scene.emplace<scene::name_component>(game_camera, "Main Camera");
+    state.scene.emplace<scene::tag_component>(game_camera, "Camera");
+    state.scene.emplace<scene::active_component>(game_camera);
+    state.scene.emplace<scene::transform_component>(game_camera, game_transform);
+    state.scene.emplace<scene::camera_component>(game_camera, game_camera_settings);
+
+    add_default_sky_to_scene(state);
+    if (include_floor)
+    {
+        const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::plane);
+        if (state.scene.alive(floor))
+        {
+            state.scene.get<scene::name_component>(floor).value = "Floor";
+            state.scene.get<scene::tag_component>(floor).value = "Environment";
+            auto& floor_transform = state.scene.get<scene::transform_component>(floor);
+            floor_transform.position = {0.0f, -0.02f, 0.0f};
+            floor_transform.scale = {10.0f, 1.0f, 10.0f};
+            auto& floor_mesh = state.scene.get<scene::mesh_renderer_component>(floor);
+            floor_mesh.base_color_tint = {0.48f, 0.5f, 0.53f, 1.0f};
+            floor_mesh.casts_shadows = false;
+            floor_mesh.receives_shadows = true;
+        }
+    }
+    select_entity(state.scene, game_camera, state.selected_entity);
     ensure_scene_authoring_metadata(state);
     return state;
+}
+
+void reset_editor_camera(editor_scene_state& scene, editor_camera_controller& controller)
+{
+    controller = {};
+    controller.focus(defaults::default_camera_focus, defaults::default_camera_focus_radius);
+    controller.orbit(defaults::default_camera_orbit_x, defaults::default_camera_orbit_y);
+    if (auto* camera_transform = scene.scene.try_get<scene::transform_component>(scene.camera_entity))
+        controller.apply_to(*camera_transform);
 }
 
 } // namespace
@@ -1377,6 +1480,11 @@ struct arc_host::state
     explicit state(std::unique_ptr<render::renderer> renderer_value)
         : renderer(std::move(renderer_value)), simulation(simulation_application)
     {
+        // Viewport input can arrive while the project browser is transitioning
+        // into the workbench. Keep an editor-only camera available for the
+        // complete host lifetime rather than creating it only in project.open.
+        scene = create_blank_scene(*renderer);
+        reset_editor_camera(scene, camera_controller);
         simulation.start();
         simulation.pause();
         const auto worlds = simulation.worlds().ordered_worlds();
@@ -1508,7 +1616,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->asset_event_cursor = 0;
     // Project opening never synthesizes sample content. Rendering samples are
     // ordinary persisted scenes supplied by the selected project template.
-    state_->scene = create_blank_scene();
+    state_->scene = create_blank_scene(*state_->renderer, command.default_scene.empty());
     if (state_->asset_registry)
     {
         register_editor_asset_fallbacks(state_->scene, *state_->asset_registry);
@@ -1531,11 +1639,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     ++state_->scene_revision;
     ++state_->world_epoch;
     state_->history.clear(state_->scene, false);
-    state_->camera_controller = {};
-    state_->camera_controller.focus(defaults::default_camera_focus, defaults::default_camera_focus_radius);
-    state_->camera_controller.orbit(defaults::default_camera_orbit_x, defaults::default_camera_orbit_y);
-    if (auto* camera_transform = state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
-        state_->camera_controller.apply_to(*camera_transform);
+    reset_editor_camera(state_->scene, state_->camera_controller);
     state_->project_open = true;
     state_->project_read_only = command.read_only;
 
@@ -1683,7 +1787,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->asset_files.reset();
                 }
                 state_->project_module.unload();
-                state_->scene = {};
+                state_->scene = create_blank_scene(*state_->renderer);
+                reset_editor_camera(state_->scene, state_->camera_controller);
                 state_->project = {};
                 state_->project_open = false;
                 state_->project_read_only = false;
@@ -1933,7 +2038,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_new_scene_command>)
             {
-                state_->scene = create_blank_scene();
+                state_->scene = create_blank_scene(*state_->renderer);
                 state_->scene.scene_name = payload.name.empty() ? "Untitled" : payload.name;
                 state_->scene.active_scene_path.clear();
                 state_->history.clear(state_->scene, false);
@@ -4289,6 +4394,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                              .highlighted_axis = state_->gizmo_highlight,
                              .viewport_width = request.width,
                              .viewport_height = request.height});
+    append_editor_world_grid(debug_overlay);
     if (state_->viewport_tool.tool == host_viewport_tool::terrain && state_->terrain_brush_local_position &&
         state_->scene.scene.alive(state_->scene.terrain_entity))
     {

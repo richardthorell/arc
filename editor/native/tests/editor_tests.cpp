@@ -157,6 +157,39 @@ TEST_CASE("project components add edit persist and migrate through the native ho
     std::filesystem::remove_all(root, cleanup_error);
 }
 
+TEST_CASE("native host keeps an editor camera throughout the project lifecycle")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+
+    const auto move_camera = [&]
+    {
+        return host->execute(arc::editor::host_command_envelope{
+            .request_id = 1,
+            .payload = arc::editor::host_viewport_camera_input_command{.forward = 1.0f}});
+    };
+    const auto require_default_scene = [&]
+    {
+        const auto snapshot = host->scene_snapshot();
+        CHECK(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
+                          [](const auto& entity) { return entity.name == "Main Camera"; }));
+        CHECK(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
+                          [](const auto& entity) { return entity.name == "Default Sky"; }));
+        CHECK(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
+                          [](const auto& entity) { return entity.name == "Floor"; }));
+    };
+
+    require_default_scene();
+    CHECK(move_camera().succeeded);
+    REQUIRE(host->open_project({.name = "Camera Lifecycle"}, {}).succeeded);
+    require_default_scene();
+    CHECK(move_camera().succeeded);
+    REQUIRE(host->execute(arc::editor::host_close_project_command{}).succeeded);
+    require_default_scene();
+    CHECK(move_camera().succeeded);
+}
+
 namespace
 {
 
@@ -2111,14 +2144,48 @@ TEST_CASE("blank 3D project template opens its persisted startup scene")
 
     INFO(response.error);
     REQUIRE(response.succeeded);
-    const auto snapshot = host->scene_snapshot();
+    auto snapshot = host->scene_snapshot();
+    REQUIRE(snapshot.entities.size() == 3u);
+    const auto camera = std::find_if(snapshot.entities.begin(), snapshot.entities.end(),
+                                     [](const auto& entity) { return entity.name == "Main Camera"; });
+    REQUIRE(camera != snapshot.entities.end());
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = camera->entity}).succeeded);
+    const auto selected_camera = host->selected_entity_snapshot();
+    REQUIRE(selected_camera.camera.has_value());
+    snapshot = host->scene_snapshot();
     REQUIRE(snapshot.entities.size() == 3u);
     REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
                         [](const auto& entity) { return entity.name == "Main Camera"; }));
-    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
-                        [](const auto& entity) { return entity.name == "Sun"; }));
-    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
-                        [](const auto& entity) { return entity.name == "World Environment"; }));
+    const auto sky = std::find_if(snapshot.entities.begin(), snapshot.entities.end(),
+                                  [](const auto& entity) { return entity.name == "Default Sky"; });
+    REQUIRE(sky != snapshot.entities.end());
+    REQUIRE(sky->kind == arc::editor::host_entity_kind::environment);
+    const auto sky_id = sky->entity;
+    const auto sky_entity = arc::ecs::entity{sky_id.index, sky_id.generation};
+    REQUIRE(host->scene_state().scene.has<arc::scene::directional_light_component>(sky_entity));
+    const auto environment = host->world_environment_snapshot(sky_id);
+    REQUIRE(environment.has_value());
+    REQUIRE(environment->enabled);
+    REQUIRE(environment->sky_visible);
+    REQUIRE(environment->affect_lighting);
+    const auto floor = std::find_if(snapshot.entities.begin(), snapshot.entities.end(),
+                                    [](const auto& entity) { return entity.name == "Floor"; });
+    REQUIRE(floor != snapshot.entities.end());
+    const auto floor_entity = arc::ecs::entity{floor->entity.index, floor->entity.generation};
+    REQUIRE(host->scene_state().scene.has<arc::scene::mesh_renderer_component>(floor_entity));
+    const auto& floor_renderer =
+        host->scene_state().scene.get<arc::scene::mesh_renderer_component>(floor_entity);
+    REQUIRE_FALSE(floor_renderer.casts_shadows);
+    REQUIRE(floor_renderer.receives_shadows);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = sky_id}).succeeded);
+    REQUIRE(host->execute(arc::editor::host_set_active_command{.entity = sky_id, .active = false}).succeeded);
+    snapshot = host->scene_snapshot();
+    REQUIRE(snapshot.entities.size() == 3u);
+    const auto edited_sky = std::find_if(snapshot.entities.begin(), snapshot.entities.end(),
+                                         [](const auto& entity) { return entity.name == "Default Sky"; });
+    REQUIRE(edited_sky != snapshot.entities.end());
+    REQUIRE_FALSE(edited_sky->active);
+    REQUIRE(host->world_environment_snapshot(sky_id).has_value());
     std::filesystem::remove_all(root, ec);
 }
 

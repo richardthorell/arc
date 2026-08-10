@@ -13,20 +13,13 @@
       }
     },
     {
-      "id": "{{LIGHT_GUID}}", "parent": null, "order": 1,
+      "id": "{{ENVIRONMENT_GUID}}", "parent": null, "order": 1,
       "components": {
-        "Name": {"typeId": "a7c00000000000010000000000000001", "version": 1, "value": "Sun"},
-        "Active": {"typeId": "a7c00000000000010000000000000004", "version": 1, "value": true},
-        "Transform": {"typeId": "a7c00000000000010000000000000002", "version": 1, "position": [0.0, 5.0, 0.0], "rotation": [-0.258819, 0.0, 0.0, 0.965926], "scale": [1.0, 1.0, 1.0]},
-        "DirectionalLight": {"typeId": "a7c0000000000001000000000000000e", "version": 3, "color": [1.0, 0.95, 0.88], "intensity": 85000.0, "castsShadows": true, "enabled": true, "useColorTemperature": true, "temperatureKelvin": 5500.0, "intensityUnit": 1, "shadow": {"enabled": true, "resolution": 2048, "bias": 0.0015, "normalBias": 0.01, "strength": 0.85, "filter": 1, "priority": 255, "contactShadows": true, "contactShadowLength": 0.5, "cacheMode": 0}, "cascades": {"count": 4, "maximumDistance": 200.0, "splitLambda": 0.65, "blendFraction": 0.1, "stable": true}}
-      }
-    },
-    {
-      "id": "{{ENVIRONMENT_GUID}}", "parent": null, "order": 2,
-      "components": {
-        "Name": {"typeId": "a7c00000000000010000000000000001", "version": 1, "value": "World Environment"},
+        "Name": {"typeId": "a7c00000000000010000000000000001", "version": 1, "value": "Default Sky"},
         "Tag": {"typeId": "a7c00000000000010000000000000003", "version": 1, "value": "Environment"},
         "Active": {"typeId": "a7c00000000000010000000000000004", "version": 1, "value": true},
+        "Transform": {"typeId": "a7c00000000000010000000000000002", "version": 1, "position": [0.0, 5.0, 0.0], "rotation": [-0.258819, 0.0, 0.0, 0.965926], "scale": [1.0, 1.0, 1.0]},
+        "DirectionalLight": {"typeId": "a7c0000000000001000000000000000e", "version": 3, "color": [1.0, 0.95, 0.88], "intensity": 85000.0, "castsShadows": true, "enabled": true, "useColorTemperature": true, "temperatureKelvin": 5500.0, "intensityUnit": 1, "shadow": {"enabled": true, "resolution": 2048, "bias": 0.0015, "normalBias": 0.01, "strength": 0.85, "filter": 1, "priority": 255, "contactShadows": true, "contactShadowLength": 0.5, "cacheMode": 0}, "cascades": {"count": 4, "maximumDistance": 200.0, "splitLambda": 0.65, "blendFraction": 0.1, "stable": true}},
         "WorldEnvironment": {
           "typeId": "a7c00000000000010000000000000013", "version": 1,
           "enabled": true, "skyVisible": true, "affectLighting": true,
@@ -34,7 +27,7 @@
           "atmosphereTint": [0.5, 0.7, 1.0], "exposure": 1.0, "sunDiskSize": 0.025, "sunDiskIntensity": 1.4,
           "rayleighStrength": 1.12, "rayleighScaleHeight": 8.0, "mieStrength": 0.18, "mieScaleHeight": 1.2, "mieAnisotropy": 0.8,
           "ozoneStrength": 0.24, "groundAlbedo": [0.18, 0.18, 0.18], "planetRadius": 6360.0, "atmosphereRadius": 6420.0, "multiScatteringFactor": 1.0,
-          "sunMode": "manualLight", "sunLight": "{{LIGHT_GUID}}", "latitudeDegrees": 46.8, "longitudeDegrees": 8.2, "northOffsetDegrees": 0.0,
+          "sunMode": "manualLight", "sunLight": "{{ENVIRONMENT_GUID}}", "latitudeDegrees": 46.8, "longitudeDegrees": 8.2, "northOffsetDegrees": 0.0,
           "year": 2026, "month": 7, "day": 14, "localTimeHours": 10.5, "utcOffsetHours": 2.0,
           "timeMode": "fixed", "playing": false, "timeScale": 60.0, "loopDay": true,
           "automaticSunLight": false, "sunIntensityMultiplier": 1.0, "sunTemperatureMultiplier": 1.0,
@@ -47,6 +40,17 @@
           "fogEnabled": true, "fogColor": [0.67, 0.76, 0.84], "fogDensity": 0.005, "fogHeightFalloff": 0.05, "fogStartDistance": 42.0, "fogMaxOpacity": 0.34, "fogSunScattering": 0.25,
           "lightingEnabled": true, "lightingSource": "followSky", "lightingColor": [0.18, 0.23, 0.29], "diffuseIntensity": 1.0, "specularIntensity": 1.0
         }
+      }
+    },
+    {
+      "id": "{{FLOOR_GUID}}", "parent": null, "order": 2,
+      "assetBinding": {"kind": "primitive", "subresource": "Plane"},
+      "components": {
+        "Name": {"typeId": "a7c00000000000010000000000000001", "version": 1, "value": "Floor"},
+        "Tag": {"typeId": "a7c00000000000010000000000000003", "version": 1, "value": "Environment"},
+        "Active": {"typeId": "a7c00000000000010000000000000004", "version": 1, "value": true},
+        "Transform": {"typeId": "a7c00000000000010000000000000002", "version": 1, "position": [0.0, -0.02, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [10.0, 1.0, 10.0]},
+        "MeshRenderer": {"typeId": "a7c0000000000001000000000000000b", "version": 2, "visible": true, "baseColorTint": [0.48, 0.5, 0.53, 1.0], "castsShadows": false, "receivesShadows": true, "shadowLodBias": 0.0, "maximumShadowDistance": 0.0}
       }
     }
   ],

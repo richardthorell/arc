@@ -40,6 +40,11 @@ type ViewportStats = {
   submitted: boolean;
 };
 
+type ViewportCommandResponse = {
+  succeeded?: boolean;
+  error?: string;
+};
+
 const fallbackStats = (project: ProjectSnapshot | null): ViewportStats => ({
   width: 0,
   height: 0,
@@ -57,6 +62,7 @@ const formatFrameTime = (value: number) => (Number.isFinite(value) && value > 0 
 export function ViewportPanel({ project, startupState, onCommand, onReconnect }: ViewportPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const lastAttachAttemptRef = useRef(0);
   const [viewportError, setViewportError] = useState('');
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
   const nativeActive = startupState?.viewportMode === 'native' && Boolean(window.arc?.viewport);
@@ -85,7 +91,9 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
       return;
     }
     try {
-      await window.arc.viewport.attach(bounds);
+      lastAttachAttemptRef.current = Date.now();
+      const response = (await window.arc.viewport.attach(bounds)) as ViewportCommandResponse | undefined;
+      if (response?.succeeded === false) throw new Error(response.error || 'Native viewport attachment was rejected');
       setViewportError('');
     } catch (error) {
       setViewportError(error instanceof Error ? error.message : String(error));
@@ -101,7 +109,8 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
       return;
     }
     try {
-      await window.arc.viewport.resize(bounds);
+      const response = (await window.arc.viewport.resize(bounds)) as ViewportCommandResponse | undefined;
+      if (response?.succeeded === false) throw new Error(response.error || 'Native viewport resize was rejected');
       setViewportError('');
     } catch (error) {
       setViewportError(error instanceof Error ? error.message : String(error));
@@ -144,6 +153,11 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
         if (!cancelled && response?.succeeded && response.payload) {
           setViewportStats(response.payload);
           setViewportError('');
+          if (
+            (!response.payload.submitted || response.payload.frameIndex === 0) &&
+            Date.now() - lastAttachAttemptRef.current >= 1000
+          )
+            await attachViewport();
         }
       } catch (error) {
         if (!cancelled) {
@@ -158,7 +172,7 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [nativeActive, project]);
+  }, [attachViewport, nativeActive, project]);
 
   const sendCameraInput = (input: Parameters<typeof window.arc.viewport.cameraInput>[0]) => {
     void window.arc.viewport.cameraInput(input).catch((error) => {

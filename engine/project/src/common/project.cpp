@@ -921,6 +921,7 @@ project_status create_project(const create_project_request& request)
         const auto camera_guid = new_guid();
         const auto light_guid = new_guid();
         const auto environment_guid = new_guid();
+        const auto floor_guid = new_guid();
         const auto copy_template_root = [&](const std::filesystem::path& source_root)
         {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(source_root))
@@ -947,6 +948,7 @@ project_status create_project(const create_project_request& request)
                 content = replace_all(std::move(content), "{{CAMERA_GUID}}", camera_guid);
                 content = replace_all(std::move(content), "{{LIGHT_GUID}}", light_guid);
                 content = replace_all(std::move(content), "{{ENVIRONMENT_GUID}}", environment_guid);
+                content = replace_all(std::move(content), "{{FLOOR_GUID}}", floor_guid);
                 content = replace_all(std::move(content), "{{ENGINE_VERSION}}", request.engine_version);
                 if (output.extension() == ".arcscene" || output.extension() == ".arcprefab")
                 {
