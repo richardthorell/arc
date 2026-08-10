@@ -30,9 +30,9 @@ target_include_directories(arc-render-vulkan
 target_link_libraries(arc-render-vulkan
     PUBLIC
         arc-render
+        "$<BUILD_INTERFACE:arc-third-party-vulkan>"
         "$<INSTALL_INTERFACE:Vulkan::Vulkan>"
     PRIVATE
-        arc-third-party-vulkan
         arc-third-party-volk
         arc-third-party-vma
         arc-third-party-slang

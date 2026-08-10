@@ -244,6 +244,32 @@ struct mesh_push_constants
 };
 static_assert(sizeof(mesh_push_constants) == 256);
 
+struct alignas(16) gpu_scene_storage_instance
+{
+    float model[16]{};
+    float previous_model[16]{};
+    float bounds_min[4]{};
+    float bounds_max[4]{};
+    std::uint32_t geometry[4]{};
+    std::uint32_t material_flags[4]{};
+    std::uint32_t draw_metadata[4]{};
+    float distance_error[4]{};
+};
+static_assert(sizeof(gpu_scene_storage_instance) == 224);
+
+struct alignas(16) gpu_visibility_push_constants
+{
+    float view_projection[16]{};
+    float camera_position_and_error[4]{};
+    std::uint32_t instance_capacity{};
+    std::uint32_t render_layer_mask{~0u};
+    std::uint32_t camera_cut{};
+    std::uint32_t reserved{};
+};
+static_assert(sizeof(gpu_visibility_push_constants) == 96);
+
+inline constexpr VkDeviceSize indexed_indirect_command_stride = sizeof(VkDrawIndexedIndirectCommand);
+
 struct material_uniform_data
 {
     float emissive_factor[4]{0.0f, 0.0f, 0.0f, 1.0f};
@@ -344,6 +370,8 @@ public:
             destroy_buffer(buffer.vertices);
         destroy_buffer(light_buffer_);
         destroy_buffer(exposure_buffer_);
+        destroy_buffer(gpu_scene_buffer_);
+        destroy_gpu_visibility_resources();
         destroy_meshes();
         destroy_support_objects();
         if (allocator_ != VK_NULL_HANDLE) vmaDestroyAllocator(allocator_);
@@ -402,6 +430,9 @@ public:
 
     render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) override
     {
+        last_profile_.frame_index = packet.frame_index;
+        last_profile_.gpu_scene = {};
+        last_profile_.temporal = {};
         upload_frame_ = packet.frame_index;
         upload_batch_failed_ = false;
         frame_draws_.clear();
@@ -459,6 +490,8 @@ public:
                 frame_spot_lights_.push_back(*spot_light);
             else if (const auto* area_light = std::get_if<area_light_event>(&event.payload))
                 frame_area_lights_.push_back(*area_light);
+            else if (const auto* gpu_scene_update = std::get_if<gpu_scene_update_event>(&event.payload))
+                apply_gpu_scene_update(*gpu_scene_update);
             else if (const auto* world = std::get_if<render_world_event>(&event.payload))
                 append_render_world(*world);
             else if (const auto* marker = std::get_if<debug_marker_event>(&event.payload))
@@ -466,7 +499,6 @@ public:
         }
         if (!flush_upload_batch()) upload_batch_failed_ = true;
 
-        last_profile_.frame_index = packet.frame_index;
         last_profile_.graph = graph;
         last_profile_.summary.clear();
         last_profile_.summary.reserve(64);
@@ -534,6 +566,13 @@ public:
         update_environment_profile(lighting_environment);
         last_profile_.clustered_lights = make_clustered_light_profile();
         update_shadow_profile(packet.frame_index);
+        last_profile_.temporal = {.enabled = resolved_config_.features.temporal_antialiasing,
+                                  .upscaling = resolved_config_.features.temporal_upscaling,
+                                  .history_valid = frame_camera_.history_valid,
+                                  .camera_cut = frame_camera_.camera_cut,
+                                  .jitter = frame_camera_.jitter,
+                                  .reset_reason =
+                                      frame_camera_.camera_cut ? "camera cut, resize, or world change" : ""};
         update_light_buffer();
         warn_about_skipped_lights(frame_lighting_);
 
@@ -1305,7 +1344,8 @@ private:
         const auto& packet = *event.packet;
         const auto make_draw = [&](const render_item& item, bool selected_for_overlay)
         {
-            return draw_mesh_event{.mesh = item.mesh,
+            return draw_mesh_event{.gpu_scene_instance = item.gpu_scene_instance,
+                                   .mesh = item.mesh,
                                    .material = item.material,
                                    .model = item.model,
                                    .previous_model = item.previous_model,
@@ -1338,7 +1378,8 @@ private:
                                            ? mesh_visualization_mode::albedo
                                            : packet.visualization;
             return virtual_cluster_draw{
-                .draw = draw_mesh_event{.mesh = item.mesh,
+                .draw = draw_mesh_event{.gpu_scene_instance = item.gpu_scene_instance,
+                                        .mesh = item.mesh,
                                         .material = material,
                                         .model = item.model,
                                         .previous_model = item.previous_model,
@@ -1367,23 +1408,45 @@ private:
         frame_spot_lights_.insert(frame_spot_lights_.end(), packet.spot_lights.begin(), packet.spot_lights.end());
         frame_area_lights_.insert(frame_area_lights_.end(), packet.area_lights.begin(), packet.area_lights.end());
 
-        for (const auto index : packet.visible_items)
+        if (resolved_config_.features.gpu_driven_rendering)
         {
-            if (index >= packet.items.size()) continue;
-            const auto& item = packet.items[index];
-            frame_draws_.push_back(
-                make_draw(item, packet.overlay == editor_overlay_mode::all_wireframe ||
-                                    (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+            for (const auto& item : packet.items)
+            {
+                if (!item.visible || !item.mesh.valid()) continue;
+                frame_draws_.push_back(
+                    make_draw(item, packet.overlay == editor_overlay_mode::all_wireframe ||
+                                        (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+            }
         }
+        else
+            for (const auto index : packet.visible_items)
+            {
+                if (index >= packet.items.size()) continue;
+                const auto& item = packet.items[index];
+                frame_draws_.push_back(
+                    make_draw(item, packet.overlay == editor_overlay_mode::all_wireframe ||
+                                        (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+            }
 
-        for (const auto index : packet.visible_virtual_items)
+        if (resolved_config_.features.gpu_driven_rendering)
         {
-            if (index >= packet.virtual_items.size()) continue;
-            const auto& item = packet.virtual_items[index];
-            frame_virtual_draws_.push_back(make_virtual_draw(
-                item, packet.overlay == editor_overlay_mode::all_wireframe ||
-                          (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+            for (const auto& item : packet.virtual_items)
+            {
+                if (!item.visible || !item.mesh.valid()) continue;
+                frame_virtual_draws_.push_back(make_virtual_draw(
+                    item, packet.overlay == editor_overlay_mode::all_wireframe ||
+                              (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+            }
         }
+        else
+            for (const auto index : packet.visible_virtual_items)
+            {
+                if (index >= packet.virtual_items.size()) continue;
+                const auto& item = packet.virtual_items[index];
+                frame_virtual_draws_.push_back(make_virtual_draw(
+                    item, packet.overlay == editor_overlay_mode::all_wireframe ||
+                              (packet.overlay == editor_overlay_mode::selected_wireframe && item.selected)));
+            }
 
         for (const auto& item : packet.items)
         {
@@ -1405,6 +1468,18 @@ private:
         frame_shadows_enabled_ = packet.shadows_enabled;
         frame_debug_overlay_lines_.insert(frame_debug_overlay_lines_.end(), packet.debug_overlay.lines.begin(),
                                           packet.debug_overlay.lines.end());
+        if (resolved_config_.features.gpu_driven_rendering)
+        {
+            auto& profile = last_profile_.gpu_scene;
+            profile.enabled = true;
+            profile.hzb_occlusion = resolved_config_.features.hzb_occlusion;
+            profile.history_valid = packet.camera.history_valid;
+            profile.visible_instances =
+                static_cast<std::uint32_t>(packet.visible_items.size() + packet.visible_virtual_items.size());
+            profile.frustum_rejected =
+                static_cast<std::uint32_t>(packet.culled_item_count + packet.culled_virtual_cluster_count);
+            profile.indirect_commands = static_cast<std::uint32_t>(packet.items.size() + packet.virtual_items.size());
+        }
     }
 
     void create_support_objects()
@@ -2857,6 +2932,365 @@ private:
         {
             profile.fallback_reason = "Atmosphere LUT execution is not available in Vulkan yet; using the analytic sky";
         }
+    }
+
+    gpu_scene_storage_instance pack_gpu_scene_instance(const gpu_scene_instance& source) const
+    {
+        gpu_scene_storage_instance result{};
+        std::copy(source.model.data(), source.model.data() + 16, result.model);
+        std::copy(source.previous_model.data(), source.previous_model.data() + 16, result.previous_model);
+        for (std::uint32_t component = 0; component < 3; ++component)
+        {
+            result.bounds_min[component] = source.world_bounds.min[component];
+            result.bounds_max[component] = source.world_bounds.max[component];
+        }
+        const auto geometry = source.geometry_kind == gpu_scene_geometry_kind::mesh ? source.mesh : source.virtual_mesh;
+        result.geometry[0] = geometry.index;
+        result.geometry[1] = geometry.generation;
+        result.geometry[2] = source.submesh_or_cluster;
+        result.geometry[3] = static_cast<std::uint32_t>(source.geometry_kind);
+        result.material_flags[0] = source.material.index;
+        result.material_flags[1] = source.material.generation;
+        result.material_flags[2] = source.render_layer_mask;
+        result.material_flags[3] = source.flags;
+        if (source.geometry_kind == gpu_scene_geometry_kind::mesh)
+        {
+            const auto found = meshes_.find(resource_key(source.mesh));
+            if (found != meshes_.end()) result.draw_metadata[0] = found->second.index_count;
+        }
+        else
+        {
+            const auto found = virtual_meshes_.find(resource_key(source.virtual_mesh));
+            if (found != virtual_meshes_.end() && source.submesh_or_cluster < found->second.clusters.size())
+            {
+                const auto& cluster = found->second.clusters[source.submesh_or_cluster];
+                result.draw_metadata[0] = cluster.index_count;
+                result.draw_metadata[1] = cluster.first_index;
+            }
+        }
+        result.distance_error[0] = source.maximum_draw_distance;
+        result.distance_error[1] = source.geometry_error_scale;
+        return result;
+    }
+
+    bool ensure_gpu_scene_buffer(std::uint32_t required_capacity)
+    {
+        if (required_capacity <= gpu_scene_capacity_ && gpu_scene_buffer_.buffer != VK_NULL_HANDLE) return true;
+        const std::uint32_t new_capacity = std::max(256u, std::bit_ceil(std::max(required_capacity, 1u)));
+        gpu_buffer replacement{};
+        const VkDeviceSize bytes = static_cast<VkDeviceSize>(new_capacity) * sizeof(gpu_scene_storage_instance);
+        if (!create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, replacement))
+            return false;
+
+        auto retired = gpu_scene_buffer_;
+        const auto retired_capacity = gpu_scene_capacity_;
+        gpu_scene_buffer_ = replacement;
+        gpu_scene_capacity_ = new_capacity;
+        gpu_scene_mirror_.resize(new_capacity);
+        gpu_visibility_descriptors_dirty_ = true;
+
+        void* mapped{};
+        if (vmaMapMemory(allocator_, gpu_scene_buffer_.allocation, &mapped) != VK_SUCCESS)
+        {
+            destroy_buffer(gpu_scene_buffer_);
+            gpu_scene_buffer_ = retired;
+            gpu_scene_capacity_ = retired_capacity;
+            return false;
+        }
+        const auto byte_count =
+            static_cast<VkDeviceSize>(gpu_scene_mirror_.size()) * sizeof(gpu_scene_storage_instance);
+        std::memcpy(mapped, gpu_scene_mirror_.data(), static_cast<std::size_t>(byte_count));
+        vmaFlushAllocation(allocator_, gpu_scene_buffer_.allocation, 0, byte_count);
+        vmaUnmapMemory(allocator_, gpu_scene_buffer_.allocation);
+        if (retired.buffer != VK_NULL_HANDLE)
+        {
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, retired]() mutable { destroy_buffer(retired); });
+        }
+        return true;
+    }
+
+    void apply_gpu_scene_update(const gpu_scene_update_event& event)
+    {
+        if (!event.batch) return;
+        const auto& batch = *event.batch;
+        auto& profile = last_profile_.gpu_scene;
+        profile.enabled = true;
+        profile.hzb_occlusion = resolved_config_.features.hzb_occlusion;
+        profile.submission = resolved_config_.features.submission;
+        profile.capacity = batch.capacity;
+        profile.active_instances = batch.active_instance_count;
+        if (!ensure_gpu_scene_buffer(batch.capacity))
+        {
+            profile.fallback_reason = "GPU Scene buffer allocation failed; using CPU draw submission";
+            return;
+        }
+
+        bool reset{};
+        std::size_t first_dirty = gpu_scene_mirror_.size();
+        std::size_t last_dirty{};
+        for (const auto& update : batch.updates)
+        {
+            if (update.kind == gpu_scene_update_kind::reset)
+            {
+                reset = true;
+            }
+            else if (update.handle.index < gpu_scene_mirror_.size())
+            {
+                if (update.kind == gpu_scene_update_kind::upsert)
+                {
+                    gpu_scene_mirror_[update.handle.index] = pack_gpu_scene_instance(update.instance);
+                    ++profile.uploaded_instances;
+                }
+                else
+                {
+                    gpu_scene_mirror_[update.handle.index] = {};
+                    ++profile.destroyed_instances;
+                }
+                first_dirty = std::min(first_dirty, static_cast<std::size_t>(update.handle.index));
+                last_dirty = std::max(last_dirty, static_cast<std::size_t>(update.handle.index + 1u));
+            }
+        }
+
+        if (first_dirty >= last_dirty) return;
+        void* mapped{};
+        if (vmaMapMemory(allocator_, gpu_scene_buffer_.allocation, &mapped) != VK_SUCCESS)
+        {
+            profile.fallback_reason = "GPU Scene buffer mapping failed; retaining the previous generation";
+            return;
+        }
+        const auto byte_offset = first_dirty * sizeof(gpu_scene_storage_instance);
+        const auto byte_count = (last_dirty - first_dirty) * sizeof(gpu_scene_storage_instance);
+        std::memcpy(static_cast<std::byte*>(mapped) + byte_offset, gpu_scene_mirror_.data() + first_dirty, byte_count);
+        vmaFlushAllocation(allocator_, gpu_scene_buffer_.allocation, byte_offset, byte_count);
+        vmaUnmapMemory(allocator_, gpu_scene_buffer_.allocation);
+        profile.uploaded_bytes += byte_count;
+        if (reset) profile.history_valid = false;
+    }
+
+    void destroy_gpu_visibility_resources()
+    {
+        destroy_buffer(gpu_visibility_commands_);
+        destroy_buffer(gpu_visibility_counters_);
+        if (gpu_visibility_pipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, gpu_visibility_pipeline_, nullptr);
+        if (gpu_visibility_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, gpu_visibility_pipeline_layout_, nullptr);
+        if (gpu_visibility_descriptor_pool_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, gpu_visibility_descriptor_pool_, nullptr);
+        if (gpu_visibility_descriptor_set_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, gpu_visibility_descriptor_set_layout_, nullptr);
+        gpu_visibility_pipeline_ = VK_NULL_HANDLE;
+        gpu_visibility_pipeline_layout_ = VK_NULL_HANDLE;
+        gpu_visibility_descriptor_pool_ = VK_NULL_HANDLE;
+        gpu_visibility_descriptor_set_layout_ = VK_NULL_HANDLE;
+        gpu_visibility_descriptor_set_ = VK_NULL_HANDLE;
+        gpu_visibility_capacity_ = 0;
+        gpu_visibility_active_ = false;
+    }
+
+    bool ensure_gpu_visibility_resources()
+    {
+        if (!resolved_config_.features.gpu_driven_rendering || gpu_scene_capacity_ == 0 ||
+            gpu_scene_buffer_.buffer == VK_NULL_HANDLE)
+            return false;
+
+        if (gpu_visibility_capacity_ < gpu_scene_capacity_ || gpu_visibility_commands_.buffer == VK_NULL_HANDLE)
+        {
+            const auto capacity = std::max(256u, std::bit_ceil(gpu_scene_capacity_));
+            gpu_buffer commands{};
+            gpu_buffer counters{};
+            if (!create_buffer(static_cast<VkDeviceSize>(capacity) * indexed_indirect_command_stride,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+                                   VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                               VMA_MEMORY_USAGE_GPU_ONLY, commands) ||
+                !create_buffer(16u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                               VMA_MEMORY_USAGE_GPU_ONLY, counters))
+            {
+                destroy_buffer(commands);
+                destroy_buffer(counters);
+                return false;
+            }
+            auto retired_commands = gpu_visibility_commands_;
+            auto retired_counters = gpu_visibility_counters_;
+            gpu_visibility_commands_ = commands;
+            gpu_visibility_counters_ = counters;
+            gpu_visibility_capacity_ = capacity;
+            gpu_visibility_descriptors_dirty_ = true;
+            if (retired_commands.buffer != VK_NULL_HANDLE || retired_counters.buffer != VK_NULL_HANDLE)
+            {
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                         [this, retired_commands, retired_counters]() mutable
+                                         {
+                                             destroy_buffer(retired_commands);
+                                             destroy_buffer(retired_counters);
+                                         });
+            }
+        }
+
+        if (gpu_visibility_descriptor_set_layout_ == VK_NULL_HANDLE)
+        {
+            std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
+            for (std::uint32_t index = 0; index < bindings.size(); ++index)
+            {
+                bindings[index].binding = index;
+                bindings[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                bindings[index].descriptorCount = 1;
+                bindings[index].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            }
+            VkDescriptorSetLayoutCreateInfo layout{};
+            layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+            layout.pBindings = bindings.data();
+            if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &gpu_visibility_descriptor_set_layout_) !=
+                VK_SUCCESS)
+                return false;
+
+            gpu_visibility_descriptors_dirty_ = true;
+        }
+
+        if (gpu_visibility_descriptors_dirty_)
+        {
+            VkDescriptorPool replacement_pool{};
+            VkDescriptorSet replacement_set{};
+            VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3};
+            VkDescriptorPoolCreateInfo pool{};
+            pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            pool.maxSets = 1;
+            pool.poolSizeCount = 1;
+            pool.pPoolSizes = &pool_size;
+            if (vkCreateDescriptorPool(device_, &pool, nullptr, &replacement_pool) != VK_SUCCESS) return false;
+            VkDescriptorSetAllocateInfo allocate{};
+            allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+            allocate.descriptorPool = replacement_pool;
+            allocate.descriptorSetCount = 1;
+            allocate.pSetLayouts = &gpu_visibility_descriptor_set_layout_;
+            if (vkAllocateDescriptorSets(device_, &allocate, &replacement_set) != VK_SUCCESS)
+            {
+                vkDestroyDescriptorPool(device_, replacement_pool, nullptr);
+                return false;
+            }
+            std::array<VkDescriptorBufferInfo, 3> buffers{
+                VkDescriptorBufferInfo{gpu_scene_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{gpu_visibility_commands_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{gpu_visibility_counters_.buffer, 0, VK_WHOLE_SIZE}};
+            std::array<VkWriteDescriptorSet, 3> writes{};
+            for (std::uint32_t index = 0; index < writes.size(); ++index)
+            {
+                writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[index].dstSet = replacement_set;
+                writes[index].dstBinding = index;
+                writes[index].descriptorCount = 1;
+                writes[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                writes[index].pBufferInfo = &buffers[index];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+            const auto retired_pool = gpu_visibility_descriptor_pool_;
+            gpu_visibility_descriptor_pool_ = replacement_pool;
+            gpu_visibility_descriptor_set_ = replacement_set;
+            if (retired_pool != VK_NULL_HANDLE)
+                deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(), [this, retired_pool]()
+                                         { vkDestroyDescriptorPool(device_, retired_pool, nullptr); });
+            gpu_visibility_descriptors_dirty_ = false;
+        }
+
+        if (gpu_visibility_pipeline_ == VK_NULL_HANDLE)
+        {
+            const auto shader = create_shader_module(builtin::gpu_visibility_indirect_comp_spv,
+                                                     std::size(builtin::gpu_visibility_indirect_comp_spv));
+            if (shader == VK_NULL_HANDLE) return false;
+            VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(gpu_visibility_push_constants)};
+            VkPipelineLayoutCreateInfo layout{};
+            layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            layout.setLayoutCount = 1;
+            layout.pSetLayouts = &gpu_visibility_descriptor_set_layout_;
+            layout.pushConstantRangeCount = 1;
+            layout.pPushConstantRanges = &push;
+            if (vkCreatePipelineLayout(device_, &layout, nullptr, &gpu_visibility_pipeline_layout_) != VK_SUCCESS)
+            {
+                vkDestroyShaderModule(device_, shader, nullptr);
+                return false;
+            }
+            VkComputePipelineCreateInfo pipeline{};
+            pipeline.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+            pipeline.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            pipeline.stage.module = shader;
+            pipeline.stage.pName = "main";
+            pipeline.layout = gpu_visibility_pipeline_layout_;
+            const auto result =
+                vkCreateComputePipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &gpu_visibility_pipeline_);
+            vkDestroyShaderModule(device_, shader, nullptr);
+            if (result != VK_SUCCESS) return false;
+        }
+        return true;
+    }
+
+    void dispatch_gpu_visibility(VkCommandBuffer command_buffer)
+    {
+        gpu_visibility_active_ = false;
+        if (!graph_selects(builtin_render_pass::gpu_frustum_distance_cull) || !ensure_gpu_visibility_resources())
+        {
+            if (resolved_config_.features.gpu_driven_rendering)
+                last_profile_.gpu_scene.fallback_reason =
+                    "GPU visibility resources are unavailable; using direct candidate submission";
+            return;
+        }
+
+        vkCmdFillBuffer(command_buffer, gpu_visibility_counters_.buffer, 0, VK_WHOLE_SIZE, 0u);
+        VkBufferMemoryBarrier input_barrier{};
+        input_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        input_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
+        input_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        input_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        input_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        input_barrier.buffer = gpu_scene_buffer_.buffer;
+        input_barrier.size = VK_WHOLE_SIZE;
+        VkBufferMemoryBarrier counter_barrier = input_barrier;
+        counter_barrier.buffer = gpu_visibility_counters_.buffer;
+        std::array<VkBufferMemoryBarrier, 2> input_barriers{input_barrier, counter_barrier};
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr,
+                             static_cast<std::uint32_t>(input_barriers.size()), input_barriers.data(), 0, nullptr);
+
+        gpu_visibility_push_constants constants{};
+        std::copy(frame_camera_.view_projection.data(), frame_camera_.view_projection.data() + 16,
+                  constants.view_projection);
+        constants.camera_position_and_error[0] = frame_camera_.position[0];
+        constants.camera_position_and_error[1] = frame_camera_.position[1];
+        constants.camera_position_and_error[2] = frame_camera_.position[2];
+        constants.camera_position_and_error[3] = resolved_config_.geometry_error_threshold;
+        constants.instance_capacity = gpu_scene_capacity_;
+        constants.camera_cut = frame_camera_.camera_cut ? 1u : 0u;
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpu_visibility_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpu_visibility_pipeline_layout_, 0, 1,
+                                &gpu_visibility_descriptor_set_, 0, nullptr);
+        vkCmdPushConstants(command_buffer, gpu_visibility_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(constants), &constants);
+        vkCmdDispatch(command_buffer, (gpu_scene_capacity_ + 63u) / 64u, 1u, 1u);
+
+        VkBufferMemoryBarrier output_barrier{};
+        output_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        output_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        output_barrier.dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+        output_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        output_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        output_barrier.buffer = gpu_visibility_commands_.buffer;
+        output_barrier.size = VK_WHOLE_SIZE;
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+                             0, 0, nullptr, 1, &output_barrier, 0, nullptr);
+        gpu_visibility_active_ = true;
+        last_profile_.gpu_scene.enabled = true;
+        last_profile_.gpu_scene.submission = gpu_submission_path::indirect;
+    }
+
+    bool draw_gpu_visibility_command(VkCommandBuffer command_buffer, gpu_scene_instance_handle handle) const
+    {
+        if (!gpu_visibility_active_ || !handle.valid() || handle.index >= gpu_visibility_capacity_) return false;
+        vkCmdDrawIndexedIndirect(command_buffer, gpu_visibility_commands_.buffer,
+                                 static_cast<VkDeviceSize>(handle.index) * indexed_indirect_command_stride, 1u,
+                                 static_cast<std::uint32_t>(indexed_indirect_command_stride));
+        return true;
     }
 
     void update_light_buffer()
@@ -6361,23 +6795,37 @@ private:
     }
 
     void draw_indexed_mesh(VkCommandBuffer command_buffer, const draw_mesh_event& draw, VkPipelineLayout layout,
-                           VkShaderStageFlags stages)
+                           VkShaderStageFlags stages, bool gpu_culled = false, bool write_motion = false)
     {
         const auto found = meshes_.find(resource_key(draw.mesh));
         if (found == meshes_.end()) return;
 
-        const auto constants = build_mesh_constants(draw);
+        auto constants = build_mesh_constants(draw);
+        if (write_motion)
+        {
+            const auto previous_mvp = math::matmul(draw.previous_view_projection, draw.previous_model);
+            const auto* values = previous_mvp.data();
+            std::copy(values, values + 4, constants.light_direction_intensity);
+            std::copy(values + 4, values + 7, constants.light_color);
+            constants.camera_position[0] = values[7];
+            std::copy(values + 8, values + 11, constants.camera_position + 1);
+            constants.fog_color_density[0] = values[11];
+            std::copy(values + 12, values + 15, constants.fog_color_density + 1);
+            constants.fog_params[0] = values[15];
+        }
         vkCmdPushConstants(command_buffer, layout, stages, 0, sizeof(constants), &constants);
         const VkDeviceSize offset = 0;
         const VkBuffer vertex_buffer = mesh_vertex_buffer(found->second);
         if (vertex_buffer == VK_NULL_HANDLE) return;
         vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offset);
         vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
+        if (!gpu_culled || !draw_gpu_visibility_command(command_buffer, draw.gpu_scene_instance))
+            vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
     }
 
     void draw_indexed_virtual_cluster(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw,
-                                      VkPipelineLayout layout, VkShaderStageFlags stages)
+                                      VkPipelineLayout layout, VkShaderStageFlags stages, bool gpu_culled = false,
+                                      bool write_motion = false)
     {
         const auto found = virtual_meshes_.find(resource_key(draw.mesh));
         if (found == virtual_meshes_.end() || draw.cluster_index >= found->second.clusters.size()) return;
@@ -6385,12 +6833,25 @@ private:
         const auto& cluster = found->second.clusters[draw.cluster_index];
         if (cluster.index_count == 0 || cluster.first_index + cluster.index_count > found->second.index_count) return;
 
-        const auto constants = build_mesh_constants(draw.draw);
+        auto constants = build_mesh_constants(draw.draw);
+        if (write_motion)
+        {
+            const auto previous_mvp = math::matmul(draw.draw.previous_view_projection, draw.draw.previous_model);
+            const auto* values = previous_mvp.data();
+            std::copy(values, values + 4, constants.light_direction_intensity);
+            std::copy(values + 4, values + 7, constants.light_color);
+            constants.camera_position[0] = values[7];
+            std::copy(values + 8, values + 11, constants.camera_position + 1);
+            constants.fog_color_density[0] = values[11];
+            std::copy(values + 12, values + 15, constants.fog_color_density + 1);
+            constants.fog_params[0] = values[15];
+        }
         vkCmdPushConstants(command_buffer, layout, stages, 0, sizeof(constants), &constants);
         const VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
         vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
+        if (!gpu_culled || !draw_gpu_visibility_command(command_buffer, draw.draw.gpu_scene_instance))
+            vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
     }
 
     bool render_deferred_scene(VkCommandBuffer command_buffer)
@@ -6449,7 +6910,7 @@ private:
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_layout_, 0, 1,
                                         &descriptor_set, 0, nullptr);
                 draw_indexed_mesh(command_buffer, draw, shadow_pipeline_layout_,
-                                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+                                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true);
             }
             for (const auto& draw : frame_virtual_draws_)
             {
@@ -6458,7 +6919,7 @@ private:
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_pipeline_layout_, 0, 1,
                                         &descriptor_set, 0, nullptr);
                 draw_indexed_virtual_cluster(command_buffer, draw, shadow_pipeline_layout_,
-                                             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+                                             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true);
             }
 
             cmd_end_rendering(command_buffer);
@@ -6516,7 +6977,7 @@ private:
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_layout_, 0, 1,
                                         &material_descriptor_set, 0, nullptr);
                 draw_indexed_mesh(command_buffer, draw, mesh_pipeline_layout_,
-                                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+                                  VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
             }
             for (const auto& draw : frame_virtual_draws_)
             {
@@ -6531,7 +6992,7 @@ private:
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_layout_, 0, 1,
                                         &material_descriptor_set, 0, nullptr);
                 draw_indexed_virtual_cluster(command_buffer, draw, mesh_pipeline_layout_,
-                                             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+                                             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
             }
 
             cmd_end_rendering(command_buffer);
@@ -6667,6 +7128,8 @@ private:
     {
         if (viewport_image_ == VK_NULL_HANDLE) return;
 
+        dispatch_gpu_visibility(command_buffer);
+
         transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
@@ -6769,7 +7232,8 @@ private:
                 if (vertex_buffer == VK_NULL_HANDLE) return;
                 vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offset);
                 vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
+                if (!draw_gpu_visibility_command(command_buffer, draw.gpu_scene_instance))
+                    vkCmdDrawIndexed(command_buffer, found->second.index_count, 1, 0, 0, 0);
             };
             const auto draw_virtual_with_pipeline = [&](const virtual_cluster_draw& draw, VkPipeline pipeline)
             {
@@ -6792,7 +7256,8 @@ private:
                 const VkDeviceSize offset = 0;
                 vkCmdBindVertexBuffers(command_buffer, 0, 1, &found->second.vertices.buffer, &offset);
                 vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
-                vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
+                if (!draw_gpu_visibility_command(command_buffer, draw.draw.gpu_scene_instance))
+                    vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
             };
 
             for (const auto& draw : frame_draws_)
@@ -6984,6 +7449,19 @@ private:
     bool frame_camera_valid_{};
     bool frame_shadows_enabled_{true};
     gpu_buffer light_buffer_;
+    gpu_buffer gpu_scene_buffer_;
+    std::vector<gpu_scene_storage_instance> gpu_scene_mirror_;
+    std::uint32_t gpu_scene_capacity_{};
+    gpu_buffer gpu_visibility_commands_;
+    gpu_buffer gpu_visibility_counters_;
+    std::uint32_t gpu_visibility_capacity_{};
+    VkDescriptorSetLayout gpu_visibility_descriptor_set_layout_{};
+    VkDescriptorPool gpu_visibility_descriptor_pool_{};
+    VkDescriptorSet gpu_visibility_descriptor_set_{};
+    VkPipelineLayout gpu_visibility_pipeline_layout_{};
+    VkPipeline gpu_visibility_pipeline_{};
+    bool gpu_visibility_active_{};
+    bool gpu_visibility_descriptors_dirty_{true};
     std::vector<gpu_buffer> shadow_uniform_buffers_;
     std::vector<debug_overlay_frame_buffer> debug_overlay_buffers_;
     std::uint32_t active_frame_index_{};
@@ -7253,6 +7731,13 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.draw_indirect = properties.limits.maxDrawIndirectCount > 0;
     capabilities.draw_indirect_count =
         vulkan12_or_newer || has_extension(extensions, VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME);
+    capabilities.compute_shaders = capabilities.compute_queue;
+    capabilities.storage_buffers = properties.limits.maxStorageBufferRange >= 128u * 1024u * 1024u;
+    capabilities.storage_images = properties.limits.maxPerStageDescriptorStorageImages > 0;
+    capabilities.shader_draw_parameters = properties.apiVersion >= VK_API_VERSION_1_1;
+    capabilities.gpu_scene_indirect =
+        capabilities.compute_shaders && capabilities.storage_buffers && capabilities.draw_indirect;
+    capabilities.virtual_geometry = true;
     capabilities.sampler_anisotropy = features.features.samplerAnisotropy == VK_TRUE;
     capabilities.texture_compression_bc = features.features.textureCompressionBC == VK_TRUE;
     capabilities.synchronization2 = synchronization2.synchronization2 == VK_TRUE;
@@ -7262,6 +7747,7 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.descriptor_buffer = descriptor_buffer.descriptorBuffer == VK_TRUE;
     capabilities.mesh_shaders = mesh_shader.meshShader == VK_TRUE;
     capabilities.ray_tracing = ray_tracing.rayTracingPipeline == VK_TRUE;
+    capabilities.sparse_resources = features.features.sparseBinding == VK_TRUE;
     capabilities.variable_rate_shading = fragment_shading_rate.pipelineFragmentShadingRate == VK_TRUE;
     capabilities.fill_mode_non_solid = features.features.fillModeNonSolid == VK_TRUE;
     return capabilities;

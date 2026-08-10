@@ -26,5 +26,15 @@ arc_configure_first_party_target(arc_render_vulkan_tests)
 target_link_libraries(arc_render_vulkan_tests PRIVATE arc-render-vulkan Catch2::Catch2WithMain)
 target_include_directories(arc_render_vulkan_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
+if(WIN32)
+  add_custom_command(
+    TARGET arc_render_vulkan_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:arc-render-vulkan>"
+            "$<TARGET_FILE_DIR:arc_render_vulkan_tests>"
+    VERBATIM
+  )
+endif()
+
 include(Catch)
 catch_discover_tests(arc_render_vulkan_tests)
