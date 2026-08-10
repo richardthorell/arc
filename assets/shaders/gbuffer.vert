@@ -39,6 +39,11 @@ void main()
     out_texcoord = in_texcoord;
     out_tangent = vec4(mat3(constants.model) * in_tangent.xyz, in_tangent.w);
     out_clip_position = constants.model_view_projection * local_position;
-    out_previous_clip_position = out_clip_position;
+    mat4 previous_model_view_projection = mat4(
+        constants.light_direction_intensity,
+        vec4(constants.light_color.xyz, constants.camera_position.x),
+        vec4(constants.camera_position.yzw, constants.fog_color_density.x),
+        vec4(constants.fog_color_density.yzw, constants.fog_params.x));
+    out_previous_clip_position = previous_model_view_projection * local_position;
     gl_Position = out_clip_position;
 }

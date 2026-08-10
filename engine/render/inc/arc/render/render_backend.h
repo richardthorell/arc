@@ -32,7 +32,8 @@ enum class render_quality_tier : std::uint8_t
     auto_select,
     low,
     medium,
-    high
+    high,
+    ultra
 };
 
 /**
@@ -53,6 +54,14 @@ inline constexpr float dynamic_resolution_smoothing = 0.2f;
 inline constexpr std::uint32_t dynamic_resolution_over_budget_frames = 3;
 inline constexpr std::uint32_t dynamic_resolution_under_budget_frames = 8;
 
+/** @brief Backend-neutral draw submission strategy selected for a view. */
+enum class gpu_submission_path : std::uint8_t
+{
+    cpu_direct,
+    indirect,
+    indirect_count
+};
+
 /** @brief Immutable renderer limits associated with one implemented quality tier. */
 struct render_quality_profile
 {
@@ -71,6 +80,21 @@ struct render_quality_profile
     std::uint32_t max_local_shadow_resolution{1024};
     bool screen_space_shadows{true};
     float screen_space_shadow_scale{0.5f};
+    float target_frame_time_ms{default_target_frame_time_ms};
+    float geometry_error_threshold{1.0f};
+    float minimum_geometry_error_threshold{0.5f};
+    float maximum_geometry_error_threshold{4.0f};
+    float minimum_shadow_resolution_scale{0.5f};
+    float maximum_shadow_resolution_scale{1.0f};
+    float minimum_volumetric_resolution_scale{0.5f};
+    float maximum_volumetric_resolution_scale{1.0f};
+    std::uint32_t gi_trace_budget{1};
+    std::uint32_t reflection_ray_budget{1};
+    gpu_submission_path preferred_submission{gpu_submission_path::indirect_count};
+    bool prefer_gpu_driven{true};
+    bool prefer_hzb_occlusion{true};
+    bool prefer_temporal_upscaling{true};
+    bool prefer_async_compute{true};
 };
 
 inline constexpr render_quality_profile low_render_quality_profile{.quality = render_quality_tier::low,
@@ -87,7 +111,21 @@ inline constexpr render_quality_profile low_render_quality_profile{.quality = re
                                                                    .max_shadowed_spot_lights = 2,
                                                                    .max_local_shadow_resolution = 512,
                                                                    .screen_space_shadows = false,
-                                                                   .screen_space_shadow_scale = 0.0f};
+                                                                   .screen_space_shadow_scale = 0.0f,
+                                                                   .target_frame_time_ms = default_target_frame_time_ms,
+                                                                   .geometry_error_threshold = 2.0f,
+                                                                   .minimum_geometry_error_threshold = 1.0f,
+                                                                   .maximum_geometry_error_threshold = 6.0f,
+                                                                   .minimum_shadow_resolution_scale = 0.5f,
+                                                                   .minimum_volumetric_resolution_scale = 0.35f,
+                                                                   .gi_trace_budget = 0,
+                                                                   .reflection_ray_budget = 0,
+                                                                   .preferred_submission =
+                                                                       gpu_submission_path::indirect,
+                                                                   .prefer_gpu_driven = false,
+                                                                   .prefer_hzb_occlusion = false,
+                                                                   .prefer_temporal_upscaling = false,
+                                                                   .prefer_async_compute = false};
 
 inline constexpr render_quality_profile standard_render_quality_profile{};
 
@@ -105,12 +143,46 @@ inline constexpr render_quality_profile high_render_quality_profile{.quality = r
                                                                     .max_shadowed_spot_lights = 16,
                                                                     .max_local_shadow_resolution = 2048,
                                                                     .screen_space_shadows = true,
-                                                                    .screen_space_shadow_scale = 1.0f};
+                                                                    .screen_space_shadow_scale = 1.0f,
+                                                                    .target_frame_time_ms =
+                                                                        default_target_frame_time_ms,
+                                                                    .geometry_error_threshold = 0.75f,
+                                                                    .minimum_geometry_error_threshold = 0.35f,
+                                                                    .maximum_geometry_error_threshold = 3.0f,
+                                                                    .minimum_shadow_resolution_scale = 0.67f,
+                                                                    .minimum_volumetric_resolution_scale = 0.5f,
+                                                                    .gi_trace_budget = 2,
+                                                                    .reflection_ray_budget = 2};
+
+inline constexpr render_quality_profile ultra_render_quality_profile{.quality = render_quality_tier::ultra,
+                                                                     .default_path = render_path::deferred,
+                                                                     .minimum_render_scale = 0.75f,
+                                                                     .maximum_render_scale = 1.0f,
+                                                                     .max_point_lights = 128,
+                                                                     .max_spot_lights = 128,
+                                                                     .directional_shadow_cascades = 4,
+                                                                     .directional_shadow_resolution = 4096,
+                                                                     .directional_shadow_distance = 400.0f,
+                                                                     .local_shadow_atlas_resolution = 8192,
+                                                                     .max_shadowed_point_lights = 12,
+                                                                     .max_shadowed_spot_lights = 24,
+                                                                     .max_local_shadow_resolution = 2048,
+                                                                     .screen_space_shadows = true,
+                                                                     .screen_space_shadow_scale = 1.0f,
+                                                                     .target_frame_time_ms = 1000.0f / 30.0f,
+                                                                     .geometry_error_threshold = 0.5f,
+                                                                     .minimum_geometry_error_threshold = 0.25f,
+                                                                     .maximum_geometry_error_threshold = 2.0f,
+                                                                     .minimum_shadow_resolution_scale = 0.75f,
+                                                                     .minimum_volumetric_resolution_scale = 0.67f,
+                                                                     .gi_trace_budget = 4,
+                                                                     .reflection_ray_budget = 4};
 
 [[nodiscard]] constexpr const render_quality_profile& quality_profile(render_quality_tier quality) noexcept
 {
     if (quality == render_quality_tier::low) return low_render_quality_profile;
     if (quality == render_quality_tier::high) return high_render_quality_profile;
+    if (quality == render_quality_tier::ultra) return ultra_render_quality_profile;
     return standard_render_quality_profile;
 }
 
@@ -139,10 +211,25 @@ struct render_capabilities
     bool graphics_queue{};
     bool compute_queue{};
     bool transfer_queue{};
+    bool dedicated_compute_queue{};
     bool presentation{};
     bool gpu_timestamps{};
     bool draw_indirect{};
     bool draw_indirect_count{};
+    bool compute_shaders{};
+    bool storage_buffers{};
+    bool storage_images{};
+    bool shader_draw_parameters{};
+    /** @brief Backend has an executable GPU Scene visibility and indirect draw pipeline. */
+    bool gpu_scene_indirect{};
+    /** @brief GPU Scene bins can be submitted with a GPU-generated draw count. */
+    bool gpu_scene_indirect_count{};
+    /** @brief Backend can build and sample a cross-frame hierarchical depth buffer. */
+    bool hzb_occlusion{};
+    /** @brief Backend can execute ARC's temporal resolve pipeline. */
+    bool temporal_resolve{};
+    bool virtual_geometry{};
+    bool software_ray_tracing{};
     bool sampler_anisotropy{};
     bool texture_compression_bc{};
     bool synchronization2{};
@@ -152,6 +239,7 @@ struct render_capabilities
     bool descriptor_buffer{};
     bool mesh_shaders{};
     bool ray_tracing{};
+    bool sparse_resources{};
     bool variable_rate_shading{};
     bool fill_mode_non_solid{};
 };
@@ -171,11 +259,21 @@ struct render_feature_set
     bool descriptor_buffer{};
     bool draw_indirect{};
     bool draw_indirect_count{};
+    bool gpu_driven_rendering{};
+    bool hzb_occlusion{};
+    bool temporal_antialiasing{};
+    bool temporal_upscaling{};
+    bool async_compute{};
+    bool virtual_geometry{};
+    bool software_ray_tracing{};
+    bool hardware_ray_tracing{};
+    bool sparse_resources{};
     bool sampler_anisotropy{};
     bool texture_compression_bc{};
     bool mesh_shaders{};
     bool ray_tracing{};
     bool variable_rate_shading{};
+    gpu_submission_path submission{gpu_submission_path::cpu_direct};
 };
 
 /**
@@ -203,6 +301,11 @@ struct resolved_render_config
     std::uint32_t max_local_shadow_resolution{standard_render_quality_profile.max_local_shadow_resolution};
     bool screen_space_shadows{standard_render_quality_profile.screen_space_shadows};
     float screen_space_shadow_scale{standard_render_quality_profile.screen_space_shadow_scale};
+    float geometry_error_threshold{standard_render_quality_profile.geometry_error_threshold};
+    float shadow_resolution_scale{1.0f};
+    float volumetric_resolution_scale{1.0f};
+    std::uint32_t gi_trace_budget{standard_render_quality_profile.gi_trace_budget};
+    std::uint32_t reflection_ray_budget{standard_render_quality_profile.reflection_ray_budget};
     std::vector<std::string> fallback_reasons;
 };
 
@@ -242,8 +345,22 @@ public:
     virtual ~command_encoder() = default;
 
     virtual void resource_barrier(const render_resource_transition& transition) = 0;
+    virtual void begin_submission(const compiled_queue_submission&) {}
+    virtual void end_submission(const compiled_queue_submission&) {}
     virtual void begin_pass(const compiled_render_pass& pass) = 0;
     virtual void end_pass() = 0;
+
+    /** @brief Dispatch backend-neutral compute work for the active pass. */
+    virtual void dispatch(std::uint32_t, std::uint32_t, std::uint32_t) {}
+
+    /** @brief Draw a fixed-capacity indexed indirect command buffer. */
+    virtual void draw_indexed_indirect(render_graph_resource_handle, std::uint64_t, std::uint32_t, std::uint32_t) {}
+
+    /** @brief Draw an indexed indirect buffer using a GPU-generated count. */
+    virtual void draw_indexed_indirect_count(render_graph_resource_handle, std::uint64_t, render_graph_resource_handle,
+                                             std::uint64_t, std::uint32_t, std::uint32_t)
+    {
+    }
 };
 
 /**
@@ -390,6 +507,38 @@ struct render_shadow_profile
     std::string fallback_reason;
 };
 
+/** @brief Persistent GPU Scene and visibility work executed for one frame. */
+struct render_gpu_scene_profile
+{
+    bool enabled{};
+    bool hzb_occlusion{};
+    bool history_valid{};
+    gpu_submission_path submission{gpu_submission_path::cpu_direct};
+    std::uint32_t capacity{};
+    std::uint32_t active_instances{};
+    std::uint32_t uploaded_instances{};
+    std::uint32_t destroyed_instances{};
+    std::uint64_t uploaded_bytes{};
+    std::uint32_t frustum_rejected{};
+    std::uint32_t distance_rejected{};
+    std::uint32_t occlusion_rejected{};
+    std::uint32_t visible_instances{};
+    std::uint32_t indirect_commands{};
+    std::string fallback_reason;
+};
+
+/** @brief Temporal history state used by TAA and temporal upscaling. */
+struct render_temporal_profile
+{
+    bool enabled{};
+    bool upscaling{};
+    bool history_valid{};
+    bool camera_cut{};
+    math::vector2f jitter{};
+    std::string reset_reason;
+    std::string fallback_reason;
+};
+
 /**
  * @brief Backend frame profile data exposed to tools such as the editor profiler.
  */
@@ -402,6 +551,8 @@ struct render_backend_frame_profile
     clustered_light_grid_profile clustered_lights;
     render_environment_profile environment;
     render_shadow_profile shadows;
+    render_gpu_scene_profile gpu_scene;
+    render_temporal_profile temporal;
     resolved_render_config configuration;
 };
 

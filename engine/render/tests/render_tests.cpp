@@ -111,6 +111,11 @@ public:
 class recording_command_encoder final : public arc::render::command_encoder
 {
 public:
+    void begin_submission(const arc::render::compiled_queue_submission& submission) override
+    {
+        submissions.push_back(submission.queue);
+    }
+
     void resource_barrier(const arc::render::render_resource_transition& transition) override
     {
         barriers.push_back(transition.resource);
@@ -128,6 +133,7 @@ public:
 
     std::vector<std::string> barriers;
     std::vector<std::string> passes;
+    std::vector<arc::render::render_queue_type> submissions;
     std::size_t ended_passes{};
 };
 
@@ -484,6 +490,56 @@ TEST_CASE("compiled render graph executes passes and barriers through a command 
     REQUIRE(recorded == 2);
 }
 
+TEST_CASE("render graph schedules cross-queue waits and rotates persistent history")
+{
+    using namespace arc::render;
+    render_graph graph;
+    const auto seed = graph.add_resource({.name = "seed", .kind = render_resource_kind::buffer, .byte_size = 4096});
+    const auto history =
+        graph.add_resource({.name = "history",
+                            .kind = render_resource_kind::color_texture,
+                            .extent = {.width = 64, .height = 64},
+                            .format = render_format::rgba16_float,
+                            .persistent_key = "test.history",
+                            .history_length = 2,
+                            .history_reset = render_history_reset::camera_cut | render_history_reset::resize});
+    graph.add_pass({.name = "graphics seed",
+                    .queue = render_queue_type::graphics,
+                    .writes = {{.handle = seed,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::storage_buffer,
+                                .write = true}}});
+    graph.add_pass({.name = "temporal compute",
+                    .queue = render_queue_type::compute,
+                    .reads = {{.handle = seed,
+                               .kind = render_resource_kind::buffer,
+                               .usage = render_resource_usage::storage_buffer},
+                              {.handle = history,
+                               .kind = render_resource_kind::color_texture,
+                               .usage = render_resource_usage::sampled,
+                               .history = render_history_access::previous}},
+                    .writes = {{.handle = history,
+                                .kind = render_resource_kind::color_texture,
+                                .usage = render_resource_usage::storage,
+                                .write = true}}});
+
+    const auto compiled = graph.compile();
+    REQUIRE(compiled.submissions.size() == 2);
+    REQUIRE(compiled.submissions[0].queue == render_queue_type::graphics);
+    REQUIRE(compiled.submissions[1].queue == render_queue_type::compute);
+    REQUIRE(compiled.submissions[1].waits.size() == 1);
+    REQUIRE(compiled.submissions[1].waits[0].queue == render_queue_type::graphics);
+    REQUIRE(compiled.history_rotations.size() == 1);
+    REQUIRE(compiled.history_rotations[0].persistent_key == "test.history");
+    REQUIRE(compiled.history_rotations[0].history_length == 2);
+    REQUIRE(compiled.lifetimes[history.index].physical_resource != compiled.lifetimes[seed.index].physical_resource);
+
+    recording_command_encoder encoder;
+    execute_render_graph(compiled, encoder);
+    REQUIRE(encoder.submissions ==
+            std::vector<render_queue_type>{render_queue_type::graphics, render_queue_type::compute});
+}
+
 TEST_CASE("render graph rejects invalid resource declarations and internal reads")
 {
     arc::render::render_graph undeclared;
@@ -580,6 +636,43 @@ TEST_CASE("scene draw graph provides a compact forward plus fallback")
                         [](const auto& pass) { return pass.name == "forward opaque"; }));
     for (const auto& pass : compiled.passes)
         REQUIRE(pass.name != "gbuffer pass");
+}
+
+TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal history work")
+{
+    using namespace arc::render;
+    resolved_render_config config;
+    config.quality = render_quality_tier::ultra;
+    config.path = render_path::deferred;
+    config.render_scale = 0.75f;
+    config.features.gpu_driven_rendering = true;
+    config.features.hzb_occlusion = true;
+    config.features.temporal_antialiasing = true;
+    config.features.temporal_upscaling = true;
+    config.features.async_compute = true;
+    config.features.submission = gpu_submission_path::indirect_count;
+
+    const auto compiled = make_scene_draw_graph("viewport", config, true).compile();
+    const auto contains = [&](builtin_render_pass expected)
+    {
+        return std::any_of(compiled.passes.begin(), compiled.passes.end(),
+                           [expected](const auto& pass) { return pass.builtin == expected; });
+    };
+    REQUIRE(contains(builtin_render_pass::gpu_scene_upload));
+    REQUIRE(contains(builtin_render_pass::gpu_frustum_distance_cull));
+    REQUIRE(contains(builtin_render_pass::gpu_hzb_occlusion_cull));
+    REQUIRE(contains(builtin_render_pass::gpu_indirect_command_generation));
+    REQUIRE(contains(builtin_render_pass::depth_pyramid));
+    REQUIRE(contains(builtin_render_pass::reactive_mask));
+    REQUIRE(contains(builtin_render_pass::disocclusion_mask));
+    REQUIRE(contains(builtin_render_pass::temporal_upscale));
+    REQUIRE(contains(builtin_render_pass::spatial_sharpen));
+    REQUIRE(std::any_of(compiled.submissions.begin(), compiled.submissions.end(),
+                        [](const auto& submission) { return submission.queue == render_queue_type::compute; }));
+    REQUIRE(std::any_of(compiled.history_rotations.begin(), compiled.history_rotations.end(),
+                        [](const auto& history) { return history.persistent_key == "view.temporal_color"; }));
+    REQUIRE(std::any_of(compiled.history_rotations.begin(), compiled.history_rotations.end(),
+                        [](const auto& history) { return history.persistent_key == "view.visibility_hzb"; }));
 }
 
 TEST_CASE("environment lighting graph schedules scalable IBL generation")
@@ -812,6 +905,57 @@ TEST_CASE("render world preparation culls sorts batches and emits indirect comma
     REQUIRE(packet.indirect_draws[0].instance_count == 2);
 }
 
+TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
+{
+    using namespace arc::render;
+    render_world_packet packet;
+    packet.gpu_scene_world_id = 17;
+    packet.world_epoch = 3;
+    packet.items.push_back({.mesh = {.index = 1, .generation = 1},
+                            .material = {.index = 2, .generation = 1},
+                            .world_bounds = arc::geometric::box3f{arc::geometric::point3f{-1.0f, -1.0f, -1.0f},
+                                                                  arc::geometric::point3f{1.0f, 1.0f, 1.0f}},
+                            .object_id = 41});
+
+    gpu_scene scene;
+    const auto initial = scene.synchronize(packet, 1);
+    REQUIRE(initial.active_instance_count == 1);
+    REQUIRE(initial.updates.size() == 2); // epoch reset followed by first upload
+    const auto handle = initial.updates.back().handle;
+    REQUIRE(handle.valid());
+    REQUIRE(scene.find(handle) != nullptr);
+
+    auto moved = packet.items[0].model;
+    moved(0, 3) = 4.0f;
+    packet.items[0].model = moved;
+    const auto update = scene.synchronize(packet, 2);
+    REQUIRE(update.updates.size() == 1);
+    REQUIRE(update.updates[0].handle == handle);
+    REQUIRE(update.updates[0].dirty == gpu_scene_dirty::transform);
+    REQUIRE(update.updates[0].instance.previous_model(0, 3) == Catch::Approx(0.0f));
+    const auto second_view = scene.synchronize(packet, 2);
+    REQUIRE(second_view.updates.empty());
+
+    packet.items.clear();
+    const auto removed = scene.synchronize(packet, 3);
+    REQUIRE(removed.active_instance_count == 0);
+    REQUIRE(removed.updates.size() == 1);
+    REQUIRE(removed.updates[0].kind == gpu_scene_update_kind::destroy);
+    REQUIRE(removed.updates[0].handle == handle);
+    REQUIRE(scene.find(handle) == nullptr);
+}
+
+TEST_CASE("GPU-driven preparation retains the CPU visibility reference fallback")
+{
+    arc::render::render_world_packet packet;
+    packet.camera.view_projection = arc::math::identity<float, 4>();
+    packet.items.push_back({.mesh = {.index = 1, .generation = 1},
+                            .world_bounds = arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f},
+                                                                  arc::geometric::point3f{0.5f, 0.5f, 0.5f}}});
+    arc::render::prepare_render_world(packet, {.gpu_driven = true});
+    REQUIRE(packet.visible_items == std::vector<std::uint32_t>{0});
+}
+
 TEST_CASE("renderer submits committed packets to attached backend")
 {
     auto backend = std::make_unique<recording_backend>();
@@ -883,6 +1027,59 @@ TEST_CASE("render quality profiles expose immutable implemented tier policy")
     REQUIRE(high.minimum_render_scale == Catch::Approx(0.67f));
     REQUIRE(high.directional_shadow_resolution == 4096);
     REQUIRE(high.local_shadow_atlas_resolution == 8192);
+
+    const auto& ultra = quality_profile(render_quality_tier::ultra);
+    REQUIRE(&ultra == &ultra_render_quality_profile);
+    REQUIRE(ultra.max_point_lights == 128);
+    REQUIRE(ultra.gi_trace_budget == 4);
+    REQUIRE(ultra.target_frame_time_ms == Catch::Approx(1000.0f / 30.0f));
+}
+
+TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallbacks")
+{
+    using namespace arc::render;
+    render_capabilities capabilities{};
+    capabilities.dedicated_video_memory = 16ull * 1024ull * 1024ull * 1024ull;
+    capabilities.compute_queue = true;
+    capabilities.dedicated_compute_queue = true;
+    capabilities.compute_shaders = true;
+    capabilities.storage_buffers = true;
+    capabilities.storage_images = true;
+    capabilities.shader_draw_parameters = true;
+    capabilities.gpu_scene_indirect = true;
+    capabilities.gpu_scene_indirect_count = true;
+    capabilities.hzb_occlusion = true;
+    capabilities.temporal_resolve = true;
+    capabilities.virtual_geometry = true;
+    capabilities.software_ray_tracing = true;
+    capabilities.draw_indirect = true;
+    capabilities.draw_indirect_count = true;
+    capabilities.sparse_resources = true;
+    capabilities.ray_tracing = true;
+
+    renderer_config config{};
+    config.quality = render_quality_tier::ultra;
+    auto resolved = resolve_render_config(config, capabilities);
+    REQUIRE(resolved.quality == render_quality_tier::ultra);
+    REQUIRE(resolved.features.gpu_driven_rendering);
+    REQUIRE(resolved.features.hzb_occlusion);
+    REQUIRE(resolved.features.temporal_antialiasing);
+    REQUIRE(resolved.features.temporal_upscaling);
+    REQUIRE(resolved.features.async_compute);
+    REQUIRE(resolved.features.virtual_geometry);
+    REQUIRE(resolved.features.software_ray_tracing);
+    REQUIRE(resolved.features.hardware_ray_tracing);
+    REQUIRE(resolved.features.submission == gpu_submission_path::indirect_count);
+
+    config.force_disable_gpu_driven = true;
+    config.force_disable_temporal = true;
+    config.force_disable_async_compute = true;
+    config.force_cpu_submission = true;
+    resolved = resolve_render_config(config, capabilities);
+    REQUIRE_FALSE(resolved.features.gpu_driven_rendering);
+    REQUIRE_FALSE(resolved.features.temporal_antialiasing);
+    REQUIRE_FALSE(resolved.features.async_compute);
+    REQUIRE(resolved.features.submission == gpu_submission_path::cpu_direct);
 }
 
 TEST_CASE("renderer applies resolved configuration when attaching a backend")
@@ -903,25 +1100,22 @@ TEST_CASE("renderer applies resolved configuration when attaching a backend")
     REQUIRE_FALSE(backend_ptr->configured.fallback_reasons.empty());
 }
 
-TEST_CASE("dynamic resolution uses smoothed hysteresis and sixteenth steps")
+TEST_CASE("frame budget controller scales expensive systems before resolution")
 {
-    arc::render::dynamic_resolution_controller controller;
-    controller.reset(arc::render::default_target_frame_time_ms,
-                     arc::render::low_render_quality_profile.minimum_render_scale,
-                     arc::render::low_render_quality_profile.maximum_render_scale);
+    arc::render::frame_budget_controller controller;
+    controller.reset(arc::render::standard_render_quality_profile, arc::render::default_target_frame_time_ms);
 
     for (std::uint32_t index = 0; index < 12; ++index)
         controller.update(30.0f);
-    const float reduced = controller.scale();
-    REQUIRE(reduced < 1.0f);
-    REQUIRE(reduced >= 0.5f);
-    REQUIRE(std::round(reduced / arc::render::dynamic_resolution_scale_step) ==
-            Catch::Approx(reduced / arc::render::dynamic_resolution_scale_step));
+    const auto reduced = controller.settings();
+    REQUIRE(reduced.volumetric_resolution_scale < 1.0f);
+    REQUIRE(reduced.render_scale == Catch::Approx(1.0f));
+    REQUIRE(controller.smoothed_frame_time_ms() > arc::render::default_target_frame_time_ms);
 
     for (std::uint32_t index = 0; index < 48; ++index)
         controller.update(5.0f);
-    REQUIRE(controller.scale() > reduced);
-    REQUIRE(controller.scale() <= 1.0f);
+    REQUIRE(controller.settings().volumetric_resolution_scale >= reduced.volumetric_resolution_scale);
+    REQUIRE(controller.settings().render_scale <= 1.0f);
 }
 
 TEST_CASE("renderer exposes compiled render graph snapshots through frame profile")

@@ -1,0 +1,29 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D source_depth;
+layout(r32f, set = 0, binding = 1) uniform writeonly image2D destination_mip;
+
+layout(push_constant) uniform depth_pyramid_constants
+{
+    ivec2 destination_extent;
+    int source_mip;
+    uint reverse_z;
+} constants;
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(pixel, constants.destination_extent)))
+        return;
+    ivec2 source = pixel * 2;
+    float d0 = texelFetch(source_depth, source + ivec2(0, 0), constants.source_mip).r;
+    float d1 = texelFetch(source_depth, source + ivec2(1, 0), constants.source_mip).r;
+    float d2 = texelFetch(source_depth, source + ivec2(0, 1), constants.source_mip).r;
+    float d3 = texelFetch(source_depth, source + ivec2(1, 1), constants.source_mip).r;
+    // Retain the farthest depth in each footprint so occlusion remains conservative.
+    float reduced = constants.reverse_z != 0u ? min(min(d0, d1), min(d2, d3))
+                                               : max(max(d0, d1), max(d2, d3));
+    imageStore(destination_mip, pixel, vec4(reduced));
+}

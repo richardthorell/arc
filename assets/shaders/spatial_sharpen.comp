@@ -1,0 +1,35 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D source_color;
+layout(rgba16f, set = 0, binding = 1) uniform writeonly image2D sharpened_color;
+
+layout(push_constant) uniform sharpen_constants
+{
+    ivec2 output_extent;
+    float strength;
+    float clamp_strength;
+} constants;
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(pixel, constants.output_extent)))
+        return;
+    vec2 extent = vec2(max(constants.output_extent, ivec2(1)));
+    vec2 uv = (vec2(pixel) + 0.5) / extent;
+    vec2 texel = 1.0 / extent;
+    vec3 center = textureLod(source_color, uv, 0.0).rgb;
+    vec3 north = textureLod(source_color, uv + vec2(0.0, -texel.y), 0.0).rgb;
+    vec3 south = textureLod(source_color, uv + vec2(0.0, texel.y), 0.0).rgb;
+    vec3 west = textureLod(source_color, uv + vec2(-texel.x, 0.0), 0.0).rgb;
+    vec3 east = textureLod(source_color, uv + vec2(texel.x, 0.0), 0.0).rgb;
+    vec3 minimum_color = min(center, min(min(north, south), min(west, east)));
+    vec3 maximum_color = max(center, max(max(north, south), max(west, east)));
+    vec3 detail = center * 4.0 - north - south - west - east;
+    vec3 result = center + detail * clamp(constants.strength, 0.0, 1.0) * 0.25;
+    vec3 range = (maximum_color - minimum_color) * max(constants.clamp_strength, 0.0);
+    result = clamp(result, minimum_color - range, maximum_color + range);
+    imageStore(sharpened_color, pixel, vec4(max(result, vec3(0.0)), 1.0));
+}

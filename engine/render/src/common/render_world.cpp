@@ -11,6 +11,11 @@ namespace arc::render
 namespace
 {
 
+constexpr std::uint32_t maximum_gpu_scene_instances = 1u << 20u;
+constexpr std::uint32_t maximum_gpu_draw_bins = 4096u;
+constexpr std::uint32_t gpu_scene_instance_stride = 224u;
+constexpr std::uint32_t indirect_command_stride = 20u;
+
 frustum_plane normalize_plane(float x, float y, float z, float w)
 {
     const float length = std::sqrt(x * x + y * y + z * z);
@@ -83,6 +88,12 @@ void prepare_render_world(render_world_packet& packet, const render_world_prepar
     packet.indirect_draws.clear();
     packet.culled_item_count = 0;
     packet.culled_virtual_cluster_count = 0;
+
+    // Keep the reference visibility output even for GPU-driven views. Backends
+    // with indirect execution ignore these lists, while limited backends can
+    // fall back without re-extracting the scene or changing its representation.
+    // The reference output is also used to validate GPU culling in tests and
+    // development captures.
 
     const auto frustum = make_view_frustum(packet.camera.view_projection);
     for (std::uint32_t index = 0; index < packet.items.size(); ++index)
@@ -243,7 +254,194 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                             .format = render_format::d32_float,
                             .persistent = true});
 
-    const bool high_quality = config.quality == render_quality_tier::high;
+    render_graph_resource_handle gpu_scene_instances{};
+    render_graph_resource_handle gpu_visible_instances{};
+    render_graph_resource_handle gpu_indirect_commands{};
+    render_graph_resource_handle gpu_indirect_count{};
+    render_graph_resource_handle depth_pyramid{};
+    const auto compute_queue = config.features.async_compute ? render_queue_type::compute : render_queue_type::graphics;
+
+    if (config.features.gpu_driven_rendering)
+    {
+        gpu_scene_instances = graph.add_resource(
+            {.name = "gpu_scene_instances",
+             .kind = render_resource_kind::buffer,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * gpu_scene_instance_stride,
+             .element_stride = gpu_scene_instance_stride,
+             .persistent_key = "gpu_scene.instances",
+             .persistent = true});
+        const auto candidate_instances = graph.add_resource(
+            {.name = "gpu_visibility_candidates",
+             .kind = render_resource_kind::buffer,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * sizeof(std::uint32_t),
+             .element_stride = sizeof(std::uint32_t)});
+        gpu_visible_instances = graph.add_resource(
+            {.name = "gpu_visible_instances",
+             .kind = render_resource_kind::buffer,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * sizeof(std::uint32_t),
+             .element_stride = sizeof(std::uint32_t)});
+        const auto visibility_counters = graph.add_resource({.name = "gpu_visibility_counters",
+                                                             .kind = render_resource_kind::buffer,
+                                                             .byte_size = 64,
+                                                             .element_stride = sizeof(std::uint32_t)});
+        const auto draw_bin_counts = graph.add_resource({.name = "gpu_draw_bin_counts",
+                                                         .kind = render_resource_kind::buffer,
+                                                         .byte_size = maximum_gpu_draw_bins * sizeof(std::uint32_t),
+                                                         .element_stride = sizeof(std::uint32_t)});
+        const auto draw_bin_offsets = graph.add_resource({.name = "gpu_draw_bin_offsets",
+                                                          .kind = render_resource_kind::buffer,
+                                                          .byte_size = maximum_gpu_draw_bins * sizeof(std::uint32_t),
+                                                          .element_stride = sizeof(std::uint32_t)});
+        gpu_indirect_commands = graph.add_resource(
+            {.name = "gpu_indirect_commands",
+             .kind = render_resource_kind::buffer,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_draw_bins) * indirect_command_stride,
+             .element_stride = indirect_command_stride});
+        gpu_indirect_count = graph.add_resource({.name = "gpu_indirect_count",
+                                                 .kind = render_resource_kind::buffer,
+                                                 .byte_size = sizeof(std::uint32_t),
+                                                 .element_stride = sizeof(std::uint32_t)});
+        if (config.features.hzb_occlusion)
+        {
+            depth_pyramid =
+                graph.add_resource({.name = "visibility_depth_pyramid",
+                                    .kind = render_resource_kind::color_texture,
+                                    .width_scale = config.render_scale,
+                                    .height_scale = config.render_scale,
+                                    .format = render_format::r32_float,
+                                    .mip_levels = 12,
+                                    .persistent_key = "view.visibility_hzb",
+                                    .history_length = 2,
+                                    .history_reset = render_history_reset::camera_cut | render_history_reset::resize |
+                                                     render_history_reset::render_scale_change |
+                                                     render_history_reset::world_epoch_change});
+        }
+
+        graph.add_pass({.name = "GPU Scene upload",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_scene_upload,
+                        .writes = {{.handle = gpu_scene_instances,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "GPU visibility clear",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_visibility_clear,
+                        .writes = {{.handle = visibility_counters,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = draw_bin_counts,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = gpu_indirect_count,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "GPU frustum and distance culling",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_frustum_distance_cull,
+                        .reads = {{.handle = gpu_scene_instances,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = candidate_instances,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = visibility_counters,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        if (depth_pyramid.valid())
+        {
+            graph.add_pass({.name = "GPU HZB occlusion culling",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::gpu_hzb_occlusion_cull,
+                            .reads = {{.handle = candidate_instances,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer},
+                                      {.handle = depth_pyramid,
+                                       .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled,
+                                       .history = render_history_access::previous}},
+                            .writes = {{.handle = gpu_visible_instances,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true},
+                                       {.handle = visibility_counters,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true}}});
+        }
+        else
+        {
+            graph.add_pass({.name = "GPU visibility compaction",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::gpu_visibility_compact,
+                            .reads = {{.handle = candidate_instances,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer}},
+                            .writes = {{.handle = gpu_visible_instances,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true}}});
+        }
+        graph.add_pass({.name = "GPU draw-bin count",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_draw_bin_count,
+                        .reads = {{.handle = gpu_visible_instances,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer},
+                                  {.handle = gpu_scene_instances,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = draw_bin_counts,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "GPU draw-bin prefix sum",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_draw_bin_prefix_sum,
+                        .reads = {{.handle = draw_bin_counts,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = draw_bin_offsets,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "GPU indirect command generation",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_indirect_command_generation,
+                        .reads = {{.handle = draw_bin_counts,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer},
+                                  {.handle = draw_bin_offsets,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer},
+                                  {.handle = gpu_visible_instances,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = gpu_indirect_commands,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::indirect_buffer,
+                                    .write = true},
+                                   {.handle = gpu_indirect_count,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+    }
+
+    const bool high_quality =
+        config.quality == render_quality_tier::high || config.quality == render_quality_tier::ultra;
     const bool low_quality = config.quality == render_quality_tier::low;
     const std::uint32_t radiance_resolution = high_quality ? 512u : low_quality ? 128u : 256u;
     const std::uint32_t irradiance_resolution = high_quality ? 64u : low_quality ? 16u : 32u;
@@ -255,8 +453,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
 
     render_graph_resource_handle sky_view{};
     if (environment.enabled && environment.sky_visible && environment.atmosphere.enabled &&
-        environment.source == sky_source_mode::physical_atmosphere &&
-        (config.quality == render_quality_tier::medium || config.quality == render_quality_tier::high))
+        environment.source == sky_source_mode::physical_atmosphere && config.quality != render_quality_tier::low)
     {
         const auto transmittance = graph.add_resource({.name = "atmosphere_transmittance",
                                                        .kind = render_resource_kind::color_texture,
@@ -310,7 +507,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
 
     render_graph_resource_handle cloud_shadow{};
     if (environment.enabled && environment.clouds.enabled && environment.clouds.cast_shadows &&
-        (config.quality == render_quality_tier::medium || config.quality == render_quality_tier::high))
+        config.quality != render_quality_tier::low)
     {
         cloud_shadow = graph.add_resource({.name = "cloud_shadow",
                                            .kind = render_resource_kind::color_texture,
@@ -463,14 +660,46 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .usage = render_resource_usage::color_attachment,
                                 .write = true,
                                 .load_op = render_load_op::clear}}});
+    std::vector<render_resource_access> depth_reads;
+    if (gpu_indirect_commands.valid())
+    {
+        depth_reads.push_back({.handle = gpu_indirect_commands,
+                               .kind = render_resource_kind::buffer,
+                               .usage = render_resource_usage::indirect_buffer});
+        depth_reads.push_back({.handle = gpu_indirect_count,
+                               .kind = render_resource_kind::buffer,
+                               .usage = render_resource_usage::indirect_buffer});
+    }
     graph.add_pass({.name = "depth prepass",
                     .kind = render_pass_kind::depth_prepass,
+                    .reads = std::move(depth_reads),
                     .writes = {{.handle = depth,
                                 .kind = render_resource_kind::depth_texture,
                                 .usage = render_resource_usage::depth_attachment,
                                 .write = true,
                                 .load_op = render_load_op::clear,
                                 .clear_depth = 0.0f}}});
+
+    if (depth_pyramid.valid())
+    {
+        graph.add_pass({.name = "visibility depth pyramid",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::depth_pyramid,
+                        .reads = {{.handle = depth,
+                                   .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = depth_pyramid,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true}}});
+    }
+
+    const auto motion = graph.add_resource({.name = "scene_motion",
+                                            .kind = render_resource_kind::color_texture,
+                                            .width_scale = config.render_scale,
+                                            .height_scale = config.render_scale,
+                                            .format = render_format::rg16_float});
 
     if (config.path == render_path::forward_plus)
     {
@@ -509,7 +738,12 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .kind = render_resource_kind::color_texture,
                                     .usage = render_resource_usage::color_attachment,
                                     .write = true,
-                                    .load_op = render_load_op::load}}});
+                                    .load_op = render_load_op::load},
+                                   {.handle = motion,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::color_attachment,
+                                    .write = true,
+                                    .load_op = render_load_op::clear}}});
     }
     else
     {
@@ -533,11 +767,6 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                   .width_scale = config.render_scale,
                                                   .height_scale = config.render_scale,
                                                   .format = render_format::rgba16_float});
-        const auto motion = graph.add_resource({.name = "gbuffer_motion",
-                                                .kind = render_resource_kind::color_texture,
-                                                .width_scale = config.render_scale,
-                                                .height_scale = config.render_scale,
-                                                .format = render_format::rg16_float});
         render_graph_resource_handle object_id{};
         if (editor_view)
         {
@@ -590,12 +819,27 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         render_graph_resource_handle filtered_screen_shadow{};
         if (config.screen_space_shadows)
         {
-            const auto depth_pyramid = graph.add_resource({.name = "linear_depth_pyramid",
-                                                           .kind = render_resource_kind::color_texture,
-                                                           .width_scale = config.screen_space_shadow_scale,
-                                                           .height_scale = config.screen_space_shadow_scale,
-                                                           .format = render_format::rg16_float,
-                                                           .mip_levels = 10});
+            auto screen_shadow_depth_pyramid = depth_pyramid;
+            if (!screen_shadow_depth_pyramid.valid())
+            {
+                screen_shadow_depth_pyramid = graph.add_resource({.name = "linear_depth_pyramid",
+                                                                  .kind = render_resource_kind::color_texture,
+                                                                  .width_scale = config.screen_space_shadow_scale,
+                                                                  .height_scale = config.screen_space_shadow_scale,
+                                                                  .format = render_format::r32_float,
+                                                                  .mip_levels = 10});
+                graph.add_pass({.name = "depth pyramid",
+                                .queue = compute_queue,
+                                .kind = render_pass_kind::compute,
+                                .builtin = builtin_render_pass::depth_pyramid,
+                                .reads = {{.handle = depth,
+                                           .kind = render_resource_kind::depth_texture,
+                                           .usage = render_resource_usage::sampled}},
+                                .writes = {{.handle = screen_shadow_depth_pyramid,
+                                            .kind = render_resource_kind::color_texture,
+                                            .usage = render_resource_usage::storage,
+                                            .write = true}}});
+            }
             const auto screen_shadow = graph.add_resource({.name = "screen_space_shadow",
                                                            .kind = render_resource_kind::color_texture,
                                                            .width_scale = config.screen_space_shadow_scale,
@@ -606,22 +850,11 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                          .width_scale = config.screen_space_shadow_scale,
                                                          .height_scale = config.screen_space_shadow_scale,
                                                          .format = render_format::r8_unorm});
-            graph.add_pass({.name = "depth pyramid",
-                            .queue = render_queue_type::compute,
-                            .kind = render_pass_kind::custom,
-                            .builtin = builtin_render_pass::depth_pyramid,
-                            .reads = {{.handle = depth,
-                                       .kind = render_resource_kind::depth_texture,
-                                       .usage = render_resource_usage::sampled}},
-                            .writes = {{.handle = depth_pyramid,
-                                        .kind = render_resource_kind::color_texture,
-                                        .usage = render_resource_usage::storage,
-                                        .write = true}}});
             graph.add_pass({.name = "screen space shadows",
-                            .queue = render_queue_type::compute,
-                            .kind = render_pass_kind::custom,
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
                             .builtin = builtin_render_pass::screen_space_shadow,
-                            .reads = {{.handle = depth_pyramid,
+                            .reads = {{.handle = screen_shadow_depth_pyramid,
                                        .kind = render_resource_kind::color_texture,
                                        .usage = render_resource_usage::sampled},
                                       {.handle = normal,
@@ -632,13 +865,13 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                         .usage = render_resource_usage::storage,
                                         .write = true}}});
             graph.add_pass({.name = "screen space shadow filter",
-                            .queue = render_queue_type::compute,
-                            .kind = render_pass_kind::custom,
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
                             .builtin = builtin_render_pass::screen_space_shadow_filter,
                             .reads = {{.handle = screen_shadow,
                                        .kind = render_resource_kind::color_texture,
                                        .usage = render_resource_usage::sampled},
-                                      {.handle = depth_pyramid,
+                                      {.handle = screen_shadow_depth_pyramid,
                                        .kind = render_resource_kind::color_texture,
                                        .usage = render_resource_usage::sampled},
                                       {.handle = normal,
@@ -739,16 +972,131 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .load_op = render_load_op::load}}});
     }
 
+    auto resolved_scene_color = scene_color;
+    if (config.features.temporal_antialiasing)
+    {
+        const auto reactive_mask = graph.add_resource({.name = "temporal_reactive_mask",
+                                                       .kind = render_resource_kind::color_texture,
+                                                       .width_scale = config.render_scale,
+                                                       .height_scale = config.render_scale,
+                                                       .format = render_format::r8_unorm});
+        const auto disocclusion_mask = graph.add_resource({.name = "temporal_disocclusion_mask",
+                                                           .kind = render_resource_kind::color_texture,
+                                                           .width_scale = config.render_scale,
+                                                           .height_scale = config.render_scale,
+                                                           .format = render_format::r8_unorm});
+        const auto color_history = graph.add_resource(
+            {.name = "temporal_color_history",
+             .kind = render_resource_kind::color_texture,
+             .format = render_format::rgba16_float,
+             .persistent_key = "view.temporal_color",
+             .history_length = 2,
+             .history_reset = render_history_reset::camera_cut | render_history_reset::resize |
+                              render_history_reset::render_scale_change | render_history_reset::world_epoch_change |
+                              render_history_reset::debug_view_change});
+        const auto depth_history = graph.add_resource(
+            {.name = "temporal_depth_history",
+             .kind = render_resource_kind::color_texture,
+             .format = render_format::r32_float,
+             .persistent_key = "view.temporal_depth",
+             .history_length = 2,
+             .history_reset = render_history_reset::camera_cut | render_history_reset::resize |
+                              render_history_reset::render_scale_change | render_history_reset::world_epoch_change});
+        graph.add_pass({.name = "temporal reactive mask",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::reactive_mask,
+                        .reads = {{.handle = scene_color,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = motion,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = reactive_mask,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true}}});
+        graph.add_pass({.name = "temporal disocclusion",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::disocclusion_mask,
+                        .reads = {{.handle = depth,
+                                   .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = motion,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = depth_history,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled,
+                                   .history = render_history_access::previous}},
+                        .writes = {{.handle = disocclusion_mask,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true}}});
+        graph.add_pass({.name = config.features.temporal_upscaling ? "temporal upscale" : "temporal antialiasing",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = config.features.temporal_upscaling ? builtin_render_pass::temporal_upscale
+                                                                      : builtin_render_pass::temporal_antialiasing,
+                        .reads = {{.handle = scene_color,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = depth,
+                                   .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = motion,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = reactive_mask,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = disocclusion_mask,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = color_history,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled,
+                                   .history = render_history_access::previous}},
+                        .writes = {{.handle = color_history,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true},
+                                   {.handle = depth_history,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true}}});
+        resolved_scene_color = color_history;
+        if (config.features.temporal_upscaling)
+        {
+            const auto sharpened = graph.add_resource({.name = "temporal_sharpened",
+                                                       .kind = render_resource_kind::color_texture,
+                                                       .format = render_format::rgba16_float});
+            graph.add_pass({.name = "temporal sharpen",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::spatial_sharpen,
+                            .reads = {{.handle = color_history,
+                                       .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = {{.handle = sharpened,
+                                        .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage,
+                                        .write = true}}});
+            resolved_scene_color = sharpened;
+        }
+    }
+
     const auto luminance_histogram = graph.add_resource({.name = "luminance_histogram",
                                                          .kind = render_resource_kind::buffer,
                                                          .extent = {low_quality ? 64u : 256u, 1, 1}});
     const auto exposure = graph.add_resource(
         {.name = "view_exposure", .kind = render_resource_kind::buffer, .extent = {1, 1, 1}, .persistent = true});
     graph.add_pass({.name = "luminance histogram",
-                    .queue = render_queue_type::compute,
+                    .queue = compute_queue,
                     .kind = render_pass_kind::post_process,
                     .builtin = builtin_render_pass::luminance_histogram,
-                    .reads = {{.handle = scene_color,
+                    .reads = {{.handle = resolved_scene_color,
                                .kind = render_resource_kind::color_texture,
                                .usage = render_resource_usage::sampled}},
                     .writes = {{.handle = luminance_histogram,
@@ -756,7 +1104,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .usage = render_resource_usage::storage_buffer,
                                 .write = true}}});
     graph.add_pass({.name = "exposure resolve",
-                    .queue = render_queue_type::compute,
+                    .queue = compute_queue,
                     .kind = render_pass_kind::post_process,
                     .builtin = builtin_render_pass::exposure_resolve,
                     .reads = {{.handle = luminance_histogram,
@@ -769,7 +1117,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     graph.add_pass({.name = "output transform",
                     .kind = render_pass_kind::present,
                     .builtin = builtin_render_pass::output_transform,
-                    .reads = {{.handle = scene_color,
+                    .reads = {{.handle = resolved_scene_color,
                                .kind = render_resource_kind::color_texture,
                                .usage = render_resource_usage::sampled},
                               {.handle = exposure,

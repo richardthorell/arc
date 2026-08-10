@@ -1,4 +1,5 @@
 #include <arc/render/renderer.h>
+#include <arc/render/render_world.h>
 
 #include <arc/framework/application.h>
 #include <arc/diagnostics/log.h>
@@ -14,6 +15,19 @@ namespace
 
 constexpr std::uint64_t gibibyte = 1024ull * 1024ull * 1024ull;
 
+float halton(std::uint64_t index, std::uint32_t base) noexcept
+{
+    float result{};
+    float fraction = 1.0f;
+    while (index > 0)
+    {
+        fraction /= static_cast<float>(base);
+        result += fraction * static_cast<float>(index % base);
+        index /= base;
+    }
+    return result;
+}
+
 std::uint64_t renderer_resource_key(resource_handle handle) noexcept
 {
     return (static_cast<std::uint64_t>(handle.generation) << 32u) | handle.index;
@@ -26,8 +40,6 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     resolved_render_config result{};
     result.requested_quality = config.quality;
     result.requested_path = config.path;
-    result.target_frame_time_ms =
-        config.target_frame_time_ms > 0.0f ? config.target_frame_time_ms : default_target_frame_time_ms;
 
     if (config.quality == render_quality_tier::auto_select)
     {
@@ -38,6 +50,15 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.fallback_reasons.push_back(
             constrained_memory ? "auto-selected low quality for an integrated or memory-constrained adapter"
                                : "auto-selected standard quality");
+    }
+    else if (config.quality == render_quality_tier::ultra &&
+             ((capabilities.memory_budget != 0 && capabilities.memory_budget < 12ull * gibibyte) ||
+              (capabilities.memory_budget == 0 && capabilities.dedicated_video_memory != 0 &&
+               capabilities.dedicated_video_memory < 12ull * gibibyte)))
+    {
+        result.quality = render_quality_tier::high;
+        result.fallback_reasons.push_back(
+            "ultra quality requires at least 12 GiB of available GPU memory; using high limits");
     }
     else if (config.quality == render_quality_tier::high &&
              ((capabilities.memory_budget != 0 && capabilities.memory_budget < 6ull * gibibyte) ||
@@ -54,6 +75,8 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     }
 
     const auto& profile = quality_profile(result.quality);
+    result.target_frame_time_ms =
+        config.target_frame_time_ms > 0.0f ? config.target_frame_time_ms : profile.target_frame_time_ms;
     if (config.path == render_path::auto_select)
         result.path = profile.default_path;
     else
@@ -71,7 +94,22 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     result.max_local_shadow_resolution = profile.max_local_shadow_resolution;
     result.screen_space_shadows = profile.screen_space_shadows;
     result.screen_space_shadow_scale = profile.screen_space_shadow_scale;
+    result.geometry_error_threshold = profile.geometry_error_threshold;
+    result.shadow_resolution_scale = profile.maximum_shadow_resolution_scale;
+    result.volumetric_resolution_scale = profile.maximum_volumetric_resolution_scale;
+    result.gi_trace_budget = profile.gi_trace_budget;
+    result.reflection_ray_budget = profile.reflection_ray_budget;
     const bool optional_features = !config.force_disable_optional_features;
+    const bool gpu_scene_supported = capabilities.compute_shaders && capabilities.storage_buffers &&
+                                     capabilities.shader_draw_parameters && capabilities.draw_indirect &&
+                                     capabilities.gpu_scene_indirect;
+    const bool gpu_driven =
+        optional_features && !config.force_disable_gpu_driven && profile.prefer_gpu_driven && gpu_scene_supported;
+    gpu_submission_path submission = gpu_submission_path::cpu_direct;
+    if (gpu_driven && !config.force_cpu_submission && capabilities.draw_indirect)
+        submission = optional_features && capabilities.draw_indirect_count && capabilities.gpu_scene_indirect_count
+                         ? gpu_submission_path::indirect_count
+                         : gpu_submission_path::indirect;
     result.features = {.dynamic_rendering = optional_features && capabilities.dynamic_rendering,
                        .synchronization2 = optional_features && capabilities.synchronization2,
                        .timeline_semaphores = optional_features && capabilities.timeline_semaphores,
@@ -79,11 +117,24 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                        .descriptor_buffer = optional_features && capabilities.descriptor_buffer,
                        .draw_indirect = capabilities.draw_indirect,
                        .draw_indirect_count = optional_features && capabilities.draw_indirect_count,
+                       .gpu_driven_rendering = gpu_driven,
+                       .hzb_occlusion = gpu_driven && profile.prefer_hzb_occlusion && capabilities.storage_images &&
+                                        capabilities.hzb_occlusion,
+                       .temporal_antialiasing = !config.force_disable_temporal && capabilities.temporal_resolve,
+                       .temporal_upscaling = !config.force_disable_temporal && capabilities.temporal_resolve &&
+                                             profile.prefer_temporal_upscaling,
+                       .async_compute = optional_features && !config.force_disable_async_compute &&
+                                        profile.prefer_async_compute && capabilities.dedicated_compute_queue,
+                       .virtual_geometry = optional_features && capabilities.virtual_geometry,
+                       .software_ray_tracing = optional_features && capabilities.software_ray_tracing,
+                       .hardware_ray_tracing = optional_features && capabilities.ray_tracing,
+                       .sparse_resources = optional_features && capabilities.sparse_resources,
                        .sampler_anisotropy = optional_features && capabilities.sampler_anisotropy,
                        .texture_compression_bc = capabilities.texture_compression_bc,
                        .mesh_shaders = optional_features && capabilities.mesh_shaders,
                        .ray_tracing = optional_features && capabilities.ray_tracing,
-                       .variable_rate_shading = optional_features && capabilities.variable_rate_shading};
+                       .variable_rate_shading = optional_features && capabilities.variable_rate_shading,
+                       .submission = submission};
 
     if (config.force_disable_optional_features)
         result.fallback_reasons.push_back("optional GPU features were disabled by renderer configuration");
@@ -95,24 +146,58 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.fallback_reasons.push_back("timeline semaphores are unavailable; use per-frame fences");
     if (!capabilities.descriptor_indexing)
         result.fallback_reasons.push_back("descriptor indexing is unavailable; use classic descriptor sets");
+    if (!gpu_scene_supported && profile.prefer_gpu_driven)
+        result.fallback_reasons.push_back(
+            "GPU-driven rendering requires an executable GPU Scene, compute, storage buffers, shader draw "
+            "parameters, and indirect draws; "
+            "using CPU visibility");
+    if (!capabilities.temporal_resolve && !config.force_disable_temporal)
+        result.fallback_reasons.push_back("temporal resolve is unavailable; using spatial presentation");
+    if (config.force_disable_gpu_driven)
+        result.fallback_reasons.push_back("GPU-driven rendering was disabled by renderer configuration");
+    if (submission == gpu_submission_path::cpu_direct)
+        result.fallback_reasons.push_back("indirect drawing is unavailable or disabled; using CPU draw submission");
+    else if (submission == gpu_submission_path::indirect &&
+             profile.preferred_submission == gpu_submission_path::indirect_count)
+        result.fallback_reasons.push_back(
+            "GPU Scene indirect-count submission is unavailable; using fixed indirect draws");
+    if (profile.prefer_async_compute && !result.features.async_compute)
+        result.fallback_reasons.push_back("dedicated asynchronous compute is unavailable; compute runs on graphics");
 
     return result;
 }
 
-void dynamic_resolution_controller::reset(float target_frame_time_ms, float minimum_scale, float maximum_scale) noexcept
+void frame_budget_controller::reset(const render_quality_profile& profile, float target_frame_time_ms) noexcept
 {
     target_frame_time_ms_ = std::max(1.0f, target_frame_time_ms);
-    minimum_scale_ = std::clamp(minimum_scale, 0.25f, 1.0f);
-    maximum_scale_ = std::clamp(maximum_scale, minimum_scale_, 1.0f);
-    scale_ = maximum_scale_;
+    minimum_scale_ = std::clamp(profile.minimum_render_scale, 0.25f, 1.0f);
+    maximum_scale_ = std::clamp(profile.maximum_render_scale, minimum_scale_, 1.0f);
+    minimum_geometry_error_ = std::max(0.01f, profile.minimum_geometry_error_threshold);
+    maximum_geometry_error_ = std::max(minimum_geometry_error_, profile.maximum_geometry_error_threshold);
+    minimum_shadow_scale_ = std::clamp(profile.minimum_shadow_resolution_scale, 0.25f, 1.0f);
+    maximum_shadow_scale_ = std::clamp(profile.maximum_shadow_resolution_scale, minimum_shadow_scale_, 1.0f);
+    minimum_volumetric_scale_ = std::clamp(profile.minimum_volumetric_resolution_scale, 0.25f, 1.0f);
+    maximum_volumetric_scale_ =
+        std::clamp(profile.maximum_volumetric_resolution_scale, minimum_volumetric_scale_, 1.0f);
+    maximum_gi_trace_budget_ = profile.gi_trace_budget;
+    maximum_reflection_ray_budget_ = profile.reflection_ray_budget;
+    settings_ = {.render_scale = maximum_scale_,
+                 .geometry_error_threshold =
+                     std::clamp(profile.geometry_error_threshold, minimum_geometry_error_, maximum_geometry_error_),
+                 .shadow_resolution_scale = maximum_shadow_scale_,
+                 .volumetric_resolution_scale = maximum_volumetric_scale_,
+                 .gi_trace_budget = maximum_gi_trace_budget_,
+                 .reflection_ray_budget = maximum_reflection_ray_budget_};
+    last_change_ = frame_budget_change::none;
     smoothed_frame_time_ms_ = target_frame_time_ms_;
     over_budget_frames_ = 0;
     under_budget_frames_ = 0;
 }
 
-float dynamic_resolution_controller::update(float gpu_frame_time_ms) noexcept
+const frame_budget_settings& frame_budget_controller::update(float gpu_frame_time_ms) noexcept
 {
-    if (!(gpu_frame_time_ms > 0.0f) || !std::isfinite(gpu_frame_time_ms)) return scale_;
+    last_change_ = frame_budget_change::none;
+    if (!(gpu_frame_time_ms > 0.0f) || !std::isfinite(gpu_frame_time_ms)) return settings_;
 
     smoothed_frame_time_ms_ += (gpu_frame_time_ms - smoothed_frame_time_ms_) * dynamic_resolution_smoothing;
     if (smoothed_frame_time_ms_ > target_frame_time_ms_ * dynamic_resolution_over_budget_ratio)
@@ -121,7 +206,40 @@ float dynamic_resolution_controller::update(float gpu_frame_time_ms) noexcept
         under_budget_frames_ = 0;
         if (over_budget_frames_ >= dynamic_resolution_over_budget_frames)
         {
-            scale_ = std::max(minimum_scale_, scale_ - dynamic_resolution_scale_step);
+            if (settings_.volumetric_resolution_scale > minimum_volumetric_scale_)
+            {
+                settings_.volumetric_resolution_scale =
+                    std::max(minimum_volumetric_scale_, settings_.volumetric_resolution_scale - 0.125f);
+                last_change_ = frame_budget_change::volumetric_resolution;
+            }
+            else if (settings_.reflection_ray_budget > 0)
+            {
+                --settings_.reflection_ray_budget;
+                last_change_ = frame_budget_change::reflection_rays;
+            }
+            else if (settings_.gi_trace_budget > 0)
+            {
+                --settings_.gi_trace_budget;
+                last_change_ = frame_budget_change::gi_traces;
+            }
+            else if (settings_.shadow_resolution_scale > minimum_shadow_scale_)
+            {
+                settings_.shadow_resolution_scale =
+                    std::max(minimum_shadow_scale_, settings_.shadow_resolution_scale - 0.125f);
+                last_change_ = frame_budget_change::shadow_resolution;
+            }
+            else if (settings_.geometry_error_threshold < maximum_geometry_error_)
+            {
+                settings_.geometry_error_threshold =
+                    std::min(maximum_geometry_error_, settings_.geometry_error_threshold + 0.25f);
+                last_change_ = frame_budget_change::geometry_error;
+            }
+            else if (settings_.render_scale > minimum_scale_)
+            {
+                settings_.render_scale =
+                    std::max(minimum_scale_, settings_.render_scale - dynamic_resolution_scale_step);
+                last_change_ = frame_budget_change::render_scale;
+            }
             over_budget_frames_ = 0;
         }
     }
@@ -131,7 +249,40 @@ float dynamic_resolution_controller::update(float gpu_frame_time_ms) noexcept
         over_budget_frames_ = 0;
         if (under_budget_frames_ >= dynamic_resolution_under_budget_frames)
         {
-            scale_ = std::min(maximum_scale_, scale_ + dynamic_resolution_scale_step);
+            if (settings_.render_scale < maximum_scale_)
+            {
+                settings_.render_scale =
+                    std::min(maximum_scale_, settings_.render_scale + dynamic_resolution_scale_step);
+                last_change_ = frame_budget_change::render_scale;
+            }
+            else if (settings_.geometry_error_threshold > minimum_geometry_error_)
+            {
+                settings_.geometry_error_threshold =
+                    std::max(minimum_geometry_error_, settings_.geometry_error_threshold - 0.25f);
+                last_change_ = frame_budget_change::geometry_error;
+            }
+            else if (settings_.shadow_resolution_scale < maximum_shadow_scale_)
+            {
+                settings_.shadow_resolution_scale =
+                    std::min(maximum_shadow_scale_, settings_.shadow_resolution_scale + 0.125f);
+                last_change_ = frame_budget_change::shadow_resolution;
+            }
+            else if (settings_.gi_trace_budget < maximum_gi_trace_budget_)
+            {
+                ++settings_.gi_trace_budget;
+                last_change_ = frame_budget_change::gi_traces;
+            }
+            else if (settings_.reflection_ray_budget < maximum_reflection_ray_budget_)
+            {
+                ++settings_.reflection_ray_budget;
+                last_change_ = frame_budget_change::reflection_rays;
+            }
+            else if (settings_.volumetric_resolution_scale < maximum_volumetric_scale_)
+            {
+                settings_.volumetric_resolution_scale =
+                    std::min(maximum_volumetric_scale_, settings_.volumetric_resolution_scale + 0.125f);
+                last_change_ = frame_budget_change::volumetric_resolution;
+            }
             under_budget_frames_ = 0;
         }
     }
@@ -140,12 +291,22 @@ float dynamic_resolution_controller::update(float gpu_frame_time_ms) noexcept
         over_budget_frames_ = 0;
         under_budget_frames_ = 0;
     }
-    return scale_;
+    return settings_;
 }
 
-float dynamic_resolution_controller::scale() const noexcept
+const frame_budget_settings& frame_budget_controller::settings() const noexcept
 {
-    return scale_;
+    return settings_;
+}
+
+frame_budget_change frame_budget_controller::last_change() const noexcept
+{
+    return last_change_;
+}
+
+float frame_budget_controller::smoothed_frame_time_ms() const noexcept
+{
+    return smoothed_frame_time_ms_;
 }
 
 void render_backend::resize_viewport(std::uint32_t, std::uint32_t) {}
@@ -184,7 +345,7 @@ render_frame_capture_result render_backend::last_frame_capture() const
 
 void execute_render_graph(const compiled_render_graph& graph, command_encoder& encoder)
 {
-    for (std::uint32_t pass_index = 0; pass_index < graph.passes.size(); ++pass_index)
+    const auto execute_pass = [&](std::uint32_t pass_index)
     {
         for (const auto& transition : graph.transitions)
         {
@@ -195,6 +356,21 @@ void execute_render_graph(const compiled_render_graph& graph, command_encoder& e
         encoder.begin_pass(pass);
         if (pass.record) pass.record(encoder, pass.user_data);
         encoder.end_pass();
+    };
+
+    if (graph.submissions.empty())
+    {
+        for (std::uint32_t pass_index = 0; pass_index < graph.passes.size(); ++pass_index)
+            execute_pass(pass_index);
+        return;
+    }
+
+    for (const auto& submission : graph.submissions)
+    {
+        encoder.begin_submission(submission);
+        for (const auto pass_index : submission.passes)
+            execute_pass(pass_index);
+        encoder.end_submission(submission);
     }
 }
 
@@ -202,13 +378,20 @@ renderer::renderer(renderer_config config) : config_(config) {}
 
 void renderer::set_backend(std::unique_ptr<render_backend> backend)
 {
+    gpu_scene_.reset();
+    temporal_views_.clear();
     backend_ = std::move(backend);
     if (backend_)
     {
         resolved_config_ = resolve_render_config(config_, backend_->capabilities());
-        dynamic_resolution_.reset(resolved_config_.target_frame_time_ms, resolved_config_.minimum_render_scale,
-                                  resolved_config_.maximum_render_scale);
-        resolved_config_.render_scale = dynamic_resolution_.scale();
+        frame_budget_.reset(quality_profile(resolved_config_.quality), resolved_config_.target_frame_time_ms);
+        const auto& budget = frame_budget_.settings();
+        resolved_config_.render_scale = budget.render_scale;
+        resolved_config_.geometry_error_threshold = budget.geometry_error_threshold;
+        resolved_config_.shadow_resolution_scale = budget.shadow_resolution_scale;
+        resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;
+        resolved_config_.gi_trace_budget = budget.gi_trace_budget;
+        resolved_config_.reflection_ray_budget = budget.reflection_ray_budget;
         backend_->configure(resolved_config_);
     }
 }
@@ -465,6 +648,58 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         return render_submit_result::failure(
             {render_submit_error_code::backend_unavailable, "no render backend attached"});
 
+    std::vector<std::shared_ptr<const gpu_scene_update_batch>> gpu_scene_updates;
+    for (auto& event : packet.events)
+    {
+        auto* world = std::get_if<render_world_event>(&event.payload);
+        if (!world || !world->packet) continue;
+        auto prepared = std::make_shared<render_world_packet>(*world->packet);
+        auto& previous = temporal_views_[prepared->render_view_id];
+        const bool extent_changed =
+            previous.width != prepared->camera.output_width || previous.height != prepared->camera.output_height;
+        const bool epoch_changed = previous.world_epoch != prepared->world_epoch;
+        const auto camera_delta = math::sub(prepared->camera.position, previous.position);
+        const bool teleported = math::length_squared(camera_delta) > 100.0f;
+        const bool rotated = previous.valid && math::dot(prepared->camera.forward, previous.forward) < 0.5f;
+        prepared->camera.camera_cut = !previous.valid || extent_changed || epoch_changed || teleported || rotated;
+        prepared->camera.history_valid = !prepared->camera.camera_cut;
+        prepared->camera.previous_view_projection =
+            prepared->camera.history_valid ? previous.view_projection : prepared->camera.view_projection;
+
+        if (resolved_config_.features.temporal_antialiasing && prepared->camera.render_width > 0 &&
+            prepared->camera.render_height > 0)
+        {
+            const auto sample = frame_index % 8u + 1u;
+            prepared->camera.jitter = {(halton(sample, 2u) - 0.5f) / static_cast<float>(prepared->camera.render_width),
+                                       (halton(sample, 3u) - 0.5f) /
+                                           static_cast<float>(prepared->camera.render_height)};
+            prepared->camera.projection(0, 2) -= prepared->camera.jitter[0] * 2.0f;
+            prepared->camera.projection(1, 2) -= prepared->camera.jitter[1] * 2.0f;
+            prepared->camera.view_projection = math::matmul(prepared->camera.projection, prepared->camera.view);
+            if (!math::try_inverse(prepared->camera.view_projection, prepared->camera.inverse_view_projection))
+                prepared->camera.camera_cut = true;
+        }
+
+        previous = {.view_projection = prepared->camera.view_projection,
+                    .position = prepared->camera.position,
+                    .forward = prepared->camera.forward,
+                    .world_epoch = prepared->world_epoch,
+                    .width = prepared->camera.output_width,
+                    .height = prepared->camera.output_height,
+                    .valid = true};
+        if (resolved_config_.features.gpu_driven_rendering)
+            gpu_scene_updates.push_back(
+                std::make_shared<gpu_scene_update_batch>(gpu_scene_.synchronize(*prepared, frame_index)));
+        world->packet = std::move(prepared);
+    }
+
+    if (!gpu_scene_updates.empty())
+    {
+        packet.events.reserve(packet.events.size() + gpu_scene_updates.size());
+        for (auto& update : gpu_scene_updates)
+            packet.events.push_back({.payload = gpu_scene_update_event{.batch = std::move(update)}});
+    }
+
     if (config_.enable_dynamic_resolution)
     {
         float gpu_frame_time_ms{};
@@ -472,9 +707,30 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             gpu_frame_time_ms += static_cast<float>(timing.milliseconds);
         if (gpu_frame_time_ms > 0.0f)
         {
-            const float previous_scale = resolved_config_.render_scale;
-            resolved_config_.render_scale = dynamic_resolution_.update(gpu_frame_time_ms);
-            if (resolved_config_.render_scale != previous_scale) backend_->configure(resolved_config_);
+            const auto previous = frame_budget_.settings();
+            const auto& budget = frame_budget_.update(gpu_frame_time_ms);
+            resolved_config_.render_scale = budget.render_scale;
+            resolved_config_.geometry_error_threshold = budget.geometry_error_threshold;
+            resolved_config_.shadow_resolution_scale = budget.shadow_resolution_scale;
+            resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;
+            resolved_config_.gi_trace_budget = budget.gi_trace_budget;
+            resolved_config_.reflection_ray_budget = budget.reflection_ray_budget;
+            const auto& profile = quality_profile(resolved_config_.quality);
+            const auto scaled_shadow_dimension = [&](std::uint32_t base, std::uint32_t minimum)
+            {
+                const auto scaled =
+                    static_cast<std::uint32_t>(std::round(static_cast<float>(base) * budget.shadow_resolution_scale));
+                return std::max(minimum, (scaled / 128u) * 128u);
+            };
+            resolved_config_.directional_shadow_resolution =
+                scaled_shadow_dimension(profile.directional_shadow_resolution, 512u);
+            resolved_config_.local_shadow_atlas_resolution =
+                scaled_shadow_dimension(profile.local_shadow_atlas_resolution, 1024u);
+            resolved_config_.max_local_shadow_resolution =
+                scaled_shadow_dimension(profile.max_local_shadow_resolution, 256u);
+            if (frame_budget_.last_change() != frame_budget_change::none ||
+                budget.render_scale != previous.render_scale)
+                backend_->configure(resolved_config_);
         }
     }
 

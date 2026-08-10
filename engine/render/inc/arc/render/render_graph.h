@@ -29,6 +29,7 @@ enum class render_queue_type : std::uint8_t
 enum class render_pass_kind : std::uint8_t
 {
     clear,
+    compute,
     depth_prepass,
     gbuffer,
     lighting,
@@ -42,6 +43,14 @@ enum class render_pass_kind : std::uint8_t
 enum class builtin_render_pass : std::uint8_t
 {
     none,
+    gpu_scene_upload,
+    gpu_visibility_clear,
+    gpu_frustum_distance_cull,
+    gpu_hzb_occlusion_cull,
+    gpu_visibility_compact,
+    gpu_draw_bin_count,
+    gpu_draw_bin_prefix_sum,
+    gpu_indirect_command_generation,
     atmosphere_transmittance,
     atmosphere_multi_scattering,
     atmosphere_sky_view,
@@ -63,6 +72,11 @@ enum class builtin_render_pass : std::uint8_t
     depth_pyramid,
     screen_space_shadow,
     screen_space_shadow_filter,
+    reactive_mask,
+    disocclusion_mask,
+    temporal_antialiasing,
+    temporal_upscale,
+    spatial_sharpen,
     output_transform,
     debug_overlay
 };
@@ -91,9 +105,33 @@ enum class render_format : std::uint8_t
     rg16_float,
     r8_unorm,
     r32_uint,
+    r32_float,
     d24_unorm_s8_uint,
     d32_float
 };
+
+/** @brief Which generation of a persistent history resource a pass accesses. */
+enum class render_history_access : std::uint8_t
+{
+    current,
+    previous
+};
+
+/** @brief Conditions that invalidate a persistent history resource. */
+enum class render_history_reset : std::uint32_t
+{
+    none = 0,
+    camera_cut = 1u << 0u,
+    resize = 1u << 1u,
+    render_scale_change = 1u << 2u,
+    world_epoch_change = 1u << 3u,
+    debug_view_change = 1u << 4u
+};
+
+[[nodiscard]] constexpr render_history_reset operator|(render_history_reset lhs, render_history_reset rhs) noexcept
+{
+    return static_cast<render_history_reset>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
 
 /**
  * @brief Stable reference to one logical resource in a render graph.
@@ -183,7 +221,13 @@ struct render_graph_resource
     std::uint32_t mip_levels{1};
     std::uint32_t array_layers{1};
     std::uint32_t sample_count{1};
+    std::uint64_t byte_size{};
+    std::uint32_t element_stride{};
+    std::string persistent_key;
+    std::uint8_t history_length{1};
+    render_history_reset history_reset{render_history_reset::none};
     bool imported{};
+    bool exported{};
     bool persistent{};
 };
 
@@ -201,6 +245,7 @@ struct render_resource_access
     bool write{};
     render_load_op load_op{render_load_op::load};
     render_store_op store_op{render_store_op::store};
+    render_history_access history{render_history_access::current};
     float clear_color[4]{};
     float clear_depth{1.0f};
 };
@@ -245,10 +290,37 @@ struct render_resource_transition
     std::string resource;
     render_resource_usage before{render_resource_usage::unknown};
     render_resource_usage after{render_resource_usage::unknown};
+    render_history_access before_history{render_history_access::current};
+    render_history_access after_history{render_history_access::current};
     std::uint32_t before_pass{};
     std::uint32_t after_pass{};
     render_queue_type before_queue{render_queue_type::graphics};
     render_queue_type after_queue{render_queue_type::graphics};
+};
+
+/** @brief Cross-queue timeline dependency for one compiled submission. */
+struct render_queue_wait
+{
+    render_queue_type queue{render_queue_type::graphics};
+    std::uint64_t value{};
+};
+
+/** @brief Executable batch of adjacent graph passes targeting one queue. */
+struct compiled_queue_submission
+{
+    render_queue_type queue{render_queue_type::graphics};
+    std::vector<std::uint32_t> passes;
+    std::vector<render_queue_wait> waits;
+    std::uint64_t signal_value{};
+};
+
+/** @brief Rotation operation performed after a persistent history generation completes. */
+struct render_history_rotation
+{
+    render_graph_resource_handle handle{};
+    std::string persistent_key;
+    std::uint8_t history_length{1};
+    render_history_reset reset{render_history_reset::none};
 };
 
 /**
@@ -272,6 +344,8 @@ struct compiled_render_graph
     std::vector<render_graph_resource> resources;
     std::vector<render_resource_transition> transitions;
     std::vector<render_resource_lifetime> lifetimes;
+    std::vector<compiled_queue_submission> submissions;
+    std::vector<render_history_rotation> history_rotations;
 };
 
 /**

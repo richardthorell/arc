@@ -1,0 +1,83 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct gpu_scene_instance
+{
+    mat4 model;
+    mat4 previous_model;
+    vec4 bounds_min;
+    vec4 bounds_max;
+    uvec4 geometry;
+    uvec4 material_flags;
+    uvec4 draw_metadata;
+    vec4 distance_error;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer gpu_scene_buffer
+{
+    gpu_scene_instance instances[];
+} scene;
+
+layout(std430, set = 0, binding = 1) writeonly buffer candidate_buffer
+{
+    uint candidates[];
+};
+
+layout(std430, set = 0, binding = 2) buffer visibility_counter_buffer
+{
+    uint candidate_count;
+    uint visible_count;
+    uint frustum_rejected;
+    uint distance_rejected;
+} counters;
+
+layout(push_constant) uniform culling_constants
+{
+    mat4 view_projection;
+    vec4 camera_position_and_error;
+    uint instance_count;
+    uint render_layer_mask;
+    uint camera_cut;
+    uint reserved;
+} constants;
+
+bool visible_in_frustum(vec3 center, vec3 extent)
+{
+    vec4 clip = constants.view_projection * vec4(center, 1.0);
+    vec3 radius = abs(mat3(constants.view_projection) * extent);
+    return clip.x + radius.x >= -clip.w && clip.x - radius.x <= clip.w &&
+           clip.y + radius.y >= -clip.w && clip.y - radius.y <= clip.w &&
+           clip.z + radius.z >= 0.0 && clip.z - radius.z <= clip.w;
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= constants.instance_count)
+        return;
+
+    gpu_scene_instance instance = scene.instances[index];
+    uint flags = instance.material_flags.w;
+    uint layers = instance.material_flags.z;
+    if ((flags & 1u) == 0u || (layers & constants.render_layer_mask) == 0u)
+        return;
+
+    vec3 center = (instance.bounds_min.xyz + instance.bounds_max.xyz) * 0.5;
+    vec3 extent = max((instance.bounds_max.xyz - instance.bounds_min.xyz) * 0.5, vec3(1.0e-4));
+    if (!visible_in_frustum(center, extent))
+    {
+        atomicAdd(counters.frustum_rejected, 1u);
+        return;
+    }
+
+    float maximum_distance = instance.distance_error.x;
+    if (maximum_distance > 0.0 && distance(center, constants.camera_position_and_error.xyz) > maximum_distance)
+    {
+        atomicAdd(counters.distance_rejected, 1u);
+        return;
+    }
+
+    uint output_index = atomicAdd(counters.candidate_count, 1u);
+    candidates[output_index] = index;
+}

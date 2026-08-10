@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/render/handles.h>
+#include <arc/render/gpu_scene.h>
 #include <arc/render/material.h>
 #include <arc/render/mesh.h>
 #include <arc/render/shadow.h>
@@ -43,6 +44,7 @@ enum class render_event_type : std::uint8_t
     point_light,
     spot_light,
     area_light,
+    gpu_scene_update,
     render_world,
     debug_marker
 };
@@ -192,6 +194,7 @@ struct viewport_resize_event
  */
 struct draw_mesh_event
 {
+    gpu_scene_instance_handle gpu_scene_instance{};
     mesh_handle mesh{};
     material_handle material{};
     math::matrix4f model{math::identity<float, 4>()};
@@ -312,6 +315,12 @@ struct debug_marker_event
     std::string label;
 };
 
+/** @brief Incremental persistent GPU Scene mutations for one submitted frame. */
+struct gpu_scene_update_event
+{
+    std::shared_ptr<const gpu_scene_update_batch> batch;
+};
+
 /**
  * @brief Submit a prepared scene render packet to the backend.
  */
@@ -325,7 +334,7 @@ using render_event_payload =
     std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, texture_upload_event,
                  material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event,
                  draw_mesh_event, directional_light_event, point_light_event, spot_light_event, area_light_event,
-                 render_world_event, debug_marker_event>;
+                 gpu_scene_update_event, render_world_event, debug_marker_event>;
 
 /**
  * @brief Thread-producible typed render event.
@@ -486,6 +495,9 @@ public:
      * @brief Append a debug marker event.
      */
     void debug_marker(std::string label);
+
+    /** @brief Append persistent GPU Scene mutations. */
+    void gpu_scene_update(std::shared_ptr<const gpu_scene_update_batch> batch);
 
     /**
      * @brief Append a prepared scene render packet.

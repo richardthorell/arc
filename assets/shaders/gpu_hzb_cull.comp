@@ -1,0 +1,82 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D previous_hzb;
+layout(std430, set = 0, binding = 1) readonly buffer candidate_buffer
+{
+    uint candidates[];
+};
+
+struct gpu_scene_instance
+{
+    mat4 model;
+    mat4 previous_model;
+    vec4 bounds_min;
+    vec4 bounds_max;
+    uvec4 geometry;
+    uvec4 material_flags;
+    uvec4 draw_metadata;
+    vec4 distance_error;
+};
+
+layout(std430, set = 0, binding = 2) readonly buffer gpu_scene_buffer
+{
+    gpu_scene_instance instances[];
+} scene;
+layout(std430, set = 0, binding = 3) writeonly buffer visible_buffer
+{
+    uint visible_instances[];
+};
+layout(std430, set = 0, binding = 4) buffer visibility_counter_buffer
+{
+    uint candidate_count;
+    uint visible_count;
+    uint frustum_rejected;
+    uint distance_rejected;
+    uint occlusion_rejected;
+} counters;
+
+layout(push_constant) uniform hzb_constants
+{
+    mat4 view_projection;
+    vec2 viewport_extent;
+    uint hzb_mip_count;
+    uint history_valid;
+    uint reverse_z;
+} constants;
+
+void main()
+{
+    uint candidate_index = gl_GlobalInvocationID.x;
+    if (candidate_index >= counters.candidate_count)
+        return;
+
+    uint instance_index = candidates[candidate_index];
+    gpu_scene_instance instance = scene.instances[instance_index];
+    vec3 center = (instance.bounds_min.xyz + instance.bounds_max.xyz) * 0.5;
+    float radius = max(length(instance.bounds_max.xyz - instance.bounds_min.xyz) * 0.5, 1.0e-4);
+    vec4 clip = constants.view_projection * vec4(center, 1.0);
+    vec2 uv = clip.xy / max(clip.w, 1.0e-5) * 0.5 + 0.5;
+    float depth = clip.z / max(clip.w, 1.0e-5);
+    float projected_radius = radius * max(constants.viewport_extent.x, constants.viewport_extent.y) /
+                             max(abs(clip.w), 1.0e-4);
+    float mip = clamp(floor(log2(max(projected_radius, 1.0))), 0.0, float(constants.hzb_mip_count - 1u));
+    float farthest_occluder = textureLod(previous_hzb, uv, mip).r;
+    float depth_radius = radius / max(abs(clip.w), 1.0e-4);
+    float conservative_near_depth = clamp(depth + (constants.reverse_z != 0u ? depth_radius : -depth_radius),
+                                          0.0, 1.0);
+    bool depth_occluded = constants.reverse_z != 0u
+                              ? farthest_occluder > conservative_near_depth + 1.0e-4
+                              : farthest_occluder < conservative_near_depth - 1.0e-4;
+    bool occluded = constants.history_valid != 0u && all(greaterThanEqual(uv, vec2(0.0))) &&
+                    all(lessThanEqual(uv, vec2(1.0))) && depth_occluded;
+    if (occluded)
+    {
+        atomicAdd(counters.occlusion_rejected, 1u);
+        return;
+    }
+
+    uint output_index = atomicAdd(counters.visible_count, 1u);
+    visible_instances[output_index] = instance_index;
+}

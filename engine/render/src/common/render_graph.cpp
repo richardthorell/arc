@@ -22,6 +22,7 @@ std::uint64_t format_bytes_per_pixel(render_format format) noexcept
         case render_format::rgba8_srgb:
         case render_format::rg16_float:
         case render_format::r32_uint:
+        case render_format::r32_float:
         case render_format::d24_unorm_s8_uint:
         case render_format::d32_float:
             return 4;
@@ -34,6 +35,8 @@ std::uint64_t format_bytes_per_pixel(render_format format) noexcept
 
 bool resources_compatible(const render_graph_resource& lhs, const render_graph_resource& rhs) noexcept
 {
+    if (lhs.kind == render_resource_kind::buffer || rhs.kind == render_resource_kind::buffer)
+        return lhs.kind == rhs.kind && lhs.byte_size == rhs.byte_size && lhs.element_stride == rhs.element_stride;
     return lhs.kind == rhs.kind && lhs.format == rhs.format && lhs.extent.width == rhs.extent.width &&
            lhs.extent.height == rhs.extent.height && lhs.extent.depth == rhs.extent.depth &&
            lhs.extent_mode == rhs.extent_mode && lhs.width_scale == rhs.width_scale &&
@@ -74,6 +77,9 @@ render_graph_resource_handle render_graph::add_resource(render_graph_resource re
     if (resource.name.empty()) throw std::invalid_argument("render graph resource names must not be empty");
     if (find_resource(resource.name) != nullptr)
         throw std::invalid_argument("render graph resource names must be unique");
+    if (resource.history_length == 0) throw std::invalid_argument("render graph history length must be positive");
+    if (resource.history_length > 1) resource.persistent = true;
+    if (resource.persistent && resource.persistent_key.empty()) resource.persistent_key = resource.name;
 
     const auto index = static_cast<std::uint32_t>(resources_.size());
     resources_.push_back(std::move(resource));
@@ -114,6 +120,7 @@ compiled_render_graph render_graph::compile() const
     };
 
     std::vector<resource_state> resource_states(resources_.size());
+    std::vector<resource_state> previous_resource_states(resources_.size());
     std::vector<std::vector<std::uint32_t>> edges(passes_.size());
     std::vector<render_resource_transition> transitions;
 
@@ -155,13 +162,16 @@ compiled_render_graph render_graph::compile() const
     const auto record_transition = [&](render_graph_resource_handle handle, const render_resource_access& access,
                                        std::uint32_t pass_index, render_queue_type queue)
     {
-        auto& state = resource_states[handle.index];
+        auto& state = access.history == render_history_access::previous ? previous_resource_states[handle.index]
+                                                                        : resource_states[handle.index];
         if (state.used && (state.last_usage != access.usage || state.last_queue != queue))
         {
             transitions.push_back({.handle = handle,
                                    .resource = resources_[handle.index].name,
                                    .before = state.last_usage,
                                    .after = access.usage,
+                                   .before_history = access.history,
+                                   .after_history = access.history,
                                    .before_pass = state.last_pass,
                                    .after_pass = pass_index,
                                    .before_queue = state.last_queue,
@@ -199,18 +209,27 @@ compiled_render_graph render_graph::compile() const
         {
             if (read.write) throw std::invalid_argument("render graph reads must not be marked writable");
             const auto handle = resolve_access(read);
+            if (read.history == render_history_access::previous &&
+                (!resources_[handle.index].persistent || resources_[handle.index].history_length < 2))
+                throw std::invalid_argument("previous history reads require a persistent resource with history");
             auto& state = resource_states[handle.index];
-            if (!state.last_writer && !resources_[handle.index].imported)
+            if (read.history == render_history_access::current && !state.last_writer &&
+                !resources_[handle.index].imported)
                 throw std::invalid_argument("internal render graph resource is read before its first write");
-            if (state.last_writer) add_edge(*state.last_writer, index); // RAW
-            if (std::find(state.readers.begin(), state.readers.end(), index) == state.readers.end())
-                state.readers.push_back(index);
+            if (read.history == render_history_access::current)
+            {
+                if (state.last_writer) add_edge(*state.last_writer, index); // RAW
+                if (std::find(state.readers.begin(), state.readers.end(), index) == state.readers.end())
+                    state.readers.push_back(index);
+            }
             record_transition(handle, read, index, pass.queue);
         }
 
         for (const auto& write : pass.writes)
         {
             if (!write.write) throw std::invalid_argument("render graph writes must be marked writable");
+            if (write.history != render_history_access::current)
+                throw std::invalid_argument("render graph passes may only write the current history generation");
             const auto handle = resolve_access(write);
             auto& state = resource_states[handle.index];
             if (state.last_writer) add_edge(*state.last_writer, index); // WAW
@@ -297,9 +316,17 @@ compiled_render_graph render_graph::compile() const
         auto& lifetime = result.lifetimes[index];
         lifetime.handle = {index};
         const auto& resource = resources_[index];
-        const auto bytes_per_pixel = format_bytes_per_pixel(resource.format);
-        lifetime.estimated_bytes = bytes_per_pixel * resource.extent.width * resource.extent.height *
-                                   resource.extent.depth * resource.array_layers * resource.sample_count;
+        if (resource.kind == render_resource_kind::buffer)
+            lifetime.estimated_bytes = resource.byte_size != 0
+                                           ? resource.byte_size
+                                           : static_cast<std::uint64_t>(resource.extent.width) *
+                                                 std::max<std::uint32_t>(resource.element_stride, 1u);
+        else
+        {
+            const auto bytes_per_pixel = format_bytes_per_pixel(resource.format);
+            lifetime.estimated_bytes = bytes_per_pixel * resource.extent.width * resource.extent.height *
+                                       resource.extent.depth * resource.array_layers * resource.sample_count;
+        }
     }
 
     for (std::uint32_t pass_index = 0; pass_index < result.passes.size(); ++pass_index)
@@ -343,6 +370,49 @@ compiled_render_graph render_graph::compile() const
             physical_last_pass.push_back(lifetime.last_pass);
             physical_resource_owner.push_back(index);
         }
+    }
+
+    std::vector<std::uint32_t> pass_submission(result.passes.size());
+    std::uint64_t queue_signals[3]{};
+    const auto queue_slot = [](render_queue_type queue)
+    {
+        return queue == render_queue_type::graphics ? 0u : queue == render_queue_type::compute ? 1u : 2u;
+    };
+    for (std::uint32_t pass_index = 0; pass_index < result.passes.size(); ++pass_index)
+    {
+        const auto queue = result.passes[pass_index].queue;
+        if (result.submissions.empty() || result.submissions.back().queue != queue)
+        {
+            const auto signal = ++queue_signals[queue_slot(queue)];
+            result.submissions.push_back({.queue = queue, .signal_value = signal});
+        }
+        const auto submission_index = static_cast<std::uint32_t>(result.submissions.size() - 1);
+        result.submissions.back().passes.push_back(pass_index);
+        pass_submission[pass_index] = submission_index;
+    }
+
+    for (const auto& transition : result.transitions)
+    {
+        if (transition.before_queue == transition.after_queue) continue;
+        const auto producer = pass_submission[transition.before_pass];
+        const auto consumer = pass_submission[transition.after_pass];
+        if (producer == consumer) continue;
+        const render_queue_wait wait{.queue = transition.before_queue,
+                                     .value = result.submissions[producer].signal_value};
+        auto& waits = result.submissions[consumer].waits;
+        const bool duplicate = std::any_of(waits.begin(), waits.end(), [&](const render_queue_wait& existing)
+                                           { return existing.queue == wait.queue && existing.value == wait.value; });
+        if (!duplicate) waits.push_back(wait);
+    }
+
+    for (std::uint32_t index = 0; index < resources_.size(); ++index)
+    {
+        const auto& resource = resources_[index];
+        if (!resource.persistent) continue;
+        result.history_rotations.push_back({.handle = {index},
+                                            .persistent_key = resource.persistent_key,
+                                            .history_length = resource.history_length,
+                                            .reset = resource.history_reset});
     }
 
     return result;
@@ -409,6 +479,8 @@ std::string_view render_format_name(render_format format) noexcept
             return "r8";
         case render_format::r32_uint:
             return "r32ui";
+        case render_format::r32_float:
+            return "r32f";
         case render_format::d24_unorm_s8_uint:
             return "d24s8";
         case render_format::d32_float:

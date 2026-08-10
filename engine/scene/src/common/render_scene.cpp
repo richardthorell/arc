@@ -347,6 +347,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
 
     const transform_component* camera_transform{};
     const camera_component* camera{};
+    entity camera_entity{};
     if (scene.alive(preferred_camera) && entity_is_active(scene, preferred_camera))
     {
         const auto* preferred_transform = scene.try_get<transform_component>(preferred_camera);
@@ -355,6 +356,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
         {
             camera_transform = preferred_transform;
             camera = preferred_component;
+            camera_entity = preferred_camera;
         }
     }
     scene.view<transform_component, camera_component>().each(
@@ -364,6 +366,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             {
                 camera_transform = &transform;
                 camera = &candidate;
+                camera_entity = value;
             }
         });
 
@@ -389,6 +392,11 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
     const math::matrix4f vp = math::matmul(projection, view);
 
     render::render_world_packet world_packet;
+    world_packet.gpu_scene_world_id = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(&scene));
+    const auto camera_key =
+        (static_cast<std::uint64_t>(camera_entity.generation) << 32u) | static_cast<std::uint64_t>(camera_entity.index);
+    world_packet.render_view_id = world_packet.gpu_scene_world_id ^
+                                  (camera_key + 0x9e3779b97f4a7c15ull + (camera_key << 6u) + (camera_key >> 2u));
     world_packet.camera.view = view;
     world_packet.camera.projection = projection;
     world_packet.camera.view_projection = vp;
@@ -683,8 +691,11 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
     result.skipped_area_light_count = lighting.skipped_area_count;
 
     result.environment = world_packet.environment;
-    render::prepare_render_world(world_packet);
-    result.submitted_draw_count = world_packet.visible_items.size() + world_packet.visible_virtual_items.size();
+    const bool gpu_driven = renderer.resolved_config().features.gpu_driven_rendering;
+    render::prepare_render_world(world_packet, {.gpu_driven = gpu_driven});
+    result.submitted_draw_count = gpu_driven
+                                      ? world_packet.items.size() + world_packet.virtual_items.size()
+                                      : world_packet.visible_items.size() + world_packet.visible_virtual_items.size();
     result.culled_count = world_packet.culled_item_count;
     result.culled_virtual_cluster_count = world_packet.culled_virtual_cluster_count;
     result.instance_batch_count = world_packet.instance_batches.size();

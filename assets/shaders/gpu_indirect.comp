@@ -1,0 +1,44 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct draw_indexed_indirect_command
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer draw_bin_buffer
+{
+    uvec4 bins[];
+};
+layout(std430, set = 0, binding = 1) writeonly buffer indirect_buffer
+{
+    draw_indexed_indirect_command commands[];
+};
+layout(std430, set = 0, binding = 2) buffer indirect_count_buffer
+{
+    uint draw_count;
+};
+
+layout(push_constant) uniform indirect_constants
+{
+    uint bin_count;
+} constants;
+
+void main()
+{
+    uint bin_index = gl_GlobalInvocationID.x;
+    if (bin_index >= constants.bin_count || bins[bin_index].y == 0u)
+        return;
+
+    uint command_index = atomicAdd(draw_count, 1u);
+    commands[command_index].index_count = bins[bin_index].x;
+    commands[command_index].instance_count = bins[bin_index].y;
+    commands[command_index].first_index = bins[bin_index].z;
+    commands[command_index].vertex_offset = int(bins[bin_index].w);
+    commands[command_index].first_instance = bin_index;
+}

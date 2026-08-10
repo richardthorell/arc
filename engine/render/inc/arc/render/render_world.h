@@ -52,6 +52,8 @@ struct render_camera
     std::uint32_t render_height{};
     std::uint32_t output_width{};
     std::uint32_t output_height{};
+    bool history_valid{};
+    bool camera_cut{true};
 };
 
 /**
@@ -68,6 +70,7 @@ struct render_skin
  */
 struct render_item
 {
+    gpu_scene_instance_handle gpu_scene_instance{};
     mesh_handle mesh{};
     material_handle material{};
     std::uint32_t submesh{};
@@ -89,6 +92,8 @@ struct render_item
     render_mobility mobility{render_mobility::movable};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
+    float maximum_draw_distance{};
+    float geometry_error_scale{1.0f};
     math::vector4f base_color_tint = math::vector4f::one;
     std::string label;
 };
@@ -98,6 +103,7 @@ struct render_item
  */
 struct virtual_render_item
 {
+    gpu_scene_instance_handle gpu_scene_instance{};
     virtual_mesh_handle mesh{};
     material_handle material{};
     std::uint32_t cluster_index{};
@@ -114,6 +120,8 @@ struct virtual_render_item
     render_mobility mobility{render_mobility::movable};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
+    float maximum_draw_distance{};
+    float geometry_error_scale{1.0f};
     math::vector4f base_color_tint = math::vector4f::one;
     std::string label;
 };
@@ -396,6 +404,12 @@ struct debug_overlay_stream
  */
 struct render_world_packet
 {
+    /** Stable runtime world identity used to partition persistent GPU Scene instances. */
+    std::uint64_t gpu_scene_world_id{1};
+    /** Stable identity for one camera/view history within the runtime world. */
+    std::uint64_t render_view_id{1};
+    /** Epoch incremented when the source world is atomically replaced. */
+    std::uint64_t world_epoch{1};
     render_camera camera;
     render_mode mode{render_mode::shaded};
     mesh_visualization_mode visualization{mesh_visualization_mode::standard};
@@ -433,6 +447,7 @@ struct render_world_prepare_options
     bool enable_frustum_culling{true};
     bool enable_instancing{true};
     bool enable_indirect_draws{true};
+    bool gpu_driven{};
     std::uint32_t render_layer_mask{0xffffffffu};
 };
 

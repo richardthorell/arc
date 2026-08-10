@@ -2,6 +2,7 @@
 
 #include <arc/framework/module.h>
 #include <arc/render/events.h>
+#include <arc/render/gpu_scene.h>
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
 #include <arc/render/material.h>
@@ -26,9 +27,14 @@ struct renderer_config
     render_quality_tier quality{render_quality_tier::auto_select};
     render_path path{render_path::auto_select};
     std::uint32_t adapter_index{resource_handle::invalid_index};
-    float target_frame_time_ms{default_target_frame_time_ms};
+    /** Zero selects the target defined by the resolved quality profile. */
+    float target_frame_time_ms{};
     bool enable_dynamic_resolution{true};
     bool force_disable_optional_features{};
+    bool force_cpu_submission{};
+    bool force_disable_gpu_driven{};
+    bool force_disable_async_compute{};
+    bool force_disable_temporal{};
 };
 
 /**
@@ -37,20 +43,56 @@ struct renderer_config
 resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities);
 
 /**
- * @brief Smoothed, quantized dynamic-resolution policy shared by render paths.
+ * @brief Per-frame quality controls emitted by the frame-budget controller.
  */
-class dynamic_resolution_controller
+struct frame_budget_settings
+{
+    float render_scale{1.0f};
+    float geometry_error_threshold{1.0f};
+    float shadow_resolution_scale{1.0f};
+    float volumetric_resolution_scale{1.0f};
+    std::uint32_t gi_trace_budget{1};
+    std::uint32_t reflection_ray_budget{1};
+};
+
+/** @brief Quality control most recently adjusted to meet the frame target. */
+enum class frame_budget_change : std::uint8_t
+{
+    none,
+    render_scale,
+    geometry_error,
+    shadow_resolution,
+    gi_traces,
+    reflection_rays,
+    volumetric_resolution
+};
+
+/**
+ * @brief Smoothed frame-time controller shared by all scalable render systems.
+ */
+class frame_budget_controller
 {
 public:
-    void reset(float target_frame_time_ms, float minimum_scale, float maximum_scale) noexcept;
-    float update(float gpu_frame_time_ms) noexcept;
-    float scale() const noexcept;
+    void reset(const render_quality_profile& profile, float target_frame_time_ms) noexcept;
+    const frame_budget_settings& update(float gpu_frame_time_ms) noexcept;
+    const frame_budget_settings& settings() const noexcept;
+    frame_budget_change last_change() const noexcept;
+    float smoothed_frame_time_ms() const noexcept;
 
 private:
     float target_frame_time_ms_{default_target_frame_time_ms};
     float minimum_scale_{low_render_quality_profile.minimum_render_scale};
     float maximum_scale_{1.0f};
-    float scale_{1.0f};
+    float minimum_geometry_error_{0.5f};
+    float maximum_geometry_error_{4.0f};
+    float minimum_shadow_scale_{0.5f};
+    float maximum_shadow_scale_{1.0f};
+    float minimum_volumetric_scale_{0.5f};
+    float maximum_volumetric_scale_{1.0f};
+    std::uint32_t maximum_gi_trace_budget_{1};
+    std::uint32_t maximum_reflection_ray_budget_{1};
+    frame_budget_settings settings_{};
+    frame_budget_change last_change_{frame_budget_change::none};
     float smoothed_frame_time_ms_{default_target_frame_time_ms};
     std::uint32_t over_budget_frames_{};
     std::uint32_t under_budget_frames_{};
@@ -206,10 +248,22 @@ public:
     render_submit_result render_frame(std::uint64_t frame_index, const render_graph& graph);
 
 private:
+    struct temporal_view_state
+    {
+        math::matrix4f view_projection{math::identity<float, 4>()};
+        math::vector3f position{};
+        math::vector3f forward{0.0f, 0.0f, -1.0f};
+        std::uint64_t world_epoch{};
+        std::uint32_t width{};
+        std::uint32_t height{};
+        bool valid{};
+    };
+
     renderer_config config_{};
     resolved_render_config resolved_config_{};
     std::unique_ptr<render_backend> backend_;
     render_frame_queue frame_queue_;
+    gpu_scene gpu_scene_;
     handle_pool mesh_handles_;
     handle_pool virtual_mesh_handles_;
     handle_pool texture_handles_;
@@ -217,9 +271,10 @@ private:
     handle_pool environment_handles_;
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
-    dynamic_resolution_controller dynamic_resolution_;
+    frame_budget_controller frame_budget_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
+    std::unordered_map<std::uint64_t, temporal_view_state> temporal_views_;
 };
 
 /**

@@ -1,0 +1,113 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct gpu_scene_instance
+{
+    mat4 model;
+    mat4 previous_model;
+    vec4 bounds_min;
+    vec4 bounds_max;
+    uvec4 geometry;
+    uvec4 material_flags;
+    uvec4 draw_metadata;
+    vec4 distance_error;
+};
+
+struct draw_indexed_indirect_command
+{
+    uint index_count;
+    uint instance_count;
+    uint first_index;
+    int vertex_offset;
+    uint first_instance;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer gpu_scene_buffer
+{
+    gpu_scene_instance instances[];
+} scene;
+
+layout(std430, set = 0, binding = 1) writeonly buffer indirect_command_buffer
+{
+    draw_indexed_indirect_command commands[];
+};
+
+layout(std430, set = 0, binding = 2) buffer visibility_counter_buffer
+{
+    uint visible_count;
+    uint frustum_rejected;
+    uint distance_rejected;
+    uint reserved;
+} counters;
+
+layout(push_constant) uniform visibility_constants
+{
+    mat4 view_projection;
+    vec4 camera_position_and_error;
+    uint instance_capacity;
+    uint render_layer_mask;
+    uint camera_cut;
+    uint reserved;
+} constants;
+
+bool intersects_frustum(vec3 minimum_bounds, vec3 maximum_bounds)
+{
+    bool outside_left = true;
+    bool outside_right = true;
+    bool outside_bottom = true;
+    bool outside_top = true;
+    bool outside_near = true;
+    bool outside_far = true;
+    for (uint corner = 0u; corner < 8u; ++corner)
+    {
+        vec3 position = vec3((corner & 1u) != 0u ? maximum_bounds.x : minimum_bounds.x,
+                             (corner & 2u) != 0u ? maximum_bounds.y : minimum_bounds.y,
+                             (corner & 4u) != 0u ? maximum_bounds.z : minimum_bounds.z);
+        vec4 clip = constants.view_projection * vec4(position, 1.0);
+        outside_left = outside_left && clip.x < -clip.w;
+        outside_right = outside_right && clip.x > clip.w;
+        outside_bottom = outside_bottom && clip.y < -clip.w;
+        outside_top = outside_top && clip.y > clip.w;
+        outside_near = outside_near && clip.z < 0.0;
+        outside_far = outside_far && clip.z > clip.w;
+    }
+    return !(outside_left || outside_right || outside_bottom || outside_top || outside_near || outside_far);
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= constants.instance_capacity)
+        return;
+
+    gpu_scene_instance instance = scene.instances[index];
+    draw_indexed_indirect_command command;
+    command.index_count = instance.draw_metadata.x;
+    command.instance_count = 0u;
+    command.first_index = instance.draw_metadata.y;
+    command.vertex_offset = int(instance.draw_metadata.z);
+    command.first_instance = 0u;
+
+    bool enabled = (instance.material_flags.w & 1u) != 0u && command.index_count != 0u &&
+                   (instance.material_flags.z & constants.render_layer_mask) != 0u;
+    if (enabled && !intersects_frustum(instance.bounds_min.xyz, instance.bounds_max.xyz))
+    {
+        enabled = false;
+        atomicAdd(counters.frustum_rejected, 1u);
+    }
+    float maximum_distance = instance.distance_error.x;
+    vec3 center = (instance.bounds_min.xyz + instance.bounds_max.xyz) * 0.5;
+    if (enabled && maximum_distance > 0.0 &&
+        distance(center, constants.camera_position_and_error.xyz) > maximum_distance)
+    {
+        enabled = false;
+        atomicAdd(counters.distance_rejected, 1u);
+    }
+    if (enabled)
+    {
+        command.instance_count = 1u;
+        atomicAdd(counters.visible_count, 1u);
+    }
+    commands[index] = command;
+}
