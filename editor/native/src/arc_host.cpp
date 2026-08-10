@@ -1039,20 +1039,34 @@ std::string_view reflected_kind_name(project::game_field_kind_v1 kind)
     using enum project::game_field_kind_v1;
     switch (kind)
     {
-    case boolean: return "boolean";
-    case signed_integer: return "signedInteger";
-    case unsigned_integer: return "unsignedInteger";
-    case floating_point: return "number";
-    case string: return "string";
-    case enumeration: return "enum";
-    case vector2: return "vector2";
-    case vector3: return "vector3";
-    case vector4: return "vector4";
-    case quaternion: return "quaternion";
-    case entity_reference: return "entity";
-    case asset_reference: return "asset";
-    case structure: return "struct";
-    case sequence: return "sequence";
+        case boolean:
+            return "boolean";
+        case signed_integer:
+            return "signedInteger";
+        case unsigned_integer:
+            return "unsignedInteger";
+        case floating_point:
+            return "number";
+        case string:
+            return "string";
+        case enumeration:
+            return "enum";
+        case vector2:
+            return "vector2";
+        case vector3:
+            return "vector3";
+        case vector4:
+            return "vector4";
+        case quaternion:
+            return "quaternion";
+        case entity_reference:
+            return "entity";
+        case asset_reference:
+            return "asset";
+        case structure:
+            return "struct";
+        case sequence:
+            return "sequence";
     }
     return "unknown";
 }
@@ -1066,8 +1080,7 @@ void append_project_component_schema(std::string& json, bool& first, const proje
 {
     if (!first) json += ',';
     first = false;
-    json += "{\"id\":" + to_json_string(component.stable_id) +
-            ",\"name\":" + to_json_string(component.canonical_name) +
+    json += "{\"id\":" + to_json_string(component.stable_id) + ",\"name\":" + to_json_string(component.canonical_name) +
             ",\"displayName\":" + to_json_string(component.display_name) +
             ",\"category\":" + to_json_string(component.category) +
             ",\"tooltip\":" + to_json_string(component.tooltip) +
@@ -1081,10 +1094,8 @@ void append_project_component_schema(std::string& json, bool& first, const proje
         id << std::hex << std::setfill('0') << std::setw(16) << field.stable_id;
         json += "{\"id\":" + to_json_string(id.str()) + ",\"name\":" + to_json_string(field.name) +
                 ",\"displayName\":" + to_json_string(field.display_name) +
-                ",\"category\":" + to_json_string(field.category) +
-                ",\"tooltip\":" + to_json_string(field.tooltip) +
-                ",\"kind\":" + to_json_string(reflected_kind_name(field.kind)) +
-                ",\"editable\":" +
+                ",\"category\":" + to_json_string(field.category) + ",\"tooltip\":" + to_json_string(field.tooltip) +
+                ",\"kind\":" + to_json_string(reflected_kind_name(field.kind)) + ",\"editable\":" +
                 std::string(has_flag(field.flags, project::game_field_flags_v1::editable) &&
                                     !has_flag(field.flags, project::game_field_flags_v1::read_only)
                                 ? "true"
@@ -1138,7 +1149,8 @@ std::string component_schema_json(const std::vector<project_component_schema>& p
     append_component_schema<scene::water_component>(json, first);
     append_component_schema<scene::vegetation_component>(json, first);
     append_component_schema<scene::decal_component>(json, first);
-    for (const auto& component : project_components) append_project_component_schema(json, first, component);
+    for (const auto& component : project_components)
+        append_project_component_schema(json, first, component);
     json += "]}";
     return json;
 }
@@ -1146,8 +1158,9 @@ std::string component_schema_json(const std::vector<project_component_schema>& p
 const project_component_schema* find_project_component(const project_module_loader& module, std::string_view identity)
 {
     const auto& components = module.component_schemas();
-    const auto found = std::find_if(components.begin(), components.end(), [&](const auto& component)
-                                    { return component.stable_id == identity || component.canonical_name == identity; });
+    const auto found =
+        std::find_if(components.begin(), components.end(), [&](const auto& component)
+                     { return component.stable_id == identity || component.canonical_name == identity; });
     return found == components.end() ? nullptr : &*found;
 }
 
@@ -1177,8 +1190,8 @@ void set_project_component_records(editor_scene_state& scene, ecs::entity_guid g
 
 nlohmann::json default_project_component(const project_component_schema& schema)
 {
-    nlohmann::json component{{"typeId", schema.stable_id}, {"version", schema.schema_version},
-                             {"_arcFieldIds", nlohmann::json::object()}};
+    nlohmann::json component{
+        {"typeId", schema.stable_id}, {"version", schema.schema_version}, {"_arcFieldIds", nlohmann::json::object()}};
     for (const auto& field : schema.fields)
     {
         std::ostringstream id;
@@ -1203,8 +1216,7 @@ std::optional<std::string> project_component_record_key(const nlohmann::json& re
     return std::nullopt;
 }
 
-void migrate_project_component_records(editor_scene_state& scene,
-                                       const std::vector<project_component_schema>& schemas)
+void migrate_project_component_records(editor_scene_state& scene, const std::vector<project_component_schema>& schemas)
 {
     for (auto& [_, record_text] : scene.unknown_component_records)
     {
@@ -1231,7 +1243,8 @@ void migrate_project_component_records(editor_scene_state& scene,
                 if (previous_ids.contains(id.str()) && previous_ids[id.str()].is_string())
                 {
                     const auto previous_name = previous_ids[id.str()].get<std::string>();
-                    if (previous_name != field.name && component.contains(previous_name) && !component.contains(field.name))
+                    if (previous_name != field.name && component.contains(previous_name) &&
+                        !component.contains(field.name))
                     {
                         component[field.name] = std::move(component[previous_name]);
                         component.erase(previous_name);
@@ -1261,7 +1274,8 @@ bool validate_project_field_value(const project_field_schema& field, const nlohm
         ((field.kind == signed_integer || field.kind == unsigned_integer) && value.is_number_integer()) ||
         (field.kind == floating_point && value.is_number()) ||
         ((field.kind == string || field.kind == enumeration || field.kind == entity_reference ||
-          field.kind == asset_reference) && (value.is_string() || value.is_null())) ||
+          field.kind == asset_reference) &&
+         (value.is_string() || value.is_null())) ||
         ((field.kind == vector2 || field.kind == vector3 || field.kind == vector4 || field.kind == quaternion) &&
          value.is_array()) ||
         (field.kind == structure && value.is_object()) || (field.kind == sequence && value.is_array());
@@ -1274,15 +1288,16 @@ bool validate_project_field_value(const project_field_schema& field, const nlohm
     {
         const double number = value.get<double>();
         if (!std::isfinite(number) || (field.kind == unsigned_integer && number < 0.0) ||
-            (field.has_minimum && number < field.minimum) ||
-            (field.has_maximum && number > field.maximum))
+            (field.has_minimum && number < field.minimum) || (field.has_maximum && number > field.maximum))
         {
             error = "Project component field value is outside its authored range";
             return false;
         }
     }
-    const auto expected_elements = field.kind == vector2 ? 2u : field.kind == vector3 ? 3u :
-                                   (field.kind == vector4 || field.kind == quaternion) ? 4u : 0u;
+    const auto expected_elements = field.kind == vector2                                 ? 2u
+                                   : field.kind == vector3                               ? 3u
+                                   : (field.kind == vector4 || field.kind == quaternion) ? 4u
+                                                                                         : 0u;
     if (expected_elements && (value.size() != expected_elements ||
                               !std::all_of(value.begin(), value.end(), [](const auto& item)
                                            { return item.is_number() && std::isfinite(item.template get<double>()); })))
@@ -1574,7 +1589,8 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     {
         const auto module_path = resolve_project_document(command.root, command.editor_module_path, true);
         if (!module_path)
-            return {.request_id = request_id, .succeeded = false,
+            return {.request_id = request_id,
+                    .succeeded = false,
                     .error = "Project editor module must be a file contained by the project root"};
         const auto module_result = state_->project_module.load(*module_path, command.engine_version,
                                                                command.project_guid, command.editor_module_id);
@@ -1594,8 +1610,8 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->asset_files.reset();
     if (!command.root.empty())
     {
-        const auto cache_root = command.cache_root.empty() ? command.root / "Intermediate" / "Cache"
-                                                            : command.cache_root;
+        const auto cache_root =
+            command.cache_root.empty() ? command.root / "Intermediate" / "Cache" : command.cache_root;
         std::vector<std::filesystem::path> content_roots = command.content_roots;
         if (content_roots.empty())
             content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
@@ -1603,12 +1619,11 @@ host_response arc_host::open_project(const host_open_project_command& command, c
             arc::assets::derived_data_cache_config{.root = cache_root});
         state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
         state_->asset_registry = std::make_unique<arc::assets::asset_manager>(
-            arc::assets::asset_manager_config{
-                .project_root = command.root,
-                .asset_root = content_roots.front(),
-                .additional_source_roots =
-                    std::vector<std::filesystem::path>(content_roots.begin() + 1, content_roots.end()),
-                .cache_root = cache_root},
+            arc::assets::asset_manager_config{.project_root = command.root,
+                                              .asset_root = content_roots.front(),
+                                              .additional_source_roots = std::vector<std::filesystem::path>(
+                                                  content_roots.begin() + 1, content_roots.end()),
+                                              .cache_root = cache_root},
             state_->simulation.jobs(), *state_->asset_files, state_->simulation.memory());
         framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_start(context);
@@ -1625,10 +1640,10 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     std::string loaded_scene_message = "Blank authoring scene created";
     if (!command.default_scene.empty())
     {
-        const auto scene_path = command.default_scene.is_absolute() ? command.default_scene
-                                                                    : command.root / command.default_scene;
-        const auto loaded = load_scene_document(state_->scene, *state_->renderer, state_->project.root,
-                                                scene_path, state_->asset_registry.get());
+        const auto scene_path =
+            command.default_scene.is_absolute() ? command.default_scene : command.root / command.default_scene;
+        const auto loaded = load_scene_document(state_->scene, *state_->renderer, state_->project.root, scene_path,
+                                                state_->asset_registry.get());
         if (!loaded.succeeded)
         {
             state_->project_module.unload();
@@ -1737,8 +1752,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     const auto descriptor = project::load_descriptor(payload.descriptor_path);
                     if (!descriptor) return fail(descriptor.error().message);
-                    const auto validation = project::validate_descriptor(
-                        payload.descriptor_path, descriptor.value(), {.require_paths = true});
+                    const auto validation = project::validate_descriptor(payload.descriptor_path, descriptor.value(),
+                                                                         {.require_paths = true});
                     if (!validation) return fail(validation.error().message);
                     const auto context = project::resolve_context(payload.descriptor_path, descriptor.value());
                     if (!context) return fail(context.error().message);
@@ -1748,13 +1763,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                         return fail("Project engine version does not match the selected descriptor");
                     if (!payload.editor_module_path.empty())
                     {
-                        const auto editor_module = std::find_if(
-                            descriptor.value().modules.begin(), descriptor.value().modules.end(),
-                            [&](const auto& module)
-                            {
-                                return module.enabled && module.kind == project::module_kind::editor &&
-                                       module.id == payload.editor_module_id;
-                            });
+                        const auto editor_module =
+                            std::find_if(descriptor.value().modules.begin(), descriptor.value().modules.end(),
+                                         [&](const auto& module)
+                                         {
+                                             return module.enabled && module.kind == project::module_kind::editor &&
+                                                    module.id == payload.editor_module_id;
+                                         });
                         if (editor_module == descriptor.value().modules.end())
                             return fail("Editor module is not declared by the selected project");
                     }
@@ -1768,9 +1783,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     resolved.project_guid = descriptor.value().guid;
                     resolved.engine_version = descriptor.value().engine_version;
                 }
-                const auto asset_root = !resolved.content_roots.empty()
-                                            ? resolved.content_roots.front()
-                                            : resolved.root / "Content";
+                const auto asset_root =
+                    !resolved.content_roots.empty() ? resolved.content_roots.front() : resolved.root / "Content";
                 return open_project(resolved, load_default_editor_assets(asset_root), request_id);
             }
             else if constexpr (std::is_same_v<command_type, host_close_project_command>)
@@ -1810,8 +1824,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     result.classification == module_reload_classification::safe_hot_reload)
                     state_->simulation.resume();
                 const char* classification =
-                    result.classification == module_reload_classification::safe_hot_reload
-                        ? "safeHotReload"
+                    result.classification == module_reload_classification::safe_hot_reload ? "safeHotReload"
                     : result.classification == module_reload_classification::play_session_restart_required
                         ? "playSessionRestartRequired"
                     : result.classification == module_reload_classification::native_host_restart_required
@@ -1835,9 +1848,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                            result.message);
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Project component metadata refreshed");
-                return success("{\"generation\":" + std::to_string(result.generation) +
-                               ",\"classification\":" + to_json_string(classification) +
-                               ",\"message\":" + to_json_string(result.message) + '}');
+                return success("{\"generation\":" + std::to_string(result.generation) + ",\"classification\":" +
+                               to_json_string(classification) + ",\"message\":" + to_json_string(result.message) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_asset_reimport_command> ||
                                std::is_same_v<command_type, host_asset_cancel_import_command> ||
@@ -2012,8 +2024,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!saved.succeeded) return fail(saved.message.empty() ? "Scene autosave failed" : saved.message);
                 return success("{\"path\":" + to_json_string(path.generic_string()) +
                                ",\"sceneGuid\":" + to_json_string(ecs::to_string(state_->scene.scene_guid)) +
-                               ",\"historyRevision\":" +
-                               std::to_string(state_->history.snapshot().revision) + '}');
+                               ",\"historyRevision\":" + std::to_string(state_->history.snapshot().revision) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_open_recovery_scene_command>)
             {
@@ -2033,8 +2044,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 ++state_->world_epoch;
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
                            "Recovery scene loaded", state_->scene.selected_entity);
-                return success("{\"entityCount\":" + std::to_string(loaded.entity_count) +
-                               ",\"recovered\":true}");
+                return success("{\"entityCount\":" + std::to_string(loaded.entity_count) + ",\"recovered\":true}");
             }
             else if constexpr (std::is_same_v<command_type, host_new_scene_command>)
             {
@@ -2309,8 +2319,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                         state_->scene.selected_entity = {};
                         for (const auto candidate : state_->scene.scene.entities())
                         {
-                            const auto* selection =
-                                state_->scene.scene.try_get<scene::selection_component>(candidate);
+                            const auto* selection = state_->scene.scene.try_get<scene::selection_component>(candidate);
                             if (selection && selection->selected)
                             {
                                 state_->scene.selected_entity = candidate;
@@ -2394,7 +2403,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
                 if (targets.empty()) return fail("Cannot edit mobility for a missing or unselected entity", entity);
                 for (const auto target : targets)
-                    state_->scene.scene.emplace<scene::mobility_component>(target, to_render_mobility(payload.mobility));
+                    state_->scene.scene.emplace<scene::mobility_component>(target,
+                                                                           to_render_mobility(payload.mobility));
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "Entity mobility changed for " + std::to_string(targets.size()) + " entity(s)", entity);
                 return success("{\"entity\":" + to_json(payload.entity) + '}');
@@ -2406,8 +2416,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return fail("Camera values are outside their valid authored ranges", entity);
                 const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
                 if (targets.empty()) return fail("Cannot edit a missing or unselected camera", entity);
-                if (std::any_of(targets.begin(), targets.end(),
-                                [&](ecs::entity target)
+                if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::camera_component>(target); }))
                     return fail("Every selected entity must have an editable camera component", entity);
                 const auto camera = to_scene_camera(payload.camera);
@@ -2520,8 +2529,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return fail("Mesh renderer shadow values are outside supported ranges", entity);
                 const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
                 if (targets.empty()) return fail("Cannot edit a missing or unselected mesh renderer", entity);
-                if (std::any_of(targets.begin(), targets.end(),
-                                [&](ecs::entity target)
+                if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
                 for (const auto target : targets)
@@ -2703,8 +2711,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto entity = to_scene_entity(payload.entity);
                 const auto targets = edit_targets(state_->scene.scene, entity, payload.apply_to_selection);
                 if (targets.empty()) return fail("Cannot edit a missing or unselected mesh renderer", entity);
-                if (std::any_of(targets.begin(), targets.end(),
-                                [&](ecs::entity target)
+                if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
                 const auto path = resolve_project_asset(state_->assets.root, payload.path);
@@ -2754,10 +2761,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (targets.empty()) return fail("Component operation requires a selected entity");
 
                 const bool known = payload.component == "transform" || payload.component == "camera" ||
-                                   payload.component == "meshRenderer" ||
-                                   payload.component == "directionalLight" || payload.component == "pointLight" ||
-                                   payload.component == "spotLight" || payload.component == "areaLight" ||
-                                   payload.component == "renderLayer" || payload.component == "mobility";
+                                   payload.component == "meshRenderer" || payload.component == "directionalLight" ||
+                                   payload.component == "pointLight" || payload.component == "spotLight" ||
+                                   payload.component == "areaLight" || payload.component == "renderLayer" ||
+                                   payload.component == "mobility";
                 const auto* project_schema = find_project_component(state_->project_module, payload.component);
                 if (!known && !project_schema) return fail("Component is not supported by generic operations");
                 if (payload.operation == host_component_operation::remove && payload.component == "transform")
@@ -2818,8 +2825,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         entity_changed = apply(entity, scene::camera_component{});
                     else if (payload.component == "meshRenderer")
                     {
-                        scene::mesh_renderer_component value{
-                            state_->scene.default_mesh, state_->scene.default_material, true};
+                        scene::mesh_renderer_component value{state_->scene.default_mesh, state_->scene.default_material,
+                                                             true};
                         if (const auto* current = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity))
                         {
                             value.mesh = current->mesh;
@@ -2855,8 +2862,8 @@ host_response arc_host::execute(const host_command_envelope& command)
             {
                 const auto* schema = find_project_component(state_->project_module, payload.component);
                 if (!schema) return fail("Project component schema is not loaded");
-                const auto field = std::find_if(schema->fields.begin(), schema->fields.end(), [&](const auto& candidate)
-                                                { return candidate.name == payload.field; });
+                const auto field = std::find_if(schema->fields.begin(), schema->fields.end(),
+                                                [&](const auto& candidate) { return candidate.name == payload.field; });
                 if (field == schema->fields.end()) return fail("Project component field is unknown");
                 if (!has_flag(field->flags, project::game_field_flags_v1::editable) ||
                     has_flag(field->flags, project::game_field_flags_v1::read_only))
@@ -2870,14 +2877,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                     !value.get_ref<const std::string&>().empty())
                 {
                     const auto referenced_guid = ecs::parse_entity_guid(value.get<std::string>());
-                    const auto referenced_entity = referenced_guid ? find_entity_by_guid(state_->scene, *referenced_guid)
-                                                                   : ecs::entity{};
+                    const auto referenced_entity =
+                        referenced_guid ? find_entity_by_guid(state_->scene, *referenced_guid) : ecs::entity{};
                     if (!referenced_guid || !state_->scene.scene.alive(referenced_entity))
                         return fail("Project entity reference does not resolve in the open scene");
                     if (!field->entity_component_restriction.empty())
                     {
-                        const auto* required = find_project_component(state_->project_module,
-                                                                      field->entity_component_restriction);
+                        const auto* required =
+                            find_project_component(state_->project_module, field->entity_component_restriction);
                         const auto records = project_component_records(state_->scene, *referenced_guid);
                         if (!required || !project_component_record_key(records, *required))
                             return fail("Project entity reference does not satisfy its component restriction");
@@ -3494,11 +3501,11 @@ host_response arc_host::query(const host_query_envelope& query) const
                 {
                     if (index != 0) json += ',';
                     const auto& lifetime = profile.graph.lifetimes[index];
-                    const auto* resource = lifetime.handle.valid() && lifetime.handle.index < profile.graph.resources.size()
-                                               ? &profile.graph.resources[lifetime.handle.index]
-                                               : nullptr;
-                    json += "{\"name\":" + to_json_string(resource ? resource->name : std::string{}) +
-                            ",\"format\":" +
+                    const auto* resource =
+                        lifetime.handle.valid() && lifetime.handle.index < profile.graph.resources.size()
+                            ? &profile.graph.resources[lifetime.handle.index]
+                            : nullptr;
+                    json += "{\"name\":" + to_json_string(resource ? resource->name : std::string{}) + ",\"format\":" +
                             to_json_string(resource ? render::render_format_name(resource->format) : "unknown") +
                             ",\"firstPass\":" + std::to_string(lifetime.first_pass) +
                             ",\"lastPass\":" + std::to_string(lifetime.last_pass) +
@@ -3525,10 +3532,17 @@ host_response arc_host::query(const host_query_envelope& query) const
                     to_json_string(profile.configuration.path == render::render_path::forward_plus ? "forwardPlus"
                                                                                                    : "deferred") +
                     ",\"renderScale\":" + std::to_string(profile.configuration.render_scale) + ",\"qualityTier\":" +
-                    to_json_string(profile.configuration.quality == render::render_quality_tier::low    ? "low"
-                                   : profile.configuration.quality == render::render_quality_tier::high ? "high"
-                                                                                                        : "standard") +
+                    to_json_string(profile.configuration.quality == render::render_quality_tier::low     ? "low"
+                                   : profile.configuration.quality == render::render_quality_tier::ultra ? "ultra"
+                                   : profile.configuration.quality == render::render_quality_tier::high  ? "high"
+                                                                                                         : "standard") +
                     ",\"targetFrameMilliseconds\":" + std::to_string(profile.configuration.target_frame_time_ms) +
+                    ",\"geometryErrorThreshold\":" + std::to_string(profile.configuration.geometry_error_threshold) +
+                    ",\"shadowResolutionScale\":" + std::to_string(profile.configuration.shadow_resolution_scale) +
+                    ",\"volumetricResolutionScale\":" +
+                    std::to_string(profile.configuration.volumetric_resolution_scale) +
+                    ",\"giTraceBudget\":" + std::to_string(profile.configuration.gi_trace_budget) +
+                    ",\"reflectionRayBudget\":" + std::to_string(profile.configuration.reflection_ray_budget) +
                     ",\"fallbackReasons\":[";
                 for (std::size_t index = 0; index < profile.configuration.fallback_reasons.size(); ++index)
                 {
@@ -3560,7 +3574,24 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"localCacheMisses\":" + std::to_string(profile.shadows.local_cache_misses) +
                     ",\"staticCacheHit\":" + std::string(profile.shadows.static_cache_hit ? "true" : "false") +
                     ",\"screenSpaceShadows\":" + std::string(profile.shadows.screen_space_shadows ? "true" : "false") +
-                    ",\"fallback\":" + to_json_string(profile.shadows.fallback_reason) + "}}";
+                    ",\"fallback\":" + to_json_string(profile.shadows.fallback_reason) +
+                    "},\"gpuScene\":{\"enabled\":" + std::string(profile.gpu_scene.enabled ? "true" : "false") +
+                    ",\"hzbOcclusion\":" + std::string(profile.gpu_scene.hzb_occlusion ? "true" : "false") +
+                    ",\"historyValid\":" + std::string(profile.gpu_scene.history_valid ? "true" : "false") +
+                    ",\"activeInstances\":" + std::to_string(profile.gpu_scene.active_instances) +
+                    ",\"visibleInstances\":" + std::to_string(profile.gpu_scene.visible_instances) +
+                    ",\"frustumRejected\":" + std::to_string(profile.gpu_scene.frustum_rejected) +
+                    ",\"distanceRejected\":" + std::to_string(profile.gpu_scene.distance_rejected) +
+                    ",\"occlusionRejected\":" + std::to_string(profile.gpu_scene.occlusion_rejected) +
+                    ",\"indirectCommands\":" + std::to_string(profile.gpu_scene.indirect_commands) +
+                    ",\"fallback\":" + to_json_string(profile.gpu_scene.fallback_reason) +
+                    "},\"temporal\":{\"enabled\":" + std::string(profile.temporal.enabled ? "true" : "false") +
+                    ",\"upscaling\":" + std::string(profile.temporal.upscaling ? "true" : "false") +
+                    ",\"historyValid\":" + std::string(profile.temporal.history_valid ? "true" : "false") +
+                    ",\"cameraCut\":" + std::string(profile.temporal.camera_cut ? "true" : "false") +
+                    ",\"jitterX\":" + std::to_string(profile.temporal.jitter[0]) +
+                    ",\"jitterY\":" + std::to_string(profile.temporal.jitter[1]) +
+                    ",\"resetReason\":" + to_json_string(profile.temporal.reset_reason) + "}}";
                 return {.request_id = request_id, .succeeded = true, .payload_json = std::move(json)};
             }
             else if constexpr (std::is_same_v<query_type, host_viewport_capture_query>)
@@ -4176,18 +4207,18 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             auto display_path = absolute_path.lexically_relative(state_->assets.root);
             if (display_path.empty() || display_path.native().starts_with(std::filesystem::path("..").native()))
                 display_path = asset.source_path;
-            host_asset_snapshot host_asset{
-                .guid = arc::assets::to_string(asset.guid),
-                .path = arc::assets::normalize_asset_path(display_path),
-                .kind = kind_name(asset.type),
-                .type_id = arc::assets::to_string(asset.type),
-                .importer_id = arc::assets::to_string(asset.importer),
-                .state = state_name(asset.state),
-                .residency = residency_name(asset.residency),
-                .generation = asset.generation,
-                .strong_references = asset.strong_references,
-                .pins = asset.pins,
-                .diagnostic = asset.diagnostics.empty() ? std::string{} : asset.diagnostics.back().message};
+            host_asset_snapshot host_asset{.guid = arc::assets::to_string(asset.guid),
+                                           .path = arc::assets::normalize_asset_path(display_path),
+                                           .kind = kind_name(asset.type),
+                                           .type_id = arc::assets::to_string(asset.type),
+                                           .importer_id = arc::assets::to_string(asset.importer),
+                                           .state = state_name(asset.state),
+                                           .residency = residency_name(asset.residency),
+                                           .generation = asset.generation,
+                                           .strong_references = asset.strong_references,
+                                           .pins = asset.pins,
+                                           .diagnostic = asset.diagnostics.empty() ? std::string{}
+                                                                                   : asset.diagnostics.back().message};
             host_asset.dependencies.reserve(asset.dependencies.size());
             for (const auto dependency : asset.dependencies)
                 host_asset.dependencies.push_back(arc::assets::to_string(dependency));
