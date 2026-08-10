@@ -1,15 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  AlertTriangle,
-  Box,
-  FolderOpen,
-  GitBranch,
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-  Search,
-  Settings,
-} from 'lucide-react';
+import { AlertTriangle, Box, FolderOpen, GitBranch, Plus, RefreshCw, Search, Settings, Trash2, X } from 'lucide-react';
 
 import type {
   ArcProjectBrowserSnapshot,
@@ -219,6 +209,25 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
     );
   };
 
+  const removeRecent = async (descriptorPath: string) => {
+    await window.arc.projects.removeRecent(descriptorPath);
+    await refresh();
+  };
+
+  const deleteProject = async (recent: ArcProjectBrowserSnapshot['recentProjects'][number]) => {
+    if (
+      !window.confirm(
+        `Move “${recent.name}” and every file under\n${recent.projectRoot}\n\nto the system Trash or Recycle Bin?`,
+      )
+    )
+      return;
+    setBusy(true);
+    const result = await window.arc.projects.delete(recent.descriptorPath);
+    setBusy(false);
+    setMessage(result.succeeded ? `Moved ${recent.name} to the trash.` : result.error || 'Could not delete project');
+    await refresh();
+  };
+
   const recentProjects = (snapshot?.recentProjects ?? []).filter((project) => {
     const query = search.trim().toLocaleLowerCase();
     return (
@@ -351,25 +360,36 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
                         </small>
                       </span>
                     </button>
-                    {recovery?.uncleanShutdown && recovery.generations.length > 0 && (
-                      <UiButton
-                        className="project-recovery-button"
-                        disabled={busy || recent.missing || !snapshot?.hostConnected}
-                        onClick={() => void recoverRecent(recent.descriptorPath, compatibility, recovery)}
-                        variant="toolbar"
+                    <div className="project-card-controls">
+                      {recovery?.uncleanShutdown && recovery.generations.length > 0 && (
+                        <UiButton
+                          className="project-recovery-button"
+                          disabled={busy || recent.missing || !snapshot?.hostConnected}
+                          onClick={() => void recoverRecent(recent.descriptorPath, compatibility, recovery)}
+                          variant="toolbar"
+                        >
+                          Recover
+                        </UiButton>
+                      )}
+                      <UiIconButton
+                        className="project-card-remove"
+                        label={`Remove ${recent.name} from Recent Projects`}
+                        onClick={() => void removeRecent(recent.descriptorPath)}
                       >
-                        Recover
-                      </UiButton>
-                    )}
-                    <UiIconButton
-                      className="project-card-menu"
-                      label={`Remove ${recent.name} from recent projects`}
-                      onClick={() => {
-                        void window.arc.projects.removeRecent(recent.descriptorPath).then(refresh);
-                      }}
-                    >
-                      <MoreHorizontal size={18} />
-                    </UiIconButton>
+                        <X size={18} />
+                      </UiIconButton>
+                      {!recent.missing && (
+                        <UiButton
+                          className="project-card-delete"
+                          disabled={busy}
+                          onClick={() => void deleteProject(recent)}
+                          title={`Move ${recent.name} to Trash`}
+                          variant="toolbar"
+                        >
+                          <Trash2 size={16} /> Delete
+                        </UiButton>
+                      )}
+                    </div>
                   </article>
                 );
               })}

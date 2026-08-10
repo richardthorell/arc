@@ -714,6 +714,9 @@ void app.whenReady().then(async () => {
   ipcMain.handle('project:removeRecent', (_event, descriptorPath: string) =>
     projectService?.removeRecent(descriptorPath),
   );
+  ipcMain.handle('project:delete', (_event, descriptorPath: string) =>
+    projectService?.deleteProject(descriptorPath, (projectRoot) => shell.trashItem(projectRoot)),
+  );
   ipcMain.handle('project:readText', (_event, relativePath: string) => {
     const target = resolveProjectFile(relativePath);
     const stats = fs.statSync(target);

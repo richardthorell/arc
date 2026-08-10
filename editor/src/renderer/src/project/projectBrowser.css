@@ -204,7 +204,7 @@
 }
 
 .project-browser-title > div:first-child {
-  width: min(430px, 48%);
+  width: min(560px, calc(100% - 112px));
   transform: translateY(22px);
 }
 
@@ -217,17 +217,18 @@
 }
 
 .project-browser-title p {
-  max-width: 340px;
+  max-width: none;
   margin: 0;
   color: #c3ccda;
   font-size: 17px;
   line-height: 1.48;
+  white-space: nowrap;
 }
 
 .project-browser-actions {
   position: absolute;
   left: 56px;
-  bottom: 108px;
+  bottom: 72px;
   gap: 18px;
 }
 
@@ -368,7 +369,7 @@
   position: relative;
   min-height: 126px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 52px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   overflow: hidden;
   border: 1px solid rgba(91, 137, 177, 0.33);
@@ -450,8 +451,36 @@
   color: #efc17f;
 }
 
-.project-card-menu {
+.project-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 18px;
+}
+
+.project-card-controls .ui-icon-button {
+  border-color: rgba(91, 137, 177, 0.36);
   color: #91a2b7;
+  background: rgba(9, 24, 38, 0.72);
+}
+
+.project-card-controls .ui-icon-button:hover {
+  color: #e8f2fc;
+  border-color: rgba(89, 163, 225, 0.7);
+  background: rgba(34, 79, 116, 0.72);
+}
+
+.project-card-controls .project-card-delete {
+  gap: 7px;
+  border-color: rgba(180, 76, 81, 0.48);
+  color: #f19a9a;
+  background: rgba(75, 27, 34, 0.48);
+}
+
+.project-card-controls .project-card-delete:hover {
+  color: #ffd1d1;
+  border-color: rgba(224, 91, 91, 0.7);
+  background: rgba(118, 38, 43, 0.62);
 }
 
 .project-browser-empty {

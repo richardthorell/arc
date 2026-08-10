@@ -140,6 +140,8 @@ const arcApi = {
     clone: (request: ArcCloneProjectRequest): Promise<ArcProjectOperationResult> =>
       ipcRenderer.invoke('project:clone', request),
     removeRecent: (descriptorPath: string): Promise<void> => ipcRenderer.invoke('project:removeRecent', descriptorPath),
+    delete: (descriptorPath: string): Promise<ArcProjectOperationResult> =>
+      ipcRenderer.invoke('project:delete', descriptorPath),
     readText: (path: string): Promise<ProjectTextFile> => ipcRenderer.invoke('project:readText', path),
     writeText: (path: string, text: string): Promise<{ succeeded: boolean }> =>
       ipcRenderer.invoke('project:writeText', path, text),

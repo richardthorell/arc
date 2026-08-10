@@ -503,6 +503,38 @@ export class ProjectService {
     );
   }
 
+  async deleteProject(
+    descriptorPath: string,
+    moveToTrash: (projectRoot: string) => Promise<void>,
+  ): Promise<ArcProjectOperationResult> {
+    try {
+      const resolvedDescriptor = path.resolve(descriptorPath);
+      const recent = this.readRecents().find((entry) => path.resolve(entry.descriptorPath) === resolvedDescriptor);
+      if (!recent) throw new Error('Only a project listed in Recent Projects can be moved to the trash');
+      if (this.activeProject && path.resolve(this.activeProject.descriptorPath) === resolvedDescriptor)
+        throw new Error('Close the active project before moving it to the trash');
+      if (!fs.existsSync(resolvedDescriptor)) {
+        this.removeRecent(resolvedDescriptor);
+        return { succeeded: true };
+      }
+
+      const project = this.inspect(resolvedDescriptor);
+      const projectRoot = path.resolve(project.projectRoot);
+      if (projectRoot === path.parse(projectRoot).root)
+        throw new Error('A filesystem root cannot be moved to the trash');
+      if (fs.lstatSync(projectRoot).isSymbolicLink())
+        throw new Error('Symbolic-link project roots cannot be moved to the trash');
+      if (path.resolve(recent.projectRoot) !== projectRoot)
+        throw new Error('The recent-project root no longer matches its descriptor');
+
+      await moveToTrash(projectRoot);
+      this.removeRecent(resolvedDescriptor);
+      return { succeeded: true, project };
+    } catch (error) {
+      return { succeeded: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   private upgrade(project: ArcProjectCandidate): ArcProjectCandidate {
     if (project.compatibility !== 'upgradeRequired') return project;
     this.runProjectTool(['upgrade', '--project', project.descriptorPath, '--engine', this.currentEngineVersion]);

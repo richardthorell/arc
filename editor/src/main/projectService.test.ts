@@ -8,10 +8,11 @@ import { ProjectService } from './projectService';
 
 const temporaryRoots: string[] = [];
 const projectToolName = process.platform === 'win32' ? 'arc-project.exe' : 'arc-project';
-const projectToolPath = [
-  path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli/RelWithDebInfo', projectToolName),
-  path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli', projectToolName),
-].find((candidate) => fs.existsSync(candidate)) ?? '';
+const projectToolPath =
+  [
+    path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli/RelWithDebInfo', projectToolName),
+    path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli', projectToolName),
+  ].find((candidate) => fs.existsSync(candidate)) ?? '';
 const templatesRoot = path.resolve(import.meta.dirname, '../../../templates');
 const nativeProjectAuthority = { projectToolPath, templatesRoot };
 const temporary = () => {
@@ -160,5 +161,51 @@ describe('ProjectService', () => {
     expect(cloned.succeeded).toBe(false);
     expect(cloned.error).toContain('descendants');
     expect(fs.existsSync(path.join(source, 'Source.arcproject'))).toBe(true);
+  });
+
+  it('moves only a recent inactive project to the system trash', async () => {
+    const root = temporary();
+    const projectRoot = path.join(root, 'project');
+    const trashedRoot = path.join(root, 'trashed-project');
+    const service = new ProjectService({
+      ...nativeProjectAuthority,
+      userDataPath: path.join(root, 'user'),
+      currentEngineVersion: '1.2.3',
+      currentEditorPath: 'arc-editor',
+      host: { connected: true, error: '', command: async () => ({ succeeded: true }) },
+    });
+    const created = service.create({ name: 'Disposable', destination: projectRoot });
+    expect(created.succeeded, created.error).toBe(true);
+    expect((await service.open(created.project!.descriptorPath)).succeeded).toBe(true);
+    expect((await service.close()).succeeded).toBe(true);
+
+    const deleted = await service.deleteProject(created.project!.descriptorPath, async (target) => {
+      fs.renameSync(target, trashedRoot);
+    });
+
+    expect(deleted.succeeded, deleted.error).toBe(true);
+    expect(fs.existsSync(projectRoot)).toBe(false);
+    expect(fs.existsSync(trashedRoot)).toBe(true);
+    expect(service.snapshot().recentProjects).toHaveLength(0);
+  });
+
+  it('rejects deletion requests that do not originate from Recent Projects', async () => {
+    const root = temporary();
+    const service = new ProjectService({
+      ...nativeProjectAuthority,
+      userDataPath: path.join(root, 'user'),
+      currentEngineVersion: '1.2.3',
+      currentEditorPath: 'arc-editor',
+      host: { connected: true, error: '', command: async () => ({ succeeded: true }) },
+    });
+    let trashCalled = false;
+
+    const result = await service.deleteProject(path.join(root, 'Unknown.arcproject'), async () => {
+      trashCalled = true;
+    });
+
+    expect(result.succeeded).toBe(false);
+    expect(result.error).toContain('Recent Projects');
+    expect(trashCalled).toBe(false);
   });
 });
