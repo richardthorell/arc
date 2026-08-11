@@ -72,12 +72,17 @@ public:
     bool place(const math::vector3f& position, const math::vector3f& focus) noexcept;
 
     /**
-     * @brief Orbit around the focus point by mouse delta in pixels.
+     * @brief Orbit around the persistent focus point by mouse delta in pixels.
+     *
+     * Free-look and dolly motion do not move this pivot. Call `focus()` (the
+     * editor's F shortcut) or `place()` to choose a new one.
      */
     void orbit(float delta_x, float delta_y) noexcept;
 
     /**
      * @brief Rotate the camera in place using stable world-yaw/local-pitch axes.
+     *
+     * The persistent orbit focus remains unchanged.
      */
     void look(float delta_x, float delta_y) noexcept;
 
@@ -87,7 +92,9 @@ public:
     void pan(float delta_x, float delta_y) noexcept;
 
     /**
-     * @brief Move the camera/focus forward along the current look direction.
+     * @brief Move the camera forward along the current look direction.
+     *
+     * The persistent orbit focus remains unchanged.
      */
     void move_forward(float delta_y) noexcept;
 

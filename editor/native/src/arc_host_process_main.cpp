@@ -265,6 +265,7 @@ public:
                 if (terrain_stroking_) finish_terrain_stroke(false, drag_x_, drag_y_);
                 dragging_ = false;
                 drag_button_ = drag_button::none;
+                camera_drag_mode_ = camera_drag_mode::none;
                 selection_candidate_ = false;
                 camera_drag_started_ = false;
                 return 0;
@@ -296,6 +297,15 @@ private:
         left,
         right,
         middle
+    };
+
+    enum class camera_drag_mode
+    {
+        none,
+        orbit,
+        pan,
+        look,
+        pending_left_look
     };
 
     struct bounds
@@ -422,11 +432,23 @@ private:
                        : message == WM_RBUTTONDOWN ? drag_button::right
                                                    : drag_button::left;
         const bool alt = (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
-        selection_candidate_ = drag_button_ == drag_button::left && !alt;
+        const bool shift = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        camera_drag_mode_ = camera_drag_mode::none;
+        if (alt && drag_button_ == drag_button::left)
+            camera_drag_mode_ = camera_drag_mode::orbit;
+        else if (shift || drag_button_ == drag_button::middle)
+            camera_drag_mode_ = camera_drag_mode::pan;
+        else if (drag_button_ == drag_button::right)
+            camera_drag_mode_ = camera_drag_mode::look;
+        else if (drag_button_ == drag_button::left)
+            camera_drag_mode_ = camera_drag_mode::pending_left_look;
+        selection_candidate_ = drag_button_ == drag_button::left && !alt && !shift;
         if (drag_button_ == drag_button::left && !alt)
         {
             if (!begin_terrain_stroke(x, y))
-                begin_manipulation(x, y);
+            {
+                if (!shift) begin_manipulation(x, y);
+            }
             else
                 selection_candidate_ = false;
         }
@@ -470,26 +492,23 @@ private:
             return;
         }
 
-        const bool shift = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
-        const bool alt = (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
-
         arc::editor::host_viewport_camera_input_command input;
-        if (alt && drag_button_ == drag_button::left)
+        if (camera_drag_mode_ == camera_drag_mode::orbit)
         {
             input.orbit_x = static_cast<float>(delta_x);
             input.orbit_y = static_cast<float>(delta_y);
         }
-        else if (shift || drag_button_ == drag_button::middle)
+        else if (camera_drag_mode_ == camera_drag_mode::pan)
         {
             input.pan_x = static_cast<float>(delta_x);
             input.pan_y = static_cast<float>(delta_y);
         }
-        else if (drag_button_ == drag_button::right)
+        else if (camera_drag_mode_ == camera_drag_mode::look)
         {
             input.look_x = static_cast<float>(delta_x);
             input.look_y = static_cast<float>(delta_y);
         }
-        else if (drag_button_ == drag_button::left &&
+        else if (camera_drag_mode_ == camera_drag_mode::pending_left_look &&
                  drag_distance_ > arc::editor::defaults::viewport_click_movement_threshold)
         {
             // An unmodified left press remains a selection candidate until it
@@ -512,6 +531,7 @@ private:
         const auto completed_button = drag_button_;
         dragging_ = false;
         drag_button_ = drag_button::none;
+        camera_drag_mode_ = camera_drag_mode::none;
         if (manipulating_)
         {
             finish_manipulation(drag_distance_ > arc::editor::defaults::viewport_click_movement_threshold);
@@ -961,6 +981,7 @@ private:
     std::chrono::steady_clock::time_point last_backend_recovery_attempt_{};
     bool dragging_{};
     drag_button drag_button_{drag_button::none};
+    camera_drag_mode camera_drag_mode_{camera_drag_mode::none};
     int drag_x_{};
     int drag_y_{};
     int drag_start_x_{};

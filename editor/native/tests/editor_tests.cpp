@@ -529,7 +529,8 @@ TEST_CASE("editor camera free look rotates in place without roll")
     camera.apply_to(after);
 
     REQUIRE(arc::math::length(arc::math::sub(after.position, initial_position)) == Catch::Approx(0.0f).margin(0.0001f));
-    REQUIRE(arc::math::length(arc::math::sub(camera.focus_point(), initial_focus)) > 0.01f);
+    REQUIRE(arc::math::length(arc::math::sub(camera.focus_point(), initial_focus)) ==
+            Catch::Approx(0.0f).margin(0.0001f));
 
     const auto looked_forward = arc::scene::forward_direction(after);
     const auto position_before_dolly = after.position;
@@ -539,6 +540,18 @@ TEST_CASE("editor camera free look rotates in place without roll")
     REQUIRE(arc::math::dot(dolly_translation, looked_forward) == Catch::Approx(3.0f).margin(0.0001f));
     REQUIRE(arc::math::length(arc::math::cross(dolly_translation, looked_forward)) ==
             Catch::Approx(0.0f).margin(0.0001f));
+    REQUIRE(arc::math::length(arc::math::sub(camera.focus_point(), initial_focus)) ==
+            Catch::Approx(0.0f).margin(0.0001f));
+
+    const float orbit_radius = arc::math::length(arc::math::sub(initial_focus, after.position));
+    camera.orbit(12.0f, -8.0f);
+    camera.apply_to(after);
+    REQUIRE(arc::math::length(arc::math::sub(initial_focus, after.position)) ==
+            Catch::Approx(orbit_radius).margin(0.0001f));
+    const auto direction_to_focus = arc::math::normalize(arc::math::sub(initial_focus, after.position));
+    REQUIRE(arc::math::dot(arc::scene::forward_direction(after), direction_to_focus) ==
+            Catch::Approx(1.0f).margin(0.0001f));
+    const auto position_after_orbit = after.position;
 
     for (int index = 0; index < 128; ++index)
         camera.look(index % 2 == 0 ? 17.0f : -9.0f, index % 3 == 0 ? 31.0f : -14.0f);
@@ -549,8 +562,7 @@ TEST_CASE("editor camera free look rotates in place without roll")
     const auto up = arc::scene::up_direction(after);
     REQUIRE(right[1] == Catch::Approx(0.0f).margin(0.0001f));
     REQUIRE(up[1] > 0.0f);
-    REQUIRE(arc::math::length(arc::math::sub(after.position,
-                                             arc::math::add(initial_position, arc::math::mul(looked_forward, 3.0f)))) ==
+    REQUIRE(arc::math::length(arc::math::sub(after.position, position_after_orbit)) ==
             Catch::Approx(0.0f).margin(0.0001f));
 }
 

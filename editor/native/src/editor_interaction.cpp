@@ -161,6 +161,19 @@ bool editor_camera_controller::place(const math::vector3f& position, const math:
 
 void editor_camera_controller::orbit(float delta_x, float delta_y) noexcept
 {
+    // Rebuild the orbit orientation from the camera-to-focus vector before
+    // applying input. Free-look and dolly intentionally leave the focused
+    // point in world space, so the first orbit gesture must not use their
+    // unrelated viewing direction or snap to a stale radius.
+    const auto to_focus = math::sub(focus_, position_);
+    const float focus_distance = math::length(to_focus);
+    if (std::isfinite(focus_distance) && focus_distance > 0.0001f)
+    {
+        const auto focus_direction = math::mul(to_focus, 1.0f / focus_distance);
+        yaw_ = std::atan2(-focus_direction[0], -focus_direction[2]);
+        pitch_ = std::asin(std::clamp(focus_direction[1], -1.0f, 1.0f));
+        distance_ = focus_distance;
+    }
     update_yaw_pitch(delta_x, delta_y, yaw_, pitch_);
     position_ = math::sub(focus_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
 }
@@ -168,7 +181,6 @@ void editor_camera_controller::orbit(float delta_x, float delta_y) noexcept
 void editor_camera_controller::look(float delta_x, float delta_y) noexcept
 {
     update_yaw_pitch(delta_x, delta_y, yaw_, pitch_);
-    focus_ = math::add(position_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
 }
 
 void editor_camera_controller::pan(float delta_x, float delta_y) noexcept
@@ -187,17 +199,15 @@ void editor_camera_controller::move_forward(float delta_y) noexcept
     const float speed = std::clamp(distance_ * 0.006f, 0.015f, 1.5f);
     const auto translation = math::mul(forward, -delta_y * speed);
     position_ = math::add(position_, translation);
-    focus_ = math::add(focus_, translation);
 }
 
 void editor_camera_controller::zoom(float wheel_delta) noexcept
 {
     // A wheel gesture is a linear camera-space translation, not an orbit
-    // radius change. Moving the focus with the camera preserves a useful
-    // future orbit pivot and removes the exponential slowdown/zero barrier.
+    // radius change. Keep the explicitly focused point fixed so Alt+left
+    // orbit continues to circle the framed object after a dolly.
     const auto translation = math::mul(forward_from_yaw_pitch(yaw_, pitch_), wheel_delta * camera_wheel_dolly_units);
     position_ = math::add(position_, translation);
-    focus_ = math::add(focus_, translation);
 }
 
 void editor_camera_controller::apply_to(scene::transform_component& transform) const noexcept

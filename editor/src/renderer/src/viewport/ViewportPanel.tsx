@@ -17,7 +17,7 @@ type ViewportPanelProps = {
 
 type DragState = {
   pointerId: number;
-  button: number;
+  mode: 'orbit' | 'pan' | 'look';
   x: number;
   y: number;
 };
@@ -187,7 +187,7 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       pointerId: event.pointerId,
-      button: event.button,
+      mode: event.altKey && event.button === 0 ? 'orbit' : event.shiftKey || event.button === 1 ? 'pan' : 'look',
       x: event.clientX,
       y: event.clientY,
     };
@@ -206,9 +206,9 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
       return;
     }
 
-    if (event.shiftKey || drag.button === 1) {
+    if (drag.mode === 'pan') {
       sendCameraInput({ panX: dx, panY: dy });
-    } else if (event.altKey && drag.button === 0) {
+    } else if (drag.mode === 'orbit') {
       sendCameraInput({ orbitX: dx, orbitY: dy });
     } else {
       sendCameraInput({ lookX: dx, lookY: dy });
@@ -243,7 +243,7 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
           <span>Viewport 1</span>
         </div>
         <div className="arc-viewport-view-options">
-          <button>Perspective</button>
+          <button title="Frame an object with F, then orbit it with Alt + Left Drag">Perspective</button>
           <button>Lit</button>
           <button>Show</button>
         </div>
@@ -264,7 +264,7 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
           <button title="Realtime">
             <Eye size={13} />
           </button>
-          <button title="Frame selected" onClick={frameSelected}>
+          <button title="Frame selected (F), then Alt + Left Drag to orbit" onClick={frameSelected}>
             <Focus size={13} />
           </button>
           <button title="Maximize">

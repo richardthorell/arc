@@ -144,7 +144,7 @@ export function TerrainToolsPanel({
           value={state.falloff}
           onChange={(falloff) => void update({ falloff })}
         />
-        <p className="terrain-tool-hint">Use [ and ] to change radius. Alt+left or right drag orbits the view.</p>
+        <p className="terrain-tool-hint">Use [ and ] to change radius. Alt + left-drag orbits the focused view.</p>
       </div>
 
       {paintMode && (
