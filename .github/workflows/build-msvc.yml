@@ -76,9 +76,9 @@ jobs:
       - name: Cook and verify fixture
         run: |
           out/build/ci-windows/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
-          out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan
-          out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan
-          $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --json | ConvertFrom-Json)
+          out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+          out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+          $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan --json | ConvertFrom-Json)
           if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
 
       - name: Install SDK and build an external Blank 3D project
