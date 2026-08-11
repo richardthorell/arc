@@ -18,7 +18,8 @@ enum class gizmo_axis : std::uint8_t
     y,
     z
 };
-inline constexpr float editor_gizmo_pixel_length = 92.0f;
+/** Desired axis length in output pixels, independent of camera distance. */
+inline constexpr float editor_gizmo_pixel_length = 112.0f;
 
 struct editor_gizmo_context
 {

@@ -444,6 +444,7 @@ public:
         frame_spot_lights_.clear();
         frame_area_lights_.clear();
         frame_debug_overlay_lines_.clear();
+        frame_debug_overlay_triangles_.clear();
         frame_environment_ = {};
         pending_debug_markers_.clear();
         for (const auto& event : packet.events)
@@ -1206,8 +1207,14 @@ private:
     {
         gpu_buffer vertices;
         VkDeviceSize capacity{};
-        std::uint32_t tested_vertex_count{};
-        std::uint32_t always_vertex_count{};
+        std::uint32_t tested_line_offset{};
+        std::uint32_t tested_line_count{};
+        std::uint32_t tested_triangle_offset{};
+        std::uint32_t tested_triangle_count{};
+        std::uint32_t output_line_offset{};
+        std::uint32_t output_line_count{};
+        std::uint32_t output_triangle_offset{};
+        std::uint32_t output_triangle_count{};
     };
 
     struct gpu_mesh
@@ -1479,6 +1486,9 @@ private:
                 "using conventional LOD geometry";
         frame_debug_overlay_lines_.insert(frame_debug_overlay_lines_.end(), packet.debug_overlay.lines.begin(),
                                           packet.debug_overlay.lines.end());
+        frame_debug_overlay_triangles_.insert(frame_debug_overlay_triangles_.end(),
+                                              packet.debug_overlay.triangles.begin(),
+                                              packet.debug_overlay.triangles.end());
         if (resolved_config_.features.gpu_driven_rendering)
         {
             auto& profile = last_profile_.gpu_scene;
@@ -3600,16 +3610,16 @@ private:
 
     void destroy_mesh_pipeline() noexcept
     {
-        if (debug_overlay_always_pipeline_ != VK_NULL_HANDLE)
+        const auto destroy_debug_pipeline = [&](VkPipeline& pipeline)
         {
-            vkDestroyPipeline(device_, debug_overlay_always_pipeline_, nullptr);
-            debug_overlay_always_pipeline_ = VK_NULL_HANDLE;
-        }
-        if (debug_overlay_pipeline_ != VK_NULL_HANDLE)
-        {
-            vkDestroyPipeline(device_, debug_overlay_pipeline_, nullptr);
-            debug_overlay_pipeline_ = VK_NULL_HANDLE;
-        }
+            if (pipeline == VK_NULL_HANDLE) return;
+            vkDestroyPipeline(device_, pipeline, nullptr);
+            pipeline = VK_NULL_HANDLE;
+        };
+        destroy_debug_pipeline(debug_overlay_line_pipeline_);
+        destroy_debug_pipeline(debug_overlay_triangle_pipeline_);
+        destroy_debug_pipeline(debug_overlay_output_line_pipeline_);
+        destroy_debug_pipeline(debug_overlay_output_triangle_pipeline_);
         if (debug_overlay_pipeline_layout_ != VK_NULL_HANDLE)
         {
             vkDestroyPipelineLayout(device_, debug_overlay_pipeline_layout_, nullptr);
@@ -3948,8 +3958,8 @@ private:
         }
         auto& target = debug_overlay_buffers_[current_frame_slot()];
         std::vector<debug_overlay_vertex> vertices;
-        vertices.reserve(frame_debug_overlay_lines_.size() * 2u);
-        const auto append_mode = [&](debug_overlay_depth_mode mode)
+        vertices.reserve(frame_debug_overlay_lines_.size() * 2u + frame_debug_overlay_triangles_.size() * 3u);
+        const auto append_lines = [&](debug_overlay_depth_mode mode)
         {
             for (const auto& line : frame_debug_overlay_lines_)
             {
@@ -3958,10 +3968,31 @@ private:
                 vertices.push_back({line.end, line.color});
             }
         };
-        append_mode(debug_overlay_depth_mode::tested);
-        target.tested_vertex_count = static_cast<std::uint32_t>(vertices.size());
-        append_mode(debug_overlay_depth_mode::always);
-        target.always_vertex_count = static_cast<std::uint32_t>(vertices.size()) - target.tested_vertex_count;
+        const auto append_triangles = [&](debug_overlay_depth_mode mode)
+        {
+            for (const auto& triangle : frame_debug_overlay_triangles_)
+            {
+                if (triangle.depth != mode) continue;
+                vertices.push_back({triangle.first, triangle.color});
+                vertices.push_back({triangle.second, triangle.color});
+                vertices.push_back({triangle.third, triangle.color});
+            }
+        };
+        const auto append_range = [&](auto&& append, debug_overlay_depth_mode mode, std::uint32_t& offset,
+                                      std::uint32_t& count)
+        {
+            offset = static_cast<std::uint32_t>(vertices.size());
+            append(mode);
+            count = static_cast<std::uint32_t>(vertices.size()) - offset;
+        };
+        append_range(append_lines, debug_overlay_depth_mode::tested, target.tested_line_offset,
+                     target.tested_line_count);
+        append_range(append_triangles, debug_overlay_depth_mode::tested, target.tested_triangle_offset,
+                     target.tested_triangle_count);
+        append_range(append_lines, debug_overlay_depth_mode::always, target.output_line_offset,
+                     target.output_line_count);
+        append_range(append_triangles, debug_overlay_depth_mode::always, target.output_triangle_offset,
+                     target.output_triangle_count);
         if (vertices.empty()) return true;
         const VkDeviceSize bytes = vertices.size() * sizeof(debug_overlay_vertex);
         if (target.capacity < bytes)
@@ -4781,7 +4812,10 @@ private:
 
     bool ensure_debug_overlay_pipeline()
     {
-        if (debug_overlay_pipeline_ != VK_NULL_HANDLE && debug_overlay_always_pipeline_ != VK_NULL_HANDLE) return true;
+        if (debug_overlay_line_pipeline_ != VK_NULL_HANDLE && debug_overlay_triangle_pipeline_ != VK_NULL_HANDLE &&
+            debug_overlay_output_line_pipeline_ != VK_NULL_HANDLE &&
+            debug_overlay_output_triangle_pipeline_ != VK_NULL_HANDLE)
+            return true;
         VkShaderModule vert =
             create_shader_module(builtin::debug_overlay_vert_spv, std::size(builtin::debug_overlay_vert_spv));
         VkShaderModule frag =
@@ -4838,7 +4872,6 @@ private:
         vertex_input.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size());
         vertex_input.pVertexAttributeDescriptions = attributes.data();
         VkPipelineInputAssemblyStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-        input.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
         VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
         viewport.viewportCount = 1;
         viewport.scissorCount = 1;
@@ -4869,44 +4902,70 @@ private:
         VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
         dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
         dynamic.pDynamicStates = dynamic_states.data();
-        VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
-        rendering.colorAttachmentCount = 1;
-        rendering.pColorAttachmentFormats = &scene_color_format_;
-        rendering.depthAttachmentFormat = depth_format_;
-        VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-        pipeline.pNext = &rendering;
-        pipeline.stageCount = static_cast<std::uint32_t>(stages.size());
-        pipeline.pStages = stages.data();
-        pipeline.pVertexInputState = &vertex_input;
-        pipeline.pInputAssemblyState = &input;
-        pipeline.pViewportState = &viewport;
-        pipeline.pRasterizationState = &raster;
-        pipeline.pMultisampleState = &multisample;
-        pipeline.pDepthStencilState = &depth;
-        pipeline.pColorBlendState = &color_blend;
-        pipeline.pDynamicState = &dynamic;
-        pipeline.layout = debug_overlay_pipeline_layout_;
-        const auto tested_result =
-            vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &debug_overlay_pipeline_);
-        depth.depthTestEnable = VK_FALSE;
-        const auto always_result = tested_result == VK_SUCCESS
-                                       ? vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr,
-                                                                   &debug_overlay_always_pipeline_)
-                                       : VK_ERROR_INITIALIZATION_FAILED;
+
+        const auto create_pipeline = [&](VkPrimitiveTopology topology, VkFormat color_format, bool depth_test,
+                                         VkPipeline& destination)
+        {
+            input.topology = topology;
+            depth.depthTestEnable = depth_test ? VK_TRUE : VK_FALSE;
+            VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+            rendering.colorAttachmentCount = 1;
+            rendering.pColorAttachmentFormats = &color_format;
+            rendering.depthAttachmentFormat = depth_test ? depth_format_ : VK_FORMAT_UNDEFINED;
+            VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+            pipeline.pNext = &rendering;
+            pipeline.stageCount = static_cast<std::uint32_t>(stages.size());
+            pipeline.pStages = stages.data();
+            pipeline.pVertexInputState = &vertex_input;
+            pipeline.pInputAssemblyState = &input;
+            pipeline.pViewportState = &viewport;
+            pipeline.pRasterizationState = &raster;
+            pipeline.pMultisampleState = &multisample;
+            pipeline.pDepthStencilState = &depth;
+            pipeline.pColorBlendState = &color_blend;
+            pipeline.pDynamicState = &dynamic;
+            pipeline.layout = debug_overlay_pipeline_layout_;
+            return vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &destination);
+        };
+
+        const auto tested_line_result = create_pipeline(VK_PRIMITIVE_TOPOLOGY_LINE_LIST, scene_color_format_, true,
+                                                        debug_overlay_line_pipeline_);
+        const auto tested_triangle_result =
+            tested_line_result == VK_SUCCESS
+                ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, scene_color_format_, true,
+                                  debug_overlay_triangle_pipeline_)
+                : VK_ERROR_INITIALIZATION_FAILED;
+        const auto output_line_result =
+            tested_triangle_result == VK_SUCCESS
+                ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_LINE_LIST, viewport_format_, false,
+                                  debug_overlay_output_line_pipeline_)
+                : VK_ERROR_INITIALIZATION_FAILED;
+        const auto output_triangle_result =
+            output_line_result == VK_SUCCESS
+                ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, viewport_format_, false,
+                                  debug_overlay_output_triangle_pipeline_)
+                : VK_ERROR_INITIALIZATION_FAILED;
         vkDestroyShaderModule(device_, vert, nullptr);
         vkDestroyShaderModule(device_, frag, nullptr);
-        if (tested_result != VK_SUCCESS || always_result != VK_SUCCESS)
+        if (tested_line_result != VK_SUCCESS || tested_triangle_result != VK_SUCCESS ||
+            output_line_result != VK_SUCCESS || output_triangle_result != VK_SUCCESS)
         {
             arc::diagnostics::warn("render.vulkan", "Vulkan debug-overlay pipeline creation failed");
-            if (debug_overlay_always_pipeline_ != VK_NULL_HANDLE)
-                vkDestroyPipeline(device_, debug_overlay_always_pipeline_, nullptr);
-            if (debug_overlay_pipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, debug_overlay_pipeline_, nullptr);
+            const auto destroy_pipeline = [&](VkPipeline& pipeline)
+            {
+                if (pipeline == VK_NULL_HANDLE) return;
+                vkDestroyPipeline(device_, pipeline, nullptr);
+                pipeline = VK_NULL_HANDLE;
+            };
+            destroy_pipeline(debug_overlay_line_pipeline_);
+            destroy_pipeline(debug_overlay_triangle_pipeline_);
+            destroy_pipeline(debug_overlay_output_line_pipeline_);
+            destroy_pipeline(debug_overlay_output_triangle_pipeline_);
             vkDestroyPipelineLayout(device_, debug_overlay_pipeline_layout_, nullptr);
-            debug_overlay_always_pipeline_ = VK_NULL_HANDLE;
-            debug_overlay_pipeline_ = VK_NULL_HANDLE;
             debug_overlay_pipeline_layout_ = VK_NULL_HANDLE;
         }
-        return tested_result == VK_SUCCESS && always_result == VK_SUCCESS;
+        return tested_line_result == VK_SUCCESS && tested_triangle_result == VK_SUCCESS &&
+               output_line_result == VK_SUCCESS && output_triangle_result == VK_SUCCESS;
     }
 
     bool ensure_gbuffer_pipeline()
@@ -6177,11 +6236,14 @@ private:
             const auto slot = current_frame_slot();
             if (slot < debug_overlay_buffers_.size())
             {
-                debug_overlay_buffers_[slot].tested_vertex_count = 0;
-                debug_overlay_buffers_[slot].always_vertex_count = 0;
+                auto& buffer = debug_overlay_buffers_[slot];
+                buffer.tested_line_count = 0;
+                buffer.tested_triangle_count = 0;
+                buffer.output_line_count = 0;
+                buffer.output_triangle_count = 0;
             }
         };
-        if (!frame_debug_overlay_lines_.empty())
+        if (!frame_debug_overlay_lines_.empty() || !frame_debug_overlay_triangles_.empty())
         {
             if (!ensure_debug_overlay_pipeline() || !update_debug_overlay_buffer()) clear_overlay_counts();
         }
@@ -6818,7 +6880,7 @@ private:
         vkCmdSetScissor(command_buffer, 0, 1, &scissor);
     }
 
-    void draw_debug_overlay(VkCommandBuffer command_buffer)
+    void draw_debug_overlay(VkCommandBuffer command_buffer, debug_overlay_depth_mode mode)
     {
         const auto slot = current_frame_slot();
         if (slot >= debug_overlay_buffers_.size() || debug_overlay_pipeline_layout_ == VK_NULL_HANDLE) return;
@@ -6829,15 +6891,22 @@ private:
                            sizeof(float) * 16u, frame_camera_.view_projection.data());
         const VkDeviceSize offset{};
         vkCmdBindVertexBuffers(command_buffer, 0, 1, &buffer.vertices.buffer, &offset);
-        if (buffer.tested_vertex_count > 0 && debug_overlay_pipeline_ != VK_NULL_HANDLE)
+        const auto draw_range = [&](VkPipeline pipeline, std::uint32_t count, std::uint32_t first)
         {
-            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, debug_overlay_pipeline_);
-            vkCmdDraw(command_buffer, buffer.tested_vertex_count, 1, 0, 0);
+            if (pipeline == VK_NULL_HANDLE || count == 0) return;
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            vkCmdDraw(command_buffer, count, 1, first, 0);
+        };
+        if (mode == debug_overlay_depth_mode::tested)
+        {
+            draw_range(debug_overlay_line_pipeline_, buffer.tested_line_count, buffer.tested_line_offset);
+            draw_range(debug_overlay_triangle_pipeline_, buffer.tested_triangle_count, buffer.tested_triangle_offset);
         }
-        if (buffer.always_vertex_count > 0 && debug_overlay_always_pipeline_ != VK_NULL_HANDLE)
+        else
         {
-            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, debug_overlay_always_pipeline_);
-            vkCmdDraw(command_buffer, buffer.always_vertex_count, 1, buffer.tested_vertex_count, 0);
+            draw_range(debug_overlay_output_line_pipeline_, buffer.output_line_count, buffer.output_line_offset);
+            draw_range(debug_overlay_output_triangle_pipeline_, buffer.output_triangle_count,
+                       buffer.output_triangle_offset);
         }
     }
 
@@ -7375,7 +7444,7 @@ private:
             }
         }
 
-        draw_debug_overlay(command_buffer);
+        draw_debug_overlay(command_buffer, debug_overlay_depth_mode::tested);
         cmd_end_rendering(command_buffer);
 
         transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -7418,6 +7487,7 @@ private:
         vkCmdPushConstants(command_buffer, output_transform_pipeline_layout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
                            sizeof(output_constants), &output_constants);
         vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        draw_debug_overlay(command_buffer, debug_overlay_depth_mode::always);
         cmd_end_rendering(command_buffer);
         record_frame_capture(command_buffer);
         transition_viewport(command_buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -7490,6 +7560,7 @@ private:
     std::vector<area_light_event> frame_area_lights_;
     const std::vector<area_light_event> empty_area_lights_{};
     std::vector<debug_overlay_line> frame_debug_overlay_lines_;
+    std::vector<debug_overlay_triangle> frame_debug_overlay_triangles_;
     scene_lighting_data frame_lighting_;
     world_environment_data frame_environment_;
     render_camera frame_camera_;
@@ -7562,8 +7633,10 @@ private:
     VkPipelineLayout shadow_pipeline_layout_{};
     VkPipeline shadow_pipeline_{};
     VkPipelineLayout debug_overlay_pipeline_layout_{};
-    VkPipeline debug_overlay_pipeline_{};
-    VkPipeline debug_overlay_always_pipeline_{};
+    VkPipeline debug_overlay_line_pipeline_{};
+    VkPipeline debug_overlay_triangle_pipeline_{};
+    VkPipeline debug_overlay_output_line_pipeline_{};
+    VkPipeline debug_overlay_output_triangle_pipeline_{};
     bool wireframe_warning_reported_{};
 
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI

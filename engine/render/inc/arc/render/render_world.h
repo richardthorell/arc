@@ -436,10 +436,21 @@ struct debug_overlay_line
     debug_overlay_depth_mode depth{debug_overlay_depth_mode::tested};
 };
 
+/** One colored world-space triangle consumed by backend debug-overlay passes. */
+struct debug_overlay_triangle
+{
+    math::vector3f first{};
+    math::vector3f second{};
+    math::vector3f third{};
+    math::vector4f color = math::vector4f::one;
+    debug_overlay_depth_mode depth{debug_overlay_depth_mode::tested};
+};
+
 /** Backend-neutral transient stream for gizmos, bounds, grids, and diagnostics. */
 struct debug_overlay_stream
 {
     std::vector<debug_overlay_line> lines;
+    std::vector<debug_overlay_triangle> triangles;
 };
 
 /**

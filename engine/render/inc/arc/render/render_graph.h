@@ -101,7 +101,8 @@ enum class builtin_render_pass : std::uint8_t
     temporal_upscale,
     spatial_sharpen,
     output_transform,
-    debug_overlay
+    debug_overlay,
+    editor_overlay
 };
 
 /**

@@ -612,11 +612,12 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
     REQUIRE(gbuffer_index < deferred_index);
     REQUIRE(sky_index < deferred_index);
     REQUIRE(deferred_index < transparent_index);
-    REQUIRE(compiled.passes[compiled.passes.size() - 4].builtin == arc::render::builtin_render_pass::debug_overlay);
-    REQUIRE(compiled.passes[compiled.passes.size() - 3].builtin ==
+    REQUIRE(compiled.passes[compiled.passes.size() - 5].builtin == arc::render::builtin_render_pass::debug_overlay);
+    REQUIRE(compiled.passes[compiled.passes.size() - 4].builtin ==
             arc::render::builtin_render_pass::luminance_histogram);
-    REQUIRE(compiled.passes[compiled.passes.size() - 2].builtin == arc::render::builtin_render_pass::exposure_resolve);
-    REQUIRE(compiled.passes.back().builtin == arc::render::builtin_render_pass::output_transform);
+    REQUIRE(compiled.passes[compiled.passes.size() - 3].builtin == arc::render::builtin_render_pass::exposure_resolve);
+    REQUIRE(compiled.passes[compiled.passes.size() - 2].builtin == arc::render::builtin_render_pass::output_transform);
+    REQUIRE(compiled.passes.back().builtin == arc::render::builtin_render_pass::editor_overlay);
     REQUIRE(compiled.resources.size() >= 18);
     REQUIRE(std::any_of(
         compiled.resources.begin(), compiled.resources.end(), [](const auto& resource)
@@ -744,6 +745,7 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
     REQUIRE(contains(arc::render::builtin_render_pass::cloud_shadow));
     REQUIRE(contains(arc::render::builtin_render_pass::sky_composite));
     REQUIRE(contains(arc::render::builtin_render_pass::debug_overlay));
+    REQUIRE(contains(arc::render::builtin_render_pass::editor_overlay));
 
     standard.quality = arc::render::render_quality_tier::low;
     standard.path = arc::render::render_path::forward_plus;
@@ -758,6 +760,8 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
                         { return pass.builtin == arc::render::builtin_render_pass::sky_composite; }));
     REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass)
                         { return pass.builtin == arc::render::builtin_render_pass::debug_overlay; }));
+    REQUIRE(std::any_of(low.passes.begin(), low.passes.end(), [](const auto& pass)
+                        { return pass.builtin == arc::render::builtin_render_pass::editor_overlay; }));
 }
 
 TEST_CASE("world environment graph selects off solid and HDRI sky paths without atmosphere LUTs")

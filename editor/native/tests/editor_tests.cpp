@@ -336,8 +336,9 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     const arc::editor::editor_gizmo_context context{
         .tool = arc::editor::editor_tool::translate, .viewport_width = 800, .viewport_height = 600};
     const auto overlay = arc::editor::build_editor_gizmo_overlay(registry, selected, camera_entity, context);
-    REQUIRE(overlay.lines.size() == 15);
-    REQUIRE(overlay.lines[12].color[0] > overlay.lines[12].color[1]);
+    REQUIRE(overlay.lines.size() == 12);
+    REQUIRE(overlay.triangles.size() == 120);
+    REQUIRE(overlay.triangles.front().color[0] > overlay.triangles.front().color[1]);
     REQUIRE(arc::editor::hit_test_editor_gizmo(registry, selected, camera_entity, context, 450.0f, 300.0f) ==
             arc::editor::gizmo_axis::x);
     REQUIRE(arc::editor::hit_test_editor_gizmo(registry, selected, camera_entity, context, 780.0f, 580.0f) ==
@@ -346,11 +347,34 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     const auto& camera = registry.get<arc::scene::camera_component>(camera_entity);
     const float near_scale = arc::editor::editor_gizmo_world_scale(
         camera, registry.get<arc::scene::transform_component>(camera_entity), {}, 600);
+    const float off_axis_scale = arc::editor::editor_gizmo_world_scale(
+        camera, registry.get<arc::scene::transform_component>(camera_entity), {8.0f, 0.0f, 0.0f}, 600);
+    REQUIRE(off_axis_scale == Catch::Approx(near_scale));
     registry.get<arc::scene::transform_component>(camera_entity).set_position({0.0f, 0.0f, 10.0f});
     arc::scene::update_world_transforms(registry);
     const float far_scale = arc::editor::editor_gizmo_world_scale(
         camera, registry.get<arc::scene::transform_component>(camera_entity), {}, 600);
     REQUIRE(far_scale == Catch::Approx(near_scale * 2.0f));
+
+    const arc::editor::editor_gizmo_context highlighted_context{.tool = arc::editor::editor_tool::translate,
+                                                                 .highlighted_axis = arc::editor::gizmo_axis::x,
+                                                                 .viewport_width = 800,
+                                                                 .viewport_height = 600};
+    const auto highlighted =
+        arc::editor::build_editor_gizmo_overlay(registry, selected, camera_entity, highlighted_context);
+    REQUIRE(highlighted.triangles.size() == overlay.triangles.size());
+    REQUIRE(highlighted.triangles.front().color[0] > 0.99f);
+    REQUIRE(highlighted.triangles.front().color[1] > 0.8f);
+
+    const auto rotation = arc::editor::build_editor_gizmo_overlay(
+        registry, selected, camera_entity,
+        {.tool = arc::editor::editor_tool::rotate, .viewport_width = 800, .viewport_height = 600});
+    REQUIRE(rotation.triangles.size() == 384);
+
+    const auto scaling = arc::editor::build_editor_gizmo_overlay(
+        registry, selected, camera_entity,
+        {.tool = arc::editor::editor_tool::scale, .viewport_width = 800, .viewport_height = 600});
+    REQUIRE(scaling.triangles.size() == 96);
 }
 
 TEST_CASE("editor picking hits bounded entities")

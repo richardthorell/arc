@@ -1730,6 +1730,17 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .usage = render_resource_usage::color_attachment,
                                 .write = true,
                                 .load_op = render_load_op::clear}}});
+    if (editor_view)
+    {
+        graph.add_pass({.name = "editor overlay",
+                        .kind = render_pass_kind::custom,
+                        .builtin = builtin_render_pass::editor_overlay,
+                        .writes = {{.handle = viewport,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::color_attachment,
+                                    .write = true,
+                                    .load_op = render_load_op::load}}});
+    }
     return graph;
 }
 
