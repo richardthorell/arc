@@ -377,6 +377,41 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     REQUIRE(scaling.triangles.size() == 96);
 }
 
+TEST_CASE("editor gizmo drags follow each projected positive axis")
+{
+    arc::ecs::world registry;
+    const auto camera_entity = registry.create();
+    arc::scene::transform_component camera_transform;
+    arc::editor::editor_camera_controller camera_controller;
+    REQUIRE(camera_controller.place({4.0f, 3.0f, 5.0f}, arc::math::vector3f::zero));
+    camera_controller.apply_to(camera_transform);
+    registry.emplace<arc::scene::transform_component>(camera_entity, camera_transform);
+    registry.emplace<arc::scene::camera_component>(camera_entity);
+    const auto selected = registry.create();
+    registry.emplace<arc::scene::transform_component>(selected);
+    arc::scene::update_world_transforms(registry);
+
+    for (const auto tool : {arc::editor::editor_tool::translate, arc::editor::editor_tool::scale})
+    {
+        const arc::editor::editor_gizmo_context context{
+            .tool = tool, .viewport_width = 800, .viewport_height = 600};
+        arc::math::vector2f direction;
+        REQUIRE(arc::editor::editor_gizmo_drag_direction(registry, selected, camera_entity, context,
+                                                          arc::editor::gizmo_axis::z, 400.0f, 300.0f, direction));
+        REQUIRE(direction[0] < 0.0f);
+        REQUIRE(arc::math::dot(arc::math::vector2f{-10.0f, 0.0f}, direction) > 0.0f);
+        REQUIRE(arc::math::length(direction) == Catch::Approx(1.0f));
+    }
+
+    const arc::editor::editor_gizmo_context rotation_context{
+        .tool = arc::editor::editor_tool::rotate, .viewport_width = 800, .viewport_height = 600};
+    arc::math::vector2f rotation_direction;
+    REQUIRE(arc::editor::editor_gizmo_drag_direction(registry, selected, camera_entity, rotation_context,
+                                                      arc::editor::gizmo_axis::z, 400.0f, 200.0f,
+                                                      rotation_direction));
+    REQUIRE(arc::math::length(rotation_direction) == Catch::Approx(1.0f));
+}
+
 TEST_CASE("editor picking hits bounded entities")
 {
     arc::ecs::world scene;

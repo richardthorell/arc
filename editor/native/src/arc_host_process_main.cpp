@@ -664,9 +664,9 @@ private:
     {
         std::lock_guard lock(host_mutex_);
         const auto& state = host_->scene_state();
-        const auto axis =
-            arc::editor::hit_test_editor_gizmo(state.scene, state.selected_entity, state.camera_entity, gizmo_context(),
-                                               static_cast<float>(x), static_cast<float>(y));
+        const auto context = gizmo_context();
+        const auto axis = arc::editor::hit_test_editor_gizmo(state.scene, state.selected_entity, state.camera_entity,
+                                                             context, static_cast<float>(x), static_cast<float>(y));
         active_axis_ = axis;
         host_->set_viewport_gizmo_highlight(axis);
     }
@@ -675,9 +675,9 @@ private:
     {
         std::lock_guard lock(host_mutex_);
         const auto& state = host_->scene_state();
-        const auto axis =
-            arc::editor::hit_test_editor_gizmo(state.scene, state.selected_entity, state.camera_entity, gizmo_context(),
-                                               static_cast<float>(x), static_cast<float>(y));
+        const auto context = gizmo_context();
+        const auto axis = arc::editor::hit_test_editor_gizmo(state.scene, state.selected_entity, state.camera_entity,
+                                                             context, static_cast<float>(x), static_cast<float>(y));
         if (axis == arc::editor::gizmo_axis::none) return;
         const auto snapshot = host_->selected_entity_snapshot();
         if (!snapshot.entity.valid() || !snapshot.transform) return;
@@ -692,6 +692,8 @@ private:
         manipulation_local_axis_ = {};
         manipulation_local_axis_[static_cast<std::size_t>(axis) - 1u] = 1.0f;
         manipulation_rotation_axis_ = manipulation_local_axis_;
+        manipulation_screen_direction_ = axis == arc::editor::gizmo_axis::x ? arc::math::vector2f{1.0f, 0.0f}
+                                                                             : arc::math::vector2f{0.0f, -1.0f};
         manipulation_world_units_per_pixel_ = 0.02f;
         const auto selected_entity = arc::ecs::entity{snapshot.entity.index, snapshot.entity.generation};
         const auto* selected_transform = state.scene.try_get<arc::scene::transform_component>(selected_entity);
@@ -702,7 +704,7 @@ private:
             const std::size_t axis_index = static_cast<std::size_t>(axis) - 1u;
             arc::math::vector3f world_axis{};
             world_axis[axis_index] = 1.0f;
-            if (gizmo_context().coordinate_space == arc::editor::gizmo_coordinate_space::local)
+            if (context.coordinate_space == arc::editor::gizmo_coordinate_space::local)
                 world_axis = arc::math::normalize(arc::math::vector3f{selected_transform->world(0, axis_index),
                                                                       selected_transform->world(1, axis_index),
                                                                       selected_transform->world(2, axis_index)});
@@ -729,8 +731,10 @@ private:
                 arc::editor::editor_gizmo_world_scale(*camera, *camera_transform,
                                                       arc::scene::world_position(*selected_transform), height_) /
                 arc::editor::editor_gizmo_pixel_length;
-            manipulation_rotation_is_local_ =
-                gizmo_context().coordinate_space == arc::editor::gizmo_coordinate_space::local;
+            manipulation_rotation_is_local_ = context.coordinate_space == arc::editor::gizmo_coordinate_space::local;
+            arc::editor::editor_gizmo_drag_direction(state.scene, state.selected_entity, state.camera_entity, context,
+                                                      axis, static_cast<float>(x), static_cast<float>(y),
+                                                      manipulation_screen_direction_);
         }
         host_->set_viewport_gizmo_highlight(axis);
         host_->execute(arc::editor::host_command_envelope{
@@ -773,11 +777,9 @@ private:
     {
         std::lock_guard lock(host_mutex_);
         const auto& tool = host_->viewport_tool_state();
-        const float pixel_delta =
-            active_axis_ == arc::editor::gizmo_axis::y ? static_cast<float>(manipulation_start_y_ - y)
-            : active_axis_ == arc::editor::gizmo_axis::z
-                ? static_cast<float>((x - manipulation_start_x_) + (manipulation_start_y_ - y)) * 0.5f
-                : static_cast<float>(x - manipulation_start_x_);
+        const arc::math::vector2f pointer_delta{static_cast<float>(x - manipulation_start_x_),
+                                                static_cast<float>(y - manipulation_start_y_)};
+        const float pixel_delta = arc::math::dot(pointer_delta, manipulation_screen_direction_);
         const std::size_t axis = static_cast<std::size_t>(active_axis_) - 1u;
         manipulation_current_ = manipulation_original_;
         if (tool.tool == arc::editor::host_viewport_tool::translate)
@@ -986,6 +988,7 @@ private:
     std::uint64_t next_manipulation_transaction_{};
     arc::math::vector3f manipulation_local_axis_{1.0f, 0.0f, 0.0f};
     arc::math::vector3f manipulation_rotation_axis_{1.0f, 0.0f, 0.0f};
+    arc::math::vector2f manipulation_screen_direction_{1.0f, 0.0f};
     float manipulation_world_units_per_pixel_{0.02f};
     bool manipulation_rotation_is_local_{};
 };

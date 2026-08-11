@@ -40,4 +40,20 @@ render::debug_overlay_stream build_editor_gizmo_overlay(const ecs::world& regist
 gizmo_axis hit_test_editor_gizmo(const ecs::world& registry, ecs::entity selected, ecs::entity camera_entity,
                                  const editor_gizmo_context& context, float screen_x, float screen_y) noexcept;
 
+/**
+ * @brief Resolve the positive screen-space drag direction for one visible gizmo axis.
+ * @param registry World containing the selected entity and editor camera.
+ * @param selected Entity manipulated by the gizmo.
+ * @param camera_entity Active editor camera entity.
+ * @param context Current tool, coordinate space, and viewport extent.
+ * @param axis Axis selected by hit testing.
+ * @param screen_x Pointer x-coordinate at drag start, in output pixels.
+ * @param screen_y Pointer y-coordinate at drag start, in output pixels.
+ * @param direction Receives a normalized screen-space direction where positive motion increases the value.
+ * @return `true` when a stable projected drag direction could be resolved.
+ */
+bool editor_gizmo_drag_direction(const ecs::world& registry, ecs::entity selected, ecs::entity camera_entity,
+                                 const editor_gizmo_context& context, gizmo_axis axis, float screen_x, float screen_y,
+                                 math::vector2f& direction) noexcept;
+
 } // namespace arc::editor

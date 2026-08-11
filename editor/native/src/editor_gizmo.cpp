@@ -215,6 +215,19 @@ float distance_to_segment(const math::vector2f& point, const math::vector2f& sta
     const float amount = std::clamp(math::dot(math::sub(point, start), segment) / length_squared, 0.0f, 1.0f);
     return math::length(math::sub(point, math::add(start, math::mul(segment, amount))));
 }
+
+math::matrix4f gizmo_view_projection(const scene::camera_component& camera,
+                                     const scene::transform_component& camera_transform,
+                                     const editor_gizmo_context& context) noexcept
+{
+    const float aspect = static_cast<float>(std::max(1u, context.viewport_width)) /
+                         static_cast<float>(std::max(1u, context.viewport_height));
+    const auto projection =
+        camera.projection == scene::camera_projection::orthographic
+            ? scene::orthographic_rh_zo(camera.orthographic_height, aspect, camera.near_plane, camera.far_plane)
+            : scene::perspective_rh_zo(camera.fov_y_radians, aspect, camera.near_plane, camera.far_plane);
+    return math::matmul(projection, scene::world_view_matrix(camera_transform));
+}
 } // namespace
 
 float editor_gizmo_world_scale(const scene::camera_component& camera,
@@ -283,13 +296,7 @@ gizmo_axis hit_test_editor_gizmo(const ecs::world& registry, ecs::entity selecte
     const auto* camera = registry.try_get<scene::camera_component>(camera_entity);
     const auto* camera_transform = registry.try_get<scene::transform_component>(camera_entity);
     if (!transform || !camera || !camera_transform || context.tool == editor_tool::select) return gizmo_axis::none;
-    const float aspect = static_cast<float>(std::max(1u, context.viewport_width)) /
-                         static_cast<float>(std::max(1u, context.viewport_height));
-    const auto projection =
-        camera->projection == scene::camera_projection::orthographic
-            ? scene::orthographic_rh_zo(camera->orthographic_height, aspect, camera->near_plane, camera->far_plane)
-            : scene::perspective_rh_zo(camera->fov_y_radians, aspect, camera->near_plane, camera->far_plane);
-    const auto view_projection = math::matmul(projection, scene::world_view_matrix(*camera_transform));
+    const auto view_projection = gizmo_view_projection(*camera, *camera_transform, context);
     const auto origin = scene::world_position(*transform);
     const auto axes = gizmo_axes(*transform, context.coordinate_space);
     const float scale = editor_gizmo_world_scale(*camera, *camera_transform, origin, context.viewport_height);
@@ -347,6 +354,74 @@ gizmo_axis hit_test_editor_gizmo(const ecs::world& registry, ecs::entity selecte
         }
     }
     return result;
+}
+
+bool editor_gizmo_drag_direction(const ecs::world& registry, ecs::entity selected, ecs::entity camera_entity,
+                                 const editor_gizmo_context& context, gizmo_axis axis, float screen_x, float screen_y,
+                                 math::vector2f& direction) noexcept
+{
+    const auto* transform = registry.try_get<scene::transform_component>(selected);
+    const auto* camera = registry.try_get<scene::camera_component>(camera_entity);
+    const auto* camera_transform = registry.try_get<scene::transform_component>(camera_entity);
+    if (!transform || !camera || !camera_transform || axis == gizmo_axis::none || context.tool == editor_tool::select)
+        return false;
+
+    const std::size_t axis_index = static_cast<std::size_t>(axis) - 1u;
+    const auto origin = scene::world_position(*transform);
+    const auto axes = gizmo_axes(*transform, context.coordinate_space);
+    const float scale = editor_gizmo_world_scale(*camera, *camera_transform, origin, context.viewport_height);
+    const auto view_projection = gizmo_view_projection(*camera, *camera_transform, context);
+    math::vector2f projected_origin;
+    if (!project_to_screen(view_projection, origin, context.viewport_width, context.viewport_height, projected_origin))
+        return false;
+
+    if (context.tool != editor_tool::rotate)
+    {
+        math::vector2f projected_end;
+        if (!project_to_screen(view_projection, math::add(origin, math::mul(axes[axis_index], scale)),
+                               context.viewport_width, context.viewport_height, projected_end))
+            return false;
+        const auto projected_axis = math::sub(projected_end, projected_origin);
+        const float length_squared = math::length_squared(projected_axis);
+        if (length_squared <= 1.0e-4f) return false;
+        direction = math::mul(projected_axis, 1.0f / std::sqrt(length_squared));
+        return true;
+    }
+
+    const auto tangent = axes[(axis_index + 1) % 3];
+    const auto bitangent = axes[(axis_index + 2) % 3];
+    const math::vector2f pointer{screen_x, screen_y};
+    float nearest = std::numeric_limits<float>::max();
+    bool found{};
+    for (std::uint32_t segment = 0; segment < rotation_segments; ++segment)
+    {
+        const float first_angle =
+            math::tau<float> * static_cast<float>(segment) / static_cast<float>(rotation_segments);
+        const float second_angle =
+            math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(rotation_segments);
+        const auto ring_point = [&](float angle)
+        {
+            return math::add(origin, math::mul(math::add(math::mul(tangent, std::cos(angle)),
+                                                         math::mul(bitangent, std::sin(angle))),
+                                               scale));
+        };
+        math::vector2f first;
+        math::vector2f second;
+        if (!project_to_screen(view_projection, ring_point(first_angle), context.viewport_width,
+                               context.viewport_height, first) ||
+            !project_to_screen(view_projection, ring_point(second_angle), context.viewport_width,
+                               context.viewport_height, second))
+            continue;
+        const auto segment_direction = math::sub(second, first);
+        const float segment_length_squared = math::length_squared(segment_direction);
+        if (segment_length_squared <= 1.0e-4f) continue;
+        const float distance = distance_to_segment(pointer, first, second);
+        if (distance >= nearest) continue;
+        nearest = distance;
+        direction = math::mul(segment_direction, 1.0f / std::sqrt(segment_length_squared));
+        found = true;
+    }
+    return found;
 }
 
 } // namespace arc::editor
