@@ -3,6 +3,7 @@
 #include <arc/core/core.h>
 #include <arc/render/events.h>
 #include <arc/render/render_graph.h>
+#include <arc/render/lighting_scene.h>
 #include <arc/render/virtual_mesh.h>
 
 #include <cstddef>
@@ -91,6 +92,9 @@ struct render_quality_profile
     float maximum_volumetric_resolution_scale{1.0f};
     std::uint32_t gi_trace_budget{1};
     std::uint32_t reflection_ray_budget{1};
+    float lighting_trace_scale{0.5f};
+    std::uint32_t surface_cache_update_budget{128};
+    std::uint32_t radiance_probe_update_budget{32};
     gpu_submission_path preferred_submission{gpu_submission_path::indirect_count};
     bool prefer_gpu_driven{true};
     bool prefer_hzb_occlusion{true};
@@ -121,6 +125,9 @@ inline constexpr render_quality_profile low_render_quality_profile{.quality = re
                                                                    .minimum_volumetric_resolution_scale = 0.35f,
                                                                    .gi_trace_budget = 0,
                                                                    .reflection_ray_budget = 0,
+                                                                   .lighting_trace_scale = 0.0f,
+                                                                   .surface_cache_update_budget = 0,
+                                                                   .radiance_probe_update_budget = 0,
                                                                    .preferred_submission =
                                                                        gpu_submission_path::indirect,
                                                                    .prefer_gpu_driven = false,
@@ -153,7 +160,10 @@ inline constexpr render_quality_profile high_render_quality_profile{.quality = r
                                                                     .minimum_shadow_resolution_scale = 0.67f,
                                                                     .minimum_volumetric_resolution_scale = 0.5f,
                                                                     .gi_trace_budget = 2,
-                                                                    .reflection_ray_budget = 2};
+                                                                    .reflection_ray_budget = 2,
+                                                                    .lighting_trace_scale = 0.5f,
+                                                                    .surface_cache_update_budget = 256,
+                                                                    .radiance_probe_update_budget = 64};
 
 inline constexpr render_quality_profile ultra_render_quality_profile{.quality = render_quality_tier::ultra,
                                                                      .default_path = render_path::deferred,
@@ -177,7 +187,10 @@ inline constexpr render_quality_profile ultra_render_quality_profile{.quality = 
                                                                      .minimum_shadow_resolution_scale = 0.75f,
                                                                      .minimum_volumetric_resolution_scale = 0.67f,
                                                                      .gi_trace_budget = 4,
-                                                                     .reflection_ray_budget = 4};
+                                                                     .reflection_ray_budget = 4,
+                                                                     .lighting_trace_scale = 1.0f,
+                                                                     .surface_cache_update_budget = 512,
+                                                                     .radiance_probe_update_budget = 128};
 
 [[nodiscard]] constexpr const render_quality_profile& quality_profile(render_quality_tier quality) noexcept
 {
@@ -235,7 +248,15 @@ struct render_capabilities
     bool virtual_geometry_mesh_shader{};
     /** @brief Backend can safely request, upload, and retire virtual-geometry pages. */
     bool virtual_geometry_streaming{};
+    /** @brief Backend can execute ARC's HZB screen-space GI and reflection traces. */
+    bool screen_space_indirect_lighting{};
+    /** @brief Backend can capture and relight paged surface cards. */
+    bool surface_cache{};
+    /** @brief Backend can update and sample ARC's cascaded radiance cache. */
+    bool radiance_cache{};
     bool software_ray_tracing{};
+    /** @brief Backend has an executable inline hardware ray-query path. */
+    bool hardware_ray_query{};
     bool sampler_anisotropy{};
     bool texture_compression_bc{};
     bool synchronization2{};
@@ -274,6 +295,14 @@ struct render_feature_set
     virtual_geometry_raster_path virtual_geometry_path{virtual_geometry_raster_path::unavailable};
     bool software_ray_tracing{};
     bool hardware_ray_tracing{};
+    bool screen_space_gi{};
+    bool screen_space_reflections{};
+    bool surface_cache{};
+    bool radiance_cache{};
+    bool software_gi{};
+    bool software_reflections{};
+    bool hardware_gi{};
+    bool hardware_reflections{};
     bool sparse_resources{};
     bool sampler_anisotropy{};
     bool texture_compression_bc{};
@@ -313,6 +342,11 @@ struct resolved_render_config
     float volumetric_resolution_scale{1.0f};
     std::uint32_t gi_trace_budget{standard_render_quality_profile.gi_trace_budget};
     std::uint32_t reflection_ray_budget{standard_render_quality_profile.reflection_ray_budget};
+    float lighting_trace_scale{standard_render_quality_profile.lighting_trace_scale};
+    std::uint32_t surface_cache_update_budget{standard_render_quality_profile.surface_cache_update_budget};
+    std::uint32_t radiance_probe_update_budget{standard_render_quality_profile.radiance_probe_update_budget};
+    std::uint64_t lighting_scene_gpu_budget_bytes{};
+    lighting_trace_path indirect_lighting_path{lighting_trace_path::baked_probe};
     std::vector<std::string> fallback_reasons;
 };
 
@@ -556,6 +590,28 @@ struct render_virtual_geometry_profile
     std::string fallback_reason;
 };
 
+/** @brief Dynamic indirect-lighting, tracing, cache, and denoising work executed for one frame. */
+struct render_indirect_lighting_profile
+{
+    bool enabled{};
+    lighting_trace_path trace_path{lighting_trace_path::baked_probe};
+    float trace_scale{};
+    std::uint32_t gi_rays{};
+    std::uint32_t reflection_rays{};
+    std::uint32_t surface_cards{};
+    std::uint32_t resident_surface_pages{};
+    std::uint32_t resident_distance_field_pages{};
+    std::uint32_t dirty_regions{};
+    std::uint32_t surface_updates{};
+    std::uint32_t radiance_probe_updates{};
+    std::uint64_t resident_bytes{};
+    std::uint64_t budget_bytes{};
+    float screen_hit_rate{};
+    float software_hit_rate{};
+    float hardware_hit_rate{};
+    std::string fallback_reason;
+};
+
 /** @brief Temporal history state used by TAA and temporal upscaling. */
 struct render_temporal_profile
 {
@@ -582,6 +638,7 @@ struct render_backend_frame_profile
     render_shadow_profile shadows;
     render_gpu_scene_profile gpu_scene;
     render_virtual_geometry_profile virtual_geometry;
+    render_indirect_lighting_profile indirect_lighting;
     render_temporal_profile temporal;
     resolved_render_config configuration;
 };
@@ -619,7 +676,12 @@ enum class render_capture_channel : std::uint8_t
     world_normal,
     base_color,
     material_properties,
-    emissive
+    emissive,
+    indirect_diffuse,
+    reflections,
+    trace_source,
+    mesh_distance_field,
+    temporal_confidence
 };
 
 enum class render_capture_format : std::uint8_t

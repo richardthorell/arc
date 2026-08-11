@@ -71,6 +71,8 @@ inline constexpr artifact_schema_id material{0xa7ca55e700000004ull, 0x0000000000
 inline constexpr artifact_schema_id scene{0xa7ca55e700000004ull, 0x0000000000000006ull};
 inline constexpr artifact_schema_id package_manifest{0xa7ca55e700000004ull, 0x0000000000000007ull};
 inline constexpr artifact_schema_id virtual_geometry{0xa7ca55e700000004ull, 0x0000000000000008ull};
+inline constexpr artifact_schema_id surface_cards{0xa7ca55e700000004ull, 0x0000000000000009ull};
+inline constexpr artifact_schema_id mesh_distance_field{0xa7ca55e700000004ull, 0x000000000000000aull};
 } // namespace artifact_schemas
 
 enum class cook_platform : std::uint8_t

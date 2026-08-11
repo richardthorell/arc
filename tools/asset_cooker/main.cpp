@@ -5,6 +5,7 @@
 #include <arc/persistence/persistence.h>
 #include <arc/project/project.h>
 #include <arc/render/mesh.h>
+#include <arc/render/lighting_scene.h>
 #include <arc/render/texture.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/scene/persistence.h>
@@ -321,8 +322,8 @@ public:
         descriptor_.id = cook_processor_ids::mesh;
         descriptor_.name = "ARC Mesh";
         descriptor_.schema = artifact_schemas::mesh;
-        descriptor_.version = 2;
-        descriptor_.schema_version = 2;
+        descriptor_.version = 3;
+        descriptor_.schema_version = 3;
         descriptor_.input_types = {asset_types::imported_scene, asset_types::static_mesh};
     }
     const asset_cook_processor_descriptor& descriptor() const noexcept override
@@ -331,7 +332,7 @@ public:
     }
     std::string toolchain_fingerprint() const override
     {
-        return "arc.mesh-cooker/2;meshoptimizer-1.2;arc-virtual-geometry-2";
+        return "arc.mesh-cooker/3;meshoptimizer-1.2;arc-virtual-geometry-2;arc-lighting-geometry-1";
     }
     asset_cook_result cook(const asset_cook_context& context) override
     {
@@ -343,13 +344,20 @@ public:
                               .message = loaded.message.empty() ? "Mesh import failed" : loaded.message}};
         std::vector<std::byte> conventional_bytes;
         std::vector<std::byte> virtual_bytes;
+        std::vector<std::byte> card_bytes;
+        std::vector<std::byte> distance_field_bytes;
         append_string(conventional_bytes, "ARC_MESH_2");
         append_string(virtual_bytes, "ARC_VIRTUAL_GEOMETRY_2");
+        append_string(card_bytes, "ARC_SURFACE_CARDS_1");
+        append_string(distance_field_bytes, "ARC_MESH_DISTANCE_FIELD_1");
         append_value(conventional_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
         append_value(virtual_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
+        append_value(card_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
+        append_value(distance_field_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
         for (const auto& mesh : loaded.meshes)
         {
             const auto geometry = render::build_virtual_mesh(mesh);
+            const auto lighting = render::build_lighting_geometry(mesh);
 
             append_string(conventional_bytes, mesh.name);
             append_value(conventional_bytes, static_cast<std::uint64_t>(mesh.material_index));
@@ -383,6 +391,46 @@ public:
                 append_value(virtual_bytes, static_cast<std::uint8_t>(page.root));
             }
             append_bytes(virtual_bytes, geometry.page_payload);
+
+            append_string(card_bytes, mesh.name);
+            append_value(card_bytes, static_cast<std::uint64_t>(mesh.material_index));
+            append_value(card_bytes, lighting.geometry.generation);
+            append_value(card_bytes, static_cast<std::uint32_t>(lighting.geometry.cards.size()));
+            for (const auto& card : lighting.geometry.cards)
+            {
+                append_vector3(card_bytes, card.center);
+                append_vector3(card_bytes, card.normal);
+                append_vector3(card_bytes, card.tangent);
+                append_value(card_bytes, card.extent[0]);
+                append_value(card_bytes, card.extent[1]);
+                append_value(card_bytes, card.depth_extent);
+                append_value(card_bytes, card.texel_density);
+                append_value(card_bytes, card.geometric_error);
+                append_value(card_bytes, card.material_section);
+                append_value(card_bytes, card.fallback_card);
+            }
+
+            const auto& field = lighting.geometry.distance_field;
+            append_string(distance_field_bytes, mesh.name);
+            append_vector3(distance_field_bytes, field.bounds.min.as_vector());
+            append_vector3(distance_field_bytes, field.bounds.max.as_vector());
+            for (const auto dimension : field.dimensions) append_value(distance_field_bytes, dimension);
+            append_vector3(distance_field_bytes, field.voxel_size);
+            append_value(distance_field_bytes, field.distance_scale);
+            append_value(distance_field_bytes, field.mode);
+            append_value(distance_field_bytes, field.content_hash);
+            append_value(distance_field_bytes, static_cast<std::uint32_t>(field.bricks.size()));
+            for (const auto& brick : field.bricks)
+            {
+                for (const auto coordinate : brick.coordinate) append_value(distance_field_bytes, coordinate);
+                append_value(distance_field_bytes, brick.page_index);
+                append_value(distance_field_bytes, brick.page_offset);
+                append_value(distance_field_bytes, brick.byte_size);
+                append_value(distance_field_bytes, brick.minimum_distance);
+                append_value(distance_field_bytes, brick.maximum_distance);
+            }
+            append_bytes(distance_field_bytes, std::as_bytes(std::span(field.page_offsets)));
+            append_bytes(distance_field_bytes, field.pages);
         }
         const auto name = context.source.source_path.stem().string();
         return {.artifacts = {{.name = name,
@@ -394,7 +442,17 @@ public:
                                .extension = ".arcvg",
                                .schema = artifact_schemas::virtual_geometry,
                                .schema_version = 2,
-                               .bytes = std::move(virtual_bytes)}}};
+                               .bytes = std::move(virtual_bytes)},
+                              {.name = name,
+                               .extension = ".arccards",
+                               .schema = artifact_schemas::surface_cards,
+                               .schema_version = 1,
+                               .bytes = std::move(card_bytes)},
+                              {.name = name,
+                               .extension = ".arcsdf",
+                               .schema = artifact_schemas::mesh_distance_field,
+                               .schema_version = 1,
+                               .bytes = std::move(distance_field_bytes)}}};
     }
 
 private:

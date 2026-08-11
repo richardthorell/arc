@@ -94,6 +94,10 @@ struct render_item
     float maximum_shadow_distance{};
     float maximum_draw_distance{};
     float geometry_error_scale{1.0f};
+    bool affects_indirect_lighting{true};
+    float surface_card_density_bias{};
+    float distance_field_resolution_bias{};
+    bool visible_in_hardware_tracing{true};
     math::vector4f base_color_tint = math::vector4f::one;
     std::string label;
 };
@@ -122,6 +126,10 @@ struct virtual_render_item
     float maximum_shadow_distance{};
     float maximum_draw_distance{};
     float geometry_error_scale{1.0f};
+    bool affects_indirect_lighting{true};
+    float surface_card_density_bias{};
+    float distance_field_resolution_bias{};
+    bool visible_in_hardware_tracing{true};
     math::vector4f base_color_tint = math::vector4f::one;
     std::string label;
 };
@@ -132,8 +140,15 @@ struct virtual_render_item
 struct reflection_probe_data
 {
     math::vector3f position{};
+    math::vector3f box_extents{5.0f};
     float radius{5.0f};
+    float blend_distance{1.0f};
     float intensity{1.0f};
+    std::int32_t priority{};
+    texture_handle cubemap{};
+    std::uint32_t resolution{128};
+    std::uint8_t shape{};
+    std::uint8_t update_policy{};
     std::string label;
 };
 
@@ -144,8 +159,35 @@ struct irradiance_probe_data
 {
     math::vector3f position{};
     float radius{5.0f};
+    float visibility{1.0f};
     float intensity{1.0f};
+    std::int32_t priority{};
+    std::array<math::vector3f, 9> spherical_harmonics{};
     std::string label;
+};
+
+/** @brief Resolved authored dynamic-indirect-lighting policy for one view. */
+struct indirect_lighting_data
+{
+    indirect_lighting_method method{indirect_lighting_method::auto_select};
+    bool enabled{true};
+    float diffuse_intensity{1.0f};
+    float reflection_intensity{1.0f};
+    float emissive_contribution{1.0f};
+    float maximum_trace_distance{100.0f};
+    float surface_cache_detail{1.0f};
+    bool allow_hardware_ray_tracing{true};
+};
+
+/** @brief Lightmap binding extracted for one renderable object. */
+struct baked_lighting_data
+{
+    render_object_id object_id{};
+    texture_handle lightmap{};
+    texture_handle directional_lightmap{};
+    std::uint32_t uv_channel{1};
+    math::vector4f scale_offset{1.0f, 1.0f, 0.0f, 0.0f};
+    float intensity{1.0f};
 };
 
 enum class sky_source_mode : std::uint8_t
@@ -267,6 +309,7 @@ struct world_environment_data
     cloud_layers_data clouds;
     height_fog_data fog;
     environment_lighting_data lighting;
+    indirect_lighting_data indirect_lighting;
     std::string label;
     std::string fallback_reason;
 };
@@ -421,6 +464,7 @@ struct render_world_packet
     std::vector<area_light_event> area_lights;
     std::vector<reflection_probe_data> reflection_probes;
     std::vector<irradiance_probe_data> irradiance_probes;
+    std::vector<baked_lighting_data> baked_lighting;
     world_environment_data environment;
     std::vector<terrain_render_data> terrains;
     std::vector<water_render_data> waters;

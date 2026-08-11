@@ -54,6 +54,7 @@ enum class texture_semantic : std::uint8_t
     anisotropy,
     thickness,
     transmission,
+    lightmap,
     environment
 };
 

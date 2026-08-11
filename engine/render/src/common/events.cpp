@@ -11,6 +11,10 @@ render_event_type render_event::type() const noexcept
     if (std::holds_alternative<mesh_destroy_event>(payload)) return render_event_type::mesh_destroy;
     if (std::holds_alternative<virtual_mesh_upload_event>(payload)) return render_event_type::virtual_mesh_upload;
     if (std::holds_alternative<virtual_mesh_destroy_event>(payload)) return render_event_type::virtual_mesh_destroy;
+    if (std::holds_alternative<lighting_geometry_upload_event>(payload))
+        return render_event_type::lighting_geometry_upload;
+    if (std::holds_alternative<lighting_geometry_destroy_event>(payload))
+        return render_event_type::lighting_geometry_destroy;
     if (std::holds_alternative<texture_upload_event>(payload)) return render_event_type::texture_upload;
     if (std::holds_alternative<material_upload_event>(payload)) return render_event_type::material_upload;
     if (std::holds_alternative<environment_upload_event>(payload)) return render_event_type::environment_upload;
@@ -22,6 +26,7 @@ render_event_type render_event::type() const noexcept
     if (std::holds_alternative<spot_light_event>(payload)) return render_event_type::spot_light;
     if (std::holds_alternative<area_light_event>(payload)) return render_event_type::area_light;
     if (std::holds_alternative<gpu_scene_update_event>(payload)) return render_event_type::gpu_scene_update;
+    if (std::holds_alternative<lighting_scene_update_event>(payload)) return render_event_type::lighting_scene_update;
     if (std::holds_alternative<render_world_event>(payload)) return render_event_type::render_world;
     return render_event_type::debug_marker;
 }

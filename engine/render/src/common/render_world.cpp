@@ -895,6 +895,10 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                             .height_scale = config.render_scale,
                                             .format = render_format::rg16_float});
 
+    render_graph_resource_handle lighting_albedo{};
+    render_graph_resource_handle lighting_normal{};
+    render_graph_resource_handle lighting_material{};
+    render_graph_resource_handle lighting_emissive{};
     if (config.path == render_path::forward_plus)
     {
         std::vector<render_resource_access> forward_reads{{.handle = depth,
@@ -961,6 +965,10 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                   .width_scale = config.render_scale,
                                                   .height_scale = config.render_scale,
                                                   .format = render_format::rgba16_float});
+        lighting_albedo = albedo;
+        lighting_normal = normal;
+        lighting_material = material;
+        lighting_emissive = emissive;
         render_graph_resource_handle object_id{};
         if (editor_view)
         {
@@ -1165,6 +1173,325 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .kind = render_resource_kind::color_texture,
                                     .usage = render_resource_usage::color_attachment,
                                     .write = true,
+                                    .load_op = render_load_op::load}}});
+    }
+
+    const auto authored_indirect_method = environment.indirect_lighting.method;
+    const bool permits_screen = authored_indirect_method == indirect_lighting_method::auto_select ||
+                                authored_indirect_method == indirect_lighting_method::screen_space ||
+                                authored_indirect_method == indirect_lighting_method::software ||
+                                authored_indirect_method == indirect_lighting_method::hybrid_hardware;
+    const bool permits_software = authored_indirect_method == indirect_lighting_method::auto_select ||
+                                  authored_indirect_method == indirect_lighting_method::software ||
+                                  authored_indirect_method == indirect_lighting_method::hybrid_hardware;
+    const bool permits_hardware = authored_indirect_method == indirect_lighting_method::auto_select ||
+                                  authored_indirect_method == indirect_lighting_method::hybrid_hardware;
+    const bool execute_screen_gi = permits_screen && config.features.screen_space_gi;
+    const bool execute_screen_reflections = permits_screen && config.features.screen_space_reflections;
+    const bool execute_software_gi = permits_software && config.features.software_gi;
+    const bool execute_software_reflections = permits_software && config.features.software_reflections;
+    const bool execute_hardware_gi = permits_hardware && environment.indirect_lighting.allow_hardware_ray_tracing &&
+                                     config.features.hardware_gi;
+    const bool execute_hardware_reflections =
+        permits_hardware && environment.indirect_lighting.allow_hardware_ray_tracing &&
+        config.features.hardware_reflections;
+    const bool indirect_enabled = environment.indirect_lighting.enabled && lighting_normal.valid() &&
+                                  (execute_screen_gi || execute_screen_reflections || execute_software_gi ||
+                                   execute_software_reflections || execute_hardware_gi ||
+                                   execute_hardware_reflections);
+    if (indirect_enabled)
+    {
+        auto lighting_hzb = depth_pyramid;
+        if (!lighting_hzb.valid())
+        {
+            lighting_hzb = graph.add_resource({.name = "lighting_depth_pyramid",
+                                               .kind = render_resource_kind::color_texture,
+                                               .width_scale = config.render_scale,
+                                               .height_scale = config.render_scale,
+                                               .format = render_format::r32_float,
+                                               .mip_levels = 12});
+            graph.add_pass({.name = "lighting depth pyramid",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::depth_pyramid,
+                            .reads = {{.handle = depth,
+                                       .kind = render_resource_kind::depth_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = {{.handle = lighting_hzb,
+                                        .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage,
+                                        .write = true}}});
+        }
+
+        render_graph_resource_handle surface_material_cache{};
+        render_graph_resource_handle surface_radiance_cache{};
+        render_graph_resource_handle global_distance_field{};
+        render_graph_resource_handle radiance_cache{};
+        if (config.features.surface_cache && (execute_software_gi || execute_software_reflections ||
+                                              execute_hardware_gi || execute_hardware_reflections))
+        {
+            surface_material_cache = graph.add_resource({.name = "lighting_surface_material_cache",
+                                                         .kind = render_resource_kind::color_texture,
+                                                         .extent = {1024, 1024, 1},
+                                                         .extent_mode = render_extent_mode::absolute,
+                                                         .format = render_format::rgba16_float,
+                                                         .persistent_key = "world.lighting.surface_material",
+                                                         .imported = true,
+                                                         .persistent = true});
+            surface_radiance_cache = graph.add_resource({.name = "lighting_surface_radiance_cache",
+                                                         .kind = render_resource_kind::color_texture,
+                                                         .extent = {1024, 1024, 1},
+                                                         .extent_mode = render_extent_mode::absolute,
+                                                         .format = render_format::rgba16_float,
+                                                         .persistent_key = "world.lighting.surface_radiance",
+                                                         .imported = true,
+                                                         .persistent = true});
+            graph.add_pass({.name = "surface card capture",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::surface_card_capture,
+                            .writes = {{.handle = surface_material_cache,
+                                        .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage,
+                                        .write = true}}});
+            graph.add_pass({.name = "surface cache relighting",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::surface_cache_relight,
+                            .reads = {{.handle = surface_material_cache,
+                                       .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled},
+                                      {.handle = lighting_emissive,
+                                       .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = {{.handle = surface_radiance_cache,
+                                        .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage,
+                                        .write = true}}});
+        }
+        if (execute_software_gi || execute_software_reflections)
+        {
+            global_distance_field = graph.add_resource({.name = "lighting_global_distance_field",
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .extent = {128, 128, 128},
+                                                        .extent_mode = render_extent_mode::absolute,
+                                                        .format = render_format::r32_float,
+                                                        .array_layers = 4,
+                                                        .persistent_key = "view.lighting.global_distance_field",
+                                                        .imported = true,
+                                                        .persistent = true});
+            graph.add_pass({.name = "distance field composition",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::distance_field_composition,
+                            .writes = {{.handle = global_distance_field,
+                                        .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage,
+                                        .write = true}}});
+        }
+        if (config.features.radiance_cache)
+        {
+            radiance_cache = graph.add_resource({.name = "lighting_radiance_cache",
+                                                 .kind = render_resource_kind::color_texture,
+                                                 .extent = {64, 64, 64},
+                                                 .extent_mode = render_extent_mode::absolute,
+                                                 .format = render_format::rgba16_float,
+                                                 .array_layers = 3,
+                                                 .persistent_key = "view.lighting.radiance_cache",
+                                                 .imported = true,
+                                                 .persistent = true});
+            std::vector<render_resource_access> cache_reads;
+            if (surface_radiance_cache.valid())
+                cache_reads.push_back({.handle = surface_radiance_cache,
+                                       .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled});
+            graph.add_pass({.name = "radiance cache update",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::radiance_cache_update,
+                            .reads = std::move(cache_reads),
+                            .writes = {{.handle = radiance_cache,
+                                        .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage,
+                                        .write = true}}});
+        }
+
+        const auto make_trace_target = [&](std::string name)
+        {
+            return graph.add_resource({.name = std::move(name),
+                                       .kind = render_resource_kind::color_texture,
+                                       .width_scale = config.lighting_trace_scale,
+                                       .height_scale = config.lighting_trace_scale,
+                                       .format = render_format::rgba16_float});
+        };
+        auto diffuse_trace = make_trace_target("indirect_diffuse_trace");
+        auto reflection_trace = make_trace_target("indirect_reflection_trace");
+        if (execute_screen_gi)
+            graph.add_pass({.name = "screen space global illumination",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::screen_space_gi,
+                            .reads = {{.handle = lighting_hzb, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled},
+                                      {.handle = lighting_normal, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled},
+                                      {.handle = scene_color, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = {{.handle = diffuse_trace, .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage, .write = true}}});
+        if (execute_screen_reflections)
+            graph.add_pass({.name = "screen space reflections",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::screen_space_reflections,
+                            .reads = {{.handle = lighting_hzb, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled},
+                                      {.handle = lighting_normal, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled},
+                                      {.handle = lighting_material, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled},
+                                      {.handle = scene_color, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = {{.handle = reflection_trace, .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage, .write = true}}});
+
+        if (execute_software_gi)
+        {
+            const auto resolved = make_trace_target("software_indirect_diffuse");
+            std::vector<render_resource_access> reads{{.handle = global_distance_field,
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .usage = render_resource_usage::sampled},
+                                                       {.handle = surface_radiance_cache,
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .usage = render_resource_usage::sampled}};
+            if (execute_screen_gi)
+                reads.push_back({.handle = diffuse_trace, .kind = render_resource_kind::color_texture,
+                                 .usage = render_resource_usage::sampled});
+            graph.add_pass({.name = "software global illumination",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::software_gi_trace,
+                            .reads = std::move(reads),
+                            .writes = {{.handle = resolved, .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage, .write = true}}});
+            diffuse_trace = resolved;
+        }
+        if (execute_software_reflections)
+        {
+            const auto resolved = make_trace_target("software_reflections");
+            std::vector<render_resource_access> reads{{.handle = global_distance_field,
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .usage = render_resource_usage::sampled},
+                                                       {.handle = surface_radiance_cache,
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .usage = render_resource_usage::sampled}};
+            if (execute_screen_reflections)
+                reads.push_back({.handle = reflection_trace, .kind = render_resource_kind::color_texture,
+                                 .usage = render_resource_usage::sampled});
+            graph.add_pass({.name = "software reflections",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::software_reflections,
+                            .reads = std::move(reads),
+                            .writes = {{.handle = resolved, .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage, .write = true}}});
+            reflection_trace = resolved;
+        }
+        if (execute_hardware_gi)
+        {
+            const auto resolved = make_trace_target("hardware_indirect_diffuse");
+            graph.add_pass({.name = "hardware global illumination misses",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::hardware_gi_trace,
+                            .reads = {{.handle = diffuse_trace, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = {{.handle = resolved, .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage, .write = true}}});
+            diffuse_trace = resolved;
+        }
+        if (execute_hardware_reflections)
+        {
+            const auto resolved = make_trace_target("hardware_reflection_misses");
+            graph.add_pass({.name = "hardware reflection misses",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::hardware_reflections,
+                            .reads = {{.handle = reflection_trace, .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = {{.handle = resolved, .kind = render_resource_kind::color_texture,
+                                        .usage = render_resource_usage::storage, .write = true}}});
+            reflection_trace = resolved;
+        }
+
+        const auto history_reset = render_history_reset::camera_cut | render_history_reset::resize |
+                                   render_history_reset::render_scale_change |
+                                   render_history_reset::world_epoch_change | render_history_reset::debug_view_change;
+        const auto diffuse_history = graph.add_resource({.name = "indirect_diffuse_history",
+                                                         .kind = render_resource_kind::color_texture,
+                                                         .width_scale = config.lighting_trace_scale,
+                                                         .height_scale = config.lighting_trace_scale,
+                                                         .format = render_format::rgba16_float,
+                                                         .persistent_key = "view.lighting.indirect_history",
+                                                         .history_length = 2,
+                                                         .history_reset = history_reset});
+        const auto reflection_history = graph.add_resource({.name = "reflection_history",
+                                                            .kind = render_resource_kind::color_texture,
+                                                            .width_scale = config.lighting_trace_scale,
+                                                            .height_scale = config.lighting_trace_scale,
+                                                            .format = render_format::rgba16_float,
+                                                            .persistent_key = "view.lighting.reflection_history",
+                                                            .history_length = 2,
+                                                            .history_reset = history_reset});
+        graph.add_pass({.name = "indirect lighting temporal reconstruction",
+                        .queue = compute_queue, .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::indirect_lighting_temporal,
+                        .reads = {{.handle = diffuse_trace, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = motion, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = depth, .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = diffuse_history, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled,
+                                   .history = render_history_access::previous}},
+                        .writes = {{.handle = diffuse_history, .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage, .write = true}}});
+        graph.add_pass({.name = "reflection temporal reconstruction",
+                        .queue = compute_queue, .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::reflection_temporal,
+                        .reads = {{.handle = reflection_trace, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = motion, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = reflection_history, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled,
+                                   .history = render_history_access::previous}},
+                        .writes = {{.handle = reflection_history, .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage, .write = true}}});
+        const auto filtered_lighting = make_trace_target("indirect_lighting_filtered");
+        graph.add_pass({.name = "indirect lighting spatial filter",
+                        .queue = compute_queue, .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::lighting_spatial_filter,
+                        .reads = {{.handle = diffuse_history, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = reflection_history, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = depth, .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = lighting_normal, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = filtered_lighting, .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage, .write = true}}});
+        graph.add_pass({.name = "indirect lighting composite",
+                        .kind = render_pass_kind::lighting,
+                        .builtin = builtin_render_pass::indirect_lighting_composite,
+                        .reads = {{.handle = filtered_lighting, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = lighting_albedo, .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = scene_color, .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::color_attachment, .write = true,
                                     .load_op = render_load_op::load}}});
     }
 

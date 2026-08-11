@@ -1063,7 +1063,11 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     capabilities.descriptor_indexing = true;
     capabilities.virtual_geometry_compute = true;
     capabilities.virtual_geometry_streaming = true;
+    capabilities.screen_space_indirect_lighting = true;
+    capabilities.surface_cache = true;
+    capabilities.radiance_cache = true;
     capabilities.software_ray_tracing = true;
+    capabilities.hardware_ray_query = true;
     capabilities.draw_indirect = true;
     capabilities.draw_indirect_count = true;
     capabilities.sparse_resources = true;
@@ -1082,17 +1086,32 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
     REQUIRE(resolved.features.software_ray_tracing);
     REQUIRE(resolved.features.hardware_ray_tracing);
+    REQUIRE(resolved.features.screen_space_gi);
+    REQUIRE(resolved.features.screen_space_reflections);
+    REQUIRE(resolved.features.surface_cache);
+    REQUIRE(resolved.features.radiance_cache);
+    REQUIRE(resolved.features.software_gi);
+    REQUIRE(resolved.features.software_reflections);
+    REQUIRE(resolved.features.hardware_gi);
+    REQUIRE(resolved.features.hardware_reflections);
+    REQUIRE(resolved.indirect_lighting_path == lighting_trace_path::hybrid_hardware);
+    REQUIRE(resolved.lighting_scene_gpu_budget_bytes == 768ull * 1024ull * 1024ull);
     REQUIRE(resolved.features.submission == gpu_submission_path::indirect_count);
 
     config.force_disable_gpu_driven = true;
     config.force_disable_temporal = true;
     config.force_disable_async_compute = true;
+    config.force_disable_dynamic_gi = true;
+    config.force_disable_hardware_ray_tracing = true;
     config.force_cpu_submission = true;
     resolved = resolve_render_config(config, capabilities);
     REQUIRE_FALSE(resolved.features.gpu_driven_rendering);
     REQUIRE_FALSE(resolved.features.virtual_geometry);
     REQUIRE_FALSE(resolved.features.temporal_antialiasing);
     REQUIRE_FALSE(resolved.features.async_compute);
+    REQUIRE_FALSE(resolved.features.screen_space_gi);
+    REQUIRE_FALSE(resolved.features.software_gi);
+    REQUIRE_FALSE(resolved.features.hardware_gi);
     REQUIRE(resolved.features.submission == gpu_submission_path::cpu_direct);
 }
 
@@ -1122,13 +1141,15 @@ TEST_CASE("frame budget controller scales expensive systems before resolution")
     for (std::uint32_t index = 0; index < 12; ++index)
         controller.update(30.0f);
     const auto reduced = controller.settings();
-    REQUIRE(reduced.volumetric_resolution_scale < 1.0f);
+    REQUIRE(reduced.radiance_probe_update_budget <
+            arc::render::standard_render_quality_profile.radiance_probe_update_budget);
+    REQUIRE(reduced.volumetric_resolution_scale == Catch::Approx(1.0f));
     REQUIRE(reduced.render_scale == Catch::Approx(1.0f));
     REQUIRE(controller.smoothed_frame_time_ms() > arc::render::default_target_frame_time_ms);
 
     for (std::uint32_t index = 0; index < 48; ++index)
         controller.update(5.0f);
-    REQUIRE(controller.settings().volumetric_resolution_scale >= reduced.volumetric_resolution_scale);
+    REQUIRE(controller.settings().radiance_probe_update_budget >= reduced.radiance_probe_update_budget);
     REQUIRE(controller.settings().render_scale <= 1.0f);
 }
 
@@ -1218,12 +1239,18 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     REQUIRE(renderer.mesh_alive(handle));
 
     const auto packet = renderer.frame_queue().commit(1);
-    REQUIRE(packet.events.size() == 1);
+    REQUIRE(packet.events.size() == 2);
     REQUIRE(packet.events[0].type() == arc::render::render_event_type::mesh_upload);
     const auto& upload = std::get<arc::render::mesh_upload_event>(packet.events[0].payload);
     REQUIRE(upload.handle == handle);
     REQUIRE(upload.mesh->vertices.size() == 3);
     REQUIRE(upload.mesh->indices.size() == 3);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::lighting_geometry_upload);
+    const auto& lighting_upload =
+        std::get<arc::render::lighting_geometry_upload_event>(packet.events[1].payload);
+    REQUIRE(lighting_upload.geometry->cards.size() == 6);
+    REQUIRE(lighting_upload.geometry->distance_field.mode ==
+            arc::render::distance_field_mode::two_sided_unsigned_distance);
 }
 
 TEST_CASE("renderer updates mesh vertices and retires stale handles")
@@ -1317,14 +1344,14 @@ TEST_CASE("renderer realizes and retires one unified cooked geometry resource")
     REQUIRE(renderer.mesh_alive(geometry.conventional));
     REQUIRE(renderer.virtual_mesh_alive(geometry.virtualized));
     const auto uploads = renderer.frame_queue().commit(1);
-    REQUIRE(uploads.events.size() == 5);
+    REQUIRE(uploads.events.size() == 9);
     REQUIRE(uploads.events.back().type() == arc::render::render_event_type::virtual_mesh_upload);
 
     REQUIRE(renderer.destroy_geometry_resource(geometry));
     REQUIRE_FALSE(renderer.mesh_alive(geometry.conventional));
     REQUIRE_FALSE(renderer.virtual_mesh_alive(geometry.virtualized));
     const auto destroys = renderer.frame_queue().commit(2);
-    REQUIRE(destroys.events.size() == 5);
+    REQUIRE(destroys.events.size() == 9);
     REQUIRE(destroys.events.back().type() == arc::render::render_event_type::virtual_mesh_destroy);
 }
 
@@ -2265,4 +2292,101 @@ TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")
     REQUIRE_FALSE(result.mesh.name.empty());
     REQUIRE_FALSE(result.mesh.vertices.empty());
     REQUIRE_FALSE(result.mesh.indices.empty());
+}
+
+TEST_CASE("lighting geometry cooking is deterministic and produces hole-free proxy data")
+{
+    const auto mesh = arc::render::make_cube_mesh(2.0f);
+    const auto first = arc::render::build_lighting_geometry(mesh);
+    const auto second = arc::render::build_lighting_geometry(mesh);
+
+    REQUIRE(first.statistics.source_triangles == mesh.indices.size() / 3u);
+    REQUIRE(first.geometry.cards.size() == 6u);
+    REQUIRE_FALSE(first.geometry.distance_field.bricks.empty());
+    REQUIRE_FALSE(first.geometry.distance_field.pages.empty());
+    REQUIRE(first.geometry.distance_field.content_hash == second.geometry.distance_field.content_hash);
+    REQUIRE(first.geometry.distance_field.pages == second.geometry.distance_field.pages);
+    REQUIRE(first.geometry.cards.front().fallback_card < first.geometry.cards.size());
+
+    const auto hit = arc::render::trace_mesh_distance_field(
+        first.geometry.distance_field,
+        {.origin = {0.0f, 0.0f, 3.0f}, .direction = {0.0f, 0.0f, -1.0f}, .maximum_distance = 8.0f});
+    REQUIRE(hit.hit);
+    REQUIRE(hit.source == arc::render::lighting_trace_source::software_distance_field);
+    REQUIRE(hit.distance > 1.0f);
+    REQUIRE(hit.distance < 3.0f);
+}
+
+TEST_CASE("lighting scene emits precise incremental updates and rejects stale world generations")
+{
+    using namespace arc::render;
+    lighting_scene scene;
+    lighting_scene_instance instance{.stable_id = 42,
+                                     .geometry = {2, 1},
+                                     .material = {3, 1},
+                                     .world_bounds = {{-1.0f, -1.0f, -1.0f}, {1.0f, 1.0f, 1.0f}},
+                                     .transform_revision = 1,
+                                     .material_revision = 1};
+    auto update = scene.synchronize(7, 1, 1, std::span(&instance, 1));
+    REQUIRE(update.updates.size() == 1);
+    REQUIRE(update.updates.front().kind == lighting_scene_update_kind::upsert);
+    REQUIRE(update.updates.front().geometry_dirty);
+
+    update = scene.synchronize(7, 1, 2, std::span(&instance, 1));
+    REQUIRE(update.updates.empty());
+
+    instance.transform_revision = 2;
+    update = scene.synchronize(7, 1, 3, std::span(&instance, 1));
+    REQUIRE(update.updates.size() == 1);
+    REQUIRE(update.updates.front().transform_dirty);
+    REQUIRE_FALSE(update.updates.front().material_dirty);
+
+    update = scene.synchronize(7, 2, 4, std::span(&instance, 1));
+    REQUIRE(update.updates.front().kind == lighting_scene_update_kind::reset);
+    REQUIRE(scene.snapshot().world_epoch == 2);
+
+    update = scene.synchronize(7, 2, 5, {});
+    REQUIRE(update.updates.size() == 1);
+    REQUIRE(update.updates.front().kind == lighting_scene_update_kind::destroy);
+}
+
+TEST_CASE("dynamic indirect lighting graph selects the resolved screen software and hardware hierarchy")
+{
+    using namespace arc::render;
+    renderer_config renderer_settings;
+    renderer_settings.quality = render_quality_tier::ultra;
+    render_capabilities capabilities;
+    capabilities.compute_shaders = true;
+    capabilities.storage_buffers = true;
+    capabilities.storage_images = true;
+    capabilities.hzb_occlusion = true;
+    capabilities.temporal_resolve = true;
+    capabilities.screen_space_indirect_lighting = true;
+    capabilities.surface_cache = true;
+    capabilities.radiance_cache = true;
+    capabilities.software_ray_tracing = true;
+    capabilities.hardware_ray_query = true;
+    capabilities.ray_tracing = true;
+    const auto config = resolve_render_config(renderer_settings, capabilities);
+    REQUIRE(config.indirect_lighting_path == lighting_trace_path::hybrid_hardware);
+
+    world_environment_data environment;
+    environment.enabled = true;
+    environment.indirect_lighting.enabled = true;
+    environment.indirect_lighting.method = indirect_lighting_method::auto_select;
+    const auto graph = make_scene_draw_graph("gi-test", config, false, environment).compile();
+    const auto contains = [&](builtin_render_pass pass)
+    {
+        return std::ranges::any_of(graph.passes, [pass](const compiled_render_pass& candidate)
+                                   { return candidate.builtin == pass; });
+    };
+    REQUIRE(contains(builtin_render_pass::screen_space_gi));
+    REQUIRE(contains(builtin_render_pass::software_gi_trace));
+    REQUIRE(contains(builtin_render_pass::hardware_gi_trace));
+    REQUIRE(contains(builtin_render_pass::screen_space_reflections));
+    REQUIRE(contains(builtin_render_pass::software_reflections));
+    REQUIRE(contains(builtin_render_pass::hardware_reflections));
+    REQUIRE(contains(builtin_render_pass::indirect_lighting_temporal));
+    REQUIRE(contains(builtin_render_pass::reflection_temporal));
+    REQUIRE(contains(builtin_render_pass::indirect_lighting_composite));
 }

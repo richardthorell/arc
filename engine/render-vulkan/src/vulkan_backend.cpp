@@ -2340,6 +2340,14 @@ private:
         append_deferred_channel(render_capture_channel::base_color, gbuffer_albedo_, "Base-color");
         append_deferred_channel(render_capture_channel::material_properties, gbuffer_material_, "Material-properties");
         append_deferred_channel(render_capture_channel::emissive, gbuffer_emissive_, "Emissive");
+        const std::array unsupported_lighting_channels{
+            render_capture_channel::indirect_diffuse, render_capture_channel::reflections,
+            render_capture_channel::trace_source, render_capture_channel::mesh_distance_field,
+            render_capture_channel::temporal_confidence};
+        for (const auto channel : unsupported_lighting_channels)
+            if (capture_channel_requested(readback.request, channel))
+                readback.diagnostics.emplace_back(
+                    "The requested dynamic-lighting debug channel is unavailable in the active Vulkan path");
 
         if (readback.images.empty() || !ensure_capture_readback_buffer(readback.byte_size))
         {
@@ -2404,6 +2412,12 @@ private:
                 case render_capture_channel::emissive:
                     transition_graph_image(command_buffer, gbuffer_emissive_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
                     source = gbuffer_emissive_.image;
+                    break;
+                case render_capture_channel::indirect_diffuse:
+                case render_capture_channel::reflections:
+                case render_capture_channel::trace_source:
+                case render_capture_channel::mesh_distance_field:
+                case render_capture_channel::temporal_confidence:
                     break;
             }
             if (source == VK_NULL_HANDLE) continue;
@@ -7778,7 +7792,15 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.descriptor_indexing = vulkan12.descriptorIndexing == VK_TRUE;
     capabilities.descriptor_buffer = descriptor_buffer.descriptorBuffer == VK_TRUE;
     capabilities.mesh_shaders = mesh_shader.meshShader == VK_TRUE;
-    capabilities.ray_tracing = ray_tracing.rayTracingPipeline == VK_TRUE;
+    // Capability facts describe executable ARC paths. Ray-query acceleration structures and
+    // their graph execution are enabled together by the lighting backend; a driver extension
+    // alone must never select the hybrid path.
+    capabilities.screen_space_indirect_lighting = false;
+    capabilities.surface_cache = false;
+    capabilities.radiance_cache = false;
+    capabilities.software_ray_tracing = false;
+    capabilities.hardware_ray_query = false;
+    capabilities.ray_tracing = false;
     capabilities.sparse_resources = features.features.sparseBinding == VK_TRUE;
     capabilities.variable_rate_shading = fragment_shading_rate.pipelineFragmentShadingRate == VK_TRUE;
     capabilities.fill_mode_non_solid = features.features.fillModeNonSolid == VK_TRUE;

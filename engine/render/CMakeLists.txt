@@ -5,6 +5,8 @@ arc_add_module(
     NO_TESTS
 )
 
+target_sources(arc-render PRIVATE src/common/lighting_scene.cpp)
+
 if(TARGET arc-third-party-ufbx)
     target_link_libraries(arc-render PRIVATE arc-third-party-ufbx)
     if(ARC_THIRD_PARTY_UFBX_AVAILABLE)

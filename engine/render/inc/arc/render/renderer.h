@@ -36,6 +36,8 @@ struct renderer_config
     bool force_disable_gpu_driven{};
     bool force_disable_async_compute{};
     bool force_disable_temporal{};
+    bool force_disable_dynamic_gi{};
+    bool force_disable_hardware_ray_tracing{};
 };
 
 /**
@@ -54,6 +56,9 @@ struct frame_budget_settings
     float volumetric_resolution_scale{1.0f};
     std::uint32_t gi_trace_budget{1};
     std::uint32_t reflection_ray_budget{1};
+    float lighting_trace_scale{0.5f};
+    std::uint32_t surface_cache_update_budget{128};
+    std::uint32_t radiance_probe_update_budget{32};
 };
 
 /** @brief Quality control most recently adjusted to meet the frame target. */
@@ -65,6 +70,9 @@ enum class frame_budget_change : std::uint8_t
     shadow_resolution,
     gi_traces,
     reflection_rays,
+    lighting_trace_resolution,
+    surface_cache_updates,
+    radiance_probe_updates,
     volumetric_resolution
 };
 
@@ -92,6 +100,9 @@ private:
     float maximum_volumetric_scale_{1.0f};
     std::uint32_t maximum_gi_trace_budget_{1};
     std::uint32_t maximum_reflection_ray_budget_{1};
+    float maximum_lighting_trace_scale_{0.5f};
+    std::uint32_t maximum_surface_cache_update_budget_{128};
+    std::uint32_t maximum_radiance_probe_update_budget_{32};
     frame_budget_settings settings_{};
     frame_budget_change last_change_{frame_budget_change::none};
     float smoothed_frame_time_ms_{default_target_frame_time_ms};
@@ -203,6 +214,13 @@ public:
      */
     const mesh_data* mesh_data_for(mesh_handle handle) const;
 
+    /** @brief Return the lighting representation generated for a static mesh. */
+    [[nodiscard]] lighting_geometry_handle lighting_geometry_for(mesh_handle handle) const noexcept;
+
+    /** @brief Return retained cards and SDF metadata for a lighting geometry handle. */
+    [[nodiscard]] const lighting_geometry_descriptor*
+    lighting_geometry_data_for(lighting_geometry_handle handle) const noexcept;
+
     /**
      * @brief Return whether a virtual mesh handle still references a live renderer virtual mesh.
      */
@@ -220,6 +238,11 @@ public:
     virtual_geometry_residency_manager& virtual_geometry_residency() noexcept;
     /** @return Read-only renderer-owned virtual-geometry residency authority. */
     const virtual_geometry_residency_manager& virtual_geometry_residency() const noexcept;
+
+    /** @return Renderer-owned Lighting Scene authority shared by all views of a world. */
+    lighting_scene& indirect_lighting_scene() noexcept;
+    /** @return Read-only renderer-owned Lighting Scene authority. */
+    const lighting_scene& indirect_lighting_scene() const noexcept;
 
     /**
      * @brief Return whether a texture handle still references a live renderer texture.
@@ -287,8 +310,10 @@ private:
     render_frame_queue frame_queue_;
     gpu_scene gpu_scene_;
     virtual_geometry_residency_manager virtual_geometry_residency_;
+    lighting_scene lighting_scene_;
     handle_pool mesh_handles_;
     handle_pool virtual_mesh_handles_;
+    handle_pool lighting_geometry_handles_;
     handle_pool texture_handles_;
     handle_pool material_handles_;
     handle_pool environment_handles_;
@@ -298,6 +323,8 @@ private:
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
     std::unordered_map<std::uint64_t, std::uint32_t> virtual_mesh_content_generations_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
+    std::unordered_map<std::uint64_t, lighting_geometry_handle> mesh_lighting_geometry_;
+    std::unordered_map<std::uint64_t, std::shared_ptr<const lighting_geometry_descriptor>> lighting_geometry_data_;
     std::unordered_map<std::uint64_t, temporal_view_state> temporal_views_;
 };
 

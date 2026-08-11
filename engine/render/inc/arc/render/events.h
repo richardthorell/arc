@@ -4,6 +4,7 @@
 #include <arc/render/gpu_scene.h>
 #include <arc/render/material.h>
 #include <arc/render/mesh.h>
+#include <arc/render/lighting_scene.h>
 #include <arc/render/shadow.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/math/matrix.h>
@@ -35,6 +36,8 @@ enum class render_event_type : std::uint8_t
     mesh_destroy,
     virtual_mesh_upload,
     virtual_mesh_destroy,
+    lighting_geometry_upload,
+    lighting_geometry_destroy,
     texture_upload,
     material_upload,
     environment_upload,
@@ -46,6 +49,7 @@ enum class render_event_type : std::uint8_t
     spot_light,
     area_light,
     gpu_scene_update,
+    lighting_scene_update,
     render_world,
     debug_marker
 };
@@ -83,7 +87,20 @@ enum class mesh_visualization_mode : std::uint8_t
     virtual_geometric_error,
     virtual_page_residency,
     virtual_overdraw,
-    virtual_triangles_per_pixel
+    virtual_triangles_per_pixel,
+    surface_cards,
+    surface_card_residency,
+    surface_material_cache,
+    surface_radiance_cache,
+    mesh_distance_fields,
+    global_distance_field,
+    radiance_probes,
+    lighting_trace_source,
+    lighting_hit_distance,
+    lighting_temporal_confidence,
+    indirect_diffuse,
+    reflections,
+    denoiser_variance
 };
 
 /**
@@ -154,6 +171,20 @@ struct virtual_mesh_upload_event
 struct virtual_mesh_destroy_event
 {
     virtual_mesh_handle handle{};
+};
+
+/** @brief Publish cooked cards and distance-field pages for one conventional mesh. */
+struct lighting_geometry_upload_event
+{
+    lighting_geometry_handle handle{};
+    std::shared_ptr<const lighting_geometry_descriptor> geometry;
+    std::string label;
+};
+
+/** @brief Retire a Lighting Scene geometry generation after in-flight frames complete. */
+struct lighting_geometry_destroy_event
+{
+    lighting_geometry_handle handle{};
 };
 
 /**
@@ -333,6 +364,12 @@ struct gpu_scene_update_event
     std::shared_ptr<const gpu_scene_update_batch> batch;
 };
 
+/** @brief Incremental backend-neutral Lighting Scene mutations for one submitted frame. */
+struct lighting_scene_update_event
+{
+    std::shared_ptr<const lighting_scene_update_batch> batch;
+};
+
 /**
  * @brief Submit a prepared scene render packet to the backend.
  */
@@ -344,10 +381,11 @@ struct render_world_event
 
 using render_event_payload =
     std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, virtual_mesh_destroy_event,
+                 lighting_geometry_upload_event, lighting_geometry_destroy_event,
                  texture_upload_event,
                  material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event,
                  draw_mesh_event, directional_light_event, point_light_event, spot_light_event, area_light_event,
-                 gpu_scene_update_event, render_world_event, debug_marker_event>;
+                 gpu_scene_update_event, lighting_scene_update_event, render_world_event, debug_marker_event>;
 
 /**
  * @brief Thread-producible typed render event.

@@ -5,8 +5,10 @@
 #include <arc/diagnostics/log.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace arc::render
@@ -100,6 +102,19 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     result.volumetric_resolution_scale = profile.maximum_volumetric_resolution_scale;
     result.gi_trace_budget = profile.gi_trace_budget;
     result.reflection_ray_budget = profile.reflection_ray_budget;
+    result.lighting_trace_scale = profile.lighting_trace_scale;
+    result.surface_cache_update_budget = profile.surface_cache_update_budget;
+    result.radiance_probe_update_budget = profile.radiance_probe_update_budget;
+    result.lighting_scene_gpu_budget_bytes =
+        result.quality == render_quality_tier::ultra ? 768ull * 1024ull * 1024ull
+        : result.quality == render_quality_tier::high ? 384ull * 1024ull * 1024ull
+                                                     : 0ull;
+    if (capabilities.memory_budget != 0 && result.lighting_scene_gpu_budget_bytes != 0)
+    {
+        const std::uint64_t percentage = result.quality == render_quality_tier::ultra ? 12u : 8u;
+        result.lighting_scene_gpu_budget_bytes =
+            std::min(result.lighting_scene_gpu_budget_bytes, capabilities.memory_budget * percentage / 100u);
+    }
     const bool optional_features = !config.force_disable_optional_features;
     const bool gpu_scene_supported = capabilities.compute_shaders && capabilities.storage_buffers &&
                                      capabilities.shader_draw_parameters && capabilities.draw_indirect &&
@@ -117,6 +132,24 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         : virtual_geometry_common && capabilities.virtual_geometry_compute
             ? virtual_geometry_raster_path::compute
             : virtual_geometry_raster_path::unavailable;
+    const bool screen_space_lighting = optional_features && !config.force_disable_dynamic_gi &&
+                                       capabilities.screen_space_indirect_lighting && capabilities.hzb_occlusion &&
+                                       capabilities.temporal_resolve && capabilities.storage_images;
+    const bool software_lighting = optional_features && !config.force_disable_dynamic_gi &&
+                                   capabilities.software_ray_tracing && capabilities.surface_cache &&
+                                   capabilities.radiance_cache && capabilities.compute_shaders &&
+                                   capabilities.storage_buffers && capabilities.storage_images;
+    const bool hardware_lighting = software_lighting && !config.force_disable_hardware_ray_tracing &&
+                                   capabilities.ray_tracing && capabilities.hardware_ray_query;
+    if (result.quality == render_quality_tier::ultra && hardware_lighting)
+        result.indirect_lighting_path = lighting_trace_path::hybrid_hardware;
+    else if ((result.quality == render_quality_tier::high || result.quality == render_quality_tier::ultra) &&
+             software_lighting)
+        result.indirect_lighting_path = lighting_trace_path::software_distance_field;
+    else if (result.quality == render_quality_tier::medium && screen_space_lighting)
+        result.indirect_lighting_path = lighting_trace_path::screen_space;
+    else
+        result.indirect_lighting_path = lighting_trace_path::baked_probe;
     gpu_submission_path submission = gpu_submission_path::cpu_direct;
     if (gpu_driven && !config.force_cpu_submission && capabilities.draw_indirect)
         submission = optional_features && capabilities.draw_indirect_count && capabilities.gpu_scene_indirect_count
@@ -139,13 +172,21 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                         profile.prefer_async_compute && capabilities.dedicated_compute_queue,
                        .virtual_geometry = virtual_geometry_path != virtual_geometry_raster_path::unavailable,
                        .virtual_geometry_path = virtual_geometry_path,
-                       .software_ray_tracing = optional_features && capabilities.software_ray_tracing,
-                       .hardware_ray_tracing = optional_features && capabilities.ray_tracing,
+                       .software_ray_tracing = capabilities.software_ray_tracing,
+                       .hardware_ray_tracing = capabilities.ray_tracing,
+                       .screen_space_gi = screen_space_lighting && result.quality != render_quality_tier::low,
+                       .screen_space_reflections = screen_space_lighting && result.quality != render_quality_tier::low,
+                       .surface_cache = software_lighting,
+                       .radiance_cache = software_lighting,
+                       .software_gi = software_lighting,
+                       .software_reflections = software_lighting,
+                       .hardware_gi = hardware_lighting,
+                       .hardware_reflections = hardware_lighting,
                        .sparse_resources = optional_features && capabilities.sparse_resources,
                        .sampler_anisotropy = optional_features && capabilities.sampler_anisotropy,
                        .texture_compression_bc = capabilities.texture_compression_bc,
                        .mesh_shaders = optional_features && capabilities.mesh_shaders,
-                       .ray_tracing = optional_features && capabilities.ray_tracing,
+                       .ray_tracing = capabilities.ray_tracing,
                        .variable_rate_shading = optional_features && capabilities.variable_rate_shading,
                        .submission = submission};
 
@@ -180,6 +221,17 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.fallback_reasons.push_back(
             "virtual geometry requires executable traversal, HZB, bindless material access, streaming, and a "
             "compute or mesh-shader raster path; using conventional LOD geometry");
+    if (result.quality == render_quality_tier::medium && !screen_space_lighting)
+        result.fallback_reasons.push_back(
+            "screen-space GI/reflections require executable HZB, temporal resolve, and storage images; using probes");
+    if ((result.quality == render_quality_tier::high || result.quality == render_quality_tier::ultra) &&
+        !software_lighting)
+        result.fallback_reasons.push_back(
+            "software dynamic lighting requires executable distance-field tracing, surface cache, and radiance cache; "
+            "using baked lighting and probes");
+    if (result.quality == render_quality_tier::ultra && software_lighting && !hardware_lighting)
+        result.fallback_reasons.push_back(
+            "hardware ray queries are unavailable or disabled; Ultra indirect lighting uses the software trace path");
 
     return result;
 }
@@ -198,13 +250,19 @@ void frame_budget_controller::reset(const render_quality_profile& profile, float
         std::clamp(profile.maximum_volumetric_resolution_scale, minimum_volumetric_scale_, 1.0f);
     maximum_gi_trace_budget_ = profile.gi_trace_budget;
     maximum_reflection_ray_budget_ = profile.reflection_ray_budget;
+    maximum_lighting_trace_scale_ = profile.lighting_trace_scale;
+    maximum_surface_cache_update_budget_ = profile.surface_cache_update_budget;
+    maximum_radiance_probe_update_budget_ = profile.radiance_probe_update_budget;
     settings_ = {.render_scale = maximum_scale_,
                  .geometry_error_threshold =
                      std::clamp(profile.geometry_error_threshold, minimum_geometry_error_, maximum_geometry_error_),
                  .shadow_resolution_scale = maximum_shadow_scale_,
                  .volumetric_resolution_scale = maximum_volumetric_scale_,
                  .gi_trace_budget = maximum_gi_trace_budget_,
-                 .reflection_ray_budget = maximum_reflection_ray_budget_};
+                 .reflection_ray_budget = maximum_reflection_ray_budget_,
+                 .lighting_trace_scale = maximum_lighting_trace_scale_,
+                 .surface_cache_update_budget = maximum_surface_cache_update_budget_,
+                 .radiance_probe_update_budget = maximum_radiance_probe_update_budget_};
     last_change_ = frame_budget_change::none;
     smoothed_frame_time_ms_ = target_frame_time_ms_;
     over_budget_frames_ = 0;
@@ -223,11 +281,19 @@ const frame_budget_settings& frame_budget_controller::update(float gpu_frame_tim
         under_budget_frames_ = 0;
         if (over_budget_frames_ >= dynamic_resolution_over_budget_frames)
         {
-            if (settings_.volumetric_resolution_scale > minimum_volumetric_scale_)
+            if (settings_.radiance_probe_update_budget > maximum_radiance_probe_update_budget_ / 4u)
             {
-                settings_.volumetric_resolution_scale =
-                    std::max(minimum_volumetric_scale_, settings_.volumetric_resolution_scale - 0.125f);
-                last_change_ = frame_budget_change::volumetric_resolution;
+                settings_.radiance_probe_update_budget =
+                    std::max(maximum_radiance_probe_update_budget_ / 4u,
+                             settings_.radiance_probe_update_budget / 2u);
+                last_change_ = frame_budget_change::radiance_probe_updates;
+            }
+            else if (settings_.surface_cache_update_budget > maximum_surface_cache_update_budget_ / 4u)
+            {
+                settings_.surface_cache_update_budget =
+                    std::max(maximum_surface_cache_update_budget_ / 4u,
+                             settings_.surface_cache_update_budget / 2u);
+                last_change_ = frame_budget_change::surface_cache_updates;
             }
             else if (settings_.reflection_ray_budget > 0)
             {
@@ -238,6 +304,18 @@ const frame_budget_settings& frame_budget_controller::update(float gpu_frame_tim
             {
                 --settings_.gi_trace_budget;
                 last_change_ = frame_budget_change::gi_traces;
+            }
+            else if (settings_.lighting_trace_scale > maximum_lighting_trace_scale_ * 0.5f)
+            {
+                settings_.lighting_trace_scale =
+                    std::max(maximum_lighting_trace_scale_ * 0.5f, settings_.lighting_trace_scale - 0.25f);
+                last_change_ = frame_budget_change::lighting_trace_resolution;
+            }
+            else if (settings_.volumetric_resolution_scale > minimum_volumetric_scale_)
+            {
+                settings_.volumetric_resolution_scale =
+                    std::max(minimum_volumetric_scale_, settings_.volumetric_resolution_scale - 0.125f);
+                last_change_ = frame_budget_change::volumetric_resolution;
             }
             else if (settings_.shadow_resolution_scale > minimum_shadow_scale_)
             {
@@ -284,6 +362,18 @@ const frame_budget_settings& frame_budget_controller::update(float gpu_frame_tim
                     std::min(maximum_shadow_scale_, settings_.shadow_resolution_scale + 0.125f);
                 last_change_ = frame_budget_change::shadow_resolution;
             }
+            else if (settings_.volumetric_resolution_scale < maximum_volumetric_scale_)
+            {
+                settings_.volumetric_resolution_scale =
+                    std::min(maximum_volumetric_scale_, settings_.volumetric_resolution_scale + 0.125f);
+                last_change_ = frame_budget_change::volumetric_resolution;
+            }
+            else if (settings_.lighting_trace_scale < maximum_lighting_trace_scale_)
+            {
+                settings_.lighting_trace_scale =
+                    std::min(maximum_lighting_trace_scale_, settings_.lighting_trace_scale + 0.25f);
+                last_change_ = frame_budget_change::lighting_trace_resolution;
+            }
             else if (settings_.gi_trace_budget < maximum_gi_trace_budget_)
             {
                 ++settings_.gi_trace_budget;
@@ -294,11 +384,19 @@ const frame_budget_settings& frame_budget_controller::update(float gpu_frame_tim
                 ++settings_.reflection_ray_budget;
                 last_change_ = frame_budget_change::reflection_rays;
             }
-            else if (settings_.volumetric_resolution_scale < maximum_volumetric_scale_)
+            else if (settings_.surface_cache_update_budget < maximum_surface_cache_update_budget_)
             {
-                settings_.volumetric_resolution_scale =
-                    std::min(maximum_volumetric_scale_, settings_.volumetric_resolution_scale + 0.125f);
-                last_change_ = frame_budget_change::volumetric_resolution;
+                settings_.surface_cache_update_budget =
+                    std::min(maximum_surface_cache_update_budget_,
+                             std::max(1u, settings_.surface_cache_update_budget * 2u));
+                last_change_ = frame_budget_change::surface_cache_updates;
+            }
+            else if (settings_.radiance_probe_update_budget < maximum_radiance_probe_update_budget_)
+            {
+                settings_.radiance_probe_update_budget =
+                    std::min(maximum_radiance_probe_update_budget_,
+                             std::max(1u, settings_.radiance_probe_update_budget * 2u));
+                last_change_ = frame_budget_change::radiance_probe_updates;
             }
             under_budget_frames_ = 0;
         }
@@ -409,6 +507,9 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;
         resolved_config_.gi_trace_budget = budget.gi_trace_budget;
         resolved_config_.reflection_ray_budget = budget.reflection_ray_budget;
+        resolved_config_.lighting_trace_scale = budget.lighting_trace_scale;
+        resolved_config_.surface_cache_update_budget = budget.surface_cache_update_budget;
+        resolved_config_.radiance_probe_update_budget = budget.radiance_probe_update_budget;
         virtual_geometry_residency_config residency;
         if (resolved_config_.quality == render_quality_tier::ultra)
         {
@@ -418,6 +519,12 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         if (const auto device_budget = backend_->capabilities().memory_budget; device_budget != 0)
             residency.gpu_budget_bytes = std::min(residency.gpu_budget_bytes, device_budget / 10u);
         virtual_geometry_residency_.configure(residency);
+        lighting_scene_config lighting_config;
+        lighting_config.gpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes;
+        lighting_config.compressed_cpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes / 3u;
+        lighting_config.maximum_surface_updates_per_frame = resolved_config_.surface_cache_update_budget;
+        lighting_config.maximum_radiance_probe_updates_per_frame = resolved_config_.radiance_probe_update_budget;
+        lighting_scene_.configure(lighting_config);
         backend_->configure(resolved_config_);
     }
 }
@@ -456,6 +563,17 @@ mesh_handle renderer::create_mesh(mesh_data mesh)
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_upload(handle, shared_mesh, shared_mesh->name);
+    if (shared_mesh->usage == mesh_usage::static_gpu && !shared_mesh->vertices.empty() && !shared_mesh->indices.empty())
+    {
+        auto built = build_lighting_geometry(*shared_mesh);
+        const auto lighting_handle = lighting_geometry_handles_.allocate();
+        auto lighting = std::make_shared<lighting_geometry_descriptor>(std::move(built.geometry));
+        mesh_lighting_geometry_[renderer_resource_key(handle)] = lighting_handle;
+        lighting_geometry_data_[renderer_resource_key(lighting_handle)] = lighting;
+        buffer.push({.payload = lighting_geometry_upload_event{.handle = lighting_handle,
+                                                                .geometry = std::move(lighting),
+                                                                .label = shared_mesh->name}});
+    }
     frame_queue_.submit(std::move(buffer));
     return handle;
 }
@@ -471,6 +589,20 @@ bool renderer::update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex>
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_upload(handle, replacement, replacement->name);
+    const auto mesh_key = renderer_resource_key(handle);
+    const auto lighting_entry = mesh_lighting_geometry_.find(mesh_key);
+    if (replacement->usage == mesh_usage::static_gpu && lighting_entry != mesh_lighting_geometry_.end())
+    {
+        auto built = build_lighting_geometry(*replacement);
+        auto lighting = std::make_shared<lighting_geometry_descriptor>(std::move(built.geometry));
+        auto& generation = lighting->generation;
+        const auto previous = lighting_geometry_data_.find(renderer_resource_key(lighting_entry->second));
+        generation = previous == lighting_geometry_data_.end() ? 1u : previous->second->generation + 1u;
+        lighting_geometry_data_[renderer_resource_key(lighting_entry->second)] = lighting;
+        buffer.push({.payload = lighting_geometry_upload_event{.handle = lighting_entry->second,
+                                                                .geometry = std::move(lighting),
+                                                                .label = replacement->name}});
+    }
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -478,10 +610,19 @@ bool renderer::update_mesh_vertices(mesh_handle handle, std::vector<mesh_vertex>
 bool renderer::destroy_mesh(mesh_handle handle)
 {
     if (!mesh_handles_.release(handle)) return false;
-    mesh_data_.erase(renderer_resource_key(handle));
+    const auto mesh_key = renderer_resource_key(handle);
+    mesh_data_.erase(mesh_key);
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.mesh_destroy(handle);
+    if (const auto found = mesh_lighting_geometry_.find(mesh_key); found != mesh_lighting_geometry_.end())
+    {
+        const auto lighting_handle = found->second;
+        mesh_lighting_geometry_.erase(found);
+        lighting_geometry_data_.erase(renderer_resource_key(lighting_handle));
+        (void)lighting_geometry_handles_.release(lighting_handle);
+        buffer.push({.payload = lighting_geometry_destroy_event{.handle = lighting_handle}});
+    }
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -682,6 +823,21 @@ const virtual_mesh_data* renderer::virtual_mesh_data_for(virtual_mesh_handle han
     return found == virtual_mesh_data_.end() ? nullptr : found->second.get();
 }
 
+lighting_geometry_handle renderer::lighting_geometry_for(mesh_handle handle) const noexcept
+{
+    if (!mesh_handles_.alive(handle)) return {};
+    const auto found = mesh_lighting_geometry_.find(renderer_resource_key(handle));
+    return found == mesh_lighting_geometry_.end() ? lighting_geometry_handle{} : found->second;
+}
+
+const lighting_geometry_descriptor*
+renderer::lighting_geometry_data_for(lighting_geometry_handle handle) const noexcept
+{
+    if (!lighting_geometry_handles_.alive(handle)) return nullptr;
+    const auto found = lighting_geometry_data_.find(renderer_resource_key(handle));
+    return found == lighting_geometry_data_.end() ? nullptr : found->second.get();
+}
+
 std::uint32_t renderer::virtual_mesh_content_generation(virtual_mesh_handle handle) const noexcept
 {
     if (!virtual_mesh_handles_.alive(handle)) return 0;
@@ -697,6 +853,16 @@ virtual_geometry_residency_manager& renderer::virtual_geometry_residency() noexc
 const virtual_geometry_residency_manager& renderer::virtual_geometry_residency() const noexcept
 {
     return virtual_geometry_residency_;
+}
+
+lighting_scene& renderer::indirect_lighting_scene() noexcept
+{
+    return lighting_scene_;
+}
+
+const lighting_scene& renderer::indirect_lighting_scene() const noexcept
+{
+    return lighting_scene_;
 }
 
 bool renderer::texture_alive(texture_handle handle) const
@@ -742,6 +908,24 @@ render_backend_frame_profile renderer::last_frame_profile() const
     if (!result.virtual_geometry.enabled && result.virtual_geometry.fallback_reason.empty())
         result.virtual_geometry.fallback_reason =
             "virtual geometry is unavailable for the resolved renderer configuration; using conventional LODs";
+    const auto lighting = lighting_scene_.snapshot();
+    result.indirect_lighting = {
+        .enabled = resolved_config_.indirect_lighting_path != lighting_trace_path::baked_probe,
+        .trace_path = resolved_config_.indirect_lighting_path,
+        .trace_scale = resolved_config_.lighting_trace_scale,
+        .gi_rays = resolved_config_.gi_trace_budget,
+        .reflection_rays = resolved_config_.reflection_ray_budget,
+        .surface_cards = lighting.surface_cards,
+        .resident_surface_pages = lighting.resident_surface_pages,
+        .resident_distance_field_pages = lighting.resident_distance_field_pages,
+        .dirty_regions = lighting.dirty_regions,
+        .surface_updates = lighting.surface_updates,
+        .radiance_probe_updates = lighting.radiance_probe_updates,
+        .resident_bytes = lighting.gpu_resident_bytes,
+        .budget_bytes = lighting.gpu_budget_bytes,
+        .fallback_reason = resolved_config_.indirect_lighting_path == lighting_trace_path::baked_probe
+                               ? "dynamic indirect lighting is unavailable; using lightmaps, probes, and IBL"
+                               : std::string{}};
     return result;
 }
 
@@ -778,6 +962,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             {render_submit_error_code::backend_unavailable, "no render backend attached"});
 
     std::vector<std::shared_ptr<const gpu_scene_update_batch>> gpu_scene_updates;
+    std::vector<std::shared_ptr<const lighting_scene_update_batch>> lighting_scene_updates;
     for (auto& event : packet.events)
     {
         auto* world = std::get_if<render_world_event>(&event.payload);
@@ -819,6 +1004,63 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         if (resolved_config_.features.gpu_driven_rendering)
             gpu_scene_updates.push_back(
                 std::make_shared<gpu_scene_update_batch>(gpu_scene_.synchronize(*prepared, frame_index)));
+        if (resolved_config_.features.surface_cache || resolved_config_.features.software_gi ||
+            resolved_config_.features.software_reflections || resolved_config_.features.hardware_gi ||
+            resolved_config_.features.hardware_reflections)
+        {
+            std::vector<lighting_scene_instance> instances;
+            instances.reserve(prepared->items.size());
+            std::uint32_t surface_card_count{};
+            std::uint32_t surface_page_count{};
+            std::uint32_t distance_field_page_count{};
+            std::uint64_t resident_lighting_bytes{};
+            std::unordered_set<std::uint64_t> counted_geometry;
+            for (const auto& item : prepared->items)
+            {
+                if (!item.visible || item.transparent || item.skin_matrices.valid() || !item.affects_indirect_lighting)
+                    continue;
+                const auto geometry = lighting_geometry_for(item.mesh);
+                const auto* lighting_geometry = lighting_geometry_data_for(geometry);
+                if (!geometry.valid() || !lighting_geometry) continue;
+                if (counted_geometry.insert(renderer_resource_key(geometry)).second)
+                {
+                    surface_card_count += static_cast<std::uint32_t>(lighting_geometry->cards.size());
+                    const auto& field = lighting_geometry->distance_field;
+                    distance_field_page_count += static_cast<std::uint32_t>(field.page_offsets.size());
+                    surface_page_count +=
+                        std::max(1u, static_cast<std::uint32_t>((lighting_geometry->cards.size() + 63u) / 64u));
+                    resident_lighting_bytes += field.pages.size();
+                }
+                std::uint64_t transform_revision = 1469598103934665603ull;
+                for (std::size_t row = 0; row < 4; ++row)
+                    for (std::size_t column = 0; column < 4; ++column)
+                    {
+                        const auto bits = std::bit_cast<std::uint32_t>(item.model(row, column));
+                        transform_revision ^= bits;
+                        transform_revision *= 1099511628211ull;
+                    }
+                const auto object_key = (static_cast<std::uint64_t>(item.object_id.generation) << 32u) |
+                                        static_cast<std::uint64_t>(item.object_id.index);
+                instances.push_back({.stable_id = object_key ^ (renderer_resource_key(item.mesh) * 0x9e3779b97f4a7c15ull),
+                                     .geometry = geometry,
+                                     .material = item.material,
+                                     .model = item.model,
+                                     .world_bounds = item.world_bounds,
+                                     .transform_revision = transform_revision,
+                                     .material_revision = renderer_resource_key(item.material),
+                                     .geometry_generation = lighting_geometry->generation,
+                                     .card_density_bias = item.surface_card_density_bias,
+                                     .distance_field_resolution_bias = item.distance_field_resolution_bias,
+                                     .static_object = item.mobility == render_mobility::static_object,
+                                     .affects_indirect_lighting = item.affects_indirect_lighting,
+                                     .visible_in_hardware_tracing = item.visible_in_hardware_tracing});
+            }
+            lighting_scene_updates.push_back(std::make_shared<lighting_scene_update_batch>(
+                lighting_scene_.synchronize(prepared->gpu_scene_world_id, prepared->world_epoch, frame_index,
+                                            instances)));
+            lighting_scene_.update_residency_statistics(surface_card_count, surface_page_count,
+                                                         distance_field_page_count, resident_lighting_bytes);
+        }
         world->packet = std::move(prepared);
     }
 
@@ -827,6 +1069,12 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         packet.events.reserve(packet.events.size() + gpu_scene_updates.size());
         for (auto& update : gpu_scene_updates)
             packet.events.push_back({.payload = gpu_scene_update_event{.batch = std::move(update)}});
+    }
+    if (!lighting_scene_updates.empty())
+    {
+        packet.events.reserve(packet.events.size() + lighting_scene_updates.size());
+        for (auto& update : lighting_scene_updates)
+            packet.events.push_back({.payload = lighting_scene_update_event{.batch = std::move(update)}});
     }
 
     if (config_.enable_dynamic_resolution)
@@ -844,6 +1092,9 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;
             resolved_config_.gi_trace_budget = budget.gi_trace_budget;
             resolved_config_.reflection_ray_budget = budget.reflection_ray_budget;
+            resolved_config_.lighting_trace_scale = budget.lighting_trace_scale;
+            resolved_config_.surface_cache_update_budget = budget.surface_cache_update_budget;
+            resolved_config_.radiance_probe_update_budget = budget.radiance_probe_update_budget;
             const auto& profile = quality_profile(resolved_config_.quality);
             const auto scaled_shadow_dimension = [&](std::uint32_t base, std::uint32_t minimum)
             {
