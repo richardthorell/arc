@@ -618,11 +618,6 @@ std::optional<std::uint32_t> read_index(const accessor& value, const std::vector
     return std::nullopt;
 }
 
-std::string string_from_path(const std::filesystem::path& path)
-{
-    return path.generic_string();
-}
-
 std::string escape_json(std::string_view value)
 {
     std::string result;

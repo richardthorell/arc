@@ -23,6 +23,38 @@
 
 namespace arc::persistence
 {
+bool archive_value::operator==(const archive_value& other) const
+{
+    if (kind != other.kind) return false;
+    switch (kind)
+    {
+        case archive_value_kind::null:
+            return true;
+        case archive_value_kind::boolean:
+            return boolean == other.boolean;
+        case archive_value_kind::signed_integer:
+            return signed_integer == other.signed_integer;
+        case archive_value_kind::unsigned_integer:
+            return unsigned_integer == other.unsigned_integer;
+        case archive_value_kind::floating_point:
+            return floating_point == other.floating_point;
+        case archive_value_kind::string:
+            return string == other.string;
+        case archive_value_kind::bytes:
+            return bytes == other.bytes;
+        case archive_value_kind::array:
+            return array == other.array;
+        case archive_value_kind::object:
+            return object == other.object;
+    }
+    return false;
+}
+
+bool archive_object_member::operator==(const archive_object_member& other) const
+{
+    return name == other.name && value == other.value;
+}
+
 namespace
 {
 

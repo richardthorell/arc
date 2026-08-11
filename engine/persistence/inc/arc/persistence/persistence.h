@@ -92,10 +92,8 @@ struct archive_object_member
     {
     }
 
-    friend bool operator==(const archive_object_member&, const archive_object_member&) = default;
+    bool operator==(const archive_object_member&) const;
 };
-
-inline bool archive_value::operator==(const archive_value&) const = default;
 
 struct archive_field_record
 {

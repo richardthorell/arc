@@ -94,6 +94,23 @@ public:
 
 } // namespace
 
+TEST_CASE("archive values compare only their active tagged payload recursively")
+{
+    arc::persistence::archive_value left;
+    left.kind = arc::persistence::archive_value_kind::object;
+    arc::persistence::archive_value nested;
+    nested.kind = arc::persistence::archive_value_kind::string;
+    nested.string = "value";
+    left.object.emplace_back("field", nested);
+
+    auto right = left;
+    right.boolean = true;
+    REQUIRE(left == right);
+
+    right.object.front().value.string = "different";
+    REQUIRE_FALSE(left == right);
+}
+
 TEST_CASE("reflected JSON preserves unknown fields and verifies integrity")
 {
     const auto document = make_document();

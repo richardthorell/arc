@@ -296,10 +296,10 @@ std::vector<std::uint32_t> simplify(const mesh_data& source, std::span<const std
 {
     std::vector<std::uint32_t> result(indices.size());
     float relative_error{};
-    const auto count = meshopt_simplify(result.data(), indices.data(), indices.size(), &source.vertices[0].position[0],
-                                        source.vertices.size(), sizeof(mesh_vertex),
-                                        std::max<std::size_t>(3u, target_index_count / 3u * 3u), 1.0f,
-                                        lock_boundaries ? meshopt_SimplifyLockBorder : 0u, &relative_error);
+    const auto count = meshopt_simplify(
+        result.data(), indices.data(), indices.size(), &source.vertices[0].position[0], source.vertices.size(),
+        sizeof(mesh_vertex), std::max<std::size_t>(3u, target_index_count / 3u * 3u), 1.0f,
+        lock_boundaries ? static_cast<unsigned int>(meshopt_SimplifyLockBorder) : 0u, &relative_error);
     result.resize(count >= 3 ? count : indices.size());
     if (count < 3) std::copy(indices.begin(), indices.end(), result.begin());
     absolute_error = relative_error * source_extent(source);

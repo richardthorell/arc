@@ -681,6 +681,8 @@ class asset_manager final : public framework::runtime_service
 public:
     static constexpr framework::runtime_service_id service_id = framework::make_runtime_service_id("arc.assets");
 
+    using framework::runtime_service::dependencies;
+
     asset_manager(asset_manager_config config, jobs::job_system& jobs, io::async_file_service& files,
                   memory::memory_system& memory);
     ~asset_manager() override;

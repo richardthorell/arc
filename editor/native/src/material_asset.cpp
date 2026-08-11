@@ -411,15 +411,12 @@ bool save_material_asset(const material_asset& asset, const std::filesystem::pat
         {
             const auto& desc = asset.material.terrain_layers[layer_index];
             const auto& paths = asset.terrain_layers[layer_index];
-            stream << "    \"layer" << layer_index << "\": { "
-                   << "\"name\": \"" << escape_json(desc.name) << "\", "
-                   << "\"baseColor\": \"" << escape_json(paths.base_color) << "\", "
-                   << "\"normal\": \"" << escape_json(paths.normal) << "\", "
-                   << "\"roughnessTexture\": \"" << escape_json(paths.roughness) << "\", "
-                   << "\"ao\": \"" << escape_json(paths.ao) << "\", "
-                   << "\"height\": \"" << escape_json(paths.height) << "\", "
-                   << "\"packedAorh\": \"" << escape_json(paths.packed_aorh) << "\", "
-                   << "\"tint\": { \"r\": " << desc.tint[0] << ", \"g\": " << desc.tint[1]
+            stream << "    \"layer" << layer_index << "\": { " << "\"name\": \"" << escape_json(desc.name) << "\", "
+                   << "\"baseColor\": \"" << escape_json(paths.base_color) << "\", " << "\"normal\": \""
+                   << escape_json(paths.normal) << "\", " << "\"roughnessTexture\": \"" << escape_json(paths.roughness)
+                   << "\", " << "\"ao\": \"" << escape_json(paths.ao) << "\", " << "\"height\": \""
+                   << escape_json(paths.height) << "\", " << "\"packedAorh\": \"" << escape_json(paths.packed_aorh)
+                   << "\", " << "\"tint\": { \"r\": " << desc.tint[0] << ", \"g\": " << desc.tint[1]
                    << ", \"b\": " << desc.tint[2] << ", \"a\": " << desc.tint[3] << " }, "
                    << "\"worldScale\": " << desc.world_scale << ", \"roughness\": " << desc.roughness << " }"
                    << (layer_index + 1u < asset.terrain_layers.size() ? "," : "") << "\n";
