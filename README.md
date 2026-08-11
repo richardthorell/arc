@@ -97,7 +97,17 @@ python run_editor.py
 ```
 
 The editor runner builds the native Vulkan host and launches the Electron
-workbench. To build without the Vulkan viewport backend:
+workbench. To bypass the project browser while developing the editor, create or
+reuse a persistent Blank 3D project under `out/`:
+
+```bash
+python run_editor.py --quick-start
+```
+
+The Electron executable also accepts `--quick-start` directly. Passing a
+specific `.arcproject` path continues to open that project directly.
+
+To build without the Vulkan viewport backend:
 
 ```bash
 python run_editor.py --no-vulkan-render

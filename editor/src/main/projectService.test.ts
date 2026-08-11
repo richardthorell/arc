@@ -59,6 +59,37 @@ describe('ProjectService', () => {
     expect(service.snapshot().recentProjects[0].guid).toBe(created.project?.descriptor.guid);
   });
 
+  it('creates and reuses a Blank 3D quick-start project', async () => {
+    const root = temporary();
+    const commands: string[] = [];
+    const service = new ProjectService({
+      ...nativeProjectAuthority,
+      userDataPath: path.join(root, 'user'),
+      currentEngineVersion: '1.2.3',
+      currentEditorPath: 'arc-editor',
+      host: {
+        connected: true,
+        error: '',
+        command: async (type) => {
+          commands.push(type);
+          return { succeeded: true };
+        },
+      },
+    });
+    const destination = path.join(root, 'quick-start');
+
+    const first = await service.openOrCreateQuickStartProject(destination);
+    expect(first.succeeded, first.error).toBe(true);
+    expect(first.project?.descriptor.name).toBe('ARC Editor Development');
+    expect(first.project?.descriptor.defaultScene?.pathHint).toBe('Content/Scenes/Startup.arcscene');
+
+    await service.close();
+    const second = await service.openOrCreateQuickStartProject(destination);
+    expect(second.succeeded, second.error).toBe(true);
+    expect(second.project?.descriptor.guid).toBe(first.project?.descriptor.guid);
+    expect(commands.filter((type) => type === 'project.open')).toHaveLength(2);
+  });
+
   it('requires explicit read-only mode for a newer project', async () => {
     const root = temporary();
     const descriptor = path.join(root, 'Future.arcproject');

@@ -444,6 +444,29 @@ export class ProjectService {
     }
   }
 
+  async openOrCreateQuickStartProject(destination: string): Promise<ArcProjectOperationResult> {
+    const projectRoot = path.resolve(destination);
+    try {
+      let descriptorPath = '';
+      const needsCreation =
+        !fs.existsSync(projectRoot) ||
+        (fs.statSync(projectRoot).isDirectory() && fs.readdirSync(projectRoot).length === 0);
+      if (needsCreation) {
+        const created = this.create({
+          name: 'ARC Editor Development',
+          destination: projectRoot,
+          template: 'blank-3d',
+        });
+        if (!created.succeeded || !created.project) return created;
+        descriptorPath = created.project.descriptorPath;
+      } else descriptorPath = resolveDescriptorPath(projectRoot);
+
+      return await this.open(descriptorPath, { upgrade: true });
+    } catch (error) {
+      return { succeeded: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async clone(request: ArcCloneProjectRequest): Promise<ArcProjectOperationResult> {
     let destination = '';
     let destinationPrepared = false;

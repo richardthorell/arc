@@ -18,6 +18,7 @@ import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/
 const isDevelopment = !app.isPackaged;
 const isCiSmoke =
   Boolean(process.env.ARC_CI_SMOKE_LOG) || process.argv.includes('--ci-smoke') || app.commandLine.hasSwitch('ci-smoke');
+const isQuickStart = process.argv.includes('--quick-start') || app.commandLine.hasSwitch('quick-start');
 let ciSmokeProjectRoot: string | null = null;
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -613,8 +614,12 @@ void app.whenReady().then(async () => {
       recoveryService?.noteMutation();
   });
   const suppliedProject = process.argv.find((argument) => argument.toLowerCase().endsWith('.arcproject'));
-  if (suppliedProject) {
-    const opened = await projectService.open(suppliedProject);
+  if (suppliedProject || isQuickStart) {
+    const opened = suppliedProject
+      ? await projectService.open(suppliedProject)
+      : await projectService.openOrCreateQuickStartProject(
+          process.env.ARC_EDITOR_QUICK_START_PROJECT ?? path.join(app.getPath('userData'), 'QuickStartProject'),
+        );
     if (opened.succeeded && opened.project) {
       recoveryService.start(opened.project);
       buildService.watchProject();
@@ -622,7 +627,7 @@ void app.whenReady().then(async () => {
       sendHostLog({
         level: 'error',
         source: 'project.browser',
-        message: opened.error || 'The supplied project could not be opened',
+        message: opened.error || 'The startup project could not be opened',
       });
   }
   if (!isCiSmoke) {
