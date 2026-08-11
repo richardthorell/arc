@@ -44,6 +44,15 @@ void require_terrain_frame_submission(arc::render::renderer& renderer)
     REQUIRE(submitted.has_value());
 }
 
+bool reject_test_surface(VkInstance instance, PFN_vkGetInstanceProcAddr get_instance_proc_address,
+                         VkSurfaceKHR*, void* user_data)
+{
+    auto& resolver_was_usable = *static_cast<bool*>(user_data);
+    resolver_was_usable = instance != VK_NULL_HANDLE && get_instance_proc_address != nullptr &&
+                          get_instance_proc_address(instance, "vkDestroyInstance") != nullptr;
+    return false;
+}
+
 } // namespace
 
 TEST_CASE("Vulkan picking maps output pixels to dynamic-resolution ObjectID pixels")
@@ -134,6 +143,24 @@ TEST_CASE("Vulkan backend creation either succeeds or reports a reason")
     {
         REQUIRE_FALSE(result.error().message.empty());
     }
+}
+
+TEST_CASE("Vulkan surface callbacks receive the backend instance procedure resolver")
+{
+    if (!arc::render::vulkan::vulkan_loader_available())
+    {
+        SUCCEED("Vulkan loader is unavailable");
+        return;
+    }
+
+    bool resolver_was_usable{};
+    arc::render::vulkan::vulkan_backend_config config{};
+    config.create_surface = reject_test_surface;
+    config.surface_user_data = &resolver_was_usable;
+    const auto result = arc::render::vulkan::create_vulkan_backend(config);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().code == arc::render::render_backend_create_error_code::surface_creation_failed);
+    REQUIRE(resolver_was_usable);
 }
 
 TEST_CASE("Vulkan compatibility override leaves optional device paths disabled")

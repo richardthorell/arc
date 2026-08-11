@@ -12,7 +12,16 @@
 namespace arc::render::vulkan
 {
 
-using vulkan_surface_create_fn = bool (*)(VkInstance instance, VkSurfaceKHR* surface, void* user_data);
+/**
+ * @brief Create a presentation surface using the backend's initialized Vulkan procedure resolver.
+ * @param instance Vulkan instance that owns the new surface.
+ * @param get_instance_proc_address Procedure resolver initialized for @p instance.
+ * @param surface Destination receiving the created surface.
+ * @param user_data Platform data supplied through @ref vulkan_backend_config::surface_user_data.
+ * @return `true` when @p surface contains a valid presentation surface.
+ */
+using vulkan_surface_create_fn = bool (*)(VkInstance instance, PFN_vkGetInstanceProcAddr get_instance_proc_address,
+                                          VkSurfaceKHR* surface, void* user_data);
 
 /**
  * @brief Vulkan backend startup configuration.

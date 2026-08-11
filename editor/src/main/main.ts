@@ -210,6 +210,7 @@ const resolveHostProcessPath = (): string | null => {
 export class ArcHostClient {
   private readonly executablePath: string | null;
   private process: ChildProcessWithoutNullStreams | null = null;
+  private reconnectRequired = false;
   private requestId = 1;
   private readonly pending = new Map<
     number,
@@ -234,7 +235,7 @@ export class ArcHostClient {
   }
 
   start(): void {
-    if (this.process || !this.executablePath) {
+    if (this.process || this.reconnectRequired || !this.executablePath) {
       if (!this.executablePath) {
         this.lastError = 'arc_host_process was not found. Build the native editor host first.';
       }
@@ -252,29 +253,34 @@ export class ArcHostClient {
     stdout.on('line', (line) => this.handleLine(line));
     const stderr = readline.createInterface({ input: child.stderr });
     stderr.on('line', (line) => {
-      this.lastError = line.trim();
-      if (this.lastError) {
-        sendHostLog(parseHostLogLine(this.lastError, 'stderr'));
-        console.warn(`[arc_host_process] ${this.lastError}`);
+      const diagnostic = line.trim();
+      if (diagnostic) {
+        const event = parseHostLogLine(diagnostic, 'stderr');
+        if (event.level === 'error') this.lastError = event.message;
+        sendHostLog(event);
+        console.warn(`[arc_host_process] ${diagnostic}`);
       }
     });
     child.on('exit', (code, signal) => {
       const wasCurrentProcess = this.process === child;
-      if (wasCurrentProcess) this.process = null;
-      const exitDetail =
-        this.lastError ||
-        `arc_host_process exited${code === null ? '' : ` with code ${code}`}${signal ? ` (${signal})` : ''}`;
+      if (!wasCurrentProcess) return;
+      this.process = null;
+      this.reconnectRequired = true;
+      const processExit = `arc_host_process exited${code === null ? '' : ` with code ${code}`}${
+        signal ? ` (${signal})` : ''
+      }`;
+      const exitDetail = this.lastError ? `${processExit}: ${this.lastError}` : processExit;
+      this.lastError = exitDetail;
+      console.warn(`[arc_host_process] ${exitDetail}`);
       sendHostLog({
         level: 'warning',
         source: 'host.process',
         message: exitDetail,
       });
-      if (wasCurrentProcess) {
-        for (const pending of this.pending.values()) {
-          pending.reject(new Error(exitDetail));
-        }
-        this.pending.clear();
+      for (const pending of this.pending.values()) {
+        pending.reject(new Error(exitDetail));
       }
+      this.pending.clear();
     });
 
     if (isCiSmoke) {
@@ -293,6 +299,7 @@ export class ArcHostClient {
   stop(): void {
     const child = this.process;
     this.process = null;
+    this.reconnectRequired = true;
     child?.kill();
     const error = new Error('arc_host_process was stopped');
     for (const pending of this.pending.values()) pending.reject(error);
@@ -301,6 +308,7 @@ export class ArcHostClient {
 
   restart(): void {
     this.stop();
+    this.reconnectRequired = false;
     this.lastError = '';
     this.start();
   }

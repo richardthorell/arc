@@ -7906,7 +7906,8 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     if (config.create_surface)
     {
-        if (!config.create_surface(instance, &surface, config.surface_user_data) || surface == VK_NULL_HANDLE)
+        if (!config.create_surface(instance, vkGetInstanceProcAddr, &surface, config.surface_user_data) ||
+            surface == VK_NULL_HANDLE)
         {
             vkDestroyInstance(instance, nullptr);
             return render_backend_create_result::failure({render_backend_create_error_code::surface_creation_failed,

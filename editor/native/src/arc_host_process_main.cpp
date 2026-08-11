@@ -153,10 +153,13 @@ arc::editor::host_profiler_snapshot make_profiler_snapshot(const arc::jobs::job_
 class native_viewport_controller;
 LRESULT CALLBACK native_viewport_wnd_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 
-bool create_win32_surface(VkInstance instance, VkSurfaceKHR* surface, void* user_data)
+bool create_win32_surface(VkInstance instance, PFN_vkGetInstanceProcAddr get_instance_proc_address,
+                          VkSurfaceKHR* surface, void* user_data)
 {
+    if (!get_instance_proc_address) return false;
     PFN_vkCreateWin32SurfaceKHR create_surface =
-        reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(vkGetInstanceProcAddr(instance, "vkCreateWin32SurfaceKHR"));
+        reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(
+            get_instance_proc_address(instance, "vkCreateWin32SurfaceKHR"));
     if (!create_surface) return false;
 
     VkWin32SurfaceCreateInfoKHR info{};
