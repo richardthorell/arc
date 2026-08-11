@@ -9,10 +9,14 @@ import { ProjectService } from './projectService';
 const temporaryRoots: string[] = [];
 const projectToolName = process.platform === 'win32' ? 'arc-project.exe' : 'arc-project';
 const projectToolPath =
+  process.env.ARC_PROJECT_TOOL_PATH ??
   [
     path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli/RelWithDebInfo', projectToolName),
     path.resolve(import.meta.dirname, '../../../out/build/default/tools/project_cli', projectToolName),
-  ].find((candidate) => fs.existsSync(candidate)) ?? '';
+    path.resolve(import.meta.dirname, '../../../out/build/ci-windows/tools/project_cli', projectToolName),
+    path.resolve(import.meta.dirname, '../../../out/build/editor-vulkan/tools/project_cli', projectToolName),
+  ].find((candidate) => fs.existsSync(candidate)) ??
+  '';
 const templatesRoot = path.resolve(import.meta.dirname, '../../../templates');
 const nativeProjectAuthority = { projectToolPath, templatesRoot };
 const temporary = () => {

@@ -111,7 +111,7 @@ export class RecoveryService {
         ? this.projectRoot()
         : projectPath
           ? path.join(projectPath, 'Saved', 'Recovery', guid)
-          : this.knownProjectRoots.get(guid) ?? path.join(this.root, guid);
+          : (this.knownProjectRoots.get(guid) ?? path.join(this.root, guid));
     this.knownProjectRoots.set(guid, projectRoot);
     const index = readJson<RecoveryGeneration[]>(path.join(projectRoot, 'index.json'), []);
     const generations = index.filter((entry) => fs.existsSync(entry.recoveryPath));
@@ -252,7 +252,7 @@ export class RecoveryService {
     const root =
       !projectGuid || this.project?.descriptor.guid === projectGuid
         ? this.projectRoot()
-        : this.knownProjectRoots.get(projectGuid) ?? path.join(this.root, projectGuid);
+        : (this.knownProjectRoots.get(projectGuid) ?? path.join(this.root, projectGuid));
     writeJsonAtomic(path.join(root, 'index.json'), entries);
   }
 
@@ -275,7 +275,12 @@ export class RecoveryService {
 
   private projectRoot(): string {
     if (!this.project) throw new Error('Recovery service has no active project');
-    return path.join(this.project.projectRoot, this.project.descriptor.paths.saved, 'Recovery', this.project.descriptor.guid);
+    return path.join(
+      this.project.projectRoot,
+      this.project.descriptor.paths.saved,
+      'Recovery',
+      this.project.descriptor.guid,
+    );
   }
 
   private heartbeatPath(): string {

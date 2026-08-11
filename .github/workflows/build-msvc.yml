@@ -67,6 +67,8 @@ jobs:
 
       - name: Validate Electron
         working-directory: editor
+        env:
+          ARC_PROJECT_TOOL_PATH: ${{ github.workspace }}\out\build\ci-windows\tools\project_cli\arc-project.exe
         run: |
           npm run typecheck
           npm test

@@ -131,7 +131,9 @@ export function LightingPanel({
           </dd>
         </dl>
       </section>
-      {(diagnostics?.environment.fallback || diagnostics?.shadows.fallback || diagnostics?.indirectLighting.fallback) && (
+      {(diagnostics?.environment.fallback ||
+        diagnostics?.shadows.fallback ||
+        diagnostics?.indirectLighting.fallback) && (
         <div className="tool-warning">
           {diagnostics.environment.fallback || diagnostics.shadows.fallback || diagnostics.indirectLighting.fallback}
         </div>
