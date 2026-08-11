@@ -206,8 +206,9 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     static const std::unordered_set<std::string_view> known{
         "Name",       "Tag",       "Active",           "RenderLayer",      "Mobility",
         "Transform",  "Camera",    "MeshRenderer",     "VirtualMeshRenderer", "DirectionalLight", "PointLight",
-        "SpotLight",  "AreaLight", "WorldEnvironment", "Terrain",          "Water",
-        "Vegetation", "Decal",     "PrefabInstance",   "WorldRegion"};
+        "SpotLight",       "AreaLight",       "ReflectionProbe", "IrradianceProbe",
+        "BakedLighting",   "WorldEnvironment", "Terrain",         "Water",
+        "Vegetation",      "Decal",            "PrefabInstance",  "WorldRegion"};
     if (!known.contains(name)) return true;
     const auto component_version = value["version"].get<std::uint32_t>();
     const bool supports_v2 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
@@ -216,8 +217,9 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                              name == "AreaLight" || name == "PrefabInstance";
     const bool supports_v3 = name == "Terrain" || name == "MeshRenderer" || name == "DirectionalLight" || name == "PointLight" ||
                              name == "SpotLight" || name == "AreaLight";
+    const bool supports_v4 = name == "MeshRenderer";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
-        !(supports_v3 && component_version == 3u))
+        !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u))
     {
         error = "component '" + std::string(name) + "' uses an unsupported schema version";
         return false;
@@ -310,9 +312,44 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                          value["maximumShadowDistance"].get<double>() >= 0.0)) &&
                        (!value.contains("representationPolicy") ||
                         (value["representationPolicy"].is_number_unsigned() &&
-                         value["representationPolicy"].get<std::uint32_t>() <= 2u))
+                         value["representationPolicy"].get<std::uint32_t>() <= 2u)) &&
+                       (!value.contains("affectsIndirectLighting") || value["affectsIndirectLighting"].is_boolean()) &&
+                       (!value.contains("surfaceCardDensityBias") || finite_number(value, "surfaceCardDensityBias")) &&
+                       (!value.contains("distanceFieldResolutionBias") ||
+                        finite_number(value, "distanceFieldResolutionBias")) &&
+                       (!value.contains("visibleInHardwareTracing") ||
+                        value["visibleInHardwareTracing"].is_boolean())
                    ? true
                    : fail("has invalid renderer values");
+    if (name == "ReflectionProbe")
+        return finite_number(value, "radius") && value["radius"].get<double>() > 0.0 &&
+                       finite_number(value, "intensity") && value["intensity"].get<double>() >= 0.0 &&
+                       (!value.contains("boxExtents") || finite_array(value["boxExtents"], 3)) &&
+                       (!value.contains("blendDistance") ||
+                        (finite_number(value, "blendDistance") && value["blendDistance"].get<double>() >= 0.0)) &&
+                       (!value.contains("resolution") ||
+                        (value["resolution"].is_number_unsigned() && value["resolution"].get<std::uint32_t>() > 0u))
+                   ? true
+                   : fail("has invalid reflection probe values");
+    if (name == "IrradianceProbe")
+        return finite_number(value, "radius") && value["radius"].get<double>() > 0.0 &&
+                       finite_number(value, "intensity") && value["intensity"].get<double>() >= 0.0 &&
+                       (!value.contains("visibility") ||
+                        (finite_number(value, "visibility") && value["visibility"].get<double>() >= 0.0 &&
+                         value["visibility"].get<double>() <= 1.0)) &&
+                       (!value.contains("sphericalHarmonics") ||
+                        (value["sphericalHarmonics"].is_array() && value["sphericalHarmonics"].size() == 9u &&
+                         std::all_of(value["sphericalHarmonics"].begin(), value["sphericalHarmonics"].end(),
+                                     [](const json& coefficient) { return finite_array(coefficient, 3); })))
+                   ? true
+                   : fail("has invalid irradiance probe values");
+    if (name == "BakedLighting")
+        return value.contains("uvChannel") && value["uvChannel"].is_number_unsigned() &&
+                       value["uvChannel"].get<std::uint32_t>() < 8u && value.contains("scaleOffset") &&
+                       finite_array(value["scaleOffset"], 4) && finite_number(value, "intensity") &&
+                       value["intensity"].get<double>() >= 0.0
+                   ? true
+                   : fail("has invalid baked lighting values");
     if (name == "WorldEnvironment")
     {
         host_world_environment_snapshot snapshot;
@@ -738,14 +775,18 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                   {"brightenSpeed", component->exposure.brighten_speed},
                                   {"darkenSpeed", component->exposure.darken_speed}}}};
     if (const auto* component = state.scene.try_get<scene::mesh_renderer_component>(value))
-        components["MeshRenderer"] = {{"version", 3},
+        components["MeshRenderer"] = {{"version", 4},
                                       {"visible", component->visible},
                                       {"baseColorTint", vector4(component->base_color_tint)},
                                       {"castsShadows", component->casts_shadows},
                                       {"receivesShadows", component->receives_shadows},
                                       {"shadowLodBias", component->shadow_lod_bias},
                                       {"maximumShadowDistance", component->maximum_shadow_distance},
-                                      {"representationPolicy", static_cast<std::uint32_t>(component->representation)}};
+                                      {"representationPolicy", static_cast<std::uint32_t>(component->representation)},
+                                      {"affectsIndirectLighting", component->affects_indirect_lighting},
+                                      {"surfaceCardDensityBias", component->surface_card_density_bias},
+                                      {"distanceFieldResolutionBias", component->distance_field_resolution_bias},
+                                      {"visibleInHardwareTracing", component->visible_in_hardware_tracing}};
     if (const auto* component = state.scene.try_get<scene::directional_light_component>(value))
     {
         components["DirectionalLight"] =
@@ -787,6 +828,36 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
         components["AreaLight"]["shape"] = static_cast<int>(component->shape);
         components["AreaLight"]["twoSided"] = component->two_sided;
     }
+    if (const auto* component = state.scene.try_get<scene::reflection_probe_component>(value))
+        components["ReflectionProbe"] = {{"version", 1},
+                                          {"radius", component->radius},
+                                          {"intensity", component->intensity},
+                                          {"enabled", component->enabled},
+                                          {"shape", static_cast<std::uint32_t>(component->shape)},
+                                          {"boxExtents", vector3(component->box_extents)},
+                                          {"blendDistance", component->blend_distance},
+                                          {"priority", component->priority},
+                                          {"resolution", component->resolution},
+                                          {"updatePolicy", static_cast<std::uint32_t>(component->update_policy)}};
+    if (const auto* component = state.scene.try_get<scene::irradiance_probe_component>(value))
+    {
+        json coefficients = json::array();
+        for (const auto& coefficient : component->spherical_harmonics)
+            coefficients.push_back(vector3(coefficient));
+        components["IrradianceProbe"] = {{"version", 1},
+                                          {"radius", component->radius},
+                                          {"intensity", component->intensity},
+                                          {"enabled", component->enabled},
+                                          {"visibility", component->visibility},
+                                          {"priority", component->priority},
+                                          {"sphericalHarmonics", std::move(coefficients)}};
+    }
+    if (const auto* component = state.scene.try_get<scene::baked_lighting_component>(value))
+        components["BakedLighting"] = {{"version", 1},
+                                        {"uvChannel", component->uv_channel},
+                                        {"scaleOffset", vector4(component->scale_offset)},
+                                        {"intensity", component->intensity},
+                                        {"enabled", component->enabled}};
     if (state.scene.has<scene::world_environment_component>(value))
     {
         const auto settings = scene::read_world_environment_settings(state.scene, value);
@@ -1312,6 +1383,10 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 renderer_component.maximum_shadow_distance = value.value("maximumShadowDistance", 0.0f);
                 renderer_component.representation = static_cast<render::geometry_representation_policy>(
                     std::min(value.value("representationPolicy", 0u), 2u));
+                renderer_component.affects_indirect_lighting = value.value("affectsIndirectLighting", true);
+                renderer_component.surface_card_density_bias = value.value("surfaceCardDensityBias", 0.0f);
+                renderer_component.distance_field_resolution_bias = value.value("distanceFieldResolutionBias", 0.0f);
+                renderer_component.visible_in_hardware_tracing = value.value("visibleInHardwareTracing", true);
                 loaded.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
                 diagnostics.push_back("Mesh asset for '" + id_text + "' used the default fallback");
                 if (components.contains("VirtualMeshRenderer"))
@@ -1329,6 +1404,11 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 mesh.maximum_shadow_distance = serialized_mesh_renderer->value("maximumShadowDistance", 0.0f);
                 mesh.representation = static_cast<render::geometry_representation_policy>(
                     std::min(serialized_mesh_renderer->value("representationPolicy", 0u), 2u));
+                mesh.affects_indirect_lighting = serialized_mesh_renderer->value("affectsIndirectLighting", true);
+                mesh.surface_card_density_bias = serialized_mesh_renderer->value("surfaceCardDensityBias", 0.0f);
+                mesh.distance_field_resolution_bias =
+                    serialized_mesh_renderer->value("distanceFieldResolutionBias", 0.0f);
+                mesh.visible_in_hardware_tracing = serialized_mesh_renderer->value("visibleInHardwareTracing", true);
             }
             if (components.contains("DirectionalLight"))
             {
@@ -1400,6 +1480,47 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     components["AreaLight"].value("shape", static_cast<int>(light.shape)));
                 light.two_sided = components["AreaLight"].value("twoSided", false);
                 loaded.scene.emplace<scene::area_light_component>(entity, light);
+            }
+            if (components.contains("ReflectionProbe"))
+            {
+                const auto& source = components["ReflectionProbe"];
+                scene::reflection_probe_component probe;
+                probe.radius = source.value("radius", probe.radius);
+                probe.intensity = source.value("intensity", probe.intensity);
+                probe.enabled = source.value("enabled", probe.enabled);
+                probe.shape = static_cast<scene::reflection_probe_shape>(
+                    std::min(source.value("shape", 0u), 1u));
+                if (source.contains("boxExtents")) probe.box_extents = read_vector3(source["boxExtents"]);
+                probe.blend_distance = source.value("blendDistance", probe.blend_distance);
+                probe.priority = source.value("priority", probe.priority);
+                probe.resolution = source.value("resolution", probe.resolution);
+                probe.update_policy = static_cast<scene::probe_update_policy>(
+                    std::min(source.value("updatePolicy", 0u), 3u));
+                loaded.scene.emplace<scene::reflection_probe_component>(entity, probe);
+            }
+            if (components.contains("IrradianceProbe"))
+            {
+                const auto& source = components["IrradianceProbe"];
+                scene::irradiance_probe_component probe;
+                probe.radius = source.value("radius", probe.radius);
+                probe.intensity = source.value("intensity", probe.intensity);
+                probe.enabled = source.value("enabled", probe.enabled);
+                probe.visibility = source.value("visibility", probe.visibility);
+                probe.priority = source.value("priority", probe.priority);
+                if (source.contains("sphericalHarmonics"))
+                    for (std::size_t coefficient = 0; coefficient < probe.spherical_harmonics.size(); ++coefficient)
+                        probe.spherical_harmonics[coefficient] = read_vector3(source["sphericalHarmonics"][coefficient]);
+                loaded.scene.emplace<scene::irradiance_probe_component>(entity, probe);
+            }
+            if (components.contains("BakedLighting"))
+            {
+                const auto& source = components["BakedLighting"];
+                scene::baked_lighting_component baked;
+                baked.uv_channel = source.value("uvChannel", baked.uv_channel);
+                baked.scale_offset = read_vector4(source["scaleOffset"]);
+                baked.intensity = source.value("intensity", baked.intensity);
+                baked.enabled = source.value("enabled", baked.enabled);
+                loaded.scene.emplace<scene::baked_lighting_component>(entity, baked);
             }
             if (components.contains("WorldEnvironment"))
             {
@@ -1496,8 +1617,9 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
             static const std::unordered_set<std::string> known{
                 "Name",       "Tag",       "Active",           "RenderLayer",      "Mobility",
                 "Transform",  "Camera",    "MeshRenderer",     "DirectionalLight", "PointLight",
-                "SpotLight",  "AreaLight", "WorldEnvironment", "Terrain",          "Water",
-                "Vegetation", "Decal",     "PrefabInstance",   "WorldRegion"};
+                "SpotLight",       "AreaLight",       "ReflectionProbe", "IrradianceProbe",
+                "BakedLighting",   "WorldEnvironment", "Terrain",         "Water",
+                "Vegetation",      "Decal",            "PrefabInstance",  "WorldRegion"};
             json unknown = json::object();
             for (const auto& [name, value] : components.items())
             {

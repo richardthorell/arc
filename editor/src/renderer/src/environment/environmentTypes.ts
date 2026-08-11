@@ -86,4 +86,12 @@ export type HostWorldEnvironment = {
   lightingColor: Vec3;
   diffuseIntensity: number;
   specularIntensity: number;
+  indirectLightingEnabled: boolean;
+  indirectLightingMethod: 'autoSelect' | 'bakedProbe' | 'screenSpace' | 'software' | 'hybridHardware';
+  indirectDiffuseIntensity: number;
+  reflectionIntensity: number;
+  emissiveContribution: number;
+  maximumTraceDistance: number;
+  surfaceCacheDetail: number;
+  allowHardwareRayTracing: boolean;
 };

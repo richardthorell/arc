@@ -229,7 +229,28 @@ enum class host_visualization_mode : std::uint8_t
     virtual_geometric_error,
     virtual_page_residency,
     virtual_overdraw,
-    virtual_triangles_per_pixel
+    virtual_triangles_per_pixel,
+    surface_cards,
+    surface_card_residency,
+    surface_material_cache,
+    surface_radiance_cache,
+    mesh_distance_fields,
+    global_distance_field,
+    radiance_probes,
+    lighting_trace_source,
+    lighting_hit_distance,
+    lighting_temporal_confidence,
+    indirect_diffuse,
+    reflections,
+    denoiser_variance
+};
+enum class host_indirect_lighting_method : std::uint8_t
+{
+    auto_select,
+    baked_probe,
+    screen_space,
+    software,
+    hybrid_hardware
 };
 
 enum class host_overlay_mode : std::uint8_t
@@ -584,6 +605,14 @@ struct host_world_environment_snapshot
     host_vec3 lighting_color{0.18f, 0.23f, 0.29f};
     float diffuse_intensity{1.0f};
     float specular_intensity{1.0f};
+    bool indirect_lighting_enabled{true};
+    host_indirect_lighting_method indirect_lighting_method{host_indirect_lighting_method::auto_select};
+    float indirect_diffuse_intensity{1.0f};
+    float reflection_intensity{1.0f};
+    float emissive_contribution{1.0f};
+    float maximum_trace_distance{100.0f};
+    float surface_cache_detail{1.0f};
+    bool allow_hardware_ray_tracing{true};
 
     friend bool operator==(const host_world_environment_snapshot&,
                            const host_world_environment_snapshot&) noexcept = default;
@@ -1110,6 +1139,11 @@ struct host_viewport_capture_command
     bool base_color{};
     bool material_properties{};
     bool emissive{};
+    bool indirect_diffuse{};
+    bool reflections{};
+    bool trace_source{};
+    bool distance_field{};
+    bool temporal_confidence{};
 };
 
 using host_command_payload = std::variant<
@@ -1294,6 +1328,7 @@ const char* to_string(host_sky_source value) noexcept;
 const char* to_string(host_sun_position_mode value) noexcept;
 const char* to_string(host_celestial_time_mode value) noexcept;
 const char* to_string(host_environment_lighting_source value) noexcept;
+const char* to_string(host_indirect_lighting_method value) noexcept;
 const char* to_string(host_world_environment_preset value) noexcept;
 const char* to_string(host_runtime_state value) noexcept;
 

@@ -213,28 +213,46 @@ std::string history_label(const host_command_payload& command)
         [](const auto& value) -> std::string
         {
             using type = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<type, host_create_entity_command>) return "Create Entity";
-            if constexpr (std::is_same_v<type, host_delete_entity_command>) return "Delete Entity";
-            if constexpr (std::is_same_v<type, host_duplicate_entity_command>) return "Duplicate Entity";
-            if constexpr (std::is_same_v<type, host_create_prefab_command>) return "Create Prefab";
-            if constexpr (std::is_same_v<type, host_instantiate_prefab_command>) return "Instantiate Prefab";
-            if constexpr (std::is_same_v<type, host_apply_prefab_command>) return "Apply Prefab";
-            if constexpr (std::is_same_v<type, host_revert_prefab_command>) return "Revert Prefab";
-            if constexpr (std::is_same_v<type, host_unpack_prefab_command>) return "Unpack Prefab";
-            if constexpr (std::is_same_v<type, host_reparent_entity_command>) return "Reparent Entity";
-            if constexpr (std::is_same_v<type, host_reorder_entity_command>) return "Reorder Entity";
-            if constexpr (std::is_same_v<type, host_rename_entity_command>) return "Rename Entity";
-            if constexpr (std::is_same_v<type, host_set_transform_command>) return "Transform Entity";
-            if constexpr (std::is_same_v<type, host_set_mobility_command>) return "Set Mobility";
-            if constexpr (std::is_same_v<type, host_set_entity_material_command>) return "Assign Material";
-            if constexpr (std::is_same_v<type, host_set_terrain_command>) return "Edit Terrain";
-            if constexpr (std::is_same_v<type, host_set_terrain_layer_command>) return "Assign Terrain Layer";
-            if constexpr (std::is_same_v<type, host_terrain_stroke_command>) return "Terrain Stroke";
-            if constexpr (std::is_same_v<type, host_set_world_environment_command> ||
-                          std::is_same_v<type, host_apply_world_environment_preset_command> ||
-                          std::is_same_v<type, host_set_environment_hdri_command>)
+            if constexpr (std::is_same_v<type, host_create_entity_command>)
+                return "Create Entity";
+            else if constexpr (std::is_same_v<type, host_delete_entity_command>)
+                return "Delete Entity";
+            else if constexpr (std::is_same_v<type, host_duplicate_entity_command>)
+                return "Duplicate Entity";
+            else if constexpr (std::is_same_v<type, host_create_prefab_command>)
+                return "Create Prefab";
+            else if constexpr (std::is_same_v<type, host_instantiate_prefab_command>)
+                return "Instantiate Prefab";
+            else if constexpr (std::is_same_v<type, host_apply_prefab_command>)
+                return "Apply Prefab";
+            else if constexpr (std::is_same_v<type, host_revert_prefab_command>)
+                return "Revert Prefab";
+            else if constexpr (std::is_same_v<type, host_unpack_prefab_command>)
+                return "Unpack Prefab";
+            else if constexpr (std::is_same_v<type, host_reparent_entity_command>)
+                return "Reparent Entity";
+            else if constexpr (std::is_same_v<type, host_reorder_entity_command>)
+                return "Reorder Entity";
+            else if constexpr (std::is_same_v<type, host_rename_entity_command>)
+                return "Rename Entity";
+            else if constexpr (std::is_same_v<type, host_set_transform_command>)
+                return "Transform Entity";
+            else if constexpr (std::is_same_v<type, host_set_mobility_command>)
+                return "Set Mobility";
+            else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
+                return "Assign Material";
+            else if constexpr (std::is_same_v<type, host_set_terrain_command>)
+                return "Edit Terrain";
+            else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
+                return "Assign Terrain Layer";
+            else if constexpr (std::is_same_v<type, host_terrain_stroke_command>)
+                return "Terrain Stroke";
+            else if constexpr (std::is_same_v<type, host_set_world_environment_command> ||
+                               std::is_same_v<type, host_apply_world_environment_preset_command> ||
+                               std::is_same_v<type, host_set_environment_hdri_command>)
                 return "Edit World Environment";
-            return "Edit Component";
+            else
+                return "Edit Component";
         },
         command);
 }
@@ -802,6 +820,32 @@ render::mesh_visualization_mode to_visualization(host_visualization_mode mode) n
             return render::mesh_visualization_mode::virtual_overdraw;
         case host_visualization_mode::virtual_triangles_per_pixel:
             return render::mesh_visualization_mode::virtual_triangles_per_pixel;
+        case host_visualization_mode::surface_cards:
+            return render::mesh_visualization_mode::surface_cards;
+        case host_visualization_mode::surface_card_residency:
+            return render::mesh_visualization_mode::surface_card_residency;
+        case host_visualization_mode::surface_material_cache:
+            return render::mesh_visualization_mode::surface_material_cache;
+        case host_visualization_mode::surface_radiance_cache:
+            return render::mesh_visualization_mode::surface_radiance_cache;
+        case host_visualization_mode::mesh_distance_fields:
+            return render::mesh_visualization_mode::mesh_distance_fields;
+        case host_visualization_mode::global_distance_field:
+            return render::mesh_visualization_mode::global_distance_field;
+        case host_visualization_mode::radiance_probes:
+            return render::mesh_visualization_mode::radiance_probes;
+        case host_visualization_mode::lighting_trace_source:
+            return render::mesh_visualization_mode::lighting_trace_source;
+        case host_visualization_mode::lighting_hit_distance:
+            return render::mesh_visualization_mode::lighting_hit_distance;
+        case host_visualization_mode::lighting_temporal_confidence:
+            return render::mesh_visualization_mode::lighting_temporal_confidence;
+        case host_visualization_mode::indirect_diffuse:
+            return render::mesh_visualization_mode::indirect_diffuse;
+        case host_visualization_mode::reflections:
+            return render::mesh_visualization_mode::reflections;
+        case host_visualization_mode::denoiser_variance:
+            return render::mesh_visualization_mode::denoiser_variance;
         case host_visualization_mode::standard:
             break;
     }
@@ -3237,11 +3281,20 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (payload.material_properties)
                     request.channels.push_back(render::render_capture_channel::material_properties);
                 if (payload.emissive) request.channels.push_back(render::render_capture_channel::emissive);
+                if (payload.indirect_diffuse)
+                    request.channels.push_back(render::render_capture_channel::indirect_diffuse);
+                if (payload.reflections) request.channels.push_back(render::render_capture_channel::reflections);
+                if (payload.trace_source) request.channels.push_back(render::render_capture_channel::trace_source);
+                if (payload.distance_field)
+                    request.channels.push_back(render::render_capture_channel::mesh_distance_field);
+                if (payload.temporal_confidence)
+                    request.channels.push_back(render::render_capture_channel::temporal_confidence);
                 state_->renderer->request_frame_capture(std::move(request));
                 return success("{\"captureId\":" + std::to_string(payload.capture_id) + ",\"pending\":true}");
             }
 
-            return fail("Unsupported host command");
+            else
+                return fail("Unsupported host command");
         },
         command.payload);
 
@@ -3558,6 +3611,11 @@ host_response arc_host::query(const host_query_envelope& query) const
                     std::to_string(profile.configuration.volumetric_resolution_scale) +
                     ",\"giTraceBudget\":" + std::to_string(profile.configuration.gi_trace_budget) +
                     ",\"reflectionRayBudget\":" + std::to_string(profile.configuration.reflection_ray_budget) +
+                    ",\"lightingTraceScale\":" + std::to_string(profile.configuration.lighting_trace_scale) +
+                    ",\"surfaceCacheUpdateBudget\":" +
+                    std::to_string(profile.configuration.surface_cache_update_budget) +
+                    ",\"radianceProbeUpdateBudget\":" +
+                    std::to_string(profile.configuration.radiance_probe_update_budget) +
                     ",\"fallbackReasons\":[";
                 for (std::size_t index = 0; index < profile.configuration.fallback_reasons.size(); ++index)
                 {
@@ -3624,6 +3682,35 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"residencyBudgetBytes\":" +
                     std::to_string(profile.virtual_geometry.residency_budget_bytes) +
                     ",\"fallback\":" + to_json_string(profile.virtual_geometry.fallback_reason) +
+                    "},\"indirectLighting\":{\"enabled\":" +
+                    std::string(profile.indirect_lighting.enabled ? "true" : "false") +
+                    ",\"tracePath\":" +
+                    to_json_string(profile.indirect_lighting.trace_path == render::lighting_trace_path::hybrid_hardware
+                                       ? "hybridHardware"
+                                   : profile.indirect_lighting.trace_path ==
+                                             render::lighting_trace_path::software_distance_field
+                                       ? "softwareDistanceField"
+                                   : profile.indirect_lighting.trace_path == render::lighting_trace_path::screen_space
+                                       ? "screenSpace"
+                                       : "bakedProbe") +
+                    ",\"traceScale\":" + std::to_string(profile.indirect_lighting.trace_scale) +
+                    ",\"giRays\":" + std::to_string(profile.indirect_lighting.gi_rays) +
+                    ",\"reflectionRays\":" + std::to_string(profile.indirect_lighting.reflection_rays) +
+                    ",\"surfaceCards\":" + std::to_string(profile.indirect_lighting.surface_cards) +
+                    ",\"residentSurfacePages\":" +
+                    std::to_string(profile.indirect_lighting.resident_surface_pages) +
+                    ",\"residentDistanceFieldPages\":" +
+                    std::to_string(profile.indirect_lighting.resident_distance_field_pages) +
+                    ",\"dirtyRegions\":" + std::to_string(profile.indirect_lighting.dirty_regions) +
+                    ",\"surfaceUpdates\":" + std::to_string(profile.indirect_lighting.surface_updates) +
+                    ",\"radianceProbeUpdates\":" +
+                    std::to_string(profile.indirect_lighting.radiance_probe_updates) +
+                    ",\"residentBytes\":" + std::to_string(profile.indirect_lighting.resident_bytes) +
+                    ",\"budgetBytes\":" + std::to_string(profile.indirect_lighting.budget_bytes) +
+                    ",\"screenHitRate\":" + std::to_string(profile.indirect_lighting.screen_hit_rate) +
+                    ",\"softwareHitRate\":" + std::to_string(profile.indirect_lighting.software_hit_rate) +
+                    ",\"hardwareHitRate\":" + std::to_string(profile.indirect_lighting.hardware_hit_rate) +
+                    ",\"fallback\":" + to_json_string(profile.indirect_lighting.fallback_reason) +
                     "},\"temporal\":{\"enabled\":" + std::string(profile.temporal.enabled ? "true" : "false") +
                     ",\"upscaling\":" + std::string(profile.temporal.upscaling ? "true" : "false") +
                     ",\"historyValid\":" + std::string(profile.temporal.history_valid ? "true" : "false") +
@@ -3663,6 +3750,16 @@ host_response arc_host::query(const host_query_envelope& query) const
                             return "materialProperties";
                         case render::render_capture_channel::emissive:
                             return "emissive";
+                        case render::render_capture_channel::indirect_diffuse:
+                            return "indirectDiffuse";
+                        case render::render_capture_channel::reflections:
+                            return "reflections";
+                        case render::render_capture_channel::trace_source:
+                            return "traceSource";
+                        case render::render_capture_channel::mesh_distance_field:
+                            return "distanceField";
+                        case render::render_capture_channel::temporal_confidence:
+                            return "temporalConfidence";
                     }
                     return "unknown";
                 };
@@ -3855,7 +3952,8 @@ host_response arc_host::query(const host_query_envelope& query) const
                 return {.request_id = request_id, .succeeded = true, .payload_json = to_json(terrain_tool_snapshot())};
             }
 
-            return {.request_id = request_id, .succeeded = false, .error = "Unsupported host query"};
+            else
+                return {.request_id = request_id, .succeeded = false, .error = "Unsupported host query"};
         },
         query.payload);
     response.scene_revision = state_->scene_revision;

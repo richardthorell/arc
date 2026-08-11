@@ -11,7 +11,9 @@ export type WorldEnvironmentSectionId =
   | 'cumulus'
   | 'cirrus'
   | 'fog'
-  | 'environmentLighting';
+  | 'environmentLighting'
+  | 'globalIllumination'
+  | 'reflections';
 
 export const worldEnvironmentSchemas: ReadonlyArray<
   PropertyComponentSchema<HostWorldEnvironment, WorldEnvironmentSectionId>
@@ -658,6 +660,62 @@ export const worldEnvironmentSchemas: ReadonlyArray<
         scrubSensitivity: 0.01,
         min: 0,
         visible: (value) => value.lightingEnabled,
+      },
+    ],
+  },
+  {
+    id: 'globalIllumination',
+    title: 'Global Illumination',
+    fields: [
+      { id: 'enabled', label: 'Enabled', path: 'indirectLightingEnabled', type: 'boolean' },
+      {
+        id: 'method',
+        label: 'Method',
+        path: 'indirectLightingMethod',
+        type: 'enum',
+        options: [
+          { value: 'autoSelect', label: 'Auto (Quality Tier)' },
+          { value: 'bakedProbe', label: 'Baked + Probes' },
+          { value: 'screenSpace', label: 'Screen Space' },
+          { value: 'software', label: 'Software Distance Fields' },
+          { value: 'hybridHardware', label: 'Hybrid Hardware' },
+        ],
+        visible: (value) => value.indirectLightingEnabled,
+      },
+      {
+        id: 'diffuseIntensity', label: 'Diffuse Intensity', path: 'indirectDiffuseIntensity', type: 'number',
+        precision: 2, step: 0.05, scrubSensitivity: 0.01, min: 0,
+        visible: (value) => value.indirectLightingEnabled,
+      },
+      {
+        id: 'emissiveContribution', label: 'Emissive Contribution', path: 'emissiveContribution', type: 'number',
+        precision: 2, step: 0.05, scrubSensitivity: 0.01, min: 0,
+        visible: (value) => value.indirectLightingEnabled,
+      },
+      {
+        id: 'traceDistance', label: 'Maximum Trace Distance', path: 'maximumTraceDistance', type: 'number',
+        precision: 1, step: 1, scrubSensitivity: 0.25, min: 0.01, unit: 'm',
+        visible: (value) => value.indirectLightingEnabled,
+      },
+      {
+        id: 'cacheDetail', label: 'Surface Cache Detail', path: 'surfaceCacheDetail', type: 'number',
+        precision: 2, step: 0.125, scrubSensitivity: 0.025, min: 0.125, max: 8,
+        visible: (value) => value.indirectLightingEnabled,
+      },
+      {
+        id: 'allowHardware', label: 'Allow Hardware Ray Tracing', path: 'allowHardwareRayTracing', type: 'boolean',
+        visible: (value) => value.indirectLightingEnabled,
+      },
+    ],
+  },
+  {
+    id: 'reflections',
+    title: 'Reflections',
+    fields: [
+      {
+        id: 'reflectionIntensity', label: 'Reflection Intensity', path: 'reflectionIntensity', type: 'number',
+        precision: 2, step: 0.05, scrubSensitivity: 0.01, min: 0,
+        visible: (value) => value.indirectLightingEnabled,
       },
     ],
   },

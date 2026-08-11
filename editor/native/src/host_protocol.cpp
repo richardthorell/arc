@@ -595,6 +595,21 @@ bool parse_world_environment(std::string_view payload, host_world_environment_sn
     array3_value(json, "lightingColor", value.lighting_color);
     number_value(json, "diffuseIntensity", value.diffuse_intensity);
     number_value(json, "specularIntensity", value.specular_intensity);
+    bool_value(json, "indirectLightingEnabled", value.indirect_lighting_enabled);
+    static constexpr std::pair<std::string_view, host_indirect_lighting_method> indirect_methods[]{
+        {"autoSelect", host_indirect_lighting_method::auto_select},
+        {"bakedProbe", host_indirect_lighting_method::baked_probe},
+        {"screenSpace", host_indirect_lighting_method::screen_space},
+        {"software", host_indirect_lighting_method::software},
+        {"hybridHardware", host_indirect_lighting_method::hybrid_hardware}};
+    parse_enum(json, "indirectLightingMethod", indirect_methods, std::size(indirect_methods),
+               value.indirect_lighting_method);
+    number_value(json, "indirectDiffuseIntensity", value.indirect_diffuse_intensity);
+    number_value(json, "reflectionIntensity", value.reflection_intensity);
+    number_value(json, "emissiveContribution", value.emissive_contribution);
+    number_value(json, "maximumTraceDistance", value.maximum_trace_distance);
+    number_value(json, "surfaceCacheDetail", value.surface_cache_detail);
+    bool_value(json, "allowHardwareRayTracing", value.allow_hardware_ray_tracing);
     return !require_entity || value.entity.valid();
 }
 
@@ -832,6 +847,32 @@ const char* to_string(host_visualization_mode value) noexcept
             return "virtualOverdraw";
         case host_visualization_mode::virtual_triangles_per_pixel:
             return "virtualTrianglesPerPixel";
+        case host_visualization_mode::surface_cards:
+            return "surfaceCards";
+        case host_visualization_mode::surface_card_residency:
+            return "surfaceCardResidency";
+        case host_visualization_mode::surface_material_cache:
+            return "surfaceMaterialCache";
+        case host_visualization_mode::surface_radiance_cache:
+            return "surfaceRadianceCache";
+        case host_visualization_mode::mesh_distance_fields:
+            return "meshDistanceFields";
+        case host_visualization_mode::global_distance_field:
+            return "globalDistanceField";
+        case host_visualization_mode::radiance_probes:
+            return "radianceProbes";
+        case host_visualization_mode::lighting_trace_source:
+            return "lightingTraceSource";
+        case host_visualization_mode::lighting_hit_distance:
+            return "lightingHitDistance";
+        case host_visualization_mode::lighting_temporal_confidence:
+            return "lightingTemporalConfidence";
+        case host_visualization_mode::indirect_diffuse:
+            return "indirectDiffuse";
+        case host_visualization_mode::reflections:
+            return "reflections";
+        case host_visualization_mode::denoiser_variance:
+            return "denoiserVariance";
     }
     return "standard";
 }
@@ -895,6 +936,24 @@ const char* to_string(host_environment_lighting_source value) noexcept
             return "constantColor";
     }
     return "followSky";
+}
+
+const char* to_string(host_indirect_lighting_method value) noexcept
+{
+    switch (value)
+    {
+        case host_indirect_lighting_method::auto_select:
+            return "autoSelect";
+        case host_indirect_lighting_method::baked_probe:
+            return "bakedProbe";
+        case host_indirect_lighting_method::screen_space:
+            return "screenSpace";
+        case host_indirect_lighting_method::software:
+            return "software";
+        case host_indirect_lighting_method::hybrid_hardware:
+            return "hybridHardware";
+    }
+    return "autoSelect";
 }
 
 const char* to_string(host_world_environment_preset value) noexcept
@@ -1298,7 +1357,15 @@ std::string to_json(const host_world_environment_snapshot& value)
            << ",\"lightingSource\":" << quote(to_string(value.lighting_source))
            << ",\"lightingColor\":" << vec3_json(value.lighting_color)
            << ",\"diffuseIntensity\":" << value.diffuse_intensity
-           << ",\"specularIntensity\":" << value.specular_intensity << '}';
+           << ",\"specularIntensity\":" << value.specular_intensity
+           << ",\"indirectLightingEnabled\":" << bool_json(value.indirect_lighting_enabled)
+           << ",\"indirectLightingMethod\":" << quote(to_string(value.indirect_lighting_method))
+           << ",\"indirectDiffuseIntensity\":" << value.indirect_diffuse_intensity
+           << ",\"reflectionIntensity\":" << value.reflection_intensity
+           << ",\"emissiveContribution\":" << value.emissive_contribution
+           << ",\"maximumTraceDistance\":" << value.maximum_trace_distance
+           << ",\"surfaceCacheDetail\":" << value.surface_cache_detail
+           << ",\"allowHardwareRayTracing\":" << bool_json(value.allow_hardware_ray_tracing) << '}';
     return stream.str();
 }
 
@@ -1509,7 +1576,12 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"sceneColor\":" + bool_json(payload.scene_color) +
                        ",\"baseColor\":" + bool_json(payload.base_color) +
                        ",\"materialProperties\":" + bool_json(payload.material_properties) +
-                       ",\"emissive\":" + bool_json(payload.emissive) + '}';
+                       ",\"emissive\":" + bool_json(payload.emissive) +
+                       ",\"indirectDiffuse\":" + bool_json(payload.indirect_diffuse) +
+                       ",\"reflections\":" + bool_json(payload.reflections) +
+                       ",\"traceSource\":" + bool_json(payload.trace_source) +
+                       ",\"distanceField\":" + bool_json(payload.distance_field) +
+                       ",\"temporalConfidence\":" + bool_json(payload.temporal_confidence) + '}';
             else
                 return "{}";
         },
@@ -1561,7 +1633,8 @@ std::string to_json(const host_query_envelope& envelope)
                        '}';
             else if constexpr (std::is_same_v<query, host_viewport_capture_query>)
                 return "{\"captureId\":" + std::to_string(value.capture_id) + '}';
-            return "{}";
+            else
+                return "{}";
         },
         envelope.payload);
     return "{\"kind\":\"query\",\"requestId\":" + std::to_string(envelope.request_id) + ",\"type\":" + quote(type) +
@@ -2387,7 +2460,20 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"virtualGeometricError", host_visualization_mode::virtual_geometric_error},
             {"virtualPageResidency", host_visualization_mode::virtual_page_residency},
             {"virtualOverdraw", host_visualization_mode::virtual_overdraw},
-            {"virtualTrianglesPerPixel", host_visualization_mode::virtual_triangles_per_pixel}};
+            {"virtualTrianglesPerPixel", host_visualization_mode::virtual_triangles_per_pixel},
+            {"surfaceCards", host_visualization_mode::surface_cards},
+            {"surfaceCardResidency", host_visualization_mode::surface_card_residency},
+            {"surfaceMaterialCache", host_visualization_mode::surface_material_cache},
+            {"surfaceRadianceCache", host_visualization_mode::surface_radiance_cache},
+            {"meshDistanceFields", host_visualization_mode::mesh_distance_fields},
+            {"globalDistanceField", host_visualization_mode::global_distance_field},
+            {"radianceProbes", host_visualization_mode::radiance_probes},
+            {"lightingTraceSource", host_visualization_mode::lighting_trace_source},
+            {"lightingHitDistance", host_visualization_mode::lighting_hit_distance},
+            {"lightingTemporalConfidence", host_visualization_mode::lighting_temporal_confidence},
+            {"indirectDiffuse", host_visualization_mode::indirect_diffuse},
+            {"reflections", host_visualization_mode::reflections},
+            {"denoiserVariance", host_visualization_mode::denoiser_variance}};
         static constexpr std::pair<std::string_view, host_overlay_mode> overlays[]{
             {"none", host_overlay_mode::none},
             {"selectedWireframe", host_overlay_mode::selected_wireframe},
@@ -2529,6 +2615,11 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "baseColor", command.base_color);
         bool_value(payload, "materialProperties", command.material_properties);
         bool_value(payload, "emissive", command.emissive);
+        bool_value(payload, "indirectDiffuse", command.indirect_diffuse);
+        bool_value(payload, "reflections", command.reflections);
+        bool_value(payload, "traceSource", command.trace_source);
+        bool_value(payload, "distanceField", command.distance_field);
+        bool_value(payload, "temporalConfidence", command.temporal_confidence);
         envelope.payload = command;
     }
     else

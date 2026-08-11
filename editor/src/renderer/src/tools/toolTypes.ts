@@ -48,6 +48,25 @@ export type EditorDiagnosticsSnapshot = {
     cloudShadowResolution: number;
     fallback: string;
   };
+  indirectLighting: {
+    enabled: boolean;
+    tracePath: string;
+    traceScale: number;
+    giRays: number;
+    reflectionRays: number;
+    surfaceCards: number;
+    residentSurfacePages: number;
+    residentDistanceFieldPages: number;
+    dirtyRegions: number;
+    surfaceUpdates: number;
+    radianceProbeUpdates: number;
+    residentBytes: number;
+    budgetBytes: number;
+    screenHitRate: number;
+    softwareHitRate: number;
+    hardwareHitRate: number;
+    fallback: string;
+  };
   shadows: {
     cascades: number;
     directionalResolution: number;

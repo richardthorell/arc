@@ -581,6 +581,11 @@ export class SceneGatewayCore {
         baseColor: params.baseColor === true,
         materialProperties: params.materialProperties === true,
         emissive: params.emissive === true,
+        indirectDiffuse: params.indirectDiffuse === true,
+        reflections: params.reflections === true,
+        traceSource: params.traceSource === true,
+        distanceField: params.distanceField === true,
+        temporalConfidence: params.temporalConfidence === true,
       }),
     );
 
@@ -677,6 +682,19 @@ export class SceneGatewayCore {
       'shadowMask',
       'lightComplexity',
       'clusterDebug',
+      'surfaceCards',
+      'surfaceCardResidency',
+      'surfaceMaterialCache',
+      'surfaceRadianceCache',
+      'meshDistanceFields',
+      'globalDistanceField',
+      'radianceProbes',
+      'lightingTraceSource',
+      'lightingHitDistance',
+      'lightingTemporalConfidence',
+      'indirectDiffuse',
+      'reflections',
+      'denoiserVariance',
     ]);
     const overlays = new Set(['none', 'selectedWireframe', 'allWireframe']);
     const before = this.expect(await this.host.query('viewport.state')) as Record<string, unknown>;

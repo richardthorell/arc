@@ -110,6 +110,16 @@ scene::environment_lighting_source to_scene(host_environment_lighting_source val
     return scene::environment_lighting_source::follow_sky;
 }
 
+host_indirect_lighting_method to_host(render::indirect_lighting_method value) noexcept
+{
+    return static_cast<host_indirect_lighting_method>(value);
+}
+
+render::indirect_lighting_method to_scene(host_indirect_lighting_method value) noexcept
+{
+    return static_cast<render::indirect_lighting_method>(value);
+}
+
 host_cloud_layer to_host(const scene::cloud_layer_settings& layer) noexcept
 {
     return {layer.enabled,
@@ -147,6 +157,7 @@ host_world_environment_snapshot to_host_world_environment_snapshot(host_entity_i
     const auto& clouds = settings.clouds;
     const auto& fog = settings.fog;
     const auto& lighting = settings.lighting;
+    const auto& indirect = settings.indirect_lighting;
     host_world_environment_snapshot result;
     result.entity = entity;
     result.enabled = world.enabled;
@@ -212,6 +223,14 @@ host_world_environment_snapshot to_host_world_environment_snapshot(host_entity_i
     result.lighting_color = to_host(lighting.constant_color);
     result.diffuse_intensity = lighting.diffuse_intensity;
     result.specular_intensity = lighting.specular_intensity;
+    result.indirect_lighting_enabled = indirect.enabled;
+    result.indirect_lighting_method = to_host(indirect.method);
+    result.indirect_diffuse_intensity = indirect.diffuse_intensity;
+    result.reflection_intensity = indirect.reflection_intensity;
+    result.emissive_contribution = indirect.emissive_contribution;
+    result.maximum_trace_distance = indirect.maximum_trace_distance;
+    result.surface_cache_detail = indirect.surface_cache_detail;
+    result.allow_hardware_ray_tracing = indirect.allow_hardware_ray_tracing;
     return result;
 }
 
@@ -285,6 +304,14 @@ apply_host_world_environment_snapshot(const host_world_environment_snapshot& sna
     result.lighting.constant_color = to_scene(snapshot.lighting_color);
     result.lighting.diffuse_intensity = snapshot.diffuse_intensity;
     result.lighting.specular_intensity = snapshot.specular_intensity;
+    result.indirect_lighting.enabled = snapshot.indirect_lighting_enabled;
+    result.indirect_lighting.method = to_scene(snapshot.indirect_lighting_method);
+    result.indirect_lighting.diffuse_intensity = snapshot.indirect_diffuse_intensity;
+    result.indirect_lighting.reflection_intensity = snapshot.reflection_intensity;
+    result.indirect_lighting.emissive_contribution = snapshot.emissive_contribution;
+    result.indirect_lighting.maximum_trace_distance = snapshot.maximum_trace_distance;
+    result.indirect_lighting.surface_cache_detail = snapshot.surface_cache_detail;
+    result.indirect_lighting.allow_hardware_ray_tracing = snapshot.allow_hardware_ray_tracing;
     return result;
 }
 

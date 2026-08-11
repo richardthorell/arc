@@ -89,6 +89,14 @@ const environment = (): HostWorldEnvironment => ({
   lightingColor: { x: 0.18, y: 0.23, z: 0.29 },
   diffuseIntensity: 1,
   specularIntensity: 1,
+  indirectLightingEnabled: true,
+  indirectLightingMethod: 'autoSelect',
+  indirectDiffuseIntensity: 1,
+  reflectionIntensity: 1,
+  emissiveContribution: 1,
+  maximumTraceDistance: 100,
+  surfaceCacheDetail: 1,
+  allowHardwareRayTracing: true,
 });
 
 afterEach(cleanup);

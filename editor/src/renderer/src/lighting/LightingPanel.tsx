@@ -102,8 +102,39 @@ export function LightingPanel({
           <dd>{diagnostics?.shadows.screenSpace ? 'Enabled' : 'Disabled'}</dd>
         </dl>
       </section>
-      {(diagnostics?.environment.fallback || diagnostics?.shadows.fallback) && (
-        <div className="tool-warning">{diagnostics.environment.fallback || diagnostics.shadows.fallback}</div>
+      <section className="lighting-section">
+        <h3>Global illumination and reflections</h3>
+        <dl className="tool-property-grid">
+          <dt>Trace path</dt>
+          <dd>{diagnostics?.indirectLighting.tracePath || 'Baked / probe fallback'}</dd>
+          <dt>Trace scale</dt>
+          <dd>{diagnostics ? `${Math.round(diagnostics.indirectLighting.traceScale * 100)}%` : '0%'}</dd>
+          <dt>Rays</dt>
+          <dd>
+            {diagnostics?.indirectLighting.giRays ?? 0} GI / {diagnostics?.indirectLighting.reflectionRays ?? 0}{' '}
+            reflection
+          </dd>
+          <dt>Surface cache</dt>
+          <dd>
+            {diagnostics?.indirectLighting.residentSurfacePages ?? 0} /{' '}
+            {diagnostics?.indirectLighting.surfaceCards ?? 0} pages/cards
+          </dd>
+          <dt>Distance fields</dt>
+          <dd>{diagnostics?.indirectLighting.residentDistanceFieldPages ?? 0} resident pages</dd>
+          <dt>Probe updates</dt>
+          <dd>{diagnostics?.indirectLighting.radianceProbeUpdates ?? 0} this frame</dd>
+          <dt>Hit rates</dt>
+          <dd>
+            {Math.round((diagnostics?.indirectLighting.screenHitRate ?? 0) * 100)}% screen /{' '}
+            {Math.round((diagnostics?.indirectLighting.softwareHitRate ?? 0) * 100)}% software /{' '}
+            {Math.round((diagnostics?.indirectLighting.hardwareHitRate ?? 0) * 100)}% hardware
+          </dd>
+        </dl>
+      </section>
+      {(diagnostics?.environment.fallback || diagnostics?.shadows.fallback || diagnostics?.indirectLighting.fallback) && (
+        <div className="tool-warning">
+          {diagnostics.environment.fallback || diagnostics.shadows.fallback || diagnostics.indirectLighting.fallback}
+        </div>
       )}
     </section>
   );
