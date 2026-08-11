@@ -2,8 +2,14 @@
 
 namespace
 {
-bool start(const arc::project::game_module_host_v1*) { return true; }
-bool prepare_reload() { return true; }
+bool start(const arc::project::game_module_host_v1*)
+{
+    return true;
+}
+bool prepare_reload()
+{
+    return true;
+}
 void stop() {}
 constexpr arc::project::game_module_descriptor_v1 descriptor{
     .engine_version = "0.1.0",
@@ -15,7 +21,7 @@ constexpr arc::project::game_module_descriptor_v1 descriptor{
     .prepare_reload = prepare_reload,
     .stop = stop,
 };
-}
+} // namespace
 
 extern "C" ARC_PROJECT_MODULE_EXPORT const arc::project::game_module_descriptor_v1* arc_query_game_module_v1()
 {

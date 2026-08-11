@@ -638,7 +638,14 @@ public:
         for (std::size_t chunk_begin = begin; chunk_begin < end; chunk_begin += grain_size)
         {
             const std::size_t chunk_end = std::min(end, chunk_begin + grain_size);
-            handles.push_back(submit({.name = "parallel_for", .priority = job_priority::normal},
+            handles.push_back(submit({.name = "parallel_for",
+                                      .priority = job_priority::normal,
+                                      .affinity = job_affinity::any_worker,
+                                      .dependencies = {},
+                                      .dependency_view = {},
+                                      .parent = {},
+                                      .cancellation = {},
+                                      .dependency_policy = job_dependency_policy::cancel_on_failure},
                                      [chunk_begin, chunk_end, &function]()
                                      { std::invoke(function, chunk_begin, chunk_end); }));
         }

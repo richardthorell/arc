@@ -506,9 +506,7 @@ TEST_CASE("HTTP shared cache authenticates and verifies immutable blob responses
     REQUIRE(std::find(requests.back().headers.begin(), requests.back().headers.end(),
                       std::pair<std::string, std::string>{"if-none-match", "*"}) != requests.back().headers.end());
 
-    http_shared_cache corrupt({.endpoint = "https://cache.example",
-                               .transport = [&](const http_cache_request&)
-                               {
+    http_shared_cache corrupt({.endpoint = "https://cache.example", .transport = [&](const http_cache_request&) {
                                    return http_cache_response{
                                        .status = 200, .headers = {{"etag", to_string(hash)}}, .body = {std::byte{42}}};
                                }});

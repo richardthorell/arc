@@ -231,8 +231,8 @@ template <class T> struct component_traits
     static constexpr component_type_id id = detail::fallback_type_id(canonical_name);
     static constexpr std::array<component_field_descriptor, 0> fields{};
 
-    static constexpr component_descriptor descriptor{id,         canonical_name, canonical_name, 1,    sizeof(T),
-                                                     alignof(T), fields,         false,          false};
+    static constexpr component_descriptor descriptor{id,         canonical_name, canonical_name, 1,     sizeof(T),
+                                                     alignof(T), fields,         false,          false, {}};
 };
 
 template <class T> constexpr component_type_id component_type() noexcept

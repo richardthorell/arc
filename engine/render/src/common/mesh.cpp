@@ -798,8 +798,8 @@ math::quatf to_quat(ufbx_quat value)
 }
 
 void assign_map_texture(material_texture_indices& indices, material_texture_paths& paths, std::size_t texture_index,
-                        const std::string& texture_path, std::size_t material_texture_indices::* index_member,
-                        std::string material_texture_paths::* path_member)
+                        const std::string& texture_path, std::size_t material_texture_indices::*index_member,
+                        std::string material_texture_paths::*path_member)
 {
     if (texture_index == material_texture_indices::invalid) return;
     indices.*index_member = texture_index;
@@ -995,8 +995,8 @@ std::size_t import_material(const ufbx_material* material, scene_import_result& 
     imported.material.double_sided = material->features.double_sided.enabled;
 
     const auto texture_folder = import_folder / "textures";
-    const auto import_map = [&](const ufbx_material_map& map, std::size_t material_texture_indices::* index_member,
-                                std::string material_texture_paths::* path_member)
+    const auto import_map = [&](const ufbx_material_map& map, std::size_t material_texture_indices::*index_member,
+                                std::string material_texture_paths::*path_member)
     {
         if (!map.texture || !map.texture_enabled) return;
         std::string relative;

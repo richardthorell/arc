@@ -293,7 +293,12 @@ std::optional<world_environment_settings> read_world_environment_settings(const 
     const auto* lighting = scene.try_get<environment_lighting_component>(environment);
     const auto* indirect = scene.try_get<indirect_lighting_component>(environment);
     if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting) return std::nullopt;
-    return world_environment_settings{*world, *atmosphere, *celestial, *clouds, *fog, *lighting,
+    return world_environment_settings{*world,
+                                      *atmosphere,
+                                      *celestial,
+                                      *clouds,
+                                      *fog,
+                                      *lighting,
                                       indirect ? *indirect : indirect_lighting_component{}};
 }
 

@@ -92,10 +92,10 @@ bool parse_target(const json& value, cook_target& target)
     target.architecture =
         value.value("architecture", "x86_64") == "arm64" ? cook_architecture::arm64 : cook_architecture::x86_64;
     const auto renderer = value.value("renderer", "vulkan");
-    target.renderer = renderer == "none"       ? cook_renderer::none
+    target.renderer = renderer == "none"         ? cook_renderer::none
                       : renderer == "direct3d12" ? cook_renderer::direct3d12
-                      : renderer == "metal"    ? cook_renderer::metal
-                                               : cook_renderer::vulkan;
+                      : renderer == "metal"      ? cook_renderer::metal
+                                                 : cook_renderer::vulkan;
     const auto textures = value.value("textures", "bc");
     target.textures = textures == "astc"       ? cook_texture_family::astc
                       : textures == "etc2"     ? cook_texture_family::etc2
@@ -433,8 +433,7 @@ cook_result asset_cooker::cook(const cook_request& request)
 
 asset_status save_cook_manifest(const std::filesystem::path& path, const cook_manifest& manifest)
 {
-    const auto failure = [&](std::string message)
-    {
+    const auto failure = [&](std::string message) {
         return asset_status::failure(
             {.code = asset_error_code::io_failed, .path = path, .message = std::move(message)});
     };

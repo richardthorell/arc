@@ -18,8 +18,7 @@ template <std::size_t N> constexpr bool any(const simd_mask<N>& mask) noexcept
 {
     using detail::simd_access;
 
-    return [&]<std::size_t... Index>(std::index_sequence<Index...>)
-    {
+    return [&]<std::size_t... Index>(std::index_sequence<Index...>) {
         return (... || ops_for<simd_mask<N>>::any(simd_access::block(mask, Index)));
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }
@@ -37,8 +36,7 @@ template <std::size_t N> constexpr bool all(const simd_mask<N>& mask) noexcept
 {
     using detail::simd_access;
 
-    return [&]<std::size_t... Index>(std::index_sequence<Index...>)
-    {
+    return [&]<std::size_t... Index>(std::index_sequence<Index...>) {
         return (... && ops_for<simd_mask<N>>::all(simd_access::block(mask, Index)));
     }(std::make_index_sequence<simd_mask<N>::blocks()>{});
 }

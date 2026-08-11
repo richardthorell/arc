@@ -26,8 +26,8 @@ void module_log(void*, const char* category, const char* message)
 
 bool stable_component_id(std::string_view value)
 {
-    return value.size() == 32 && std::all_of(value.begin(), value.end(), [](unsigned char character)
-                                             { return std::isxdigit(character) != 0; });
+    return value.size() == 32 && std::all_of(value.begin(), value.end(),
+                                             [](unsigned char character) { return std::isxdigit(character) != 0; });
 }
 
 std::vector<project_component_schema> copy_components(const project::game_module_descriptor_v1& descriptor,
@@ -44,8 +44,8 @@ std::vector<project_component_schema> copy_components(const project::game_module
             error = "project module contains an invalid component schema";
             return {};
         }
-        if (std::any_of(result.begin(), result.end(), [&](const auto& current)
-                        { return current.stable_id == source.stable_id; }))
+        if (std::any_of(result.begin(), result.end(),
+                        [&](const auto& current) { return current.stable_id == source.stable_id; }))
         {
             error = "project module contains duplicate component stable IDs";
             return {};
@@ -61,30 +61,28 @@ std::vector<project_component_schema> copy_components(const project::game_module
         {
             const auto& field = source.fields[field_index];
             if (!field.stable_id || !field.name || !field.display_name || !field.default_json ||
-                std::any_of(component.fields.begin(), component.fields.end(), [&](const auto& current)
-                            { return current.stable_id == field.stable_id; }))
+                std::any_of(component.fields.begin(), component.fields.end(),
+                            [&](const auto& current) { return current.stable_id == field.stable_id; }))
             {
                 error = "project module contains an invalid or duplicate field stable ID";
                 return {};
             }
-            component.fields.push_back({.stable_id = field.stable_id,
-                                        .name = field.name,
-                                        .display_name = field.display_name,
-                                        .category = field.category ? field.category : "",
-                                        .tooltip = field.tooltip ? field.tooltip : "",
-                                        .kind = field.kind,
-                                        .flags = field.flags,
-                                        .default_json = field.default_json,
-                                        .minimum = field.minimum,
-                                        .maximum = field.maximum,
-                                        .has_minimum = field.has_minimum,
-                                        .has_maximum = field.has_maximum,
-                                        .asset_type_restriction = field.asset_type_restriction
-                                                                      ? field.asset_type_restriction
-                                                                      : "",
-                                        .entity_component_restriction = field.entity_component_restriction
-                                                                           ? field.entity_component_restriction
-                                                                           : ""});
+            component.fields.push_back(
+                {.stable_id = field.stable_id,
+                 .name = field.name,
+                 .display_name = field.display_name,
+                 .category = field.category ? field.category : "",
+                 .tooltip = field.tooltip ? field.tooltip : "",
+                 .kind = field.kind,
+                 .flags = field.flags,
+                 .default_json = field.default_json,
+                 .minimum = field.minimum,
+                 .maximum = field.maximum,
+                 .has_minimum = field.has_minimum,
+                 .has_maximum = field.has_maximum,
+                 .asset_type_restriction = field.asset_type_restriction ? field.asset_type_restriction : "",
+                 .entity_component_restriction =
+                     field.entity_component_restriction ? field.entity_component_restriction : ""});
         }
         result.push_back(std::move(component));
     }
@@ -105,8 +103,8 @@ std::vector<project_registration_schema> copy_registrations(const project::game_
     {
         const auto& source = descriptor.registrations[index];
         if (!source.stable_id || !*source.stable_id || !source.name || !*source.name ||
-            std::any_of(result.begin(), result.end(), [&](const auto& current)
-                        { return current.stable_id == source.stable_id; }))
+            std::any_of(result.begin(), result.end(),
+                        [&](const auto& current) { return current.stable_id == source.stable_id; }))
         {
             error = "project module contains an invalid or duplicate registration ID";
             return {};
@@ -128,8 +126,9 @@ module_reload_classification classify(const std::vector<project_component_schema
             return module_reload_classification::native_host_restart_required;
         for (const auto& old_field : old_component.fields)
         {
-            const auto field = std::find_if(component->fields.begin(), component->fields.end(), [&](const auto& candidate)
-                                            { return candidate.stable_id == old_field.stable_id; });
+            const auto field =
+                std::find_if(component->fields.begin(), component->fields.end(),
+                             [&](const auto& candidate) { return candidate.stable_id == old_field.stable_id; });
             if (field != component->fields.end() && field->kind != old_field.kind)
                 return module_reload_classification::play_session_restart_required;
         }
@@ -141,10 +140,14 @@ const char* classification_message(module_reload_classification value)
 {
     switch (value)
     {
-    case module_reload_classification::initial_load: return "Project module loaded";
-    case module_reload_classification::safe_hot_reload: return "Project module hot reloaded";
-    case module_reload_classification::play_session_restart_required: return "Module loaded; play session restart required";
-    case module_reload_classification::native_host_restart_required: return "Module schema requires a native host restart";
+        case module_reload_classification::initial_load:
+            return "Project module loaded";
+        case module_reload_classification::safe_hot_reload:
+            return "Project module hot reloaded";
+        case module_reload_classification::play_session_restart_required:
+            return "Module loaded; play session restart required";
+        case module_reload_classification::native_host_restart_required:
+            return "Module schema requires a native host restart";
     }
     return "Project module loaded";
 }
@@ -170,8 +173,8 @@ module_reload_result project_module_loader::reload(const std::filesystem::path& 
 
 module_reload_result project_module_loader::load_generation(const std::filesystem::path& source_path,
                                                             std::string_view engine_version,
-                                                            std::string_view project_guid,
-                                                            std::string_view module_id, bool /*is_reload*/)
+                                                            std::string_view project_guid, std::string_view module_id,
+                                                            bool /*is_reload*/)
 {
     const auto next_generation = generation_ + 1;
     const auto directory = source_path.parent_path() / "HotReload";
@@ -192,7 +195,8 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
     HMODULE library = LoadLibraryExW(staged_path.c_str(), nullptr,
                                      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     candidate_handle = library;
-    if (library) query = reinterpret_cast<project::query_game_module_v1>(GetProcAddress(library, "arc_query_game_module_v1"));
+    if (library)
+        query = reinterpret_cast<project::query_game_module_v1>(GetProcAddress(library, "arc_query_game_module_v1"));
 #else
     candidate_handle = dlopen(staged_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (candidate_handle)
@@ -245,7 +249,8 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
     if (reload_classification == module_reload_classification::native_host_restart_required && loaded())
     {
         close_candidate();
-        return {.classification = reload_classification, .generation = generation_,
+        return {.classification = reload_classification,
+                .generation = generation_,
                 .message = classification_message(reload_classification)};
     }
     if (loaded() && prepare_reload_ && !prepare_reload_())
@@ -278,11 +283,11 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
             loaded_path_.clear();
         }
         close_candidate();
-        return {.classification = reload_classification, .generation = generation_,
-                .message = restored
-                               ? "Project module rejected startup; last-good generation restored"
-                               : replacing ? "Project module rejected startup and the prior generation could not restart"
-                                           : "Project module rejected startup"};
+        return {.classification = reload_classification,
+                .generation = generation_,
+                .message = restored    ? "Project module rejected startup; last-good generation restored"
+                           : replacing ? "Project module rejected startup and the prior generation could not restart"
+                                       : "Project module rejected startup"};
     }
     if (replacing)
     {
@@ -303,7 +308,9 @@ module_reload_result project_module_loader::load_generation(const std::filesyste
     loaded_path_ = std::move(staged_path);
     components_ = std::move(next_components);
     registrations_ = std::move(next_registrations);
-    return {.succeeded = true, .classification = reload_classification, .generation = generation_,
+    return {.succeeded = true,
+            .classification = reload_classification,
+            .generation = generation_,
             .message = classification_message(reload_classification)};
 }
 

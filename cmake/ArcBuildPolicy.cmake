@@ -108,7 +108,11 @@ function(arc_configure_first_party_target target)
             target_compile_options("${target}" PRIVATE /WX)
         endif()
     else()
-        target_compile_options("${target}" PRIVATE -Wall -Wextra -Wpedantic)
+        # ARC descriptors intentionally use partial designated initialization so
+        # omitted fields retain their declared defaults. GCC and Clang diagnose
+        # that valid pattern through -Wmissing-field-initializers, making the
+        # warning incompatible with the public descriptor style.
+        target_compile_options("${target}" PRIVATE -Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
         if(ARC_WARNINGS_AS_ERRORS)
             target_compile_options("${target}" PRIVATE -Werror)
         endif()

@@ -381,8 +381,7 @@ struct render_world_event
 
 using render_event_payload =
     std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, virtual_mesh_destroy_event,
-                 lighting_geometry_upload_event, lighting_geometry_destroy_event,
-                 texture_upload_event,
+                 lighting_geometry_upload_event, lighting_geometry_destroy_event, texture_upload_event,
                  material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event,
                  draw_mesh_event, directional_light_event, point_light_event, spot_light_event, area_light_event,
                  gpu_scene_update_event, lighting_scene_update_event, render_world_event, debug_marker_event>;

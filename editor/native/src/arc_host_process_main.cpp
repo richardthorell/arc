@@ -196,7 +196,12 @@ public:
         if (!running_.exchange(true))
             render_task_ = jobs_->submit({.name = "editor.native_viewport",
                                           .priority = arc::jobs::job_priority::critical,
-                                          .affinity = arc::jobs::job_affinity::render_thread},
+                                          .affinity = arc::jobs::job_affinity::render_thread,
+                                          .dependencies = {},
+                                          .dependency_view = {},
+                                          .parent = {},
+                                          .cancellation = {},
+                                          .dependency_policy = arc::jobs::job_dependency_policy::cancel_on_failure},
                                          [this] { render_loop(); });
     }
 
@@ -1020,7 +1025,12 @@ public:
 int main()
 {
     auto& memory = arc::memory::default_memory_system();
-    arc::jobs::job_system jobs({.memory = &memory});
+    arc::jobs::job_system jobs({.worker_count = 0,
+                                .run_inline = false,
+                                .io_worker_count = 2,
+                                .enable_render_thread = true,
+                                .profile_event_capacity = 8192,
+                                .memory = &memory});
     jobs.register_main_thread();
     auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
     std::mutex host_mutex;

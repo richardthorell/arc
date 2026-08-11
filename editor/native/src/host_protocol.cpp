@@ -1270,7 +1270,7 @@ std::string to_json(const host_light_snapshot& light)
 
 std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer)
 {
-    const auto representation = mesh_renderer.representation == 1u ? "conventional"
+    const auto representation = mesh_renderer.representation == 1u   ? "conventional"
                                 : mesh_renderer.representation == 2u ? "virtualized"
                                                                      : "auto";
     return std::string("{\"representation\":") + quote(representation) +
@@ -1390,8 +1390,8 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_reload_project_module_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) +
                        ",\"engineVersion\":" + quote(payload.engine_version) +
-                       ",\"projectGuid\":" + quote(payload.project_guid) +
-                       ",\"moduleId\":" + quote(payload.module_id) + '}';
+                       ",\"projectGuid\":" + quote(payload.project_guid) + ",\"moduleId\":" + quote(payload.module_id) +
+                       '}';
             else if constexpr (std::is_same_v<type, host_open_scene_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) +
                        ",\"append\":" + bool_json(payload.append) + '}';
@@ -1417,8 +1417,7 @@ std::string to_json(const host_command_envelope& envelope)
                                std::is_same_v<type, host_duplicate_entity_command>)
                 return "{\"entity\":" + to_json(payload.entity) + '}';
             else if constexpr (std::is_same_v<type, host_select_entity_command>)
-                return "{\"entity\":" + to_json(payload.entity) +
-                       ",\"additive\":" + bool_json(payload.additive) +
+                return "{\"entity\":" + to_json(payload.entity) + ",\"additive\":" + bool_json(payload.additive) +
                        ",\"toggle\":" + bool_json(payload.toggle) + '}';
             else if constexpr (std::is_same_v<type, host_create_prefab_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
@@ -1739,18 +1738,16 @@ std::string to_json(const host_scene_snapshot& snapshot)
 std::string to_json(const host_selected_entity_snapshot& snapshot)
 {
     std::string json = "{\"entity\":" + to_json(snapshot.entity) +
-                       ",\"selectionCount\":" + std::to_string(snapshot.selection_count) +
-                       ",\"selectedGuids\":[";
+                       ",\"selectionCount\":" + std::to_string(snapshot.selection_count) + ",\"selectedGuids\":[";
     for (std::size_t index = 0; index < snapshot.selected_guids.size(); ++index)
     {
         if (index != 0) json += ',';
         json += quote(snapshot.selected_guids[index]);
     }
-    json += "],\"guid\":" + quote(snapshot.guid) +
-                       ",\"name\":" + quote(snapshot.name) + ",\"tag\":" + quote(snapshot.tag) +
-                       ",\"active\":" + bool_json(snapshot.active) +
-                       ",\"renderLayerMask\":" + std::to_string(snapshot.render_layer_mask) +
-                       ",\"mobility\":" + quote(to_string(snapshot.mobility)) + ",\"transform\":";
+    json += "],\"guid\":" + quote(snapshot.guid) + ",\"name\":" + quote(snapshot.name) +
+            ",\"tag\":" + quote(snapshot.tag) + ",\"active\":" + bool_json(snapshot.active) +
+            ",\"renderLayerMask\":" + std::to_string(snapshot.render_layer_mask) +
+            ",\"mobility\":" + quote(to_string(snapshot.mobility)) + ",\"transform\":";
     json += snapshot.transform ? to_json(*snapshot.transform) : "null";
     json += ",\"bounds\":";
     if (snapshot.bounds)
@@ -1791,8 +1788,7 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
     {
         if (index) json += ',';
         const auto& component = snapshot.project_components[index];
-        json += "{\"typeId\":" + quote(component.type_id) +
-                ",\"canonicalName\":" + quote(component.canonical_name) +
+        json += "{\"typeId\":" + quote(component.type_id) + ",\"canonicalName\":" + quote(component.canonical_name) +
                 ",\"displayName\":" + quote(component.display_name) +
                 ",\"schemaVersion\":" + std::to_string(component.schema_version) +
                 ",\"values\":" + component.values_json + '}';
@@ -2345,10 +2341,9 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             error = "Component operation requires a component name";
             return false;
         }
-        command.operation = type == "component.add"
-                                ? host_component_operation::add
-                                : type == "component.remove" ? host_component_operation::remove
-                                                             : host_component_operation::reset;
+        command.operation = type == "component.add"      ? host_component_operation::add
+                            : type == "component.remove" ? host_component_operation::remove
+                                                         : host_component_operation::reset;
         envelope.payload = std::move(command);
     }
     else if (type == "component.patchField")

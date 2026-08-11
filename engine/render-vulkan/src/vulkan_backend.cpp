@@ -5112,8 +5112,10 @@ private:
         {
             std::array<VkDescriptorPoolSize, 3> pool_sizes{
                 VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10},
-                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
-                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}};
+                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}, VkDescriptorPoolSize {
+                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                    1
+                }};
             VkDescriptorPoolCreateInfo pool{};
             pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             pool.maxSets = 1;
@@ -5351,8 +5353,10 @@ private:
             return false;
 
         std::array<VkDescriptorPoolSize, 2> pool_sizes{
-            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
-            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
+            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1}, VkDescriptorPoolSize {
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                1
+            }};
         VkDescriptorPoolCreateInfo pool{};
         pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool.maxSets = 1;
@@ -6506,8 +6510,7 @@ private:
             const float z = draw.model(2, 3) - frame_camera_.position[2];
             return x * x + y * y + z * z <= draw.maximum_shadow_distance * draw.maximum_shadow_distance;
         };
-        const auto is_static_caster = [&](const draw_mesh_event& draw)
-        {
+        const auto is_static_caster = [&](const draw_mesh_event& draw) {
             return draw.casts_shadows && within_shadow_distance(draw) &&
                    draw.mobility == render_mobility::static_object;
         };

@@ -33,10 +33,38 @@ template <> struct component_traits<tests::position>
     static constexpr bool reflected = true;
     static constexpr std::string_view canonical_name = "arc.tests.position";
     static constexpr component_type_id id{0x1000, 0x1};
-    static constexpr std::array<component_field_descriptor, 2> fields{
-        {{1, "x", "X", reflected_field_kind::floating_point}, {2, "y", "Y", reflected_field_kind::floating_point}}};
+    static constexpr std::array<component_field_descriptor, 2> fields{{
+        {1,
+         "x",
+         "X",
+         reflected_field_kind::floating_point,
+         reflected_field_flags::serialized | reflected_field_flags::editable | reflected_field_flags::prefab_override,
+         component_field_descriptor::invalid_offset,
+         0,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {},
+         {}},
+        {2,
+         "y",
+         "Y",
+         reflected_field_kind::floating_point,
+         reflected_field_flags::serialized | reflected_field_flags::editable | reflected_field_flags::prefab_override,
+         component_field_descriptor::invalid_offset,
+         0,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {},
+         {}},
+    }};
     static constexpr component_descriptor descriptor{
-        id, canonical_name, "Position", 1, sizeof(tests::position), alignof(tests::position), fields, false, false};
+        id, canonical_name, "Position", 1, sizeof(tests::position), alignof(tests::position), fields, false, false, {}};
 };
 } // namespace arc::ecs
 
@@ -363,8 +391,8 @@ TEST_CASE("Templates, prefab overrides, and regions expose stable contracts")
     REQUIRE(valid_prefab_base(variant, direct_base, {}));
     const std::array cyclic_ancestry{generate_entity_guid(), variant.guid};
     REQUIRE_FALSE(valid_prefab_base(variant, direct_base, cyclic_ancestry));
-    REQUIRE_FALSE(valid_prefab_base(
-        variant, prefab_reference{.guid = variant.guid, .path_hint = "prefabs/self.arcprefab"}, {}));
+    REQUIRE_FALSE(
+        valid_prefab_base(variant, prefab_reference{.guid = variant.guid, .path_hint = "prefabs/self.arcprefab"}, {}));
 
     world_partition partition;
     const world_region_id region{generate_entity_guid()};

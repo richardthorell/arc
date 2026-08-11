@@ -39,8 +39,8 @@ geometric::box3f mesh_bounds(const mesh_data& mesh)
     return {geometric::point3f{minimum}, geometric::point3f{maximum}};
 }
 
-float point_triangle_distance_squared(const math::vector3f& point, const math::vector3f& a,
-                                      const math::vector3f& b, const math::vector3f& c) noexcept
+float point_triangle_distance_squared(const math::vector3f& point, const math::vector3f& a, const math::vector3f& b,
+                                      const math::vector3f& c) noexcept
 {
     const math::vector3f ab = b - a;
     const math::vector3f ac = c - a;
@@ -111,8 +111,8 @@ std::size_t flatten(std::uint32_t x, std::uint32_t y, std::uint32_t z,
     return (static_cast<std::size_t>(z) * dimensions[1] + y) * dimensions[0] + x;
 }
 
-math::vector3f voxel_center(const geometric::box3f& bounds, const math::vector3f& voxel_size,
-                           std::uint32_t x, std::uint32_t y, std::uint32_t z) noexcept
+math::vector3f voxel_center(const geometric::box3f& bounds, const math::vector3f& voxel_size, std::uint32_t x,
+                            std::uint32_t y, std::uint32_t z) noexcept
 {
     return {bounds.min[0] + (static_cast<float>(x) + 0.5f) * voxel_size[0],
             bounds.min[1] + (static_cast<float>(y) + 0.5f) * voxel_size[1],
@@ -123,10 +123,9 @@ std::vector<surface_card_descriptor> build_cards(const geometric::box3f& bounds,
 {
     const auto center = geometric::center(bounds);
     const auto size = geometric::size(bounds);
-    const std::array<math::vector3f, 6> normals = {
-        math::vector3f{1.0f, 0.0f, 0.0f},  math::vector3f{-1.0f, 0.0f, 0.0f},
-        math::vector3f{0.0f, 1.0f, 0.0f},  math::vector3f{0.0f, -1.0f, 0.0f},
-        math::vector3f{0.0f, 0.0f, 1.0f},  math::vector3f{0.0f, 0.0f, -1.0f}};
+    const std::array<math::vector3f, 6> normals = {math::vector3f{1.0f, 0.0f, 0.0f}, math::vector3f{-1.0f, 0.0f, 0.0f},
+                                                   math::vector3f{0.0f, 1.0f, 0.0f}, math::vector3f{0.0f, -1.0f, 0.0f},
+                                                   math::vector3f{0.0f, 0.0f, 1.0f}, math::vector3f{0.0f, 0.0f, -1.0f}};
     std::vector<surface_card_descriptor> cards;
     cards.reserve(normals.size());
     for (std::uint32_t index = 0; index < normals.size(); ++index)
@@ -160,26 +159,23 @@ float sample_field(const mesh_distance_field_descriptor& field, const math::vect
     {
         if (position[axis] < field.bounds.min[axis] || position[axis] > field.bounds.max[axis])
         {
-            const float delta = position[axis] < field.bounds.min[axis]
-                                    ? field.bounds.min[axis] - position[axis]
-                                    : position[axis] - field.bounds.max[axis];
+            const float delta = position[axis] < field.bounds.min[axis] ? field.bounds.min[axis] - position[axis]
+                                                                        : position[axis] - field.bounds.max[axis];
             return std::max(delta, std::min({field.voxel_size[0], field.voxel_size[1], field.voxel_size[2]}));
         }
-        const float normalized = size[axis] > distance_epsilon
-                                     ? (position[axis] - field.bounds.min[axis]) / size[axis]
-                                     : 0.0f;
-        coordinate[axis] = std::min(field.dimensions[axis] - 1u,
-                                    static_cast<std::uint32_t>(normalized * field.dimensions[axis]));
+        const float normalized =
+            size[axis] > distance_epsilon ? (position[axis] - field.bounds.min[axis]) / size[axis] : 0.0f;
+        coordinate[axis] =
+            std::min(field.dimensions[axis] - 1u, static_cast<std::uint32_t>(normalized * field.dimensions[axis]));
     }
 
     const std::array<std::uint16_t, 3> brick_coordinate = {
         static_cast<std::uint16_t>(coordinate[0] / mesh_distance_field_descriptor::brick_dimension),
         static_cast<std::uint16_t>(coordinate[1] / mesh_distance_field_descriptor::brick_dimension),
         static_cast<std::uint16_t>(coordinate[2] / mesh_distance_field_descriptor::brick_dimension)};
-    const auto found = std::find_if(field.bricks.begin(), field.bricks.end(), [&](const auto& brick)
-                                    { return brick.coordinate == brick_coordinate; });
-    if (found == field.bricks.end())
-        return field.distance_scale;
+    const auto found = std::find_if(field.bricks.begin(), field.bricks.end(),
+                                    [&](const auto& brick) { return brick.coordinate == brick_coordinate; });
+    if (found == field.bricks.end()) return field.distance_scale;
 
     const std::uint32_t local_x = coordinate[0] % mesh_distance_field_descriptor::brick_dimension;
     const std::uint32_t local_y = coordinate[1] % mesh_distance_field_descriptor::brick_dimension;
@@ -240,9 +236,9 @@ lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
         ++edge_counts[edge_key(triangle[1], triangle[2])];
         ++edge_counts[edge_key(triangle[2], triangle[0])];
     }
-    result.statistics.watertight = !valid_triangles.empty() &&
-                                   std::all_of(edge_counts.begin(), edge_counts.end(),
-                                               [](const auto& edge) { return edge.second == 2u; });
+    result.statistics.watertight =
+        !valid_triangles.empty() &&
+        std::all_of(edge_counts.begin(), edge_counts.end(), [](const auto& edge) { return edge.second == 2u; });
 
     auto& field = result.geometry.distance_field;
     field.bounds = geometric::expand(result.geometry.bounds, 0.01f);
@@ -258,15 +254,15 @@ lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
         minimum_resolution, maximum_resolution);
     for (std::size_t axis = 0; axis < 3; ++axis)
     {
-        field.dimensions[axis] = std::max(8u, static_cast<std::uint32_t>(
-                                                   std::ceil(longest_resolution * bounds_size[axis] / longest)));
+        field.dimensions[axis] =
+            std::max(8u, static_cast<std::uint32_t>(std::ceil(longest_resolution * bounds_size[axis] / longest)));
         field.dimensions[axis] = (field.dimensions[axis] + 7u) & ~7u;
         field.voxel_size[axis] = bounds_size[axis] / static_cast<float>(field.dimensions[axis]);
     }
     const float voxel_length = std::max({field.voxel_size[0], field.voxel_size[1], field.voxel_size[2]});
     const float surface_threshold = voxel_length * 0.8f;
-    const std::size_t voxel_count = static_cast<std::size_t>(field.dimensions[0]) * field.dimensions[1] *
-                                    field.dimensions[2];
+    const std::size_t voxel_count =
+        static_cast<std::size_t>(field.dimensions[0]) * field.dimensions[1] * field.dimensions[2];
     std::vector<std::uint8_t> surface(voxel_count);
 
     for (const auto& triangle : valid_triangles)
@@ -280,12 +276,12 @@ lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
         {
             const float minimum = std::min({a[axis], b[axis], c[axis]}) - surface_threshold;
             const float maximum = std::max({a[axis], b[axis], c[axis]}) + surface_threshold;
-            lower[axis] = static_cast<std::uint32_t>(std::clamp<float>(
-                std::floor((minimum - field.bounds.min[axis]) / field.voxel_size[axis]), 0.0,
-                static_cast<float>(field.dimensions[axis] - 1u)));
-            upper[axis] = static_cast<std::uint32_t>(std::clamp<float>(
-                std::ceil((maximum - field.bounds.min[axis]) / field.voxel_size[axis]), 0.0,
-                static_cast<float>(field.dimensions[axis] - 1u)));
+            lower[axis] = static_cast<std::uint32_t>(
+                std::clamp<float>(std::floor((minimum - field.bounds.min[axis]) / field.voxel_size[axis]), 0.0,
+                                  static_cast<float>(field.dimensions[axis] - 1u)));
+            upper[axis] = static_cast<std::uint32_t>(
+                std::clamp<float>(std::ceil((maximum - field.bounds.min[axis]) / field.voxel_size[axis]), 0.0,
+                                  static_cast<float>(field.dimensions[axis] - 1u)));
         }
         for (std::uint32_t z = lower[2]; z <= upper[2]; ++z)
             for (std::uint32_t y = lower[1]; y <= upper[1]; ++y)
@@ -309,8 +305,7 @@ lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
                 }
 
     constexpr std::array<std::array<int, 3>, 6> neighbors = {
-        std::array<int, 3>{1, 0, 0},  {-1, 0, 0}, {0, 1, 0},
-        {0, -1, 0},                  {0, 0, 1},   {0, 0, -1}};
+        std::array<int, 3>{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
     while (!distance_queue.empty())
     {
         const auto current = distance_queue.front();
@@ -328,8 +323,8 @@ lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
                                                     static_cast<std::uint32_t>(z), field.dimensions)];
             if (candidate <= current_distance + 1u) continue;
             candidate = current_distance + 1u;
-            distance_queue.push({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y),
-                                 static_cast<std::uint32_t>(z)});
+            distance_queue.push(
+                {static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), static_cast<std::uint32_t>(z)});
         }
     }
 
@@ -380,15 +375,15 @@ lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
                                            static_cast<std::uint32_t>(z), field.dimensions);
                 if (surface[index] != 0 || outside[index] != 0) continue;
                 outside[index] = 1;
-                outside_queue.push({static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y),
-                                    static_cast<std::uint32_t>(z)});
+                outside_queue.push(
+                    {static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), static_cast<std::uint32_t>(z)});
             }
         }
     }
 
-    field.distance_scale = std::max(voxel_length, voxel_length *
-                                                      static_cast<float>(std::max(
-                                                          {field.dimensions[0], field.dimensions[1], field.dimensions[2]})));
+    field.distance_scale = std::max(
+        voxel_length,
+        voxel_length * static_cast<float>(std::max({field.dimensions[0], field.dimensions[1], field.dimensions[2]})));
     const std::uint32_t bricks_x = field.dimensions[0] / mesh_distance_field_descriptor::brick_dimension;
     const std::uint32_t bricks_y = field.dimensions[1] / mesh_distance_field_descriptor::brick_dimension;
     const std::uint32_t bricks_z = field.dimensions[2] / mesh_distance_field_descriptor::brick_dimension;
@@ -426,27 +421,27 @@ lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
                                  local_y) *
                                     mesh_distance_field_descriptor::brick_dimension +
                                 local_x;
-                            samples[sample_index] = static_cast<std::int16_t>(std::round(
-                                std::clamp(distance / field.distance_scale, -1.0f, 1.0f) * 32767.0f));
+                            samples[sample_index] = static_cast<std::int16_t>(
+                                std::round(std::clamp(distance / field.distance_scale, -1.0f, 1.0f) * 32767.0f));
                         }
                 const bool near_surface = minimum <= options.narrow_band_voxels * voxel_length || minimum < 0.0f;
                 if (!near_surface) continue;
-                if (field.page_offsets.empty() ||
-                    encoded.size() - field.page_offsets.back() + brick_bytes > mesh_distance_field_descriptor::page_size)
+                if (field.page_offsets.empty() || encoded.size() - field.page_offsets.back() + brick_bytes >
+                                                      mesh_distance_field_descriptor::page_size)
                     field.page_offsets.push_back(static_cast<std::uint32_t>(encoded.size()));
                 const std::uint32_t page_index = static_cast<std::uint32_t>(field.page_offsets.size() - 1u);
                 const std::uint32_t page_offset =
                     static_cast<std::uint32_t>(encoded.size() - field.page_offsets[page_index]);
                 const auto* bytes = reinterpret_cast<const std::byte*>(samples.data());
                 encoded.insert(encoded.end(), bytes, bytes + brick_bytes);
-                field.bricks.push_back({.coordinate = {static_cast<std::uint16_t>(brick_x),
-                                                       static_cast<std::uint16_t>(brick_y),
-                                                       static_cast<std::uint16_t>(brick_z)},
-                                        .page_index = page_index,
-                                        .page_offset = page_offset,
-                                        .byte_size = static_cast<std::uint32_t>(brick_bytes),
-                                        .minimum_distance = minimum,
-                                        .maximum_distance = maximum});
+                field.bricks.push_back(
+                    {.coordinate = {static_cast<std::uint16_t>(brick_x), static_cast<std::uint16_t>(brick_y),
+                                    static_cast<std::uint16_t>(brick_z)},
+                     .page_index = page_index,
+                     .page_offset = page_offset,
+                     .byte_size = static_cast<std::uint32_t>(brick_bytes),
+                     .minimum_distance = minimum,
+                     .maximum_distance = maximum});
             }
     field.pages = std::move(encoded);
     field.content_hash = hash_bytes(field.pages);
@@ -601,8 +596,8 @@ lighting_scene_snapshot lighting_scene::snapshot() const noexcept
 }
 
 void lighting_scene::update_residency_statistics(std::uint32_t surface_cards, std::uint32_t surface_pages,
-                                                 std::uint32_t distance_field_pages,
-                                                 std::uint64_t resident_bytes, std::uint32_t evictions) noexcept
+                                                 std::uint32_t distance_field_pages, std::uint64_t resident_bytes,
+                                                 std::uint32_t evictions) noexcept
 {
     implementation_->snapshot.surface_cards = surface_cards;
     implementation_->snapshot.resident_surface_pages = surface_pages;
@@ -618,8 +613,8 @@ lighting_trace_result trace_mesh_distance_field(const mesh_distance_field_descri
     const auto direction = math::normalize(ray.direction);
     if (math::length(direction) <= distance_epsilon || field.bricks.empty()) return result;
     float distance = std::max(ray.minimum_distance, 0.0f);
-    const float minimum_step = std::max(
-        std::min({field.voxel_size[0], field.voxel_size[1], field.voxel_size[2]}) * 0.5f, 0.001f);
+    const float minimum_step =
+        std::max(std::min({field.voxel_size[0], field.voxel_size[1], field.voxel_size[2]}) * 0.5f, 0.001f);
     for (std::uint32_t step = 0; step < maximum_steps && distance <= ray.maximum_distance; ++step)
     {
         const auto position = ray.origin + direction * distance;

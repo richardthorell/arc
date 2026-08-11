@@ -17,9 +17,20 @@ struct test_value_component
 };
 
 constexpr arc::ecs::component_field_descriptor test_fields[] = {
-    {0x1001, "value", "Value", arc::ecs::reflected_field_kind::floating_point,
+    {0x1001,
+     "value",
+     "Value",
+     arc::ecs::reflected_field_kind::floating_point,
      arc::ecs::reflected_field_flags::serialized | arc::ecs::reflected_field_flags::editable,
-     offsetof(test_value_component, value), sizeof(double)},
+     offsetof(test_value_component, value),
+     sizeof(double),
+     {},
+     {},
+     {},
+     {},
+     {},
+     {},
+     {}},
 };
 constexpr arc::ecs::component_descriptor test_component{{0x1020304050607080ull, 0x90a0b0c0d0e0f001ull},
                                                         "arc.test_component",
@@ -29,7 +40,8 @@ constexpr arc::ecs::component_descriptor test_component{{0x1020304050607080ull, 
                                                         alignof(test_value_component),
                                                         test_fields,
                                                         false,
-                                                        false};
+                                                        false,
+                                                        {}};
 
 arc::persistence::component_persistence_registry make_registry()
 {

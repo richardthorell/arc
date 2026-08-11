@@ -323,7 +323,11 @@ public:
                         jobs.submit({.name = system.name,
                                      .priority = system.priority,
                                      .affinity = system.affinity,
-                                     .dependency_view = prerequisites},
+                                     .dependencies = {},
+                                     .dependency_view = prerequisites,
+                                     .parent = {},
+                                     .cancellation = {},
+                                     .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
                                     [&owner, &system, buffer = schedule.command_buffers[index].get(), execution]()
                                     {
                                         system_context context(owner, *buffer, execution, system);

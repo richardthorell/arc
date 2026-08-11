@@ -42,7 +42,7 @@ constexpr simd<T, N> shuffle(const simd<T, N>& a, const simd<T, N>& b) noexcept
     static_assert(sizeof...(I) == N, "shuffle must specify N indices");
     static_assert(((I < 2 * N) && ...), "shuffle index out of bounds");
 
-    return simd<T, N>(extract < I<N ? I : I - N>(I < N ? a : b)...);
+    return simd<T, N>(extract < I < N ? I : I - N > (I < N ? a : b)...);
 }
 
 } // namespace arc::simd

@@ -100,8 +100,8 @@ bool is_within(const std::filesystem::path& root, const std::filesystem::path& c
     std::error_code error;
     auto checked_root = root.lexically_normal();
     auto checked_candidate = candidate.lexically_normal();
-    if (std::filesystem::exists(checked_root, error) && !error &&
-        std::filesystem::exists(checked_candidate, error) && !error)
+    if (std::filesystem::exists(checked_root, error) && !error && std::filesystem::exists(checked_candidate, error) &&
+        !error)
     {
         checked_root = std::filesystem::weakly_canonical(checked_root, error);
         if (error) return false;
@@ -116,12 +116,12 @@ std::string to_string(module_kind value)
 {
     switch (value)
     {
-    case module_kind::editor:
-        return "editor";
-    case module_kind::runtime:
-        return "runtime";
-    case module_kind::server:
-        return "server";
+        case module_kind::editor:
+            return "editor";
+        case module_kind::runtime:
+            return "runtime";
+        case module_kind::server:
+            return "server";
     }
     return "runtime";
 }
@@ -138,12 +138,12 @@ std::string to_string(dependency_kind value)
 {
     switch (value)
     {
-    case dependency_kind::engine:
-        return "engine";
-    case dependency_kind::project:
-        return "project";
-    case dependency_kind::plugin:
-        return "plugin";
+        case dependency_kind::engine:
+            return "engine";
+        case dependency_kind::project:
+            return "project";
+        case dependency_kind::plugin:
+            return "plugin";
     }
     return "engine";
 }
@@ -246,8 +246,8 @@ project_descriptor parse_v2(const json& source)
     result.toolchain.generator = toolchain.value("generator", "auto");
     result.toolchain.architecture = toolchain.value("architecture", "x86_64");
     result.toolchain.cpp_standard = toolchain.value("cppStandard", 20u);
-    result.build_configurations = source.value("buildConfigurations",
-                                               std::vector<std::string>{"Debug", "RelWithDebInfo", "Shipping"});
+    result.build_configurations =
+        source.value("buildConfigurations", std::vector<std::string>{"Debug", "RelWithDebInfo", "Shipping"});
 
     const auto& renderer = source.value("renderer", json::object());
     result.renderer.backend = parse_renderer(renderer.value("backend", "vulkan"));
@@ -256,12 +256,12 @@ project_descriptor parse_v2(const json& source)
 
     for (const auto& entry : source.value("cookProfiles", json::array()))
         result.cook_profiles.push_back({.id = entry.value("id", ""),
-                                       .platform = entry.value("platform", ""),
-                                       .architecture = entry.value("architecture", "x86_64"),
-                                       .renderer = entry.value("renderer", "vulkan"),
-                                       .api = entry.value("api", "1.2"),
-                                       .texture_family = entry.value("textureFamily", "bc"),
-                                       .configuration = entry.value("configuration", "Shipping")});
+                                        .platform = entry.value("platform", ""),
+                                        .architecture = entry.value("architecture", "x86_64"),
+                                        .renderer = entry.value("renderer", "vulkan"),
+                                        .api = entry.value("api", "1.2"),
+                                        .texture_family = entry.value("textureFamily", "bc"),
+                                        .configuration = entry.value("configuration", "Shipping")});
 
     const auto& package = source.value("package", json::object());
     result.package.application_name = package.value("applicationName", result.name);
@@ -283,9 +283,8 @@ json descriptor_json(const project_descriptor& value)
     {
         json dependencies = json::array();
         for (const auto& dependency : module.dependencies)
-            dependencies.push_back({{"kind", to_string(dependency.kind)},
-                                    {"id", dependency.id},
-                                    {"version", dependency.version}});
+            dependencies.push_back(
+                {{"kind", to_string(dependency.kind)}, {"id", dependency.id}, {"version", dependency.version}});
         modules.push_back({{"id", module.id},
                            {"kind", to_string(module.kind)},
                            {"target", module.target},
@@ -295,57 +294,70 @@ json descriptor_json(const project_descriptor& value)
     }
     json plugins = json::array();
     for (const auto& plugin : value.plugins)
-        plugins.push_back({{"id", plugin.id}, {"version", plugin.version}, {"origin", plugin.origin},
-                           {"required", plugin.required}, {"enabled", plugin.enabled},
+        plugins.push_back({{"id", plugin.id},
+                           {"version", plugin.version},
+                           {"origin", plugin.origin},
+                           {"required", plugin.required},
+                           {"enabled", plugin.enabled},
                            {"path", plugin.path.generic_string()}});
     json targets = json::array();
     for (const auto& target : value.target_platforms)
         targets.push_back({{"id", target.id}, {"enabled", target.enabled}});
     json cook_profiles = json::array();
     for (const auto& profile : value.cook_profiles)
-        cook_profiles.push_back({{"id", profile.id}, {"platform", profile.platform},
-                                 {"architecture", profile.architecture}, {"renderer", profile.renderer},
-                                 {"api", profile.api}, {"textureFamily", profile.texture_family},
+        cook_profiles.push_back({{"id", profile.id},
+                                 {"platform", profile.platform},
+                                 {"architecture", profile.architecture},
+                                 {"renderer", profile.renderer},
+                                 {"api", profile.api},
+                                 {"textureFamily", profile.texture_family},
                                  {"configuration", profile.configuration}});
     json startup = json::array();
-    for (const auto& scene : value.startup_scenes) startup.push_back(asset_reference_json(scene));
+    for (const auto& scene : value.startup_scenes)
+        startup.push_back(asset_reference_json(scene));
     json roots = json::array();
-    for (const auto& root : value.asset_roots) roots.push_back(root.generic_string());
+    for (const auto& root : value.asset_roots)
+        roots.push_back(root.generic_string());
     return {{"format", project_format},
             {"formatVersion", project_format_version},
             {"guid", value.guid},
             {"name", value.name},
             {"engineVersion", value.engine_version},
-            {"paths", {{"source", value.paths.source.generic_string()},
-                       {"content", value.paths.content.generic_string()},
-                       {"config", value.paths.config.generic_string()},
-                       {"plugins", value.paths.plugins.generic_string()},
-                       {"saved", value.paths.saved.generic_string()},
-                       {"intermediate", value.paths.intermediate.generic_string()},
-                       {"build", value.paths.build.generic_string()}}},
+            {"paths",
+             {{"source", value.paths.source.generic_string()},
+              {"content", value.paths.content.generic_string()},
+              {"config", value.paths.config.generic_string()},
+              {"plugins", value.paths.plugins.generic_string()},
+              {"saved", value.paths.saved.generic_string()},
+              {"intermediate", value.paths.intermediate.generic_string()},
+              {"build", value.paths.build.generic_string()}}},
             {"assetRoots", std::move(roots)},
             {"modules", std::move(modules)},
             {"plugins", std::move(plugins)},
             {"defaultScene", value.default_scene ? asset_reference_json(*value.default_scene) : json(nullptr)},
             {"startupScenes", std::move(startup)},
             {"targetPlatforms", std::move(targets)},
-            {"toolchain", {{"compiler", value.toolchain.compiler},
-                           {"minimumVersion", value.toolchain.minimum_compiler_version},
-                           {"generator", value.toolchain.generator},
-                           {"architecture", value.toolchain.architecture},
-                           {"cppStandard", value.toolchain.cpp_standard}}},
+            {"toolchain",
+             {{"compiler", value.toolchain.compiler},
+              {"minimumVersion", value.toolchain.minimum_compiler_version},
+              {"generator", value.toolchain.generator},
+              {"architecture", value.toolchain.architecture},
+              {"cppStandard", value.toolchain.cpp_standard}}},
             {"buildConfigurations", value.build_configurations},
-            {"renderer", {{"backend", to_string(value.renderer.backend)},
-                          {"api", value.renderer.api},
-                          {"quality", value.renderer.quality}}},
+            {"renderer",
+             {{"backend", to_string(value.renderer.backend)},
+              {"api", value.renderer.api},
+              {"quality", value.renderer.quality}}},
             {"cookProfiles", std::move(cook_profiles)},
-            {"package", {{"applicationName", value.package.application_name},
-                         {"companyName", value.package.company_name},
-                         {"output", value.package.output.generic_string()},
-                         {"regionChunks", value.package.region_chunks}}},
-            {"settings", {{"editor", value.settings.editor.generic_string()},
-                          {"renderer", value.settings.renderer.generic_string()},
-                          {"input", value.settings.input.generic_string()}}}};
+            {"package",
+             {{"applicationName", value.package.application_name},
+              {"companyName", value.package.company_name},
+              {"output", value.package.output.generic_string()},
+              {"regionChunks", value.package.region_chunks}}},
+            {"settings",
+             {{"editor", value.settings.editor.generic_string()},
+              {"renderer", value.settings.renderer.generic_string()},
+              {"input", value.settings.input.generic_string()}}}};
 }
 
 project_status write_json_atomic(const std::filesystem::path& target, const json& value)
@@ -353,11 +365,12 @@ project_status write_json_atomic(const std::filesystem::path& target, const json
     std::error_code error;
     std::filesystem::create_directories(target.parent_path(), error);
     if (error) return project_status::failure(make_error(project_error_code::io_failed, target, error.message()));
-    const auto temporary = target.string() + ".tmp-" + std::to_string(
-        std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto temporary =
+        target.string() + ".tmp-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     {
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-        if (!stream) return project_status::failure(make_error(project_error_code::io_failed, target, "cannot write file"));
+        if (!stream)
+            return project_status::failure(make_error(project_error_code::io_failed, target, "cannot write file"));
         stream << value.dump(2) << '\n';
         stream.flush();
         if (!stream)
@@ -456,9 +469,15 @@ std::wstring quote_command_argument(std::string_view value)
     std::size_t slashes{};
     for (const wchar_t character : input)
     {
-        if (character == L'\\') { ++slashes; continue; }
-        if (character == L'\"') output.append(slashes * 2u + 1u, L'\\');
-        else output.append(slashes, L'\\');
+        if (character == L'\\')
+        {
+            ++slashes;
+            continue;
+        }
+        if (character == L'\"')
+            output.append(slashes * 2u + 1u, L'\\');
+        else
+            output.append(slashes, L'\\');
         slashes = 0;
         output.push_back(character);
     }
@@ -477,18 +496,22 @@ std::string probe_tool_version(const std::filesystem::path& executable, const st
     HANDLE write_handle{};
     if (!CreatePipe(&read_handle, &write_handle, &security, 0)) return {};
     SetHandleInformation(read_handle, HANDLE_FLAG_INHERIT, 0);
-    STARTUPINFOW startup{.cb = sizeof(STARTUPINFOW), .dwFlags = STARTF_USESTDHANDLES,
-                         .hStdOutput = write_handle, .hStdError = write_handle};
+    STARTUPINFOW startup{.cb = sizeof(STARTUPINFOW),
+                         .dwFlags = STARTF_USESTDHANDLES,
+                         .hStdOutput = write_handle,
+                         .hStdError = write_handle};
     PROCESS_INFORMATION process{};
     std::wstring command = quote_command_argument(executable.string());
-    for (const auto& argument : arguments) command += L" " + quote_command_argument(argument);
-    if (CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
-                       &startup, &process))
+    for (const auto& argument : arguments)
+        command += L" " + quote_command_argument(argument);
+    if (CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &startup,
+                       &process))
     {
         CloseHandle(write_handle);
         std::array<char, 512> buffer{};
         DWORD read{};
-        while (output.size() < 4096u && ReadFile(read_handle, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr) && read)
+        while (output.size() < 4096u &&
+               ReadFile(read_handle, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr) && read)
             output.append(buffer.data(), read);
         WaitForSingleObject(process.hProcess, 5000);
         CloseHandle(process.hThread);
@@ -509,7 +532,8 @@ std::string probe_tool_version(const std::filesystem::path& executable, const st
         close(descriptors[1]);
         std::vector<std::string> storage = arguments;
         std::vector<char*> argv{const_cast<char*>(executable.c_str())};
-        for (auto& argument : storage) argv.push_back(argument.data());
+        for (auto& argument : storage)
+            argv.push_back(argument.data());
         argv.push_back(nullptr);
         execv(executable.c_str(), argv.data());
         _exit(127);
@@ -534,7 +558,8 @@ descriptor_result load_descriptor(const std::filesystem::path& descriptor_path)
     try
     {
         if (!std::filesystem::is_regular_file(descriptor_path))
-            return descriptor_result::failure(make_error(project_error_code::not_found, descriptor_path, "project descriptor not found"));
+            return descriptor_result::failure(
+                make_error(project_error_code::not_found, descriptor_path, "project descriptor not found"));
         return descriptor_result::success(parse_v2(read_json(descriptor_path)));
     }
     catch (const json::exception& error)
@@ -543,7 +568,8 @@ descriptor_result load_descriptor(const std::filesystem::path& descriptor_path)
     }
     catch (const std::exception& error)
     {
-        return descriptor_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path, error.what()));
+        return descriptor_result::failure(
+            make_error(project_error_code::invalid_descriptor, descriptor_path, error.what()));
     }
 }
 
@@ -555,22 +581,21 @@ project_status save_descriptor(const std::filesystem::path& descriptor_path, con
 }
 
 validation_result validate_descriptor(const std::filesystem::path& descriptor_path,
-                                      const project_descriptor& descriptor,
-                                      const project_validation_options& options)
+                                      const project_descriptor& descriptor, const project_validation_options& options)
 {
     project_validation_result result;
     if (!is_guid(descriptor.guid))
-        return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
-                                                     "project GUID is malformed", "guid"));
+        return validation_result::failure(
+            make_error(project_error_code::invalid_descriptor, descriptor_path, "project GUID is malformed", "guid"));
     if (descriptor.name.empty() || descriptor.engine_version.empty())
         return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
                                                      "project name and engine version are required"));
-    if (options.require_exact_engine && !options.engine_version.empty() && descriptor.engine_version != options.engine_version)
+    if (options.require_exact_engine && !options.engine_version.empty() &&
+        descriptor.engine_version != options.engine_version)
     {
         result.writable = false;
         result.diagnostics.push_back(make_error(project_error_code::incompatible_engine, descriptor_path,
-                                                "project requires ARC " + descriptor.engine_version,
-                                                "engineVersion"));
+                                                "project requires ARC " + descriptor.engine_version, "engineVersion"));
         if (!options.allow_read_only) return validation_result::failure(result.diagnostics.back());
     }
     std::set<std::string> module_ids;
@@ -580,7 +605,8 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
         if (!is_identifier(module.id) || module.target.empty() || module.source_root.empty() ||
             !module_ids.insert(module.id).second || !targets.insert(module.target).second)
             return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
-                                                         "module IDs and targets must be non-empty and unique", "modules"));
+                                                         "module IDs and targets must be non-empty and unique",
+                                                         "modules"));
     }
     std::set<std::string> plugin_ids;
     for (const auto& plugin : descriptor.plugins)
@@ -592,7 +618,8 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
         {
             if (!is_identifier(dependency.id))
                 return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
-                                                             "module dependency ID is malformed", "modules.dependencies"));
+                                                             "module dependency ID is malformed",
+                                                             "modules.dependencies"));
             if (dependency.kind == dependency_kind::project && !module_ids.contains(dependency.id))
                 return validation_result::failure(make_error(project_error_code::missing_module, descriptor_path,
                                                              "missing project module " + dependency.id));
@@ -626,9 +653,10 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
     if (std::none_of(descriptor.target_platforms.begin(), descriptor.target_platforms.end(),
                      [](const auto& platform) { return platform.enabled && !platform.id.empty(); }))
         return validation_result::failure(make_error(project_error_code::unsupported_platform, descriptor_path,
-                                                     "at least one target platform must be enabled", "targetPlatforms"));
-    const std::set<std::string_view> supported_platforms{
-        "windows-x64-vulkan", "windows-x64-headless", "linux-x64-headless"};
+                                                     "at least one target platform must be enabled",
+                                                     "targetPlatforms"));
+    const std::set<std::string_view> supported_platforms{"windows-x64-vulkan", "windows-x64-headless",
+                                                         "linux-x64-headless"};
     for (const auto& platform : descriptor.target_platforms)
         if (platform.enabled && !supported_platforms.contains(platform.id))
             return validation_result::failure(make_error(project_error_code::unsupported_platform, descriptor_path,
@@ -677,7 +705,8 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
             if (!std::filesystem::is_directory(root))
                 return validation_result::failure(make_error(project_error_code::invalid_descriptor, root,
                                                              "asset root does not exist", "assetRoots"));
-        const auto validate_scene_reference = [&](const project_asset_reference& reference) -> std::optional<project_error>
+        const auto validate_scene_reference =
+            [&](const project_asset_reference& reference) -> std::optional<project_error>
         {
             if (!is_guid(reference.guid) || reference.expected_type != "scene" || reference.path_hint.empty())
                 return make_error(project_error_code::invalid_scene, descriptor_path,
@@ -690,13 +719,11 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
                                   "scene reference is missing or outside the declared content roots");
             const auto metadata_path = std::filesystem::path(scene.string() + ".arcmeta");
             if (!std::filesystem::is_regular_file(metadata_path))
-                return make_error(project_error_code::invalid_scene, metadata_path,
-                                  "scene asset metadata is missing");
+                return make_error(project_error_code::invalid_scene, metadata_path, "scene asset metadata is missing");
             try
             {
                 const auto metadata = read_json(metadata_path);
-                if (metadata.value("format", "") != "arc.asset-meta" ||
-                    metadata.value("guid", "") != reference.guid)
+                if (metadata.value("format", "") != "arc.asset-meta" || metadata.value("guid", "") != reference.guid)
                     return make_error(project_error_code::invalid_scene, metadata_path,
                                       "scene asset GUID does not match its metadata");
             }
@@ -710,12 +737,12 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
             if (const auto error = validate_scene_reference(*descriptor.default_scene))
                 return validation_result::failure(*error);
         for (const auto& scene : descriptor.startup_scenes)
-            if (const auto error = validate_scene_reference(scene))
-                return validation_result::failure(*error);
+            if (const auto error = validate_scene_reference(scene)) return validation_result::failure(*error);
         for (const auto& module : descriptor.modules)
         {
             const auto module_source_root = context.value().root / module.source_root;
-            if (!is_within(context.value().root, module_source_root) || !std::filesystem::is_directory(module_source_root))
+            if (!is_within(context.value().root, module_source_root) ||
+                !std::filesystem::is_directory(module_source_root))
                 return validation_result::failure(make_error(project_error_code::missing_module, module_source_root,
                                                              "module source root does not exist", module.id));
         }
@@ -744,17 +771,18 @@ context_result resolve_context(const std::filesystem::path& descriptor_path, con
                            .build_root = root / descriptor.paths.build,
                            .asset_cache_root = root / descriptor.paths.intermediate / "Cache",
                            .recovery_root = root / descriptor.paths.saved / "Recovery"};
-    for (const auto& asset_root : descriptor.asset_roots) result.asset_roots.push_back(root / asset_root);
-    const std::array paths{result.config_root, result.plugin_root, result.saved_root, result.intermediate_root,
-                           result.build_root, result.asset_cache_root, result.recovery_root};
+    for (const auto& asset_root : descriptor.asset_roots)
+        result.asset_roots.push_back(root / asset_root);
+    const std::array paths{result.config_root, result.plugin_root,      result.saved_root,   result.intermediate_root,
+                           result.build_root,  result.asset_cache_root, result.recovery_root};
     for (const auto& path : paths)
         if (!is_within(root, path))
-            return context_result::failure(make_error(project_error_code::unsafe_path, path,
-                                                      "project path escapes the project root"));
+            return context_result::failure(
+                make_error(project_error_code::unsafe_path, path, "project path escapes the project root"));
     for (const auto& path : result.asset_roots)
         if (!is_within(root, path))
-            return context_result::failure(make_error(project_error_code::unsafe_path, path,
-                                                      "asset root escapes the project root"));
+            return context_result::failure(
+                make_error(project_error_code::unsafe_path, path, "asset root escapes the project root"));
     return context_result::success(std::move(result));
 }
 
@@ -782,12 +810,12 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
             descriptor.asset_roots.push_back(normal_relative_path(json{{"root", root}}, "root"));
         descriptor.paths.content = descriptor.asset_roots.front();
         descriptor.paths.config = "config";
-        descriptor.settings.editor = normal_relative_path(source.value("settings", json::object()), "editor",
-                                                          "config/editor.settings.json");
-        descriptor.settings.renderer = normal_relative_path(source.value("settings", json::object()), "renderer",
-                                                            "config/renderer.settings.json");
-        descriptor.settings.input = normal_relative_path(source.value("settings", json::object()), "input",
-                                                         "config/input.settings.json");
+        descriptor.settings.editor =
+            normal_relative_path(source.value("settings", json::object()), "editor", "config/editor.settings.json");
+        descriptor.settings.renderer =
+            normal_relative_path(source.value("settings", json::object()), "renderer", "config/renderer.settings.json");
+        descriptor.settings.input =
+            normal_relative_path(source.value("settings", json::object()), "input", "config/input.settings.json");
         for (const auto& scene : source.value("startupScenes", json::array()))
         {
             if (!scene.is_string()) continue;
@@ -802,30 +830,40 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
         {
             if (!extension.is_string()) continue;
             const auto extension_path = extension.get<std::string>();
-            descriptor.plugins.push_back({.id = "legacy." + safe_project_token(std::filesystem::path(extension_path).stem().string()),
-                                          .version = "legacy", .origin = "project", .required = false,
-                                          .enabled = true, .path = extension_path});
+            descriptor.plugins.push_back(
+                {.id = "legacy." + safe_project_token(std::filesystem::path(extension_path).stem().string()),
+                 .version = "legacy",
+                 .origin = "project",
+                 .required = false,
+                 .enabled = true,
+                 .path = extension_path});
         }
         const auto token = safe_project_token(descriptor.name);
         const auto runtime_source = std::filesystem::path("Source") / (token + "Runtime");
         const auto editor_source = std::filesystem::path("Source") / (token + "Editor");
         if (std::filesystem::is_directory(descriptor_path.parent_path() / runtime_source))
-            descriptor.modules.push_back(
-                {.id = token + ".runtime", .kind = module_kind::runtime, .target = token + "Runtime",
-                 .source_root = runtime_source, .enabled = true,
-                 .dependencies = {{.kind = dependency_kind::engine, .id = "ARC.Runtime",
-                                   .version = std::string(target_engine_version)}}});
+            descriptor.modules.push_back({.id = token + ".runtime",
+                                          .kind = module_kind::runtime,
+                                          .target = token + "Runtime",
+                                          .source_root = runtime_source,
+                                          .enabled = true,
+                                          .dependencies = {{.kind = dependency_kind::engine,
+                                                            .id = "ARC.Runtime",
+                                                            .version = std::string(target_engine_version)}}});
         if (std::filesystem::is_directory(descriptor_path.parent_path() / editor_source))
         {
             std::vector<module_dependency> editor_dependencies;
             if (!descriptor.modules.empty())
                 editor_dependencies.push_back({.kind = dependency_kind::project, .id = token + ".runtime"});
-            editor_dependencies.push_back({.kind = dependency_kind::engine, .id = "ARC.EditorModuleSDK",
+            editor_dependencies.push_back({.kind = dependency_kind::engine,
+                                           .id = "ARC.EditorModuleSDK",
                                            .version = std::string(target_engine_version)});
-            descriptor.modules.push_back(
-                {.id = token + ".editor", .kind = module_kind::editor, .target = token + "Editor",
-                 .source_root = editor_source, .enabled = true,
-                 .dependencies = std::move(editor_dependencies)});
+            descriptor.modules.push_back({.id = token + ".editor",
+                                          .kind = module_kind::editor,
+                                          .target = token + "Editor",
+                                          .source_root = editor_source,
+                                          .enabled = true,
+                                          .dependencies = std::move(editor_dependencies)});
         }
 #if defined(_WIN32)
         descriptor.target_platforms = {{.id = "windows-x64-vulkan"}};
@@ -841,23 +879,26 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
             descriptor.cook_profiles.clear();
             const auto profiles = cook.value("profiles", json::object());
             for (auto iterator = profiles.begin(); iterator != profiles.end(); ++iterator)
-                descriptor.cook_profiles.push_back({.id = iterator.key(),
-                                                    .platform = iterator.value().value("platform", ""),
-                                                    .architecture = iterator.value().value("architecture", "x86_64"),
-                                                    .renderer = iterator.value().value("renderer", "vulkan"),
-                                                    .api = iterator.value().value("api", "1.2"),
-                                                    .texture_family = iterator.value().value("textureFamily", "bc"),
-                                                    .configuration = iterator.value().value("configuration", "Shipping")});
+                descriptor.cook_profiles.push_back(
+                    {.id = iterator.key(),
+                     .platform = iterator.value().value("platform", ""),
+                     .architecture = iterator.value().value("architecture", "x86_64"),
+                     .renderer = iterator.value().value("renderer", "vulkan"),
+                     .api = iterator.value().value("api", "1.2"),
+                     .texture_family = iterator.value().value("textureFamily", "bc"),
+                     .configuration = iterator.value().value("configuration", "Shipping")});
         }
         const auto backup = descriptor_path.string() + ".v1.bak";
         std::filesystem::copy_file(descriptor_path, backup, std::filesystem::copy_options::overwrite_existing);
         const auto saved = save_descriptor(descriptor_path, descriptor);
-        if (!saved) std::filesystem::copy_file(backup, descriptor_path, std::filesystem::copy_options::overwrite_existing);
+        if (!saved)
+            std::filesystem::copy_file(backup, descriptor_path, std::filesystem::copy_options::overwrite_existing);
         return saved;
     }
     catch (const std::exception& error)
     {
-        return project_status::failure(make_error(project_error_code::invalid_descriptor, descriptor_path, error.what()));
+        return project_status::failure(
+            make_error(project_error_code::invalid_descriptor, descriptor_path, error.what()));
     }
 }
 
@@ -867,8 +908,8 @@ templates_result discover_templates(const std::filesystem::path& templates_root)
     try
     {
         if (!std::filesystem::is_directory(templates_root))
-            return templates_result::failure(make_error(project_error_code::not_found, templates_root,
-                                                        "template root does not exist"));
+            return templates_result::failure(
+                make_error(project_error_code::not_found, templates_root, "template root does not exist"));
         for (const auto& entry : std::filesystem::directory_iterator(templates_root))
         {
             const auto manifest_path = entry.path() / "template.arc-template.json";
@@ -888,7 +929,8 @@ templates_result discover_templates(const std::filesystem::path& templates_root)
     }
     catch (const std::exception& error)
     {
-        return templates_result::failure(make_error(project_error_code::invalid_descriptor, templates_root, error.what()));
+        return templates_result::failure(
+            make_error(project_error_code::invalid_descriptor, templates_root, error.what()));
     }
 }
 
@@ -897,19 +939,19 @@ project_status create_project(const create_project_request& request)
     std::error_code error;
     const auto destination = std::filesystem::absolute(request.destination).lexically_normal();
     const auto template_root = request.templates_root / request.template_id;
-    const bool invalid_name = request.name.empty() || request.name == "." || request.name == ".." ||
-                              request.name.find_first_of("/\\:<>|?*") != std::string::npos ||
-                              std::any_of(request.name.begin(), request.name.end(),
-                                          [](unsigned char character) { return character < 32u; });
+    const bool invalid_name =
+        request.name.empty() || request.name == "." || request.name == ".." ||
+        request.name.find_first_of("/\\:<>|?*") != std::string::npos ||
+        std::any_of(request.name.begin(), request.name.end(), [](unsigned char character) { return character < 32u; });
     if (invalid_name || request.template_id.empty())
         return project_status::failure(make_error(project_error_code::invalid_descriptor, destination,
                                                   "project name is invalid or the template ID is missing"));
     if (!std::filesystem::is_regular_file(template_root / "template.arc-template.json"))
-        return project_status::failure(make_error(project_error_code::template_not_found, template_root,
-                                                  "project template not found"));
+        return project_status::failure(
+            make_error(project_error_code::template_not_found, template_root, "project template not found"));
     if (std::filesystem::exists(destination) && !std::filesystem::is_empty(destination))
-        return project_status::failure(make_error(project_error_code::destination_not_empty, destination,
-                                                  "project destination must be empty"));
+        return project_status::failure(
+            make_error(project_error_code::destination_not_empty, destination, "project destination must be empty"));
     const auto staging = destination.parent_path() / (destination.filename().string() + ".arc-staging-" + new_guid());
     try
     {
@@ -1040,7 +1082,8 @@ installation_result load_installation_manifest(const std::filesystem::path& mani
                                       .version = plugin.value("version", ""),
                                       .platforms = plugin.value("platforms", std::vector<std::string>{})});
         for (const auto& item : source.value("templates", json::array()))
-            result.templates.push_back({.id = item.value("id", ""), .name = item.value("name", ""),
+            result.templates.push_back({.id = item.value("id", ""),
+                                        .name = item.value("name", ""),
                                         .description = item.value("description", ""),
                                         .engine_version = result.engine_version,
                                         .root = result.root / normal_relative_path(item, "path")});
@@ -1058,7 +1101,8 @@ installation_result load_installation_manifest(const std::filesystem::path& mani
     }
     catch (const std::exception& error)
     {
-        return installation_result::failure(make_error(project_error_code::invalid_descriptor, manifest_path, error.what()));
+        return installation_result::failure(
+            make_error(project_error_code::invalid_descriptor, manifest_path, error.what()));
     }
 }
 
@@ -1072,9 +1116,10 @@ project_status register_installation(const std::filesystem::path& registry_path,
     {
         if (std::filesystem::is_regular_file(registry_path)) registry = read_json(registry_path);
         auto& entries = registry["installations"];
-        entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const json& value)
-                                     { return value.value("installationId", "") == installation.value().installation_id; }),
-                      entries.end());
+        entries.erase(
+            std::remove_if(entries.begin(), entries.end(), [&](const json& value)
+                           { return value.value("installationId", "") == installation.value().installation_id; }),
+            entries.end());
         entries.push_back({{"installationId", installation.value().installation_id},
                            {"manifest", std::filesystem::absolute(manifest_path).generic_string()}});
         return write_json_atomic(registry_path, registry);
@@ -1093,7 +1138,8 @@ project_status unregister_installation(const std::filesystem::path& registry_pat
         auto registry = read_json(registry_path);
         auto& entries = registry["installations"];
         entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const json& value)
-                                     { return value.value("installationId", "") == installation_id; }), entries.end());
+                                     { return value.value("installationId", "") == installation_id; }),
+                      entries.end());
         return write_json_atomic(registry_path, registry);
     }
     catch (const std::exception& error)
@@ -1114,9 +1160,12 @@ installations_result discover_installations(const std::filesystem::path& registr
             const auto installation = load_installation_manifest(entry.value("manifest", ""));
             if (installation) result.push_back(installation.value());
         }
-        std::sort(result.begin(), result.end(), [](const auto& left, const auto& right)
-                  { return std::tie(left.engine_version, left.installation_id) <
-                           std::tie(right.engine_version, right.installation_id); });
+        std::sort(result.begin(), result.end(),
+                  [](const auto& left, const auto& right)
+                  {
+                      return std::tie(left.engine_version, left.installation_id) <
+                             std::tie(right.engine_version, right.installation_id);
+                  });
         return installations_result::success(std::move(result));
     }
     catch (const std::exception& error)
@@ -1148,11 +1197,16 @@ installations_result repair_installations(const std::filesystem::path& registry_
         for (const auto& root : search_roots)
         {
             std::error_code iterator_error;
-            for (std::filesystem::recursive_directory_iterator iterator(
-                     root, std::filesystem::directory_options::skip_permission_denied, iterator_error), end;
+            for (std::filesystem::recursive_directory_iterator
+                     iterator(root, std::filesystem::directory_options::skip_permission_denied, iterator_error),
+                 end;
                  iterator != end; iterator.increment(iterator_error))
             {
-                if (iterator_error) { iterator_error.clear(); continue; }
+                if (iterator_error)
+                {
+                    iterator_error.clear();
+                    continue;
+                }
                 if (iterator->is_regular_file() && iterator->path().filename() == "arc-installation.json")
                     candidates.push_back(iterator->path());
             }
@@ -1170,12 +1224,15 @@ installations_result repair_installations(const std::filesystem::path& registry_
         json registry{{"format", "arc-installation-registry"}, {"formatVersion", 1}, {"installations", json::array()}};
         for (const auto& installation : repaired)
             registry["installations"].push_back({{"installationId", installation.installation_id},
-                                                  {"manifest", installation.manifest_path.generic_string()}});
+                                                 {"manifest", installation.manifest_path.generic_string()}});
         const auto written = write_json_atomic(registry_path, registry);
         if (!written) return installations_result::failure(written.error());
-        std::sort(repaired.begin(), repaired.end(), [](const auto& left, const auto& right)
-                  { return std::tie(left.engine_version, left.installation_id) <
-                           std::tie(right.engine_version, right.installation_id); });
+        std::sort(repaired.begin(), repaired.end(),
+                  [](const auto& left, const auto& right)
+                  {
+                      return std::tie(left.engine_version, left.installation_id) <
+                             std::tie(right.engine_version, right.installation_id);
+                  });
         return installations_result::success(std::move(repaired));
     }
     catch (const std::exception& error)
@@ -1190,11 +1247,13 @@ tools_result detect_toolchains()
     const auto add = [&](std::string id, std::string executable)
     {
         const auto found = find_on_path(executable);
-        result.push_back({.id = std::move(id), .executable = found.value_or(std::filesystem::path{}),
-                          .version = found ? probe_tool_version(*found, executable == "cl" ? std::vector<std::string>{}
-                                                                                           : std::vector<std::string>{"--version"})
-                                           : "",
-                          .available = found.has_value()});
+        result.push_back(
+            {.id = std::move(id),
+             .executable = found.value_or(std::filesystem::path{}),
+             .version = found ? probe_tool_version(*found, executable == "cl" ? std::vector<std::string>{}
+                                                                              : std::vector<std::string>{"--version"})
+                              : "",
+             .available = found.has_value()});
     };
     add("cmake", "cmake");
     add("ninja", "ninja");
@@ -1205,8 +1264,10 @@ tools_result detect_toolchains()
     const auto program_files = environment_value("ProgramFiles(x86)");
     if (program_files)
     {
-        const auto vswhere = std::filesystem::path(*program_files) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe";
-        result.push_back({.id = "visual-studio", .executable = vswhere,
+        const auto vswhere =
+            std::filesystem::path(*program_files) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe";
+        result.push_back({.id = "visual-studio",
+                          .executable = vswhere,
                           .version = std::filesystem::is_regular_file(vswhere)
                                          ? probe_tool_version(vswhere, {"-latest", "-property", "installationVersion"})
                                          : "",
@@ -1215,8 +1276,10 @@ tools_result detect_toolchains()
 #endif
     const auto vulkan_sdk = environment_value("VULKAN_SDK");
     const auto vulkan_path = vulkan_sdk ? std::filesystem::path(*vulkan_sdk) : std::filesystem::path{};
-    result.push_back({.id = "vulkan-sdk", .executable = vulkan_path,
-                      .version = vulkan_sdk ? vulkan_path.filename().string() : "", .available = vulkan_sdk.has_value()});
+    result.push_back({.id = "vulkan-sdk",
+                      .executable = vulkan_path,
+                      .version = vulkan_sdk ? vulkan_path.filename().string() : "",
+                      .available = vulkan_sdk.has_value()});
     return tools_result::success(std::move(result));
 }
 

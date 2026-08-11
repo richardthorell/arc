@@ -27,8 +27,7 @@ bool sphere_inside_frustum(const math::vector3f& center, float radius,
                            const std::array<math::vector4f, 6>& planes) noexcept
 {
     for (const auto& plane : planes)
-        if (center[0] * plane[0] + center[1] * plane[1] + center[2] * plane[2] + plane[3] < -radius)
-            return false;
+        if (center[0] * plane[0] + center[1] * plane[1] + center[2] * plane[2] + plane[3] < -radius) return false;
     return true;
 }
 
@@ -39,9 +38,9 @@ bool page_resident(std::span<const std::uint8_t> pages, std::uint32_t page) noex
 
 } // namespace
 
-virtual_geometry_reference_result
-traverse_virtual_geometry_reference(const virtual_mesh_data& geometry, std::span<const std::uint8_t> resident_pages,
-                                    const virtual_geometry_reference_view& view)
+virtual_geometry_reference_result traverse_virtual_geometry_reference(const virtual_mesh_data& geometry,
+                                                                      std::span<const std::uint8_t> resident_pages,
+                                                                      const virtual_geometry_reference_view& view)
 {
     virtual_geometry_reference_result result;
     std::vector<std::uint32_t> stack(geometry.root_nodes.rbegin(), geometry.root_nodes.rend());
@@ -226,7 +225,7 @@ void virtual_geometry_residency_manager::configure(virtual_geometry_residency_co
 }
 
 void virtual_geometry_residency_manager::register_resource(virtual_mesh_handle resource, const virtual_mesh_data& data,
-                                                            std::uint32_t generation)
+                                                           std::uint32_t generation)
 {
     unregister_resource(resource);
     implementation::resource_entry entry{.handle = resource, .generation = generation};
@@ -308,7 +307,8 @@ std::vector<virtual_geometry_page_load> virtual_geometry_residency_manager::take
                               .byte_size = page.descriptor.compressed_size,
                               .priority = page.priority});
         }
-    std::stable_sort(result.begin(), result.end(), [](const auto& lhs, const auto& rhs)
+    std::stable_sort(result.begin(), result.end(),
+                     [](const auto& lhs, const auto& rhs)
                      {
                          if (lhs.priority != rhs.priority) return lhs.priority > rhs.priority;
                          if (lhs.resource.index != rhs.resource.index) return lhs.resource.index < rhs.resource.index;
@@ -320,7 +320,7 @@ std::vector<virtual_geometry_page_load> virtual_geometry_residency_manager::take
 }
 
 void virtual_geometry_residency_manager::mark_loading(virtual_mesh_handle resource, std::uint32_t generation,
-                                                       std::uint32_t page_index)
+                                                      std::uint32_t page_index)
 {
     if (auto* page = implementation_->find(resource, generation, page_index);
         page && page->state == virtual_geometry_page_state::requested)
@@ -328,8 +328,8 @@ void virtual_geometry_residency_manager::mark_loading(virtual_mesh_handle resour
 }
 
 void virtual_geometry_residency_manager::publish(virtual_mesh_handle resource, std::uint32_t generation,
-                                                  std::uint32_t page_index, std::uint32_t gpu_bytes,
-                                                  std::uint32_t compressed_cpu_bytes)
+                                                 std::uint32_t page_index, std::uint32_t gpu_bytes,
+                                                 std::uint32_t compressed_cpu_bytes)
 {
     auto* page = implementation_->find(resource, generation, page_index);
     if (!page) return;
@@ -345,14 +345,14 @@ void virtual_geometry_residency_manager::publish(virtual_mesh_handle resource, s
 }
 
 void virtual_geometry_residency_manager::fail(virtual_mesh_handle resource, std::uint32_t generation,
-                                               std::uint32_t page_index)
+                                              std::uint32_t page_index)
 {
     if (auto* page = implementation_->find(resource, generation, page_index); page && !page->descriptor.root)
         page->state = virtual_geometry_page_state::failed;
 }
 
 void virtual_geometry_residency_manager::touch(virtual_mesh_handle resource, std::uint32_t generation,
-                                                std::uint32_t page_index)
+                                               std::uint32_t page_index)
 {
     if (auto* page = implementation_->find(resource, generation, page_index);
         page && page->state == virtual_geometry_page_state::resident)
@@ -360,7 +360,7 @@ void virtual_geometry_residency_manager::touch(virtual_mesh_handle resource, std
 }
 
 bool virtual_geometry_residency_manager::resident(virtual_mesh_handle resource, std::uint32_t generation,
-                                                   std::uint32_t page_index) const noexcept
+                                                  std::uint32_t page_index) const noexcept
 {
     const auto* page = implementation_->find(resource, generation, page_index);
     return page && page->state == virtual_geometry_page_state::resident;
@@ -373,17 +373,16 @@ void virtual_geometry_residency_manager::note_parent_fallback() noexcept
 
 virtual_geometry_residency_snapshot virtual_geometry_residency_manager::snapshot() const noexcept
 {
-    virtual_geometry_residency_snapshot result{.frame_index = implementation_->frame_index,
-                                                .gpu_budget_bytes = implementation_->config.gpu_budget_bytes,
-                                                .gpu_resident_bytes = implementation_->gpu_bytes,
-                                                .compressed_cpu_budget_bytes =
-                                                    implementation_->config.compressed_cpu_budget_bytes,
-                                                .compressed_cpu_resident_bytes = implementation_->cpu_bytes,
-                                                .resource_count = static_cast<std::uint32_t>(
-                                                    implementation_->resources.size()),
-                                                .evictions = implementation_->evictions,
-                                                .deduplicated_requests = implementation_->deduplicated_requests,
-                                                .parent_fallbacks = implementation_->parent_fallbacks};
+    virtual_geometry_residency_snapshot result{
+        .frame_index = implementation_->frame_index,
+        .gpu_budget_bytes = implementation_->config.gpu_budget_bytes,
+        .gpu_resident_bytes = implementation_->gpu_bytes,
+        .compressed_cpu_budget_bytes = implementation_->config.compressed_cpu_budget_bytes,
+        .compressed_cpu_resident_bytes = implementation_->cpu_bytes,
+        .resource_count = static_cast<std::uint32_t>(implementation_->resources.size()),
+        .evictions = implementation_->evictions,
+        .deduplicated_requests = implementation_->deduplicated_requests,
+        .parent_fallbacks = implementation_->parent_fallbacks};
     for (const auto& [_, resource] : implementation_->resources)
         for (const auto& page : resource.pages)
         {

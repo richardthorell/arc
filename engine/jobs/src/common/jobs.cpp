@@ -605,7 +605,12 @@ std::size_t job_system::default_worker_count() noexcept
 
 job_system_config job_system::single_threaded_config() noexcept
 {
-    return {.worker_count = 0, .run_inline = true, .io_worker_count = 0, .enable_render_thread = false};
+    return {.worker_count = 0,
+            .run_inline = true,
+            .io_worker_count = 0,
+            .enable_render_thread = false,
+            .profile_event_capacity = 8192,
+            .memory = nullptr};
 }
 
 job_system::job_system(job_system_config config) : implementation_(std::make_unique<implementation>(*this, config))
@@ -918,7 +923,8 @@ job_system_snapshot job_system::snapshot(bool consume_events) const
         .stolen = implementation_->stolen.load(std::memory_order_relaxed),
         .cancelled = implementation_->cancelled.load(std::memory_order_relaxed),
         .failed = implementation_->failed.load(std::memory_order_relaxed),
-        .dropped_profile_events = implementation_->dropped_profile_events.load(std::memory_order_relaxed)};
+        .dropped_profile_events = implementation_->dropped_profile_events.load(std::memory_order_relaxed),
+        .recent_events = {}};
     for (const auto& worker : implementation_->workers)
         result.queued_general += worker->size();
     std::lock_guard lock(implementation_->profile_mutex);

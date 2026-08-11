@@ -802,7 +802,7 @@ fixed_block_pool::fixed_block_pool(std::span<const std::size_t> size_classes, st
     for (const auto bytes : size_classes)
     {
         if (bytes < sizeof(implementation::free_node)) continue;
-        implementation_->classes.push_back({.bytes = bytes});
+        implementation_->classes.push_back({.bytes = bytes, .free = nullptr, .slabs = {}});
     }
     std::sort(implementation_->classes.begin(), implementation_->classes.end(),
               [](const auto& lhs, const auto& rhs) { return lhs.bytes < rhs.bytes; });

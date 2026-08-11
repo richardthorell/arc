@@ -136,7 +136,11 @@ jobs::job_future<file_result<file_buffer>> async_file_service::read_all(std::fil
     return jobs_->submit_future({.name = "io.read_all",
                                  .priority = jobs::job_priority::normal,
                                  .affinity = jobs::job_affinity::io_thread,
-                                 .cancellation = cancellation},
+                                 .dependencies = {},
+                                 .dependency_view = {},
+                                 .parent = {},
+                                 .cancellation = cancellation,
+                                 .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
                                 [path = std::move(path), cancellation, chunk = config_.chunk_size]
                                 { return read_range_sync(path, 0, std::nullopt, chunk, cancellation); });
 }
@@ -148,7 +152,11 @@ jobs::job_future<file_result<file_buffer>> async_file_service::read_range(std::f
     return jobs_->submit_future({.name = "io.read_range",
                                  .priority = jobs::job_priority::normal,
                                  .affinity = jobs::job_affinity::io_thread,
-                                 .cancellation = cancellation},
+                                 .dependencies = {},
+                                 .dependency_view = {},
+                                 .parent = {},
+                                 .cancellation = cancellation,
+                                 .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
                                 [path = std::move(path), offset, bytes, cancellation, chunk = config_.chunk_size]
                                 { return read_range_sync(path, offset, bytes, chunk, cancellation); });
 }
@@ -161,7 +169,11 @@ jobs::job_future<file_result<void>> async_file_service::write(std::filesystem::p
     return jobs_->submit_future({.name = "io.write",
                                  .priority = jobs::job_priority::normal,
                                  .affinity = jobs::job_affinity::io_thread,
-                                 .cancellation = cancellation},
+                                 .dependencies = {},
+                                 .dependency_view = {},
+                                 .parent = {},
+                                 .cancellation = cancellation,
+                                 .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
                                 [path = std::move(path), bytes = std::move(owned), cancellation,
                                  chunk = config_.chunk_size] { return write_sync(path, bytes, chunk, cancellation); });
 }
@@ -175,7 +187,11 @@ jobs::job_future<file_result<void>> async_file_service::write_atomic(std::filesy
         {.name = "io.write_atomic",
          .priority = jobs::job_priority::high,
          .affinity = jobs::job_affinity::io_thread,
-         .cancellation = cancellation},
+         .dependencies = {},
+         .dependency_view = {},
+         .parent = {},
+         .cancellation = cancellation,
+         .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
         [path = std::move(path), bytes = std::move(owned), cancellation, chunk = config_.chunk_size]
         {
             const auto temporary = temporary_path_for(path);
@@ -211,7 +227,11 @@ jobs::job_future<file_result<file_info>> async_file_service::stat(std::filesyste
         {.name = "io.stat",
          .priority = jobs::job_priority::normal,
          .affinity = jobs::job_affinity::io_thread,
-         .cancellation = cancellation},
+         .dependencies = {},
+         .dependency_view = {},
+         .parent = {},
+         .cancellation = cancellation,
+         .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
         [path = std::move(path), cancellation]
         {
             if (cancellation.stop_requested())

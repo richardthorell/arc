@@ -453,7 +453,14 @@ struct asset_manager::implementation
         for (const auto& [_, callback] : subscribers)
             if (callback) callbacks.push_back(callback);
         if (!callbacks.empty() && jobs)
-            jobs->dispatch({.name = "assets.event", .priority = jobs::job_priority::low},
+            jobs->dispatch({.name = "assets.event",
+                            .priority = jobs::job_priority::low,
+                            .affinity = jobs::job_affinity::any_worker,
+                            .dependencies = {},
+                            .dependency_view = {},
+                            .parent = {},
+                            .cancellation = {},
+                            .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
                            [callbacks = std::move(callbacks), event]
                            {
                                for (const auto& callback : callbacks)

@@ -216,9 +216,9 @@ std::uint32_t append_cluster(virtual_mesh_data& result, const mesh_data& source,
 }
 
 std::vector<hierarchy_work_node> build_clusters(virtual_mesh_data& result, const mesh_data& source,
-                                                 std::span<const std::uint32_t> indices,
-                                                 const virtual_mesh_build_options& options, float error,
-                                                 std::uint16_t level, bool create_nodes = true)
+                                                std::span<const std::uint32_t> indices,
+                                                const virtual_mesh_build_options& options, float error,
+                                                std::uint16_t level, bool create_nodes = true)
 {
     std::vector<hierarchy_work_node> output;
     if (indices.empty()) return output;
@@ -228,14 +228,14 @@ std::vector<hierarchy_work_node> build_clusters(virtual_mesh_data& result, const
     std::vector<meshopt_Meshlet> meshlets(bound);
     std::vector<std::uint32_t> meshlet_vertices(bound * max_vertices);
     std::vector<std::uint8_t> meshlet_triangles(bound * max_triangles * 3u);
-    const auto count = meshopt_buildMeshlets(meshlets.data(), meshlet_vertices.data(), meshlet_triangles.data(),
-                                             indices.data(), indices.size(), &source.vertices[0].position[0],
-                                             source.vertices.size(), sizeof(mesh_vertex), max_vertices, max_triangles,
-                                             0.5f);
+    const auto count =
+        meshopt_buildMeshlets(meshlets.data(), meshlet_vertices.data(), meshlet_triangles.data(), indices.data(),
+                              indices.size(), &source.vertices[0].position[0], source.vertices.size(),
+                              sizeof(mesh_vertex), max_vertices, max_triangles, 0.5f);
     meshlets.resize(count);
     for (const auto& meshlet : meshlets)
         meshopt_optimizeMeshletLevel(meshlet_vertices.data() + meshlet.vertex_offset, meshlet.vertex_count,
-                                    meshlet_triangles.data() + meshlet.triangle_offset, meshlet.triangle_count, 3);
+                                     meshlet_triangles.data() + meshlet.triangle_offset, meshlet.triangle_count, 3);
     output.reserve(count);
     for (const auto& meshlet : meshlets)
     {
@@ -296,11 +296,10 @@ std::vector<std::uint32_t> simplify(const mesh_data& source, std::span<const std
 {
     std::vector<std::uint32_t> result(indices.size());
     float relative_error{};
-    const auto count = meshopt_simplify(result.data(), indices.data(), indices.size(),
-                                        &source.vertices[0].position[0], source.vertices.size(), sizeof(mesh_vertex),
+    const auto count = meshopt_simplify(result.data(), indices.data(), indices.size(), &source.vertices[0].position[0],
+                                        source.vertices.size(), sizeof(mesh_vertex),
                                         std::max<std::size_t>(3u, target_index_count / 3u * 3u), 1.0f,
-                                        lock_boundaries ? meshopt_SimplifyLockBorder : 0u,
-                                        &relative_error);
+                                        lock_boundaries ? meshopt_SimplifyLockBorder : 0u, &relative_error);
     result.resize(count >= 3 ? count : indices.size());
     if (count < 3) std::copy(indices.begin(), indices.end(), result.begin());
     absolute_error = relative_error * source_extent(source);
@@ -308,7 +307,7 @@ std::vector<std::uint32_t> simplify(const mesh_data& source, std::span<const std
 }
 
 std::vector<std::vector<std::size_t>> make_groups(const std::vector<hierarchy_work_node>& nodes,
-                                                   const virtual_mesh_build_options& options)
+                                                  const virtual_mesh_build_options& options)
 {
     std::vector<std::vector<std::size_t>> groups;
     std::vector<bool> used(nodes.size());
@@ -320,7 +319,8 @@ std::vector<std::vector<std::size_t>> make_groups(const std::vector<hierarchy_wo
         candidates.reserve(nodes.size());
         for (std::size_t candidate = 0; candidate < nodes.size(); ++candidate)
             if (!used[candidate] && candidate != seed) candidates.push_back(candidate);
-        std::stable_sort(candidates.begin(), candidates.end(), [&](std::size_t lhs, std::size_t rhs)
+        std::stable_sort(candidates.begin(), candidates.end(),
+                         [&](std::size_t lhs, std::size_t rhs)
                          {
                              const auto left_shared = shared_vertex_count(nodes[seed], nodes[lhs]);
                              const auto right_shared = shared_vertex_count(nodes[seed], nodes[rhs]);
@@ -355,7 +355,8 @@ void build_hierarchy(virtual_mesh_data& result, const mesh_data& source, std::ve
             float child_error{};
             for (const auto child : group)
             {
-                combined.insert(combined.end(), current[child].source_indices.begin(), current[child].source_indices.end());
+                combined.insert(combined.end(), current[child].source_indices.begin(),
+                                current[child].source_indices.end());
                 child_error = std::max(child_error, current[child].error);
             }
             float simplify_error{};
@@ -399,9 +400,9 @@ void build_hierarchy(virtual_mesh_data& result, const mesh_data& source, std::ve
             for (const auto child : group)
             {
                 const auto& node = result.lod_nodes[current[child].node_index];
-                parent.sphere_radius = std::max(
-                    parent.sphere_radius,
-                    math::length(math::sub(node.sphere_center, parent.sphere_center)) + node.sphere_radius);
+                parent.sphere_radius =
+                    std::max(parent.sphere_radius,
+                             math::length(math::sub(node.sphere_center, parent.sphere_center)) + node.sphere_radius);
             }
             if (math::length_squared(cone_sum) > 1.0e-12f) parent.cone_axis = math::normalize(cone_sum);
             parent.cone_cutoff = -1.0f;
@@ -467,8 +468,10 @@ packed_virtual_vertex pack_vertex(const mesh_vertex& source, const virtual_mesh_
     for (std::size_t component = 0; component < 3; ++component)
     {
         const auto extent = cluster.bounds_max[component] - cluster.bounds_min[component];
-        const auto normalized = extent > 1.0e-8f ? (source.position[component] - cluster.bounds_min[component]) / extent : 0.0f;
-        result.position[component] = static_cast<std::uint16_t>(std::round(std::clamp(normalized, 0.0f, 1.0f) * 65535.0f));
+        const auto normalized =
+            extent > 1.0e-8f ? (source.position[component] - cluster.bounds_min[component]) / extent : 0.0f;
+        result.position[component] =
+            static_cast<std::uint16_t>(std::round(std::clamp(normalized, 0.0f, 1.0f) * 65535.0f));
     }
     const auto normal = encode_octahedral({source.normal[0], source.normal[1], source.normal[2]});
     const auto tangent = encode_octahedral({source.tangent[0], source.tangent[1], source.tangent[2]});
@@ -480,7 +483,8 @@ packed_virtual_vertex pack_vertex(const mesh_vertex& source, const virtual_mesh_
     result.texcoord[0] = float_to_half(source.texcoord[0]);
     result.texcoord[1] = float_to_half(source.texcoord[1]);
     for (std::size_t component = 0; component < 4; ++component)
-        result.color[component] = static_cast<std::uint8_t>(std::round(std::clamp(source.color[component], 0.0f, 1.0f) * 255.0f));
+        result.color[component] =
+            static_cast<std::uint8_t>(std::round(std::clamp(source.color[component], 0.0f, 1.0f) * 255.0f));
     return result;
 }
 
@@ -557,7 +561,8 @@ void assign_pages(virtual_mesh_data& result)
             result.clusters[cluster].page_index = page_index;
         result.pages.push_back(page);
         page = {};
-        page.first_cluster = static_cast<std::uint32_t>(result.pages.empty() ? 0 : result.pages.back().first_cluster + result.pages.back().cluster_count);
+        page.first_cluster = static_cast<std::uint32_t>(
+            result.pages.empty() ? 0 : result.pages.back().first_cluster + result.pages.back().cluster_count);
         page_bytes.clear();
     };
 
@@ -579,8 +584,8 @@ void assign_pages(virtual_mesh_data& result)
         std::count_if(result.pages.begin(), result.pages.end(), [](const auto& candidate) { return candidate.root; }));
     result.stats.compressed_page_bytes = result.page_payload.size();
     for (const auto& cluster : result.clusters)
-        result.stats.uncompressed_page_bytes += static_cast<std::uint64_t>(cluster.vertex_count) * sizeof(packed_virtual_vertex) +
-                                                cluster.index_count;
+        result.stats.uncompressed_page_bytes +=
+            static_cast<std::uint64_t>(cluster.vertex_count) * sizeof(packed_virtual_vertex) + cluster.index_count;
 }
 
 void build_conventional_lods(virtual_mesh_data& result, const mesh_data& source,
@@ -601,15 +606,16 @@ void build_conventional_lods(virtual_mesh_data& result, const mesh_data& source,
             lod.indices = simplify(source, valid_indices, target, lod.geometric_error, false);
         }
         std::vector<std::uint32_t> cache_optimized(lod.indices.size());
-        meshopt_optimizeVertexCache(cache_optimized.data(), lod.indices.data(), lod.indices.size(), lod.vertices.size());
+        meshopt_optimizeVertexCache(cache_optimized.data(), lod.indices.data(), lod.indices.size(),
+                                    lod.vertices.size());
         std::vector<std::uint32_t> overdraw_optimized(lod.indices.size());
         meshopt_optimizeOverdraw(overdraw_optimized.data(), cache_optimized.data(), cache_optimized.size(),
                                  &lod.vertices[0].position[0], lod.vertices.size(), sizeof(mesh_vertex), 1.05f);
         lod.indices = std::move(overdraw_optimized);
         std::vector<mesh_vertex> fetch_optimized(lod.vertices.size());
-        const auto used_vertex_count = meshopt_optimizeVertexFetch(fetch_optimized.data(), lod.indices.data(),
-                                                                   lod.indices.size(), lod.vertices.data(),
-                                                                   lod.vertices.size(), sizeof(mesh_vertex));
+        const auto used_vertex_count =
+            meshopt_optimizeVertexFetch(fetch_optimized.data(), lod.indices.data(), lod.indices.size(),
+                                        lod.vertices.data(), lod.vertices.size(), sizeof(mesh_vertex));
         fetch_optimized.resize(used_vertex_count);
         lod.vertices = std::move(fetch_optimized);
         result.conventional_lods.push_back(std::move(lod));

@@ -64,12 +64,25 @@ template <> struct component_traits<world_region_component>
     static constexpr bool reflected = true;
     static constexpr std::string_view canonical_name = "arc.ecs.world_region";
     static constexpr component_type_id id{0xa7c0000000000000ull, 0x0000000000000004ull};
-    static constexpr std::array<component_field_descriptor, 1> fields{
-        {{1, "region", "Region", reflected_field_kind::structure,
-          reflected_field_flags::serialized | reflected_field_flags::editable}}};
+    static constexpr std::array<component_field_descriptor, 1> fields{{{
+        1,
+        "region",
+        "Region",
+        reflected_field_kind::structure,
+        reflected_field_flags::serialized | reflected_field_flags::editable,
+        component_field_descriptor::invalid_offset,
+        0,
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+    }}};
     static constexpr component_descriptor descriptor{
         id,     canonical_name, "World Region", 1, sizeof(world_region_component), alignof(world_region_component),
-        fields, true,           false};
+        fields, true,           false,          {}};
 };
 
 struct [[nodiscard]] region_load_result

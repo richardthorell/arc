@@ -76,8 +76,14 @@ public:
     [[nodiscard]] module_reload_result reload(const std::filesystem::path& path, std::string_view engine_version,
                                               std::string_view project_guid, std::string_view module_id);
     void unload() noexcept;
-    [[nodiscard]] bool loaded() const noexcept { return handle_ != nullptr; }
-    [[nodiscard]] std::uint64_t generation() const noexcept { return generation_; }
+    [[nodiscard]] bool loaded() const noexcept
+    {
+        return handle_ != nullptr;
+    }
+    [[nodiscard]] std::uint64_t generation() const noexcept
+    {
+        return generation_;
+    }
     [[nodiscard]] const std::vector<project_component_schema>& component_schemas() const noexcept
     {
         return components_;
@@ -89,10 +95,8 @@ public:
 
 private:
     [[nodiscard]] module_reload_result load_generation(const std::filesystem::path& path,
-                                                       std::string_view engine_version,
-                                                       std::string_view project_guid,
-                                                       std::string_view module_id,
-                                                       bool is_reload);
+                                                       std::string_view engine_version, std::string_view project_guid,
+                                                       std::string_view module_id, bool is_reload);
 
     void* handle_{};
     bool (*start_)(const project::game_module_host_v1*){};

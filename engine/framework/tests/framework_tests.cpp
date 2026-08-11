@@ -490,9 +490,9 @@ TEST_CASE("runtime executes fixed phases in order and presentation once per fram
     const auto record = [&world, &phases](arc::ecs::system_phase phase, const char* name)
     {
         REQUIRE(
-            world.systems().add({.name = name,
-                                 .phase = phase,
-                                 .execute = [&phases, phase](arc::ecs::system_context&) { phases.push_back(phase); }}));
+            world.systems().add({.name = name, .phase = phase, .execute = [&phases, phase](arc::ecs::system_context&) {
+                                     phases.push_back(phase);
+                                 }}));
     };
     record(arc::ecs::system_phase::input, "Input");
     record(arc::ecs::system_phase::network_receive, "Network");

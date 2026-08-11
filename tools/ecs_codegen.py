@@ -156,7 +156,10 @@ def generate_cpp(schema: dict[str, Any]) -> str:
                 f"sizeof((({qualified}*)nullptr)->{field['name']}), "
                 f"\"{field['description']}\", \"{field['unit']}\", "
                 f"{optional_number(constraints.get('minimum'))}, "
-                f"{optional_number(constraints.get('maximum'))}"
+                f"{optional_number(constraints.get('maximum'))}, "
+                f"\"{field.get('category', '')}\", "
+                f"\"{field.get('assetType', '')}\", "
+                f"\"{field.get('entityComponent', '')}\""
                 " },"
             )
         lines.extend([

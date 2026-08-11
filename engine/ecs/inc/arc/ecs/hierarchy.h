@@ -26,17 +26,25 @@ template <> struct component_traits<persistent_id_component>
     static constexpr bool reflected = true;
     static constexpr std::string_view canonical_name = "arc.ecs.persistent_id";
     static constexpr component_type_id id{0xa7c0000000000000ull, 0x0000000000000001ull};
-    static constexpr std::array<component_field_descriptor, 1> fields{
-        {{1, "value", "GUID", reflected_field_kind::structure, reflected_field_flags::serialized}}};
-    static constexpr component_descriptor descriptor{id,
-                                                     canonical_name,
-                                                     "Persistent ID",
-                                                     1,
-                                                     sizeof(persistent_id_component),
-                                                     alignof(persistent_id_component),
-                                                     fields,
-                                                     false,
-                                                     false};
+    static constexpr std::array<component_field_descriptor, 1> fields{{{
+        1,
+        "value",
+        "GUID",
+        reflected_field_kind::structure,
+        reflected_field_flags::serialized,
+        component_field_descriptor::invalid_offset,
+        0,
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+    }}};
+    static constexpr component_descriptor descriptor{
+        id,     canonical_name, "Persistent ID", 1, sizeof(persistent_id_component), alignof(persistent_id_component),
+        fields, false,          false,           {}};
 };
 
 template <> struct component_traits<hierarchy_component>
@@ -44,17 +52,81 @@ template <> struct component_traits<hierarchy_component>
     static constexpr bool reflected = true;
     static constexpr std::string_view canonical_name = "arc.ecs.hierarchy";
     static constexpr component_type_id id{0xa7c0000000000000ull, 0x0000000000000002ull};
-    static constexpr std::array<component_field_descriptor, 5> fields{
-        {{1, "parent", "Parent", reflected_field_kind::entity_reference,
-          reflected_field_flags::serialized | reflected_field_flags::prefab_override},
-         {2, "first_child", "First Child", reflected_field_kind::entity_reference, reflected_field_flags::transient},
-         {3, "previous_sibling", "Previous Sibling", reflected_field_kind::entity_reference,
-          reflected_field_flags::transient},
-         {4, "next_sibling", "Next Sibling", reflected_field_kind::entity_reference, reflected_field_flags::transient},
-         {5, "child_count", "Child Count", reflected_field_kind::unsigned_integer, reflected_field_flags::transient}}};
+    static constexpr std::array<component_field_descriptor, 5> fields{{
+        {1,
+         "parent",
+         "Parent",
+         reflected_field_kind::entity_reference,
+         reflected_field_flags::serialized | reflected_field_flags::prefab_override,
+         component_field_descriptor::invalid_offset,
+         0,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {},
+         {}},
+        {2,
+         "first_child",
+         "First Child",
+         reflected_field_kind::entity_reference,
+         reflected_field_flags::transient,
+         component_field_descriptor::invalid_offset,
+         0,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {},
+         {}},
+        {3,
+         "previous_sibling",
+         "Previous Sibling",
+         reflected_field_kind::entity_reference,
+         reflected_field_flags::transient,
+         component_field_descriptor::invalid_offset,
+         0,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {},
+         {}},
+        {4,
+         "next_sibling",
+         "Next Sibling",
+         reflected_field_kind::entity_reference,
+         reflected_field_flags::transient,
+         component_field_descriptor::invalid_offset,
+         0,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {},
+         {}},
+        {5,
+         "child_count",
+         "Child Count",
+         reflected_field_kind::unsigned_integer,
+         reflected_field_flags::transient,
+         component_field_descriptor::invalid_offset,
+         0,
+         {},
+         {},
+         {},
+         {},
+         {},
+         {},
+         {}},
+    }};
     static constexpr component_descriptor descriptor{
         id,     canonical_name, "Hierarchy", 1, sizeof(hierarchy_component), alignof(hierarchy_component),
-        fields, true,           false};
+        fields, true,           false,       {}};
 };
 
 class child_range

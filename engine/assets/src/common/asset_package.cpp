@@ -222,9 +222,13 @@ asset_package_mount::read_async(asset_guid asset, artifact_schema_id schema, io:
     const auto expected_hash = found->hash;
     auto range = files.read_range(path, found->offset, static_cast<std::size_t>(found->stored_size), cancellation);
     jobs::job_descriptor descriptor{.name = "assets.package.verify",
+                                    .priority = jobs::job_priority::normal,
                                     .affinity = jobs::job_affinity::io_thread,
                                     .dependencies = {range.handle()},
-                                    .cancellation = cancellation};
+                                    .dependency_view = {},
+                                    .parent = {},
+                                    .cancellation = cancellation,
+                                    .dependency_policy = jobs::job_dependency_policy::cancel_on_failure};
     return files.scheduler().submit_future(
         std::move(descriptor),
         [range = std::move(range), path, expected_hash]() mutable

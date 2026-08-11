@@ -25,7 +25,10 @@ public:
         std::error_code error;
         std::filesystem::remove_all(path_, error);
     }
-    const std::filesystem::path& path() const { return path_; }
+    const std::filesystem::path& path() const
+    {
+        return path_;
+    }
 
 private:
     std::filesystem::path path_;
@@ -55,13 +58,12 @@ TEST_CASE("version two project descriptors round trip and resolve project local 
     descriptor.guid = "12345678-1234-4234-8234-123456789abc";
     descriptor.name = "Game";
     descriptor.engine_version = "0.1.0";
-    descriptor.modules.push_back({.id = "Game.runtime",
-                                  .kind = arc::project::module_kind::runtime,
-                                  .target = "GameRuntime",
-                                  .source_root = "Source/GameRuntime",
-                                  .dependencies = {{.kind = arc::project::dependency_kind::engine,
-                                                    .id = "ARC.Runtime",
-                                                    .version = "0.1.0"}}});
+    descriptor.modules.push_back(
+        {.id = "Game.runtime",
+         .kind = arc::project::module_kind::runtime,
+         .target = "GameRuntime",
+         .source_root = "Source/GameRuntime",
+         .dependencies = {{.kind = arc::project::dependency_kind::engine, .id = "ARC.Runtime", .version = "0.1.0"}}});
     descriptor.target_platforms.push_back({.id = "windows-x64-vulkan"});
 
     REQUIRE(arc::project::save_descriptor(path, descriptor));
@@ -83,12 +85,12 @@ TEST_CASE("project validation rejects missing typed module dependencies")
     descriptor.guid = "12345678-1234-4234-8234-123456789abc";
     descriptor.name = "Game";
     descriptor.engine_version = "0.1.0";
-    descriptor.modules.push_back({.id = "Game.editor",
-                                  .kind = arc::project::module_kind::editor,
-                                  .target = "GameEditor",
-                                  .source_root = "Source/GameEditor",
-                                  .dependencies = {{.kind = arc::project::dependency_kind::project,
-                                                    .id = "Game.runtime"}}});
+    descriptor.modules.push_back(
+        {.id = "Game.editor",
+         .kind = arc::project::module_kind::editor,
+         .target = "GameEditor",
+         .source_root = "Source/GameEditor",
+         .dependencies = {{.kind = arc::project::dependency_kind::project, .id = "Game.runtime"}}});
     const auto result = arc::project::validate_descriptor(temporary.path() / "Game.arcproject", descriptor);
     REQUIRE_FALSE(result);
     CHECK(result.error().code == arc::project::project_error_code::missing_module);
@@ -135,9 +137,9 @@ TEST_CASE("all installed project templates generate complete repositories")
             CHECK(std::filesystem::is_directory(destination / directory));
         const auto descriptor = arc::project::load_descriptor(destination / "GeneratedGame.arcproject");
         REQUIRE(descriptor);
-        CHECK(arc::project::validate_descriptor(destination / "GeneratedGame.arcproject", descriptor.value(),
-                                                 {.engine_version = "0.1.0", .require_exact_engine = true,
-                                                  .require_paths = true}));
+        CHECK(arc::project::validate_descriptor(
+            destination / "GeneratedGame.arcproject", descriptor.value(),
+            {.engine_version = "0.1.0", .require_exact_engine = true, .require_paths = true}));
         if (std::any_of(descriptor.value().modules.begin(), descriptor.value().modules.end(),
                         [](const auto& module) { return module.kind == arc::project::module_kind::editor; }))
         {
@@ -162,8 +164,7 @@ TEST_CASE("version one upgrades preserve custom content roots and startup scenes
     std::filesystem::create_directories(temporary.path() / "assets" / "scenes");
     const auto scene = temporary.path() / "assets" / "scenes" / "Start.arcscene";
     std::ofstream(scene) << "{}";
-    std::ofstream(scene.string() + ".arcmeta")
-        << R"({"guid":"12345678-1234-4234-8234-123456789abc"})";
+    std::ofstream(scene.string() + ".arcmeta") << R"({"guid":"12345678-1234-4234-8234-123456789abc"})";
     const auto descriptor_path = temporary.path() / "Legacy.arcproject";
     std::ofstream(descriptor_path)
         << R"({"format":"arc-project","formatVersion":1,"guid":"12345678-1234-4234-8234-123456789abd","name":"Legacy","engineVersion":"0.0.1","assetRoots":["assets"],"startupScenes":["assets/scenes/Start.arcscene"],"modules":[],"extensions":[],"settings":{}})";
@@ -190,8 +191,8 @@ TEST_CASE("project validation rejects a default scene whose asset identity does 
     REQUIRE(descriptor);
     REQUIRE(descriptor.value().default_scene);
     descriptor.value().default_scene->guid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    const auto validation = arc::project::validate_descriptor(
-        descriptor_path, descriptor.value(), {.require_paths = true});
+    const auto validation =
+        arc::project::validate_descriptor(descriptor_path, descriptor.value(), {.require_paths = true});
     REQUIRE_FALSE(validation);
     CHECK(validation.error().code == arc::project::project_error_code::invalid_scene);
 }

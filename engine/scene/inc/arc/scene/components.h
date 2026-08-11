@@ -161,7 +161,8 @@ struct mesh_renderer_component
 /**
  * @brief Legacy persisted virtual renderer accepted only for document migration.
  *
- * New runtime and authored data uses @ref mesh_renderer_component.
+ * New runtime and authored data
+ * uses @ref mesh_renderer_component.
  */
 struct virtual_mesh_renderer_component
 {

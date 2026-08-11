@@ -1246,8 +1246,7 @@ TEST_CASE("renderer create mesh enqueues typed upload and tracks handle lifetime
     REQUIRE(upload.mesh->vertices.size() == 3);
     REQUIRE(upload.mesh->indices.size() == 3);
     REQUIRE(packet.events[1].type() == arc::render::render_event_type::lighting_geometry_upload);
-    const auto& lighting_upload =
-        std::get<arc::render::lighting_geometry_upload_event>(packet.events[1].payload);
+    const auto& lighting_upload = std::get<arc::render::lighting_geometry_upload_event>(packet.events[1].payload);
     REQUIRE(lighting_upload.geometry->cards.size() == 6);
     REQUIRE(lighting_upload.geometry->distance_field.mode ==
             arc::render::distance_field_mode::two_sided_unsigned_distance);
@@ -2096,7 +2095,8 @@ TEST_CASE("virtual mesh builder creates deterministic topology-aware clusters an
     const auto second = arc::render::build_virtual_mesh(source);
 
     REQUIRE(first.clusters.size() > 2);
-    REQUIRE(std::all_of(first.clusters.begin(), first.clusters.end(), [](const auto& cluster)
+    REQUIRE(std::all_of(first.clusters.begin(), first.clusters.end(),
+                        [](const auto& cluster)
                         {
                             return cluster.vertex_count <= arc::render::virtual_geometry_max_vertices_per_cluster &&
                                    cluster.triangle_count <= arc::render::virtual_geometry_max_triangles_per_cluster;
@@ -2195,15 +2195,14 @@ TEST_CASE("virtual geometry residency keeps roots and deduplicates prioritized p
 
     REQUIRE(residency.resident(handle, 7, 0));
     REQUIRE_FALSE(residency.resident(handle, 7, 1));
-    const std::array requests{arc::render::virtual_geometry_page_request{.resource = handle,
-                                                                         .resource_generation = 7,
-                                                                         .page_index = 1,
-                                                                         .projected_error = 4.0f,
-                                                                         .visible_child = true},
-                              arc::render::virtual_geometry_page_request{.resource = handle,
-                                                                         .resource_generation = 7,
-                                                                         .page_index = 1,
-                                                                         .projected_error = 2.0f}};
+    const std::array requests{
+        arc::render::virtual_geometry_page_request{.resource = handle,
+                                                   .resource_generation = 7,
+                                                   .page_index = 1,
+                                                   .projected_error = 4.0f,
+                                                   .visible_child = true},
+        arc::render::virtual_geometry_page_request{
+            .resource = handle, .resource_generation = 7, .page_index = 1, .projected_error = 2.0f}};
     residency.request(requests);
     const auto loads = residency.take_load_requests();
     REQUIRE(loads.size() == 1);
@@ -2377,8 +2376,8 @@ TEST_CASE("dynamic indirect lighting graph selects the resolved screen software 
     const auto graph = make_scene_draw_graph("gi-test", config, false, environment).compile();
     const auto contains = [&](builtin_render_pass pass)
     {
-        return std::ranges::any_of(graph.passes, [pass](const compiled_render_pass& candidate)
-                                   { return candidate.builtin == pass; });
+        return std::ranges::any_of(graph.passes,
+                                   [pass](const compiled_render_pass& candidate) { return candidate.builtin == pass; });
     };
     REQUIRE(contains(builtin_render_pass::screen_space_gi));
     REQUIRE(contains(builtin_render_pass::software_gi_trace));

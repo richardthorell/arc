@@ -374,8 +374,7 @@ compiled_render_graph render_graph::compile() const
 
     std::vector<std::uint32_t> pass_submission(result.passes.size());
     std::uint64_t queue_signals[3]{};
-    const auto queue_slot = [](render_queue_type queue)
-    {
+    const auto queue_slot = [](render_queue_type queue) {
         return queue == render_queue_type::graphics ? 0u : queue == render_queue_type::compute ? 1u : 2u;
     };
     for (std::uint32_t pass_index = 0; pass_index < result.passes.size(); ++pass_index)

@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace arc::persistence
@@ -63,6 +64,8 @@ enum class archive_value_kind : std::uint8_t
     object
 };
 
+struct archive_object_member;
+
 struct archive_value
 {
     archive_value_kind kind{archive_value_kind::null};
@@ -73,10 +76,26 @@ struct archive_value
     std::string string;
     std::vector<std::byte> bytes;
     std::vector<archive_value> array;
-    std::vector<std::pair<std::string, archive_value>> object;
+    std::vector<archive_object_member> object;
 
-    friend bool operator==(const archive_value&, const archive_value&) = default;
+    bool operator==(const archive_value&) const;
 };
+
+struct archive_object_member
+{
+    std::string name;
+    archive_value value;
+
+    archive_object_member() = default;
+    archive_object_member(std::string member_name, archive_value member_value)
+        : name(std::move(member_name)), value(std::move(member_value))
+    {
+    }
+
+    friend bool operator==(const archive_object_member&, const archive_object_member&) = default;
+};
+
+inline bool archive_value::operator==(const archive_value&) const = default;
 
 struct archive_field_record
 {

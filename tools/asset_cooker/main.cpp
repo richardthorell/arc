@@ -373,9 +373,11 @@ public:
             append_string(virtual_bytes, mesh.name);
             append_value(virtual_bytes, static_cast<std::uint64_t>(mesh.material_index));
             append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.clusters.size()));
-            for (const auto& cluster : geometry.clusters) append_virtual_cluster(virtual_bytes, cluster);
+            for (const auto& cluster : geometry.clusters)
+                append_virtual_cluster(virtual_bytes, cluster);
             append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.lod_nodes.size()));
-            for (const auto& node : geometry.lod_nodes) append_virtual_node(virtual_bytes, node);
+            for (const auto& node : geometry.lod_nodes)
+                append_virtual_node(virtual_bytes, node);
             append_bytes(virtual_bytes, std::as_bytes(std::span(geometry.hierarchy_children)));
             append_bytes(virtual_bytes, std::as_bytes(std::span(geometry.root_nodes)));
             append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.pages.size()));
@@ -414,7 +416,8 @@ public:
             append_string(distance_field_bytes, mesh.name);
             append_vector3(distance_field_bytes, field.bounds.min.as_vector());
             append_vector3(distance_field_bytes, field.bounds.max.as_vector());
-            for (const auto dimension : field.dimensions) append_value(distance_field_bytes, dimension);
+            for (const auto dimension : field.dimensions)
+                append_value(distance_field_bytes, dimension);
             append_vector3(distance_field_bytes, field.voxel_size);
             append_value(distance_field_bytes, field.distance_scale);
             append_value(distance_field_bytes, field.mode);
@@ -422,7 +425,8 @@ public:
             append_value(distance_field_bytes, static_cast<std::uint32_t>(field.bricks.size()));
             for (const auto& brick : field.bricks)
             {
-                for (const auto coordinate : brick.coordinate) append_value(distance_field_bytes, coordinate);
+                for (const auto coordinate : brick.coordinate)
+                    append_value(distance_field_bytes, coordinate);
                 append_value(distance_field_bytes, brick.page_index);
                 append_value(distance_field_bytes, brick.page_offset);
                 append_value(distance_field_bytes, brick.byte_size);
@@ -617,20 +621,20 @@ cook_target target_for(const project::cook_profile_descriptor& profile)
 {
     cook_target result;
     result.name = profile.id;
-    result.platform = profile.platform == "linux" ? cook_platform::linux_os
+    result.platform = profile.platform == "linux"   ? cook_platform::linux_os
                       : profile.platform == "macos" ? cook_platform::macos
-                                                     : cook_platform::windows;
+                                                    : cook_platform::windows;
     result.architecture = profile.architecture == "arm64" ? cook_architecture::arm64 : cook_architecture::x86_64;
-    result.renderer = profile.renderer == "none" ? cook_renderer::none
+    result.renderer = profile.renderer == "none"         ? cook_renderer::none
                       : profile.renderer == "direct3d12" ? cook_renderer::direct3d12
-                      : profile.renderer == "metal" ? cook_renderer::metal
-                                                     : cook_renderer::vulkan;
-    result.textures = profile.texture_family == "astc" ? cook_texture_family::astc
-                      : profile.texture_family == "etc2" ? cook_texture_family::etc2
+                      : profile.renderer == "metal"      ? cook_renderer::metal
+                                                         : cook_renderer::vulkan;
+    result.textures = profile.texture_family == "astc"       ? cook_texture_family::astc
+                      : profile.texture_family == "etc2"     ? cook_texture_family::etc2
                       : profile.texture_family == "portable" ? cook_texture_family::portable
                                                              : cook_texture_family::bc;
-    result.configuration = profile.configuration == "Shipping" ? cook_configuration::shipping
-                                                                  : cook_configuration::development;
+    result.configuration =
+        profile.configuration == "Shipping" ? cook_configuration::shipping : cook_configuration::development;
     const auto separator = profile.api.find('.');
     if (separator != std::string::npos)
     {
@@ -685,9 +689,9 @@ std::vector<asset_guid> resolve_roots(asset_manager& assets, const command_line&
     std::vector<std::string> authored = command.roots;
     if (authored.empty())
     {
-        if (descriptor.default_scene) authored.push_back(descriptor.default_scene->guid.empty()
-                                                             ? descriptor.default_scene->path_hint
-                                                             : descriptor.default_scene->guid);
+        if (descriptor.default_scene)
+            authored.push_back(descriptor.default_scene->guid.empty() ? descriptor.default_scene->path_hint
+                                                                      : descriptor.default_scene->guid);
         for (const auto& scene : descriptor.startup_scenes)
             authored.push_back(scene.guid.empty() ? scene.path_hint : scene.guid);
     }
@@ -740,9 +744,9 @@ int main(int argc, char** argv)
         return 1;
     }
     command.project = project_context.value().root;
-    const auto selected_profile = std::find_if(descriptor.value().cook_profiles.begin(),
-                                               descriptor.value().cook_profiles.end(),
-                                               [&](const auto& profile) { return profile.id == command.profile; });
+    const auto selected_profile =
+        std::find_if(descriptor.value().cook_profiles.begin(), descriptor.value().cook_profiles.end(),
+                     [&](const auto& profile) { return profile.id == command.profile; });
     if ((command.command == "cook" || (command.command == "package" && command.manifest.empty())) &&
         selected_profile == descriptor.value().cook_profiles.end())
     {
@@ -875,14 +879,14 @@ int main(int argc, char** argv)
     jobs::job_system jobs({.memory = &memory});
     io::async_file_service files(jobs);
     const auto& asset_roots = project_context.value().asset_roots;
-    asset_manager assets({.project_root = command.project,
-                          .asset_root = asset_roots.front(),
-                          .additional_source_roots = std::vector<std::filesystem::path>(asset_roots.begin() + 1,
-                                                                                       asset_roots.end()),
-                          .cache_root = cache_root,
-                          .target_profile = command.profile,
-                          .enable_source_monitor = false},
-                         jobs, files, memory);
+    asset_manager assets(
+        {.project_root = command.project,
+         .asset_root = asset_roots.front(),
+         .additional_source_roots = std::vector<std::filesystem::path>(asset_roots.begin() + 1, asset_roots.end()),
+         .cache_root = cache_root,
+         .target_profile = command.profile,
+         .enable_source_monitor = false},
+        jobs, files, memory);
     framework::runtime_service_registry services;
     framework::runtime_service_context context(services);
     assets.on_start(context);

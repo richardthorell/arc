@@ -23,7 +23,7 @@ template <class T, std::size_t N>
         arc::simd::load_unaligned<T, N>(input)
     } -> std::same_as<arc::simd::simd<T, N>>;
     arc::simd::store_unaligned<T, N>(output, value);
-}>{};
+} > {};
 
 template <class T, std::size_t N> constexpr bool vector_simd_io_available = vector_simd_io_available_impl<T, N>::value;
 
@@ -91,7 +91,7 @@ template <class T, std::size_t N>
     {
         arc::simd::neg(value)
     } -> std::same_as<arc::simd::simd<T, N>>;
-}>{};
+} > {};
 
 template <class T, std::size_t N>
 constexpr bool vector_simd_neg_available = vector_simd_neg_available_impl<T, N>::value;
@@ -109,7 +109,7 @@ template <class T, std::size_t N>
     {
         arc::simd::fma(a, b, c)
     } -> std::same_as<arc::simd::simd<T, N>>;
-}>{};
+} > {};
 
 template <class T, std::size_t N>
 constexpr bool vector_simd_fma_available = vector_simd_fma_available_impl<T, N>::value;
