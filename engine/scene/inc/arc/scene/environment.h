@@ -43,6 +43,7 @@ struct world_environment_settings
     cloud_layers_component clouds;
     height_fog_component fog;
     environment_lighting_component lighting;
+    indirect_lighting_component indirect_lighting;
 };
 
 bool is_valid_gregorian_date(std::int32_t year, std::int32_t month, std::int32_t day) noexcept;

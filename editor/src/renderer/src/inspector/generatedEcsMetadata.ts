@@ -371,7 +371,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.mesh_renderer_component",
     "displayName": "Mesh Renderer",
     "description": "Reflected scene data for the Mesh Renderer component.",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "fields": [
       {
         "id": "0000000000000001",
@@ -502,6 +502,68 @@ export const generatedEcsComponents = [
           "editable",
           "prefab_override"
         ]
+      },
+      {
+        "id": "000000000000000a",
+        "name": "affects_indirect_lighting",
+        "displayName": "Affect Indirect Lighting",
+        "description": "Controls whether the mesh contributes cards and distance fields to dynamic indirect lighting.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "000000000000000b",
+        "name": "surface_card_density_bias",
+        "displayName": "Surface Card Density Bias",
+        "description": "Adjusts the density of surface-cache cards for this renderer.",
+        "unit": "lod-levels",
+        "constraints": {
+          "minimum": -4,
+          "maximum": 4
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "000000000000000c",
+        "name": "distance_field_resolution_bias",
+        "displayName": "Distance Field Resolution Bias",
+        "description": "Adjusts mesh distance-field resolution for this renderer.",
+        "unit": "lod-levels",
+        "constraints": {
+          "minimum": -4,
+          "maximum": 4
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "000000000000000d",
+        "name": "visible_in_hardware_tracing",
+        "displayName": "Visible In Hardware Tracing",
+        "description": "Allows this renderer's proxy geometry to enter hardware ray-query acceleration structures.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
       }
     ]
   },
@@ -622,6 +684,146 @@ export const generatedEcsComponents = [
     "description": "Reflected scene data for the Irradiance Probe component.",
     "schemaVersion": 1,
     "fields": []
+  },
+  {
+    "id": "a7c00000000000010000000000000028",
+    "canonicalName": "arc::scene.baked_lighting_component",
+    "displayName": "Baked Lighting",
+    "description": "Authored lightmap binding and decode transform for one renderer.",
+    "schemaVersion": 1,
+    "fields": []
+  },
+  {
+    "id": "a7c00000000000010000000000000029",
+    "canonicalName": "arc::scene.indirect_lighting_component",
+    "displayName": "Global Illumination",
+    "description": "Scene-wide scalable indirect-lighting and reflection policy.",
+    "schemaVersion": 1,
+    "fields": [
+      {
+        "id": "0000000000000001",
+        "name": "method",
+        "displayName": "Method",
+        "description": "Selects automatic, baked/probe, screen-space, software, or hybrid hardware tracing.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "enum",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000002",
+        "name": "enabled",
+        "displayName": "Enabled",
+        "description": "Enables indirect diffuse lighting and reflections.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000003",
+        "name": "diffuse_intensity",
+        "displayName": "Diffuse Intensity",
+        "description": "Scales resolved indirect diffuse radiance.",
+        "unit": "multiplier",
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000004",
+        "name": "reflection_intensity",
+        "displayName": "Reflection Intensity",
+        "description": "Scales resolved indirect specular radiance.",
+        "unit": "multiplier",
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000005",
+        "name": "emissive_contribution",
+        "displayName": "Emissive Contribution",
+        "description": "Scales emissive radiance injected into the surface and radiance caches.",
+        "unit": "multiplier",
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000006",
+        "name": "maximum_trace_distance",
+        "displayName": "Maximum Trace Distance",
+        "description": "Maximum world-space distance for software and hardware indirect rays.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0.01
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000007",
+        "name": "surface_cache_detail",
+        "displayName": "Surface Cache Detail",
+        "description": "Authored multiplier for surface-cache card texel density.",
+        "unit": "multiplier",
+        "constraints": {
+          "minimum": 0.125,
+          "maximum": 8
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000008",
+        "name": "allow_hardware_ray_tracing",
+        "displayName": "Allow Hardware Ray Tracing",
+        "description": "Allows Ultra to use hardware ray queries for unresolved misses.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      }
+    ]
   },
   {
     "id": "a7c00000000000010000000000000013",

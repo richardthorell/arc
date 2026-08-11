@@ -45,6 +45,8 @@ bool register_persistence_components(persistence::component_persistence_registry
     result &= register_component<area_light_component>(registry, {"AreaLight"});
     result &= register_component<reflection_probe_component>(registry, {"ReflectionProbe"});
     result &= register_component<irradiance_probe_component>(registry, {"IrradianceProbe"});
+    result &= register_component<baked_lighting_component>(registry, {"BakedLighting"});
+    result &= register_component<indirect_lighting_component>(registry, {"IndirectLighting"});
     result &= register_component<world_environment_component>(registry, {"WorldEnvironment"});
     result &= register_component<sky_atmosphere_component>(registry, {"SkyAtmosphere"});
     result &= register_component<celestial_sky_component>(registry, {"CelestialSky"});
@@ -73,6 +75,7 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
         !registry.register_component(ecs::component_metadata<camera_component>().id, 1, 2, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 1, 2, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 2, 3, component_upgrade) ||
+        !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 3, 4, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<vegetation_component>().id, 1, 2, component_upgrade))
     {
         return persistence::persistence_status::failure({.code = persistence::persistence_error_code::migration_invalid,

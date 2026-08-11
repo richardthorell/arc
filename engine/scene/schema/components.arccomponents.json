@@ -289,7 +289,7 @@
                            "type":  "mesh_renderer_component",
                            "id":  "a7c00000000000010000000000000008",
                            "display":  "Mesh Renderer",
-                           "version":  3,
+                           "version":  4,
                            "customSerialization":  true,
                            "fields":  [
                                           {
@@ -386,6 +386,42 @@
                                               "constraints":  {
 
                                                               }
+                                          },
+                                          {
+                                              "name":  "affects_indirect_lighting",
+                                              "id":  "000000000000000a",
+                                              "kind":  "bool",
+                                              "display":  "Affect Indirect Lighting",
+                                              "description":  "Controls whether the mesh contributes cards and distance fields to dynamic indirect lighting.",
+                                              "unit":  "none",
+                                              "constraints":  {}
+                                          },
+                                          {
+                                              "name":  "surface_card_density_bias",
+                                              "id":  "000000000000000b",
+                                              "kind":  "float",
+                                              "display":  "Surface Card Density Bias",
+                                              "description":  "Adjusts the density of surface-cache cards for this renderer.",
+                                              "unit":  "lod-levels",
+                                              "constraints":  { "minimum": -4, "maximum": 4 }
+                                          },
+                                          {
+                                              "name":  "distance_field_resolution_bias",
+                                              "id":  "000000000000000c",
+                                              "kind":  "float",
+                                              "display":  "Distance Field Resolution Bias",
+                                              "description":  "Adjusts mesh distance-field resolution for this renderer.",
+                                              "unit":  "lod-levels",
+                                              "constraints":  { "minimum": -4, "maximum": 4 }
+                                          },
+                                          {
+                                              "name":  "visible_in_hardware_tracing",
+                                              "id":  "000000000000000d",
+                                              "kind":  "bool",
+                                              "display":  "Visible In Hardware Tracing",
+                                              "description":  "Allows this renderer's proxy geometry to enter hardware ray-query acceleration structures.",
+                                              "unit":  "none",
+                                              "constraints":  {}
                                           }
                                       ],
                            "description":  "Reflected scene data for the Mesh Renderer component."
@@ -490,6 +526,32 @@
                            "id":  "a7c00000000000010000000000000012",
                            "display":  "Irradiance Probe",
                            "description":  "Reflected scene data for the Irradiance Probe component."
+                       },
+                       {
+                           "type":  "baked_lighting_component",
+                           "id":  "a7c00000000000010000000000000028",
+                           "display":  "Baked Lighting",
+                           "version":  1,
+                           "customSerialization":  true,
+                           "description":  "Authored lightmap binding and decode transform for one renderer."
+                       },
+                       {
+                           "type":  "indirect_lighting_component",
+                           "id":  "a7c00000000000010000000000000029",
+                           "display":  "Global Illumination",
+                           "version":  1,
+                           "customSerialization":  true,
+                           "description":  "Scene-wide scalable indirect-lighting and reflection policy.",
+                           "fields":  [
+                               { "name": "method", "id": "0000000000000001", "kind": "enum", "display": "Method", "description": "Selects automatic, baked/probe, screen-space, software, or hybrid hardware tracing.", "unit": "none", "constraints": {} },
+                               { "name": "enabled", "id": "0000000000000002", "kind": "bool", "display": "Enabled", "description": "Enables indirect diffuse lighting and reflections.", "unit": "none", "constraints": {} },
+                               { "name": "diffuse_intensity", "id": "0000000000000003", "kind": "float", "display": "Diffuse Intensity", "description": "Scales resolved indirect diffuse radiance.", "unit": "multiplier", "constraints": { "minimum": 0 } },
+                               { "name": "reflection_intensity", "id": "0000000000000004", "kind": "float", "display": "Reflection Intensity", "description": "Scales resolved indirect specular radiance.", "unit": "multiplier", "constraints": { "minimum": 0 } },
+                               { "name": "emissive_contribution", "id": "0000000000000005", "kind": "float", "display": "Emissive Contribution", "description": "Scales emissive radiance injected into the surface and radiance caches.", "unit": "multiplier", "constraints": { "minimum": 0 } },
+                               { "name": "maximum_trace_distance", "id": "0000000000000006", "kind": "float", "display": "Maximum Trace Distance", "description": "Maximum world-space distance for software and hardware indirect rays.", "unit": "meters", "constraints": { "minimum": 0.01 } },
+                               { "name": "surface_cache_detail", "id": "0000000000000007", "kind": "float", "display": "Surface Cache Detail", "description": "Authored multiplier for surface-cache card texel density.", "unit": "multiplier", "constraints": { "minimum": 0.125, "maximum": 8 } },
+                               { "name": "allow_hardware_ray_tracing", "id": "0000000000000008", "kind": "bool", "display": "Allow Hardware Ray Tracing", "description": "Allows Ultra to use hardware ray queries for unresolved misses.", "unit": "none", "constraints": {} }
+                           ]
                        },
                        {
                            "type":  "world_environment_component",

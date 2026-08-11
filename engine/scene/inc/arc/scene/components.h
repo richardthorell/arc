@@ -2,6 +2,7 @@
 
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
+#include <arc/render/lighting_scene.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/ecs/entity.h>
 #include <arc/ecs/identity.h>
@@ -150,6 +151,10 @@ struct mesh_renderer_component
     bool receives_shadows{true};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
+    bool affects_indirect_lighting{true};
+    float surface_card_density_bias{};
+    float distance_field_resolution_bias{};
+    bool visible_in_hardware_tracing{true};
     math::vector4f base_color_tint = math::vector4f::one;
 };
 
@@ -302,24 +307,70 @@ struct area_light_component
     render::shadow_settings shadow{.enabled = false};
 };
 
-/**
- * @brief Reflection probe scaffold for future local specular environment capture.
- */
+/** @brief Shape used to blend a local reflection probe. */
+enum class reflection_probe_shape : std::uint8_t
+{
+    sphere,
+    box
+};
+
+/** @brief When a local reflection probe refreshes its captured radiance. */
+enum class probe_update_policy : std::uint8_t
+{
+    authored,
+    on_load,
+    on_demand,
+    realtime
+};
+
+/** @brief Local specular environment capture and influence. */
 struct reflection_probe_component
 {
     float radius{5.0f};
     float intensity{1.0f};
     bool enabled{true};
+    reflection_probe_shape shape{reflection_probe_shape::sphere};
+    math::vector3f box_extents{5.0f};
+    float blend_distance{1.0f};
+    std::int32_t priority{};
+    render::texture_handle cubemap{};
+    std::uint32_t resolution{128};
+    probe_update_policy update_policy{probe_update_policy::authored};
 };
 
-/**
- * @brief Irradiance probe scaffold for future diffuse global illumination.
- */
+/** @brief Local spherical-harmonic diffuse lighting sample. */
 struct irradiance_probe_component
 {
     float radius{5.0f};
     float intensity{1.0f};
     bool enabled{true};
+    float visibility{1.0f};
+    std::int32_t priority{};
+    std::array<math::vector3f, 9> spherical_harmonics{};
+};
+
+/** @brief Authored lightmap assigned to one renderable entity. */
+struct baked_lighting_component
+{
+    render::texture_handle lightmap{};
+    render::texture_handle directional_lightmap{};
+    std::uint32_t uv_channel{1};
+    math::vector4f scale_offset{1.0f, 1.0f, 0.0f, 0.0f};
+    float intensity{1.0f};
+    bool enabled{true};
+};
+
+/** @brief Scene-wide dynamic indirect-lighting and reflection policy. */
+struct indirect_lighting_component
+{
+    render::indirect_lighting_method method{render::indirect_lighting_method::auto_select};
+    bool enabled{true};
+    float diffuse_intensity{1.0f};
+    float reflection_intensity{1.0f};
+    float emissive_contribution{1.0f};
+    float maximum_trace_distance{100.0f};
+    float surface_cache_detail{1.0f};
+    bool allow_hardware_ray_tracing{true};
 };
 
 /**

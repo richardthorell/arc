@@ -725,11 +725,12 @@ TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is un
     REQUIRE(result.culled_virtual_cluster_count == 0);
 
     const auto packet = renderer.frame_queue().commit(1);
-    REQUIRE(packet.events.size() == 3);
+    REQUIRE(packet.events.size() == 4);
     REQUIRE(packet.events[0].type() == arc::render::render_event_type::mesh_upload);
-    REQUIRE(packet.events[1].type() == arc::render::render_event_type::virtual_mesh_upload);
-    REQUIRE(packet.events[2].type() == arc::render::render_event_type::render_world);
-    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[2].payload);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::lighting_geometry_upload);
+    REQUIRE(packet.events[2].type() == arc::render::render_event_type::virtual_mesh_upload);
+    REQUIRE(packet.events[3].type() == arc::render::render_event_type::render_world);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[3].payload);
     REQUIRE(world_event.packet);
     REQUIRE(world_event.packet->visible_items.size() == 1);
     REQUIRE(world_event.packet->virtual_items.empty());
@@ -1034,4 +1035,28 @@ TEST_CASE("generated scene metadata provides ordinary persistence field codecs")
     }
     for (std::size_t component = 0; component < 4; ++component)
         REQUIRE(destination.rotation[component] == Catch::Approx(source.rotation[component]));
+}
+
+TEST_CASE("world environment owns validated indirect lighting settings")
+{
+    arc::ecs::world world;
+    const auto environment = world.create();
+    arc::scene::world_environment_settings settings;
+    settings.indirect_lighting.method = arc::render::indirect_lighting_method::software;
+    settings.indirect_lighting.diffuse_intensity = 1.25f;
+    settings.indirect_lighting.reflection_intensity = 0.75f;
+    settings.indirect_lighting.maximum_trace_distance = 180.0f;
+    REQUIRE(arc::scene::set_world_environment_settings(world, environment, settings));
+
+    const auto restored = arc::scene::read_world_environment_settings(world, environment);
+    REQUIRE(restored.has_value());
+    REQUIRE(restored->indirect_lighting.method == arc::render::indirect_lighting_method::software);
+    REQUIRE(restored->indirect_lighting.diffuse_intensity == Catch::Approx(1.25f));
+    REQUIRE(world.has<arc::scene::indirect_lighting_component>(environment));
+
+    settings.indirect_lighting.maximum_trace_distance = 0.0f;
+    REQUIRE_FALSE(arc::scene::validate_world_environment(settings).valid);
+    REQUIRE_FALSE(arc::scene::set_world_environment_settings(world, environment, settings));
+    REQUIRE(world.get<arc::scene::indirect_lighting_component>(environment).maximum_trace_distance ==
+            Catch::Approx(180.0f));
 }

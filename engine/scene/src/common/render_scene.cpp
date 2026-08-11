@@ -89,7 +89,9 @@ void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, re
                       bool visible, bool transparent = false, render::buffer_handle skin = {},
                       std::uint32_t joint_count = 0, std::uint32_t instance_count = 1,
                       const math::vector4f& base_color_tint = math::vector4f::one, bool casts_shadows = true,
-                      bool receives_shadows = true, float shadow_lod_bias = 0.0f, float maximum_shadow_distance = 0.0f)
+                      bool receives_shadows = true, float shadow_lod_bias = 0.0f, float maximum_shadow_distance = 0.0f,
+                      bool affects_indirect_lighting = true, float surface_card_density_bias = 0.0f,
+                      float distance_field_resolution_bias = 0.0f, bool visible_in_hardware_tracing = true)
 {
     if (!entity_is_active(scene, value)) return;
 
@@ -116,6 +118,10 @@ void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, re
                             .mobility = entity_mobility(scene, value),
                             .shadow_lod_bias = shadow_lod_bias,
                             .maximum_shadow_distance = maximum_shadow_distance,
+                            .affects_indirect_lighting = affects_indirect_lighting,
+                            .surface_card_density_bias = surface_card_density_bias,
+                            .distance_field_resolution_bias = distance_field_resolution_bias,
+                            .visible_in_hardware_tracing = visible_in_hardware_tracing,
                             .base_color_tint = base_color_tint,
                             .label = entity_label(scene, value)});
 }
@@ -153,6 +159,10 @@ void append_virtual_mesh_items(ecs::world& scene, render::renderer& renderer, re
                                     .mobility = entity_mobility(scene, value),
                                     .shadow_lod_bias = mesh_renderer.shadow_lod_bias,
                                     .maximum_shadow_distance = mesh_renderer.maximum_shadow_distance,
+                                    .affects_indirect_lighting = mesh_renderer.affects_indirect_lighting,
+                                    .surface_card_density_bias = mesh_renderer.surface_card_density_bias,
+                                    .distance_field_resolution_bias = mesh_renderer.distance_field_resolution_bias,
+                                    .visible_in_hardware_tracing = mesh_renderer.visible_in_hardware_tracing,
                                     .base_color_tint = mesh_renderer.base_color_tint,
                                     .label = entity_label(scene, value)});
 }
@@ -232,6 +242,7 @@ render::world_environment_data to_render_environment(const ecs::world& scene, en
     const auto& clouds = settings.clouds;
     const auto& fog = settings.fog;
     const auto& lighting = settings.lighting;
+    const auto& indirect = settings.indirect_lighting;
     const auto label = entity_label(scene, value);
 
     auto sun_direction = default_sun_direction;
@@ -307,6 +318,14 @@ render::world_environment_data to_render_environment(const ecs::world& scene, en
                      .constant_color = lighting.constant_color,
                      .diffuse_intensity = lighting.diffuse_intensity,
                      .specular_intensity = lighting.specular_intensity},
+        .indirect_lighting = {.method = indirect.method,
+                              .enabled = indirect.enabled,
+                              .diffuse_intensity = indirect.diffuse_intensity,
+                              .reflection_intensity = indirect.reflection_intensity,
+                              .emissive_contribution = indirect.emissive_contribution,
+                              .maximum_trace_distance = indirect.maximum_trace_distance,
+                              .surface_cache_detail = indirect.surface_cache_detail,
+                              .allow_hardware_ray_tracing = indirect.allow_hardware_ray_tracing},
         .label = label};
     return output;
 }
@@ -331,6 +350,7 @@ void prepare_render_scene_queries(ecs::world& scene)
     scene.prepare_query<transform_component, area_light_component>();
     scene.prepare_query<transform_component, reflection_probe_component>();
     scene.prepare_query<transform_component, irradiance_probe_component>();
+    scene.prepare_query<baked_lighting_component>();
 }
 
 render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, std::uint32_t viewport_width,
@@ -474,7 +494,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible,
                              transparent, {}, 0, 1, mesh_renderer.base_color_tint, mesh_renderer.casts_shadows,
                              mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
-                             mesh_renderer.maximum_shadow_distance);
+                             mesh_renderer.maximum_shadow_distance, mesh_renderer.affects_indirect_lighting,
+                             mesh_renderer.surface_card_density_bias, mesh_renderer.distance_field_resolution_bias,
+                             mesh_renderer.visible_in_hardware_tracing);
         });
 
     scene.view<transform_component, terrain_component>().each(
@@ -671,8 +693,15 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
         {
             if (!entity_is_active(scene, value) || !probe.enabled) return;
             world_packet.reflection_probes.push_back({.position = transform.position,
+                                                      .box_extents = probe.box_extents,
                                                       .radius = probe.radius,
+                                                      .blend_distance = probe.blend_distance,
                                                       .intensity = probe.intensity,
+                                                      .priority = probe.priority,
+                                                      .cubemap = probe.cubemap,
+                                                      .resolution = probe.resolution,
+                                                      .shape = static_cast<std::uint8_t>(probe.shape),
+                                                      .update_policy = static_cast<std::uint8_t>(probe.update_policy),
                                                       .label = entity_label(scene, value)});
             ++result.reflection_probe_count;
         });
@@ -683,9 +712,24 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (!entity_is_active(scene, value) || !probe.enabled) return;
             world_packet.irradiance_probes.push_back({.position = transform.position,
                                                       .radius = probe.radius,
+                                                      .visibility = probe.visibility,
                                                       .intensity = probe.intensity,
+                                                      .priority = probe.priority,
+                                                      .spherical_harmonics = probe.spherical_harmonics,
                                                       .label = entity_label(scene, value)});
             ++result.irradiance_probe_count;
+        });
+
+    scene.view<baked_lighting_component>().each(
+        [&](entity value, const baked_lighting_component& baked)
+        {
+            if (!entity_is_active(scene, value) || !baked.enabled) return;
+            world_packet.baked_lighting.push_back({.object_id = render::make_render_object_id(value.index, value.generation),
+                                                   .lightmap = baked.lightmap,
+                                                   .directional_lightmap = baked.directional_lightmap,
+                                                   .uv_channel = baked.uv_channel,
+                                                   .scale_offset = baked.scale_offset,
+                                                   .intensity = baked.intensity});
         });
 
     const auto lighting = render::pack_scene_lighting(world_packet.directional_lights, world_packet.point_lights,

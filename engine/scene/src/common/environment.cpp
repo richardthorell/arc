@@ -218,6 +218,7 @@ environment_validation_result validate_world_environment(const world_environment
     const auto& clouds = settings.clouds;
     const auto& fog = settings.fog;
     const auto& lighting = settings.lighting;
+    const auto& indirect = settings.indirect_lighting;
     environment_validation_result result;
     if (!finite(world.radiance_intensity) || world.radiance_intensity < 0.0f)
         result.errors.emplace_back("sky radiance intensity must be non-negative");
@@ -272,6 +273,12 @@ environment_validation_result validate_world_environment(const world_environment
     if (!finite(lighting.constant_color) || !finite(lighting.diffuse_intensity) ||
         !finite(lighting.specular_intensity) || lighting.diffuse_intensity < 0.0f || lighting.specular_intensity < 0.0f)
         result.errors.emplace_back("environment lighting intensities must be non-negative");
+    if (!finite(indirect.diffuse_intensity) || indirect.diffuse_intensity < 0.0f ||
+        !finite(indirect.reflection_intensity) || indirect.reflection_intensity < 0.0f ||
+        !finite(indirect.emissive_contribution) || indirect.emissive_contribution < 0.0f ||
+        !finite(indirect.maximum_trace_distance) || indirect.maximum_trace_distance <= 0.0f ||
+        !finite(indirect.surface_cache_detail) || indirect.surface_cache_detail <= 0.0f)
+        result.errors.emplace_back("indirect lighting values must be finite and positive");
     result.valid = result.errors.empty();
     return result;
 }
@@ -284,8 +291,10 @@ std::optional<world_environment_settings> read_world_environment_settings(const 
     const auto* clouds = scene.try_get<cloud_layers_component>(environment);
     const auto* fog = scene.try_get<height_fog_component>(environment);
     const auto* lighting = scene.try_get<environment_lighting_component>(environment);
+    const auto* indirect = scene.try_get<indirect_lighting_component>(environment);
     if (!world || !atmosphere || !celestial || !clouds || !fog || !lighting) return std::nullopt;
-    return world_environment_settings{*world, *atmosphere, *celestial, *clouds, *fog, *lighting};
+    return world_environment_settings{*world, *atmosphere, *celestial, *clouds, *fog, *lighting,
+                                      indirect ? *indirect : indirect_lighting_component{}};
 }
 
 bool set_world_environment_settings(ecs::world& scene, entity environment, const world_environment_settings& settings)
@@ -298,6 +307,7 @@ bool set_world_environment_settings(ecs::world& scene, entity environment, const
     scene.emplace<cloud_layers_component>(environment, settings.clouds);
     scene.emplace<height_fog_component>(environment, settings.fog);
     scene.emplace<environment_lighting_component>(environment, settings.lighting);
+    scene.emplace<indirect_lighting_component>(environment, settings.indirect_lighting);
     return true;
 }
 
