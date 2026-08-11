@@ -62,6 +62,54 @@ void append_bytes(std::vector<std::byte>& output, std::span<const std::byte> val
     output.insert(output.end(), value.begin(), value.end());
 }
 
+void append_vector3(std::vector<std::byte>& output, const math::vector3f& value)
+{
+    append_value(output, value[0]);
+    append_value(output, value[1]);
+    append_value(output, value[2]);
+}
+
+void append_virtual_cluster(std::vector<std::byte>& output, const render::virtual_mesh_cluster& cluster)
+{
+    append_value(output, cluster.first_index);
+    append_value(output, cluster.index_count);
+    append_value(output, cluster.first_triangle);
+    append_value(output, cluster.triangle_count);
+    append_value(output, cluster.first_vertex);
+    append_value(output, cluster.vertex_count);
+    append_value(output, static_cast<std::uint64_t>(cluster.material_index));
+    append_vector3(output, cluster.bounds_min);
+    append_vector3(output, cluster.bounds_max);
+    append_vector3(output, cluster.sphere_center);
+    append_value(output, cluster.sphere_radius);
+    append_vector3(output, cluster.cone_axis);
+    append_value(output, cluster.cone_cutoff);
+    append_value(output, cluster.geometric_error);
+    append_value(output, cluster.hierarchy_node);
+    append_value(output, cluster.page_index);
+    append_value(output, cluster.hierarchy_level);
+    append_value(output, cluster.flags);
+}
+
+void append_virtual_node(std::vector<std::byte>& output, const render::virtual_mesh_lod_node& node)
+{
+    append_value(output, node.first_cluster);
+    append_value(output, node.cluster_count);
+    append_value(output, node.first_child);
+    append_value(output, node.child_count);
+    append_value(output, node.parent);
+    append_value(output, node.page_index);
+    append_value(output, node.error);
+    append_vector3(output, node.bounds_min);
+    append_vector3(output, node.bounds_max);
+    append_vector3(output, node.sphere_center);
+    append_value(output, node.sphere_radius);
+    append_vector3(output, node.cone_axis);
+    append_value(output, node.cone_cutoff);
+    append_value(output, node.level);
+    append_value(output, node.flags);
+}
+
 class document_processor final : public asset_cook_processor
 {
 public:
@@ -273,6 +321,8 @@ public:
         descriptor_.id = cook_processor_ids::mesh;
         descriptor_.name = "ARC Mesh";
         descriptor_.schema = artifact_schemas::mesh;
+        descriptor_.version = 2;
+        descriptor_.schema_version = 2;
         descriptor_.input_types = {asset_types::imported_scene, asset_types::static_mesh};
     }
     const asset_cook_processor_descriptor& descriptor() const noexcept override
@@ -281,7 +331,7 @@ public:
     }
     std::string toolchain_fingerprint() const override
     {
-        return "arc.mesh-cooker/1;meshoptimizer-contract-1";
+        return "arc.mesh-cooker/2;meshoptimizer-1.2;arc-virtual-geometry-2";
     }
     asset_cook_result cook(const asset_cook_context& context) override
     {
@@ -291,34 +341,60 @@ public:
                               .guid = context.asset.guid,
                               .path = context.source.source_path,
                               .message = loaded.message.empty() ? "Mesh import failed" : loaded.message}};
-        std::vector<std::byte> bytes;
-        append_string(bytes, "ARC_MESH_1");
-        append_value(bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
+        std::vector<std::byte> conventional_bytes;
+        std::vector<std::byte> virtual_bytes;
+        append_string(conventional_bytes, "ARC_MESH_2");
+        append_string(virtual_bytes, "ARC_VIRTUAL_GEOMETRY_2");
+        append_value(conventional_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
+        append_value(virtual_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
         for (const auto& mesh : loaded.meshes)
         {
-            const auto virtual_mesh = render::build_virtual_mesh(mesh, {.max_triangles_per_cluster = 124});
-            append_string(bytes, mesh.name);
-            append_value(bytes, static_cast<std::uint64_t>(mesh.vertices.size()));
-            append_bytes(bytes, std::as_bytes(std::span(mesh.vertices)));
-            append_value(bytes, static_cast<std::uint64_t>(mesh.indices.size()));
-            append_bytes(bytes, std::as_bytes(std::span(mesh.indices)));
-            append_value(bytes, static_cast<std::uint32_t>(virtual_mesh.clusters.size()));
-            append_bytes(bytes, std::as_bytes(std::span(virtual_mesh.clusters)));
-            constexpr std::array<float, 4> lod_ratios{1.0f, 0.5f, 0.25f, 0.125f};
-            append_value(bytes, static_cast<std::uint32_t>(lod_ratios.size()));
-            for (const auto ratio : lod_ratios)
+            const auto geometry = render::build_virtual_mesh(mesh);
+
+            append_string(conventional_bytes, mesh.name);
+            append_value(conventional_bytes, static_cast<std::uint64_t>(mesh.material_index));
+            append_value(conventional_bytes, static_cast<std::uint32_t>(geometry.conventional_lods.size()));
+            for (const auto& lod : geometry.conventional_lods)
             {
-                const auto triangle_count = mesh.indices.size() / 3;
-                const auto lod_triangles = std::max<std::size_t>(1, static_cast<std::size_t>(triangle_count * ratio));
-                append_value(bytes, ratio);
-                append_value(bytes, static_cast<std::uint32_t>(std::min(lod_triangles, triangle_count)));
+                append_value(conventional_bytes, lod.ratio);
+                append_value(conventional_bytes, lod.geometric_error);
+                append_bytes(conventional_bytes, std::as_bytes(std::span(lod.vertices)));
+                append_bytes(conventional_bytes, std::as_bytes(std::span(lod.indices)));
             }
+
+            append_string(virtual_bytes, mesh.name);
+            append_value(virtual_bytes, static_cast<std::uint64_t>(mesh.material_index));
+            append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.clusters.size()));
+            for (const auto& cluster : geometry.clusters) append_virtual_cluster(virtual_bytes, cluster);
+            append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.lod_nodes.size()));
+            for (const auto& node : geometry.lod_nodes) append_virtual_node(virtual_bytes, node);
+            append_bytes(virtual_bytes, std::as_bytes(std::span(geometry.hierarchy_children)));
+            append_bytes(virtual_bytes, std::as_bytes(std::span(geometry.root_nodes)));
+            append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.pages.size()));
+            for (const auto& page : geometry.pages)
+            {
+                append_value(virtual_bytes, page.first_cluster);
+                append_value(virtual_bytes, page.cluster_count);
+                append_value(virtual_bytes, page.uncompressed_offset);
+                append_value(virtual_bytes, page.uncompressed_size);
+                append_value(virtual_bytes, page.compressed_offset);
+                append_value(virtual_bytes, page.compressed_size);
+                append_value(virtual_bytes, page.content_hash);
+                append_value(virtual_bytes, static_cast<std::uint8_t>(page.root));
+            }
+            append_bytes(virtual_bytes, geometry.page_payload);
         }
-        return {.artifacts = {{.name = context.source.source_path.stem().string(),
+        const auto name = context.source.source_path.stem().string();
+        return {.artifacts = {{.name = name,
                                .extension = ".arcmesh",
-                               .schema = descriptor_.schema,
-                               .schema_version = descriptor_.schema_version,
-                               .bytes = std::move(bytes)}}};
+                               .schema = artifact_schemas::mesh,
+                               .schema_version = 2,
+                               .bytes = std::move(conventional_bytes)},
+                              {.name = name,
+                               .extension = ".arcvg",
+                               .schema = artifact_schemas::virtual_geometry,
+                               .schema_version = 2,
+                               .bytes = std::move(virtual_bytes)}}};
     }
 
 private:

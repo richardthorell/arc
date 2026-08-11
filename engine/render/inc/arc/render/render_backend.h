@@ -3,6 +3,7 @@
 #include <arc/core/core.h>
 #include <arc/render/events.h>
 #include <arc/render/render_graph.h>
+#include <arc/render/virtual_mesh.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -228,7 +229,12 @@ struct render_capabilities
     bool hzb_occlusion{};
     /** @brief Backend can execute ARC's temporal resolve pipeline. */
     bool temporal_resolve{};
-    bool virtual_geometry{};
+    /** @brief Backend can execute ARC's compute traversal and software cluster rasterizer. */
+    bool virtual_geometry_compute{};
+    /** @brief Backend can execute cluster rasterization with mesh shaders. */
+    bool virtual_geometry_mesh_shader{};
+    /** @brief Backend can safely request, upload, and retire virtual-geometry pages. */
+    bool virtual_geometry_streaming{};
     bool software_ray_tracing{};
     bool sampler_anisotropy{};
     bool texture_compression_bc{};
@@ -265,6 +271,7 @@ struct render_feature_set
     bool temporal_upscaling{};
     bool async_compute{};
     bool virtual_geometry{};
+    virtual_geometry_raster_path virtual_geometry_path{virtual_geometry_raster_path::unavailable};
     bool software_ray_tracing{};
     bool hardware_ray_tracing{};
     bool sparse_resources{};
@@ -527,6 +534,28 @@ struct render_gpu_scene_profile
     std::string fallback_reason;
 };
 
+/** @brief Virtual-geometry traversal, raster, and residency work executed for one frame. */
+struct render_virtual_geometry_profile
+{
+    bool enabled{};
+    virtual_geometry_raster_path raster_path{virtual_geometry_raster_path::unavailable};
+    std::uint32_t visible_clusters{};
+    std::uint64_t visible_triangles{};
+    std::uint32_t frustum_rejected{};
+    std::uint32_t cone_rejected{};
+    std::uint32_t hzb_rejected{};
+    std::uint32_t projected_size_rejected{};
+    std::uint32_t requested_pages{};
+    std::uint32_t loaded_pages{};
+    std::uint32_t failed_pages{};
+    std::uint32_t parent_fallbacks{};
+    std::uint64_t resident_bytes{};
+    std::uint64_t residency_budget_bytes{};
+    double decompression_milliseconds{};
+    double upload_milliseconds{};
+    std::string fallback_reason;
+};
+
 /** @brief Temporal history state used by TAA and temporal upscaling. */
 struct render_temporal_profile
 {
@@ -552,6 +581,7 @@ struct render_backend_frame_profile
     render_environment_profile environment;
     render_shadow_profile shadows;
     render_gpu_scene_profile gpu_scene;
+    render_virtual_geometry_profile virtual_geometry;
     render_temporal_profile temporal;
     resolved_render_config configuration;
 };

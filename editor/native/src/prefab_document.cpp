@@ -30,7 +30,6 @@ ecs::entity clone_subtree(const editor_scene_state& source, editor_scene_state& 
     copy_component<scene::bounds_component>(source, target, source_entity, result);
     copy_component<scene::camera_component>(source, target, source_entity, result);
     copy_component<scene::mesh_renderer_component>(source, target, source_entity, result);
-    copy_component<scene::virtual_mesh_renderer_component>(source, target, source_entity, result);
     copy_component<scene::skinned_mesh_renderer_component>(source, target, source_entity, result);
     copy_component<scene::lod_component>(source, target, source_entity, result);
     copy_component<scene::render_layer_component>(source, target, source_entity, result);

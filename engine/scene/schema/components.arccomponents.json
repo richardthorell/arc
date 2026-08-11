@@ -289,7 +289,7 @@
                            "type":  "mesh_renderer_component",
                            "id":  "a7c00000000000010000000000000008",
                            "display":  "Mesh Renderer",
-                           "version":  2,
+                           "version":  3,
                            "customSerialization":  true,
                            "fields":  [
                                           {
@@ -374,6 +374,17 @@
                                               "unit":  "meters",
                                               "constraints":  {
                                                                   "minimum":  0
+                                                              }
+                                          },
+                                          {
+                                              "name":  "representation",
+                                              "id":  "0000000000000009",
+                                              "kind":  "enum",
+                                              "display":  "Geometry Representation",
+                                              "description":  "Selects automatic, conventional LOD, or virtual geometry rendering for this mesh.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
                                                               }
                                           }
                                       ],

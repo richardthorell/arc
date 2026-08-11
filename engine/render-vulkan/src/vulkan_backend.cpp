@@ -463,6 +463,11 @@ public:
                 upload_virtual_mesh(*virtual_upload);
                 ++shadow_resource_revision_;
             }
+            else if (const auto* virtual_destroy = std::get_if<virtual_mesh_destroy_event>(&event.payload))
+            {
+                retire_virtual_mesh(virtual_destroy->handle);
+                ++shadow_resource_revision_;
+            }
             else if (const auto* texture = std::get_if<texture_upload_event>(&event.payload))
                 upload_texture(*texture);
             else if (const auto* material = std::get_if<material_upload_event>(&event.payload))
@@ -1371,7 +1376,7 @@ private:
             auto material = item.material;
             if (packet.visualization == mesh_visualization_mode::cluster_debug)
             {
-                tint = cluster_debug_color(item.cluster_index);
+                tint = cluster_debug_color(item.root_node);
                 material = {};
             }
             const auto visualization = packet.visualization == mesh_visualization_mode::cluster_debug
@@ -1399,7 +1404,7 @@ private:
                                         .wire_color = math::vector4f{0.28f, 0.62f, 1.0f, 1.0f},
                                         .label = item.label},
                 .mesh = item.mesh,
-                .cluster_index = item.cluster_index};
+                .cluster_index = item.root_node};
         };
 
         frame_directional_lights_.insert(frame_directional_lights_.end(), packet.directional_lights.begin(),
@@ -1466,6 +1471,12 @@ private:
         frame_camera_valid_ = true;
         frame_environment_ = packet.environment;
         frame_shadows_enabled_ = packet.shadows_enabled;
+        last_profile_.virtual_geometry.enabled = resolved_config_.features.virtual_geometry;
+        last_profile_.virtual_geometry.raster_path = resolved_config_.features.virtual_geometry_path;
+        if (!resolved_config_.features.virtual_geometry)
+            last_profile_.virtual_geometry.fallback_reason =
+                "Vulkan virtual-geometry traversal, streaming, and visibility rasterization are unavailable; "
+                "using conventional LOD geometry";
         frame_debug_overlay_lines_.insert(frame_debug_overlay_lines_.end(), packet.debug_overlay.lines.begin(),
                                           packet.debug_overlay.lines.end());
         if (resolved_config_.features.gpu_driven_rendering)
@@ -2812,10 +2823,29 @@ private:
         const std::uint64_t key = resource_key(event.handle);
         if (auto found = virtual_meshes_.find(key); found != virtual_meshes_.end())
         {
-            destroy_buffer(found->second.vertices);
-            destroy_buffer(found->second.indices);
+            auto retired = std::move(found->second);
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, retired]() mutable
+                                     {
+                                         destroy_buffer(retired.vertices);
+                                         destroy_buffer(retired.indices);
+                                     });
         }
         virtual_meshes_[key] = std::move(mesh);
+    }
+
+    void retire_virtual_mesh(virtual_mesh_handle handle)
+    {
+        const auto found = virtual_meshes_.find(resource_key(handle));
+        if (found == virtual_meshes_.end()) return;
+        auto retired = std::move(found->second);
+        virtual_meshes_.erase(found);
+        deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                 [this, retired]() mutable
+                                 {
+                                     destroy_buffer(retired.vertices);
+                                     destroy_buffer(retired.indices);
+                                 });
     }
 
     void upload_texture(const texture_upload_event& event)
@@ -7737,7 +7767,9 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.shader_draw_parameters = properties.apiVersion >= VK_API_VERSION_1_1;
     capabilities.gpu_scene_indirect =
         capabilities.compute_shaders && capabilities.storage_buffers && capabilities.draw_indirect;
-    capabilities.virtual_geometry = true;
+    capabilities.virtual_geometry_compute = false;
+    capabilities.virtual_geometry_mesh_shader = false;
+    capabilities.virtual_geometry_streaming = false;
     capabilities.sampler_anisotropy = features.features.samplerAnisotropy == VK_TRUE;
     capabilities.texture_compression_bc = features.features.textureCompressionBC == VK_TRUE;
     capabilities.synchronization2 = synchronization2.synchronization2 == VK_TRUE;

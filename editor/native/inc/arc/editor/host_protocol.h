@@ -224,7 +224,12 @@ enum class host_visualization_mode : std::uint8_t
     cascade_debug,
     shadow_mask,
     light_complexity,
-    cluster_debug
+    cluster_debug,
+    virtual_hierarchy_level,
+    virtual_geometric_error,
+    virtual_page_residency,
+    virtual_overdraw,
+    virtual_triangles_per_pixel
 };
 
 enum class host_overlay_mode : std::uint8_t
@@ -385,6 +390,7 @@ struct host_light_snapshot
 
 struct host_mesh_renderer_snapshot
 {
+    std::uint8_t representation{};
     bool visible{true};
     bool casts_shadows{true};
     bool receives_shadows{true};
@@ -883,6 +889,7 @@ struct host_set_light_command
 struct host_set_mesh_renderer_command
 {
     host_entity_id entity{};
+    std::uint8_t representation{};
     bool visible{true};
     bool casts_shadows{true};
     bool receives_shadows{true};

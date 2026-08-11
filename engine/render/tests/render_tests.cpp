@@ -650,6 +650,8 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
     config.features.temporal_antialiasing = true;
     config.features.temporal_upscaling = true;
     config.features.async_compute = true;
+    config.features.virtual_geometry = true;
+    config.features.virtual_geometry_path = virtual_geometry_raster_path::compute;
     config.features.submission = gpu_submission_path::indirect_count;
 
     const auto compiled = make_scene_draw_graph("viewport", config, true).compile();
@@ -662,6 +664,14 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
     REQUIRE(contains(builtin_render_pass::gpu_frustum_distance_cull));
     REQUIRE(contains(builtin_render_pass::gpu_hzb_occlusion_cull));
     REQUIRE(contains(builtin_render_pass::gpu_indirect_command_generation));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_hierarchy_traversal));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_page_requests));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_cluster_binning));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_software_depth));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_visibility_resolve));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_material_resolve));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_shadow_traversal));
+    REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_mesh_shader_visibility));
     REQUIRE(contains(builtin_render_pass::depth_pyramid));
     REQUIRE(contains(builtin_render_pass::reactive_mask));
     REQUIRE(contains(builtin_render_pass::disocclusion_mask));
@@ -1050,7 +1060,9 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     capabilities.gpu_scene_indirect_count = true;
     capabilities.hzb_occlusion = true;
     capabilities.temporal_resolve = true;
-    capabilities.virtual_geometry = true;
+    capabilities.descriptor_indexing = true;
+    capabilities.virtual_geometry_compute = true;
+    capabilities.virtual_geometry_streaming = true;
     capabilities.software_ray_tracing = true;
     capabilities.draw_indirect = true;
     capabilities.draw_indirect_count = true;
@@ -1067,6 +1079,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.features.temporal_upscaling);
     REQUIRE(resolved.features.async_compute);
     REQUIRE(resolved.features.virtual_geometry);
+    REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
     REQUIRE(resolved.features.software_ray_tracing);
     REQUIRE(resolved.features.hardware_ray_tracing);
     REQUIRE(resolved.features.submission == gpu_submission_path::indirect_count);
@@ -1077,6 +1090,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     config.force_cpu_submission = true;
     resolved = resolve_render_config(config, capabilities);
     REQUIRE_FALSE(resolved.features.gpu_driven_rendering);
+    REQUIRE_FALSE(resolved.features.virtual_geometry);
     REQUIRE_FALSE(resolved.features.temporal_antialiasing);
     REQUIRE_FALSE(resolved.features.async_compute);
     REQUIRE(resolved.features.submission == gpu_submission_path::cpu_direct);
@@ -1253,6 +1267,7 @@ TEST_CASE("renderer create virtual mesh enqueues typed upload and keeps CPU clus
 
     const auto handle = renderer.create_virtual_mesh(std::move(mesh));
     REQUIRE(renderer.virtual_mesh_alive(handle));
+    REQUIRE(renderer.virtual_mesh_content_generation(handle) == 1);
     REQUIRE(renderer.virtual_mesh_data_for(handle) != nullptr);
     REQUIRE(renderer.virtual_mesh_data_for(handle)->clusters.size() == 1);
 
@@ -1265,6 +1280,52 @@ TEST_CASE("renderer create virtual mesh enqueues typed upload and keeps CPU clus
     REQUIRE(upload.mesh->indices.size() == 3);
     REQUIRE(upload.mesh->clusters.size() == 1);
     REQUIRE(upload.mesh->clusters[0].index_count == 3);
+
+    auto updated = *upload.mesh;
+    updated.clusters.push_back(updated.clusters.front());
+    REQUIRE(renderer.update_virtual_mesh(handle, std::move(updated)));
+    const auto update = renderer.frame_queue().commit(2);
+    REQUIRE(update.events.size() == 1);
+    REQUIRE(update.events[0].type() == arc::render::render_event_type::virtual_mesh_upload);
+    REQUIRE(renderer.virtual_mesh_data_for(handle)->clusters.size() == 2);
+    REQUIRE(renderer.virtual_mesh_content_generation(handle) == 2);
+
+    REQUIRE(renderer.destroy_virtual_mesh(handle));
+    REQUIRE_FALSE(renderer.virtual_mesh_alive(handle));
+    REQUIRE(renderer.virtual_mesh_content_generation(handle) == 0);
+    REQUIRE(renderer.virtual_mesh_data_for(handle) == nullptr);
+    const auto destroy = renderer.frame_queue().commit(3);
+    REQUIRE(destroy.events.size() == 1);
+    REQUIRE(destroy.events[0].type() == arc::render::render_event_type::virtual_mesh_destroy);
+    REQUIRE(std::get<arc::render::virtual_mesh_destroy_event>(destroy.events[0].payload).handle == handle);
+    REQUIRE_FALSE(renderer.destroy_virtual_mesh(handle));
+}
+
+TEST_CASE("renderer realizes and retires one unified cooked geometry resource")
+{
+    arc::render::mesh_data source;
+    source.vertices.resize(3);
+    source.vertices[1].position[0] = 1.0f;
+    source.vertices[2].position[1] = 1.0f;
+    source.indices = {0, 1, 2};
+
+    arc::render::renderer renderer;
+    const auto geometry = renderer.create_geometry_resource(arc::render::build_virtual_mesh(source), 9);
+    REQUIRE(geometry.valid());
+    REQUIRE(geometry.asset_generation == 9);
+    REQUIRE(geometry.conventional_lod_count == 4);
+    REQUIRE(renderer.mesh_alive(geometry.conventional));
+    REQUIRE(renderer.virtual_mesh_alive(geometry.virtualized));
+    const auto uploads = renderer.frame_queue().commit(1);
+    REQUIRE(uploads.events.size() == 5);
+    REQUIRE(uploads.events.back().type() == arc::render::render_event_type::virtual_mesh_upload);
+
+    REQUIRE(renderer.destroy_geometry_resource(geometry));
+    REQUIRE_FALSE(renderer.mesh_alive(geometry.conventional));
+    REQUIRE_FALSE(renderer.virtual_mesh_alive(geometry.virtualized));
+    const auto destroys = renderer.frame_queue().commit(2);
+    REQUIRE(destroys.events.size() == 5);
+    REQUIRE(destroys.events.back().type() == arc::render::render_event_type::virtual_mesh_destroy);
 }
 
 TEST_CASE("renderer creates texture and material resources")
@@ -1987,7 +2048,7 @@ TEST_CASE("virtual mesh builder creates one bounded cluster for a triangle")
     REQUIRE(virtual_mesh.stats.material_group_count == 1);
 }
 
-TEST_CASE("virtual mesh builder splits fixed-size clusters deterministically")
+TEST_CASE("virtual mesh builder creates deterministic topology-aware clusters and hierarchy")
 {
     arc::render::mesh_data source;
     source.material_index = 3;
@@ -2007,20 +2068,58 @@ TEST_CASE("virtual mesh builder splits fixed-size clusters deterministically")
     const auto first = arc::render::build_virtual_mesh(source);
     const auto second = arc::render::build_virtual_mesh(source);
 
-    REQUIRE(first.clusters.size() == 2);
-    REQUIRE(first.clusters[0].triangle_count == 128);
-    REQUIRE(first.clusters[0].index_count == 384);
-    REQUIRE(first.clusters[1].first_triangle == 128);
-    REQUIRE(first.clusters[1].triangle_count == 2);
+    REQUIRE(first.clusters.size() > 2);
+    REQUIRE(std::all_of(first.clusters.begin(), first.clusters.end(), [](const auto& cluster)
+                        {
+                            return cluster.vertex_count <= arc::render::virtual_geometry_max_vertices_per_cluster &&
+                                   cluster.triangle_count <= arc::render::virtual_geometry_max_triangles_per_cluster;
+                        }));
+    REQUIRE_FALSE(first.root_nodes.empty());
+    REQUIRE(first.root_nodes.size() <= 4);
+    REQUIRE(first.lod_nodes.size() >= first.root_nodes.size());
+    REQUIRE_FALSE(first.pages.empty());
+    REQUIRE(first.stats.root_page_count > 0);
     REQUIRE(first.stats.source_triangle_count == 130);
-    REQUIRE(first.stats.cluster_count == 2);
-    REQUIRE(first.stats.average_triangles_per_cluster == Catch::Approx(65.0f));
+    REQUIRE(first.stats.cluster_count == first.clusters.size());
+    REQUIRE(first.stats.hierarchy_level_count >= 2);
     REQUIRE(first.stats.invalid_triangle_count == 0);
     REQUIRE(second.indices == first.indices);
+    REQUIRE(second.page_payload == first.page_payload);
+    REQUIRE(second.root_nodes == first.root_nodes);
     REQUIRE(second.clusters.size() == first.clusters.size());
     REQUIRE(second.clusters[0].first_index == first.clusters[0].first_index);
     REQUIRE(second.clusters[0].triangle_count == first.clusters[0].triangle_count);
-    REQUIRE(second.clusters[1].sphere_radius == Catch::Approx(first.clusters[1].sphere_radius));
+    REQUIRE(second.clusters.back().sphere_radius == Catch::Approx(first.clusters.back().sphere_radius));
+    REQUIRE(first.conventional_lods.size() == 4);
+    REQUIRE(first.conventional_lods.front().indices.size() == source.indices.size());
+    REQUIRE(first.conventional_lods.back().indices.size() < source.indices.size());
+
+    std::vector<std::byte> decoded;
+    REQUIRE(arc::render::decode_virtual_geometry_page(first, 0, decoded));
+    REQUIRE_FALSE(decoded.empty());
+}
+
+TEST_CASE("virtual geometry graph selects mesh-shader rasterization without software passes")
+{
+    using namespace arc::render;
+    resolved_render_config config;
+    config.quality = render_quality_tier::ultra;
+    config.path = render_path::deferred;
+    config.features.gpu_driven_rendering = true;
+    config.features.hzb_occlusion = true;
+    config.features.virtual_geometry = true;
+    config.features.virtual_geometry_path = virtual_geometry_raster_path::mesh_shader;
+
+    const auto compiled = make_scene_draw_graph("viewport", config, true).compile();
+    const auto contains = [&](builtin_render_pass expected)
+    {
+        return std::any_of(compiled.passes.begin(), compiled.passes.end(),
+                           [expected](const auto& pass) { return pass.builtin == expected; });
+    };
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_hierarchy_traversal));
+    REQUIRE(contains(builtin_render_pass::virtual_geometry_mesh_shader_visibility));
+    REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_cluster_binning));
+    REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_software_depth));
 }
 
 TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid triangles")
@@ -2028,8 +2127,18 @@ TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid tri
     arc::render::mesh_data source;
     source.material_index = 11;
     source.vertices.resize(6);
-    for (std::uint32_t index = 0; index < source.vertices.size(); ++index)
-        source.vertices[index].position[0] = static_cast<float>(index);
+    source.vertices[0].position[0] = 0.0f;
+    source.vertices[0].position[1] = 0.0f;
+    source.vertices[1].position[0] = 1.0f;
+    source.vertices[1].position[1] = 0.0f;
+    source.vertices[2].position[0] = 0.0f;
+    source.vertices[2].position[1] = 1.0f;
+    source.vertices[3].position[0] = 2.0f;
+    source.vertices[3].position[1] = 0.0f;
+    source.vertices[4].position[0] = 3.0f;
+    source.vertices[4].position[1] = 0.0f;
+    source.vertices[5].position[0] = 2.0f;
+    source.vertices[5].position[1] = 1.0f;
     source.indices = {0, 1, 2, 3, 4, 5, 0, 99, 1, 2};
 
     const auto virtual_mesh = arc::render::build_virtual_mesh(source, {.max_triangles_per_cluster = 1});
@@ -2044,6 +2153,103 @@ TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid tri
     REQUIRE(virtual_mesh.stats.source_triangle_count == 3);
     REQUIRE(virtual_mesh.stats.invalid_triangle_count == 2);
     REQUIRE(virtual_mesh.stats.material_group_count == 1);
+}
+
+TEST_CASE("virtual geometry residency keeps roots and deduplicates prioritized page requests")
+{
+    arc::render::virtual_mesh_data geometry;
+    geometry.pages = {{.uncompressed_size = 1024, .compressed_offset = 0, .compressed_size = 512, .root = true},
+                      {.uncompressed_size = 768, .compressed_offset = 512, .compressed_size = 256}};
+    const arc::render::virtual_mesh_handle handle{4, 2};
+    arc::render::virtual_geometry_residency_manager residency(
+        {.gpu_budget_bytes = 4096, .compressed_cpu_budget_bytes = 4096, .maximum_requests_per_frame = 8});
+    residency.register_resource(handle, geometry, 7);
+    residency.begin_frame(10);
+
+    REQUIRE(residency.resident(handle, 7, 0));
+    REQUIRE_FALSE(residency.resident(handle, 7, 1));
+    const std::array requests{arc::render::virtual_geometry_page_request{.resource = handle,
+                                                                         .resource_generation = 7,
+                                                                         .page_index = 1,
+                                                                         .projected_error = 4.0f,
+                                                                         .visible_child = true},
+                              arc::render::virtual_geometry_page_request{.resource = handle,
+                                                                         .resource_generation = 7,
+                                                                         .page_index = 1,
+                                                                         .projected_error = 2.0f}};
+    residency.request(requests);
+    const auto loads = residency.take_load_requests();
+    REQUIRE(loads.size() == 1);
+    REQUIRE(loads.front().byte_offset == 512);
+    REQUIRE(residency.snapshot().deduplicated_requests == 1);
+
+    residency.mark_loading(handle, 7, 1);
+    residency.publish(handle, 7, 1, 768, 256);
+    REQUIRE(residency.resident(handle, 7, 1));
+    REQUIRE(residency.snapshot().resident_pages == 2);
+}
+
+TEST_CASE("unified geometry binding selects cooked conventional LODs by geometric error")
+{
+    arc::render::geometry_resource_handle geometry{arc::render::mesh_handle{1, 1}};
+    geometry.conventional_lods = {arc::render::mesh_handle{1, 1}, arc::render::mesh_handle{2, 1},
+                                  arc::render::mesh_handle{3, 1}, arc::render::mesh_handle{4, 1}};
+    geometry.conventional_lod_errors = {0.0f, 0.5f, 2.0f, 8.0f};
+    geometry.conventional_lod_count = 4;
+
+    REQUIRE(geometry.select_conventional_lod(0.25f) == arc::render::mesh_handle{1, 1});
+    REQUIRE(geometry.select_conventional_lod(1.0f) == arc::render::mesh_handle{2, 1});
+    REQUIRE(geometry.select_conventional_lod(3.0f) == arc::render::mesh_handle{3, 1});
+    REQUIRE(geometry.select_conventional_lod(10.0f) == arc::render::mesh_handle{4, 1});
+}
+
+TEST_CASE("virtual geometry reference traversal selects resident children or a hole-free parent")
+{
+    using namespace arc::render;
+    virtual_mesh_data geometry;
+    geometry.pages.resize(3);
+    geometry.pages[0].root = true;
+    geometry.clusters.resize(3);
+    geometry.clusters[0].page_index = 1;
+    geometry.clusters[1].page_index = 2;
+    geometry.clusters[2].page_index = 0;
+    geometry.lod_nodes.resize(3);
+    for (std::uint32_t index = 0; index < 2; ++index)
+    {
+        geometry.lod_nodes[index].first_cluster = index;
+        geometry.lod_nodes[index].cluster_count = 1;
+        geometry.lod_nodes[index].page_index = index + 1;
+        geometry.lod_nodes[index].sphere_center[0] = index == 0 ? -0.5f : 0.5f;
+        geometry.lod_nodes[index].sphere_radius = 0.5f;
+    }
+    auto& root = geometry.lod_nodes[2];
+    root.first_cluster = 2;
+    root.cluster_count = 1;
+    root.first_child = 0;
+    root.child_count = 2;
+    root.page_index = 0;
+    root.error = 1.0f;
+    root.sphere_radius = 1.0f;
+    geometry.hierarchy_children = {0, 1};
+    geometry.root_nodes = {2};
+
+    virtual_geometry_reference_view view;
+    view.camera_position[2] = 10.0f;
+    view.projection_scale = 100.0f;
+    view.geometric_error_threshold = 1.0f;
+    view.double_sided = true;
+
+    const std::array<std::uint8_t, 3> root_only{1, 0, 0};
+    const auto fallback = traverse_virtual_geometry_reference(geometry, root_only, view);
+    REQUIRE(fallback.visible_clusters == std::vector<std::uint32_t>{2});
+    REQUIRE(fallback.requested_pages == std::vector<std::uint32_t>{1, 2});
+    REQUIRE(fallback.parent_fallbacks == 1);
+
+    const std::array<std::uint8_t, 3> all_resident{1, 1, 1};
+    const auto detailed = traverse_virtual_geometry_reference(geometry, all_resident, view);
+    REQUIRE(detailed.visible_clusters == std::vector<std::uint32_t>{0, 1});
+    REQUIRE(detailed.requested_pages.empty());
+    REQUIRE(detailed.parent_fallbacks == 0);
 }
 
 TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")

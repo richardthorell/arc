@@ -205,15 +205,16 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     }
     static const std::unordered_set<std::string_view> known{
         "Name",       "Tag",       "Active",           "RenderLayer",      "Mobility",
-        "Transform",  "Camera",    "MeshRenderer",     "DirectionalLight", "PointLight",
+        "Transform",  "Camera",    "MeshRenderer",     "VirtualMeshRenderer", "DirectionalLight", "PointLight",
         "SpotLight",  "AreaLight", "WorldEnvironment", "Terrain",          "Water",
         "Vegetation", "Decal",     "PrefabInstance",   "WorldRegion"};
     if (!known.contains(name)) return true;
     const auto component_version = value["version"].get<std::uint32_t>();
-    const bool supports_v2 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" || name == "Vegetation" ||
+    const bool supports_v2 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
+                             name == "VirtualMeshRenderer" || name == "Vegetation" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight" || name == "PrefabInstance";
-    const bool supports_v3 = name == "Terrain" || name == "DirectionalLight" || name == "PointLight" ||
+    const bool supports_v3 = name == "Terrain" || name == "MeshRenderer" || name == "DirectionalLight" || name == "PointLight" ||
                              name == "SpotLight" || name == "AreaLight";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
         !(supports_v3 && component_version == 3u))
@@ -298,7 +299,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
         }
         return true;
     }
-    if (name == "MeshRenderer")
+    if (name == "MeshRenderer" || name == "VirtualMeshRenderer")
         return value.contains("visible") && value["visible"].is_boolean() && value.contains("baseColorTint") &&
                        finite_color(value["baseColorTint"], 4) &&
                        (!value.contains("castsShadows") || value["castsShadows"].is_boolean()) &&
@@ -306,7 +307,10 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                        (!value.contains("shadowLodBias") || finite_number(value, "shadowLodBias")) &&
                        (!value.contains("maximumShadowDistance") ||
                         (finite_number(value, "maximumShadowDistance") &&
-                         value["maximumShadowDistance"].get<double>() >= 0.0))
+                         value["maximumShadowDistance"].get<double>() >= 0.0)) &&
+                       (!value.contains("representationPolicy") ||
+                        (value["representationPolicy"].is_number_unsigned() &&
+                         value["representationPolicy"].get<std::uint32_t>() <= 2u))
                    ? true
                    : fail("has invalid renderer values");
     if (name == "WorldEnvironment")
@@ -734,13 +738,14 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                   {"brightenSpeed", component->exposure.brighten_speed},
                                   {"darkenSpeed", component->exposure.darken_speed}}}};
     if (const auto* component = state.scene.try_get<scene::mesh_renderer_component>(value))
-        components["MeshRenderer"] = {{"version", 2},
+        components["MeshRenderer"] = {{"version", 3},
                                       {"visible", component->visible},
                                       {"baseColorTint", vector4(component->base_color_tint)},
                                       {"castsShadows", component->casts_shadows},
                                       {"receivesShadows", component->receives_shadows},
                                       {"shadowLodBias", component->shadow_lod_bias},
-                                      {"maximumShadowDistance", component->maximum_shadow_distance}};
+                                      {"maximumShadowDistance", component->maximum_shadow_distance},
+                                      {"representationPolicy", static_cast<std::uint32_t>(component->representation)}};
     if (const auto* component = state.scene.try_get<scene::directional_light_component>(value))
     {
         components["DirectionalLight"] =
@@ -1288,9 +1293,14 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 loaded.scene.emplace<scene::camera_component>(entity, camera);
                 if (!loaded.game_camera_entity.valid()) loaded.game_camera_entity = entity;
             }
-            if (components.contains("MeshRenderer") && !loaded.scene.has<scene::mesh_renderer_component>(entity))
+            const json* serialized_mesh_renderer = components.contains("MeshRenderer")
+                                                       ? &components["MeshRenderer"]
+                                                   : components.contains("VirtualMeshRenderer")
+                                                       ? &components["VirtualMeshRenderer"]
+                                                       : nullptr;
+            if (serialized_mesh_renderer && !loaded.scene.has<scene::mesh_renderer_component>(entity))
             {
-                const auto& value = components["MeshRenderer"];
+                const auto& value = *serialized_mesh_renderer;
                 scene::mesh_renderer_component renderer_component;
                 renderer_component.mesh = loaded.default_mesh;
                 renderer_component.material = loaded.default_material;
@@ -1300,18 +1310,25 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 renderer_component.receives_shadows = value.value("receivesShadows", true);
                 renderer_component.shadow_lod_bias = value.value("shadowLodBias", 0.0f);
                 renderer_component.maximum_shadow_distance = value.value("maximumShadowDistance", 0.0f);
+                renderer_component.representation = static_cast<render::geometry_representation_policy>(
+                    std::min(value.value("representationPolicy", 0u), 2u));
                 loaded.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
                 diagnostics.push_back("Mesh asset for '" + id_text + "' used the default fallback");
+                if (components.contains("VirtualMeshRenderer"))
+                    diagnostics.push_back("Migrated legacy VirtualMeshRenderer on '" + id_text +
+                                          "' to the unified MeshRenderer component");
             }
-            else if (components.contains("MeshRenderer"))
+            else if (serialized_mesh_renderer)
             {
                 auto& mesh = loaded.scene.get<scene::mesh_renderer_component>(entity);
-                mesh.visible = components["MeshRenderer"].value("visible", true);
-                mesh.base_color_tint = read_vector4(components["MeshRenderer"].at("baseColorTint"));
-                mesh.casts_shadows = components["MeshRenderer"].value("castsShadows", true);
-                mesh.receives_shadows = components["MeshRenderer"].value("receivesShadows", true);
-                mesh.shadow_lod_bias = components["MeshRenderer"].value("shadowLodBias", 0.0f);
-                mesh.maximum_shadow_distance = components["MeshRenderer"].value("maximumShadowDistance", 0.0f);
+                mesh.visible = serialized_mesh_renderer->value("visible", true);
+                mesh.base_color_tint = read_vector4(serialized_mesh_renderer->at("baseColorTint"));
+                mesh.casts_shadows = serialized_mesh_renderer->value("castsShadows", true);
+                mesh.receives_shadows = serialized_mesh_renderer->value("receivesShadows", true);
+                mesh.shadow_lod_bias = serialized_mesh_renderer->value("shadowLodBias", 0.0f);
+                mesh.maximum_shadow_distance = serialized_mesh_renderer->value("maximumShadowDistance", 0.0f);
+                mesh.representation = static_cast<render::geometry_representation_policy>(
+                    std::min(serialized_mesh_renderer->value("representationPolicy", 0u), 2u));
             }
             if (components.contains("DirectionalLight"))
             {

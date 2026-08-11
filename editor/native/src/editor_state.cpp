@@ -409,7 +409,10 @@ ecs::entity add_primitive_to_scene(editor_scene_state& scene, render::renderer& 
     scene.scene.emplace<scene::selection_component>(entity, true);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
-    scene.scene.emplace<scene::mesh_renderer_component>(entity, mesh_handle, material, true);
+    scene::mesh_renderer_component renderer_component;
+    renderer_component.mesh = mesh_handle;
+    renderer_component.material = material;
+    scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
     scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
@@ -580,7 +583,10 @@ ecs::entity add_grass_patch_to_scene(editor_scene_state& scene, render::renderer
     scene.scene.emplace<scene::vegetation_component>(entity, vegetation);
     scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity, transform);
-    scene.scene.emplace<scene::mesh_renderer_component>(entity, mesh_handle, material, true);
+    scene::mesh_renderer_component renderer_component;
+    renderer_component.mesh = mesh_handle;
+    renderer_component.material = material;
+    scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
     scene.world_feature_entities.push_back(entity);
     return entity;
 }
@@ -667,8 +673,10 @@ editor_scene_open_result apply_scene_import_result_to_editor(editor_scene_state&
         scene.scene.emplace<scene::selection_component>(entity, false);
         scene.scene.emplace<scene::bounds_component>(entity, bounds[node.mesh_index], bounds[node.mesh_index], true);
         scene.scene.emplace<scene::transform_component>(entity, transform);
-        scene.scene.emplace<scene::mesh_renderer_component>(entity, meshes[node.mesh_index], materials[material_index],
-                                                            true);
+        scene::mesh_renderer_component renderer_component;
+        renderer_component.mesh = meshes[node.mesh_index];
+        renderer_component.material = materials[material_index];
+        scene.scene.emplace<scene::mesh_renderer_component>(entity, renderer_component);
         scene.scene.emplace<scene::persistent_id_component>(entity, ecs::generate_entity_guid());
         scene.scene.emplace<scene::hierarchy_component>(entity);
         scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,

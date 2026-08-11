@@ -62,6 +62,7 @@ export type InspectorLight = {
 };
 
 export type InspectorMeshRenderer = {
+  representation: 'auto' | 'conventional' | 'virtualized';
   visible: boolean;
   castsShadows: boolean;
   receivesShadows: boolean;
@@ -222,6 +223,7 @@ const hostSelectedEntitySchema = z.object({
     .default(null),
   meshRenderer: z
     .object({
+      representation: z.enum(['auto', 'conventional', 'virtualized']).default('auto'),
       visible: z.boolean(),
       castsShadows: z.boolean().default(true),
       receivesShadows: z.boolean().default(true),

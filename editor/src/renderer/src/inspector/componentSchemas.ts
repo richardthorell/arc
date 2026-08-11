@@ -537,6 +537,17 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
     title: generatedTitle('arc::scene.mesh_renderer_component', 'Mesh Renderer'),
     fields: [
       {
+        id: 'representation',
+        label: 'Representation',
+        path: 'meshRenderer.representation',
+        type: 'enum',
+        options: [
+          { value: 'auto', label: 'Automatic' },
+          { value: 'conventional', label: 'Conventional LODs' },
+          { value: 'virtualized', label: 'Virtual Geometry' },
+        ],
+      },
+      {
         id: 'preview',
         label: 'Material Preview',
         path: 'meshRenderer.materialPath',

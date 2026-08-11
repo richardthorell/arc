@@ -235,6 +235,7 @@ export function InspectorPanel({
           'entity.setMeshRenderer',
           {
             ...entityPayload(next),
+            representation: next.meshRenderer.representation,
             visible: next.meshRenderer.visible,
             castsShadows: next.meshRenderer.castsShadows,
             receivesShadows: next.meshRenderer.receivesShadows,

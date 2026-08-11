@@ -1000,16 +1000,29 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
     const auto entity = host->selected_entity_snapshot().entity;
     const auto initial = host->selected_entity_snapshot();
     REQUIRE(initial.mesh_renderer.has_value());
+    REQUIRE(initial.mesh_renderer->representation == 0u);
     REQUIRE(initial.mesh_renderer->visible);
     REQUIRE(initial.mesh_renderer->has_material);
 
     REQUIRE(host->execute({.request_id = 2,
                            .payload =
                                arc::editor::host_set_mesh_renderer_command{
-                                   .entity = entity, .visible = false, .base_color_tint = {0.5f, 0.6f, 0.7f, 0.8f}}})
+                                   .entity = entity,
+                                   .representation = 2u,
+                                   .visible = false,
+                                   .base_color_tint = {0.5f, 0.6f, 0.7f, 0.8f}}})
                 .succeeded);
+    REQUIRE(host->selected_entity_snapshot().mesh_renderer->representation == 2u);
     REQUIRE_FALSE(host->selected_entity_snapshot().mesh_renderer->visible);
     REQUIRE(host->selected_entity_snapshot().mesh_renderer->base_color_tint.z == Catch::Approx(0.7f));
+    REQUIRE_FALSE(
+        host->execute({.request_id = 31,
+                       .payload = arc::editor::host_set_mesh_renderer_command{
+                           .entity = entity,
+                           .representation = 3u,
+                           .visible = true,
+                           .base_color_tint = {1.0f, 1.0f, 1.0f, 1.0f}}})
+            .succeeded);
     REQUIRE_FALSE(
         host->execute({.request_id = 3,
                        .payload =

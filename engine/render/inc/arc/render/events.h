@@ -34,6 +34,7 @@ enum class render_event_type : std::uint8_t
     mesh_upload,
     mesh_destroy,
     virtual_mesh_upload,
+    virtual_mesh_destroy,
     texture_upload,
     material_upload,
     environment_upload,
@@ -77,7 +78,12 @@ enum class mesh_visualization_mode : std::uint8_t
     cascade_debug,
     shadow_mask,
     light_complexity,
-    cluster_debug
+    cluster_debug,
+    virtual_hierarchy_level,
+    virtual_geometric_error,
+    virtual_page_residency,
+    virtual_overdraw,
+    virtual_triangles_per_pixel
 };
 
 /**
@@ -142,6 +148,12 @@ struct virtual_mesh_upload_event
     virtual_mesh_handle handle{};
     std::shared_ptr<const virtual_mesh_data> mesh;
     std::string label;
+};
+
+/** @brief Retire renderer-owned virtual geometry after in-flight frames complete. */
+struct virtual_mesh_destroy_event
+{
+    virtual_mesh_handle handle{};
 };
 
 /**
@@ -331,7 +343,8 @@ struct render_world_event
 };
 
 using render_event_payload =
-    std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, texture_upload_event,
+    std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, virtual_mesh_destroy_event,
+                 texture_upload_event,
                  material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event,
                  draw_mesh_event, directional_light_event, point_light_event, spot_light_event, area_light_event,
                  gpu_scene_update_event, render_world_event, debug_marker_event>;
@@ -410,6 +423,9 @@ public:
      */
     void virtual_mesh_upload(virtual_mesh_handle handle, std::shared_ptr<const virtual_mesh_data> mesh,
                              std::string label = {});
+
+    /** @brief Append a virtual-geometry retirement request. */
+    void virtual_mesh_destroy(virtual_mesh_handle handle);
 
     /**
      * @brief Append a texture upload request.

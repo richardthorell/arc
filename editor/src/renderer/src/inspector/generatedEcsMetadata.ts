@@ -371,7 +371,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.mesh_renderer_component",
     "displayName": "Mesh Renderer",
     "description": "Reflected scene data for the Mesh Renderer component.",
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "fields": [
       {
         "id": "0000000000000001",
@@ -483,6 +483,20 @@ export const generatedEcsComponents = [
           "minimum": 0
         },
         "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000009",
+        "name": "representation",
+        "displayName": "Geometry Representation",
+        "description": "Selects automatic, conventional LOD, or virtual geometry rendering for this mesh.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "enum",
         "flags": [
           "serialized",
           "editable",

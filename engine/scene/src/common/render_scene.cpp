@@ -55,12 +55,6 @@ geometric::box3f transform_bounds(const geometric::box3f& local_bounds, const ma
     return result;
 }
 
-geometric::box3f cluster_bounds(const render::virtual_mesh_cluster& cluster, const math::matrix4f& world)
-{
-    return transform_bounds(
-        geometric::box3f{geometric::point3f{cluster.bounds_min}, geometric::point3f{cluster.bounds_max}}, world);
-}
-
 geometric::box3f world_bounds_for(const ecs::world& scene, entity value, const transform_component& transform)
 {
     const auto* bounds = scene.try_get<bounds_component>(value);
@@ -128,7 +122,7 @@ void append_mesh_item(ecs::world& scene, render::render_world_packet& packet, re
 
 void append_virtual_mesh_items(ecs::world& scene, render::renderer& renderer, render::render_world_packet& packet,
                                render_scene_result& result, entity value, const transform_component& transform,
-                               const virtual_mesh_renderer_component& mesh_renderer)
+                               const mesh_renderer_component& mesh_renderer)
 {
     if (!entity_is_active(scene, value)) return;
 
@@ -136,36 +130,31 @@ void append_virtual_mesh_items(ecs::world& scene, render::renderer& renderer, re
     const bool selected = entity_selected(scene, value);
     if (selected) ++result.selected_count;
 
-    if (!mesh_renderer.visible || !renderer.virtual_mesh_alive(mesh_renderer.mesh)) return;
+    if (!mesh_renderer.visible || !renderer.virtual_mesh_alive(mesh_renderer.mesh.virtualized)) return;
 
-    const auto* mesh = renderer.virtual_mesh_data_for(mesh_renderer.mesh);
+    const auto* mesh = renderer.virtual_mesh_data_for(mesh_renderer.mesh.virtualized);
     if (!mesh) return;
 
     const math::matrix4f world = transform.dirty ? local_matrix(transform) : transform.world;
     const auto object = render::make_render_object_id(value.index, value.generation);
-    const auto layer_mask = render_layer_mask(scene, value);
-    const auto label = entity_label(scene, value);
-    for (std::uint32_t cluster_index = 0; cluster_index < mesh->clusters.size(); ++cluster_index)
-    {
-        const auto& cluster = mesh->clusters[cluster_index];
-        packet.virtual_items.push_back({.mesh = mesh_renderer.mesh,
-                                        .material = mesh_renderer.material,
-                                        .cluster_index = cluster_index,
-                                        .model = world,
-                                        .previous_model = world,
-                                        .world_bounds = cluster_bounds(cluster, world),
-                                        .render_layer_mask = layer_mask,
-                                        .object_id = object,
-                                        .visible = mesh_renderer.visible,
-                                        .selected = selected,
-                                        .casts_shadows = mesh_renderer.casts_shadows,
-                                        .receives_shadows = mesh_renderer.receives_shadows,
-                                        .mobility = entity_mobility(scene, value),
-                                        .shadow_lod_bias = mesh_renderer.shadow_lod_bias,
-                                        .maximum_shadow_distance = mesh_renderer.maximum_shadow_distance,
-                                        .base_color_tint = mesh_renderer.base_color_tint,
-                                        .label = label});
-    }
+    packet.virtual_items.push_back({.mesh = mesh_renderer.mesh.virtualized,
+                                    .material = mesh_renderer.material,
+                                    .root_node = mesh->root_nodes.size() == 1 ? mesh->root_nodes.front()
+                                                                            : render::invalid_virtual_geometry_index,
+                                    .model = world,
+                                    .previous_model = world,
+                                    .world_bounds = world_bounds_for(scene, value, transform),
+                                    .render_layer_mask = render_layer_mask(scene, value),
+                                    .object_id = object,
+                                    .visible = mesh_renderer.visible,
+                                    .selected = selected,
+                                    .casts_shadows = mesh_renderer.casts_shadows,
+                                    .receives_shadows = mesh_renderer.receives_shadows,
+                                    .mobility = entity_mobility(scene, value),
+                                    .shadow_lod_bias = mesh_renderer.shadow_lod_bias,
+                                    .maximum_shadow_distance = mesh_renderer.maximum_shadow_distance,
+                                    .base_color_tint = mesh_renderer.base_color_tint,
+                                    .label = entity_label(scene, value)});
 }
 
 bool environment_mesh_visible(const ecs::world& scene, entity value, const scene_render_visibility& visibility,
@@ -197,6 +186,18 @@ void apply_lod(const ecs::world& scene, entity value, render::mesh_handle& mesh,
             return;
         }
     }
+}
+
+render::mesh_handle select_cooked_lod(const render::geometry_resource_handle& geometry,
+                                      const render::render_camera& camera, const geometric::box3f& world_bounds,
+                                      float error_threshold) noexcept
+{
+    if (geometry.conventional_lod_count <= 1) return geometry.conventional;
+    const auto center = geometric::center(world_bounds).as_vector();
+    const auto distance = std::max(math::length(math::sub(center, camera.position)), camera.near_plane);
+    const auto projection_scale =
+        std::max(1.0f, 0.5f * static_cast<float>(std::max(1u, camera.render_height)) * std::abs(camera.projection(1, 1)));
+    return geometry.select_conventional_lod(std::max(0.0f, error_threshold) * distance / projection_scale);
 }
 
 render::cloud_layer_data to_render_cloud_layer(const cloud_layer_settings& layer)
@@ -318,7 +319,6 @@ void prepare_render_scene_queries(ecs::world& scene)
     scene.prepare_query<transform_component, camera_component>();
     scene.prepare_query<world_environment_component>();
     scene.prepare_query<transform_component, mesh_renderer_component>();
-    scene.prepare_query<transform_component, virtual_mesh_renderer_component>();
     scene.prepare_query<transform_component, terrain_component>();
     scene.prepare_query<transform_component, water_component>();
     scene.prepare_query<transform_component, vegetation_component>();
@@ -458,18 +458,24 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
         {
             bool transparent{};
             if (!environment_mesh_visible(scene, value, environment_visibility, transparent)) return;
-            auto mesh = mesh_renderer.mesh;
+            const bool may_virtualize =
+                mesh_renderer.representation != render::geometry_representation_policy::conventional;
+            if (!transparent && may_virtualize && renderer.resolved_config().features.virtual_geometry &&
+                renderer.virtual_mesh_alive(mesh_renderer.mesh.virtualized))
+            {
+                append_virtual_mesh_items(scene, renderer, world_packet, result, value, transform, mesh_renderer);
+                return;
+            }
+            render::mesh_handle mesh = select_cooked_lod(mesh_renderer.mesh, world_packet.camera,
+                                                         world_bounds_for(scene, value, transform),
+                                                         renderer.resolved_config().geometry_error_threshold);
             auto material = mesh_renderer.material;
-            apply_lod(scene, value, mesh, material);
+            if (mesh_renderer.mesh.conventional_lod_count <= 1) apply_lod(scene, value, mesh, material);
             append_mesh_item(scene, world_packet, result, value, transform, mesh, material, mesh_renderer.visible,
                              transparent, {}, 0, 1, mesh_renderer.base_color_tint, mesh_renderer.casts_shadows,
                              mesh_renderer.receives_shadows, mesh_renderer.shadow_lod_bias,
                              mesh_renderer.maximum_shadow_distance);
         });
-
-    scene.view<transform_component, virtual_mesh_renderer_component>().each(
-        [&](entity value, const transform_component& transform, const virtual_mesh_renderer_component& mesh_renderer)
-        { append_virtual_mesh_items(scene, renderer, world_packet, result, value, transform, mesh_renderer); });
 
     scene.view<transform_component, terrain_component>().each(
         [&](entity value, const transform_component& transform, const terrain_component& terrain)

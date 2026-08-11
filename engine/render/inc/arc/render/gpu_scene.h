@@ -21,8 +21,8 @@ enum class gpu_scene_geometry_kind : std::uint8_t
 {
     /** Ordinary indexed mesh. */
     mesh,
-    /** One cluster from a virtual-mesh resource. */
-    virtual_mesh_cluster
+    /** One virtual mesh instance whose hierarchy is traversed by the GPU. */
+    virtual_mesh
 };
 
 /** @brief Stable generational index into renderer-owned GPU Scene storage. */
@@ -53,13 +53,13 @@ struct gpu_scene_instance
     geometric::box3f world_bounds{};
     /** Ordinary mesh reference when @ref geometry_kind is `mesh`. */
     mesh_handle mesh{};
-    /** Virtual mesh reference when @ref geometry_kind is `virtual_mesh_cluster`. */
+    /** Virtual mesh reference when @ref geometry_kind is `virtual_mesh`. */
     virtual_mesh_handle virtual_mesh{};
     /** Material referenced by the instance. */
     material_handle material{};
     /** Stable per-frame ObjectID used by editor picking. */
     render_object_id object_id{};
-    /** Mesh subresource or virtual cluster index. */
+    /** Mesh subresource or virtual hierarchy root. */
     std::uint32_t submesh_or_cluster{};
     /** View layer visibility mask. */
     std::uint32_t render_layer_mask{1u};

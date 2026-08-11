@@ -25,3 +25,4 @@
 #include <arc/render/shadow.h>
 #include <arc/render/texture.h>
 #include <arc/render/virtual_mesh.h>
+#include <arc/render/virtual_geometry.h>

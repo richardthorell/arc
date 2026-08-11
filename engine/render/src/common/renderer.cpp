@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <utility>
 
 namespace arc::render
@@ -105,6 +106,17 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                      capabilities.gpu_scene_indirect;
     const bool gpu_driven =
         optional_features && !config.force_disable_gpu_driven && profile.prefer_gpu_driven && gpu_scene_supported;
+    const bool virtual_geometry_quality = result.quality == render_quality_tier::high ||
+                                          result.quality == render_quality_tier::ultra;
+    const bool virtual_geometry_common = optional_features && virtual_geometry_quality && gpu_driven &&
+                                         capabilities.hzb_occlusion && capabilities.descriptor_indexing &&
+                                         capabilities.virtual_geometry_streaming;
+    const auto virtual_geometry_path =
+        virtual_geometry_common && capabilities.virtual_geometry_mesh_shader
+            ? virtual_geometry_raster_path::mesh_shader
+        : virtual_geometry_common && capabilities.virtual_geometry_compute
+            ? virtual_geometry_raster_path::compute
+            : virtual_geometry_raster_path::unavailable;
     gpu_submission_path submission = gpu_submission_path::cpu_direct;
     if (gpu_driven && !config.force_cpu_submission && capabilities.draw_indirect)
         submission = optional_features && capabilities.draw_indirect_count && capabilities.gpu_scene_indirect_count
@@ -125,7 +137,8 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                              profile.prefer_temporal_upscaling,
                        .async_compute = optional_features && !config.force_disable_async_compute &&
                                         profile.prefer_async_compute && capabilities.dedicated_compute_queue,
-                       .virtual_geometry = optional_features && capabilities.virtual_geometry,
+                       .virtual_geometry = virtual_geometry_path != virtual_geometry_raster_path::unavailable,
+                       .virtual_geometry_path = virtual_geometry_path,
                        .software_ray_tracing = optional_features && capabilities.software_ray_tracing,
                        .hardware_ray_tracing = optional_features && capabilities.ray_tracing,
                        .sparse_resources = optional_features && capabilities.sparse_resources,
@@ -163,6 +176,10 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
             "GPU Scene indirect-count submission is unavailable; using fixed indirect draws");
     if (profile.prefer_async_compute && !result.features.async_compute)
         result.fallback_reasons.push_back("dedicated asynchronous compute is unavailable; compute runs on graphics");
+    if (virtual_geometry_quality && virtual_geometry_path == virtual_geometry_raster_path::unavailable)
+        result.fallback_reasons.push_back(
+            "virtual geometry requires executable traversal, HZB, bindless material access, streaming, and a "
+            "compute or mesh-shader raster path; using conventional LOD geometry");
 
     return result;
 }
@@ -392,6 +409,15 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;
         resolved_config_.gi_trace_budget = budget.gi_trace_budget;
         resolved_config_.reflection_ray_budget = budget.reflection_ray_budget;
+        virtual_geometry_residency_config residency;
+        if (resolved_config_.quality == render_quality_tier::ultra)
+        {
+            residency.gpu_budget_bytes = 1024ull * 1024ull * 1024ull;
+            residency.compressed_cpu_budget_bytes = 512ull * 1024ull * 1024ull;
+        }
+        if (const auto device_budget = backend_->capabilities().memory_budget; device_budget != 0)
+            residency.gpu_budget_bytes = std::min(residency.gpu_budget_bytes, device_budget / 10u);
+        virtual_geometry_residency_.configure(residency);
         backend_->configure(resolved_config_);
     }
 }
@@ -464,13 +490,86 @@ virtual_mesh_handle renderer::create_virtual_mesh(virtual_mesh_data mesh)
 {
     const virtual_mesh_handle handle = virtual_mesh_handles_.allocate();
     auto shared_mesh = std::make_shared<virtual_mesh_data>(std::move(mesh));
-    virtual_mesh_data_[renderer_resource_key(handle)] = shared_mesh;
+    const auto key = renderer_resource_key(handle);
+    virtual_mesh_data_[key] = shared_mesh;
+    virtual_mesh_content_generations_[key] = 1;
+    virtual_geometry_residency_.register_resource(handle, *shared_mesh, 1);
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.virtual_mesh_upload(handle, shared_mesh, "virtual mesh");
     frame_queue_.submit(std::move(buffer));
     return handle;
+}
+
+bool renderer::update_virtual_mesh(virtual_mesh_handle handle, virtual_mesh_data mesh)
+{
+    if (!virtual_mesh_handles_.alive(handle)) return false;
+    auto shared_mesh = std::make_shared<virtual_mesh_data>(std::move(mesh));
+    const auto key = renderer_resource_key(handle);
+    virtual_mesh_data_[key] = shared_mesh;
+    auto& content_generation = virtual_mesh_content_generations_[key];
+    ++content_generation;
+    if (content_generation == 0) content_generation = 1;
+    virtual_geometry_residency_.register_resource(handle, *shared_mesh, content_generation);
+
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.virtual_mesh_upload(handle, shared_mesh, "virtual mesh update");
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::destroy_virtual_mesh(virtual_mesh_handle handle)
+{
+    if (!virtual_mesh_handles_.release(handle)) return false;
+    virtual_geometry_residency_.unregister_resource(handle);
+    const auto key = renderer_resource_key(handle);
+    virtual_mesh_data_.erase(key);
+    virtual_mesh_content_generations_.erase(key);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.virtual_mesh_destroy(handle);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+geometry_resource_handle renderer::create_geometry_resource(virtual_mesh_data geometry, std::uint32_t asset_generation)
+{
+    geometry_resource_handle result;
+    result.asset_generation = asset_generation;
+    const auto lod_count = std::min<std::size_t>(geometry.conventional_lods.size(), result.conventional_lods.size());
+    for (std::size_t index = 0; index < lod_count; ++index)
+    {
+        mesh_data lod;
+        lod.name = "cooked geometry LOD " + std::to_string(index);
+        lod.vertices = geometry.conventional_lods[index].vertices;
+        lod.indices = geometry.conventional_lods[index].indices;
+        const auto handle = create_mesh(std::move(lod));
+        result.conventional_lods[index] = handle;
+        result.conventional_lod_errors[index] = geometry.conventional_lods[index].geometric_error;
+        if (index == 0) result.conventional = handle;
+    }
+    result.conventional_lod_count = static_cast<std::uint8_t>(lod_count);
+    if (!geometry.clusters.empty() && !geometry.pages.empty()) result.virtualized = create_virtual_mesh(std::move(geometry));
+    return result;
+}
+
+bool renderer::destroy_geometry_resource(const geometry_resource_handle& geometry)
+{
+    bool changed{};
+    for (std::size_t index = 0; index < geometry.conventional_lod_count && index < geometry.conventional_lods.size();
+         ++index)
+    {
+        const auto handle = geometry.conventional_lods[index];
+        if (!handle.valid()) continue;
+        bool duplicate{};
+        for (std::size_t previous = 0; previous < index; ++previous)
+            duplicate = duplicate || geometry.conventional_lods[previous] == handle;
+        if (!duplicate) changed = destroy_mesh(handle) || changed;
+    }
+    if (geometry.virtualized.valid()) changed = destroy_virtual_mesh(geometry.virtualized) || changed;
+    return changed;
 }
 
 texture_handle renderer::create_texture(texture_data texture)
@@ -583,6 +682,23 @@ const virtual_mesh_data* renderer::virtual_mesh_data_for(virtual_mesh_handle han
     return found == virtual_mesh_data_.end() ? nullptr : found->second.get();
 }
 
+std::uint32_t renderer::virtual_mesh_content_generation(virtual_mesh_handle handle) const noexcept
+{
+    if (!virtual_mesh_handles_.alive(handle)) return 0;
+    const auto found = virtual_mesh_content_generations_.find(renderer_resource_key(handle));
+    return found == virtual_mesh_content_generations_.end() ? 0u : found->second;
+}
+
+virtual_geometry_residency_manager& renderer::virtual_geometry_residency() noexcept
+{
+    return virtual_geometry_residency_;
+}
+
+const virtual_geometry_residency_manager& renderer::virtual_geometry_residency() const noexcept
+{
+    return virtual_geometry_residency_;
+}
+
 bool renderer::texture_alive(texture_handle handle) const
 {
     return texture_handles_.alive(handle);
@@ -614,7 +730,19 @@ render_viewport_texture renderer::viewport_texture() const noexcept
 render_backend_frame_profile renderer::last_frame_profile() const
 {
     if (!backend_) return {};
-    return backend_->last_frame_profile();
+    auto result = backend_->last_frame_profile();
+    const auto residency = virtual_geometry_residency_.snapshot();
+    result.virtual_geometry.enabled = resolved_config_.features.virtual_geometry;
+    result.virtual_geometry.raster_path = resolved_config_.features.virtual_geometry_path;
+    result.virtual_geometry.requested_pages = residency.requested_pages;
+    result.virtual_geometry.failed_pages = residency.failed_pages;
+    result.virtual_geometry.parent_fallbacks = residency.parent_fallbacks;
+    result.virtual_geometry.resident_bytes = residency.gpu_resident_bytes;
+    result.virtual_geometry.residency_budget_bytes = residency.gpu_budget_bytes;
+    if (!result.virtual_geometry.enabled && result.virtual_geometry.fallback_reason.empty())
+        result.virtual_geometry.fallback_reason =
+            "virtual geometry is unavailable for the resolved renderer configuration; using conventional LODs";
+    return result;
 }
 
 void renderer::request_object_pick(std::uint64_t request_id, std::uint32_t x, std::uint32_t y)
@@ -641,6 +769,7 @@ render_frame_capture_result renderer::last_frame_capture() const
 
 render_submit_result renderer::render_frame(std::uint64_t frame_index, const render_graph& graph)
 {
+    virtual_geometry_residency_.begin_frame(frame_index);
     auto packet = frame_queue_.commit(frame_index);
     const auto compiled = graph.compile();
 

@@ -14,6 +14,46 @@ option(ARC_USE_SYSTEM_UFBX "Use a system-provided ufbx package" OFF)
 option(ARC_FETCH_UFBX "Fetch ufbx when ARC_USE_SYSTEM_UFBX is OFF" ON)
 option(ARC_USE_SYSTEM_NLOHMANN_JSON "Use a system-provided nlohmann_json package" OFF)
 option(ARC_USE_SYSTEM_SQLITE "Use a system-provided SQLite package" OFF)
+option(ARC_USE_SYSTEM_MESHOPTIMIZER "Use a system-provided meshoptimizer package" OFF)
+
+add_library(arc-third-party-meshoptimizer INTERFACE)
+if(NOT TARGET arc::third-party-meshoptimizer)
+    add_library(arc::third-party-meshoptimizer ALIAS arc-third-party-meshoptimizer)
+endif()
+
+if(ARC_USE_SYSTEM_MESHOPTIMIZER)
+    find_package(meshoptimizer CONFIG REQUIRED)
+    target_link_libraries(arc-third-party-meshoptimizer INTERFACE meshoptimizer::meshoptimizer)
+elseif(ARC_FETCH_THIRD_PARTY)
+    set(MESHOPT_BUILD_DEMO OFF CACHE BOOL "" FORCE)
+    set(MESHOPT_BUILD_GLTFPACK OFF CACHE BOOL "" FORCE)
+    set(MESHOPT_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(MESHOPT_WERROR OFF CACHE BOOL "" FORCE)
+    set(MESHOPT_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        meshoptimizer
+        GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git
+        GIT_TAG 9d9890c73011d75920af614485296d1e03e95448
+    )
+    FetchContent_MakeAvailable(meshoptimizer)
+    target_include_directories(meshoptimizer PUBLIC "$<INSTALL_INTERFACE:include/arc/private/meshoptimizer>")
+    if(MSVC)
+        target_compile_options(meshoptimizer PRIVATE /W0)
+    else()
+        target_compile_options(meshoptimizer PRIVATE -w)
+    endif()
+    target_link_libraries(arc-third-party-meshoptimizer INTERFACE meshoptimizer)
+    set_target_properties(arc-third-party-meshoptimizer PROPERTIES EXPORT_NAME _Meshoptimizer)
+    set_target_properties(meshoptimizer PROPERTIES EXPORT_NAME _MeshoptimizerStatic)
+    install(TARGETS arc-third-party-meshoptimizer meshoptimizer
+        EXPORT ARCTargets
+        ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+        COMPONENT sdk-private)
+    install(FILES "${meshoptimizer_SOURCE_DIR}/src/meshoptimizer.h"
+        DESTINATION include/arc/private/meshoptimizer COMPONENT sdk-private)
+else()
+    message(FATAL_ERROR "ARC_FETCH_THIRD_PARTY is OFF and ARC_USE_SYSTEM_MESHOPTIMIZER is OFF")
+endif()
 
 add_library(arc-third-party-json INTERFACE)
 if(NOT TARGET arc::third-party-json)

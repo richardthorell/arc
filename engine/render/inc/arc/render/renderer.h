@@ -10,6 +10,7 @@
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
 #include <arc/render/virtual_mesh.h>
+#include <arc/render/virtual_geometry.h>
 
 #include <memory>
 #include <unordered_map>
@@ -148,6 +149,19 @@ public:
      */
     [[nodiscard]] virtual_mesh_handle create_virtual_mesh(virtual_mesh_data mesh);
 
+    /** @brief Replace virtual-geometry metadata and pages while retaining its handle. */
+    bool update_virtual_mesh(virtual_mesh_handle handle, virtual_mesh_data mesh);
+
+    /** @brief Retire a virtual-geometry resource and all of its streamed pages. */
+    bool destroy_virtual_mesh(virtual_mesh_handle handle);
+
+    /** @brief Realize conventional LODs and virtual pages from one cooked geometry artifact. */
+    [[nodiscard]] geometry_resource_handle create_geometry_resource(virtual_mesh_data geometry,
+                                                                    std::uint32_t asset_generation = 1);
+
+    /** @brief Retire every renderer resource owned by a unified geometry binding. */
+    bool destroy_geometry_resource(const geometry_resource_handle& geometry);
+
     /**
      * @brief Create a renderer-owned texture resource and enqueue its upload.
      */
@@ -198,6 +212,14 @@ public:
      * @brief Return CPU-side virtual mesh metadata needed for cluster extraction.
      */
     const virtual_mesh_data* virtual_mesh_data_for(virtual_mesh_handle handle) const;
+
+    /** @brief Current content generation used to reject stale asynchronous page completions. */
+    [[nodiscard]] std::uint32_t virtual_mesh_content_generation(virtual_mesh_handle handle) const noexcept;
+
+    /** @return Renderer-owned virtual-geometry residency authority. */
+    virtual_geometry_residency_manager& virtual_geometry_residency() noexcept;
+    /** @return Read-only renderer-owned virtual-geometry residency authority. */
+    const virtual_geometry_residency_manager& virtual_geometry_residency() const noexcept;
 
     /**
      * @brief Return whether a texture handle still references a live renderer texture.
@@ -264,6 +286,7 @@ private:
     std::unique_ptr<render_backend> backend_;
     render_frame_queue frame_queue_;
     gpu_scene gpu_scene_;
+    virtual_geometry_residency_manager virtual_geometry_residency_;
     handle_pool mesh_handles_;
     handle_pool virtual_mesh_handles_;
     handle_pool texture_handles_;
@@ -273,6 +296,7 @@ private:
     std::uint32_t viewport_height_{};
     frame_budget_controller frame_budget_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
+    std::unordered_map<std::uint64_t, std::uint32_t> virtual_mesh_content_generations_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
     std::unordered_map<std::uint64_t, temporal_view_state> temporal_views_;
 };

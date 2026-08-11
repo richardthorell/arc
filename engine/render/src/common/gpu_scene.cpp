@@ -196,8 +196,8 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
     {
         const instance_key key{.world_id = packet.gpu_scene_world_id,
                                .object_id = item.object_id,
-                               .geometry_kind = gpu_scene_geometry_kind::virtual_mesh_cluster,
-                               .submesh_or_cluster = item.cluster_index};
+                               .geometry_kind = gpu_scene_geometry_kind::virtual_mesh,
+                               .submesh_or_cluster = item.root_node};
         upsert(key,
                {.model = item.model,
                 .previous_model = item.previous_model,
@@ -205,12 +205,12 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
                 .virtual_mesh = item.mesh,
                 .material = item.material,
                 .object_id = item.object_id,
-                .submesh_or_cluster = item.cluster_index,
+                .submesh_or_cluster = item.root_node,
                 .render_layer_mask = item.render_layer_mask,
                 .flags = instance_flags(item.visible, item.selected, false, item.casts_shadows, item.receives_shadows),
                 .maximum_draw_distance = item.maximum_draw_distance,
                 .geometry_error_scale = item.geometry_error_scale,
-                .geometry_kind = gpu_scene_geometry_kind::virtual_mesh_cluster});
+                .geometry_kind = gpu_scene_geometry_kind::virtual_mesh});
         item.gpu_scene_instance = {.index = lookup_.at(key), .generation = slots_[lookup_.at(key)].generation};
     }
 

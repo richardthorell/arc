@@ -141,8 +141,10 @@ struct camera_component
  */
 struct mesh_renderer_component
 {
-    render::mesh_handle mesh{};
+    /** Conventional LODs and virtual pages realized from the serialized mesh asset reference. */
+    render::geometry_resource_handle mesh{};
     render::material_handle material{};
+    render::geometry_representation_policy representation{render::geometry_representation_policy::auto_select};
     bool visible{true};
     bool casts_shadows{true};
     bool receives_shadows{true};
@@ -152,7 +154,9 @@ struct mesh_renderer_component
 };
 
 /**
- * @brief Renderable virtual mesh component backed by CPU-visible clusters.
+ * @brief Legacy persisted virtual renderer accepted only for document migration.
+ *
+ * New runtime and authored data uses @ref mesh_renderer_component.
  */
 struct virtual_mesh_renderer_component
 {

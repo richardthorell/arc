@@ -70,6 +70,7 @@ inline constexpr artifact_schema_id shader{0xa7ca55e700000004ull, 0x000000000000
 inline constexpr artifact_schema_id material{0xa7ca55e700000004ull, 0x0000000000000005ull};
 inline constexpr artifact_schema_id scene{0xa7ca55e700000004ull, 0x0000000000000006ull};
 inline constexpr artifact_schema_id package_manifest{0xa7ca55e700000004ull, 0x0000000000000007ull};
+inline constexpr artifact_schema_id virtual_geometry{0xa7ca55e700000004ull, 0x0000000000000008ull};
 } // namespace artifact_schemas
 
 enum class cook_platform : std::uint8_t

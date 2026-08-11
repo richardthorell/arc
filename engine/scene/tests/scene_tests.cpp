@@ -655,7 +655,8 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
         arc::geometric::box3f{arc::geometric::point3f{arc::math::vector3f{-22.0f, -1.0f, -6.0f}},
                               arc::geometric::point3f{arc::math::vector3f{-18.0f, 1.0f, -4.0f}}},
         arc::geometric::box3f{}, true);
-    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{}, true);
+    scene.emplace<arc::scene::mesh_renderer_component>(
+        mesh_entity, arc::scene::mesh_renderer_component{.mesh = arc::render::geometry_resource_handle{mesh}});
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
     REQUIRE(result.renderable_count == 1);
@@ -669,7 +670,7 @@ TEST_CASE("render scene culling uses transformed dirty local bounds")
     REQUIRE(world_event.packet->visible_items.size() == 1);
 }
 
-TEST_CASE("render scene extracts and culls virtual mesh clusters")
+TEST_CASE("mesh renderer keeps conventional fallback when virtual geometry is unavailable")
 {
     arc::ecs::world scene;
     arc::render::renderer renderer;
@@ -701,16 +702,19 @@ TEST_CASE("render scene extracts and culls virtual mesh clusters")
     source.vertices[5].position[1] = 0.5f;
     source.vertices[5].position[2] = 0.0f;
     source.indices = {0, 1, 2, 3, 4, 5};
+    const auto conventional_mesh = renderer.create_mesh(source);
     const auto virtual_mesh =
         renderer.create_virtual_mesh(arc::render::build_virtual_mesh(source, {.max_triangles_per_cluster = 1}));
 
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(mesh_entity);
     scene.emplace<arc::scene::selection_component>(mesh_entity, true);
-    arc::scene::virtual_mesh_renderer_component virtual_renderer;
-    virtual_renderer.mesh = virtual_mesh;
-    virtual_renderer.base_color_tint = arc::math::vector4f{0.8f, 0.2f, 0.4f, 1.0f};
-    scene.emplace<arc::scene::virtual_mesh_renderer_component>(mesh_entity, virtual_renderer);
+    arc::scene::mesh_renderer_component mesh_renderer;
+    mesh_renderer.mesh = conventional_mesh;
+    mesh_renderer.mesh.virtualized = virtual_mesh;
+    mesh_renderer.representation = arc::render::geometry_representation_policy::auto_select;
+    mesh_renderer.base_color_tint = arc::math::vector4f{0.8f, 0.2f, 0.4f, 1.0f};
+    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh_renderer);
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720);
     REQUIRE(result.camera_found);
@@ -718,20 +722,19 @@ TEST_CASE("render scene extracts and culls virtual mesh clusters")
     REQUIRE(result.selected_count == 1);
     REQUIRE(result.submitted_draw_count == 1);
     REQUIRE(result.culled_count == 0);
-    REQUIRE(result.culled_virtual_cluster_count == 1);
+    REQUIRE(result.culled_virtual_cluster_count == 0);
 
     const auto packet = renderer.frame_queue().commit(1);
-    REQUIRE(packet.events.size() == 2);
-    REQUIRE(packet.events[0].type() == arc::render::render_event_type::virtual_mesh_upload);
-    REQUIRE(packet.events[1].type() == arc::render::render_event_type::render_world);
-    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[1].payload);
+    REQUIRE(packet.events.size() == 3);
+    REQUIRE(packet.events[0].type() == arc::render::render_event_type::mesh_upload);
+    REQUIRE(packet.events[1].type() == arc::render::render_event_type::virtual_mesh_upload);
+    REQUIRE(packet.events[2].type() == arc::render::render_event_type::render_world);
+    const auto& world_event = std::get<arc::render::render_world_event>(packet.events[2].payload);
     REQUIRE(world_event.packet);
-    REQUIRE(world_event.packet->visible_items.empty());
-    REQUIRE(world_event.packet->virtual_items.size() == 2);
-    REQUIRE(world_event.packet->visible_virtual_items.size() == 1);
-    const auto& item = world_event.packet->virtual_items[world_event.packet->visible_virtual_items[0]];
-    REQUIRE(item.mesh == virtual_mesh);
-    REQUIRE(item.cluster_index == 0);
+    REQUIRE(world_event.packet->visible_items.size() == 1);
+    REQUIRE(world_event.packet->virtual_items.empty());
+    const auto& item = world_event.packet->items[world_event.packet->visible_items[0]];
+    REQUIRE(item.mesh == conventional_mesh);
     REQUIRE(item.object_id.index == mesh_entity.index);
     REQUIRE(item.object_id.generation == mesh_entity.generation);
     REQUIRE(item.selected);
@@ -752,7 +755,8 @@ TEST_CASE("render scene can request wireframe overlay for every draw")
 
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(mesh_entity);
-    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{}, true);
+    scene.emplace<arc::scene::mesh_renderer_component>(
+        mesh_entity, arc::scene::mesh_renderer_component{.mesh = arc::render::geometry_resource_handle{mesh}});
 
     const auto result = arc::scene::render_scene(scene, renderer, 1280, 720, arc::render::render_mode::shaded,
                                                  arc::render::mesh_visualization_mode::albedo,
@@ -799,7 +803,8 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::active_component>(mesh_entity, false);
     scene.emplace<arc::scene::transform_component>(mesh_entity);
-    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{}, true);
+    scene.emplace<arc::scene::mesh_renderer_component>(
+        mesh_entity, arc::scene::mesh_renderer_component{.mesh = arc::render::geometry_resource_handle{mesh}});
 
     const auto sun = scene.create();
     scene.emplace<arc::scene::name_component>(sun, "Sun");
@@ -923,7 +928,8 @@ TEST_CASE("render scene applies first valid LOD mesh")
 
     const auto mesh_entity = scene.create();
     scene.emplace<arc::scene::transform_component>(mesh_entity);
-    scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, base_mesh, arc::render::material_handle{}, true);
+    scene.emplace<arc::scene::mesh_renderer_component>(
+        mesh_entity, arc::scene::mesh_renderer_component{.mesh = arc::render::geometry_resource_handle{base_mesh}});
     scene.emplace<arc::scene::lod_component>(
         mesh_entity, std::vector<arc::scene::lod_level>{{.screen_coverage = 1.0f, .mesh = lod_mesh}}, true);
 

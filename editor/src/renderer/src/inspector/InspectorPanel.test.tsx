@@ -55,6 +55,7 @@ const meshSnapshot = (): InspectorEntitySnapshot => ({
   tag: 'Mesh',
   camera: null,
   meshRenderer: {
+    representation: 'auto',
     visible: true,
     castsShadows: true,
     receivesShadows: true,

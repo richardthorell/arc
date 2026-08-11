@@ -259,6 +259,10 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     render_graph_resource_handle gpu_indirect_commands{};
     render_graph_resource_handle gpu_indirect_count{};
     render_graph_resource_handle depth_pyramid{};
+    render_graph_resource_handle virtual_visible_clusters{};
+    render_graph_resource_handle virtual_shadow_clusters{};
+    render_graph_resource_handle virtual_visibility{};
+    render_graph_resource_handle virtual_encoded_depth{};
     const auto compute_queue = config.features.async_compute ? render_queue_type::compute : render_queue_type::graphics;
 
     if (config.features.gpu_driven_rendering)
@@ -438,6 +442,171 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .kind = render_resource_kind::buffer,
                                     .usage = render_resource_usage::storage_buffer,
                                     .write = true}}});
+
+        if (config.features.virtual_geometry)
+        {
+            const auto virtual_metadata = graph.add_resource(
+                {.name = "virtual_geometry_metadata",
+                 .kind = render_resource_kind::buffer,
+                 .byte_size = 64ull * 1024ull * 1024ull,
+                 .element_stride = 16,
+                 .persistent_key = "virtual_geometry.metadata",
+                 .imported = true,
+                 .persistent = true});
+            const auto virtual_page_table = graph.add_resource(
+                {.name = "virtual_geometry_page_table",
+                 .kind = render_resource_kind::buffer,
+                 .byte_size = 16ull * 1024ull * 1024ull,
+                 .element_stride = sizeof(std::uint32_t),
+                 .persistent_key = "virtual_geometry.page_table",
+                 .imported = true,
+                 .persistent = true});
+            virtual_visible_clusters = graph.add_resource(
+                {.name = "virtual_geometry_visible_clusters",
+                 .kind = render_resource_kind::buffer,
+                 .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * 64u * sizeof(std::uint32_t),
+                 .element_stride = sizeof(std::uint32_t)});
+            virtual_shadow_clusters = graph.add_resource(
+                {.name = "virtual_geometry_shadow_clusters",
+                 .kind = render_resource_kind::buffer,
+                 .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * 32u * sizeof(std::uint32_t),
+                 .element_stride = sizeof(std::uint32_t)});
+            const auto virtual_page_requests = graph.add_resource(
+                {.name = "virtual_geometry_page_requests",
+                 .kind = render_resource_kind::buffer,
+                 .byte_size = 4096ull * 16ull,
+                 .element_stride = 16});
+            const auto virtual_page_request_readback = graph.add_resource(
+                {.name = "virtual_geometry_page_request_readback",
+                 .kind = render_resource_kind::buffer,
+                 .byte_size = 4096ull * 16ull,
+                 .element_stride = 16,
+                 .persistent_key = "virtual_geometry.page_request_readback",
+                 .exported = true,
+                 .persistent = true});
+            const auto virtual_cluster_bins = graph.add_resource(
+                {.name = "virtual_geometry_cluster_bins",
+                 .kind = render_resource_kind::buffer,
+                 .byte_size = 8ull * 1024ull * 1024ull,
+                 .element_stride = sizeof(std::uint32_t)});
+            virtual_visibility = graph.add_resource({.name = "virtual_geometry_visibility",
+                                                     .kind = render_resource_kind::color_texture,
+                                                     .width_scale = config.render_scale,
+                                                     .height_scale = config.render_scale,
+                                                     .format = render_format::r32_uint});
+            virtual_encoded_depth = graph.add_resource({.name = "virtual_geometry_encoded_depth",
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .width_scale = config.render_scale,
+                                                        .height_scale = config.render_scale,
+                                                        .format = render_format::r32_uint});
+
+            std::vector<render_resource_access> traversal_reads{
+                {.handle = gpu_scene_instances,
+                 .kind = render_resource_kind::buffer,
+                 .usage = render_resource_usage::storage_buffer},
+                {.handle = virtual_metadata,
+                 .kind = render_resource_kind::buffer,
+                 .usage = render_resource_usage::storage_buffer},
+                {.handle = virtual_page_table,
+                 .kind = render_resource_kind::buffer,
+                 .usage = render_resource_usage::storage_buffer}};
+            if (depth_pyramid.valid())
+                traversal_reads.push_back({.handle = depth_pyramid,
+                                           .kind = render_resource_kind::color_texture,
+                                           .usage = render_resource_usage::sampled,
+                                           .history = render_history_access::previous});
+            graph.add_pass({.name = "virtual geometry hierarchy traversal",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::virtual_geometry_hierarchy_traversal,
+                            .reads = std::move(traversal_reads),
+                            .writes = {{.handle = virtual_visible_clusters,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true},
+                                       {.handle = virtual_page_requests,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true}}});
+            graph.add_pass({.name = "virtual geometry page requests",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::virtual_geometry_page_requests,
+                            .reads = {{.handle = virtual_page_requests,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer}},
+                            .writes = {{.handle = virtual_page_request_readback,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::transfer_dst,
+                                        .write = true}}});
+            graph.add_pass({.name = "virtual geometry shadow traversal",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::virtual_geometry_shadow_traversal,
+                            .reads = {{.handle = virtual_metadata,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer},
+                                      {.handle = virtual_page_table,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer}},
+                            .writes = {{.handle = virtual_shadow_clusters,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true}}});
+
+            if (config.features.virtual_geometry_path == virtual_geometry_raster_path::mesh_shader)
+            {
+                graph.add_pass({.name = "virtual geometry mesh-shader visibility",
+                                .kind = render_pass_kind::custom,
+                                .builtin = builtin_render_pass::virtual_geometry_mesh_shader_visibility,
+                                .reads = {{.handle = virtual_visible_clusters,
+                                           .kind = render_resource_kind::buffer,
+                                           .usage = render_resource_usage::storage_buffer},
+                                          {.handle = virtual_metadata,
+                                           .kind = render_resource_kind::buffer,
+                                           .usage = render_resource_usage::storage_buffer}},
+                                .writes = {{.handle = virtual_visibility,
+                                            .kind = render_resource_kind::color_texture,
+                                            .usage = render_resource_usage::storage,
+                                            .write = true},
+                                           {.handle = virtual_encoded_depth,
+                                            .kind = render_resource_kind::color_texture,
+                                            .usage = render_resource_usage::storage,
+                                            .write = true}}});
+            }
+            else
+            {
+                graph.add_pass({.name = "virtual geometry cluster binning",
+                                .queue = compute_queue,
+                                .kind = render_pass_kind::compute,
+                                .builtin = builtin_render_pass::virtual_geometry_cluster_binning,
+                                .reads = {{.handle = virtual_visible_clusters,
+                                           .kind = render_resource_kind::buffer,
+                                           .usage = render_resource_usage::storage_buffer}},
+                                .writes = {{.handle = virtual_cluster_bins,
+                                            .kind = render_resource_kind::buffer,
+                                            .usage = render_resource_usage::storage_buffer,
+                                            .write = true}}});
+                graph.add_pass({.name = "virtual geometry software depth",
+                                .queue = compute_queue,
+                                .kind = render_pass_kind::compute,
+                                .builtin = builtin_render_pass::virtual_geometry_software_depth,
+                                .reads = {{.handle = virtual_cluster_bins,
+                                           .kind = render_resource_kind::buffer,
+                                           .usage = render_resource_usage::storage_buffer},
+                                          {.handle = virtual_metadata,
+                                           .kind = render_resource_kind::buffer,
+                                           .usage = render_resource_usage::storage_buffer}},
+                                .writes = {{.handle = virtual_visibility,
+                                            .kind = render_resource_kind::color_texture,
+                                            .usage = render_resource_usage::storage,
+                                            .write = true},
+                                           {.handle = virtual_encoded_depth,
+                                            .kind = render_resource_kind::color_texture,
+                                            .usage = render_resource_usage::storage,
+                                            .write = true}}});
+            }
+        }
     }
 
     const bool high_quality =
@@ -608,9 +777,15 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .write = true}}});
     }
 
+    std::vector<render_resource_access> shadow_reads;
+    if (virtual_shadow_clusters.valid())
+        shadow_reads.push_back({.handle = virtual_shadow_clusters,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::storage_buffer});
     graph.add_pass({.name = "directional static shadows",
                     .kind = render_pass_kind::custom,
                     .builtin = builtin_render_pass::directional_shadow_static,
+                    .reads = shadow_reads,
                     .writes = {{.handle = directional_static_shadows,
                                 .kind = render_resource_kind::depth_texture,
                                 .usage = render_resource_usage::depth_attachment,
@@ -619,6 +794,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     graph.add_pass({.name = "directional dynamic shadows",
                     .kind = render_pass_kind::custom,
                     .builtin = builtin_render_pass::directional_shadow_dynamic,
+                    .reads = shadow_reads,
                     .writes = {{.handle = directional_dynamic_shadows,
                                 .kind = render_resource_kind::depth_texture,
                                 .usage = render_resource_usage::depth_attachment,
@@ -679,6 +855,24 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .write = true,
                                 .load_op = render_load_op::clear,
                                 .clear_depth = 0.0f}}});
+
+    if (virtual_visibility.valid())
+    {
+        graph.add_pass({.name = "virtual geometry visibility resolve",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_geometry_visibility_resolve,
+                        .reads = {{.handle = virtual_visibility,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = virtual_encoded_depth,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = depth,
+                                    .kind = render_resource_kind::depth_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true}}});
+    }
 
     if (depth_pyramid.valid())
     {
@@ -815,6 +1009,47 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                    .kind = render_resource_kind::depth_texture,
                                    .usage = render_resource_usage::depth_attachment}},
                         .writes = std::move(gbuffer_writes)});
+
+        if (virtual_visibility.valid())
+        {
+            std::vector<render_resource_access> virtual_material_writes{
+                {.handle = albedo,
+                 .kind = render_resource_kind::color_texture,
+                 .usage = render_resource_usage::storage,
+                 .write = true},
+                {.handle = normal,
+                 .kind = render_resource_kind::color_texture,
+                 .usage = render_resource_usage::storage,
+                 .write = true},
+                {.handle = material,
+                 .kind = render_resource_kind::color_texture,
+                 .usage = render_resource_usage::storage,
+                 .write = true},
+                {.handle = emissive,
+                 .kind = render_resource_kind::color_texture,
+                 .usage = render_resource_usage::storage,
+                 .write = true},
+                {.handle = motion,
+                 .kind = render_resource_kind::color_texture,
+                 .usage = render_resource_usage::storage,
+                 .write = true}};
+            if (object_id.valid())
+                virtual_material_writes.push_back({.handle = object_id,
+                                                   .kind = render_resource_kind::color_texture,
+                                                   .usage = render_resource_usage::storage,
+                                                   .write = true});
+            graph.add_pass({.name = "virtual geometry material resolve",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::virtual_geometry_material_resolve,
+                            .reads = {{.handle = virtual_visibility,
+                                       .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled},
+                                      {.handle = virtual_encoded_depth,
+                                       .kind = render_resource_kind::color_texture,
+                                       .usage = render_resource_usage::sampled}},
+                            .writes = std::move(virtual_material_writes)});
+        }
 
         render_graph_resource_handle filtered_screen_shadow{};
         if (config.screen_space_shadows)

@@ -822,6 +822,16 @@ const char* to_string(host_visualization_mode value) noexcept
             return "lightComplexity";
         case host_visualization_mode::cluster_debug:
             return "clusterDebug";
+        case host_visualization_mode::virtual_hierarchy_level:
+            return "virtualHierarchyLevel";
+        case host_visualization_mode::virtual_geometric_error:
+            return "virtualGeometricError";
+        case host_visualization_mode::virtual_page_residency:
+            return "virtualPageResidency";
+        case host_visualization_mode::virtual_overdraw:
+            return "virtualOverdraw";
+        case host_visualization_mode::virtual_triangles_per_pixel:
+            return "virtualTrianglesPerPixel";
     }
     return "standard";
 }
@@ -1201,7 +1211,11 @@ std::string to_json(const host_light_snapshot& light)
 
 std::string to_json(const host_mesh_renderer_snapshot& mesh_renderer)
 {
-    return std::string("{\"visible\":") + bool_json(mesh_renderer.visible) +
+    const auto representation = mesh_renderer.representation == 1u ? "conventional"
+                                : mesh_renderer.representation == 2u ? "virtualized"
+                                                                     : "auto";
+    return std::string("{\"representation\":") + quote(representation) +
+           ",\"visible\":" + bool_json(mesh_renderer.visible) +
            ",\"castsShadows\":" + bool_json(mesh_renderer.casts_shadows) +
            ",\"receivesShadows\":" + bool_json(mesh_renderer.receives_shadows) +
            ",\"shadowLodBias\":" + std::to_string(mesh_renderer.shadow_lod_bias) +
@@ -2133,6 +2147,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     else if (type == "entity.setMeshRenderer")
     {
         host_set_mesh_renderer_command command;
+        std::string representation{"auto"};
         if (!entity_field_value(payload, "entity", command.entity) ||
             !bool_value(payload, "visible", command.visible) ||
             !bool_value(payload, "castsShadows", command.casts_shadows) ||
@@ -2142,6 +2157,18 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             !array4_value(payload, "baseColorTint", command.base_color_tint))
         {
             error = "Mesh renderer command requires entity, visible, and baseColorTint";
+            return false;
+        }
+        string_value(payload, "representation", representation);
+        if (representation == "auto")
+            command.representation = 0;
+        else if (representation == "conventional")
+            command.representation = 1;
+        else if (representation == "virtualized")
+            command.representation = 2;
+        else
+        {
+            error = "Mesh renderer command has an invalid geometry representation";
             return false;
         }
         bool_value(payload, "applyToSelection", command.apply_to_selection);
@@ -2355,7 +2382,12 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"cascadeDebug", host_visualization_mode::cascade_debug},
             {"shadowMask", host_visualization_mode::shadow_mask},
             {"lightComplexity", host_visualization_mode::light_complexity},
-            {"clusterDebug", host_visualization_mode::cluster_debug}};
+            {"clusterDebug", host_visualization_mode::cluster_debug},
+            {"virtualHierarchyLevel", host_visualization_mode::virtual_hierarchy_level},
+            {"virtualGeometricError", host_visualization_mode::virtual_geometric_error},
+            {"virtualPageResidency", host_visualization_mode::virtual_page_residency},
+            {"virtualOverdraw", host_visualization_mode::virtual_overdraw},
+            {"virtualTrianglesPerPixel", host_visualization_mode::virtual_triangles_per_pixel}};
         static constexpr std::pair<std::string_view, host_overlay_mode> overlays[]{
             {"none", host_overlay_mode::none},
             {"selectedWireframe", host_overlay_mode::selected_wireframe},

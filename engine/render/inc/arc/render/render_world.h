@@ -99,14 +99,14 @@ struct render_item
 };
 
 /**
- * @brief One CPU-visible virtual mesh cluster draw candidate before backend command generation.
+ * @brief One virtual-geometry instance before GPU hierarchy traversal.
  */
 struct virtual_render_item
 {
     gpu_scene_instance_handle gpu_scene_instance{};
     virtual_mesh_handle mesh{};
     material_handle material{};
-    std::uint32_t cluster_index{};
+    std::uint32_t root_node{invalid_virtual_geometry_index};
     math::matrix4f model{math::identity<float, 4>()};
     math::matrix4f previous_model{math::identity<float, 4>()};
     geometric::box3f world_bounds{};

@@ -64,7 +64,6 @@ ecs::entity duplicate_entity_subtree(editor_scene_state& state, ecs::entity sour
     copy_component<scene::bounds_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::camera_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::mesh_renderer_component>(state.scene, state.scene, source, duplicate);
-    copy_component<scene::virtual_mesh_renderer_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::skinned_mesh_renderer_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::lod_component>(state.scene, state.scene, source, duplicate);
     copy_component<scene::render_layer_component>(state.scene, state.scene, source, duplicate);
@@ -793,6 +792,16 @@ render::mesh_visualization_mode to_visualization(host_visualization_mode mode) n
             return render::mesh_visualization_mode::light_complexity;
         case host_visualization_mode::cluster_debug:
             return render::mesh_visualization_mode::cluster_debug;
+        case host_visualization_mode::virtual_hierarchy_level:
+            return render::mesh_visualization_mode::virtual_hierarchy_level;
+        case host_visualization_mode::virtual_geometric_error:
+            return render::mesh_visualization_mode::virtual_geometric_error;
+        case host_visualization_mode::virtual_page_residency:
+            return render::mesh_visualization_mode::virtual_page_residency;
+        case host_visualization_mode::virtual_overdraw:
+            return render::mesh_visualization_mode::virtual_overdraw;
+        case host_visualization_mode::virtual_triangles_per_pixel:
+            return render::mesh_visualization_mode::virtual_triangles_per_pixel;
         case host_visualization_mode::standard:
             break;
     }
@@ -1312,6 +1321,7 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
                                                    const scene::mesh_renderer_component& mesh_renderer)
 {
     host_mesh_renderer_snapshot snapshot;
+    snapshot.representation = static_cast<std::uint8_t>(mesh_renderer.representation);
     snapshot.visible = mesh_renderer.visible;
     snapshot.casts_shadows = mesh_renderer.casts_shadows;
     snapshot.receives_shadows = mesh_renderer.receives_shadows;
@@ -2523,6 +2533,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto entity = to_scene_entity(payload.entity);
                 if (!valid_base_color_tint(payload.base_color_tint))
                     return fail("Mesh renderer tint channels must be finite and between 0 and 1", entity);
+                if (payload.representation > static_cast<std::uint8_t>(render::geometry_representation_policy::virtualized))
+                    return fail("Mesh renderer geometry representation is invalid", entity);
                 if (!std::isfinite(payload.shadow_lod_bias) || !std::isfinite(payload.maximum_shadow_distance) ||
                     payload.shadow_lod_bias < -4.0f || payload.shadow_lod_bias > 8.0f ||
                     payload.maximum_shadow_distance < 0.0f)
@@ -2535,6 +2547,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 for (const auto target : targets)
                 {
                     auto& mesh_renderer = state_->scene.scene.get<scene::mesh_renderer_component>(target);
+                    mesh_renderer.representation =
+                        static_cast<render::geometry_representation_policy>(payload.representation);
                     mesh_renderer.visible = payload.visible;
                     mesh_renderer.casts_shadows = payload.casts_shadows;
                     mesh_renderer.receives_shadows = payload.receives_shadows;
@@ -2825,8 +2839,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                         entity_changed = apply(entity, scene::camera_component{});
                     else if (payload.component == "meshRenderer")
                     {
-                        scene::mesh_renderer_component value{state_->scene.default_mesh, state_->scene.default_material,
-                                                             true};
+                        scene::mesh_renderer_component value;
+                        value.mesh = state_->scene.default_mesh;
+                        value.material = state_->scene.default_material;
                         if (const auto* current = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity))
                         {
                             value.mesh = current->mesh;
@@ -3585,6 +3600,30 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"occlusionRejected\":" + std::to_string(profile.gpu_scene.occlusion_rejected) +
                     ",\"indirectCommands\":" + std::to_string(profile.gpu_scene.indirect_commands) +
                     ",\"fallback\":" + to_json_string(profile.gpu_scene.fallback_reason) +
+                    "},\"virtualGeometry\":{\"enabled\":" +
+                    std::string(profile.virtual_geometry.enabled ? "true" : "false") +
+                    ",\"rasterPath\":" +
+                    to_json_string(profile.virtual_geometry.raster_path == render::virtual_geometry_raster_path::compute
+                                       ? "compute"
+                                   : profile.virtual_geometry.raster_path ==
+                                             render::virtual_geometry_raster_path::mesh_shader
+                                       ? "meshShader"
+                                       : "unavailable") +
+                    ",\"visibleClusters\":" + std::to_string(profile.virtual_geometry.visible_clusters) +
+                    ",\"visibleTriangles\":" + std::to_string(profile.virtual_geometry.visible_triangles) +
+                    ",\"frustumRejected\":" + std::to_string(profile.virtual_geometry.frustum_rejected) +
+                    ",\"coneRejected\":" + std::to_string(profile.virtual_geometry.cone_rejected) +
+                    ",\"hzbRejected\":" + std::to_string(profile.virtual_geometry.hzb_rejected) +
+                    ",\"projectedSizeRejected\":" +
+                    std::to_string(profile.virtual_geometry.projected_size_rejected) +
+                    ",\"requestedPages\":" + std::to_string(profile.virtual_geometry.requested_pages) +
+                    ",\"loadedPages\":" + std::to_string(profile.virtual_geometry.loaded_pages) +
+                    ",\"failedPages\":" + std::to_string(profile.virtual_geometry.failed_pages) +
+                    ",\"parentFallbacks\":" + std::to_string(profile.virtual_geometry.parent_fallbacks) +
+                    ",\"residentBytes\":" + std::to_string(profile.virtual_geometry.resident_bytes) +
+                    ",\"residencyBudgetBytes\":" +
+                    std::to_string(profile.virtual_geometry.residency_budget_bytes) +
+                    ",\"fallback\":" + to_json_string(profile.virtual_geometry.fallback_reason) +
                     "},\"temporal\":{\"enabled\":" + std::string(profile.temporal.enabled ? "true" : "false") +
                     ",\"upscaling\":" + std::string(profile.temporal.upscaling ? "true" : "false") +
                     ",\"historyValid\":" + std::string(profile.temporal.history_valid ? "true" : "false") +
