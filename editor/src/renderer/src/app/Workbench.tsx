@@ -23,8 +23,11 @@ import {
 } from 'lucide-react';
 
 import { activityRegistry, dockPanelIds, getPanel } from './panelRegistry';
+import { CommandPalette } from './CommandPalette';
+import { commandRegistry } from './commandRegistry';
+import { KeybindingService } from './keybindingService';
 import { defaultWorkbenchLayout, useWorkbenchLayout } from './workbenchStore';
-import type { ActivityId, CommandId, StartupState, WorkbenchPanelId } from './workbenchTypes';
+import type { ActivityId, CommandContext, CommandId, StartupState, WorkbenchPanelId } from './workbenchTypes';
 import { ActivityBar } from '../layout/ActivityBar';
 import { DockHost } from '../layout/DockHost';
 import { MainToolbar } from '../layout/MainToolbar';
@@ -348,6 +351,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [scaleSnap, setScaleSnap] = useState(0.1);
   const [lastCommand, setLastCommand] = useState('Workbench ready');
   const [viewportGridVisible, setViewportGridVisible] = useState(true);
+  const [viewportFocused, setViewportFocused] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const keybindings = useRef(new KeybindingService());
   const [profilerSamples, setProfilerSamples] = useState<ProfilerSnapshot[]>([]);
   const [runtimeState, setRuntimeState] = useState<HostRuntimeSnapshot>({
     state: 'stopped',
@@ -553,37 +559,27 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     translationSnap,
   ]);
 
+  const commandContext: CommandContext = {
+    editorFocused: true,
+    viewportFocused,
+    textInputFocused: false,
+    modalOpen: commandPaletteOpen,
+    playing: runtimeState.state === 'running' || runtimeState.state === 'paused',
+    hasSelection: Boolean(selectedEntityId),
+    canUndo: documentState.canUndo,
+    canRedo: documentState.canRedo,
+    projectOpen: Boolean(project),
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
-      const command =
-        event.ctrlKey && event.shiftKey && event.key.toLocaleLowerCase() === 's'
-          ? 'file.saveAs'
-          : event.ctrlKey && event.key.toLocaleLowerCase() === 's'
-            ? 'file.save'
-            : event.ctrlKey && event.key.toLocaleLowerCase() === 'z'
-              ? 'edit.undo'
-              : event.ctrlKey && event.key.toLocaleLowerCase() === 'y'
-                ? 'edit.redo'
-                : event.ctrlKey && event.key.toLocaleLowerCase() === 'd'
-                  ? 'entity.duplicate'
-                  : event.key === 'Delete'
-                    ? 'entity.delete'
-                    : event.key.toLocaleLowerCase() === 'q'
-                      ? 'viewport.select'
-                      : event.key.toLocaleLowerCase() === 'w'
-                        ? 'viewport.translate'
-                        : event.key.toLocaleLowerCase() === 'e'
-                          ? 'viewport.rotate'
-                          : event.key.toLocaleLowerCase() === 'r'
-                            ? 'viewport.scale'
-                            : event.key.toLocaleLowerCase() === 'f'
-                              ? 'viewport.frameSelected'
-                              : null;
-      if (!command) return;
+      const textInputFocused = Boolean(target?.matches('input, textarea, select, [contenteditable="true"]'));
+      if (textInputFocused && !(event.ctrlKey && event.key.toLocaleLowerCase() === 'k')) return;
+      const match = keybindings.current.match(event, { ...commandContext, textInputFocused });
+      if (!match) return;
       event.preventDefault();
-      void runCommand(command);
+      if (!match.chordPending) void runCommand(match.command);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -653,6 +649,16 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   };
 
   const runCommand = async (command: CommandId) => {
+    const registration = commandRegistry[command];
+    if (registration.enabled && !registration.enabled(commandContext)) {
+      setLastCommand(registration.disabledReason?.(commandContext) ?? `${registration.label} is unavailable`);
+      return;
+    }
+
+    if (command === 'view.commandPalette') {
+      setCommandPaletteOpen(true);
+      return;
+    }
     if (command === 'layout.reset') {
       resetLayout();
       setLastCommand('Layout reset');
@@ -1293,6 +1299,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           onReconnect={reconnectHost}
           gridVisible={viewportGridVisible}
           onGridVisibilityChange={setViewportGridVisible}
+          onFocusChange={setViewportFocused}
         />
       );
     }
@@ -1638,6 +1645,14 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               : undefined
         }
       />
+      {commandPaletteOpen && (
+        <CommandPalette
+          context={{ ...commandContext, modalOpen: true }}
+          onClose={() => setCommandPaletteOpen(false)}
+          onCommand={(command) => void runCommand(command)}
+          shortcut={(command) => keybindings.current.primaryBinding(command)}
+        />
+      )}
     </main>
   );
 }

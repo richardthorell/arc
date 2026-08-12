@@ -53,6 +53,10 @@ export type CommandId =
   | 'viewport.terrain'
   | 'viewport.frameSelected'
   | 'layout.reset'
+  | 'layout.levelDesign'
+  | 'layout.materials'
+  | 'layout.profiling'
+  | 'view.commandPalette'
   | 'assets.import'
   | 'assets.saveAll'
   | 'vcs.commit'
@@ -67,6 +71,22 @@ export type PanelRegistration = {
   icon: LucideIcon;
   defaultRegion: DockRegion;
   activityId?: ActivityId;
+  allowMultiple?: boolean;
+  minimumWidth?: number;
+  minimumHeight?: number;
+  closeable?: boolean;
+};
+
+export type CommandContext = {
+  editorFocused: boolean;
+  viewportFocused: boolean;
+  textInputFocused: boolean;
+  modalOpen: boolean;
+  playing: boolean;
+  hasSelection: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  projectOpen: boolean;
 };
 
 export type ActivityRegistration = {

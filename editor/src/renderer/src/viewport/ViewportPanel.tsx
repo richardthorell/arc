@@ -15,6 +15,7 @@ type ViewportPanelProps = {
   onReconnect: () => Promise<void>;
   gridVisible?: boolean;
   onGridVisibilityChange?: (visible: boolean) => void;
+  onFocusChange?: (focused: boolean) => void;
 };
 
 type DragState = {
@@ -94,6 +95,7 @@ export function ViewportPanel({
   onReconnect,
   gridVisible: controlledGridVisible,
   onGridVisibilityChange,
+  onFocusChange,
 }: ViewportPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -223,6 +225,8 @@ export function ViewportPanel({
     if (!nativeActive) {
       return;
     }
+    event.currentTarget.focus();
+    onFocusChange?.(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
       pointerId: event.pointerId,
@@ -350,12 +354,17 @@ export function ViewportPanel({
       <div
         ref={bodyRef}
         className={nativeActive ? 'arc-viewport-body native-active' : 'arc-viewport-body'}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange?.(false);
+        }}
+        onFocus={() => onFocusChange?.(true)}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
         onContextMenu={(event) => event.preventDefault()}
+        tabIndex={0}
       >
         {!nativeActive && (
           <div className="arc-viewport-unavailable" role="alert">

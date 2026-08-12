@@ -2,6 +2,107 @@
   grid-template-rows: var(--arc-titlebar-height) var(--arc-toolbar-height) 1fr var(--arc-statusbar-height);
 }
 
+.command-palette-backdrop {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: min(18vh, 170px);
+  background: rgba(3, 8, 13, 0.48);
+  backdrop-filter: blur(2px);
+}
+
+.command-palette {
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 80px));
+  overflow: hidden;
+  border: 1px solid #38516a;
+  border-radius: 7px;
+  color: var(--arc-color-text);
+  background: #111b23;
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(83, 160, 222, 0.08);
+}
+
+.command-palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--arc-color-border);
+  color: var(--arc-color-text-muted);
+  background: #15212a;
+}
+
+.command-palette-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: var(--arc-color-text-strong);
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+}
+
+.command-palette-results {
+  max-height: min(540px, calc(100vh - 150px));
+  overflow: auto;
+  padding: 6px;
+}
+
+.command-palette-results button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--arc-color-text);
+  text-align: left;
+  background: transparent;
+}
+
+.command-palette-results button.selected {
+  background: var(--arc-color-bg-selected);
+}
+
+.command-palette-results button:disabled {
+  opacity: 0.42;
+}
+
+.command-palette-results button span {
+  display: grid;
+  gap: 2px;
+}
+
+.command-palette-results button small,
+.command-palette-empty {
+  color: var(--arc-color-text-muted);
+}
+
+.command-palette-results kbd {
+  padding: 2px 6px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: 4px;
+  color: var(--arc-color-text-muted);
+  background: #0c141a;
+  font: inherit;
+  font-size: 11px;
+}
+
+.command-palette-empty {
+  padding: 24px;
+  text-align: center;
+}
+
 .workbench-body-foundation {
   position: relative;
   grid-template-columns: var(--arc-activity-collapsed-width) var(--arc-left-panel-width) minmax(520px, 1fr) var(
