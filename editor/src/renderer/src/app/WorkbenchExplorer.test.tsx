@@ -9,7 +9,7 @@ import type { ProjectSnapshot } from '../services/editorHostTypes';
 afterEach(() => document.body.replaceChildren());
 
 describe('ExplorerPanel', () => {
-  it('portals the visual entity palette outside the clipped hierarchy panel', () => {
+  it('renders the entity palette as an in-panel drawer', () => {
     const onCreateEntity = vi.fn();
     const project = { scene: [] } as unknown as ProjectSnapshot;
     const view = render(
@@ -31,8 +31,11 @@ describe('ExplorerPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
     const palette = screen.getByRole('menu', { name: 'Add entity' });
-    expect(document.body.contains(palette)).toBe(true);
-    expect(view.container.contains(palette)).toBe(false);
+    expect(view.container.contains(palette)).toBe(true);
+    expect(
+      palette.compareDocumentPosition(screen.getByRole('textbox', { name: 'Search hierarchy' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('menuitem', { name: 'Box' }));
     expect(onCreateEntity).toHaveBeenCalledWith('cube');

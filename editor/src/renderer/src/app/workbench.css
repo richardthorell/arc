@@ -459,14 +459,24 @@
 }
 
 .primitive-palette {
-  position: fixed;
-  z-index: calc(var(--arc-z-dropdown) + 1);
-  width: 286px;
+  width: auto;
+  margin: 0 8px 6px;
   padding: 8px;
   border: 1px solid #354353;
   border-radius: 6px;
   background: #151d25;
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.primitive-palette-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 27px;
+  padding: 0 2px 5px 8px;
+  color: #dce6f0;
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .primitive-palette-empty {
@@ -498,7 +508,7 @@
 
 .primitive-palette-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(68px, 1fr));
   gap: 5px;
 }
 
