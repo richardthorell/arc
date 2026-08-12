@@ -1,4 +1,16 @@
-import { Globe, Grid3X3, Mountain, Move, Pause, Play, Rotate3D, Scaling, Square, StepForward } from 'lucide-react';
+import {
+  Globe,
+  Grid3X3,
+  Mountain,
+  MousePointer2,
+  Move,
+  Pause,
+  Play,
+  Rotate3D,
+  Scaling,
+  Square,
+  StepForward,
+} from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
 import { UiButton, UiIconButton, UiSelectButton } from '../ui';
@@ -87,9 +99,17 @@ export function MainToolbar({
         <div className="ui-toolbar-group toolbar-group" aria-label="Transform mode">
           <UiSelectButton className="toolbar-select toolbar-select-compact">Pivot</UiSelectButton>
           <UiIconButton
+            active={activeTool === 'select'}
+            className="toolbar-button"
+            label="Select (Q)"
+            onClick={() => onCommand('viewport.select')}
+          >
+            <MousePointer2 size={14} />
+          </UiIconButton>
+          <UiIconButton
             active={activeTool === 'translate'}
             className="toolbar-button"
-            label="Move"
+            label="Move (W)"
             onClick={() => onCommand('viewport.translate')}
           >
             <Move size={14} />
@@ -97,7 +117,7 @@ export function MainToolbar({
           <UiIconButton
             active={activeTool === 'rotate'}
             className="toolbar-button"
-            label="Rotate"
+            label="Rotate (E)"
             onClick={() => onCommand('viewport.rotate')}
           >
             <Rotate3D size={14} />
@@ -105,7 +125,7 @@ export function MainToolbar({
           <UiIconButton
             active={activeTool === 'scale'}
             className="toolbar-button"
-            label="Scale"
+            label="Scale (R)"
             onClick={() => onCommand('viewport.scale')}
           >
             <Scaling size={14} />

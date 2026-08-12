@@ -6,6 +6,7 @@
 #include <arc/math/math.h>
 
 #include <cstdint>
+#include <optional>
 
 namespace arc::render
 {
@@ -30,6 +31,14 @@ enum class editor_tool : std::uint8_t
  * @brief Return a short label for a tool.
  */
 const char* editor_tool_label(editor_tool tool) noexcept;
+
+/**
+ * @brief Resolve a viewport transform-tool shortcut.
+ *
+ * @param key_code Uppercase platform-independent key code.
+ * @return The requested tool, or no value when the key is not a tool shortcut.
+ */
+std::optional<editor_tool> editor_tool_from_shortcut(std::uint32_t key_code) noexcept;
 
 /**
  * @brief Ray used for viewport picking.
@@ -124,6 +133,30 @@ private:
     float yaw_{};
     float pitch_{-0.18f};
     float distance_{4.0f};
+};
+
+/**
+ * @brief Roll-free directional-light rotation controlled by viewport mouse deltas.
+ *
+ * Yaw is applied around world +Y and pitch around the yawed local +X axis,
+ * matching ARC's turntable camera convention. The resulting transform points
+ * its local -Z axis along the authored sunlight direction.
+ */
+class editor_sun_controller
+{
+public:
+    /** @brief Initialize yaw and pitch from a directional-light transform. */
+    void synchronize_from(const scene::transform_component& transform) noexcept;
+
+    /** @brief Apply a mouse delta in pixels while keeping the light roll-free. */
+    void rotate(float delta_x, float delta_y) noexcept;
+
+    /** @brief Write the current roll-free rotation to a light transform. */
+    void apply_to(scene::transform_component& transform) const noexcept;
+
+private:
+    float yaw_{};
+    float pitch_{-0.75f};
 };
 
 /**

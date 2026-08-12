@@ -178,6 +178,23 @@ void editor_camera_controller::orbit(float delta_x, float delta_y) noexcept
     position_ = math::sub(focus_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
 }
 
+std::optional<editor_tool> editor_tool_from_shortcut(std::uint32_t key_code) noexcept
+{
+    switch (key_code)
+    {
+        case 'Q':
+            return editor_tool::select;
+        case 'W':
+            return editor_tool::translate;
+        case 'E':
+            return editor_tool::rotate;
+        case 'R':
+            return editor_tool::scale;
+        default:
+            return std::nullopt;
+    }
+}
+
 void editor_camera_controller::look(float delta_x, float delta_y) noexcept
 {
     update_yaw_pitch(delta_x, delta_y, yaw_, pitch_);
@@ -225,6 +242,23 @@ const math::vector3f& editor_camera_controller::focus_point() const noexcept
 float editor_camera_controller::distance() const noexcept
 {
     return distance_;
+}
+
+void editor_sun_controller::synchronize_from(const scene::transform_component& transform) noexcept
+{
+    const auto forward = scene::world_forward_direction(transform);
+    yaw_ = std::atan2(-forward[0], -forward[2]);
+    pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
+}
+
+void editor_sun_controller::rotate(float delta_x, float delta_y) noexcept
+{
+    update_yaw_pitch(delta_x, delta_y, yaw_, pitch_);
+}
+
+void editor_sun_controller::apply_to(scene::transform_component& transform) const noexcept
+{
+    transform.set_rotation(quaternion_from_yaw_pitch(yaw_, pitch_));
 }
 
 void apply_tool_shortcuts(const input::input_manager& input, editor_tool& tool) noexcept

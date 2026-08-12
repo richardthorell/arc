@@ -742,6 +742,32 @@ TEST_CASE("editor tool shortcuts update active tool")
     input.process_event({.type = arc::framework::event_type::key_down, .key_code = 'R'});
     arc::editor::apply_tool_shortcuts(input, tool);
     REQUIRE(tool == arc::editor::editor_tool::scale);
+
+    REQUIRE(arc::editor::editor_tool_from_shortcut('Q') == arc::editor::editor_tool::select);
+    REQUIRE(arc::editor::editor_tool_from_shortcut('W') == arc::editor::editor_tool::translate);
+    REQUIRE(arc::editor::editor_tool_from_shortcut('E') == arc::editor::editor_tool::rotate);
+    REQUIRE(arc::editor::editor_tool_from_shortcut('R') == arc::editor::editor_tool::scale);
+    REQUIRE_FALSE(arc::editor::editor_tool_from_shortcut('T').has_value());
+}
+
+TEST_CASE("editor sun controller rotates around stable yaw and pitch axes")
+{
+    arc::scene::transform_component transform;
+    transform.rotation = arc::editor::quaternion_from_euler_degrees({-40.0f, 25.0f, 0.0f});
+
+    arc::editor::editor_sun_controller controller;
+    controller.synchronize_from(transform);
+    controller.rotate(30.0f, -15.0f);
+    controller.apply_to(transform);
+
+    const auto first_direction = arc::scene::forward_direction(transform);
+    REQUIRE(first_direction[1] < 0.0f);
+
+    for (int iteration = 0; iteration < 100; ++iteration) controller.rotate(4.0f, -3.0f);
+    controller.apply_to(transform);
+    const auto euler = arc::editor::euler_degrees_from_quaternion(transform.rotation);
+    REQUIRE(std::abs(euler[2]) < 0.001f);
+    REQUIRE(arc::math::length(arc::scene::forward_direction(transform)) == Catch::Approx(1.0f));
 }
 
 TEST_CASE("editor can add a selected primitive mesh entity")

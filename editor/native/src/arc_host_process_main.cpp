@@ -2,6 +2,7 @@
 #include <arc/editor/editor_defaults.h>
 #include <arc/editor/editor_gizmo.h>
 #include <arc/editor/editor_state.h>
+#include <arc/editor/world_environment_host.h>
 #include <arc/jobs/jobs.h>
 #include <arc/memory/memory.h>
 #include <arc/render/render.h>
@@ -269,7 +270,15 @@ public:
                 selection_candidate_ = false;
                 camera_drag_started_ = false;
                 return 0;
+            case WM_KILLFOCUS:
+                if (sun_rotating_) finish_sun_rotation(false);
+                return 0;
             case WM_KEYDOWN:
+                if (wparam == VK_ESCAPE && sun_rotating_)
+                {
+                    finish_sun_rotation(false);
+                    return 0;
+                }
                 if (wparam == VK_ESCAPE && manipulating_)
                 {
                     cancel_manipulation();
@@ -280,7 +289,13 @@ public:
                     finish_terrain_stroke(false, drag_x_, drag_y_);
                     return 0;
                 }
-                handle_key(wparam);
+                if (!sun_rotating_ && sun_shortcut_down()) begin_sun_rotation();
+                if (!sun_rotating_) handle_key(wparam);
+                return 0;
+            case WM_KEYUP:
+                if (sun_rotating_ && (wparam == 'L' || wparam == VK_CONTROL || wparam == VK_LCONTROL ||
+                                      wparam == VK_RCONTROL))
+                    finish_sun_rotation(true);
                 return 0;
             case WM_CLOSE:
                 running_ = false;
@@ -421,6 +436,7 @@ private:
 
     void begin_drag(HWND window, UINT message, int x, int y)
     {
+        if (sun_rotating_) return;
         dragging_ = true;
         drag_start_x_ = x;
         drag_start_y_ = y;
@@ -458,10 +474,18 @@ private:
 
     void update_drag(int x, int y)
     {
+        const int pointer_delta_x = x - pointer_x_;
+        const int pointer_delta_y = y - pointer_y_;
         pointer_x_ = x;
         pointer_y_ = y;
         pointer_inside_ = true;
         terrain_hover_dirty_ = true;
+        if (sun_rotating_)
+        {
+            if (pointer_delta_x != 0 || pointer_delta_y != 0)
+                update_sun_rotation(pointer_delta_x, pointer_delta_y);
+            return;
+        }
         if (!dragging_)
         {
             bool terrain_mode{};
@@ -901,21 +925,141 @@ private:
                 terrain.brush_strength, terrain.brush_falloff, terrain.active_layer});
             return;
         }
-        arc::editor::host_viewport_tool tool;
-        if (key == 'Q')
-            tool = arc::editor::host_viewport_tool::select;
-        else if (key == 'W')
-            tool = arc::editor::host_viewport_tool::translate;
-        else if (key == 'E')
-            tool = arc::editor::host_viewport_tool::rotate;
-        else if (key == 'R')
-            tool = arc::editor::host_viewport_tool::scale;
-        else
+        if ((GetKeyState(VK_CONTROL) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0 ||
+            (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0)
             return;
+        const auto editor_tool = arc::editor::editor_tool_from_shortcut(static_cast<std::uint32_t>(key));
+        if (!editor_tool) return;
+        const auto tool = *editor_tool == arc::editor::editor_tool::select
+                              ? arc::editor::host_viewport_tool::select
+                          : *editor_tool == arc::editor::editor_tool::translate
+                              ? arc::editor::host_viewport_tool::translate
+                          : *editor_tool == arc::editor::editor_tool::rotate
+                              ? arc::editor::host_viewport_tool::rotate
+                              : arc::editor::host_viewport_tool::scale;
         std::lock_guard lock(host_mutex_);
         auto command = host_->viewport_tool_state();
         command.tool = tool;
         host_->execute(command);
+    }
+
+    bool sun_shortcut_down() const noexcept
+    {
+        return (GetKeyState(VK_CONTROL) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0 &&
+               (GetKeyState('L') & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+    }
+
+    void begin_sun_rotation()
+    {
+        if (dragging_ || manipulating_ || terrain_stroking_) return;
+        POINT pointer{};
+        if (window_ && GetCursorPos(&pointer) && ScreenToClient(window_, &pointer))
+        {
+            pointer_x_ = pointer.x;
+            pointer_y_ = pointer.y;
+            pointer_inside_ = true;
+        }
+        std::lock_guard lock(host_mutex_);
+        auto& state = host_->scene_state();
+        if (!state.scene.alive(state.sun_entity)) return;
+        auto* transform = state.scene.try_get<arc::scene::transform_component>(state.sun_entity);
+        if (!transform) return;
+
+        const auto transaction = ++next_manipulation_transaction_;
+        const auto begin = host_->execute(arc::editor::host_history_begin_transaction_command{
+            .id = transaction, .label = "Rotate Directional Light"});
+        if (!begin.succeeded) return;
+
+        sun_rotating_ = true;
+        sun_entity_ = {state.sun_entity.index, state.sun_entity.generation};
+        sun_transaction_ = transaction;
+        sun_controller_.synchronize_from(*transform);
+        if (state.scene.alive(state.world_environment_entity))
+        {
+            if (auto settings = arc::scene::read_world_environment_settings(state.scene, state.world_environment_entity))
+            {
+                settings->celestial.sun_mode = arc::scene::sun_position_mode::manual_light;
+                settings->celestial.playing = false;
+                settings->celestial.automatic_sun_light = false;
+                arc::scene::set_world_environment_settings(state.scene, state.world_environment_entity, *settings);
+            }
+        }
+    }
+
+    void update_sun_rotation(int delta_x, int delta_y)
+    {
+        std::lock_guard lock(host_mutex_);
+        auto& state = host_->scene_state();
+        const auto entity = arc::ecs::entity{sun_entity_.index, sun_entity_.generation};
+        auto* transform = state.scene.try_get<arc::scene::transform_component>(entity);
+        if (!transform)
+        {
+            finish_sun_rotation_locked(false);
+            return;
+        }
+        sun_controller_.rotate(static_cast<float>(delta_x), static_cast<float>(delta_y));
+        sun_controller_.apply_to(*transform);
+        arc::scene::mark_transform_subtree_dirty(state.scene, entity);
+        arc::scene::update_world_transforms(state.scene);
+    }
+
+    void finish_sun_rotation(bool commit)
+    {
+        std::lock_guard lock(host_mutex_);
+        finish_sun_rotation_locked(commit);
+    }
+
+    void finish_sun_rotation_locked(bool commit)
+    {
+        if (!sun_rotating_) return;
+        auto& state = host_->scene_state();
+        if (!commit)
+        {
+            host_->execute(arc::editor::host_history_cancel_transaction_command{.id = sun_transaction_});
+        }
+        else if (state.scene.alive(state.world_environment_entity))
+        {
+            if (const auto settings =
+                    arc::scene::read_world_environment_settings(state.scene, state.world_environment_entity))
+            {
+                host_->execute(arc::editor::host_command_envelope{
+                    .command_type = "environment.update",
+                    .payload = arc::editor::host_set_world_environment_command{
+                        .environment = arc::editor::to_host_world_environment_snapshot(
+                            {state.world_environment_entity.index, state.world_environment_entity.generation},
+                            *settings, state.world_environment_hdri_path)},
+                    .edit = arc::editor::host_edit_transaction{
+                        sun_transaction_, arc::editor::host_edit_phase::commit, "Rotate Directional Light"}});
+            }
+            else
+            {
+                host_->execute(arc::editor::host_history_cancel_transaction_command{.id = sun_transaction_});
+            }
+        }
+        else
+        {
+            const auto entity = arc::ecs::entity{sun_entity_.index, sun_entity_.generation};
+            if (const auto* transform = state.scene.try_get<arc::scene::transform_component>(entity))
+            {
+                host_->execute(arc::editor::host_command_envelope{
+                    .command_type = "entity.setTransform",
+                    .payload = arc::editor::host_set_transform_command{
+                        .entity = sun_entity_,
+                        .transform = {.position = {transform->position[0], transform->position[1], transform->position[2]},
+                                      .rotation = {transform->rotation[0], transform->rotation[1],
+                                                   transform->rotation[2], transform->rotation[3]},
+                                      .scale = {transform->scale[0], transform->scale[1], transform->scale[2]}}},
+                    .edit = arc::editor::host_edit_transaction{
+                        sun_transaction_, arc::editor::host_edit_phase::commit, "Rotate Directional Light"}});
+            }
+            else
+            {
+                host_->execute(arc::editor::host_history_cancel_transaction_command{.id = sun_transaction_});
+            }
+        }
+        sun_rotating_ = false;
+        sun_entity_ = {};
+        sun_transaction_ = 0;
     }
 
     void send_camera_input(const arc::editor::host_viewport_camera_input_command& input)
@@ -1027,6 +1171,10 @@ private:
     arc::math::vector2f manipulation_screen_direction_{1.0f, 0.0f};
     float manipulation_world_units_per_pixel_{0.02f};
     bool manipulation_rotation_is_local_{};
+    bool sun_rotating_{};
+    arc::editor::host_entity_id sun_entity_{};
+    std::uint64_t sun_transaction_{};
+    arc::editor::editor_sun_controller sun_controller_{};
 };
 
 LRESULT CALLBACK native_viewport_wnd_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
