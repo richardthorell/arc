@@ -147,7 +147,9 @@ enum class editor_primitive_type : std::uint8_t
     plane,
     cube,
     sphere,
-    cylinder
+    cylinder,
+    cone,
+    capsule
 };
 
 struct editor_project_state

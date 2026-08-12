@@ -38,6 +38,32 @@ type ViewportStats = {
   drawCalls: number;
   frameIndex: number;
   submitted: boolean;
+  renderOptions?: ViewportRenderOptions;
+};
+
+type ViewportRenderOptions = {
+  renderMode: 'shaded' | 'wireframe';
+  visualization: string;
+  overlay: 'none' | 'selectedWireframe' | 'allWireframe';
+  shadows: boolean;
+  grid: boolean;
+  environment: {
+    sky: boolean;
+    fog: boolean;
+    terrain: boolean;
+    water: boolean;
+    vegetation: boolean;
+    decals: boolean;
+  };
+};
+
+const defaultRenderOptions: ViewportRenderOptions = {
+  renderMode: 'shaded',
+  visualization: 'standard',
+  overlay: 'selectedWireframe',
+  shadows: true,
+  grid: true,
+  environment: { sky: true, fog: true, terrain: true, water: true, vegetation: true, decals: true },
 };
 
 type ViewportCommandResponse = {
@@ -65,6 +91,7 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
   const lastAttachAttemptRef = useRef(0);
   const [viewportError, setViewportError] = useState('');
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
+  const [gridVisible, setGridVisible] = useState(true);
   const nativeActive = startupState?.viewportMode === 'native' && Boolean(window.arc?.viewport);
   const stats = nativeActive ? viewportStats : fallbackStats(project);
 
@@ -152,6 +179,8 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
         const response = (await window.arc.host.query('viewport.state')) as HostResponse<ViewportStats>;
         if (!cancelled && response?.succeeded && response.payload) {
           setViewportStats(response.payload);
+          if (typeof response.payload.renderOptions?.grid === 'boolean')
+            setGridVisible(response.payload.renderOptions.grid);
           setViewportError('');
           if (
             (!response.payload.submitted || response.payload.frameIndex === 0) &&
@@ -235,6 +264,26 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
     }
   };
 
+  const setGridVisibility = async (visible: boolean) => {
+    const previous = gridVisible;
+    setGridVisible(visible);
+    try {
+      const renderOptions = viewportStats.renderOptions ?? defaultRenderOptions;
+      const response = (await window.arc.host.command('viewport.setRenderOptions', {
+        ...renderOptions,
+        grid: visible,
+      })) as ViewportCommandResponse;
+      if (!response?.succeeded) throw new Error(response?.error || 'Could not update viewport grid');
+      setViewportStats((current) => ({
+        ...current,
+        renderOptions: { ...(current.renderOptions ?? defaultRenderOptions), grid: visible },
+      }));
+    } catch (error) {
+      setGridVisible(previous);
+      setViewportError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
     <section className="arc-viewport-shell">
       <header className="arc-viewport-header">
@@ -245,7 +294,20 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
         <div className="arc-viewport-view-options">
           <button title="Frame an object with F, then orbit it with Alt + Left Drag">Perspective</button>
           <button>Lit</button>
-          <button>Show</button>
+          <details className="arc-viewport-show-menu">
+            <summary>Show</summary>
+            <div className="arc-viewport-show-popup">
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={gridVisible}
+                onClick={() => void setGridVisibility(!gridVisible)}
+              >
+                <span className="arc-viewport-menu-check">{gridVisible ? '✓' : ''}</span>
+                Grid
+              </button>
+            </div>
+          </details>
         </div>
         <div className="arc-viewport-header-spacer" />
         <div className="arc-viewport-view-options compact">

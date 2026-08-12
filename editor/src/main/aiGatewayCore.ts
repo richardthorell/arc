@@ -106,6 +106,7 @@ type ViewportRenderOptions = {
   visualization: string;
   overlay: 'none' | 'selectedWireframe' | 'allWireframe';
   shadows: boolean;
+  grid: boolean;
   environment: {
     sky: boolean;
     fog: boolean;
@@ -723,6 +724,7 @@ export class SceneGatewayCore {
       visualization,
       overlay: overlay as ViewportRenderOptions['overlay'],
       shadows: typeof params.shadows === 'boolean' ? params.shadows : previous.shadows,
+      grid: typeof params.grid === 'boolean' ? params.grid : previous.grid,
       environment: visibility,
     };
     const acknowledgement = this.expect(await this.host.command('viewport.setRenderOptions', requested)) as Record<
@@ -885,6 +887,7 @@ export class SceneGatewayCore {
       visualization: typeof value.visualization === 'string' ? value.visualization : 'standard',
       overlay: value.overlay === 'selectedWireframe' || value.overlay === 'allWireframe' ? value.overlay : 'none',
       shadows: typeof value.shadows === 'boolean' ? value.shadows : true,
+      grid: typeof value.grid === 'boolean' ? value.grid : true,
       environment: {
         sky: typeof environment.sky === 'boolean' ? environment.sky : true,
         fog: typeof environment.fog === 'boolean' ? environment.fog : true,
@@ -902,6 +905,7 @@ export class SceneGatewayCore {
     if (requested.visualization !== effective.visualization) mismatches.push('visualization');
     if (requested.overlay !== effective.overlay) mismatches.push('overlay');
     if (requested.shadows !== effective.shadows) mismatches.push('shadows');
+    if (requested.grid !== effective.grid) mismatches.push('grid');
     for (const key of Object.keys(requested.environment) as Array<keyof ViewportRenderOptions['environment']>) {
       if (requested.environment[key] !== effective.environment[key]) mismatches.push(`environment.${key}`);
     }

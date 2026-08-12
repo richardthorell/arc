@@ -454,6 +454,83 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.035);
 }
 
+.hierarchy-create-menu {
+  position: relative;
+}
+
+.primitive-palette {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 5px);
+  left: 0;
+  width: 286px;
+  padding: 8px;
+  border: 1px solid #354353;
+  border-radius: 6px;
+  background: #151d25;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55);
+}
+
+.primitive-palette-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 31px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 4px;
+  color: #dce6f0;
+  background: transparent;
+  text-align: left;
+}
+
+.primitive-palette-empty:hover {
+  background: #243342;
+}
+
+.primitive-palette-heading {
+  padding: 9px 5px 6px;
+  color: #8290a0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.primitive-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.primitive-palette-grid button {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 4px 6px;
+  border: 1px solid #2c3946;
+  border-radius: 5px;
+  color: #bdc9d5;
+  background: linear-gradient(180deg, #202b36, #19222b);
+  font-size: 11px;
+}
+
+.primitive-palette-grid button:hover,
+.primitive-palette-grid button:focus-visible {
+  color: #f0f7ff;
+  border-color: #4688c8;
+  background: linear-gradient(180deg, #2b4054, #203347);
+  outline: none;
+}
+
+.primitive-preview {
+  width: 58px;
+  height: 58px;
+  filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.38));
+}
+
 .hierarchy-expand {
   display: inline-flex;
   align-items: center;

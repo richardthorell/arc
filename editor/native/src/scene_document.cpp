@@ -985,6 +985,8 @@ editor_primitive_type primitive_from_name(std::string_view value)
     if (value == "Cube") return editor_primitive_type::cube;
     if (value == "Sphere") return editor_primitive_type::sphere;
     if (value == "Cylinder") return editor_primitive_type::cylinder;
+    if (value == "Cone") return editor_primitive_type::cone;
+    if (value == "Capsule") return editor_primitive_type::capsule;
     return editor_primitive_type::plane;
 }
 

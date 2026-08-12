@@ -83,6 +83,8 @@ type HostSceneSnapshot = {
   entities: HostSceneEntity[];
 };
 
+type BasicEntityKind = 'empty' | 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
+
 type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
 
 type WorkspaceDocument = {
@@ -964,9 +966,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     if (entity) void mutateHierarchyEntity('entity.setActive', { entity, active });
   };
 
-  const createHierarchyChild = () => {
+  const createHierarchyEntity = (kind: BasicEntityKind) => {
     const parent = selectedSnapshot?.entity;
-    void mutateHierarchyEntity('entity.create', { kind: 'empty', ...(parent ? { parent } : {}) });
+    void mutateHierarchyEntity('entity.create', { kind, ...(parent ? { parent } : {}) });
   };
 
   const createPrefabFromSelection = async () => {
@@ -1215,7 +1217,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           onRenameEntity={renameHierarchyEntity}
           onSetEntityActive={setHierarchyEntityActive}
           onMoveEntity={moveHierarchyEntity}
-          onCreateChild={createHierarchyChild}
+          onCreateEntity={createHierarchyEntity}
           onDuplicate={() => void runCommand('entity.duplicate')}
           onCreatePrefab={() => void createPrefabFromSelection()}
           onInstantiatePrefab={() => void instantiatePrefab()}
@@ -1615,6 +1617,60 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   );
 }
 
+function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty'> }) {
+  const fillId = `primitive-fill-${kind}`;
+  const common = { fill: `url(#${fillId})`, stroke: '#8fc8ff', strokeWidth: 1.35 };
+  return (
+    <svg className="primitive-preview" viewBox="0 0 64 64" aria-hidden="true">
+      <defs>
+        <linearGradient id={fillId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#52789a" />
+          <stop offset="1" stopColor="#172a3a" />
+        </linearGradient>
+      </defs>
+      {kind === 'cube' && (
+        <>
+          <path {...common} d="M14 22 32 12l18 10-18 11z" />
+          <path {...common} d="M14 22v22l18 10V33z" />
+          <path {...common} d="M50 22v22L32 54V33z" />
+        </>
+      )}
+      {kind === 'sphere' && (
+        <>
+          <circle {...common} cx="32" cy="32" r="21" />
+          <ellipse cx="32" cy="32" rx="10" ry="21" fill="none" stroke="#8fc8ff" opacity="0.72" />
+          <path d="M12 32h40M17 21c9 5 21 5 30 0M17 43c9-5 21-5 30 0" fill="none" stroke="#8fc8ff" opacity="0.58" />
+        </>
+      )}
+      {kind === 'cylinder' && (
+        <>
+          <path {...common} d="M16 18c0-6 32-6 32 0v28c0 7-32 7-32 0z" />
+          <ellipse {...common} cx="32" cy="18" rx="16" ry="6" />
+          <path d="M16 45c3 7 29 7 32 0" fill="none" stroke="#8fc8ff" />
+        </>
+      )}
+      {kind === 'cone' && (
+        <>
+          <path {...common} d="M32 10 13 46c1 9 37 9 38 0z" />
+          <ellipse {...common} cx="32" cy="46" rx="19" ry="7" />
+        </>
+      )}
+      {kind === 'capsule' && (
+        <>
+          <path {...common} d="M18 23a14 14 0 0 1 28 0v18a14 14 0 0 1-28 0z" />
+          <path d="M18 23c5 4 23 4 28 0M18 41c5-4 23-4 28 0" fill="none" stroke="#8fc8ff" opacity="0.62" />
+        </>
+      )}
+      {kind === 'plane' && (
+        <>
+          <path {...common} d="m8 40 29-25 19 11-29 25z" />
+          <path d="m17 32 19 11M27 24l19 11M19 46l29-25" fill="none" stroke="#8fc8ff" opacity="0.55" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function ExplorerPanel({
   project,
   selectedEntityId,
@@ -1623,7 +1679,7 @@ function ExplorerPanel({
   onRenameEntity,
   onSetEntityActive,
   onMoveEntity,
-  onCreateChild,
+  onCreateEntity,
   onDuplicate,
   onCreatePrefab,
   onInstantiatePrefab,
@@ -1636,7 +1692,7 @@ function ExplorerPanel({
   onRenameEntity: (entityId: string, name: string) => void;
   onSetEntityActive: (entityId: string, active: boolean) => void;
   onMoveEntity: (entityId: string, target: SceneEntity, mode: 'before' | 'inside' | 'after') => void;
-  onCreateChild: () => void;
+  onCreateEntity: (kind: BasicEntityKind) => void;
   onDuplicate: () => void;
   onCreatePrefab: () => void;
   onInstantiatePrefab: () => void;
@@ -1648,14 +1704,49 @@ function ExplorerPanel({
   const allEntities = useMemo(() => flattenScene(project.scene), [project.scene]);
   const actorCount = allEntities.length;
   const selectedCount = selectedEntityIds.size;
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
   return (
     <div className="explorer-view">
       <Panel icon={<FolderTree size={14} />} title="Hierarchy">
         <div className="hierarchy-actions">
-          <UiIconButton label="Create child entity" onClick={onCreateChild}>
-            <Plus size={13} />
-          </UiIconButton>
+          <div className="hierarchy-create-menu">
+            <UiIconButton label="Add entity" onClick={() => setCreateMenuOpen((open) => !open)}>
+              <Plus size={13} />
+            </UiIconButton>
+            {createMenuOpen && (
+              <div className="primitive-palette" role="menu" aria-label="Add entity">
+                <button
+                  className="primitive-palette-empty"
+                  type="button"
+                  onClick={() => {
+                    onCreateEntity('empty');
+                    setCreateMenuOpen(false);
+                  }}
+                >
+                  <Plus size={16} />
+                  Empty Entity
+                </button>
+                <div className="primitive-palette-heading">Basic Shapes</div>
+                <div className="primitive-palette-grid">
+                  {(['cube', 'sphere', 'cylinder', 'cone', 'capsule', 'plane'] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onCreateEntity(kind);
+                        setCreateMenuOpen(false);
+                      }}
+                    >
+                      <PrimitivePreview kind={kind} />
+                      <span>{kind === 'cube' ? 'Box' : kind[0].toUpperCase() + kind.slice(1)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           <UiIconButton label="Duplicate selected entity" onClick={onDuplicate}>
             <Copy size={13} />
           </UiIconButton>

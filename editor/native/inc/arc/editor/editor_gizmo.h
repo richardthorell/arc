@@ -16,7 +16,8 @@ enum class gizmo_axis : std::uint8_t
     none,
     x,
     y,
-    z
+    z,
+    all
 };
 /** Desired axis length in output pixels, independent of camera distance. */
 inline constexpr float editor_gizmo_pixel_length = 112.0f;
@@ -33,6 +34,16 @@ struct editor_gizmo_context
 float editor_gizmo_world_scale(const scene::camera_component& camera,
                                const scene::transform_component& camera_transform, const math::vector3f& world_position,
                                std::uint32_t viewport_height) noexcept;
+
+/**
+ * @brief Append an adaptive camera-centered XZ editor grid.
+ *
+ * Grid spacing follows powers of ten so minor lines retain a useful on-screen
+ * density while zooming. World axes remain anchored at the origin.
+ */
+void append_editor_grid_overlay(render::debug_overlay_stream& stream, const scene::camera_component& camera,
+                                const scene::transform_component& camera_transform,
+                                std::uint32_t viewport_height);
 
 render::debug_overlay_stream build_editor_gizmo_overlay(const ecs::world& registry, ecs::entity selected,
                                                         ecs::entity camera_entity, const editor_gizmo_context& context);

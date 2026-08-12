@@ -1374,7 +1374,7 @@ private:
                                    .shadow_lod_bias = item.shadow_lod_bias,
                                    .maximum_shadow_distance = item.maximum_shadow_distance,
                                    .base_color_tint = item.base_color_tint,
-                                   .wire_color = math::vector4f{0.28f, 0.62f, 1.0f, 1.0f},
+                                   .wire_color = math::vector4f{1.0f, 0.48f, 0.04f, 1.0f},
                                    .label = item.label};
         };
         const auto make_virtual_draw = [&](const virtual_render_item& item, bool selected_for_overlay)
@@ -1408,7 +1408,7 @@ private:
                                         .shadow_lod_bias = item.shadow_lod_bias,
                                         .maximum_shadow_distance = item.maximum_shadow_distance,
                                         .base_color_tint = tint,
-                                        .wire_color = math::vector4f{0.28f, 0.62f, 1.0f, 1.0f},
+                                        .wire_color = math::vector4f{1.0f, 0.48f, 0.04f, 1.0f},
                                         .label = item.label},
                 .mesh = item.mesh,
                 .cluster_index = item.root_node};
@@ -7336,7 +7336,15 @@ private:
                 if (found == meshes_.end()) return;
 
                 vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-                const auto constants = build_mesh_constants(draw);
+                auto constants = build_mesh_constants(draw);
+                if (pipeline == mesh_wire_pipeline_)
+                {
+                    std::copy(draw.wire_color.data(), draw.wire_color.data() + 4, constants.base_color);
+                    constants.light_color[3] = 0.0f;
+                    constants.visualization[0] = static_cast<float>(mesh_visualization_mode::albedo);
+                    constants.fog_color_density[3] = 0.0f;
+                    constants.material_params[3] = static_cast<float>(material_alpha_mode::opaque);
+                }
                 VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw);
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_layout_, 0, 1,
                                         &material_descriptor_set, 0, nullptr);
@@ -7362,7 +7370,15 @@ private:
                     return;
 
                 vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-                const auto constants = build_mesh_constants(draw.draw);
+                auto constants = build_mesh_constants(draw.draw);
+                if (pipeline == mesh_wire_pipeline_)
+                {
+                    std::copy(draw.draw.wire_color.data(), draw.draw.wire_color.data() + 4, constants.base_color);
+                    constants.light_color[3] = 0.0f;
+                    constants.visualization[0] = static_cast<float>(mesh_visualization_mode::albedo);
+                    constants.fog_color_density[3] = 0.0f;
+                    constants.material_params[3] = static_cast<float>(material_alpha_mode::opaque);
+                }
                 VkDescriptorSet material_descriptor_set = material_descriptor_set_for(draw.draw);
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mesh_pipeline_layout_, 0, 1,
                                         &material_descriptor_set, 0, nullptr);
@@ -7397,8 +7413,6 @@ private:
                 draw_with_pipeline(draw, material_is_terrain(draw) && terrain_pipeline_ != VK_NULL_HANDLE
                                              ? terrain_pipeline_
                                              : mesh_pipeline_);
-                if (draw.selected && mesh_wire_pipeline_ != VK_NULL_HANDLE)
-                    draw_with_pipeline(draw, mesh_wire_pipeline_);
             }
 
             for (const auto& draw : frame_virtual_draws_)
@@ -7419,8 +7433,6 @@ private:
                 draw_virtual_with_pipeline(draw, material_is_terrain(draw.draw) && terrain_pipeline_ != VK_NULL_HANDLE
                                                      ? terrain_pipeline_
                                                      : mesh_pipeline_);
-                if (draw.draw.selected && mesh_wire_pipeline_ != VK_NULL_HANDLE)
-                    draw_virtual_with_pipeline(draw, mesh_wire_pipeline_);
             }
 
             std::vector<const draw_mesh_event*> transparent_draws;
@@ -7441,6 +7453,20 @@ private:
             {
                 draw_with_pipeline(*draw, mesh_transparent_pipeline_ != VK_NULL_HANDLE ? mesh_transparent_pipeline_
                                                                                        : mesh_pipeline_);
+            }
+
+            // Selection is an editor overlay, not part of the material path.
+            // Draw it after deferred, forward, and transparent geometry so
+            // ordinary deferred objects cannot skip their highlight.
+            if (mesh_wire_pipeline_ != VK_NULL_HANDLE)
+            {
+                for (const auto& draw : frame_draws_)
+                    if (draw.selected && draw.mode != render_mode::wireframe && !material_is_terrain(draw))
+                        draw_with_pipeline(draw, mesh_wire_pipeline_);
+                for (const auto& draw : frame_virtual_draws_)
+                    if (draw.draw.selected && draw.draw.mode != render_mode::wireframe &&
+                        !material_is_terrain(draw.draw))
+                        draw_virtual_with_pipeline(draw, mesh_wire_pipeline_);
             }
         }
 

@@ -18,8 +18,13 @@ constexpr float shaft_length = 0.76f;
 constexpr float shaft_radius = 0.022f;
 constexpr float arrow_radius = 0.075f;
 constexpr float scale_handle_extent = 0.075f;
+constexpr float uniform_scale_handle_extent = 0.09f;
 constexpr float ring_half_width = 0.025f;
 constexpr float highlighted_width_scale = 1.45f;
+constexpr int grid_half_line_count = 50;
+constexpr int grid_major_interval = 10;
+constexpr float grid_target_pixel_spacing = 32.0f;
+constexpr float grid_height = 0.003f;
 
 constexpr std::array<math::vector3f, 3> canonical_axes{
     math::vector3f{1.0f, 0.0f, 0.0f}, math::vector3f{0.0f, 1.0f, 0.0f}, math::vector3f{0.0f, 0.0f, 1.0f}};
@@ -27,7 +32,8 @@ constexpr std::array<math::vector4f, 3> axis_colors{math::vector4f{0.95f, 0.12f,
                                                     math::vector4f{0.18f, 0.86f, 0.24f, 1.0f},
                                                     math::vector4f{0.14f, 0.48f, 1.0f, 1.0f}};
 constexpr math::vector4f highlighted_color{1.0f, 0.86f, 0.20f, 1.0f};
-constexpr math::vector4f bounds_color{0.25f, 0.62f, 1.0f, 0.72f};
+constexpr math::vector4f bounds_color{1.0f, 0.55f, 0.08f, 0.82f};
+constexpr math::vector4f uniform_scale_color{0.86f, 0.88f, 0.91f, 1.0f};
 
 math::vector3f matrix_axis(const math::matrix4f& matrix, std::size_t column) noexcept
 {
@@ -139,6 +145,27 @@ void append_scale_handle(render::debug_overlay_stream& stream, const math::vecto
         append_triangle(stream, corners[face[0]], corners[face[1]], corners[face[2]], color);
 }
 
+void append_uniform_scale_handle(render::debug_overlay_stream& stream, const math::vector3f& origin,
+                                 const std::array<math::vector3f, 3>& axes, float scale, bool highlighted)
+{
+    const float extent = scale * uniform_scale_handle_extent * (highlighted ? highlighted_width_scale : 1.0f);
+    std::array<math::vector3f, 8> corners{};
+    for (std::size_t index = 0; index < corners.size(); ++index)
+    {
+        auto offset = math::vector3f::zero;
+        for (std::size_t axis = 0; axis < axes.size(); ++axis)
+            offset =
+                math::add(offset, math::mul(axes[axis], (index & (std::size_t{1} << axis)) != 0u ? extent : -extent));
+        corners[index] = math::add(origin, offset);
+    }
+    constexpr std::array<std::array<std::size_t, 3>, 12> faces{
+        std::array<std::size_t, 3>{0, 2, 3}, {0, 3, 1}, {4, 5, 7}, {4, 7, 6}, {0, 1, 5}, {0, 5, 4},
+        {2, 6, 7}, {2, 7, 3}, {0, 4, 6}, {0, 6, 2}, {1, 3, 7}, {1, 7, 5}};
+    const auto color = highlighted ? highlighted_color : uniform_scale_color;
+    for (const auto& face : faces)
+        append_triangle(stream, corners[face[0]], corners[face[1]], corners[face[2]], color);
+}
+
 void append_rotation_ring(render::debug_overlay_stream& stream, const math::vector3f& origin,
                           const math::vector3f& tangent, const math::vector3f& bitangent, float scale,
                           float width_scale, const math::vector4f& color)
@@ -230,6 +257,53 @@ math::matrix4f gizmo_view_projection(const scene::camera_component& camera,
 }
 } // namespace
 
+void append_editor_grid_overlay(render::debug_overlay_stream& stream, const scene::camera_component& camera,
+                                const scene::transform_component& camera_transform, std::uint32_t viewport_height)
+{
+    const float height = static_cast<float>(std::max(1u, viewport_height));
+    const auto camera_position = scene::world_position(camera_transform);
+    const float visible_height = camera.projection == scene::camera_projection::orthographic
+                                     ? camera.orthographic_height
+                                     : 2.0f * std::max(std::abs(camera_position[1]), 1.0f) *
+                                           std::tan(camera.fov_y_radians * 0.5f);
+    const float desired_spacing = std::max(0.001f, visible_height * grid_target_pixel_spacing / height);
+    const float magnitude = std::pow(10.0f, std::floor(std::log10(desired_spacing)));
+    const float normalized = desired_spacing / magnitude;
+    const float step = normalized > 5.0f ? 10.0f : normalized > 2.0f ? 5.0f : normalized > 1.0f ? 2.0f : 1.0f;
+    const float spacing = magnitude * step;
+    const float center_x = std::floor(camera_position[0] / spacing) * spacing;
+    const float center_z = std::floor(camera_position[2] / spacing) * spacing;
+    const float extent = spacing * static_cast<float>(grid_half_line_count);
+
+    constexpr math::vector4f minor_color{0.30f, 0.33f, 0.37f, 0.42f};
+    constexpr math::vector4f major_color{0.42f, 0.45f, 0.50f, 0.62f};
+    constexpr math::vector4f x_axis_color{0.76f, 0.22f, 0.18f, 0.90f};
+    constexpr math::vector4f z_axis_color{0.18f, 0.40f, 0.78f, 0.90f};
+    const auto grid_color = [&](float coordinate, float center, const math::vector4f& axis_color)
+    {
+        if (std::abs(coordinate) <= spacing * 0.25f) return axis_color;
+        const auto world_line = static_cast<long long>(std::llround(coordinate / spacing));
+        auto color = world_line % grid_major_interval == 0 ? major_color : minor_color;
+        const float edge = std::clamp(std::abs(coordinate - center) / extent, 0.0f, 1.0f);
+        color[3] *= 1.0f - edge * edge;
+        return color;
+    };
+
+    for (int line = -grid_half_line_count; line <= grid_half_line_count; ++line)
+    {
+        const float x = center_x + static_cast<float>(line) * spacing;
+        const float z = center_z + static_cast<float>(line) * spacing;
+        stream.lines.push_back({.start = {center_x - extent, grid_height, z},
+                                .end = {center_x + extent, grid_height, z},
+                                .color = grid_color(z, center_z, x_axis_color),
+                                .depth = render::debug_overlay_depth_mode::tested});
+        stream.lines.push_back({.start = {x, grid_height, center_z - extent},
+                                .end = {x, grid_height, center_z + extent},
+                                .color = grid_color(x, center_x, z_axis_color),
+                                .depth = render::debug_overlay_depth_mode::tested});
+    }
+}
+
 float editor_gizmo_world_scale(const scene::camera_component& camera,
                                const scene::transform_component& camera_transform, const math::vector3f& world_position,
                                std::uint32_t viewport_height) noexcept
@@ -286,6 +360,8 @@ render::debug_overlay_stream build_editor_gizmo_overlay(const ecs::world& regist
         else
             append_scale_handle(stream, origin, axes[axis], scale, width_scale, color);
     }
+    if (context.tool == editor_tool::scale)
+        append_uniform_scale_handle(stream, origin, axes, scale, context.highlighted_axis == gizmo_axis::all);
     return stream;
 }
 
@@ -304,6 +380,8 @@ gizmo_axis hit_test_editor_gizmo(const ecs::world& registry, ecs::entity selecte
     if (!project_to_screen(view_projection, origin, context.viewport_width, context.viewport_height, projected_origin))
         return gizmo_axis::none;
     const math::vector2f pointer{screen_x, screen_y};
+    if (context.tool == editor_tool::scale && math::length(math::sub(pointer, projected_origin)) <= gizmo_hit_radius)
+        return gizmo_axis::all;
     float nearest = gizmo_hit_radius;
     gizmo_axis result = gizmo_axis::none;
     if (context.tool == editor_tool::rotate)
@@ -365,6 +443,13 @@ bool editor_gizmo_drag_direction(const ecs::world& registry, ecs::entity selecte
     const auto* camera_transform = registry.try_get<scene::transform_component>(camera_entity);
     if (!transform || !camera || !camera_transform || axis == gizmo_axis::none || context.tool == editor_tool::select)
         return false;
+
+    if (axis == gizmo_axis::all)
+    {
+        if (context.tool != editor_tool::scale) return false;
+        direction = math::normalize(math::vector2f{1.0f, -1.0f});
+        return true;
+    }
 
     const std::size_t axis_index = static_cast<std::size_t>(axis) - 1u;
     const auto origin = scene::world_position(*transform);

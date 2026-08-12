@@ -29,6 +29,10 @@ render::mesh_data make_primitive_mesh(editor_primitive_type type)
             return render::make_uv_sphere_mesh(0.5f, 32, 16);
         case editor_primitive_type::cylinder:
             return render::make_cylinder_mesh(0.5f, 1.0f, 32);
+        case editor_primitive_type::cone:
+            return render::make_cone_mesh(0.5f, 1.0f, 32);
+        case editor_primitive_type::capsule:
+            return render::make_capsule_mesh(0.5f, 1.0f, 32, 8);
     }
     return render::make_plane_mesh(4.0f);
 }
@@ -383,6 +387,10 @@ const char* primitive_type_name(editor_primitive_type type) noexcept
             return "Sphere";
         case editor_primitive_type::cylinder:
             return "Cylinder";
+        case editor_primitive_type::cone:
+            return "Cone";
+        case editor_primitive_type::capsule:
+            return "Capsule";
     }
     return "Primitive";
 }

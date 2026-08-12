@@ -374,7 +374,39 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     const auto scaling = arc::editor::build_editor_gizmo_overlay(
         registry, selected, camera_entity,
         {.tool = arc::editor::editor_tool::scale, .viewport_width = 800, .viewport_height = 600});
-    REQUIRE(scaling.triangles.size() == 96);
+    REQUIRE(scaling.triangles.size() == 108);
+    REQUIRE(arc::editor::hit_test_editor_gizmo(
+                registry, selected, camera_entity,
+                {.tool = arc::editor::editor_tool::scale, .viewport_width = 800, .viewport_height = 600}, 400.0f,
+                300.0f) == arc::editor::gizmo_axis::all);
+
+    arc::math::vector2f uniform_direction;
+    REQUIRE(arc::editor::editor_gizmo_drag_direction(
+        registry, selected, camera_entity,
+        {.tool = arc::editor::editor_tool::scale, .viewport_width = 800, .viewport_height = 600},
+        arc::editor::gizmo_axis::all, 400.0f, 300.0f, uniform_direction));
+    REQUIRE(arc::math::length(uniform_direction) == Catch::Approx(1.0f));
+}
+
+TEST_CASE("editor grid is adaptive and remains anchored to world axes")
+{
+    arc::scene::camera_component camera;
+    arc::scene::transform_component camera_transform;
+    camera_transform.position = {12.0f, 8.0f, -17.0f};
+    arc::render::debug_overlay_stream near_grid;
+    arc::editor::append_editor_grid_overlay(near_grid, camera, camera_transform, 600);
+    REQUIRE(near_grid.lines.size() == 202);
+    REQUIRE(std::any_of(near_grid.lines.begin(), near_grid.lines.end(), [](const auto& line) {
+        return std::abs(line.start[2]) < 0.0001f && line.color[0] > line.color[2];
+    }));
+
+    camera_transform.position[1] = 800.0f;
+    arc::render::debug_overlay_stream far_grid;
+    arc::editor::append_editor_grid_overlay(far_grid, camera, camera_transform, 600);
+    REQUIRE(far_grid.lines.size() == near_grid.lines.size());
+    const float near_spacing = std::abs(near_grid.lines[2].start[2] - near_grid.lines[0].start[2]);
+    const float far_spacing = std::abs(far_grid.lines[2].start[2] - far_grid.lines[0].start[2]);
+    REQUIRE(far_spacing > near_spacing);
 }
 
 TEST_CASE("editor gizmo drags follow each projected positive axis")
@@ -770,7 +802,8 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
                  .render_mode = arc::editor::host_render_mode::wireframe,
                  .visualization = arc::editor::host_visualization_mode::world_normal,
                  .overlay = arc::editor::host_overlay_mode::all_wireframe,
-                 .shadows = false}},
+                 .shadows = false,
+                 .grid = false}},
         {.request_id = 12,
          .payload =
              arc::editor::host_viewport_camera_input_command{
@@ -836,6 +869,11 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
             const auto& input = std::get<arc::editor::host_viewport_camera_input_command>(parsed.payload);
             REQUIRE(input.look_x == Catch::Approx(3.0f));
             REQUIRE(input.look_y == Catch::Approx(-1.0f));
+        }
+        if (command.request_id == 11)
+        {
+            const auto& options = std::get<arc::editor::host_viewport_set_render_options_command>(parsed.payload);
+            REQUIRE_FALSE(options.grid);
         }
     }
 

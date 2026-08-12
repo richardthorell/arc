@@ -182,6 +182,8 @@ enum class host_create_entity_kind : std::uint8_t
     cube,
     sphere,
     cylinder,
+    cone,
+    capsule,
     world_environment,
     terrain,
     water,
@@ -1049,6 +1051,7 @@ struct host_viewport_set_render_options_command
     host_visualization_mode visualization{host_visualization_mode::standard};
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
+    bool grid{true};
     host_environment_visibility environment{};
 };
 
@@ -1303,6 +1306,7 @@ struct host_viewport_request
     host_visualization_mode visualization{host_visualization_mode::standard};
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
+    bool grid{true};
     host_environment_visibility environment{};
 };
 

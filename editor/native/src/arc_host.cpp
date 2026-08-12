@@ -734,6 +734,10 @@ editor_primitive_type primitive_type_for(host_create_entity_kind kind) noexcept
             return editor_primitive_type::sphere;
         case host_create_entity_kind::cylinder:
             return editor_primitive_type::cylinder;
+        case host_create_entity_kind::cone:
+            return editor_primitive_type::cone;
+        case host_create_entity_kind::capsule:
+            return editor_primitive_type::capsule;
         default:
             return editor_primitive_type::cube;
     }
@@ -753,6 +757,10 @@ const char* create_entity_kind_label(host_create_entity_kind kind) noexcept
             return "Sphere";
         case host_create_entity_kind::cylinder:
             return "Cylinder";
+        case host_create_entity_kind::cone:
+            return "Cone";
+        case host_create_entity_kind::capsule:
+            return "Capsule";
         case host_create_entity_kind::world_environment:
             return "World Environment";
         case host_create_entity_kind::terrain:
@@ -1430,34 +1438,6 @@ ecs::entity add_default_sky_to_scene(editor_scene_state& state)
     scene::set_world_environment_settings(state.scene, sky, settings);
     state.world_feature_entities.push_back(sky);
     return sky;
-}
-
-void append_editor_world_grid(render::debug_overlay_stream& overlay)
-{
-    constexpr int half_extent = 20;
-    constexpr float spacing = 1.0f;
-    constexpr float height = 0.005f;
-    constexpr int major_interval = 5;
-    constexpr math::vector4f minor_color{0.22f, 0.25f, 0.29f, 0.72f};
-    constexpr math::vector4f major_color{0.32f, 0.36f, 0.41f, 0.86f};
-    constexpr math::vector4f x_axis_color{0.72f, 0.25f, 0.22f, 0.95f};
-    constexpr math::vector4f z_axis_color{0.22f, 0.42f, 0.76f, 0.95f};
-    const float extent = static_cast<float>(half_extent) * spacing;
-
-    for (int line = -half_extent; line <= half_extent; ++line)
-    {
-        const float offset = static_cast<float>(line) * spacing;
-        const auto x_color = line == 0 ? x_axis_color : line % major_interval == 0 ? major_color : minor_color;
-        const auto z_color = line == 0 ? z_axis_color : line % major_interval == 0 ? major_color : minor_color;
-        overlay.lines.push_back({.start = {-extent, height, offset},
-                                 .end = {extent, height, offset},
-                                 .color = x_color,
-                                 .depth = render::debug_overlay_depth_mode::tested});
-        overlay.lines.push_back({.start = {offset, height, -extent},
-                                 .end = {offset, height, extent},
-                                 .color = z_color,
-                                 .depth = render::debug_overlay_depth_mode::tested});
-    }
 }
 
 editor_scene_state create_blank_scene(render::renderer& renderer, bool include_floor = true)
@@ -2152,6 +2132,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     case host_create_entity_kind::cube:
                     case host_create_entity_kind::sphere:
                     case host_create_entity_kind::cylinder:
+                    case host_create_entity_kind::cone:
+                    case host_create_entity_kind::capsule:
                         created =
                             add_primitive_to_scene(state_->scene, *state_->renderer, primitive_type_for(payload.kind));
                         break;
@@ -3109,6 +3091,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->viewport_options.visualization = payload.visualization;
                 state_->viewport_options.overlay = payload.overlay;
                 state_->viewport_options.shadows = payload.shadows;
+                state_->viewport_options.grid = payload.grid;
                 state_->viewport_options.environment = payload.environment;
                 return success();
             }
@@ -3904,6 +3887,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                         ",\"visualization\":" + to_json_string(to_string(state_->viewport_options.visualization)) +
                         ",\"overlay\":" + to_json_string(to_string(state_->viewport_options.overlay)) +
                         ",\"shadows\":" + std::string(state_->viewport_options.shadows ? "true" : "false") +
+                        ",\"grid\":" + std::string(state_->viewport_options.grid ? "true" : "false") +
                         ",\"environment\":{\"sky\":" +
                         std::string(state_->viewport_options.environment.sky ? "true" : "false") +
                         ",\"fog\":" + std::string(state_->viewport_options.environment.fog ? "true" : "false") +
@@ -4554,7 +4538,14 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                              .highlighted_axis = state_->gizmo_highlight,
                              .viewport_width = request.width,
                              .viewport_height = request.height});
-    append_editor_world_grid(debug_overlay);
+    if (state_->viewport_options.grid)
+    {
+        const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+        const auto* camera_transform =
+            state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
+        if (camera && camera_transform)
+            append_editor_grid_overlay(debug_overlay, *camera, *camera_transform, request.height);
+    }
     if (state_->viewport_tool.tool == host_viewport_tool::terrain && state_->terrain_brush_local_position &&
         state_->scene.scene.alive(state_->scene.terrain_entity))
     {

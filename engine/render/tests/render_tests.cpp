@@ -1998,6 +1998,16 @@ TEST_CASE("primitive mesh builders create renderable geometry")
     REQUIRE(cylinder.vertices.size() == 20);
     REQUIRE(cylinder.indices.size() == 8 * 12);
 
+    const auto cone = arc::render::make_cone_mesh(0.5f, 1.0f, 8);
+    REQUIRE(cone.name == "Cone");
+    REQUIRE(cone.vertices.size() == 28);
+    REQUIRE(cone.indices.size() == 8 * 6);
+
+    const auto capsule = arc::render::make_capsule_mesh(0.5f, 1.0f, 8, 4);
+    REQUIRE(capsule.name == "Capsule");
+    REQUIRE(capsule.vertices.size() == 90);
+    REQUIRE(capsule.indices.size() == 9 * 8 * 6);
+
     const auto terrain = arc::render::make_terrain_grid_mesh(8.0f, 8, 1.0f);
     REQUIRE(terrain.name == "Terrain");
     REQUIRE(terrain.vertices.size() == 81);

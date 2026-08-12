@@ -28,6 +28,7 @@ class MockHost implements GatewayHostTransport {
     visualization: 'standard',
     overlay: 'none',
     shadows: true,
+    grid: true,
     environment: {
       sky: true,
       fog: true,

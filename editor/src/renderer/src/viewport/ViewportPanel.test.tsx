@@ -37,6 +37,64 @@ afterEach(() => {
 });
 
 describe('ViewportPanel', () => {
+  it('toggles the adaptive grid through the viewport render options', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          command,
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 640,
+              height: 480,
+              fps: 60,
+              frameTimeMs: 16.6,
+              drawCalls: 1,
+              frameIndex: 1,
+              submitted: true,
+              renderOptions: {
+                renderMode: 'shaded',
+                visualization: 'none',
+                shadows: true,
+                environment: true,
+                lighting: true,
+                grid: true,
+              },
+            },
+          }),
+        },
+        viewport: {
+          attach: vi.fn().mockResolvedValue({ succeeded: true }),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+        },
+      },
+    });
+
+    const view = render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'native' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(view.getByText('Show'));
+    const grid = await view.findByRole('menuitemcheckbox', { name: /Grid/ });
+    expect(grid).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(grid);
+
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'viewport.setRenderOptions',
+        expect.objectContaining({ grid: false, renderMode: 'shaded' }),
+      ),
+    );
+  });
+
   it('retries an idle native viewport attachment until rendering starts', async () => {
     const attach = vi.fn().mockResolvedValue({ succeeded: true });
     const resize = vi.fn().mockResolvedValue({ succeeded: true });

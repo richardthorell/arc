@@ -238,6 +238,99 @@ mesh_data make_cylinder_mesh(float radius, float height, std::uint32_t segments)
     return mesh;
 }
 
+mesh_data make_cone_mesh(float radius, float height, std::uint32_t segments)
+{
+    radius = std::max(0.001f, radius);
+    height = std::max(0.001f, height);
+    segments = std::max<std::uint32_t>(3, segments);
+
+    mesh_data mesh;
+    mesh.name = "Cone";
+    const float half_height = height * 0.5f;
+    const float normal_y = radius / height;
+    for (std::uint32_t segment = 0; segment <= segments; ++segment)
+    {
+        const float u = static_cast<float>(segment) / static_cast<float>(segments);
+        const float theta = u * math::tau<float>;
+        const float x = std::cos(theta);
+        const float z = std::sin(theta);
+        const auto normal = math::normalize(math::vector3f{x, normal_y, z});
+        mesh.vertices.push_back(
+            vertex(x * radius, -half_height, z * radius, normal[0], normal[1], normal[2], u, 0.0f));
+        mesh.vertices.push_back(vertex(0.0f, half_height, 0.0f, normal[0], normal[1], normal[2], u, 1.0f));
+    }
+    for (std::uint32_t segment = 0; segment < segments; ++segment)
+    {
+        const std::uint32_t base = segment * 2u;
+        mesh.indices.insert(mesh.indices.end(), {base, base + 1u, base + 2u});
+    }
+
+    const std::uint32_t center = static_cast<std::uint32_t>(mesh.vertices.size());
+    mesh.vertices.push_back(vertex(0.0f, -half_height, 0.0f, 0.0f, -1.0f, 0.0f, 0.5f, 0.5f));
+    const std::uint32_t rim = static_cast<std::uint32_t>(mesh.vertices.size());
+    for (std::uint32_t segment = 0; segment <= segments; ++segment)
+    {
+        const float u = static_cast<float>(segment) / static_cast<float>(segments);
+        const float theta = u * math::tau<float>;
+        const float x = std::cos(theta);
+        const float z = std::sin(theta);
+        mesh.vertices.push_back(
+            vertex(x * radius, -half_height, z * radius, 0.0f, -1.0f, 0.0f, x * 0.5f + 0.5f, z * 0.5f + 0.5f));
+    }
+    for (std::uint32_t segment = 0; segment < segments; ++segment)
+        mesh.indices.insert(mesh.indices.end(), {center, rim + segment + 1u, rim + segment});
+    return mesh;
+}
+
+mesh_data make_capsule_mesh(float radius, float cylinder_height, std::uint32_t segments,
+                            std::uint32_t hemisphere_segments)
+{
+    radius = std::max(0.001f, radius);
+    cylinder_height = std::max(0.0f, cylinder_height);
+    segments = std::max<std::uint32_t>(3, segments);
+    hemisphere_segments = std::max<std::uint32_t>(2, hemisphere_segments);
+
+    mesh_data mesh;
+    mesh.name = "Capsule";
+    const float half_height = cylinder_height * 0.5f;
+    const std::uint32_t ring_count = hemisphere_segments * 2u + 2u;
+    for (std::uint32_t ring_index = 0; ring_index < ring_count; ++ring_index)
+    {
+        const bool top = ring_index <= hemisphere_segments;
+        const std::uint32_t local_ring = top ? ring_index : ring_index - hemisphere_segments - 1u;
+        const float amount = static_cast<float>(local_ring) / static_cast<float>(hemisphere_segments);
+        const float latitude = top ? math::pi<float> * 0.5f * (1.0f - amount)
+                                   : -math::pi<float> * 0.5f * amount;
+        const float radial = std::cos(latitude);
+        const float normal_y = std::sin(latitude);
+        const float center_y = top ? half_height : -half_height;
+        const float v = static_cast<float>(ring_index) / static_cast<float>(ring_count - 1u);
+        for (std::uint32_t segment = 0; segment <= segments; ++segment)
+        {
+            const float u = static_cast<float>(segment) / static_cast<float>(segments);
+            const float theta = u * math::tau<float>;
+            const float normal_x = std::cos(theta) * radial;
+            const float normal_z = std::sin(theta) * radial;
+            mesh.vertices.push_back(vertex(normal_x * radius, center_y + normal_y * radius, normal_z * radius,
+                                           normal_x, normal_y, normal_z, u, v));
+        }
+    }
+
+    const std::uint32_t stride = segments + 1u;
+    for (std::uint32_t ring = 0; ring + 1u < ring_count; ++ring)
+    {
+        for (std::uint32_t segment = 0; segment < segments; ++segment)
+        {
+            const std::uint32_t a = ring * stride + segment;
+            const std::uint32_t b = a + 1u;
+            const std::uint32_t c = a + stride + 1u;
+            const std::uint32_t d = a + stride;
+            mesh.indices.insert(mesh.indices.end(), {a, b, c, a, c, d});
+        }
+    }
+    return mesh;
+}
+
 mesh_data make_terrain_grid_mesh(float size, std::uint32_t subdivisions, float height_scale)
 {
     size = std::max(1.0f, size);

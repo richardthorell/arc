@@ -28,6 +28,17 @@ mesh_data make_uv_sphere_mesh(float radius = 0.5f, std::uint32_t slices = 32, st
 mesh_data make_cylinder_mesh(float radius = 0.5f, float height = 1.0f, std::uint32_t segments = 32);
 
 /**
+ * @brief Create a capped cone centered at the origin.
+ */
+mesh_data make_cone_mesh(float radius = 0.5f, float height = 1.0f, std::uint32_t segments = 32);
+
+/**
+ * @brief Create a Y-axis capsule centered at the origin.
+ */
+mesh_data make_capsule_mesh(float radius = 0.5f, float cylinder_height = 1.0f, std::uint32_t segments = 32,
+                            std::uint32_t hemisphere_segments = 8);
+
+/**
  * @brief Create a generated XZ terrain grid centered at the origin.
  *
  * The surface is a deterministic mountain-and-valley composition. Texture

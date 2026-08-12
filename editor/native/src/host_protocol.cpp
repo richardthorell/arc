@@ -765,6 +765,10 @@ const char* to_string(host_create_entity_kind value) noexcept
             return "sphere";
         case host_create_entity_kind::cylinder:
             return "cylinder";
+        case host_create_entity_kind::cone:
+            return "cone";
+        case host_create_entity_kind::capsule:
+            return "capsule";
         case host_create_entity_kind::world_environment:
             return "worldEnvironment";
         case host_create_entity_kind::terrain:
@@ -1529,6 +1533,7 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"visualization\":" + quote(to_string(payload.visualization)) +
                        ",\"overlay\":" + quote(to_string(payload.overlay)) +
                        ",\"shadows\":" + bool_json(payload.shadows) +
+                       ",\"grid\":" + bool_json(payload.grid) +
                        ",\"environment\":" + environment_json(payload.environment) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>)
                 return "{\"orbitX\":" + std::to_string(payload.orbit_x) +
@@ -2010,6 +2015,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"cube", host_create_entity_kind::cube},
             {"sphere", host_create_entity_kind::sphere},
             {"cylinder", host_create_entity_kind::cylinder},
+            {"cone", host_create_entity_kind::cone},
+            {"capsule", host_create_entity_kind::capsule},
             {"worldEnvironment", host_create_entity_kind::world_environment},
             {"terrain", host_create_entity_kind::terrain},
             {"water", host_create_entity_kind::water},
@@ -2478,6 +2485,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         parse_enum(payload, "visualization", visualizations, std::size(visualizations), command.visualization);
         parse_enum(payload, "overlay", overlays, std::size(overlays), command.overlay);
         bool_value(payload, "shadows", command.shadows);
+        bool_value(payload, "grid", command.grid);
         parse_environment(payload, command.environment);
         envelope.payload = command;
     }

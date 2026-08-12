@@ -710,16 +710,19 @@ private:
         manipulation_start_y_ = y;
         manipulation_transaction_ = ++next_manipulation_transaction_;
         manipulation_local_axis_ = {};
-        manipulation_local_axis_[static_cast<std::size_t>(axis) - 1u] = 1.0f;
+        const bool uniform_scale = axis == arc::editor::gizmo_axis::all;
+        if (!uniform_scale) manipulation_local_axis_[static_cast<std::size_t>(axis) - 1u] = 1.0f;
         manipulation_rotation_axis_ = manipulation_local_axis_;
-        manipulation_screen_direction_ = axis == arc::editor::gizmo_axis::x ? arc::math::vector2f{1.0f, 0.0f}
+        manipulation_screen_direction_ = uniform_scale
+                                             ? arc::math::normalize(arc::math::vector2f{1.0f, -1.0f})
+                                         : axis == arc::editor::gizmo_axis::x ? arc::math::vector2f{1.0f, 0.0f}
                                                                              : arc::math::vector2f{0.0f, -1.0f};
         manipulation_world_units_per_pixel_ = 0.02f;
         const auto selected_entity = arc::ecs::entity{snapshot.entity.index, snapshot.entity.generation};
         const auto* selected_transform = state.scene.try_get<arc::scene::transform_component>(selected_entity);
         const auto* camera = state.scene.try_get<arc::scene::camera_component>(state.camera_entity);
         const auto* camera_transform = state.scene.try_get<arc::scene::transform_component>(state.camera_entity);
-        if (selected_transform && camera && camera_transform)
+        if (selected_transform && camera && camera_transform && !uniform_scale)
         {
             const std::size_t axis_index = static_cast<std::size_t>(axis) - 1u;
             arc::math::vector3f world_axis{};
@@ -812,10 +815,22 @@ private:
         }
         else if (tool.tool == arc::editor::host_viewport_tool::scale)
         {
-            float value =
-                std::max(0.001f, axis_value(manipulation_original_.scale, axis) * std::exp(pixel_delta * 0.01f));
-            if (tool.snapping) value = std::max(0.001f, snapped(value, tool.scale_snap));
-            set_axis_value(manipulation_current_.scale, axis, value);
+            const float factor = std::exp(pixel_delta * 0.01f);
+            if (active_axis_ == arc::editor::gizmo_axis::all)
+            {
+                for (std::size_t component = 0; component < 3u; ++component)
+                {
+                    float value = std::max(0.001f, axis_value(manipulation_original_.scale, component) * factor);
+                    if (tool.snapping) value = std::max(0.001f, snapped(value, tool.scale_snap));
+                    set_axis_value(manipulation_current_.scale, component, value);
+                }
+            }
+            else
+            {
+                float value = std::max(0.001f, axis_value(manipulation_original_.scale, axis) * factor);
+                if (tool.snapping) value = std::max(0.001f, snapped(value, tool.scale_snap));
+                set_axis_value(manipulation_current_.scale, axis, value);
+            }
         }
         else if (tool.tool == arc::editor::host_viewport_tool::rotate)
         {
