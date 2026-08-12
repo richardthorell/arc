@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import {
   Box,
   ChevronDown,
@@ -29,7 +29,7 @@ import { KeybindingService } from './keybindingService';
 import { defaultWorkbenchLayout, useWorkbenchLayout } from './workbenchStore';
 import type { ActivityId, CommandContext, CommandId, StartupState, WorkbenchPanelId } from './workbenchTypes';
 import { ActivityBar } from '../layout/ActivityBar';
-import { DockHost } from '../layout/DockHost';
+import { WorkspaceDock, type WorkspaceLayoutName } from '../layout/WorkspaceDock';
 import { MainToolbar } from '../layout/MainToolbar';
 import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
@@ -271,19 +271,12 @@ export const classifyHostEventRefresh = (event: HostEventLike, selectedEntityId:
   return 'none';
 };
 
-const resizeLimits = {
-  left: { min: 220, max: 520 },
-  right: { min: 300, max: 640 },
-  bottom: { min: 112, max: 420 },
-};
 const translationSnapOptions = [0.05, 0.1, 0.25, 0.5, 1] as const;
 const rotationSnapOptions = [5, 10, 15, 30, 45, 90] as const;
 const scaleSnapOptions = [0.05, 0.1, 0.25, 0.5] as const;
 const timeScaleOptions = [0.25, 0.5, 1, 2, 4] as const;
 const nextSnapOption = (options: readonly number[], current: number) =>
   options[(options.indexOf(current) + 1) % options.length];
-
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
 const parseHostEntityId = (id: string): HostEntityId | null => {
   const [index, generation] = id.split(':').map((part) => Number.parseInt(part, 10));
@@ -353,6 +346,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [viewportGridVisible, setViewportGridVisible] = useState(true);
   const [viewportFocused, setViewportFocused] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [requestedWorkspaceLayout, setRequestedWorkspaceLayout] = useState<WorkspaceLayoutName | 'Reset' | null>(null);
+  const [requestedWorkspacePanel, setRequestedWorkspacePanel] = useState<WorkbenchPanelId | null>(null);
   const keybindings = useRef(new KeybindingService());
   const [profilerSamples, setProfilerSamples] = useState<ProfilerSnapshot[]>([]);
   const [runtimeState, setRuntimeState] = useState<HostRuntimeSnapshot>({
@@ -661,7 +656,16 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     }
     if (command === 'layout.reset') {
       resetLayout();
+      setRequestedWorkspaceLayout('Reset');
       setLastCommand('Layout reset');
+      return;
+    }
+
+    if (command === 'layout.levelDesign' || command === 'layout.materials' || command === 'layout.profiling') {
+      const name: WorkspaceLayoutName =
+        command === 'layout.materials' ? 'Materials' : command === 'layout.profiling' ? 'Profiling' : 'Level Design';
+      setRequestedWorkspaceLayout(name);
+      setLastCommand(`Switched to ${name} layout`);
       return;
     }
 
@@ -1118,6 +1122,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       activeCenterPanel: panel?.defaultRegion === 'center' ? panel.id : current.activeCenterPanel,
       activeBottomPanel: panel?.defaultRegion === 'bottom' ? panel.id : current.activeBottomPanel,
     }));
+    if (activity) setRequestedWorkspacePanel(activity.panelId);
   };
 
   const setActiveCenterPanel = (panel: WorkbenchPanelId) =>
@@ -1152,61 +1157,12 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     setScaleSnap(nextScaleSnap);
   };
 
-  const beginPanelResize = (panel: 'left' | 'right' | 'bottom', event: ReactPointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const startLeft = layout.leftPanelWidth;
-    const startRight = layout.rightPanelWidth;
-    const startBottom = layout.bottomPanelHeight;
-
-    const onPointerMove = (moveEvent: PointerEvent) => {
-      setLayout((current) => {
-        if (panel === 'left') {
-          return {
-            ...current,
-            leftPanelWidth: clamp(startLeft + moveEvent.clientX - startX, resizeLimits.left.min, resizeLimits.left.max),
-          };
-        }
-
-        if (panel === 'right') {
-          return {
-            ...current,
-            rightPanelWidth: clamp(
-              startRight - (moveEvent.clientX - startX),
-              resizeLimits.right.min,
-              resizeLimits.right.max,
-            ),
-          };
-        }
-
-        return {
-          ...current,
-          bottomPanelHeight: clamp(
-            startBottom - (moveEvent.clientY - startY),
-            resizeLimits.bottom.min,
-            resizeLimits.bottom.max,
-          ),
-        };
-      });
-    };
-
-    const onPointerUp = () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-    };
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-  };
-
-  const renderLeftPanel = () => {
+  const renderLeftPanel = (requestedPanel?: WorkbenchPanelId) => {
     if (!project) {
       return <div className="side-loading">Loading workbench data...</div>;
     }
 
-    if (activeTool === 'terrain' && selectedSnapshot?.terrain) {
+    if ((!requestedPanel || requestedPanel === 'hierarchy') && activeTool === 'terrain' && selectedSnapshot?.terrain) {
       const selectedKey = hostEntityKey(selectedSnapshot.entity);
       const visibleTerrainState =
         terrainToolState && hostEntityKey(terrainToolState.entity) === selectedKey
@@ -1234,7 +1190,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       );
     }
 
-    if (layout.activeActivity === 'scene') {
+    if (requestedPanel === 'hierarchy' || (!requestedPanel && layout.activeActivity === 'scene')) {
       return (
         <ExplorerPanel
           project={project}
@@ -1253,13 +1209,13 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       );
     }
 
-    if (layout.activeActivity === 'assets') {
+    if (requestedPanel === 'assetExplorer' || (!requestedPanel && layout.activeActivity === 'assets')) {
       return (
         <AssetExplorerPanel project={project} selectedAssetId={selectedAssetId} onSelectAsset={setSelectedAssetId} />
       );
     }
 
-    if (layout.activeActivity === 'search') {
+    if (requestedPanel === 'search' || (!requestedPanel && layout.activeActivity === 'search')) {
       return (
         <SearchPanel
           entities={project.scene}
@@ -1274,7 +1230,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       );
     }
 
-    if (layout.activeActivity === 'settings') {
+    if (requestedPanel === 'settings' || (!requestedPanel && layout.activeActivity === 'settings')) {
       return <SettingsPanel onResetLayout={resetLayout} />;
     }
 
@@ -1443,11 +1399,12 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     );
   };
 
-  const workbenchBodyStyle = {
-    '--arc-left-panel-width': `${layout.leftPanelWidth}px`,
-    '--arc-right-panel-width': `${layout.rightPanelWidth}px`,
-    '--arc-bottom-panel-height': `${layout.bottomPanelHeight}px`,
-  } as CSSProperties;
+  const renderWorkspacePanel = (panel: WorkbenchPanelId) => {
+    if ((dockPanelIds.center as readonly WorkbenchPanelId[]).includes(panel)) return renderCenterPanel(panel);
+    if ((dockPanelIds.right as readonly WorkbenchPanelId[]).includes(panel)) return renderRightPanel(panel);
+    if ((dockPanelIds.bottom as readonly WorkbenchPanelId[]).includes(panel)) return renderBottomPanel(panel);
+    return renderLeftPanel(panel);
+  };
 
   return (
     <main className="workbench-shell">
@@ -1460,6 +1417,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         onCommand={runCommand}
         gridVisible={viewportGridVisible}
         onToggleGrid={() => void toggleViewportGrid()}
+        onPanel={(panel) => setRequestedWorkspacePanel(panel)}
       />
       <MainToolbar
         activeTool={activeTool}
@@ -1479,6 +1437,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               setLastCommand(reason instanceof Error ? reason.message : String(reason));
             });
         }}
+        onLayout={(name) => setRequestedWorkspaceLayout(name)}
+        onPanel={(panel) => setRequestedWorkspacePanel(panel)}
         runtimeState={runtimeState.state}
         timeScale={runtimeState.timeScale}
         onCycleTimeScale={() => {
@@ -1536,15 +1496,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       />
 
       <section
-        className={[
-          'workbench-body',
-          'workbench-body-foundation',
-          layout.activityExpanded ? 'activity-expanded' : '',
-          layout.bottomVisible ? '' : 'bottom-hidden',
-        ]
+        className={['workbench-body', 'workbench-body-dockview', layout.activityExpanded ? 'activity-expanded' : '']
           .filter(Boolean)
           .join(' ')}
-        style={workbenchBodyStyle}
       >
         <ActivityBar
           activeActivity={layout.activeActivity}
@@ -1553,16 +1507,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           onSelectActivity={selectActivity}
         />
 
-        {layout.leftVisible && <aside className="side-bar">{renderLeftPanel()}</aside>}
-        {layout.leftVisible && (
-          <ResizeHandle
-            className="resize-handle-left"
-            label="Resize left panel"
-            onPointerDown={(event) => beginPanelResize('left', event)}
-          />
-        )}
-
-        <section className="editor-region foundation-editor-region">
+        <section className="editor-region dockview-editor-region">
           <div className="scene-document-tabs" role="tablist" aria-label="Open scenes">
             {workspaceDocuments.documents.map((document) => (
               <button
@@ -1587,50 +1532,17 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               </button>
             ))}
           </div>
-          <DockHost
-            region="center"
-            panelIds={dockPanelIds.center}
-            activePanelId={layout.activeCenterPanel}
-            onActivePanelChange={setActiveCenterPanel}
-            renderPanel={renderCenterPanel}
+          <WorkspaceDock
+            onRequestHandled={() => {
+              setRequestedWorkspaceLayout(null);
+              setRequestedWorkspacePanel(null);
+            }}
+            projectKey={project?.root ? encodeURIComponent(project.root) : 'no-project'}
+            renderPanel={renderWorkspacePanel}
+            requestedLayout={requestedWorkspaceLayout}
+            requestedPanel={requestedWorkspacePanel}
           />
         </section>
-
-        {layout.bottomVisible && (
-          <>
-            <ResizeHandle
-              className="resize-handle-bottom"
-              label="Resize bottom panel"
-              onPointerDown={(event) => beginPanelResize('bottom', event)}
-            />
-            <DockHost
-              region="bottom"
-              panelIds={dockPanelIds.bottom}
-              activePanelId={layout.activeBottomPanel}
-              onActivePanelChange={setActiveBottomPanel}
-              renderPanel={renderBottomPanel}
-            />
-          </>
-        )}
-
-        {layout.rightVisible && (
-          <aside className="inspector-bar">
-            <DockHost
-              region="right"
-              panelIds={dockPanelIds.right}
-              activePanelId={layout.activeRightPanel}
-              onActivePanelChange={setActiveRightPanel}
-              renderPanel={renderRightPanel}
-            />
-          </aside>
-        )}
-        {layout.rightVisible && (
-          <ResizeHandle
-            className="resize-handle-right"
-            label="Resize right panel"
-            onPointerDown={(event) => beginPanelResize('right', event)}
-          />
-        )}
       </section>
 
       <StatusBar
@@ -2099,20 +2011,6 @@ function Panel({ children, icon, title }: { children: ReactNode; icon: ReactNode
       </UiTabs>
       <div>{children}</div>
     </UiPanel>
-  );
-}
-
-function ResizeHandle({
-  className,
-  label,
-  onPointerDown,
-}: {
-  className: string;
-  label: string;
-  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <button aria-label={label} className={`resize-handle ${className}`} onPointerDown={onPointerDown} type="button" />
   );
 }
 

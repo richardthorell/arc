@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { CommandId } from '../app/workbenchTypes';
+import type { WorkbenchPanelId } from '../app/workbenchTypes';
+import { panelRegistry } from '../app/panelRegistry';
 import { UiButton } from '../ui';
 import { WindowControls } from './WindowControls';
 
@@ -13,6 +15,7 @@ type MenuBarProps = {
   redoLabel?: string;
   gridVisible?: boolean;
   onToggleGrid?: () => void;
+  onPanel?: (panel: WorkbenchPanelId) => void;
 };
 
 const menuItems = ['File', 'Edit', 'View', 'Scene', 'Render', 'Tools', 'Window', 'Help'] as const;
@@ -25,6 +28,7 @@ type MenuCommand = {
   shortcut?: string;
   disabled?: boolean;
   checked?: boolean;
+  panel?: WorkbenchPanelId;
 };
 
 const baseMenuCommands: Partial<Record<MenuItem, MenuCommand[]>> = {
@@ -49,6 +53,7 @@ export function MenuBar({
   redoLabel,
   gridVisible = true,
   onToggleGrid,
+  onPanel,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuItem | null>(null);
   const menuRef = useRef<HTMLElement | null>(null);
@@ -67,6 +72,7 @@ export function MenuBar({
   const runMenuCommand = (entry: MenuCommand) => {
     setOpenMenu(null);
     if (entry.action) entry.action();
+    else if (entry.panel) onPanel?.(entry.panel);
     else if (entry.command) onCommand(entry.command);
   };
   const menuCommands: Partial<Record<MenuItem, MenuCommand[]>> = {
@@ -78,6 +84,27 @@ export function MenuBar({
       { label: 'Delete', command: 'entity.delete', shortcut: 'Delete' },
     ],
     View: [{ label: 'Grid', action: onToggleGrid, checked: gridVisible }],
+    Window: [
+      ...(
+        [
+          'hierarchy',
+          'viewport',
+          'inspector',
+          'contentBrowser',
+          'console',
+          'renderGraph',
+          'profiler',
+          'settings',
+        ] as WorkbenchPanelId[]
+      ).map((panel) => ({
+        label: panelRegistry[panel].title,
+        panel,
+      })),
+      { label: 'Level Design Layout', command: 'layout.levelDesign' as CommandId },
+      { label: 'Materials Layout', command: 'layout.materials' as CommandId },
+      { label: 'Profiling Layout', command: 'layout.profiling' as CommandId },
+      { label: 'Reset Layout', command: 'layout.reset' as CommandId },
+    ],
   };
 
   return (

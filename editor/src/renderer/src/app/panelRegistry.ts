@@ -18,10 +18,27 @@ import {
 import type { ActivityRegistration, PanelRegistration, WorkbenchPanelId } from './workbenchTypes';
 
 export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
-  hierarchy: { id: 'hierarchy', title: 'Hierarchy', icon: FolderTree, defaultRegion: 'left', activityId: 'scene' },
+  hierarchy: {
+    id: 'hierarchy',
+    title: 'Hierarchy',
+    icon: FolderTree,
+    defaultRegion: 'left',
+    activityId: 'scene',
+    minimumWidth: 220,
+    closeable: true,
+  },
   assetExplorer: { id: 'assetExplorer', title: 'Assets', icon: Database, defaultRegion: 'left', activityId: 'assets' },
   search: { id: 'search', title: 'Search', icon: Search, defaultRegion: 'left', activityId: 'search' },
-  viewport: { id: 'viewport', title: 'Viewport 1', icon: Box, defaultRegion: 'center' },
+  viewport: {
+    id: 'viewport',
+    title: 'Viewport 1',
+    icon: Box,
+    defaultRegion: 'center',
+    allowMultiple: true,
+    minimumWidth: 360,
+    minimumHeight: 240,
+    closeable: true,
+  },
   renderGraph: {
     id: 'renderGraph',
     title: 'Render Graph',
@@ -30,7 +47,14 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
     activityId: 'renderGraph',
   },
   shaderEditor: { id: 'shaderEditor', title: 'pbr_lit.hlsl', icon: FileCode2, defaultRegion: 'center' },
-  inspector: { id: 'inspector', title: 'Inspector', icon: SlidersHorizontal, defaultRegion: 'right' },
+  inspector: {
+    id: 'inspector',
+    title: 'Inspector',
+    icon: SlidersHorizontal,
+    defaultRegion: 'right',
+    minimumWidth: 320,
+    closeable: true,
+  },
   lighting: { id: 'lighting', title: 'Lighting', icon: Lightbulb, defaultRegion: 'right' },
   worldSettings: { id: 'worldSettings', title: 'World Settings', icon: Globe2, defaultRegion: 'right' },
   contentBrowser: {

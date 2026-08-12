@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
+import type { WorkbenchPanelId } from '../app/workbenchTypes';
+import { panelRegistry } from '../app/panelRegistry';
 import { UiButton, UiIconButton, UiSelectButton } from '../ui';
 
 type MainToolbarProps = {
@@ -33,6 +35,8 @@ type MainToolbarProps = {
   timeScale?: number;
   onCycleTimeScale?: () => void;
   onBuild?: () => void;
+  onLayout?: (layout: 'Level Design' | 'Materials' | 'Profiling') => void;
+  onPanel?: (panel: WorkbenchPanelId) => void;
 };
 
 export function MainToolbar({
@@ -53,6 +57,8 @@ export function MainToolbar({
   timeScale = 1,
   onCycleTimeScale,
   onBuild,
+  onLayout,
+  onPanel,
 }: MainToolbarProps) {
   return (
     <section className="main-toolbar" aria-label="Editor toolbar">
@@ -185,8 +191,26 @@ export function MainToolbar({
       </div>
 
       <div className="toolbar-right">
-        <UiSelectButton className="toolbar-select toolbar-select-wide">Default Layout</UiSelectButton>
-        <UiSelectButton className="toolbar-select">Windows</UiSelectButton>
+        <details className="toolbar-menu">
+          <summary className="toolbar-select toolbar-select-wide">Layouts</summary>
+          <div className="toolbar-popup">
+            {(['Level Design', 'Materials', 'Profiling'] as const).map((layout) => (
+              <button key={layout} onClick={() => onLayout?.(layout)} type="button">
+                {layout}
+              </button>
+            ))}
+          </div>
+        </details>
+        <details className="toolbar-menu">
+          <summary className="toolbar-select">Windows</summary>
+          <div className="toolbar-popup toolbar-popup-columns">
+            {(Object.keys(panelRegistry) as WorkbenchPanelId[]).map((panel) => (
+              <button key={panel} onClick={() => onPanel?.(panel)} type="button">
+                {panelRegistry[panel].title}
+              </button>
+            ))}
+          </div>
+        </details>
         <UiButton className="toolbar-button build" onClick={onBuild} variant="primary">
           Build
         </UiButton>
