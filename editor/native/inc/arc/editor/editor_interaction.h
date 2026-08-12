@@ -35,7 +35,8 @@ const char* editor_tool_label(editor_tool tool) noexcept;
 /**
  * @brief Resolve a viewport transform-tool shortcut.
  *
- * @param key_code Uppercase platform-independent key code.
+ * @param key_code Uppercase platform-independent key
+ * code.
  * @return The requested tool, or no value when the key is not a tool shortcut.
  */
 std::optional<editor_tool> editor_tool_from_shortcut(std::uint32_t key_code) noexcept;
@@ -83,15 +84,18 @@ public:
     /**
      * @brief Orbit around the persistent focus point by mouse delta in pixels.
      *
-     * Free-look and dolly motion do not move this pivot. Call `focus()` (the
-     * editor's F shortcut) or `place()` to choose a new one.
+     * Free-look and
+     * dolly motion do not move this pivot. Call `focus()` (the
+     * editor's F shortcut) or `place()` to choose a new
+     * one.
      */
     void orbit(float delta_x, float delta_y) noexcept;
 
     /**
      * @brief Rotate the camera in place using stable world-yaw/local-pitch axes.
      *
-     * The persistent orbit focus remains unchanged.
+     * The persistent
+     * orbit focus remains unchanged.
      */
     void look(float delta_x, float delta_y) noexcept;
 
@@ -103,7 +107,8 @@ public:
     /**
      * @brief Move the camera forward along the current look direction.
      *
-     * The persistent orbit focus remains unchanged.
+     * The persistent orbit focus
+     * remains unchanged.
      */
     void move_forward(float delta_y) noexcept;
 
@@ -138,8 +143,10 @@ private:
 /**
  * @brief Roll-free directional-light rotation controlled by viewport mouse deltas.
  *
- * Yaw is applied around world +Y and pitch around the yawed local +X axis,
- * matching ARC's turntable camera convention. The resulting transform points
+ * Yaw is applied around
+ * world +Y and pitch around the yawed local +X axis,
+ * matching ARC's turntable camera convention. The resulting
+ * transform points
  * its local -Z axis along the authored sunlight direction.
  */
 class editor_sun_controller

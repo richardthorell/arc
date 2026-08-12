@@ -1161,11 +1161,11 @@ scene_import_result load_fbx_scene_asset(const std::filesystem::path& path, cons
                     const ufbx_vec3 normal =
                         mesh->vertex_normal.exists
                             ? ufbx_transform_direction(&normal_to_node, ufbx_get_vertex_vec3(&mesh->vertex_normal, ix))
-                            : ufbx_vec3{0.0, 1.0, 0.0};
+                            : ufbx_vec3{{0.0, 1.0, 0.0}};
                     const ufbx_vec2 uv =
                         mesh->vertex_uv.exists ? ufbx_get_vertex_vec2(&mesh->vertex_uv, ix) : ufbx_vec2{};
                     const ufbx_vec4 color = mesh->vertex_color.exists ? ufbx_get_vertex_vec4(&mesh->vertex_color, ix)
-                                                                      : ufbx_vec4{1.0, 1.0, 1.0, 1.0};
+                                                                      : ufbx_vec4{{1.0, 1.0, 1.0, 1.0}};
 
                     mesh_vertex vertex;
                     vertex.position[0] = static_cast<float>(position.x);

@@ -159,8 +159,7 @@ bool create_win32_surface(VkInstance instance, PFN_vkGetInstanceProcAddr get_ins
 {
     if (!get_instance_proc_address) return false;
     PFN_vkCreateWin32SurfaceKHR create_surface =
-        reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(
-            get_instance_proc_address(instance, "vkCreateWin32SurfaceKHR"));
+        reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(get_instance_proc_address(instance, "vkCreateWin32SurfaceKHR"));
     if (!create_surface) return false;
 
     VkWin32SurfaceCreateInfoKHR info{};
@@ -293,8 +292,8 @@ public:
                 if (!sun_rotating_) handle_key(wparam);
                 return 0;
             case WM_KEYUP:
-                if (sun_rotating_ && (wparam == 'L' || wparam == VK_CONTROL || wparam == VK_LCONTROL ||
-                                      wparam == VK_RCONTROL))
+                if (sun_rotating_ &&
+                    (wparam == 'L' || wparam == VK_CONTROL || wparam == VK_LCONTROL || wparam == VK_RCONTROL))
                     finish_sun_rotation(true);
                 return 0;
             case WM_CLOSE:
@@ -482,8 +481,7 @@ private:
         terrain_hover_dirty_ = true;
         if (sun_rotating_)
         {
-            if (pointer_delta_x != 0 || pointer_delta_y != 0)
-                update_sun_rotation(pointer_delta_x, pointer_delta_y);
+            if (pointer_delta_x != 0 || pointer_delta_y != 0) update_sun_rotation(pointer_delta_x, pointer_delta_y);
             return;
         }
         if (!dragging_)
@@ -737,10 +735,9 @@ private:
         const bool uniform_scale = axis == arc::editor::gizmo_axis::all;
         if (!uniform_scale) manipulation_local_axis_[static_cast<std::size_t>(axis) - 1u] = 1.0f;
         manipulation_rotation_axis_ = manipulation_local_axis_;
-        manipulation_screen_direction_ = uniform_scale
-                                             ? arc::math::normalize(arc::math::vector2f{1.0f, -1.0f})
+        manipulation_screen_direction_ = uniform_scale ? arc::math::normalize(arc::math::vector2f{1.0f, -1.0f})
                                          : axis == arc::editor::gizmo_axis::x ? arc::math::vector2f{1.0f, 0.0f}
-                                                                             : arc::math::vector2f{0.0f, -1.0f};
+                                                                              : arc::math::vector2f{0.0f, -1.0f};
         manipulation_world_units_per_pixel_ = 0.02f;
         const auto selected_entity = arc::ecs::entity{snapshot.entity.index, snapshot.entity.generation};
         const auto* selected_transform = state.scene.try_get<arc::scene::transform_component>(selected_entity);
@@ -780,8 +777,8 @@ private:
                 arc::editor::editor_gizmo_pixel_length;
             manipulation_rotation_is_local_ = context.coordinate_space == arc::editor::gizmo_coordinate_space::local;
             arc::editor::editor_gizmo_drag_direction(state.scene, state.selected_entity, state.camera_entity, context,
-                                                      axis, static_cast<float>(x), static_cast<float>(y),
-                                                      manipulation_screen_direction_);
+                                                     axis, static_cast<float>(x), static_cast<float>(y),
+                                                     manipulation_screen_direction_);
         }
         host_->set_viewport_gizmo_highlight(axis);
         host_->execute(arc::editor::host_command_envelope{
@@ -930,13 +927,11 @@ private:
             return;
         const auto editor_tool = arc::editor::editor_tool_from_shortcut(static_cast<std::uint32_t>(key));
         if (!editor_tool) return;
-        const auto tool = *editor_tool == arc::editor::editor_tool::select
-                              ? arc::editor::host_viewport_tool::select
+        const auto tool = *editor_tool == arc::editor::editor_tool::select ? arc::editor::host_viewport_tool::select
                           : *editor_tool == arc::editor::editor_tool::translate
                               ? arc::editor::host_viewport_tool::translate
-                          : *editor_tool == arc::editor::editor_tool::rotate
-                              ? arc::editor::host_viewport_tool::rotate
-                              : arc::editor::host_viewport_tool::scale;
+                          : *editor_tool == arc::editor::editor_tool::rotate ? arc::editor::host_viewport_tool::rotate
+                                                                             : arc::editor::host_viewport_tool::scale;
         std::lock_guard lock(host_mutex_);
         auto command = host_->viewport_tool_state();
         command.tool = tool;
@@ -976,7 +971,8 @@ private:
         sun_controller_.synchronize_from(*transform);
         if (state.scene.alive(state.world_environment_entity))
         {
-            if (auto settings = arc::scene::read_world_environment_settings(state.scene, state.world_environment_entity))
+            if (auto settings =
+                    arc::scene::read_world_environment_settings(state.scene, state.world_environment_entity))
             {
                 settings->celestial.sun_mode = arc::scene::sun_position_mode::manual_light;
                 settings->celestial.playing = false;
@@ -1024,12 +1020,13 @@ private:
             {
                 host_->execute(arc::editor::host_command_envelope{
                     .command_type = "environment.update",
-                    .payload = arc::editor::host_set_world_environment_command{
-                        .environment = arc::editor::to_host_world_environment_snapshot(
-                            {state.world_environment_entity.index, state.world_environment_entity.generation},
-                            *settings, state.world_environment_hdri_path)},
-                    .edit = arc::editor::host_edit_transaction{
-                        sun_transaction_, arc::editor::host_edit_phase::commit, "Rotate Directional Light"}});
+                    .payload =
+                        arc::editor::host_set_world_environment_command{
+                            .environment = arc::editor::to_host_world_environment_snapshot(
+                                {state.world_environment_entity.index, state.world_environment_entity.generation},
+                                *settings, state.world_environment_hdri_path)},
+                    .edit = arc::editor::host_edit_transaction{sun_transaction_, arc::editor::host_edit_phase::commit,
+                                                               "Rotate Directional Light"}});
             }
             else
             {
@@ -1043,14 +1040,16 @@ private:
             {
                 host_->execute(arc::editor::host_command_envelope{
                     .command_type = "entity.setTransform",
-                    .payload = arc::editor::host_set_transform_command{
-                        .entity = sun_entity_,
-                        .transform = {.position = {transform->position[0], transform->position[1], transform->position[2]},
-                                      .rotation = {transform->rotation[0], transform->rotation[1],
-                                                   transform->rotation[2], transform->rotation[3]},
-                                      .scale = {transform->scale[0], transform->scale[1], transform->scale[2]}}},
-                    .edit = arc::editor::host_edit_transaction{
-                        sun_transaction_, arc::editor::host_edit_phase::commit, "Rotate Directional Light"}});
+                    .payload =
+                        arc::editor::host_set_transform_command{
+                            .entity = sun_entity_,
+                            .transform = {.position = {transform->position[0], transform->position[1],
+                                                       transform->position[2]},
+                                          .rotation = {transform->rotation[0], transform->rotation[1],
+                                                       transform->rotation[2], transform->rotation[3]},
+                                          .scale = {transform->scale[0], transform->scale[1], transform->scale[2]}}},
+                    .edit = arc::editor::host_edit_transaction{sun_transaction_, arc::editor::host_edit_phase::commit,
+                                                               "Rotate Directional Light"}});
             }
             else
             {

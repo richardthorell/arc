@@ -255,8 +255,7 @@ mesh_data make_cone_mesh(float radius, float height, std::uint32_t segments)
         const float x = std::cos(theta);
         const float z = std::sin(theta);
         const auto normal = math::normalize(math::vector3f{x, normal_y, z});
-        mesh.vertices.push_back(
-            vertex(x * radius, -half_height, z * radius, normal[0], normal[1], normal[2], u, 0.0f));
+        mesh.vertices.push_back(vertex(x * radius, -half_height, z * radius, normal[0], normal[1], normal[2], u, 0.0f));
         mesh.vertices.push_back(vertex(0.0f, half_height, 0.0f, normal[0], normal[1], normal[2], u, 1.0f));
     }
     for (std::uint32_t segment = 0; segment < segments; ++segment)
@@ -299,8 +298,7 @@ mesh_data make_capsule_mesh(float radius, float cylinder_height, std::uint32_t s
         const bool top = ring_index <= hemisphere_segments;
         const std::uint32_t local_ring = top ? ring_index : ring_index - hemisphere_segments - 1u;
         const float amount = static_cast<float>(local_ring) / static_cast<float>(hemisphere_segments);
-        const float latitude = top ? math::pi<float> * 0.5f * (1.0f - amount)
-                                   : -math::pi<float> * 0.5f * amount;
+        const float latitude = top ? math::pi<float> * 0.5f * (1.0f - amount) : -math::pi<float> * 0.5f * amount;
         const float radial = std::cos(latitude);
         const float normal_y = std::sin(latitude);
         const float center_y = top ? half_height : -half_height;
@@ -311,8 +309,8 @@ mesh_data make_capsule_mesh(float radius, float cylinder_height, std::uint32_t s
             const float theta = u * math::tau<float>;
             const float normal_x = std::cos(theta) * radial;
             const float normal_z = std::sin(theta) * radial;
-            mesh.vertices.push_back(vertex(normal_x * radius, center_y + normal_y * radius, normal_z * radius,
-                                           normal_x, normal_y, normal_z, u, v));
+            mesh.vertices.push_back(vertex(normal_x * radius, center_y + normal_y * radius, normal_z * radius, normal_x,
+                                           normal_y, normal_z, u, v));
         }
     }
 

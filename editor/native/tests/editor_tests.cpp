@@ -357,9 +357,9 @@ TEST_CASE("editor gizmos keep constant screen size and hit test colored axes")
     REQUIRE(far_scale == Catch::Approx(near_scale * 2.0f));
 
     const arc::editor::editor_gizmo_context highlighted_context{.tool = arc::editor::editor_tool::translate,
-                                                                 .highlighted_axis = arc::editor::gizmo_axis::x,
-                                                                 .viewport_width = 800,
-                                                                 .viewport_height = 600};
+                                                                .highlighted_axis = arc::editor::gizmo_axis::x,
+                                                                .viewport_width = 800,
+                                                                .viewport_height = 600};
     const auto highlighted =
         arc::editor::build_editor_gizmo_overlay(registry, selected, camera_entity, highlighted_context);
     REQUIRE(highlighted.triangles.size() == overlay.triangles.size());
@@ -396,9 +396,8 @@ TEST_CASE("editor grid is adaptive and remains anchored to world axes")
     arc::render::debug_overlay_stream near_grid;
     arc::editor::append_editor_grid_overlay(near_grid, camera, camera_transform, 600);
     REQUIRE(near_grid.lines.size() == 202);
-    REQUIRE(std::any_of(near_grid.lines.begin(), near_grid.lines.end(), [](const auto& line) {
-        return std::abs(line.start[2]) < 0.0001f && line.color[0] > line.color[2];
-    }));
+    REQUIRE(std::any_of(near_grid.lines.begin(), near_grid.lines.end(), [](const auto& line)
+                        { return std::abs(line.start[2]) < 0.0001f && line.color[0] > line.color[2]; }));
 
     camera_transform.position[1] = 800.0f;
     arc::render::debug_overlay_stream far_grid;
@@ -425,11 +424,10 @@ TEST_CASE("editor gizmo drags follow each projected positive axis")
 
     for (const auto tool : {arc::editor::editor_tool::translate, arc::editor::editor_tool::scale})
     {
-        const arc::editor::editor_gizmo_context context{
-            .tool = tool, .viewport_width = 800, .viewport_height = 600};
+        const arc::editor::editor_gizmo_context context{.tool = tool, .viewport_width = 800, .viewport_height = 600};
         arc::math::vector2f direction;
         REQUIRE(arc::editor::editor_gizmo_drag_direction(registry, selected, camera_entity, context,
-                                                          arc::editor::gizmo_axis::z, 400.0f, 300.0f, direction));
+                                                         arc::editor::gizmo_axis::z, 400.0f, 300.0f, direction));
         REQUIRE(direction[0] < 0.0f);
         REQUIRE(arc::math::dot(arc::math::vector2f{-10.0f, 0.0f}, direction) > 0.0f);
         REQUIRE(arc::math::length(direction) == Catch::Approx(1.0f));
@@ -439,8 +437,7 @@ TEST_CASE("editor gizmo drags follow each projected positive axis")
         .tool = arc::editor::editor_tool::rotate, .viewport_width = 800, .viewport_height = 600};
     arc::math::vector2f rotation_direction;
     REQUIRE(arc::editor::editor_gizmo_drag_direction(registry, selected, camera_entity, rotation_context,
-                                                      arc::editor::gizmo_axis::z, 400.0f, 200.0f,
-                                                      rotation_direction));
+                                                     arc::editor::gizmo_axis::z, 400.0f, 200.0f, rotation_direction));
     REQUIRE(arc::math::length(rotation_direction) == Catch::Approx(1.0f));
 }
 
@@ -763,7 +760,8 @@ TEST_CASE("editor sun controller rotates around stable yaw and pitch axes")
     const auto first_direction = arc::scene::forward_direction(transform);
     REQUIRE(first_direction[1] < 0.0f);
 
-    for (int iteration = 0; iteration < 100; ++iteration) controller.rotate(4.0f, -3.0f);
+    for (int iteration = 0; iteration < 100; ++iteration)
+        controller.rotate(4.0f, -3.0f);
     controller.apply_to(transform);
     const auto euler = arc::editor::euler_degrees_from_quaternion(transform.rotation);
     REQUIRE(std::abs(euler[2]) < 0.001f);

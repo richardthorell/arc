@@ -54,25 +54,24 @@ math::vector4f color_for_axis(std::size_t index, gizmo_axis highlighted) noexcep
 
 std::array<math::vector3f, 2> perpendicular_basis(const math::vector3f& axis) noexcept
 {
-    const auto reference = std::abs(axis[1]) < 0.9f ? math::vector3f{0.0f, 1.0f, 0.0f}
-                                                    : math::vector3f{1.0f, 0.0f, 0.0f};
+    const auto reference =
+        std::abs(axis[1]) < 0.9f ? math::vector3f{0.0f, 1.0f, 0.0f} : math::vector3f{1.0f, 0.0f, 0.0f};
     const auto tangent = math::normalize(math::cross(axis, reference));
     return {tangent, math::normalize(math::cross(axis, tangent))};
 }
 
-void append_triangle(render::debug_overlay_stream& stream, const math::vector3f& first,
-                     const math::vector3f& second, const math::vector3f& third, const math::vector4f& color)
+void append_triangle(render::debug_overlay_stream& stream, const math::vector3f& first, const math::vector3f& second,
+                     const math::vector3f& third, const math::vector4f& color)
 {
-    stream.triangles.push_back(
-        {.first = first,
-         .second = second,
-         .third = third,
-         .color = color,
-         .depth = render::debug_overlay_depth_mode::always});
+    stream.triangles.push_back({.first = first,
+                                .second = second,
+                                .third = third,
+                                .color = color,
+                                .depth = render::debug_overlay_depth_mode::always});
 }
 
-void append_axis_shaft(render::debug_overlay_stream& stream, const math::vector3f& origin,
-                       const math::vector3f& axis, float scale, float radius_scale, const math::vector4f& color)
+void append_axis_shaft(render::debug_overlay_stream& stream, const math::vector3f& origin, const math::vector3f& axis,
+                       float scale, float radius_scale, const math::vector4f& color)
 {
     const auto basis = perpendicular_basis(axis);
     const auto end = math::add(origin, math::mul(axis, scale * shaft_length));
@@ -82,10 +81,8 @@ void append_axis_shaft(render::debug_overlay_stream& stream, const math::vector3
         const float first_angle = math::tau<float> * static_cast<float>(segment) / static_cast<float>(radial_segments);
         const float second_angle =
             math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(radial_segments);
-        const auto radial = [&](float angle)
-        {
-            return math::mul(math::add(math::mul(basis[0], std::cos(angle)),
-                                       math::mul(basis[1], std::sin(angle))),
+        const auto radial = [&](float angle) {
+            return math::mul(math::add(math::mul(basis[0], std::cos(angle)), math::mul(basis[1], std::sin(angle))),
                              radius);
         };
         const auto start_first = math::add(origin, radial(first_angle));
@@ -97,8 +94,8 @@ void append_axis_shaft(render::debug_overlay_stream& stream, const math::vector3
     }
 }
 
-void append_arrow_head(render::debug_overlay_stream& stream, const math::vector3f& origin,
-                       const math::vector3f& axis, float scale, float radius_scale, const math::vector4f& color)
+void append_arrow_head(render::debug_overlay_stream& stream, const math::vector3f& origin, const math::vector3f& axis,
+                       float scale, float radius_scale, const math::vector4f& color)
 {
     const auto basis = perpendicular_basis(axis);
     const auto base = math::add(origin, math::mul(axis, scale * shaft_length));
@@ -109,10 +106,8 @@ void append_arrow_head(render::debug_overlay_stream& stream, const math::vector3
         const float first_angle = math::tau<float> * static_cast<float>(segment) / static_cast<float>(radial_segments);
         const float second_angle =
             math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(radial_segments);
-        const auto radial = [&](float angle)
-        {
-            return math::mul(math::add(math::mul(basis[0], std::cos(angle)),
-                                       math::mul(basis[1], std::sin(angle))),
+        const auto radial = [&](float angle) {
+            return math::mul(math::add(math::mul(basis[0], std::cos(angle)), math::mul(basis[1], std::sin(angle))),
                              radius);
         };
         const auto first = math::add(base, radial(first_angle));
@@ -122,8 +117,8 @@ void append_arrow_head(render::debug_overlay_stream& stream, const math::vector3
     }
 }
 
-void append_scale_handle(render::debug_overlay_stream& stream, const math::vector3f& origin,
-                         const math::vector3f& axis, float scale, float radius_scale, const math::vector4f& color)
+void append_scale_handle(render::debug_overlay_stream& stream, const math::vector3f& origin, const math::vector3f& axis,
+                         float scale, float radius_scale, const math::vector4f& color)
 {
     const auto basis = perpendicular_basis(axis);
     const auto center = math::add(origin, math::mul(axis, scale * (1.0f - scale_handle_extent)));
@@ -138,9 +133,18 @@ void append_scale_handle(render::debug_overlay_stream& stream, const math::vecto
         const auto bitangent_offset = math::mul(bitangent_extent, (index & 4u) != 0u ? 1.0f : -1.0f);
         corners[index] = math::add(center, math::add(axis_offset, math::add(tangent_offset, bitangent_offset)));
     }
-    constexpr std::array<std::array<std::size_t, 3>, 12> faces{
-        std::array<std::size_t, 3>{0, 2, 3}, {0, 3, 1}, {4, 5, 7}, {4, 7, 6}, {0, 1, 5}, {0, 5, 4},
-        {2, 6, 7}, {2, 7, 3}, {0, 4, 6}, {0, 6, 2}, {1, 3, 7}, {1, 7, 5}};
+    constexpr std::array<std::array<std::size_t, 3>, 12> faces{std::array<std::size_t, 3>{0, 2, 3},
+                                                               {0, 3, 1},
+                                                               {4, 5, 7},
+                                                               {4, 7, 6},
+                                                               {0, 1, 5},
+                                                               {0, 5, 4},
+                                                               {2, 6, 7},
+                                                               {2, 7, 3},
+                                                               {0, 4, 6},
+                                                               {0, 6, 2},
+                                                               {1, 3, 7},
+                                                               {1, 7, 5}};
     for (const auto& face : faces)
         append_triangle(stream, corners[face[0]], corners[face[1]], corners[face[2]], color);
 }
@@ -158,9 +162,18 @@ void append_uniform_scale_handle(render::debug_overlay_stream& stream, const mat
                 math::add(offset, math::mul(axes[axis], (index & (std::size_t{1} << axis)) != 0u ? extent : -extent));
         corners[index] = math::add(origin, offset);
     }
-    constexpr std::array<std::array<std::size_t, 3>, 12> faces{
-        std::array<std::size_t, 3>{0, 2, 3}, {0, 3, 1}, {4, 5, 7}, {4, 7, 6}, {0, 1, 5}, {0, 5, 4},
-        {2, 6, 7}, {2, 7, 3}, {0, 4, 6}, {0, 6, 2}, {1, 3, 7}, {1, 7, 5}};
+    constexpr std::array<std::array<std::size_t, 3>, 12> faces{std::array<std::size_t, 3>{0, 2, 3},
+                                                               {0, 3, 1},
+                                                               {4, 5, 7},
+                                                               {4, 7, 6},
+                                                               {0, 1, 5},
+                                                               {0, 5, 4},
+                                                               {2, 6, 7},
+                                                               {2, 7, 3},
+                                                               {0, 4, 6},
+                                                               {0, 6, 2},
+                                                               {1, 3, 7},
+                                                               {1, 7, 5}};
     const auto color = highlighted ? highlighted_color : uniform_scale_color;
     for (const auto& face : faces)
         append_triangle(stream, corners[face[0]], corners[face[1]], corners[face[2]], color);
@@ -175,15 +188,14 @@ void append_rotation_ring(render::debug_overlay_stream& stream, const math::vect
     const float outer_radius = scale * (1.0f + half_width);
     const auto point = [&](float angle, float radius)
     {
-        return math::add(origin, math::mul(math::add(math::mul(tangent, std::cos(angle)),
-                                                     math::mul(bitangent, std::sin(angle))),
-                                           radius));
+        return math::add(
+            origin,
+            math::mul(math::add(math::mul(tangent, std::cos(angle)), math::mul(bitangent, std::sin(angle))), radius));
     };
     for (std::uint32_t segment = 0; segment < rotation_segments; ++segment)
     {
         const float first = math::tau<float> * static_cast<float>(segment) / static_cast<float>(rotation_segments);
-        const float second =
-            math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(rotation_segments);
+        const float second = math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(rotation_segments);
         const auto inner_first = point(first, inner_radius);
         const auto outer_first = point(first, outer_radius);
         const auto inner_second = point(second, inner_radius);
@@ -262,10 +274,10 @@ void append_editor_grid_overlay(render::debug_overlay_stream& stream, const scen
 {
     const float height = static_cast<float>(std::max(1u, viewport_height));
     const auto camera_position = scene::world_position(camera_transform);
-    const float visible_height = camera.projection == scene::camera_projection::orthographic
-                                     ? camera.orthographic_height
-                                     : 2.0f * std::max(std::abs(camera_position[1]), 1.0f) *
-                                           std::tan(camera.fov_y_radians * 0.5f);
+    const float visible_height =
+        camera.projection == scene::camera_projection::orthographic
+            ? camera.orthographic_height
+            : 2.0f * std::max(std::abs(camera_position[1]), 1.0f) * std::tan(camera.fov_y_radians * 0.5f);
     const float desired_spacing = std::max(0.001f, visible_height * grid_target_pixel_spacing / height);
     const float magnitude = std::pow(10.0f, std::floor(std::log10(desired_spacing)));
     const float normalized = desired_spacing / magnitude;
@@ -486,9 +498,9 @@ bool editor_gizmo_drag_direction(const ecs::world& registry, ecs::entity selecte
             math::tau<float> * static_cast<float>(segment + 1) / static_cast<float>(rotation_segments);
         const auto ring_point = [&](float angle)
         {
-            return math::add(origin, math::mul(math::add(math::mul(tangent, std::cos(angle)),
-                                                         math::mul(bitangent, std::sin(angle))),
-                                               scale));
+            return math::add(
+                origin, math::mul(math::add(math::mul(tangent, std::cos(angle)), math::mul(bitangent, std::sin(angle))),
+                                  scale));
         };
         math::vector2f first;
         math::vector2f second;

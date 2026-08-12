@@ -1810,7 +1810,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     resolved.content_roots = context.value().asset_roots;
                     resolved.cache_root = context.value().asset_cache_root;
                     resolved.default_scene = descriptor.value().default_scene
-                                                 ? descriptor.value().default_scene->path_hint
+                                                 ? std::filesystem::path{descriptor.value().default_scene->path_hint}
                                                  : std::filesystem::path{};
                     resolved.project_guid = descriptor.value().guid;
                     resolved.engine_version = descriptor.value().engine_version;
@@ -2908,15 +2908,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!has_flag(field->flags, project::game_field_flags_v1::editable) ||
                     has_flag(field->flags, project::game_field_flags_v1::read_only))
                     return fail("Project component field is read-only");
-                auto value = nlohmann::json::parse(payload.value_json, nullptr, false);
+                nlohmann::json value = nlohmann::json::parse(payload.value_json, nullptr, false);
                 std::string validation_error;
                 if (value.is_discarded() || !validate_project_field_value(*field, value, validation_error))
                     return fail(validation_error.empty() ? "Project component field contains invalid JSON"
                                                          : validation_error);
-                if (field->kind == project::game_field_kind_v1::entity_reference && value.is_string() &&
-                    !value.get_ref<const std::string&>().empty())
+                const auto reference = value.is_string() ? value.get<std::string>() : std::string{};
+                if (field->kind == project::game_field_kind_v1::entity_reference && !reference.empty())
                 {
-                    const auto referenced_guid = ecs::parse_entity_guid(value.get<std::string>());
+                    const auto referenced_guid = ecs::parse_entity_guid(reference);
                     const auto referenced_entity =
                         referenced_guid ? find_entity_by_guid(state_->scene, *referenced_guid) : ecs::entity{};
                     if (!referenced_guid || !state_->scene.scene.alive(referenced_entity))
@@ -2930,10 +2930,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                             return fail("Project entity reference does not satisfy its component restriction");
                     }
                 }
-                if (field->kind == project::game_field_kind_v1::asset_reference && value.is_string() &&
-                    !value.get_ref<const std::string&>().empty())
+                if (field->kind == project::game_field_kind_v1::asset_reference && !reference.empty())
                 {
-                    const auto referenced_guid = assets::parse_asset_guid(value.get<std::string>());
+                    const auto referenced_guid = assets::parse_asset_guid(reference);
                     const auto referenced_asset = referenced_guid && state_->asset_registry
                                                       ? state_->asset_registry->find(*referenced_guid)
                                                       : std::nullopt;

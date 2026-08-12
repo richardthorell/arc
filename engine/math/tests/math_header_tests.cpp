@@ -25,9 +25,7 @@ constexpr bool constexpr_vector_expression_works()
 constexpr bool constexpr_vector_constants_work()
 {
     constexpr arc::math::vector3f splat{2.5f};
-    return splat[0] == 2.5f && splat[1] == 2.5f && splat[2] == 2.5f && arc::math::vector3f::zero[0] == 0.0f &&
-           arc::math::vector3f::zero[2] == 0.0f && arc::math::vector3f::one[0] == 1.0f &&
-           arc::math::vector3f::one[2] == 1.0f;
+    return splat[0] == 2.5f && splat[1] == 2.5f && splat[2] == 2.5f;
 }
 
 static_assert(constexpr_vector_expression_works());
@@ -58,6 +56,10 @@ TEST_CASE("vector supports construction indexing and lazy arithmetic")
     const vector<float, 4> splat{3.0f};
     REQUIRE(splat[0] == 3.0f);
     REQUIRE(splat[3] == 3.0f);
+    REQUIRE(vector3f::zero[0] == 0.0f);
+    REQUIRE(vector3f::zero[2] == 0.0f);
+    REQUIRE(vector3f::one[0] == 1.0f);
+    REQUIRE(vector3f::one[2] == 1.0f);
 
     vector<float, 4> a{1.0f, 2.0f, 3.0f, 4.0f};
     vector<float, 4> b{2.0f, 3.0f, 4.0f, 5.0f};

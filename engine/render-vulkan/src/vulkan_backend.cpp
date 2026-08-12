@@ -181,21 +181,6 @@ math::matrix4f look_at_rh(const math::vector3f& eye, const math::vector3f& targe
     return result;
 }
 
-math::matrix4f orthographic_rh_zo(float width, float height, float near_plane, float far_plane) noexcept
-{
-    width = std::max(width, 0.001f);
-    height = std::max(height, 0.001f);
-    near_plane = std::max(near_plane, 0.001f);
-    far_plane = std::max(far_plane, near_plane + 0.001f);
-
-    math::matrix4f result = math::identity<float, 4>();
-    result(0, 0) = 2.0f / width;
-    result(1, 1) = 2.0f / height;
-    result(2, 2) = 1.0f / (near_plane - far_plane);
-    result(2, 3) = near_plane / (near_plane - far_plane);
-    return result;
-}
-
 math::matrix4f perspective_rh_zo(float vertical_fov, float near_plane, float far_plane) noexcept
 {
     near_plane = std::max(near_plane, 0.001f);
@@ -209,24 +194,6 @@ math::matrix4f perspective_rh_zo(float vertical_fov, float near_plane, float far
     result(2, 3) = (far_plane * near_plane) / (near_plane - far_plane);
     result(3, 2) = -1.0f;
     return result;
-}
-
-math::vector3f transform_clip_point(const math::matrix4f& matrix, float x, float y, float z) noexcept
-{
-    const float clip[4]{x, y, z, 1.0f};
-    float result[4]{};
-    for (std::uint32_t row = 0; row < 4; ++row)
-    {
-        for (std::uint32_t col = 0; col < 4; ++col)
-            result[row] += matrix(row, col) * clip[col];
-    }
-    const float inv_w = std::abs(result[3]) > 0.000001f ? 1.0f / result[3] : 1.0f;
-    return {result[0] * inv_w, result[1] * inv_w, result[2] * inv_w};
-}
-
-math::vector3f matrix_row3(const math::matrix4f& matrix, std::uint32_t row) noexcept
-{
-    return {matrix(row, 0), matrix(row, 1), matrix(row, 2)};
 }
 
 struct mesh_push_constants
@@ -3978,8 +3945,8 @@ private:
                 vertices.push_back({triangle.third, triangle.color});
             }
         };
-        const auto append_range = [&](auto&& append, debug_overlay_depth_mode mode, std::uint32_t& offset,
-                                      std::uint32_t& count)
+        const auto append_range =
+            [&](auto&& append, debug_overlay_depth_mode mode, std::uint32_t& offset, std::uint32_t& count)
         {
             offset = static_cast<std::uint32_t>(vertices.size());
             append(mode);
@@ -4903,8 +4870,8 @@ private:
         dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
         dynamic.pDynamicStates = dynamic_states.data();
 
-        const auto create_pipeline = [&](VkPrimitiveTopology topology, VkFormat color_format, bool depth_test,
-                                         VkPipeline& destination)
+        const auto create_pipeline =
+            [&](VkPrimitiveTopology topology, VkFormat color_format, bool depth_test, VkPipeline& destination)
         {
             input.topology = topology;
             depth.depthTestEnable = depth_test ? VK_TRUE : VK_FALSE;
@@ -4928,23 +4895,20 @@ private:
             return vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &destination);
         };
 
-        const auto tested_line_result = create_pipeline(VK_PRIMITIVE_TOPOLOGY_LINE_LIST, scene_color_format_, true,
-                                                        debug_overlay_line_pipeline_);
+        const auto tested_line_result =
+            create_pipeline(VK_PRIMITIVE_TOPOLOGY_LINE_LIST, scene_color_format_, true, debug_overlay_line_pipeline_);
         const auto tested_triangle_result =
-            tested_line_result == VK_SUCCESS
-                ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, scene_color_format_, true,
-                                  debug_overlay_triangle_pipeline_)
-                : VK_ERROR_INITIALIZATION_FAILED;
-        const auto output_line_result =
-            tested_triangle_result == VK_SUCCESS
-                ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_LINE_LIST, viewport_format_, false,
-                                  debug_overlay_output_line_pipeline_)
-                : VK_ERROR_INITIALIZATION_FAILED;
-        const auto output_triangle_result =
-            output_line_result == VK_SUCCESS
-                ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, viewport_format_, false,
-                                  debug_overlay_output_triangle_pipeline_)
-                : VK_ERROR_INITIALIZATION_FAILED;
+            tested_line_result == VK_SUCCESS ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, scene_color_format_,
+                                                               true, debug_overlay_triangle_pipeline_)
+                                             : VK_ERROR_INITIALIZATION_FAILED;
+        const auto output_line_result = tested_triangle_result == VK_SUCCESS
+                                            ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_LINE_LIST, viewport_format_, false,
+                                                              debug_overlay_output_line_pipeline_)
+                                            : VK_ERROR_INITIALIZATION_FAILED;
+        const auto output_triangle_result = output_line_result == VK_SUCCESS
+                                                ? create_pipeline(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, viewport_format_,
+                                                                  false, debug_overlay_output_triangle_pipeline_)
+                                                : VK_ERROR_INITIALIZATION_FAILED;
         vkDestroyShaderModule(device_, vert, nullptr);
         vkDestroyShaderModule(device_, frag, nullptr);
         if (tested_line_result != VK_SUCCESS || tested_triangle_result != VK_SUCCESS ||

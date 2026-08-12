@@ -372,8 +372,9 @@ int main(int argc, char** argv)
         arc::scene::transform_component transform;
         transform.position = {static_cast<float>(index % 64) - 32.0f, 0.0f, -static_cast<float>(index / 64)};
         render_scene_world.emplace<arc::scene::transform_component>(value, transform);
-        render_scene_world.emplace<arc::scene::mesh_renderer_component>(
-            value, arc::scene::mesh_renderer_component{.mesh = {.index = index % 16 + 1, .generation = 1}});
+        arc::scene::mesh_renderer_component mesh_renderer;
+        mesh_renderer.mesh = arc::render::mesh_handle{index % 16 + 1, 1};
+        render_scene_world.emplace<arc::scene::mesh_renderer_component>(value, mesh_renderer);
     }
     arc::scene::prepare_render_scene_queries(render_scene_world);
     std::uint64_t render_frame{};

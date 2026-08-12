@@ -1532,8 +1532,7 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"renderMode\":" + quote(to_string(payload.render_mode)) +
                        ",\"visualization\":" + quote(to_string(payload.visualization)) +
                        ",\"overlay\":" + quote(to_string(payload.overlay)) +
-                       ",\"shadows\":" + bool_json(payload.shadows) +
-                       ",\"grid\":" + bool_json(payload.grid) +
+                       ",\"shadows\":" + bool_json(payload.shadows) + ",\"grid\":" + bool_json(payload.grid) +
                        ",\"environment\":" + environment_json(payload.environment) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>)
                 return "{\"orbitX\":" + std::to_string(payload.orbit_x) +
