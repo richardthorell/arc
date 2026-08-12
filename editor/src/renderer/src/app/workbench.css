@@ -459,10 +459,8 @@
 }
 
 .primitive-palette {
-  position: absolute;
-  z-index: 80;
-  top: calc(100% + 5px);
-  left: 0;
+  position: fixed;
+  z-index: calc(var(--arc-z-dropdown) + 1);
   width: 286px;
   padding: 8px;
   border: 1px solid #354353;

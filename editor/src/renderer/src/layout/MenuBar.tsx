@@ -11,12 +11,21 @@ type MenuBarProps = {
   canRedo?: boolean;
   undoLabel?: string;
   redoLabel?: string;
+  gridVisible?: boolean;
+  onToggleGrid?: () => void;
 };
 
 const menuItems = ['File', 'Edit', 'View', 'Scene', 'Render', 'Tools', 'Window', 'Help'] as const;
 type MenuItem = (typeof menuItems)[number];
 
-type MenuCommand = { label: string; command: CommandId; shortcut?: string; disabled?: boolean };
+type MenuCommand = {
+  label: string;
+  command?: CommandId;
+  action?: () => void;
+  shortcut?: string;
+  disabled?: boolean;
+  checked?: boolean;
+};
 
 const baseMenuCommands: Partial<Record<MenuItem, MenuCommand[]>> = {
   File: [
@@ -38,6 +47,8 @@ export function MenuBar({
   canRedo = false,
   undoLabel,
   redoLabel,
+  gridVisible = true,
+  onToggleGrid,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuItem | null>(null);
   const menuRef = useRef<HTMLElement | null>(null);
@@ -53,11 +64,12 @@ export function MenuBar({
     return () => window.removeEventListener('pointerdown', close);
   }, []);
 
-  const runMenuCommand = (command: CommandId) => {
+  const runMenuCommand = (entry: MenuCommand) => {
     setOpenMenu(null);
-    onCommand(command);
+    if (entry.action) entry.action();
+    else if (entry.command) onCommand(entry.command);
   };
-  const menuCommands = {
+  const menuCommands: Partial<Record<MenuItem, MenuCommand[]>> = {
     ...baseMenuCommands,
     Edit: [
       { label: undoLabel ? `Undo ${undoLabel}` : 'Undo', command: 'edit.undo', shortcut: 'Ctrl+Z', disabled: !canUndo },
@@ -65,7 +77,8 @@ export function MenuBar({
       { label: 'Duplicate', command: 'entity.duplicate', shortcut: 'Ctrl+D' },
       { label: 'Delete', command: 'entity.delete', shortcut: 'Delete' },
     ],
-  } satisfies Partial<Record<MenuItem, MenuCommand[]>>;
+    View: [{ label: 'Grid', action: onToggleGrid, checked: gridVisible }],
+  };
 
   return (
     <header className="workbench-titlebar">
@@ -98,11 +111,13 @@ export function MenuBar({
                     {commands.map((entry) => (
                       <UiButton
                         disabled={entry.disabled}
-                        key={entry.command}
-                        role="menuitem"
-                        onClick={() => runMenuCommand(entry.command)}
+                        key={entry.command ?? entry.label}
+                        role={entry.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+                        aria-checked={entry.checked}
+                        onClick={() => runMenuCommand(entry)}
                         variant="ghost"
                       >
+                        {entry.checked !== undefined && <b className="menu-checkmark">{entry.checked ? '✓' : ''}</b>}
                         <span>{entry.label}</span>
                         {entry.shortcut && <small>{entry.shortcut}</small>}
                       </UiButton>

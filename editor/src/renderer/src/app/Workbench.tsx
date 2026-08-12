@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Box,
   ChevronDown,
@@ -347,6 +348,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [rotationSnap, setRotationSnap] = useState(15);
   const [scaleSnap, setScaleSnap] = useState(0.1);
   const [lastCommand, setLastCommand] = useState('Workbench ready');
+  const [viewportGridVisible, setViewportGridVisible] = useState(true);
   const [profilerSamples, setProfilerSamples] = useState<ProfilerSnapshot[]>([]);
   const [runtimeState, setRuntimeState] = useState<HostRuntimeSnapshot>({
     state: 'stopped',
@@ -971,6 +973,26 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     void mutateHierarchyEntity('entity.create', { kind, ...(parent ? { parent } : {}) });
   };
 
+  const toggleViewportGrid = async () => {
+    const visible = !viewportGridVisible;
+    setViewportGridVisible(visible);
+    try {
+      const state = (await window.arc.host.query('viewport.state')) as HostResponse<{
+        renderOptions?: Record<string, unknown>;
+      }>;
+      if (!state.succeeded || !state.payload?.renderOptions)
+        throw new Error(state.error || 'Viewport state is unavailable');
+      const response = (await window.arc.host.command('viewport.setRenderOptions', {
+        ...state.payload.renderOptions,
+        grid: visible,
+      })) as HostResponse;
+      if (!response.succeeded) throw new Error(response.error || 'Could not update viewport grid');
+    } catch (error) {
+      setViewportGridVisible(!visible);
+      setLastCommand(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const createPrefabFromSelection = async () => {
     if (!selectedSnapshot || !window.arc?.dialog?.createPrefab) {
       setLastCommand('Select an entity before creating a prefab');
@@ -1270,6 +1292,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           startupState={startupState}
           onCommand={runCommand}
           onReconnect={reconnectHost}
+          gridVisible={viewportGridVisible}
+          onGridVisibilityChange={setViewportGridVisible}
         />
       );
     }
@@ -1428,6 +1452,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         undoLabel={documentState.undoLabel}
         redoLabel={documentState.redoLabel}
         onCommand={runCommand}
+        gridVisible={viewportGridVisible}
+        onToggleGrid={() => void toggleViewportGrid()}
       />
       <MainToolbar
         activeTool={activeTool}
@@ -1671,7 +1697,7 @@ function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty'> })
   );
 }
 
-function ExplorerPanel({
+export function ExplorerPanel({
   project,
   selectedEntityId,
   selectedEntityIds,
@@ -1705,47 +1731,87 @@ function ExplorerPanel({
   const actorCount = allEntities.length;
   const selectedCount = selectedEntityIds.size;
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const createButtonRef = useRef<HTMLButtonElement | null>(null);
+  const createMenuRef = useRef<HTMLDivElement | null>(null);
+  const [createMenuPosition, setCreateMenuPosition] = useState({ left: 8, top: 8 });
+
+  useEffect(() => {
+    if (!createMenuOpen) return;
+    const anchor = createButtonRef.current?.getBoundingClientRect();
+    if (anchor) {
+      const width = 286;
+      const height = 270;
+      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+      const below = anchor.bottom + 5;
+      setCreateMenuPosition({
+        left,
+        top: below + height > window.innerHeight ? Math.max(8, anchor.top - height - 5) : below,
+      });
+    }
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!createMenuRef.current?.contains(target) && !createButtonRef.current?.contains(target))
+        setCreateMenuOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCreateMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', close, true);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [createMenuOpen]);
 
   return (
     <div className="explorer-view">
       <Panel icon={<FolderTree size={14} />} title="Hierarchy">
         <div className="hierarchy-actions">
           <div className="hierarchy-create-menu">
-            <UiIconButton label="Add entity" onClick={() => setCreateMenuOpen((open) => !open)}>
+            <UiIconButton ref={createButtonRef} label="Add entity" onClick={() => setCreateMenuOpen((open) => !open)}>
               <Plus size={13} />
             </UiIconButton>
-            {createMenuOpen && (
-              <div className="primitive-palette" role="menu" aria-label="Add entity">
-                <button
-                  className="primitive-palette-empty"
-                  type="button"
-                  onClick={() => {
-                    onCreateEntity('empty');
-                    setCreateMenuOpen(false);
-                  }}
+            {createMenuOpen &&
+              createPortal(
+                <div
+                  className="primitive-palette"
+                  ref={createMenuRef}
+                  role="menu"
+                  aria-label="Add entity"
+                  style={{ left: createMenuPosition.left, top: createMenuPosition.top }}
                 >
-                  <Plus size={16} />
-                  Empty Entity
-                </button>
-                <div className="primitive-palette-heading">Basic Shapes</div>
-                <div className="primitive-palette-grid">
-                  {(['cube', 'sphere', 'cylinder', 'cone', 'capsule', 'plane'] as const).map((kind) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onCreateEntity(kind);
-                        setCreateMenuOpen(false);
-                      }}
-                    >
-                      <PrimitivePreview kind={kind} />
-                      <span>{kind === 'cube' ? 'Box' : kind[0].toUpperCase() + kind.slice(1)}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+                  <button
+                    className="primitive-palette-empty"
+                    type="button"
+                    onClick={() => {
+                      onCreateEntity('empty');
+                      setCreateMenuOpen(false);
+                    }}
+                  >
+                    <Plus size={16} />
+                    Empty Entity
+                  </button>
+                  <div className="primitive-palette-heading">Basic Shapes</div>
+                  <div className="primitive-palette-grid">
+                    {(['cube', 'sphere', 'cylinder', 'cone', 'capsule', 'plane'] as const).map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          onCreateEntity(kind);
+                          setCreateMenuOpen(false);
+                        }}
+                      >
+                        <PrimitivePreview kind={kind} />
+                        <span>{kind === 'cube' ? 'Box' : kind[0].toUpperCase() + kind.slice(1)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>,
+                document.body,
+              )}
           </div>
           <UiIconButton label="Duplicate selected entity" onClick={onDuplicate}>
             <Copy size={13} />

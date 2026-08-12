@@ -13,6 +13,8 @@ type ViewportPanelProps = {
   startupState: StartupState | null;
   onCommand: (command: CommandId) => void;
   onReconnect: () => Promise<void>;
+  gridVisible?: boolean;
+  onGridVisibilityChange?: (visible: boolean) => void;
 };
 
 type DragState = {
@@ -85,13 +87,21 @@ const formatNumber = (value: number) => Math.max(0, value).toLocaleString();
 const formatFps = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(0) : '--');
 const formatFrameTime = (value: number) => (Number.isFinite(value) && value > 0 ? value.toFixed(2) : '--');
 
-export function ViewportPanel({ project, startupState, onCommand, onReconnect }: ViewportPanelProps) {
+export function ViewportPanel({
+  project,
+  startupState,
+  onCommand,
+  onReconnect,
+  gridVisible: controlledGridVisible,
+  onGridVisibilityChange,
+}: ViewportPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const lastAttachAttemptRef = useRef(0);
   const [viewportError, setViewportError] = useState('');
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
-  const [gridVisible, setGridVisible] = useState(true);
+  const [localGridVisible, setLocalGridVisible] = useState(true);
+  const gridVisible = controlledGridVisible ?? localGridVisible;
   const nativeActive = startupState?.viewportMode === 'native' && Boolean(window.arc?.viewport);
   const stats = nativeActive ? viewportStats : fallbackStats(project);
 
@@ -180,7 +190,7 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
         if (!cancelled && response?.succeeded && response.payload) {
           setViewportStats(response.payload);
           if (typeof response.payload.renderOptions?.grid === 'boolean')
-            setGridVisible(response.payload.renderOptions.grid);
+            setLocalGridVisible(response.payload.renderOptions.grid);
           setViewportError('');
           if (
             (!response.payload.submitted || response.payload.frameIndex === 0) &&
@@ -266,7 +276,8 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
 
   const setGridVisibility = async (visible: boolean) => {
     const previous = gridVisible;
-    setGridVisible(visible);
+    setLocalGridVisible(visible);
+    onGridVisibilityChange?.(visible);
     try {
       const renderOptions = viewportStats.renderOptions ?? defaultRenderOptions;
       const response = (await window.arc.host.command('viewport.setRenderOptions', {
@@ -279,7 +290,8 @@ export function ViewportPanel({ project, startupState, onCommand, onReconnect }:
         renderOptions: { ...(current.renderOptions ?? defaultRenderOptions), grid: visible },
       }));
     } catch (error) {
-      setGridVisible(previous);
+      setLocalGridVisible(previous);
+      onGridVisibilityChange?.(previous);
       setViewportError(error instanceof Error ? error.message : String(error));
     }
   };

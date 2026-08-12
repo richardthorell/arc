@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 import { UiButton } from './UiButton';
@@ -8,12 +9,16 @@ type UiIconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children
   label: string;
 };
 
-export function UiIconButton({ active = false, children, className, label, title, ...props }: UiIconButtonProps) {
+export const UiIconButton = forwardRef<HTMLButtonElement, UiIconButtonProps>(function UiIconButton(
+  { active = false, children, className, label, title, ...props },
+  ref,
+) {
   return (
     <UiButton
       active={active}
       aria-label={label}
       className={['ui-icon-button', className].filter(Boolean).join(' ')}
+      ref={ref}
       title={title ?? label}
       variant="icon"
       {...props}
@@ -21,4 +26,4 @@ export function UiIconButton({ active = false, children, className, label, title
       {children}
     </UiButton>
   );
-}
+});

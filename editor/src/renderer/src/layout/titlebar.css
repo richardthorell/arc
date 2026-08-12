@@ -128,6 +128,12 @@
 .menu-dropdown button span {
   flex: 1;
 }
+
+.menu-dropdown .menu-checkmark {
+  flex: 0 0 16px;
+  color: var(--arc-color-accent);
+  font-weight: 700;
+}
 .menu-dropdown button small {
   margin-left: 24px;
   color: var(--arc-color-text-subtle);
