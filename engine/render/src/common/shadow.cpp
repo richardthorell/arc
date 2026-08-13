@@ -10,11 +10,6 @@ namespace arc::render
 namespace
 {
 
-constexpr bool power_of_two(std::uint32_t value) noexcept
-{
-    return value != 0 && (value & (value - 1u)) == 0;
-}
-
 std::uint32_t floor_power_of_two(std::uint32_t value) noexcept
 {
     if (value == 0) return 0;

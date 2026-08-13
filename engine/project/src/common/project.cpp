@@ -869,6 +869,7 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
         descriptor.target_platforms = {{.id = "windows-x64-vulkan"}};
 #else
         descriptor.target_platforms = {{.id = "linux-x64-headless"}};
+        descriptor.renderer = {.backend = renderer_backend::none, .api = {}, .quality = "standard"};
 #endif
         descriptor.cook_profiles = {{.id = "windows-x64-vulkan", .platform = "windows"},
                                     {.id = "linux-x64-headless", .platform = "linux", .renderer = "none", .api = ""}};

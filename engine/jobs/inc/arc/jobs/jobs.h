@@ -448,6 +448,24 @@ public:
     {
         std::optional<T> value;
         std::exception_ptr exception;
+        std::shared_ptr<std::atomic_bool> completed{std::make_shared<std::atomic_bool>()};
+
+        struct completion_notifier
+        {
+            std::shared_ptr<std::atomic_bool> completed;
+
+            bool await_ready() const noexcept
+            {
+                return false;
+            }
+            void await_suspend(std::coroutine_handle<promise_type>) const noexcept
+            {
+                const auto state = completed;
+                state->store(true, std::memory_order_release);
+                state->notify_all();
+            }
+            void await_resume() const noexcept {}
+        };
 
         job_task get_return_object() noexcept
         {
@@ -457,9 +475,9 @@ public:
         {
             return {};
         }
-        std::suspend_always final_suspend() const noexcept
+        completion_notifier final_suspend() const noexcept
         {
-            return {};
+            return {completed};
         }
         void unhandled_exception() noexcept
         {
@@ -474,30 +492,50 @@ public:
     job_task() = default;
     ~job_task()
     {
-        if (coroutine_) coroutine_.destroy();
+        destroy();
     }
-    job_task(job_task&& other) noexcept : coroutine_(std::exchange(other.coroutine_, {})) {}
+    job_task(job_task&& other) noexcept
+        : coroutine_(std::exchange(other.coroutine_, {})), completed_(std::move(other.completed_))
+    {
+    }
     job_task& operator=(job_task&& other) noexcept
     {
         if (this != &other)
         {
-            if (coroutine_) coroutine_.destroy();
+            destroy();
             coroutine_ = std::exchange(other.coroutine_, {});
+            completed_ = std::move(other.completed_);
         }
         return *this;
     }
 
     T get()
     {
-        while (coroutine_ && !coroutine_.done())
-            std::this_thread::yield();
+        wait();
         if (coroutine_.promise().exception) std::rethrow_exception(coroutine_.promise().exception);
         return std::move(*coroutine_.promise().value);
     }
 
 private:
-    explicit job_task(std::coroutine_handle<promise_type> coroutine) : coroutine_(coroutine) {}
+    void wait() const noexcept
+    {
+        if (!coroutine_) return;
+        while (!completed_->load(std::memory_order_acquire)) completed_->wait(false, std::memory_order_acquire);
+    }
+    void destroy() noexcept
+    {
+        if (!coroutine_) return;
+        wait();
+        coroutine_.destroy();
+        coroutine_ = {};
+        completed_.reset();
+    }
+    explicit job_task(std::coroutine_handle<promise_type> coroutine)
+        : coroutine_(coroutine), completed_(coroutine.promise().completed)
+    {
+    }
     std::coroutine_handle<promise_type> coroutine_{};
+    std::shared_ptr<std::atomic_bool> completed_;
 };
 
 template <> class job_task<void>
@@ -506,6 +544,25 @@ public:
     struct promise_type
     {
         std::exception_ptr exception;
+        std::shared_ptr<std::atomic_bool> completed{std::make_shared<std::atomic_bool>()};
+
+        struct completion_notifier
+        {
+            std::shared_ptr<std::atomic_bool> completed;
+
+            bool await_ready() const noexcept
+            {
+                return false;
+            }
+            void await_suspend(std::coroutine_handle<promise_type>) const noexcept
+            {
+                const auto state = completed;
+                state->store(true, std::memory_order_release);
+                state->notify_all();
+            }
+            void await_resume() const noexcept {}
+        };
+
         job_task get_return_object() noexcept
         {
             return job_task(std::coroutine_handle<promise_type>::from_promise(*this));
@@ -514,9 +571,9 @@ public:
         {
             return {};
         }
-        std::suspend_always final_suspend() const noexcept
+        completion_notifier final_suspend() const noexcept
         {
-            return {};
+            return {completed};
         }
         void unhandled_exception() noexcept
         {
@@ -528,28 +585,48 @@ public:
     job_task() = default;
     ~job_task()
     {
-        if (coroutine_) coroutine_.destroy();
+        destroy();
     }
-    job_task(job_task&& other) noexcept : coroutine_(std::exchange(other.coroutine_, {})) {}
+    job_task(job_task&& other) noexcept
+        : coroutine_(std::exchange(other.coroutine_, {})), completed_(std::move(other.completed_))
+    {
+    }
     job_task& operator=(job_task&& other) noexcept
     {
         if (this != &other)
         {
-            if (coroutine_) coroutine_.destroy();
+            destroy();
             coroutine_ = std::exchange(other.coroutine_, {});
+            completed_ = std::move(other.completed_);
         }
         return *this;
     }
     void get()
     {
-        while (coroutine_ && !coroutine_.done())
-            std::this_thread::yield();
+        wait();
         if (coroutine_.promise().exception) std::rethrow_exception(coroutine_.promise().exception);
     }
 
 private:
-    explicit job_task(std::coroutine_handle<promise_type> coroutine) : coroutine_(coroutine) {}
+    void wait() const noexcept
+    {
+        if (!coroutine_) return;
+        while (!completed_->load(std::memory_order_acquire)) completed_->wait(false, std::memory_order_acquire);
+    }
+    void destroy() noexcept
+    {
+        if (!coroutine_) return;
+        wait();
+        coroutine_.destroy();
+        coroutine_ = {};
+        completed_.reset();
+    }
+    explicit job_task(std::coroutine_handle<promise_type> coroutine)
+        : coroutine_(coroutine), completed_(coroutine.promise().completed)
+    {
+    }
     std::coroutine_handle<promise_type> coroutine_{};
+    std::shared_ptr<std::atomic_bool> completed_;
 };
 #endif
 
