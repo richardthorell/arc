@@ -80,6 +80,7 @@ describe('inspector host bindings', () => {
         prefabPath: 'assets/prefabs/cabin.arcprefab',
         overrideCount: 3,
         sourceMissing: false,
+        overrides: [],
       },
       components: [{ kind: 'prefabInstance', label: 'Prefab Instance', editable: true }],
     });

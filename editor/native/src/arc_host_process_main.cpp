@@ -183,17 +183,20 @@ public:
         stop();
     }
 
-    void attach(std::uint64_t native_handle, std::int32_t x, std::int32_t y, std::uint32_t width, std::uint32_t height)
+    void attach(std::string viewport_id, std::uint64_t native_handle, std::int32_t x, std::int32_t y,
+                std::uint32_t width, std::uint32_t height)
     {
         {
             std::lock_guard lock(bounds_mutex_);
             parent_ = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(native_handle));
+            viewport_id_ = viewport_id.empty() ? "viewport-1" : std::move(viewport_id);
             x_ = x;
             y_ = y;
             width_ = std::max(static_cast<std::uint32_t>(arc::editor::defaults::native_viewport_min_dimension), width);
             height_ =
                 std::max(static_cast<std::uint32_t>(arc::editor::defaults::native_viewport_min_dimension), height);
             bounds_dirty_ = true;
+            attached_ = true;
         }
 
         if (!running_.exchange(true))
@@ -206,6 +209,16 @@ public:
                                           .cancellation = {},
                                           .dependency_policy = arc::jobs::job_dependency_policy::cancel_on_failure},
                                          [this] { render_loop(); });
+    }
+
+    void detach(std::string_view viewport_id)
+    {
+        std::lock_guard lock(bounds_mutex_);
+        if (viewport_id != viewport_id_) return;
+        attached_ = false;
+        parent_ = nullptr;
+        bounds_dirty_ = true;
+        if (window_) ShowWindow(window_, SW_HIDE);
     }
 
     void resize(std::int32_t x, std::int32_t y, std::uint32_t width, std::uint32_t height)
@@ -381,7 +394,8 @@ private:
 
     void apply_bounds(const bounds& value)
     {
-        if (!window_) return;
+        if (!window_ || value.parent == nullptr) return;
+        if (GetParent(window_) != value.parent) SetParent(window_, value.parent);
         SetWindowPos(window_, HWND_TOP, value.x, value.y, static_cast<int>(value.width), static_cast<int>(value.height),
                      SWP_SHOWWINDOW | SWP_NOACTIVATE);
     }
@@ -396,6 +410,7 @@ private:
         {
             std::lock_guard lock(host_mutex_);
             host_->request_viewport(arc::editor::host_viewport_request{
+                .viewport_id = viewport_id_,
                 .frame_index = frame_index_++, .width = value.width, .height = value.height});
             auto present = backend_->present_surface_frame(value.width, value.height);
             rendered = present.has_value();
@@ -579,7 +594,8 @@ private:
     void send_pick(int x, int y)
     {
         std::lock_guard lock(host_mutex_);
-        host_->execute(arc::editor::host_viewport_pick_command{.x = static_cast<std::uint32_t>(x),
+        host_->execute(arc::editor::host_viewport_pick_command{.viewport_id = viewport_id_,
+                                                               .x = static_cast<std::uint32_t>(x),
                                                                .y = static_cast<std::uint32_t>(y)});
     }
 
@@ -1063,8 +1079,11 @@ private:
 
     void send_camera_input(const arc::editor::host_viewport_camera_input_command& input)
     {
+        auto routed_input = input;
+        routed_input.viewport_id = viewport_id_;
         std::lock_guard lock(host_mutex_);
-        host_->execute(arc::editor::host_command_envelope{.command_type = "viewport.cameraInput", .payload = input});
+        host_->execute(
+            arc::editor::host_command_envelope{.command_type = "viewport.cameraInput", .payload = routed_input});
     }
 
     void render_loop()
@@ -1092,6 +1111,12 @@ private:
                 if (message.message == WM_QUIT) running_ = false;
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
+            }
+
+            if (!attached_)
+            {
+                std::this_thread::sleep_for(arc::editor::defaults::native_viewport_frame_interval);
+                continue;
             }
 
             {
@@ -1124,6 +1149,7 @@ private:
     arc::jobs::job_system* jobs_{};
     arc::jobs::job_handle render_task_;
     std::atomic<bool> running_{};
+    std::atomic<bool> attached_{};
     mutable std::mutex bounds_mutex_;
     HWND parent_{};
     HWND window_{};
@@ -1132,6 +1158,7 @@ private:
     std::int32_t y_{};
     std::uint32_t width_{1};
     std::uint32_t height_{1};
+    std::string viewport_id_{"viewport-1"};
     bool bounds_dirty_{};
     std::uint64_t frame_index_{};
     std::string last_render_error_;
@@ -1197,12 +1224,14 @@ class native_viewport_controller
 public:
     native_viewport_controller(std::shared_ptr<arc::editor::arc_host>, std::mutex&, arc::jobs::job_system&) {}
 
-    void attach(std::uint64_t, std::int32_t, std::int32_t, std::uint32_t, std::uint32_t)
+    void attach(std::string, std::uint64_t, std::int32_t, std::int32_t, std::uint32_t, std::uint32_t)
     {
         std::cerr << "arc_host_process native viewport rendering is not available in this build\n";
     }
 
     void resize(std::int32_t, std::int32_t, std::uint32_t, std::uint32_t) {}
+
+    void detach(std::string_view) {}
 
     void stop() {}
 };
@@ -1312,9 +1341,12 @@ int main()
             if (response.succeeded)
             {
                 if (const auto* attach = std::get_if<arc::editor::host_viewport_attach_command>(&command.payload))
-                    native_viewport.attach(attach->native_handle, attach->x, attach->y, attach->width, attach->height);
+                    native_viewport.attach(attach->viewport_id, attach->native_handle, attach->x, attach->y,
+                                           attach->width, attach->height);
                 else if (const auto* resize = std::get_if<arc::editor::host_viewport_resize_command>(&command.payload))
                     native_viewport.resize(resize->x, resize->y, resize->width, resize->height);
+                else if (const auto* detach = std::get_if<arc::editor::host_viewport_detach_command>(&command.payload))
+                    native_viewport.detach(detach->viewport_id);
             }
         }
     }

@@ -180,6 +180,7 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_create_prefab_command> ||
            std::is_same_v<Command, host_instantiate_prefab_command> ||
            std::is_same_v<Command, host_apply_prefab_command> || std::is_same_v<Command, host_revert_prefab_command> ||
+           std::is_same_v<Command, host_revert_prefab_override_command> ||
            std::is_same_v<Command, host_unpack_prefab_command> ||
            std::is_same_v<Command, host_reorder_entity_command> ||
            std::is_same_v<Command, host_rename_entity_command> || std::is_same_v<Command, host_set_active_command> ||
@@ -227,6 +228,8 @@ std::string history_label(const host_command_payload& command)
                 return "Apply Prefab";
             else if constexpr (std::is_same_v<type, host_revert_prefab_command>)
                 return "Revert Prefab";
+            else if constexpr (std::is_same_v<type, host_revert_prefab_override_command>)
+                return "Revert Prefab Override";
             else if constexpr (std::is_same_v<type, host_unpack_prefab_command>)
                 return "Unpack Prefab";
             else if constexpr (std::is_same_v<type, host_reparent_entity_command>)
@@ -1560,6 +1563,7 @@ struct arc_host::state
     editor_scene_state scene;
     editor_camera_controller camera_controller;
     host_viewport_request viewport_options;
+    std::string active_viewport_id{"viewport-1"};
     std::chrono::steady_clock::time_point last_viewport_frame_time{};
     double viewport_fps{};
     double viewport_frame_ms{};
@@ -3067,14 +3071,49 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_attach_command>)
             {
+                state_->active_viewport_id = payload.viewport_id.empty() ? "viewport-1" : payload.viewport_id;
+                state_->viewport_options.viewport_id = state_->active_viewport_id;
                 state_->viewport_options.width = payload.width;
                 state_->viewport_options.height = payload.height;
                 return success("{\"nativeHandle\":" + std::to_string(payload.native_handle) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_resize_command>)
             {
+                if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
                 state_->viewport_options.width = payload.width;
                 state_->viewport_options.height = payload.height;
+                return success();
+            }
+            else if constexpr (std::is_same_v<command_type, host_revert_prefab_override_command>)
+            {
+                const ecs::entity entity = to_scene_entity(payload.entity);
+                auto* instance = state_->scene.scene.try_get<scene::prefab_instance_component>(entity);
+                if (!instance) return fail("Entity is not a prefab instance", entity);
+                const auto source = ecs::parse_entity_guid(payload.source_entity);
+                const auto component = ecs::parse_component_type_id(payload.component_id);
+                if (!source || !component) return fail("Prefab override identity is invalid", entity);
+                const auto kind = payload.kind == "componentAdded"     ? ecs::prefab_override_kind::component_added
+                                  : payload.kind == "componentRemoved" ? ecs::prefab_override_kind::component_removed
+                                  : payload.kind == "sourceChildRemoved"
+                                      ? ecs::prefab_override_kind::source_child_removed
+                                  : payload.kind == "instanceChildAdded"
+                                      ? ecs::prefab_override_kind::instance_child_added
+                                      : ecs::prefab_override_kind::field;
+                const ecs::prefab_override_key key{
+                    .source_entity = *source, .component = *component, .field = payload.field_id, .kind = kind};
+                if (!ecs::revert_prefab_override(*instance, key)) return fail("Prefab override was not found", entity);
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Prefab override reverted", entity);
+                return success();
+            }
+            else if constexpr (std::is_same_v<command_type, host_viewport_detach_command>)
+            {
+                if (payload.viewport_id == state_->active_viewport_id)
+                {
+                    state_->viewport_options.width = 0;
+                    state_->viewport_options.height = 0;
+                    state_->viewport_submitted = false;
+                }
                 return success();
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_set_camera_mode_command>)
@@ -3086,16 +3125,20 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_set_render_options_command>)
             {
+                if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
                 state_->viewport_options.render_mode = payload.render_mode;
                 state_->viewport_options.visualization = payload.visualization;
                 state_->viewport_options.overlay = payload.overlay;
                 state_->viewport_options.shadows = payload.shadows;
                 state_->viewport_options.grid = payload.grid;
+                state_->viewport_options.realtime = payload.realtime;
+                state_->viewport_options.camera_speed = payload.camera_speed;
                 state_->viewport_options.environment = payload.environment;
                 return success();
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_camera_input_command>)
             {
+                if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
                 if (payload.focus_selected)
                     focus_selected_entity(state_->scene.scene, state_->scene.selected_entity,
                                           state_->camera_controller);
@@ -3103,10 +3146,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->camera_controller.orbit(payload.orbit_x, payload.orbit_y);
                 if (payload.look_x != 0.0f || payload.look_y != 0.0f)
                     state_->camera_controller.look(payload.look_x, payload.look_y);
+                const float movement_scale = state_->viewport_options.camera_speed / 4.0f;
                 if (payload.pan_x != 0.0f || payload.pan_y != 0.0f)
-                    state_->camera_controller.pan(payload.pan_x, payload.pan_y);
-                if (payload.forward != 0.0f) state_->camera_controller.move_forward(payload.forward);
-                if (payload.zoom != 0.0f) state_->camera_controller.zoom(payload.zoom);
+                    state_->camera_controller.pan(payload.pan_x * movement_scale, payload.pan_y * movement_scale);
+                if (payload.forward != 0.0f)
+                    state_->camera_controller.move_forward(payload.forward * movement_scale);
+                if (payload.zoom != 0.0f) state_->camera_controller.zoom(payload.zoom * movement_scale);
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                 {
@@ -3209,6 +3254,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_pick_command>)
             {
+                if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
                 const std::uint64_t pick_request_id = state_->next_pick_request_id++;
                 scene::update_world_transforms(state_->scene.scene);
                 editor_viewport viewport;
@@ -3854,6 +3900,8 @@ host_response arc_host::query(const host_query_envelope& query) const
             }
             else if constexpr (std::is_same_v<query_type, host_viewport_state_query>)
             {
+                if (payload.viewport_id != state_->active_viewport_id)
+                    return {.request_id = request_id, .succeeded = false, .error = "Viewport is not attached"};
                 std::string camera_json = "null";
                 if (const auto* transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
@@ -3874,7 +3922,8 @@ host_response arc_host::query(const host_query_envelope& query) const
                     .request_id = request_id,
                     .succeeded = true,
                     .payload_json =
-                        "{\"width\":" + std::to_string(state_->viewport_options.width) +
+                        "{\"viewportId\":" + to_json_string(state_->active_viewport_id) +
+                        ",\"width\":" + std::to_string(state_->viewport_options.width) +
                         ",\"height\":" + std::to_string(state_->viewport_options.height) +
                         ",\"fps\":" + std::to_string(state_->viewport_fps) +
                         ",\"frameTimeMs\":" + std::to_string(state_->viewport_frame_ms) +
@@ -3887,6 +3936,8 @@ host_response arc_host::query(const host_query_envelope& query) const
                         ",\"overlay\":" + to_json_string(to_string(state_->viewport_options.overlay)) +
                         ",\"shadows\":" + std::string(state_->viewport_options.shadows ? "true" : "false") +
                         ",\"grid\":" + std::string(state_->viewport_options.grid ? "true" : "false") +
+                        ",\"realtime\":" + std::string(state_->viewport_options.realtime ? "true" : "false") +
+                        ",\"cameraSpeed\":" + std::to_string(state_->viewport_options.camera_speed) +
                         ",\"environment\":{\"sky\":" +
                         std::string(state_->viewport_options.environment.sky ? "true" : "false") +
                         ",\"fog\":" + std::string(state_->viewport_options.environment.fog ? "true" : "false") +
@@ -4048,7 +4099,23 @@ host_scene_snapshot arc_host::scene_snapshot() const
                                      .sibling_order = sibling_order,
                                      .name = entity_name(state_->scene, entity, "Entity"),
                                      .kind = kind,
+                                     .document_guid = snapshot.scene_guid,
+                                     .layer = [&]
+                                     {
+                                         const auto* layer =
+                                             state_->scene.scene.try_get<scene::render_layer_component>(entity);
+                                         return layer && layer->mask == host_environment_render_layer
+                                                    ? std::string{"Environment"}
+                                                    : std::string{"Default"};
+                                     }(),
                                      .active = entity_active(state_->scene, entity),
+                                     .visible = entity_active(state_->scene, entity),
+                                     .prefab_override_count = [&]
+                                     {
+                                         const auto* prefab =
+                                             state_->scene.scene.try_get<ecs::prefab_instance_component>(entity);
+                                         return prefab ? prefab->overrides.size() : std::size_t{};
+                                     }(),
                                      .selected = [&]
                                      {
                                          const auto* selection =
@@ -4209,6 +4276,18 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
                                                .prefab_path = prefab->prefab_path,
                                                .override_count = prefab->overrides.size(),
                                                .source_missing = prefab->source_missing};
+        for (const auto& value : prefab->overrides)
+        {
+            const char* kind = value.key.kind == ecs::prefab_override_kind::component_added ? "componentAdded"
+                               : value.key.kind == ecs::prefab_override_kind::component_removed ? "componentRemoved"
+                               : value.key.kind == ecs::prefab_override_kind::source_child_removed ? "sourceChildRemoved"
+                               : value.key.kind == ecs::prefab_override_kind::instance_child_added ? "instanceChildAdded"
+                                                                                                    : "field";
+            snapshot.prefab->overrides.push_back({.source_entity = ecs::to_string(value.key.source_entity),
+                                                  .component_id = ecs::to_string(value.key.component),
+                                                  .field_id = value.key.field,
+                                                  .kind = kind});
+        }
         add_component_snapshot<scene::prefab_instance_component>(state_->scene.scene, selected, snapshot.components,
                                                                  host_component_kind::prefab_instance,
                                                                  "Prefab Instance");
@@ -4432,6 +4511,8 @@ std::vector<host_event> arc_host::poll_events()
 
 host_viewport_frame arc_host::request_viewport(const host_viewport_request& request)
 {
+    if (request.viewport_id != state_->active_viewport_id)
+        return {.message = "Viewport render skipped: viewport is not attached"};
     if (state_->asset_registry)
     {
         state_->asset_registry->poll();

@@ -114,6 +114,7 @@ const prefabSnapshot = (): InspectorEntitySnapshot => ({
     prefabPath: 'assets/prefabs/mountain.arcprefab',
     overrideCount: 2,
     sourceMissing: false,
+    overrides: [],
   },
   components: [
     { kind: 'transform', label: 'Transform', editable: true },

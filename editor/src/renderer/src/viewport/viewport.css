@@ -98,6 +98,37 @@
   background: #2b3743;
 }
 
+.arc-viewport-show-popup hr {
+  margin: 4px 2px;
+  border: 0;
+  border-top: 1px solid #35404b;
+}
+
+.viewport-projection-menu,
+.viewport-mode-menu {
+  min-width: 180px;
+}
+
+.viewport-speed-menu,
+.viewport-layout-menu {
+  min-width: 112px;
+}
+
+.viewport-bookmark-menu {
+  min-width: 172px;
+}
+
+.viewport-bookmark-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+}
+
+.arc-viewport-view-options button.active {
+  color: #d9efff;
+  border-color: #2877b8;
+  background: #173b59;
+}
+
 .arc-viewport-menu-check {
   width: 18px;
   color: #55aaff;
@@ -177,6 +208,18 @@
   color: #b8c1cc;
   text-align: center;
   background: #111820;
+}
+
+.arc-viewport-inactive {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: #8292a2;
+  background: #111820;
+  cursor: pointer;
 }
 
 .arc-viewport-unavailable h3,

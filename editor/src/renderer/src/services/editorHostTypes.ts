@@ -20,6 +20,14 @@ export type SceneEntity = {
   children?: SceneEntity[];
   components?: string[];
   transform?: Transform;
+  documentGuid?: string;
+  editorFolder?: string;
+  collection?: string;
+  layer?: string;
+  locked?: boolean;
+  visible?: boolean;
+  pickable?: boolean;
+  prefabOverrideCount?: number;
 };
 
 export type AssetItem = {

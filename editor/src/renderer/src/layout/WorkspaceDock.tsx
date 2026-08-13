@@ -17,11 +17,12 @@ export type WorkspaceLayoutName = 'Level Design' | 'Materials' | 'Profiling';
 
 type WorkspaceDockProps = {
   projectKey: string;
-  renderPanel: (panel: WorkbenchPanelId) => React.ReactNode;
+  renderPanel: (panel: WorkbenchPanelId, instanceId?: string, onMaximizeToggle?: () => void) => React.ReactNode;
   requestedLayout?: WorkspaceLayoutName | 'Reset' | null;
   requestedPanel?: WorkbenchPanelId | null;
   onRequestHandled?: () => void;
   onReady?: (api: DockviewApi) => void;
+  requestedViewportCount?: 1 | 2 | 3 | 4;
 };
 
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v3.${projectKey}.${name}`;
@@ -30,21 +31,26 @@ class ReactPanelRenderer implements IContentRenderer {
   readonly element = document.createElement('div');
   private root: Root | null = null;
   private panel: WorkbenchPanelId;
-  private renderPanel: () => (panel: WorkbenchPanelId) => React.ReactNode;
+  private renderPanel: () => WorkspaceDockProps['renderPanel'];
+  private parameters: GroupPanelPartInitParameters | null = null;
 
-  constructor(panel: WorkbenchPanelId, renderPanel: () => (panel: WorkbenchPanelId) => React.ReactNode) {
+  constructor(panel: WorkbenchPanelId, renderPanel: () => WorkspaceDockProps['renderPanel']) {
     this.panel = panel;
     this.renderPanel = renderPanel;
     this.element.className = 'workspace-dock-panel';
   }
 
-  init(_parameters: GroupPanelPartInitParameters) {
+  init(parameters: GroupPanelPartInitParameters) {
+    this.parameters = parameters;
     this.root = createRoot(this.element);
     this.updateContent();
   }
 
   updateContent() {
-    this.root?.render(this.renderPanel()(this.panel));
+    const viewportId = this.parameters?.params.viewportId as string | undefined;
+    const toggleMaximize = () =>
+      this.parameters?.api.isMaximized() ? this.parameters.api.exitMaximized() : this.parameters?.api.maximize();
+    this.root?.render(this.renderPanel()(this.panel, viewportId, toggleMaximize));
   }
 
   dispose() {
@@ -105,6 +111,7 @@ export function WorkspaceDock({
   requestedPanel,
   onRequestHandled,
   onReady,
+  requestedViewportCount,
 }: WorkspaceDockProps) {
   const host = useRef<HTMLDivElement | null>(null);
   const api = useRef<DockviewApi | null>(null);
@@ -182,6 +189,24 @@ export function WorkspaceDock({
     panel?.focus();
     onRequestHandled?.();
   }, [onRequestHandled, requestedPanel]);
+
+  useEffect(() => {
+    const dock = api.current;
+    if (!dock || !requestedViewportCount) return;
+    for (let index = 2; index <= 4; ++index) {
+      const id = `viewport-${index}`;
+      const existing = dock.getPanel(id);
+      if (index <= requestedViewportCount && !existing) {
+        dock.addPanel({
+          id,
+          component: 'viewport',
+          title: `Viewport ${index}`,
+          params: { viewportId: id },
+          position: { referencePanel: 'viewport', direction: index % 2 === 0 ? 'right' : 'below' },
+        });
+      } else if (index > requestedViewportCount && existing) existing.api.close();
+    }
+  }, [requestedViewportCount]);
 
   return <div className="workspace-dock" ref={host} />;
 }

@@ -463,10 +463,18 @@ struct host_terrain_tool_snapshot
 
 struct host_prefab_snapshot
 {
+    struct override_snapshot
+    {
+        std::string source_entity;
+        std::string component_id;
+        std::uint64_t field_id{};
+        std::string kind;
+    };
     std::string prefab_guid;
     std::string prefab_path;
     std::size_t override_count{};
     bool source_missing{};
+    std::vector<override_snapshot> overrides;
 };
 
 struct host_scene_entity_snapshot
@@ -477,7 +485,15 @@ struct host_scene_entity_snapshot
     std::uint32_t sibling_order{};
     std::string name;
     host_entity_kind kind{host_entity_kind::unknown};
+    std::string document_guid;
+    std::string editor_folder;
+    std::string collection;
+    std::string layer{"Default"};
     bool active{true};
+    bool locked{};
+    bool visible{true};
+    bool pickable{true};
+    std::size_t prefab_override_count{};
     bool selected{};
 };
 
@@ -838,6 +854,14 @@ struct host_unpack_prefab_command
 {
     host_entity_id entity{};
 };
+struct host_revert_prefab_override_command
+{
+    host_entity_id entity{};
+    std::string source_entity;
+    std::string component_id;
+    std::uint64_t field_id{};
+    std::string kind{"field"};
+};
 struct host_reparent_entity_command
 {
     host_entity_id entity{};
@@ -1025,6 +1049,7 @@ struct host_set_camera_projection_command
 
 struct host_viewport_attach_command
 {
+    std::string viewport_id{"viewport-1"};
     std::uint64_t native_handle{};
     std::int32_t x{};
     std::int32_t y{};
@@ -1034,29 +1059,40 @@ struct host_viewport_attach_command
 
 struct host_viewport_resize_command
 {
+    std::string viewport_id{"viewport-1"};
     std::int32_t x{};
     std::int32_t y{};
     std::uint32_t width{};
     std::uint32_t height{};
 };
 
+struct host_viewport_detach_command
+{
+    std::string viewport_id{"viewport-1"};
+};
+
 struct host_viewport_set_camera_mode_command
 {
+    std::string viewport_id{"viewport-1"};
     host_camera_projection projection{host_camera_projection::perspective};
 };
 
 struct host_viewport_set_render_options_command
 {
+    std::string viewport_id{"viewport-1"};
     host_render_mode render_mode{host_render_mode::shaded};
     host_visualization_mode visualization{host_visualization_mode::standard};
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
     bool grid{true};
+    bool realtime{true};
+    float camera_speed{4.0f};
     host_environment_visibility environment{};
 };
 
 struct host_viewport_camera_input_command
 {
+    std::string viewport_id{"viewport-1"};
     float orbit_x{};
     float orbit_y{};
     float look_x{};
@@ -1069,6 +1105,7 @@ struct host_viewport_camera_input_command
 };
 struct host_viewport_set_pose_command
 {
+    std::string viewport_id{"viewport-1"};
     host_vec3 position{};
     host_vec3 target{};
 };
@@ -1128,6 +1165,7 @@ struct host_viewport_set_tool_command
 };
 struct host_viewport_pick_command
 {
+    std::string viewport_id{"viewport-1"};
     std::uint32_t x{};
     std::uint32_t y{};
 };
@@ -1155,7 +1193,8 @@ using host_command_payload = std::variant<
     host_open_recovery_scene_command, host_asset_reimport_command, host_asset_cancel_import_command,
     host_asset_move_command, host_asset_rename_command, host_create_entity_command, host_delete_entity_command,
     host_duplicate_entity_command, host_create_prefab_command, host_instantiate_prefab_command,
-    host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command, host_reparent_entity_command,
+    host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,
+    host_revert_prefab_override_command, host_reparent_entity_command,
     host_reorder_entity_command, host_rename_entity_command, host_select_entity_command, host_clear_selection_command,
     host_set_active_command, host_set_tag_command, host_set_transform_command, host_set_render_layer_command,
     host_set_mobility_command, host_set_camera_command, host_set_light_command, host_set_mesh_renderer_command,
@@ -1163,7 +1202,8 @@ using host_command_payload = std::variant<
     host_terrain_stroke_command, host_terrain_hover_command, host_set_entity_material_command,
     host_component_operation_command, host_patch_project_component_command, host_set_world_environment_command,
     host_apply_world_environment_preset_command, host_set_environment_hdri_command, host_set_camera_projection_command,
-    host_viewport_attach_command, host_viewport_resize_command, host_viewport_set_camera_mode_command,
+    host_viewport_attach_command, host_viewport_resize_command, host_viewport_detach_command,
+    host_viewport_set_camera_mode_command,
     host_viewport_set_render_options_command, host_viewport_camera_input_command, host_viewport_set_pose_command,
     host_history_undo_command, host_history_redo_command, host_history_begin_transaction_command,
     host_history_commit_transaction_command, host_history_cancel_transaction_command, host_runtime_resume_command,
@@ -1255,6 +1295,7 @@ struct host_asset_thumbnail_query
 
 struct host_viewport_state_query
 {
+    std::string viewport_id{"viewport-1"};
 };
 
 struct host_world_environment_query
@@ -1299,6 +1340,7 @@ struct host_response
 
 struct host_viewport_request
 {
+    std::string viewport_id{"viewport-1"};
     std::uint64_t frame_index{};
     std::uint32_t width{};
     std::uint32_t height{};
@@ -1307,6 +1349,8 @@ struct host_viewport_request
     host_overlay_mode overlay{host_overlay_mode::selected_wireframe};
     bool shadows{true};
     bool grid{true};
+    bool realtime{true};
+    float camera_speed{4.0f};
     host_environment_visibility environment{};
 };
 

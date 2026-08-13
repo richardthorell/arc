@@ -1028,6 +1028,8 @@ std::string command_type(const host_command_payload& payload)
                 return "prefab.revert";
             else if constexpr (std::is_same_v<type, host_unpack_prefab_command>)
                 return "prefab.unpack";
+            else if constexpr (std::is_same_v<type, host_revert_prefab_override_command>)
+                return "prefab.revertOverride";
             else if constexpr (std::is_same_v<type, host_reparent_entity_command>)
                 return "entity.reparent";
             else if constexpr (std::is_same_v<type, host_reorder_entity_command>)
@@ -1093,6 +1095,8 @@ std::string command_type(const host_command_payload& payload)
                 return "viewport.attach";
             else if constexpr (std::is_same_v<type, host_viewport_resize_command>)
                 return "viewport.resize";
+            else if constexpr (std::is_same_v<type, host_viewport_detach_command>)
+                return "viewport.detach";
             else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>)
                 return "viewport.setCameraMode";
             else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>)
@@ -1433,6 +1437,12 @@ std::string to_json(const host_command_envelope& envelope)
                                std::is_same_v<type, host_revert_prefab_command> ||
                                std::is_same_v<type, host_unpack_prefab_command>)
                 return "{\"entity\":" + to_json(payload.entity) + '}';
+            else if constexpr (std::is_same_v<type, host_revert_prefab_override_command>)
+                return "{\"entity\":" + to_json(payload.entity) +
+                       ",\"sourceEntity\":" + quote(payload.source_entity) +
+                       ",\"componentId\":" + quote(payload.component_id) +
+                       ",\"fieldId\":" + std::to_string(payload.field_id) +
+                       ",\"kind\":" + quote(payload.kind) + '}';
             else if constexpr (std::is_same_v<type, host_reparent_entity_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"parent\":" + to_json(payload.parent) +
                        ",\"beforeSibling\":" + to_json(payload.before_sibling) +
@@ -1518,31 +1528,41 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_set_camera_projection_command>)
                 return "{\"projection\":" + quote(to_string(payload.projection)) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_attach_command>)
-                return "{\"nativeHandle\":" + std::to_string(payload.native_handle) +
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"nativeHandle\":" + std::to_string(payload.native_handle) +
                        ",\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
                        ",\"width\":" + std::to_string(payload.width) + ",\"height\":" + std::to_string(payload.height) +
                        '}';
             else if constexpr (std::is_same_v<type, host_viewport_resize_command>)
-                return "{\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
                        ",\"width\":" + std::to_string(payload.width) + ",\"height\":" + std::to_string(payload.height) +
                        '}';
+            else if constexpr (std::is_same_v<type, host_viewport_detach_command>)
+                return "{\"viewportId\":" + quote(payload.viewport_id) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>)
-                return "{\"projection\":" + quote(to_string(payload.projection)) + '}';
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"projection\":" + quote(to_string(payload.projection)) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>)
-                return "{\"renderMode\":" + quote(to_string(payload.render_mode)) +
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"renderMode\":" + quote(to_string(payload.render_mode)) +
                        ",\"visualization\":" + quote(to_string(payload.visualization)) +
                        ",\"overlay\":" + quote(to_string(payload.overlay)) +
                        ",\"shadows\":" + bool_json(payload.shadows) + ",\"grid\":" + bool_json(payload.grid) +
+                       ",\"realtime\":" + bool_json(payload.realtime) +
+                       ",\"cameraSpeed\":" + std::to_string(payload.camera_speed) +
                        ",\"environment\":" + environment_json(payload.environment) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_camera_input_command>)
-                return "{\"orbitX\":" + std::to_string(payload.orbit_x) +
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"orbitX\":" + std::to_string(payload.orbit_x) +
                        ",\"orbitY\":" + std::to_string(payload.orbit_y) +
                        ",\"lookX\":" + std::to_string(payload.look_x) + ",\"lookY\":" + std::to_string(payload.look_y) +
                        ",\"panX\":" + std::to_string(payload.pan_x) + ",\"panY\":" + std::to_string(payload.pan_y) +
                        ",\"forward\":" + std::to_string(payload.forward) + ",\"zoom\":" + std::to_string(payload.zoom) +
                        ",\"focusSelected\":" + bool_json(payload.focus_selected) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_set_pose_command>)
-                return "{\"position\":" + vec3_json(payload.position) + ",\"target\":" + vec3_json(payload.target) +
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"position\":" + vec3_json(payload.position) + ",\"target\":" + vec3_json(payload.target) +
                        '}';
             else if constexpr (std::is_same_v<type, host_runtime_step_command>)
                 return "{\"ticks\":" + std::to_string(payload.ticks) + '}';
@@ -1571,7 +1591,8 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"rotationSnapDegrees\":" + std::to_string(payload.rotation_snap_degrees) +
                        ",\"scaleSnap\":" + std::to_string(payload.scale_snap) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_pick_command>)
-                return "{\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) + '}';
+                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"x\":" +
+                       std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_capture_command>)
                 return "{\"captureId\":" + std::to_string(payload.capture_id) +
                        ",\"color\":" + bool_json(payload.color) + ",\"depth\":" + bool_json(payload.depth) +
@@ -1732,7 +1753,12 @@ std::string to_json(const host_scene_snapshot& snapshot)
         json += "{\"entity\":" + to_json(entity.entity) + ",\"guid\":" + quote(entity.guid) +
                 ",\"parentGuid\":" + quote(entity.parent_guid) +
                 ",\"siblingOrder\":" + std::to_string(entity.sibling_order) + ",\"name\":" + quote(entity.name) +
-                ",\"kind\":" + quote(to_string(entity.kind)) + ",\"active\":" + bool_json(entity.active) +
+                ",\"kind\":" + quote(to_string(entity.kind)) + ",\"documentGuid\":" +
+                quote(entity.document_guid) + ",\"editorFolder\":" + quote(entity.editor_folder) +
+                ",\"collection\":" + quote(entity.collection) + ",\"layer\":" + quote(entity.layer) +
+                ",\"active\":" + bool_json(entity.active) + ",\"locked\":" + bool_json(entity.locked) +
+                ",\"visible\":" + bool_json(entity.visible) + ",\"pickable\":" + bool_json(entity.pickable) +
+                ",\"prefabOverrideCount\":" + std::to_string(entity.prefab_override_count) +
                 ",\"selected\":" + bool_json(entity.selected) + '}';
     }
     json += "]}";
@@ -1773,7 +1799,17 @@ std::string to_json(const host_selected_entity_snapshot& snapshot)
         json += "{\"prefabGuid\":" + quote(snapshot.prefab->prefab_guid) +
                 ",\"prefabPath\":" + quote(snapshot.prefab->prefab_path) +
                 ",\"overrideCount\":" + std::to_string(snapshot.prefab->override_count) +
-                ",\"sourceMissing\":" + bool_json(snapshot.prefab->source_missing) + '}';
+                ",\"sourceMissing\":" + bool_json(snapshot.prefab->source_missing) + ",\"overrides\":[";
+        for (std::size_t index = 0; index < snapshot.prefab->overrides.size(); ++index)
+        {
+            if (index != 0) json += ',';
+            const auto& value = snapshot.prefab->overrides[index];
+            json += "{\"sourceEntity\":" + quote(value.source_entity) +
+                    ",\"componentId\":" + quote(value.component_id) +
+                    ",\"fieldId\":" + std::to_string(value.field_id) +
+                    ",\"kind\":" + quote(value.kind) + '}';
+        }
+        json += "]}";
     }
     else
         json += "null";
@@ -2416,11 +2452,16 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         if (type == "camera.setProjection")
             envelope.payload = host_set_camera_projection_command{.projection = projection};
         else
-            envelope.payload = host_viewport_set_camera_mode_command{.projection = projection};
+        {
+            host_viewport_set_camera_mode_command command{.projection = projection};
+            string_value(payload, "viewportId", command.viewport_id);
+            envelope.payload = std::move(command);
+        }
     }
     else if (type == "viewport.attach")
     {
         host_viewport_attach_command command;
+        string_value(payload, "viewportId", command.viewport_id);
         number_value(payload, "nativeHandle", command.native_handle);
         number_value(payload, "x", command.x);
         number_value(payload, "y", command.y);
@@ -2431,11 +2472,32 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     else if (type == "viewport.resize")
     {
         host_viewport_resize_command command;
+        string_value(payload, "viewportId", command.viewport_id);
         number_value(payload, "x", command.x);
         number_value(payload, "y", command.y);
         number_value(payload, "width", command.width);
         number_value(payload, "height", command.height);
         envelope.payload = command;
+    }
+    else if (type == "prefab.revertOverride")
+    {
+        host_revert_prefab_override_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !string_value(payload, "sourceEntity", command.source_entity) ||
+            !string_value(payload, "componentId", command.component_id))
+        {
+            error = "Prefab override revert requires entity, source entity, and component ID";
+            return false;
+        }
+        number_value(payload, "fieldId", command.field_id);
+        string_value(payload, "kind", command.kind);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "viewport.detach")
+    {
+        host_viewport_detach_command command;
+        string_value(payload, "viewportId", command.viewport_id);
+        envelope.payload = std::move(command);
     }
     else if (type == "viewport.setRenderOptions")
     {
@@ -2480,17 +2542,22 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"selectedWireframe", host_overlay_mode::selected_wireframe},
             {"allWireframe", host_overlay_mode::all_wireframe}};
         host_viewport_set_render_options_command command;
+        string_value(payload, "viewportId", command.viewport_id);
         parse_enum(payload, "renderMode", render_modes, std::size(render_modes), command.render_mode);
         parse_enum(payload, "visualization", visualizations, std::size(visualizations), command.visualization);
         parse_enum(payload, "overlay", overlays, std::size(overlays), command.overlay);
         bool_value(payload, "shadows", command.shadows);
         bool_value(payload, "grid", command.grid);
+        bool_value(payload, "realtime", command.realtime);
+        number_value(payload, "cameraSpeed", command.camera_speed);
+        command.camera_speed = std::clamp(command.camera_speed, 0.25f, 16.0f);
         parse_environment(payload, command.environment);
         envelope.payload = command;
     }
     else if (type == "viewport.cameraInput")
     {
         host_viewport_camera_input_command command;
+        string_value(payload, "viewportId", command.viewport_id);
         number_value(payload, "orbitX", command.orbit_x);
         number_value(payload, "orbitY", command.orbit_y);
         number_value(payload, "lookX", command.look_x);
@@ -2505,6 +2572,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     else if (type == "viewport.setPose")
     {
         host_viewport_set_pose_command command;
+        string_value(payload, "viewportId", command.viewport_id);
         if (!array3_value(payload, "position", command.position) || !array3_value(payload, "target", command.target))
         {
             error = "Viewport pose requires position and target vectors";
@@ -2601,6 +2669,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     else if (type == "viewport.pick")
     {
         host_viewport_pick_command command;
+        string_value(payload, "viewportId", command.viewport_id);
         number_value(payload, "x", command.x);
         number_value(payload, "y", command.y);
         envelope.payload = command;
@@ -2733,7 +2802,11 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
         envelope.payload = std::move(thumbnail);
     }
     else if (type == "viewport.state")
-        envelope.payload = host_viewport_state_query{};
+    {
+        host_viewport_state_query query;
+        string_value(json, "viewportId", query.viewport_id);
+        envelope.payload = std::move(query);
+    }
     else if (type == "environment.state")
     {
         host_entity_id entity;

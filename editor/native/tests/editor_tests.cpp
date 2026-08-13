@@ -813,9 +813,10 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {.request_id = 8,
          .payload =
              arc::editor::host_viewport_attach_command{
-                 .native_handle = 1234, .x = 16, .y = 32, .width = 1280, .height = 720}},
+                 .viewport_id = "scene-main", .native_handle = 1234, .x = 16, .y = 32, .width = 1280, .height = 720}},
         {.request_id = 9,
-         .payload = arc::editor::host_viewport_resize_command{.x = 24, .y = 48, .width = 640, .height = 360}},
+         .payload = arc::editor::host_viewport_resize_command{
+             .viewport_id = "scene-main", .x = 24, .y = 48, .width = 640, .height = 360}},
         {.request_id = 10,
          .payload =
              arc::editor::host_viewport_set_camera_mode_command{.projection =
@@ -858,6 +859,13 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {.request_id = 20, .payload = arc::editor::host_apply_prefab_command{.entity = entity}},
         {.request_id = 21, .payload = arc::editor::host_revert_prefab_command{.entity = entity}},
         {.request_id = 22, .payload = arc::editor::host_unpack_prefab_command{.entity = entity}},
+        {.request_id = 26,
+         .payload = arc::editor::host_revert_prefab_override_command{
+             .entity = entity,
+             .source_entity = "00112233445566778899aabbccddeeff",
+             .component_id = "102030405060708090a0b0c0d0e0f000",
+             .field_id = 7,
+             .kind = "field"}},
         {.request_id = 23,
          .payload =
              arc::editor::host_viewport_set_pose_command{.position = {1.0f, 2.0f, 3.0f}, .target = {0.0f, 0.0f, 0.0f}}},
@@ -872,7 +880,9 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
                                                                .material_properties = true,
                                                                .emissive = true}},
         {.request_id = 25,
-         .payload = arc::editor::host_autosave_scene_command{.path = "Saved/Recovery/protocol.arcscene"}}};
+         .payload = arc::editor::host_autosave_scene_command{.path = "Saved/Recovery/protocol.arcscene"}},
+        {.request_id = 27,
+         .payload = arc::editor::host_viewport_pick_command{.viewport_id = "scene-main", .x = 24, .y = 36}}};
 
     for (const auto& command : commands)
     {
@@ -898,6 +908,18 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {
             const auto& options = std::get<arc::editor::host_viewport_set_render_options_command>(parsed.payload);
             REQUIRE_FALSE(options.grid);
+        }
+        if (command.request_id == 26)
+        {
+            const auto& revert = std::get<arc::editor::host_revert_prefab_override_command>(parsed.payload);
+            REQUIRE(revert.entity == entity);
+            REQUIRE(revert.field_id == 7);
+            REQUIRE(revert.kind == "field");
+        }
+        if (command.request_id == 27)
+        {
+            const auto& pick = std::get<arc::editor::host_viewport_pick_command>(parsed.payload);
+            REQUIRE(pick.viewport_id == "scene-main");
         }
     }
 
@@ -1391,6 +1413,40 @@ TEST_CASE("workspace documents component operations and read only projects are h
     }
 
     std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("prefab property override revert is revisioned and undoable")
+{
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::make_unique<arc::render::renderer>());
+    REQUIRE(host->open_project({.name = "Prefab Override", .root = {}}, {}).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty})
+                .succeeded);
+
+    const auto entity = host->selected_entity_snapshot().entity;
+    const auto source = arc::ecs::generate_entity_guid();
+    const auto component = arc::ecs::component_type<arc::scene::transform_component>();
+    arc::ecs::prefab_instance_component instance;
+    instance.prefab_guid = arc::ecs::generate_entity_guid();
+    REQUIRE(arc::ecs::set_prefab_override(
+        instance,
+        {.key = {.source_entity = source,
+                 .component = component,
+                 .field = 1,
+                 .kind = arc::ecs::prefab_override_kind::field}}));
+    host->scene_state().scene.emplace<arc::ecs::prefab_instance_component>(
+        arc::ecs::entity{entity.index, entity.generation}, std::move(instance));
+
+    const auto reverted = host->execute(arc::editor::host_revert_prefab_override_command{
+        .entity = entity,
+        .source_entity = arc::ecs::to_string(source),
+        .component_id = arc::ecs::to_string(component),
+        .field_id = 1,
+        .kind = "field"});
+    REQUIRE(reverted.succeeded);
+    REQUIRE(host->selected_entity_snapshot().prefab->override_count == 0);
+    REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
+    REQUIRE(host->selected_entity_snapshot().prefab->override_count == 1);
 }
 
 TEST_CASE("multi selection property edits are atomic and apply through the host")

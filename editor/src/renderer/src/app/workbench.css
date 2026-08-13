@@ -180,6 +180,8 @@
 }
 
 .workspace-dock-panel > * {
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
 }
@@ -883,6 +885,214 @@
   color: var(--arc-color-text);
   background: linear-gradient(180deg, rgba(44, 57, 70, 0.28), rgba(24, 32, 40, 0.92) 84px), var(--arc-color-bg-panel);
 }
+
+.content-browser-v2 {
+  display: grid;
+  grid-template-columns: 190px minmax(320px, 1fr) minmax(0, 0fr);
+  height: 100%;
+  min-height: 0;
+  background: #111820;
+  transition: grid-template-columns 140ms ease;
+}
+
+.content-browser-v2:has(.content-asset-details) {
+  grid-template-columns: 190px minmax(320px, 1fr) 240px;
+}
+
+.content-folder-tree,
+.content-asset-details {
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid #2a3540;
+  background: linear-gradient(180deg, #19232c, #121920);
+}
+
+.content-folder-tree {
+  padding: 8px 5px;
+}
+
+.content-folder-tree button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 27px;
+  border: 0;
+  border-radius: 3px;
+  color: #aebbc8;
+  background: transparent;
+  text-align: left;
+}
+
+.content-folder-tree button:hover,
+.content-folder-tree button.active {
+  color: #eef7ff;
+  background: #244664;
+}
+
+.content-browser-main {
+  display: grid;
+  grid-template-rows: 38px auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.content-browser-v2-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  overflow: hidden;
+  border-bottom: 1px solid #2a3540;
+  background: #18212a;
+}
+
+.content-browser-v2-toolbar button,
+.content-browser-v2-toolbar select,
+.content-browser-v2-toolbar input,
+.content-asset-details > button {
+  min-height: 26px;
+  border: 1px solid #32404d;
+  border-radius: 3px;
+  color: #c9d5df;
+  background: #111920;
+}
+
+.content-browser-v2-toolbar button.active {
+  border-color: #378bd0;
+  background: #1d4d75;
+}
+
+.content-browser-v2-toolbar nav,
+.content-browser-v2-toolbar nav span,
+.content-browser-v2-toolbar label {
+  display: flex;
+  align-items: center;
+}
+
+.content-browser-v2-toolbar nav {
+  flex: 1;
+  min-width: 80px;
+  overflow: hidden;
+}
+
+.content-browser-v2-toolbar nav button {
+  border: 0;
+  background: transparent;
+  white-space: nowrap;
+}
+
+.content-browser-v2-toolbar label {
+  gap: 5px;
+  padding-left: 7px;
+  border: 1px solid #32404d;
+  border-radius: 3px;
+  background: #0f171e;
+}
+
+.content-browser-v2-toolbar label input {
+  width: 130px;
+  border: 0;
+  outline: 0;
+}
+
+.content-assets {
+  min-height: 0;
+  padding: 9px;
+  overflow: auto;
+}
+
+.content-assets.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  align-content: start;
+  gap: 8px;
+}
+
+.content-asset {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  border: 1px solid #2c3945;
+  border-radius: 5px;
+  color: #cbd6df;
+  background: #151e26;
+}
+
+.content-assets.grid .content-asset {
+  grid-template-rows: 82px auto auto;
+  place-items: center;
+  gap: 3px;
+  min-height: 132px;
+  padding: 8px;
+}
+
+.content-assets.list {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.content-assets.list .content-asset {
+  grid-template-columns: 38px minmax(120px, 1fr) 160px auto;
+  align-items: center;
+  min-height: 38px;
+  padding: 3px 7px;
+  text-align: left;
+}
+
+.content-asset:hover,
+.content-asset.selected {
+  border-color: #3b8bc9;
+  background: #1b3348;
+}
+
+.content-asset-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.content-asset-preview .asset-thumbnail { width: 72px; height: 72px; }
+.content-assets.list .content-asset-preview .asset-thumbnail { width: 30px; height: 30px; }
+.content-asset-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.content-asset small { color: #7f909e; }
+.content-asset-actions { position: absolute; top: 4px; right: 4px; display: none; gap: 3px; }
+.content-asset:hover .content-asset-actions, .content-asset.selected .content-asset-actions { display: flex; }
+.content-asset-actions button { min-height: 22px; border: 1px solid #3c4b58; border-radius: 3px; color: #bdcbd7; background: #101820; }
+.content-asset-actions button.active { color: #ffcf5a; }
+.asset-state { position: absolute; right: 1px; bottom: 1px; width: 7px; height: 7px; border-radius: 50%; background: #66717b; }
+.asset-state.ready { background: #35b66b; } .asset-state.failed, .asset-state.missing { background: #dc5962; } .asset-state.stale, .asset-state.importing { background: #d69a3c; }
+.content-asset-details { display: grid; align-content: start; gap: 8px; padding: 10px; border-right: 0; border-left: 1px solid #2a3540; color: #95a5b3; font-size: 11px; }
+.content-asset-details strong { color: #e4edf4; font-size: 13px; }
+.content-asset-details code { overflow-wrap: anywhere; color: #a9d5f4; }
+.content-asset-details details { display: grid; gap: 4px; }
+.content-empty { grid-column: 1 / -1; align-self: start; padding: 38px; color: #758491; text-align: center; border: 1px dashed #33414e; border-radius: 5px; }
+
+.hierarchy-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px;
+  padding: 0 7px 6px;
+}
+
+.hierarchy-filter-bar select,
+.hierarchy-filter-bar button,
+.hierarchy-filter-bar summary {
+  min-height: 25px;
+  border: 1px solid #2f3c48;
+  border-radius: 3px;
+  color: #aebdca;
+  background: #121a21;
+}
+
+.hierarchy-filter-bar button.active { color: #e4f3ff; border-color: #347fba; background: #1b476b; }
+.hierarchy-filter-bar details { position: relative; }
+.hierarchy-filter-bar summary { display: grid; place-items: center; padding: 0 7px; list-style: none; cursor: pointer; }
+.hierarchy-selection-sets { position: absolute; z-index: 80; top: 29px; right: 0; display: grid; min-width: 150px; padding: 5px; border: 1px solid #3b4855; border-radius: 4px; background: #18212a; box-shadow: 0 10px 24px #0008; }
+.hierarchy-row-actions { display: inline-flex; align-items: center; gap: 4px; }
+.hierarchy-lock-toggle { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; color: #748493; background: transparent; }
+.prefab-override-badge { min-width: 16px; padding: 1px 4px; border-radius: 8px; color: #d9ecff; background: #21689f; font-size: 9px; text-align: center; }
 
 .asset-registry-details {
   display: grid;

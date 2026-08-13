@@ -11,8 +11,18 @@ class TestResizeObserver {
   unobserve() {}
 }
 
+let nextAnimationFrame: FrameRequestCallback | null = null;
+
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', TestResizeObserver);
+  vi.stubGlobal(
+    'requestAnimationFrame',
+    vi.fn((callback: FrameRequestCallback) => {
+      nextAnimationFrame = callback;
+      return 1;
+    }),
+  );
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
   Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
     configurable: true,
     value: vi.fn(),
@@ -31,12 +41,73 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  nextAnimationFrame = null;
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe('ViewportPanel', () => {
+  it('resizes the native viewport when docking changes its position without changing its size', async () => {
+    let left = 40;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
+      x: left,
+      y: 80,
+      top: 80,
+      left,
+      right: left + 640,
+      bottom: 560,
+      width: 640,
+      height: 480,
+      toJSON: () => ({}),
+    }));
+    const resize = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 640,
+              height: 480,
+              fps: 60,
+              frameTimeMs: 16.6,
+              drawCalls: 1,
+              frameIndex: 1,
+              submitted: true,
+            },
+          }),
+        },
+        viewport: {
+          attach: vi.fn().mockResolvedValue({ succeeded: true }),
+          resize,
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+        },
+      },
+    });
+
+    render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'native' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await waitFor(() => expect(window.arc.viewport.attach).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 40, y: 80, width: 640, height: 480 }),
+    ));
+    left = 260;
+    nextAnimationFrame?.(16);
+
+    await waitFor(() => expect(resize).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 260, y: 80, width: 640, height: 480 }),
+    ));
+  });
+
   it('toggles the adaptive grid through the viewport render options', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     Object.defineProperty(window, 'arc', {
@@ -68,6 +139,7 @@ describe('ViewportPanel', () => {
         viewport: {
           attach: vi.fn().mockResolvedValue({ succeeded: true }),
           resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
           cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
         },
       },
@@ -117,6 +189,7 @@ describe('ViewportPanel', () => {
         viewport: {
           attach,
           resize,
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
           cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
         },
       },
@@ -157,6 +230,7 @@ describe('ViewportPanel', () => {
         viewport: {
           attach: vi.fn().mockResolvedValue({ succeeded: true }),
           resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
           cameraInput,
         },
       },
@@ -176,7 +250,9 @@ describe('ViewportPanel', () => {
     fireEvent.pointerDown(viewport!, { pointerId: 7, button: 0, clientX: 20, clientY: 30, altKey: true });
     fireEvent.pointerMove(viewport!, { pointerId: 7, clientX: 32, clientY: 24, altKey: false });
 
-    await waitFor(() => expect(cameraInput).toHaveBeenCalledWith({ orbitX: 12, orbitY: -6 }));
+    await waitFor(() =>
+      expect(cameraInput).toHaveBeenCalledWith({ viewportId: 'viewport-1', orbitX: 12, orbitY: -6 }),
+    );
     expect(cameraInput).not.toHaveBeenCalledWith(expect.objectContaining({ lookX: expect.any(Number) }));
   });
 });

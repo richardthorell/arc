@@ -25,6 +25,7 @@ export type ArcStartupState = {
 };
 
 export type NativeViewportBounds = {
+  viewportId: string;
   x: number;
   y: number;
   width: number;
@@ -32,6 +33,7 @@ export type NativeViewportBounds = {
 };
 
 export type ViewportCameraInput = {
+  viewportId?: string;
   orbitX?: number;
   orbitY?: number;
   lookX?: number;
@@ -237,6 +239,7 @@ const arcApi = {
   viewport: {
     attach: (bounds: NativeViewportBounds): Promise<unknown> => ipcRenderer.invoke('viewport:attach', bounds),
     resize: (bounds: NativeViewportBounds): Promise<unknown> => ipcRenderer.invoke('viewport:resize', bounds),
+    detach: (viewportId: string): Promise<unknown> => ipcRenderer.invoke('viewport:detach', viewportId),
     cameraInput: (input: ViewportCameraInput): Promise<unknown> => ipcRenderer.invoke('viewport:cameraInput', input),
   },
   nativeWindow: {

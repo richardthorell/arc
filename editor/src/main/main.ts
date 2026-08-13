@@ -90,6 +90,7 @@ type HostLogEvent = {
 };
 
 type NativeViewportBounds = {
+  viewportId: string;
   x: number;
   y: number;
   width: number;
@@ -97,6 +98,7 @@ type NativeViewportBounds = {
 };
 
 type CameraInput = {
+  viewportId?: string;
   orbitX?: number;
   orbitY?: number;
   lookX?: number;
@@ -412,6 +414,7 @@ const scaleViewportBounds = (window: BrowserWindow, bounds: NativeViewportBounds
   const display = screen.getDisplayMatching(window.getBounds());
   const scale = display.scaleFactor || 1;
   return {
+    viewportId: bounds.viewportId,
     x: Math.round(bounds.x * scale),
     y: Math.round(bounds.y * scale),
     width: Math.max(1, Math.round(bounds.width * scale)),
@@ -526,8 +529,34 @@ const createMainWindow = (): void => {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const rendererOrigin = MAIN_WINDOW_VITE_DEV_SERVER_URL
+      ? new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL).origin
+      : 'file://';
+    const requestedOrigin = url.startsWith('file:') ? 'file://' : new URL(url).origin;
+    if (requestedOrigin === rendererOrigin) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 960,
+          height: 720,
+          minWidth: 480,
+          minHeight: 320,
+          backgroundColor: '#1e1e1e',
+          autoHideMenuBar: true,
+          webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false,
+          },
+        },
+      };
+    }
     void shell.openExternal(url);
     return { action: 'deny' };
+  });
+  mainWindow.webContents.on('did-create-window', (child) => {
+    child.setMenuBarVisibility(false);
   });
 
   mainWindow.on('maximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', true));
@@ -971,9 +1000,9 @@ void app.whenReady().then(async () => {
     });
     return { canceled: false, filePath, response };
   });
-  ipcMain.handle('viewport:attach', (_event, bounds: NativeViewportBounds) => {
+  ipcMain.handle('viewport:attach', (event, bounds: NativeViewportBounds) => {
     if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
-    const target = activeWindow();
+    const target = BrowserWindow.fromWebContents(event.sender);
     if (!target) {
       throw new Error('No active editor window');
     }
@@ -983,14 +1012,17 @@ void app.whenReady().then(async () => {
       ...scaled,
     });
   });
-  ipcMain.handle('viewport:resize', (_event, bounds: NativeViewportBounds) => {
+  ipcMain.handle('viewport:resize', (event, bounds: NativeViewportBounds) => {
     if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
-    const target = activeWindow();
+    const target = BrowserWindow.fromWebContents(event.sender);
     if (!target) {
       throw new Error('No active editor window');
     }
     return hostClient?.command('viewport.resize', scaleViewportBounds(target, bounds));
   });
+  ipcMain.handle('viewport:detach', (_event, viewportId: string) =>
+    hostClient?.command('viewport.detach', { viewportId }),
+  );
   ipcMain.handle('viewport:cameraInput', (_event, input: CameraInput) =>
     hostClient?.command('viewport.cameraInput', input),
   );

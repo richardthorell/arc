@@ -11,6 +11,8 @@ import {
   Folder,
   FolderTree,
   Lightbulb,
+  Lock,
+  Unlock,
   Copy,
   Eye,
   EyeOff,
@@ -60,6 +62,7 @@ import { LightingPanel } from '../lighting/LightingPanel';
 import { SearchPanel } from '../search/SearchPanel';
 import { SettingsPanel } from '../settings/SettingsPanel';
 import { VersionControlPanel } from '../versionControl/VersionControlPanel';
+import { ContentBrowserPanel as ContentBrowserV2 } from '../content/ContentBrowserPanel';
 
 import './workbench.css';
 
@@ -72,6 +75,14 @@ export type HostSceneEntity = {
   kind: 'camera' | 'light' | 'environment' | 'mesh' | 'primitive' | 'imported' | 'unknown';
   active: boolean;
   selected: boolean;
+  documentGuid?: string;
+  editorFolder?: string;
+  collection?: string;
+  layer?: string;
+  locked?: boolean;
+  visible?: boolean;
+  pickable?: boolean;
+  prefabOverrideCount?: number;
 };
 
 type HostSceneSnapshot = {
@@ -212,6 +223,14 @@ export const buildSceneTree = (entities: HostSceneEntity[]): SceneEntity[] => {
       name: entity.name,
       kind: sceneKindFromHost(entity.kind),
       active: entity.active,
+      documentGuid: entity.documentGuid,
+      editorFolder: entity.editorFolder,
+      collection: entity.collection,
+      layer: entity.layer,
+      locked: entity.locked,
+      visible: entity.visible ?? true,
+      pickable: entity.pickable ?? true,
+      prefabOverrideCount: entity.prefabOverrideCount ?? 0,
       children: [],
     });
   }
@@ -1245,17 +1264,31 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     );
   };
 
-  const renderCenterPanel = (panel: WorkbenchPanelId) => {
+  const [viewportCount, setViewportCount] = useState<1 | 2 | 3 | 4>(1);
+  const [activeViewportId, setActiveViewportId] = useState('viewport-1');
+
+  const renderCenterPanel = (
+    panel: WorkbenchPanelId,
+    viewportId?: string,
+    onMaximizeToggle?: () => void,
+  ) => {
     if (panel === 'viewport') {
       return (
         <ViewportPanel
+          viewportId={viewportId}
           project={project}
           startupState={startupState}
           onCommand={runCommand}
           onReconnect={reconnectHost}
           gridVisible={viewportGridVisible}
           onGridVisibilityChange={setViewportGridVisible}
-          onFocusChange={setViewportFocused}
+          active={(viewportId ?? 'viewport-1') === activeViewportId}
+          onFocusChange={(focused) => {
+            setViewportFocused(focused);
+            if (focused) setActiveViewportId(viewportId ?? 'viewport-1');
+          }}
+          onMaximizeToggle={onMaximizeToggle}
+          onViewportLayoutChange={setViewportCount}
         />
       );
     }
@@ -1305,7 +1338,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const renderBottomPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'contentBrowser') {
       return (
-        <ContentBrowserPanel
+        <ContentBrowserV2
           project={project}
           cache={assetCache}
           selectedAssetId={selectedAssetId}
@@ -1382,7 +1415,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     }
 
     return (
-      <ContentBrowserPanel
+      <ContentBrowserV2
         project={project}
         cache={assetCache}
         selectedAssetId={selectedAssetId}
@@ -1399,8 +1432,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     );
   };
 
-  const renderWorkspacePanel = (panel: WorkbenchPanelId) => {
-    if ((dockPanelIds.center as readonly WorkbenchPanelId[]).includes(panel)) return renderCenterPanel(panel);
+  const renderWorkspacePanel = (panel: WorkbenchPanelId, instanceId?: string, onMaximizeToggle?: () => void) => {
+    if ((dockPanelIds.center as readonly WorkbenchPanelId[]).includes(panel))
+      return renderCenterPanel(panel, instanceId, onMaximizeToggle);
     if ((dockPanelIds.right as readonly WorkbenchPanelId[]).includes(panel)) return renderRightPanel(panel);
     if ((dockPanelIds.bottom as readonly WorkbenchPanelId[]).includes(panel)) return renderBottomPanel(panel);
     return renderLeftPanel(panel);
@@ -1541,6 +1575,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             renderPanel={renderWorkspacePanel}
             requestedLayout={requestedWorkspaceLayout}
             requestedPanel={requestedWorkspacePanel}
+            requestedViewportCount={viewportCount}
           />
         </section>
       </section>
@@ -1657,6 +1692,22 @@ export function ExplorerPanel({
   const actorCount = allEntities.length;
   const selectedCount = selectedEntityIds.size;
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [kindFilter, setKindFilter] = useState<'all' | SceneEntity['kind']>('all');
+  const [onlyVisible, setOnlyVisible] = useState(false);
+  const [savedSets, setSavedSets] = useState<Record<string, string[]>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('arc.hierarchy.selectionSets') ?? '{}') as Record<string, string[]>;
+    } catch {
+      return {};
+    }
+  });
+  const visibleScene = useMemo(
+    () =>
+      filterSceneTree(filteredScene, kindFilter === 'all' ? '' : kindFilter).filter(
+        (entity) => !onlyVisible || entity.visible !== false,
+      ),
+    [filteredScene, kindFilter, onlyVisible],
+  );
 
   useEffect(() => {
     if (!createMenuOpen) return;
@@ -1743,8 +1794,43 @@ export function ExplorerPanel({
             onChange={(event) => setFilter(event.target.value)}
           />
         </label>
+        <div className="hierarchy-filter-bar">
+          <select
+            aria-label="Hierarchy kind"
+            value={kindFilter}
+            onChange={(event) => setKindFilter(event.target.value as typeof kindFilter)}
+          >
+            <option value="all">All entities</option>
+            <option value="mesh">Meshes</option>
+            <option value="light">Lights</option>
+            <option value="camera">Cameras</option>
+            <option value="environment">Environment</option>
+          </select>
+          <button className={onlyVisible ? 'active' : ''} onClick={() => setOnlyVisible((value) => !value)}>
+            {onlyVisible ? <Eye size={12} /> : <EyeOff size={12} />} Visible
+          </button>
+          <details>
+            <summary>Sets</summary>
+            <div className="hierarchy-selection-sets">
+              <button
+                onClick={() => {
+                  const next = { ...savedSets, Selection: [...selectedEntityIds] };
+                  setSavedSets(next);
+                  localStorage.setItem('arc.hierarchy.selectionSets', JSON.stringify(next));
+                }}
+              >
+                Save Selection
+              </button>
+              {Object.entries(savedSets).map(([name, ids]) => (
+                <button key={name} onClick={() => ids.forEach((id, index) => onSelectEntity(id, index > 0))}>
+                  {name} ({ids.length})
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
         <div className="hierarchy-tree">
-          {filteredScene.map((entity) => (
+          {visibleScene.map((entity) => (
             <SceneTreeItem
               key={entity.guid ?? entity.id}
               entity={entity}
@@ -1878,7 +1964,8 @@ function WorldSettingsPanel({
   );
 }
 
-function ContentBrowserPanel({
+/* Legacy content browser removed: ContentBrowserV2 is the single registry-backed implementation. */
+function _LegacyContentBrowserPanel({
   project,
   cache,
   selectedAssetId,
@@ -1933,7 +2020,7 @@ function ContentBrowserPanel({
       )}
       <div className="asset-grid-foundation">
         {(project?.assets ?? []).map((asset) => (
-          <AssetCard
+          <_LegacyAssetCard
             key={asset.id}
             asset={asset}
             selected={asset.id === selectedAssetId}
@@ -2065,6 +2152,16 @@ function SceneTreeItem({
         selected={selectable && selectedEntityIds.has(entity.id)}
         meta={
           selectable && (
+            <span className="hierarchy-row-actions">
+              {entity.prefabOverrideCount ? (
+                <b className="prefab-override-badge" title={`${entity.prefabOverrideCount} prefab overrides`}>
+                  {entity.prefabOverrideCount}
+                </b>
+              ) : null}
+              {entity.layer && <small>{entity.layer}</small>}
+              <button className="hierarchy-lock-toggle" title={entity.locked ? 'Unlock entity' : 'Lock entity'}>
+                {entity.locked ? <Lock size={11} /> : <Unlock size={11} />}
+              </button>
             <button
               aria-label={entity.active ? 'Disable entity' : 'Enable entity'}
               className="hierarchy-active-toggle"
@@ -2077,6 +2174,7 @@ function SceneTreeItem({
             >
               {entity.active ? <Eye size={12} /> : <EyeOff size={12} />}
             </button>
+            </span>
           )
         }
         onClick={(event) => selectable && onSelectEntity(entity.id, event.ctrlKey || event.metaKey)}
@@ -2173,7 +2271,7 @@ function AssetRow({ asset, selected, onSelect }: { asset: AssetItem; selected: b
   );
 }
 
-function AssetCard({
+function _LegacyAssetCard({
   asset,
   selected,
   thumbnailProvider,

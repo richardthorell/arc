@@ -98,6 +98,7 @@ export type InspectorPrefab = {
   prefabPath: string;
   overrideCount: number;
   sourceMissing: boolean;
+  overrides: Array<{ sourceEntity: string; componentId: string; fieldId: number; kind: string }>;
 };
 
 export type HostComponentSnapshot = {
@@ -262,6 +263,12 @@ const hostSelectedEntitySchema = z.object({
       prefabPath: z.string(),
       overrideCount: z.number().int().nonnegative(),
       sourceMissing: z.boolean(),
+      overrides: z.array(z.object({
+        sourceEntity: z.string(),
+        componentId: z.string(),
+        fieldId: z.number().int().nonnegative(),
+        kind: z.string(),
+      })).default([]),
     })
     .nullable()
     .default(null),
