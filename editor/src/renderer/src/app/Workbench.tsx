@@ -1289,7 +1289,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           onReconnect={reconnectHost}
           gridVisible={viewportGridVisible}
           onGridVisibilityChange={setViewportGridVisible}
-          active={(viewportId ?? 'viewport-1') === activeViewportId}
+          active={!createTerrainOpen && (viewportId ?? 'viewport-1') === activeViewportId}
           onFocusChange={(focused) => {
             setViewportFocused(focused);
             if (focused) setActiveViewportId(viewportId ?? 'viewport-1');

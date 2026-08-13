@@ -1461,20 +1461,26 @@
   width: 64px;
 }
 
+.modal-backdrop {
+  align-items: center;
+  background: rgba(3, 9, 15, 0.72);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 10000;
+}
+
 .terrain-create-dialog {
   background: #121d27;
   border: 1px solid #31485c;
   border-radius: 8px;
   box-shadow: 0 18px 60px #000a;
   color: #dbe8f3;
-  left: 50%;
   max-width: 620px;
   padding: 0;
-  position: fixed;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  position: relative;
   width: min(620px, calc(100vw - 32px));
-  z-index: 10000;
 }
 
 .terrain-create-dialog > header,

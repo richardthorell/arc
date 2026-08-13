@@ -41,4 +41,28 @@ describe('ExplorerPanel', () => {
     expect(onCreateEntity).toHaveBeenCalledWith('cube');
     expect(screen.queryByRole('menu', { name: 'Add entity' })).not.toBeInTheDocument();
   });
+
+  it('routes Terrain through the dedicated authoring workflow', () => {
+    const onCreateEntity = vi.fn();
+    render(
+      <ExplorerPanel
+        project={{ scene: [] } as unknown as ProjectSnapshot}
+        selectedEntityId=""
+        selectedEntityIds={new Set()}
+        onSelectEntity={vi.fn()}
+        onRenameEntity={vi.fn()}
+        onSetEntityActive={vi.fn()}
+        onMoveEntity={vi.fn()}
+        onCreateEntity={onCreateEntity}
+        onDuplicate={vi.fn()}
+        onCreatePrefab={vi.fn()}
+        onInstantiatePrefab={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add entity' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Terrain...' }));
+    expect(onCreateEntity).toHaveBeenCalledWith('terrain');
+  });
 });
