@@ -929,7 +929,7 @@ TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
                             .material = {.index = 2, .generation = 1},
                             .world_bounds = arc::geometric::box3f{arc::geometric::point3f{-1.0f, -1.0f, -1.0f},
                                                                   arc::geometric::point3f{1.0f, 1.0f, 1.0f}},
-                            .object_id = 41});
+                            .object_id = {.index = 41, .generation = 1}});
 
     gpu_scene scene;
     const auto initial = scene.synchronize(packet, 1);
