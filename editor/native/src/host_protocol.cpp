@@ -1303,6 +1303,9 @@ std::string to_json(const host_terrain_snapshot& terrain)
     std::ostringstream stream;
     stream << "{\"enabled\":" << bool_json(terrain.enabled) << ",\"size\":" << terrain.size
            << ",\"resolution\":" << terrain.resolution << ",\"chunkQuads\":" << terrain.chunk_quads
+           << ",\"patchQuads\":" << terrain.patch_quads << ",\"maximumHierarchyDepth\":"
+           << terrain.maximum_hierarchy_depth << ",\"geometricErrorMultiplier\":"
+           << terrain.geometric_error_multiplier
            << ",\"receiveShadows\":" << bool_json(terrain.receive_shadows)
            << ",\"castShadows\":" << bool_json(terrain.cast_shadows) << ",\"shadowLodBias\":" << terrain.shadow_lod_bias
            << ",\"maximumShadowDistance\":" << terrain.maximum_shadow_distance
@@ -2292,6 +2295,9 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             !bool_value(payload, "enabled", command.enabled) ||
             !bool_value(payload, "receiveShadows", command.receive_shadows) ||
             !bool_value(payload, "castShadows", command.cast_shadows) ||
+            !number_value(payload, "patchQuads", command.patch_quads) ||
+            !number_value(payload, "maximumHierarchyDepth", command.maximum_hierarchy_depth) ||
+            !number_value(payload, "geometricErrorMultiplier", command.geometric_error_multiplier) ||
             !number_value(payload, "shadowLodBias", command.shadow_lod_bias) ||
             !number_value(payload, "maximumShadowDistance", command.maximum_shadow_distance))
         {

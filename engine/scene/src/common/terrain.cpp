@@ -1,5 +1,7 @@
 #include <arc/scene/terrain.h>
 
+#include <arc/render/renderer.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -141,7 +143,7 @@ bool terrain_heightfield_valid(const terrain_component& terrain) noexcept
 
 void generate_terrain_heightfield(terrain_component& terrain)
 {
-    terrain.subdivisions = std::clamp<std::uint32_t>(terrain.subdivisions, 1u, 1024u);
+    terrain.subdivisions = std::clamp<std::uint32_t>(terrain.subdivisions, 1u, 4096u);
     terrain.chunk_quads = std::clamp<std::uint32_t>(terrain.chunk_quads, 1u, terrain.subdivisions);
     terrain.size = std::max(terrain.size, 1.0f);
     terrain.height_scale = std::max(terrain.height_scale, 0.0f);
@@ -227,59 +229,6 @@ math::vector3f sample_terrain_normal(const terrain_component& terrain, float loc
     return normal_at(terrain, x, z);
 }
 
-render::mesh_data make_terrain_chunk_mesh(const terrain_component& terrain, std::uint32_t chunk_x,
-                                          std::uint32_t chunk_z)
-{
-    render::mesh_data mesh;
-    if (!terrain_heightfield_valid(terrain)) return mesh;
-    const auto start_x = chunk_x * terrain.chunk_quads;
-    const auto start_z = chunk_z * terrain.chunk_quads;
-    if (start_x >= terrain.subdivisions || start_z >= terrain.subdivisions) return mesh;
-    const auto quads_x = std::min(terrain.chunk_quads, terrain.subdivisions - start_x);
-    const auto quads_z = std::min(terrain.chunk_quads, terrain.subdivisions - start_z);
-    const auto width = quads_x + 1u;
-    const float spacing = terrain.size / terrain.subdivisions;
-    const float half = terrain.size * 0.5f;
-    mesh.name = "Terrain chunk " + std::to_string(chunk_x) + "," + std::to_string(chunk_z);
-    mesh.usage = render::mesh_usage::dynamic_per_frame;
-    mesh.vertices.reserve(static_cast<std::size_t>(width) * (quads_z + 1u));
-    mesh.indices.reserve(static_cast<std::size_t>(quads_x) * quads_z * 6u);
-    for (std::uint32_t z = 0; z <= quads_z; ++z)
-    {
-        for (std::uint32_t x = 0; x <= quads_x; ++x)
-        {
-            const auto sx = start_x + x;
-            const auto sz = start_z + z;
-            const auto normal = normal_at(terrain, sx, sz);
-            const auto weights = terrain.layer_weights[sample_index(terrain, sx, sz)];
-            render::mesh_vertex vertex{};
-            vertex.position[0] = -half + sx * spacing;
-            vertex.position[1] = height_at(terrain, sx, sz);
-            vertex.position[2] = -half + sz * spacing;
-            vertex.normal[0] = normal[0];
-            vertex.normal[1] = normal[1];
-            vertex.normal[2] = normal[2];
-            vertex.texcoord[0] = vertex.position[0];
-            vertex.texcoord[1] = vertex.position[2];
-            for (std::size_t layer = 0; layer < 4; ++layer)
-                vertex.color[layer] = static_cast<float>(weights[layer]) / 255.0f;
-            mesh.vertices.push_back(vertex);
-        }
-    }
-    for (std::uint32_t z = 0; z < quads_z; ++z)
-    {
-        for (std::uint32_t x = 0; x < quads_x; ++x)
-        {
-            const auto a = z * width + x;
-            const auto b = a + 1u;
-            const auto d = a + width;
-            const auto c = d + 1u;
-            mesh.indices.insert(mesh.indices.end(), {a, b, c, a, c, d});
-        }
-    }
-    return mesh;
-}
-
 terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math::vector3f& local_center,
                                          const terrain_brush_settings& settings, float delta_seconds)
 {
@@ -295,7 +244,28 @@ terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math:
         std::min(static_cast<float>(terrain.subdivisions), std::ceil(center_x + radius_samples)));
     const auto max_z = static_cast<std::uint32_t>(
         std::min(static_cast<float>(terrain.subdivisions), std::ceil(center_z + radius_samples)));
-    const auto original_heights = terrain.heights;
+    const auto scratch_min_x = min_x > 0u ? min_x - 1u : 0u;
+    const auto scratch_min_z = min_z > 0u ? min_z - 1u : 0u;
+    const auto scratch_max_x = std::min(max_x + 1u, terrain.subdivisions);
+    const auto scratch_max_z = std::min(max_z + 1u, terrain.subdivisions);
+    const auto scratch_width = scratch_max_x - scratch_min_x + 1u;
+    std::vector<float> original_heights;
+    if (settings.tool == terrain_brush_tool::smooth)
+    {
+        original_heights.reserve(static_cast<std::size_t>(scratch_width) *
+                                 (scratch_max_z - scratch_min_z + 1u));
+        for (std::uint32_t z = scratch_min_z; z <= scratch_max_z; ++z)
+        {
+            const auto begin = terrain.heights.begin() + static_cast<std::ptrdiff_t>(
+                                                          sample_index(terrain, scratch_min_x, z));
+            original_heights.insert(original_heights.end(), begin, begin + scratch_width);
+        }
+    }
+    const auto scratch_height = [&](std::uint32_t x, std::uint32_t z)
+    {
+        return original_heights[static_cast<std::size_t>(z - scratch_min_z) * scratch_width +
+                                (x - scratch_min_x)];
+    };
     bool changed{};
     for (std::uint32_t z = min_z; z <= max_z; ++z)
     {
@@ -326,7 +296,7 @@ terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math:
                             std::clamp<int>(static_cast<int>(x) + ox, 0, terrain.subdivisions));
                         const auto sz = static_cast<std::uint32_t>(
                             std::clamp<int>(static_cast<int>(z) + oz, 0, terrain.subdivisions));
-                        total += original_heights[sample_index(terrain, sx, sz)];
+                        total += scratch_height(sx, sz);
                         ++samples;
                     }
                 terrain.heights[index] = std::lerp(terrain.heights[index], total / samples, saturate(amount * 10.0f));
@@ -355,7 +325,8 @@ terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math:
     {
         ++terrain.content_revision;
         dirty = {min_x > 0 ? min_x - 1u : 0u, min_z > 0 ? min_z - 1u : 0u, std::min(max_x + 1u, terrain.subdivisions),
-                 std::min(max_z + 1u, terrain.subdivisions), true};
+                 std::min(max_z + 1u, terrain.subdivisions), true,
+                 settings.tool != terrain_brush_tool::paint, settings.tool == terrain_brush_tool::paint};
     }
     return dirty;
 }
@@ -391,6 +362,159 @@ terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math
         result.normal = sample_terrain_normal(terrain, result.position[0], result.position[2]);
     }
     return result;
+}
+
+terrain_render_proxy* terrain_render_proxy_cache::find(ecs::entity_guid guid) noexcept
+{
+    const auto found = proxies_.find(guid);
+    return found == proxies_.end() ? nullptr : &found->second;
+}
+
+const terrain_render_proxy* terrain_render_proxy_cache::find(ecs::entity_guid guid) const noexcept
+{
+    const auto found = proxies_.find(guid);
+    return found == proxies_.end() ? nullptr : &found->second;
+}
+
+bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrain_component& terrain,
+                                             render::renderer& renderer, const terrain_dirty_region* dirty_region)
+{
+    if (!guid.valid() || !terrain_heightfield_valid(terrain)) return false;
+    auto& proxy = proxies_[guid];
+    if (!renderer.terrain_alive(proxy.handle))
+    {
+        render::terrain_resource_descriptor descriptor;
+        descriptor.sample_resolution = terrain.subdivisions + 1u;
+        descriptor.width = terrain.size;
+        descriptor.depth = terrain.size;
+        descriptor.heights = terrain.heights;
+        descriptor.weights = terrain.layer_weights;
+        descriptor.material = terrain.material;
+        descriptor.lod = {.patch_quads = terrain.patch_quads,
+                          .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
+                          .geometric_error_multiplier = terrain.geometric_error_multiplier};
+        descriptor.content_revision = terrain.content_revision;
+        descriptor.name = "terrain";
+        proxy.handle = renderer.create_terrain(std::move(descriptor));
+        proxy.synchronized_revision = terrain.content_revision;
+        proxy.material = terrain.material;
+        return proxy.handle.valid();
+    }
+    if (proxy.synchronized_revision == terrain.content_revision && proxy.material == terrain.material) return true;
+    if (!dirty_region || !dirty_region->valid)
+    {
+        if (proxy.synchronized_revision != terrain.content_revision)
+        {
+            arc::diagnostics::warn("scene.terrain",
+                                   "Terrain content revision changed without a dirty region; performing a full "
+                                   "resource resynchronization");
+            (void)renderer.destroy_terrain(proxy.handle);
+            render::terrain_resource_descriptor descriptor;
+            descriptor.sample_resolution = terrain.subdivisions + 1u;
+            descriptor.width = terrain.size;
+            descriptor.depth = terrain.size;
+            descriptor.heights = terrain.heights;
+            descriptor.weights = terrain.layer_weights;
+            descriptor.material = terrain.material;
+            descriptor.lod = {.patch_quads = terrain.patch_quads,
+                              .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
+                              .geometric_error_multiplier = terrain.geometric_error_multiplier};
+            descriptor.content_revision = terrain.content_revision;
+            descriptor.name = "terrain";
+            proxy.handle = renderer.create_terrain(std::move(descriptor));
+            proxy.synchronized_revision = terrain.content_revision;
+            proxy.material = terrain.material;
+            return proxy.handle.valid();
+        }
+        const bool updated = renderer.update_terrain(
+            proxy.handle, terrain.material,
+            {.patch_quads = terrain.patch_quads,
+             .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
+             .geometric_error_multiplier = terrain.geometric_error_multiplier},
+            terrain.content_revision);
+        if (updated)
+        {
+            proxy.synchronized_revision = terrain.content_revision;
+            proxy.material = terrain.material;
+        }
+        return updated;
+    }
+
+    const render::terrain_sample_region region{dirty_region->min_x, dirty_region->min_z, dirty_region->max_x,
+                                               dirty_region->max_z};
+    const auto width = region.width();
+    const auto height = region.height();
+    bool updated = true;
+    if (dirty_region->heights_changed)
+    {
+        render::terrain_height_region_update request{.region = region,
+                                                     .row_stride = width,
+                                                     .content_revision = terrain.content_revision};
+        request.values.reserve(static_cast<std::size_t>(width) * height);
+        for (std::uint32_t z = region.min_z; z <= region.max_z; ++z)
+        {
+            const auto begin = terrain.heights.begin() + static_cast<std::ptrdiff_t>(
+                                                          static_cast<std::size_t>(z) * (terrain.subdivisions + 1u) +
+                                                          region.min_x);
+            request.values.insert(request.values.end(), begin, begin + width);
+        }
+        updated = renderer.update_terrain_heights(proxy.handle, std::move(request));
+    }
+    if (updated && dirty_region->weights_changed)
+    {
+        render::terrain_weight_region_update request{.region = region,
+                                                     .row_stride = width,
+                                                     .content_revision = terrain.content_revision};
+        request.values.reserve(static_cast<std::size_t>(width) * height);
+        for (std::uint32_t z = region.min_z; z <= region.max_z; ++z)
+        {
+            const auto begin = terrain.layer_weights.begin() + static_cast<std::ptrdiff_t>(
+                                                                static_cast<std::size_t>(z) *
+                                                                    (terrain.subdivisions + 1u) +
+                                                                region.min_x);
+            request.values.insert(request.values.end(), begin, begin + width);
+        }
+        updated = renderer.update_terrain_weights(proxy.handle, std::move(request));
+    }
+    if (updated)
+    {
+        proxy.synchronized_revision = terrain.content_revision;
+        proxy.material = terrain.material;
+    }
+    return updated;
+}
+
+bool terrain_render_proxy_cache::erase(ecs::entity_guid guid, render::renderer& renderer)
+{
+    const auto found = proxies_.find(guid);
+    if (found == proxies_.end()) return false;
+    if (renderer.terrain_alive(found->second.handle)) (void)renderer.destroy_terrain(found->second.handle);
+    proxies_.erase(found);
+    return true;
+}
+
+void terrain_render_proxy_cache::release_missing(std::span<const ecs::entity_guid> active, render::renderer& renderer)
+{
+    for (auto found = proxies_.begin(); found != proxies_.end();)
+    {
+        if (std::find(active.begin(), active.end(), found->first) != active.end())
+        {
+            ++found;
+            continue;
+        }
+        if (renderer.terrain_alive(found->second.handle)) (void)renderer.destroy_terrain(found->second.handle);
+        found = proxies_.erase(found);
+    }
+}
+
+void terrain_render_proxy_cache::clear(render::renderer& renderer)
+{
+    for (const auto& [guid, proxy] : proxies_)
+    {
+        (void)guid;
+        if (renderer.terrain_alive(proxy.handle)) (void)renderer.destroy_terrain(proxy.handle);
+    }
+    proxies_.clear();
 }
 
 } // namespace arc::scene

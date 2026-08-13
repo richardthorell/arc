@@ -6,6 +6,7 @@
 #include <arc/render/material.h>
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
+#include <arc/render/terrain.h>
 #include <arc/geometric/box.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
@@ -315,20 +316,38 @@ struct world_environment_data
 };
 
 /**
- * @brief Extracted terrain metadata for editor/render diagnostics.
+ * @brief Executable terrain submission emitted once per terrain entity.
  */
 struct terrain_render_data
 {
+    terrain_handle terrain{};
     render_object_id object_id{};
-    math::vector3f position{};
-    float size{1.0f};
-    std::uint32_t subdivisions{};
-    float height_scale{};
+    material_handle material{};
+    math::matrix4f model{math::identity<float, 4>()};
+    math::matrix4f previous_model{math::identity<float, 4>()};
+    geometric::box3f world_bounds{};
+    std::uint32_t render_layer_mask{1u};
+    bool selected{};
     bool receive_shadows{true};
     bool cast_shadows{true};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
     std::string label;
+};
+
+/** @brief Terrain patches selected for this camera after scene extraction. */
+struct terrain_patch_render_data
+{
+    terrain_handle terrain{};
+    std::uint32_t terrain_index{};
+    std::uint32_t hierarchy_node{};
+    std::uint32_t sample_min_x{};
+    std::uint32_t sample_min_z{};
+    std::uint32_t sample_max_x{};
+    std::uint32_t sample_max_z{};
+    std::uint32_t lod{};
+    std::uint8_t stitch_mask{};
+    float projected_error{};
 };
 
 /**
@@ -478,6 +497,8 @@ struct render_world_packet
     std::vector<baked_lighting_data> baked_lighting;
     world_environment_data environment;
     std::vector<terrain_render_data> terrains;
+    std::vector<terrain_patch_render_data> visible_terrain_patches;
+    terrain_selection_statistics terrain_statistics{};
     std::vector<water_render_data> waters;
     std::vector<vegetation_render_data> vegetation;
     std::vector<decal_render_data> decals;

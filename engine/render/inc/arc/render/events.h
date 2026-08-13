@@ -7,6 +7,7 @@
 #include <arc/render/lighting_scene.h>
 #include <arc/render/shadow.h>
 #include <arc/render/virtual_mesh.h>
+#include <arc/render/terrain.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
 #include <arc/geometric/box.h>
@@ -36,6 +37,10 @@ enum class render_event_type : std::uint8_t
     mesh_destroy,
     virtual_mesh_upload,
     virtual_mesh_destroy,
+    terrain_upload,
+    terrain_height_update,
+    terrain_weight_update,
+    terrain_destroy,
     lighting_geometry_upload,
     lighting_geometry_destroy,
     texture_upload,
@@ -171,6 +176,34 @@ struct virtual_mesh_upload_event
 struct virtual_mesh_destroy_event
 {
     virtual_mesh_handle handle{};
+};
+
+/** @brief Upload or fully replace a renderer-owned terrain resource. */
+struct terrain_upload_event
+{
+    terrain_handle handle{};
+    std::shared_ptr<const terrain_resource_descriptor> terrain;
+    std::string label;
+};
+
+/** @brief Upload a rectangular terrain height region. */
+struct terrain_height_update_event
+{
+    terrain_handle handle{};
+    std::shared_ptr<const terrain_height_region_update> update;
+};
+
+/** @brief Upload a rectangular terrain weight region. */
+struct terrain_weight_update_event
+{
+    terrain_handle handle{};
+    std::shared_ptr<const terrain_weight_region_update> update;
+};
+
+/** @brief Retire a renderer-owned terrain resource. */
+struct terrain_destroy_event
+{
+    terrain_handle handle{};
 };
 
 /** @brief Publish cooked cards and distance-field pages for one conventional mesh. */
@@ -381,6 +414,7 @@ struct render_world_event
 
 using render_event_payload =
     std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, virtual_mesh_destroy_event,
+                 terrain_upload_event, terrain_height_update_event, terrain_weight_update_event, terrain_destroy_event,
                  lighting_geometry_upload_event, lighting_geometry_destroy_event, texture_upload_event,
                  material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event,
                  draw_mesh_event, directional_light_event, point_light_event, spot_light_event, area_light_event,
@@ -463,6 +497,16 @@ public:
 
     /** @brief Append a virtual-geometry retirement request. */
     void virtual_mesh_destroy(virtual_mesh_handle handle);
+
+    /** @brief Append a complete terrain upload. */
+    void terrain_upload(terrain_handle handle, std::shared_ptr<const terrain_resource_descriptor> terrain,
+                        std::string label = {});
+    /** @brief Append a partial height update. */
+    void terrain_height_update(terrain_handle handle, std::shared_ptr<const terrain_height_region_update> update);
+    /** @brief Append a partial weight update. */
+    void terrain_weight_update(terrain_handle handle, std::shared_ptr<const terrain_weight_region_update> update);
+    /** @brief Append terrain retirement. */
+    void terrain_destroy(terrain_handle handle);
 
     /**
      * @brief Append a texture upload request.

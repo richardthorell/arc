@@ -358,7 +358,7 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                  render::mesh_visualization_mode visualization, render::editor_overlay_mode overlay,
                                  bool shadows_enabled, scene_render_visibility environment_visibility,
                                  float delta_seconds, render::debug_overlay_stream debug_overlay,
-                                 entity preferred_camera)
+                                 entity preferred_camera, terrain_render_proxy_cache* terrain_proxies)
 {
     render_scene_result result{};
     prepare_render_scene_queries(scene);
@@ -499,29 +499,37 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                              mesh_renderer.visible_in_hardware_tracing);
         });
 
+    std::vector<ecs::entity_guid> active_terrain_guids;
     scene.view<transform_component, terrain_component>().each(
         [&](entity value, const transform_component& transform, const terrain_component& terrain)
         {
             if (!environment_visibility.terrain || !entity_is_active(scene, value) || !terrain.enabled) return;
-            world_packet.terrains.push_back({.object_id = render::make_render_object_id(value.index, value.generation),
-                                             .position = transform.position,
-                                             .size = terrain.size,
-                                             .subdivisions = terrain.subdivisions,
-                                             .height_scale = terrain.height_scale,
+            if (!terrain_proxies) return;
+            ecs::entity_guid guid{world_packet.gpu_scene_world_id,
+                                  (static_cast<std::uint64_t>(value.generation) << 32u) | value.index};
+            if (const auto* persistent = scene.try_get<ecs::persistent_id_component>(value)) guid = persistent->value;
+            active_terrain_guids.push_back(guid);
+            if (!terrain_proxies->synchronize(guid, terrain, renderer)) return;
+            const auto* proxy = terrain_proxies->find(guid);
+            const auto* resource = proxy ? renderer.terrain_data_for(proxy->handle) : nullptr;
+            if (!proxy || !resource) return;
+            const auto world = transform.dirty ? local_matrix(transform) : transform.world;
+            world_packet.terrains.push_back({.terrain = proxy->handle,
+                                             .object_id = render::make_render_object_id(value.index, value.generation),
+                                             .material = terrain.material,
+                                             .model = world,
+                                             .previous_model = world,
+                                             .world_bounds = transform_bounds(resource->local_bounds, world),
+                                             .render_layer_mask = render_layer_mask(scene, value),
+                                             .selected = entity_selected(scene, value),
                                              .receive_shadows = terrain.receive_shadows,
                                              .cast_shadows = terrain.cast_shadows,
                                              .shadow_lod_bias = terrain.shadow_lod_bias,
                                              .maximum_shadow_distance = terrain.maximum_shadow_distance,
                                              .label = entity_label(scene, value)});
-            for (const auto mesh : terrain.chunk_meshes)
-            {
-                if (renderer.mesh_alive(mesh))
-                    append_mesh_item(scene, world_packet, result, value, transform, mesh, terrain.material, true, false,
-                                     {}, 0, 1, math::vector4f::one, terrain.cast_shadows, terrain.receive_shadows,
-                                     terrain.shadow_lod_bias, terrain.maximum_shadow_distance);
-            }
             ++result.terrain_count;
         });
+    if (terrain_proxies) terrain_proxies->release_missing(active_terrain_guids, renderer);
 
     scene.view<transform_component, water_component>().each(
         [&](entity value, const transform_component& transform, const water_component& water)

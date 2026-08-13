@@ -400,10 +400,12 @@ public:
         last_profile_.frame_index = packet.frame_index;
         last_profile_.gpu_scene = {};
         last_profile_.temporal = {};
+        last_profile_.terrain = {};
         upload_frame_ = packet.frame_index;
         upload_batch_failed_ = false;
         frame_draws_.clear();
         frame_virtual_draws_.clear();
+        frame_terrain_draws_.clear();
         frame_shadow_draws_.clear();
         frame_virtual_shadow_draws_.clear();
         frame_directional_lights_.clear();
@@ -434,6 +436,23 @@ public:
             else if (const auto* virtual_destroy = std::get_if<virtual_mesh_destroy_event>(&event.payload))
             {
                 retire_virtual_mesh(virtual_destroy->handle);
+                ++shadow_resource_revision_;
+            }
+            else if (const auto* terrain = std::get_if<terrain_upload_event>(&event.payload))
+            {
+                upload_terrain(*terrain);
+                ++shadow_resource_revision_;
+            }
+            else if (const auto* height_update = std::get_if<terrain_height_update_event>(&event.payload))
+            {
+                update_terrain_heights(*height_update);
+                ++shadow_resource_revision_;
+            }
+            else if (const auto* weight_update = std::get_if<terrain_weight_update_event>(&event.payload))
+                update_terrain_weights(*weight_update);
+            else if (const auto* terrain_destroy = std::get_if<terrain_destroy_event>(&event.payload))
+            {
+                retire_terrain(terrain_destroy->handle);
                 ++shadow_resource_revision_;
             }
             else if (const auto* texture = std::get_if<texture_upload_event>(&event.payload))
@@ -1204,6 +1223,42 @@ private:
         std::uint32_t index_count{};
     };
 
+    struct alignas(16) terrain_resource_uniform
+    {
+        std::uint32_t sample_resolution{};
+        std::uint32_t patch_quads{};
+        std::uint32_t reserved[2]{};
+        float width{};
+        float depth{};
+        float padding[2]{};
+    };
+
+    struct gpu_terrain
+    {
+        gpu_buffer heights;
+        gpu_buffer weights;
+        gpu_buffer parameters;
+        VkDescriptorSet descriptor_set{};
+        std::uint32_t sample_resolution{};
+        std::uint32_t patch_quads{32};
+    };
+
+    struct terrain_topology
+    {
+        gpu_buffer indices;
+        std::uint32_t index_count{};
+    };
+
+    struct terrain_patch_draw
+    {
+        terrain_render_data terrain;
+        terrain_patch_render_data patch;
+        math::matrix4f view_projection{math::identity<float, 4>()};
+        math::matrix4f previous_view_projection{math::identity<float, 4>()};
+        render_mode mode{render_mode::shaded};
+        mesh_visualization_mode visualization{mesh_visualization_mode::standard};
+    };
+
     struct virtual_cluster_draw
     {
         draw_mesh_event draw;
@@ -1438,6 +1493,16 @@ private:
             frame_virtual_shadow_draws_.push_back(make_virtual_draw(item, item.selected));
         }
 
+        for (const auto& patch : packet.visible_terrain_patches)
+        {
+            if (patch.terrain_index >= packet.terrains.size()) continue;
+            const auto& terrain = packet.terrains[patch.terrain_index];
+            if (!terrain.terrain.valid()) continue;
+            frame_terrain_draws_.push_back({terrain, patch, packet.camera.view_projection,
+                                            packet.camera.previous_view_projection, packet.mode,
+                                            packet.visualization});
+        }
+
         if (!frame_camera_valid_ ||
             math::length_squared(math::sub(packet.camera.position, frame_camera_.position)) > 100.0f)
             exposure_needs_reset_ = true;
@@ -1456,6 +1521,12 @@ private:
         frame_debug_overlay_triangles_.insert(frame_debug_overlay_triangles_.end(),
                                               packet.debug_overlay.triangles.begin(),
                                               packet.debug_overlay.triangles.end());
+        last_profile_.terrain.hierarchy_nodes += packet.terrain_statistics.hierarchy_nodes;
+        last_profile_.terrain.selected_patches += packet.terrain_statistics.selected_patches;
+        last_profile_.terrain.culled_nodes += packet.terrain_statistics.culled_nodes;
+        last_profile_.terrain.rendered_triangles += packet.terrain_statistics.rendered_triangles;
+        for (std::size_t lod = 0; lod < last_profile_.terrain.patches_per_lod.size(); ++lod)
+            last_profile_.terrain.patches_per_lod[lod] += packet.terrain_statistics.patches_per_lod[lod];
         if (resolved_config_.features.gpu_driven_rendering)
         {
             auto& profile = last_profile_.gpu_scene;
@@ -2447,6 +2518,12 @@ private:
             destroy_buffer(mesh.indices);
         }
         virtual_meshes_.clear();
+        for (auto& [_, terrain] : terrains_)
+            destroy_terrain_buffers(terrain);
+        terrains_.clear();
+        for (auto& [_, topology] : terrain_topologies_)
+            destroy_buffer(topology.indices);
+        terrain_topologies_.clear();
         for (auto& [_, texture] : textures_)
             destroy_texture(texture);
         textures_.clear();
@@ -2457,6 +2534,16 @@ private:
         }
         materials_.clear();
         environments_.clear();
+        if (terrain_descriptor_pool_ != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(device_, terrain_descriptor_pool_, nullptr);
+            terrain_descriptor_pool_ = VK_NULL_HANDLE;
+        }
+        if (terrain_descriptor_set_layout_ != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorSetLayout(device_, terrain_descriptor_set_layout_, nullptr);
+            terrain_descriptor_set_layout_ = VK_NULL_HANDLE;
+        }
     }
 
     std::optional<VkFormat> vulkan_texture_format(texture_format format) const noexcept
@@ -2746,6 +2833,207 @@ private:
                                      for (auto& vertices : retired.dynamic_vertices)
                                          destroy_buffer(vertices);
                                      destroy_buffer(retired.indices);
+                                 });
+    }
+
+    bool ensure_terrain_descriptors()
+    {
+        if (terrain_descriptor_set_layout_ != VK_NULL_HANDLE && terrain_descriptor_pool_ != VK_NULL_HANDLE)
+            return true;
+        std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
+        bindings[0] = {0u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
+        bindings[1] = {1u, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1u, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
+        bindings[2] = {2u, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_VERTEX_BIT, nullptr};
+        VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+        layout.pBindings = bindings.data();
+        if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &terrain_descriptor_set_layout_) != VK_SUCCESS)
+            return false;
+
+        constexpr std::uint32_t capacity = 2048u;
+        const std::array<VkDescriptorPoolSize, 2> sizes{{{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, capacity * 2u},
+                                                         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, capacity}}};
+        VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool.maxSets = capacity;
+        pool.poolSizeCount = static_cast<std::uint32_t>(sizes.size());
+        pool.pPoolSizes = sizes.data();
+        if (vkCreateDescriptorPool(device_, &pool, nullptr, &terrain_descriptor_pool_) != VK_SUCCESS)
+        {
+            vkDestroyDescriptorSetLayout(device_, terrain_descriptor_set_layout_, nullptr);
+            terrain_descriptor_set_layout_ = VK_NULL_HANDLE;
+            return false;
+        }
+        return true;
+    }
+
+    bool allocate_terrain_descriptor(gpu_terrain& terrain)
+    {
+        if (!ensure_terrain_descriptors()) return false;
+        VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocate.descriptorPool = terrain_descriptor_pool_;
+        allocate.descriptorSetCount = 1u;
+        allocate.pSetLayouts = &terrain_descriptor_set_layout_;
+        if (vkAllocateDescriptorSets(device_, &allocate, &terrain.descriptor_set) != VK_SUCCESS) return false;
+        const VkDescriptorBufferInfo heights{terrain.heights.buffer, 0u, VK_WHOLE_SIZE};
+        const VkDescriptorBufferInfo weights{terrain.weights.buffer, 0u, VK_WHOLE_SIZE};
+        const VkDescriptorBufferInfo parameters{terrain.parameters.buffer, 0u, sizeof(terrain_resource_uniform)};
+        std::array<VkWriteDescriptorSet, 3> writes{};
+        const std::array<const VkDescriptorBufferInfo*, 3> infos{&heights, &weights, &parameters};
+        const std::array<VkDescriptorType, 3> types{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                    VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                    VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER};
+        for (std::size_t index = 0; index < writes.size(); ++index)
+        {
+            writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            writes[index].dstSet = terrain.descriptor_set;
+            writes[index].dstBinding = static_cast<std::uint32_t>(index);
+            writes[index].descriptorCount = 1u;
+            writes[index].descriptorType = types[index];
+            writes[index].pBufferInfo = infos[index];
+        }
+        vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+        return true;
+    }
+
+    void destroy_terrain_buffers(gpu_terrain& terrain) noexcept
+    {
+        destroy_buffer(terrain.heights);
+        destroy_buffer(terrain.weights);
+        destroy_buffer(terrain.parameters);
+    }
+
+    void upload_terrain(const terrain_upload_event& event)
+    {
+        if (!event.terrain || event.terrain->heights.empty() || event.terrain->weights.empty()) return;
+        gpu_terrain terrain;
+        terrain.sample_resolution = event.terrain->sample_resolution;
+        terrain.patch_quads = event.terrain->lod.patch_quads;
+        const terrain_resource_uniform parameters{event.terrain->sample_resolution,
+                                                   event.terrain->lod.patch_quads,
+                                                   {},
+                                                   event.terrain->width,
+                                                   event.terrain->depth,
+                                                   {}};
+        const auto height_bytes = buffer_size(event.terrain->heights.size(), sizeof(float));
+        const auto weight_bytes = buffer_size(event.terrain->weights.size(), sizeof(event.terrain->weights[0]));
+        if (!ensure_terrain_topologies(terrain.patch_quads) ||
+            !upload_buffer(event.terrain->heights.data(), height_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           terrain.heights) ||
+            !upload_buffer(event.terrain->weights.data(), weight_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           terrain.weights) ||
+            !upload_buffer(&parameters, sizeof(parameters), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, terrain.parameters) ||
+            !allocate_terrain_descriptor(terrain))
+        {
+            destroy_terrain_buffers(terrain);
+            arc::diagnostics::error("render.vulkan", "Failed to upload terrain '" + event.label + "'");
+            return;
+        }
+        const auto key = resource_key(event.handle);
+        if (auto found = terrains_.find(key); found != terrains_.end())
+        {
+            auto replaced = std::move(found->second);
+            const auto descriptor = replaced.descriptor_set;
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, replaced, descriptor]() mutable
+                                     {
+                                         destroy_terrain_buffers(replaced);
+                                         if (descriptor != VK_NULL_HANDLE && terrain_descriptor_pool_ != VK_NULL_HANDLE)
+                                             vkFreeDescriptorSets(device_, terrain_descriptor_pool_, 1u, &descriptor);
+                                     });
+        }
+        terrains_[key] = std::move(terrain);
+        last_profile_.terrain.height_bytes += static_cast<std::uint64_t>(height_bytes);
+        last_profile_.terrain.weight_bytes += static_cast<std::uint64_t>(weight_bytes);
+        last_profile_.terrain.uploaded_height_bytes += static_cast<std::uint64_t>(height_bytes);
+        last_profile_.terrain.uploaded_weight_bytes += static_cast<std::uint64_t>(weight_bytes);
+    }
+
+    bool ensure_terrain_topologies(std::uint32_t patch_quads)
+    {
+        for (std::uint8_t mask = 0u; mask < 16u; ++mask)
+        {
+            const auto key = (patch_quads << 8u) | mask;
+            if (terrain_topologies_.contains(key)) continue;
+            const auto indices = make_terrain_patch_indices(patch_quads, mask);
+            terrain_topology topology;
+            if (indices.empty() ||
+                !upload_buffer(indices.data(), buffer_size(indices.size(), sizeof(std::uint32_t)),
+                               VK_BUFFER_USAGE_INDEX_BUFFER_BIT, topology.indices))
+                return false;
+            topology.index_count = static_cast<std::uint32_t>(indices.size());
+            terrain_topologies_.emplace(key, std::move(topology));
+        }
+        return true;
+    }
+
+    template <typename T>
+    bool update_terrain_rows(VkBuffer destination, std::uint32_t destination_resolution,
+                             const terrain_sample_region& region, std::uint32_t row_stride,
+                             const std::vector<T>& values)
+    {
+        if (destination == VK_NULL_HANDLE || row_stride < region.width() ||
+            values.size() < static_cast<std::size_t>(row_stride) * region.height())
+            return false;
+        const auto byte_size = buffer_size(values.size(), sizeof(T));
+        const auto staging = reserve_upload(byte_size, alignof(T));
+        if (!staging) return false;
+        std::memcpy(staging.bytes.data(), values.data(), static_cast<std::size_t>(byte_size));
+        vmaFlushAllocation(allocator_, upload_staging_.allocation, static_cast<VkDeviceSize>(staging.offset), byte_size);
+        std::vector<VkBufferCopy> copies(region.height());
+        for (std::uint32_t row = 0; row < region.height(); ++row)
+            copies[row] = {.srcOffset = static_cast<VkDeviceSize>(staging.offset) +
+                                       static_cast<VkDeviceSize>(row) * row_stride * sizeof(T),
+                           .dstOffset = (static_cast<VkDeviceSize>(region.min_z + row) * destination_resolution +
+                                         region.min_x) * sizeof(T),
+                           .size = static_cast<VkDeviceSize>(region.width()) * sizeof(T)};
+        vkCmdCopyBuffer(upload_command_buffer_, upload_staging_.buffer, destination,
+                        static_cast<std::uint32_t>(copies.size()), copies.data());
+        upload_batch_has_work_ = true;
+        return true;
+    }
+
+    void update_terrain_heights(const terrain_height_update_event& event)
+    {
+        if (!event.update) return;
+        const auto found = terrains_.find(resource_key(event.handle));
+        if (found == terrains_.end()) return;
+        if (!update_terrain_rows(found->second.heights.buffer, found->second.sample_resolution, event.update->region,
+                                 event.update->row_stride, event.update->values))
+            arc::diagnostics::warn("render.vulkan", "Failed to upload a terrain height region");
+        else
+            last_profile_.terrain.uploaded_height_bytes +=
+                static_cast<std::uint64_t>(event.update->region.width()) * event.update->region.height() *
+                sizeof(float);
+    }
+
+    void update_terrain_weights(const terrain_weight_update_event& event)
+    {
+        if (!event.update) return;
+        const auto found = terrains_.find(resource_key(event.handle));
+        if (found == terrains_.end()) return;
+        if (!update_terrain_rows(found->second.weights.buffer, found->second.sample_resolution, event.update->region,
+                                 event.update->row_stride, event.update->values))
+            arc::diagnostics::warn("render.vulkan", "Failed to upload a terrain weight region");
+        else
+            last_profile_.terrain.uploaded_weight_bytes +=
+                static_cast<std::uint64_t>(event.update->region.width()) * event.update->region.height() *
+                sizeof(event.update->values[0]);
+    }
+
+    void retire_terrain(terrain_handle handle)
+    {
+        const auto found = terrains_.find(resource_key(handle));
+        if (found == terrains_.end()) return;
+        auto retired = std::move(found->second);
+        terrains_.erase(found);
+        const auto descriptor = retired.descriptor_set;
+        deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                 [this, retired, descriptor]() mutable
+                                 {
+                                     destroy_terrain_buffers(retired);
+                                     if (descriptor != VK_NULL_HANDLE && terrain_descriptor_pool_ != VK_NULL_HANDLE)
+                                         vkFreeDescriptorSets(device_, terrain_descriptor_pool_, 1u, &descriptor);
                                  });
     }
 
@@ -3562,6 +3850,64 @@ private:
         return constants;
     }
 
+    draw_mesh_event terrain_mesh_draw(const terrain_patch_draw& draw) const
+    {
+        return {.material = draw.terrain.material,
+                .model = draw.terrain.model,
+                .previous_model = draw.terrain.previous_model,
+                .view_projection = draw.view_projection,
+                .previous_view_projection = draw.previous_view_projection,
+                .world_bounds = draw.terrain.world_bounds,
+                .mode = draw.mode,
+                .visualization = draw.visualization,
+                .object_id = draw.terrain.object_id,
+                .selected = draw.terrain.selected,
+                .casts_shadows = draw.terrain.cast_shadows,
+                .receives_shadows = draw.terrain.receive_shadows,
+                .shadow_lod_bias = draw.terrain.shadow_lod_bias,
+                .maximum_shadow_distance = draw.terrain.maximum_shadow_distance,
+                .label = draw.terrain.label};
+    }
+
+    void draw_terrain_patch(VkCommandBuffer command_buffer, const terrain_patch_draw& draw, VkPipeline pipeline,
+                            bool write_motion)
+    {
+        if (pipeline == VK_NULL_HANDLE || terrain_pipeline_layout_ == VK_NULL_HANDLE) return;
+        const auto terrain = terrains_.find(resource_key(draw.terrain.terrain));
+        if (terrain == terrains_.end()) return;
+        const auto topology_key = (terrain->second.patch_quads << 8u) | draw.patch.stitch_mask;
+        const auto topology = terrain_topologies_.find(topology_key);
+        if (topology == terrain_topologies_.end()) return;
+        auto mesh_draw = terrain_mesh_draw(draw);
+        auto constants = build_mesh_constants(mesh_draw);
+        constants.base_color[0] = static_cast<float>(draw.patch.sample_min_x);
+        constants.base_color[1] = static_cast<float>(draw.patch.sample_min_z);
+        constants.base_color[2] = static_cast<float>(draw.patch.sample_max_x);
+        constants.base_color[3] = static_cast<float>(draw.patch.sample_max_z);
+        if (write_motion)
+        {
+            const auto previous_mvp = math::matmul(draw.previous_view_projection, draw.terrain.previous_model);
+            const auto* values = previous_mvp.data();
+            std::copy(values, values + 4, constants.light_direction_intensity);
+            std::copy(values + 4, values + 7, constants.light_color);
+            constants.camera_position[0] = values[7];
+            std::copy(values + 8, values + 11, constants.camera_position + 1);
+            constants.fog_color_density[0] = values[11];
+            std::copy(values + 12, values + 15, constants.fog_color_density + 1);
+            constants.fog_params[0] = values[15];
+        }
+        const std::array descriptor_sets{material_descriptor_set_for(mesh_draw), terrain->second.descriptor_set};
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, terrain_pipeline_layout_, 0u,
+                                static_cast<std::uint32_t>(descriptor_sets.size()), descriptor_sets.data(), 0u,
+                                nullptr);
+        vkCmdPushConstants(command_buffer, terrain_pipeline_layout_,
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u, sizeof(constants),
+                           &constants);
+        vkCmdBindIndexBuffer(command_buffer, topology->second.indices.buffer, 0u, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(command_buffer, topology->second.index_count, 1u, 0u, 0, 0u);
+    }
+
     VkDescriptorSet material_descriptor_set_for(const draw_mesh_event& draw) const noexcept
     {
         if (const auto material = materials_.find(resource_key(draw.material)); material != materials_.end())
@@ -3674,6 +4020,11 @@ private:
             vkDestroyPipeline(device_, shadow_pipeline_, nullptr);
             shadow_pipeline_ = VK_NULL_HANDLE;
         }
+        if (terrain_shadow_pipeline_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipeline(device_, terrain_shadow_pipeline_, nullptr);
+            terrain_shadow_pipeline_ = VK_NULL_HANDLE;
+        }
         if (shadow_pipeline_layout_ != VK_NULL_HANDLE)
         {
             vkDestroyPipelineLayout(device_, shadow_pipeline_layout_, nullptr);
@@ -3703,6 +4054,11 @@ private:
         {
             vkDestroyPipelineLayout(device_, mesh_pipeline_layout_, nullptr);
             mesh_pipeline_layout_ = VK_NULL_HANDLE;
+        }
+        if (terrain_pipeline_layout_ != VK_NULL_HANDLE)
+        {
+            vkDestroyPipelineLayout(device_, terrain_pipeline_layout_, nullptr);
+            terrain_pipeline_layout_ = VK_NULL_HANDLE;
         }
         if (sky_pipeline_ != VK_NULL_HANDLE)
         {
@@ -4594,7 +4950,7 @@ private:
             }
             return false;
         }
-        if (!ensure_white_texture()) return false;
+        if (!ensure_white_texture() || !ensure_terrain_descriptors()) return false;
 
         VkShaderModule vert =
             create_shader_module(builtin::default_phong_vert_spv, std::size(builtin::default_phong_vert_spv));
@@ -4614,6 +4970,10 @@ private:
         layout.pushConstantRangeCount = 1;
         layout.pPushConstantRanges = &push;
         if (vkCreatePipelineLayout(device_, &layout, nullptr, &mesh_pipeline_layout_) != VK_SUCCESS) return false;
+        const std::array terrain_set_layouts{white_descriptor_set_layout_, terrain_descriptor_set_layout_};
+        layout.setLayoutCount = static_cast<std::uint32_t>(terrain_set_layouts.size());
+        layout.pSetLayouts = terrain_set_layouts.data();
+        if (vkCreatePipelineLayout(device_, &layout, nullptr, &terrain_pipeline_layout_) != VK_SUCCESS) return false;
 
         VkPipelineShaderStageCreateInfo stages[2]{};
         stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -4747,11 +5107,18 @@ private:
 
         if (result == VK_SUCCESS)
         {
+            VkShaderModule terrain_vert = create_shader_module(builtin::terrain_patch_forward_vert_spv,
+                                                                std::size(builtin::terrain_patch_forward_vert_spv));
             VkShaderModule terrain_frag =
                 create_shader_module(builtin::terrain_forward_frag_spv, std::size(builtin::terrain_forward_frag_spv));
-            if (terrain_frag != VK_NULL_HANDLE)
+            if (terrain_vert != VK_NULL_HANDLE && terrain_frag != VK_NULL_HANDLE)
             {
+                stages[0].module = terrain_vert;
                 stages[1].module = terrain_frag;
+                VkPipelineVertexInputStateCreateInfo terrain_vertex_input{
+                    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+                pipeline.pVertexInputState = &terrain_vertex_input;
+                pipeline.layout = terrain_pipeline_layout_;
                 raster.polygonMode = VK_POLYGON_MODE_FILL;
                 depth.depthWriteEnable = VK_TRUE;
                 color_attachment = {};
@@ -4771,6 +5138,7 @@ private:
                 arc::diagnostics::warn("render.vulkan",
                                        "Vulkan terrain shader module creation failed; using the surface fallback");
             }
+            if (terrain_vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_vert, nullptr);
         }
         vkDestroyShaderModule(device_, vert, nullptr);
         vkDestroyShaderModule(device_, frag, nullptr);
@@ -4939,6 +5307,8 @@ private:
 
         VkShaderModule vert = create_shader_module(builtin::gbuffer_vert_spv, std::size(builtin::gbuffer_vert_spv));
         VkShaderModule frag = create_shader_module(builtin::gbuffer_frag_spv, std::size(builtin::gbuffer_frag_spv));
+        VkShaderModule terrain_vert = create_shader_module(builtin::terrain_patch_gbuffer_vert_spv,
+                                                            std::size(builtin::terrain_patch_gbuffer_vert_spv));
         VkShaderModule terrain_frag =
             create_shader_module(builtin::terrain_gbuffer_frag_spv, std::size(builtin::terrain_gbuffer_frag_spv));
         if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
@@ -5047,9 +5417,14 @@ private:
 
         const VkResult result =
             vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &gbuffer_pipeline_);
-        if (result == VK_SUCCESS && terrain_frag != VK_NULL_HANDLE)
+        if (result == VK_SUCCESS && terrain_vert != VK_NULL_HANDLE && terrain_frag != VK_NULL_HANDLE)
         {
+            VkPipelineVertexInputStateCreateInfo terrain_vertex_input{
+                VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+            stages[0].module = terrain_vert;
             stages[1].module = terrain_frag;
+            pipeline.pVertexInputState = &terrain_vertex_input;
+            pipeline.layout = terrain_pipeline_layout_;
             if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr,
                                           &terrain_gbuffer_pipeline_) != VK_SUCCESS)
             {
@@ -5060,6 +5435,7 @@ private:
         }
         vkDestroyShaderModule(device_, vert, nullptr);
         vkDestroyShaderModule(device_, frag, nullptr);
+        if (terrain_vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_vert, nullptr);
         if (terrain_frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_frag, nullptr);
         if (result != VK_SUCCESS)
             arc::diagnostics::warn("render.vulkan",
@@ -6367,12 +6743,14 @@ private:
     bool ensure_shadow_pipeline()
     {
         if (shadow_pipeline_ != VK_NULL_HANDLE) return true;
-        if (max_push_constant_bytes_ < sizeof(mesh_push_constants)) return false;
+        if (max_push_constant_bytes_ < sizeof(mesh_push_constants) || !ensure_mesh_pipeline()) return false;
 
         VkShaderModule vert =
             create_shader_module(builtin::shadow_depth_vert_spv, std::size(builtin::shadow_depth_vert_spv));
         VkShaderModule frag =
             create_shader_module(builtin::shadow_depth_frag_spv, std::size(builtin::shadow_depth_frag_spv));
+        VkShaderModule terrain_vert = create_shader_module(builtin::terrain_patch_shadow_vert_spv,
+                                                            std::size(builtin::terrain_patch_shadow_vert_spv));
         if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
         {
             if (vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vert, nullptr);
@@ -6484,8 +6862,30 @@ private:
 
         const VkResult result =
             vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &shadow_pipeline_);
+        if (result == VK_SUCCESS && terrain_vert != VK_NULL_HANDLE)
+        {
+            VkPipelineShaderStageCreateInfo terrain_stage{};
+            terrain_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            terrain_stage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+            terrain_stage.module = terrain_vert;
+            terrain_stage.pName = "main";
+            VkPipelineVertexInputStateCreateInfo terrain_vertex_input{
+                VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+            pipeline.stageCount = 1u;
+            pipeline.pStages = &terrain_stage;
+            pipeline.pVertexInputState = &terrain_vertex_input;
+            pipeline.layout = terrain_pipeline_layout_;
+            if (vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr,
+                                          &terrain_shadow_pipeline_) != VK_SUCCESS)
+            {
+                terrain_shadow_pipeline_ = VK_NULL_HANDLE;
+                arc::diagnostics::warn("render.vulkan",
+                                       "Vulkan terrain shadow pipeline creation failed; terrain shadows are disabled");
+            }
+        }
         vkDestroyShaderModule(device_, vert, nullptr);
         vkDestroyShaderModule(device_, frag, nullptr);
+        if (terrain_vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, terrain_vert, nullptr);
         if (result != VK_SUCCESS)
         {
             arc::diagnostics::warn("render.vulkan",
@@ -6684,6 +7084,19 @@ private:
                         vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
                         vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
                     }
+                    if (layer_offset == directional_shadow_cascade_count &&
+                        terrain_shadow_pipeline_ != VK_NULL_HANDLE)
+                    {
+                        for (const auto& draw : frame_terrain_draws_)
+                        {
+                            const auto terrain_draw = terrain_mesh_draw(draw);
+                            if (!draw.terrain.cast_shadows || !intersects_cascade(terrain_draw, cascade_matrix))
+                                continue;
+                            auto shadow_draw = draw;
+                            shadow_draw.view_projection = cascade_matrix;
+                            draw_terrain_patch(command_buffer, shadow_draw, terrain_shadow_pipeline_, false);
+                        }
+                    }
                 }
                 cmd_end_rendering(command_buffer);
             }
@@ -6824,6 +7237,17 @@ private:
                     vkCmdBindIndexBuffer(command_buffer, found->second.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
                     vkCmdDrawIndexed(command_buffer, cluster.index_count, 1, cluster.first_index, 0, 0);
                 }
+                if (terrain_shadow_pipeline_ != VK_NULL_HANDLE)
+                {
+                    for (const auto& draw : frame_terrain_draws_)
+                    {
+                        const auto terrain_draw = terrain_mesh_draw(draw);
+                        if (!draw.terrain.cast_shadows || !in_light_range(terrain_draw)) continue;
+                        auto shadow_draw = draw;
+                        shadow_draw.view_projection = packed.light_view_projection;
+                        draw_terrain_patch(command_buffer, shadow_draw, terrain_shadow_pipeline_, false);
+                    }
+                }
                 cmd_end_rendering(command_buffer);
             }
         }
@@ -6936,7 +7360,7 @@ private:
 
     bool render_deferred_scene(VkCommandBuffer command_buffer)
     {
-        if ((frame_draws_.empty() && frame_virtual_draws_.empty()) ||
+        if ((frame_draws_.empty() && frame_virtual_draws_.empty() && frame_terrain_draws_.empty()) ||
             !ensure_deferred_targets(viewport_width_, viewport_height_) || !ensure_shadow_pipeline() ||
             !ensure_gbuffer_pipeline() || !ensure_gbuffer_descriptor_set() || !ensure_deferred_pipeline())
             return false;
@@ -6961,6 +7385,7 @@ private:
                 break;
             }
         }
+        has_opaque_draws = has_opaque_draws || !frame_terrain_draws_.empty();
         if (!has_opaque_draws) return false;
 
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
@@ -7001,7 +7426,11 @@ private:
                 draw_indexed_virtual_cluster(command_buffer, draw, shadow_pipeline_layout_,
                                              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true);
             }
-
+            if (terrain_shadow_pipeline_ != VK_NULL_HANDLE)
+            {
+                for (const auto& draw : frame_terrain_draws_)
+                    draw_terrain_patch(command_buffer, draw, terrain_shadow_pipeline_, false);
+            }
             cmd_end_rendering(command_buffer);
         }
 
@@ -7074,6 +7503,8 @@ private:
                 draw_indexed_virtual_cluster(command_buffer, draw, mesh_pipeline_layout_,
                                              VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
             }
+            for (const auto& draw : frame_terrain_draws_)
+                draw_terrain_patch(command_buffer, draw, terrain_gbuffer_pipeline_, true);
 
             cmd_end_rendering(command_buffer);
         }
@@ -7399,6 +7830,10 @@ private:
                                                      : mesh_pipeline_);
             }
 
+            if (!deferred_rendered)
+                for (const auto& draw : frame_terrain_draws_)
+                    draw_terrain_patch(command_buffer, draw, terrain_pipeline_, false);
+
             std::vector<const draw_mesh_event*> transparent_draws;
             for (const auto& draw : frame_draws_)
             {
@@ -7536,12 +7971,15 @@ private:
     std::vector<std::string> pending_debug_markers_;
     std::unordered_map<std::uint64_t, gpu_mesh> meshes_;
     std::unordered_map<std::uint64_t, gpu_virtual_mesh> virtual_meshes_;
+    std::unordered_map<std::uint64_t, gpu_terrain> terrains_;
+    std::unordered_map<std::uint32_t, terrain_topology> terrain_topologies_;
     std::unordered_map<std::uint64_t, gpu_texture> textures_;
     std::unordered_map<std::uint64_t, gpu_material> materials_;
     std::unordered_map<std::uint64_t, gpu_environment> environments_;
     std::unordered_set<std::uint64_t> texture_semantic_diagnostics_;
     std::vector<draw_mesh_event> frame_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_draws_;
+    std::vector<terrain_patch_draw> frame_terrain_draws_;
     std::vector<draw_mesh_event> frame_shadow_draws_;
     std::vector<virtual_cluster_draw> frame_virtual_shadow_draws_;
     std::vector<directional_light_event> frame_directional_lights_;
@@ -7595,6 +8033,9 @@ private:
     VkImageView white_view_{};
     VkSampler white_sampler_{};
     VkPipelineLayout mesh_pipeline_layout_{};
+    VkDescriptorSetLayout terrain_descriptor_set_layout_{};
+    VkDescriptorPool terrain_descriptor_pool_{};
+    VkPipelineLayout terrain_pipeline_layout_{};
     VkPipeline mesh_pipeline_{};
     VkPipeline mesh_transparent_pipeline_{};
     VkPipeline mesh_wire_pipeline_{};
@@ -7622,6 +8063,7 @@ private:
     VkPipeline sky_pipeline_{};
     VkPipelineLayout shadow_pipeline_layout_{};
     VkPipeline shadow_pipeline_{};
+    VkPipeline terrain_shadow_pipeline_{};
     VkPipelineLayout debug_overlay_pipeline_layout_{};
     VkPipeline debug_overlay_line_pipeline_{};
     VkPipeline debug_overlay_triangle_pipeline_{};

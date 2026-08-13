@@ -955,10 +955,11 @@ void forget_entity(editor_scene_state& scene, ecs::entity entity)
     remove_entity_ref(scene.world_feature_entities, entity);
 }
 
-void rebuild_all_terrain_chunks(editor_scene_state& state, render::renderer& renderer)
+void synchronize_all_terrain_resources(editor_scene_state& state, render::renderer& renderer)
 {
     for (const auto entity : state.scene.entities())
-        if (state.scene.has<scene::terrain_component>(entity)) rebuild_terrain_chunks(state, renderer, entity);
+        if (state.scene.has<scene::terrain_component>(entity))
+            synchronize_terrain_render_resource(state, renderer, entity);
 }
 
 std::string entity_name(const editor_scene_state& state, ecs::entity entity, const char* fallback)
@@ -1669,6 +1670,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->asset_event_cursor = 0;
     // Project opening never synthesizes sample content. Rendering samples are
     // ordinary persisted scenes supplied by the selected project template.
+    state_->scene.terrain_render_proxies.clear(*state_->renderer);
     state_->scene = create_blank_scene(*state_->renderer, command.default_scene.empty());
     if (state_->asset_registry)
     {
@@ -1743,7 +1745,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     .scene_revision = state_->scene_revision,
                     .world_epoch = state_->world_epoch,
                     .frame_revision = state_->viewport_frame_index};
-        rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+        synchronize_all_terrain_resources(state_->scene, *state_->renderer);
         state_->terrain_brush_local_position.reset();
         ++state_->scene_revision;
         push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
@@ -1837,6 +1839,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->asset_files.reset();
                 }
                 state_->project_module.unload();
+                state_->scene.terrain_render_proxies.clear(*state_->renderer);
                 state_->scene = create_blank_scene(*state_->renderer);
                 reset_editor_camera(state_->scene, state_->camera_controller);
                 state_->project = {};
@@ -1985,7 +1988,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!restored.succeeded) return fail(restored.error);
                 if (state_->scene.selected_entity.valid() && !state_->scene.scene.alive(state_->scene.selected_entity))
                     clear_selection(state_->scene.scene, state_->scene.selected_entity);
-                rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+                synchronize_all_terrain_resources(state_->scene, *state_->renderer);
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);
@@ -2084,6 +2087,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_new_scene_command>)
             {
+                state_->scene.terrain_render_proxies.clear(*state_->renderer);
                 state_->scene = create_blank_scene(*state_->renderer);
                 state_->scene.scene_name = payload.name.empty() ? "Untitled" : payload.name;
                 state_->scene.active_scene_path.clear();
@@ -2595,12 +2599,17 @@ host_response arc_host::execute(const host_command_envelope& command)
                 auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
                 if (!terrain) return fail("Entity does not have an editable terrain component", entity);
                 if (!std::isfinite(payload.shadow_lod_bias) || !std::isfinite(payload.maximum_shadow_distance) ||
+                    !std::isfinite(payload.geometric_error_multiplier) ||
                     payload.shadow_lod_bias < -4.0f || payload.shadow_lod_bias > 8.0f ||
-                    payload.maximum_shadow_distance < 0.0f)
-                    return fail("Terrain shadow values are outside supported ranges", entity);
+                    payload.maximum_shadow_distance < 0.0f || payload.geometric_error_multiplier <= 0.0f ||
+                    (payload.patch_quads != 16u && payload.patch_quads != 32u && payload.patch_quads != 64u))
+                    return fail("Terrain LOD or shadow values are outside supported ranges", entity);
                 terrain->enabled = payload.enabled;
                 terrain->receive_shadows = payload.receive_shadows;
                 terrain->cast_shadows = payload.cast_shadows;
+                terrain->patch_quads = payload.patch_quads;
+                terrain->maximum_hierarchy_depth = payload.maximum_hierarchy_depth;
+                terrain->geometric_error_multiplier = payload.geometric_error_multiplier;
                 terrain->shadow_lod_bias = payload.shadow_lod_bias;
                 terrain->maximum_shadow_distance = payload.maximum_shadow_distance;
                 ++terrain->content_revision;
@@ -2709,7 +2718,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->terrain_brush.flatten_height = hit.position[1];
                 }
                 const auto dirty = scene::apply_terrain_brush(*terrain, hit.position, state_->terrain_brush);
-                if (dirty.valid && !rebuild_terrain_chunks(state_->scene, *state_->renderer, entity, &dirty))
+                if (dirty.valid && !synchronize_terrain_render_resource(state_->scene, *state_->renderer, entity, &dirty))
                     return fail("Terrain runtime chunks could not be updated", entity);
                 return success("{\"hit\":true,\"revision\":" + std::to_string(terrain->content_revision) + '}');
             }
@@ -3181,10 +3190,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);
                 if (const auto& changed = state_->history.last_terrain_change(); changed)
-                    rebuild_terrain_chunks(state_->scene, *state_->renderer,
+                    synchronize_terrain_render_resource(state_->scene, *state_->renderer,
                                            find_entity_by_guid(state_->scene, changed->entity), &changed->region);
                 else
-                    rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+                    synchronize_all_terrain_resources(state_->scene, *state_->renderer);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Undo completed",
                            state_->scene.selected_entity);
                 return success();
@@ -3196,10 +3205,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
                     state_->camera_controller.synchronize_from(*camera_transform);
                 if (const auto& changed = state_->history.last_terrain_change(); changed)
-                    rebuild_terrain_chunks(state_->scene, *state_->renderer,
+                    synchronize_terrain_render_resource(state_->scene, *state_->renderer,
                                            find_entity_by_guid(state_->scene, changed->entity), &changed->region);
                 else
-                    rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+                    synchronize_all_terrain_resources(state_->scene, *state_->renderer);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Redo completed",
                            state_->scene.selected_entity);
                 return success();
@@ -3223,7 +3232,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             {
                 if (!state_->history.cancel(payload.id, state_->scene))
                     return fail("Could not cancel edit transaction");
-                rebuild_all_terrain_chunks(state_->scene, *state_->renderer);
+                synchronize_all_terrain_resources(state_->scene, *state_->renderer);
                 state_->terrain_brush_local_position.reset();
                 ++state_->scene_revision;
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
@@ -3330,7 +3339,11 @@ host_response arc_host::execute(const host_command_envelope& command)
         if (command.edit)
             state_->history.cancel(command.edit->id, state_->scene);
         else if (before)
+        {
+            state_->scene.terrain_render_proxies.clear(*state_->renderer);
             state_->scene = std::move(*before);
+            synchronize_all_terrain_resources(state_->scene, *state_->renderer);
+        }
     }
     else if (authoring && response.succeeded)
     {
@@ -4240,6 +4253,9 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         terrain_snapshot.size = terrain->size;
         terrain_snapshot.resolution = terrain->subdivisions + 1u;
         terrain_snapshot.chunk_quads = terrain->chunk_quads;
+        terrain_snapshot.patch_quads = terrain->patch_quads;
+        terrain_snapshot.maximum_hierarchy_depth = terrain->maximum_hierarchy_depth;
+        terrain_snapshot.geometric_error_multiplier = terrain->geometric_error_multiplier;
         terrain_snapshot.receive_shadows = terrain->receive_shadows;
         terrain_snapshot.cast_shadows = terrain->cast_shadows;
         terrain_snapshot.shadow_lod_bias = terrain->shadow_lod_bias;
@@ -4659,7 +4675,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         to_render_mode(state_->viewport_options.render_mode), to_visualization(state_->viewport_options.visualization),
         to_overlay(state_->viewport_options.overlay), state_->viewport_options.shadows,
         to_scene_visibility(state_->viewport_options.environment), delta_seconds, std::move(debug_overlay),
-        state_->scene.camera_entity);
+        state_->scene.camera_entity, &state_->scene.terrain_render_proxies);
 
     const auto submit_result = state_->renderer->render_frame(
         request.frame_index, render::make_scene_draw_graph("viewport", state_->renderer->resolved_config(), true,

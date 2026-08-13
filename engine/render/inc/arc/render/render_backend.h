@@ -6,6 +6,7 @@
 #include <arc/render/lighting_scene.h>
 #include <arc/render/virtual_mesh.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -624,6 +625,21 @@ struct render_temporal_profile
     std::string fallback_reason;
 };
 
+/** @brief Per-frame terrain hierarchy, selection, residency, and upload telemetry. */
+struct render_terrain_profile
+{
+    std::uint32_t hierarchy_nodes{};
+    std::uint32_t selected_patches{};
+    std::uint32_t culled_nodes{};
+    std::uint64_t rendered_triangles{};
+    std::uint64_t height_bytes{};
+    std::uint64_t weight_bytes{};
+    std::uint64_t uploaded_height_bytes{};
+    std::uint64_t uploaded_weight_bytes{};
+    std::array<std::uint32_t, 16> patches_per_lod{};
+    double selection_milliseconds{};
+};
+
 /**
  * @brief Backend frame profile data exposed to tools such as the editor profiler.
  */
@@ -638,6 +654,7 @@ struct render_backend_frame_profile
     render_shadow_profile shadows;
     render_gpu_scene_profile gpu_scene;
     render_virtual_geometry_profile virtual_geometry;
+    render_terrain_profile terrain;
     render_indirect_lighting_profile indirect_lighting;
     render_temporal_profile temporal;
     resolved_render_config configuration;

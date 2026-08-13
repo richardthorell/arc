@@ -81,6 +81,8 @@ using pipeline_handle = resource_handle;
 using material_handle = resource_handle;
 using mesh_handle = resource_handle;
 using environment_handle = resource_handle;
+/** @brief Generational handle for a renderer-owned heightfield terrain resource. */
+using terrain_handle = resource_handle;
 
 /**
  * @brief Stable editor/game object id written into picking and outline buffers.

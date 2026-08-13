@@ -80,6 +80,9 @@ export type InspectorTerrain = {
   size: number;
   resolution: number;
   chunkQuads: number;
+  patchQuads: number;
+  maximumHierarchyDepth: number;
+  geometricErrorMultiplier: number;
   receiveShadows: boolean;
   castShadows: boolean;
   shadowLodBias: number;
@@ -243,6 +246,9 @@ const hostSelectedEntitySchema = z.object({
       size: finiteNumber.positive(),
       resolution: z.number().int().min(3),
       chunkQuads: z.number().int().positive(),
+      patchQuads: z.union([z.literal(16), z.literal(32), z.literal(64)]),
+      maximumHierarchyDepth: z.number().int().nonnegative(),
+      geometricErrorMultiplier: z.number().positive(),
       receiveShadows: z.boolean(),
       castShadows: z.boolean().default(true),
       shadowLodBias: finiteNumber.min(-4).max(8).default(0),

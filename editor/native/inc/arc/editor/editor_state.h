@@ -84,6 +84,7 @@ struct editor_scene_state
     editor_material_library material_library;
     material_editor_state material_editor;
     scene::render_scene_result last_render;
+    scene::terrain_render_proxy_cache terrain_render_proxies;
     std::uint32_t primitive_serial{};
     bool mesh_uploaded{};
     bool focus_imported_scene_requested{};
@@ -196,8 +197,8 @@ ecs::entity add_terrain_to_scene(editor_scene_state& scene, render::renderer& re
 render::material_handle create_default_terrain_material(editor_scene_state& scene, render::renderer& renderer,
                                                         const std::filesystem::path& asset_root);
 
-bool rebuild_terrain_chunks(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
-                            const scene::terrain_dirty_region* dirty_region = nullptr);
+bool synchronize_terrain_render_resource(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                         const scene::terrain_dirty_region* dirty_region = nullptr);
 
 ecs::entity add_water_to_scene(editor_scene_state& scene, render::renderer& renderer);
 

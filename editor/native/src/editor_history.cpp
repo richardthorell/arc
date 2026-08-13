@@ -82,7 +82,9 @@ bool editor_history::undo(editor_scene_state& scene)
         if (!apply_terrain_delta(scene, *value.terrain, false)) return false;
         last_terrain_change_ = editor_terrain_history_change{
             .entity = value.terrain->entity,
-            .region = {value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true}};
+            .region = {value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true,
+                       value.terrain->before_heights != value.terrain->after_heights,
+                       value.terrain->before_weights != value.terrain->after_weights}};
     }
     else
     {
@@ -103,7 +105,9 @@ bool editor_history::redo(editor_scene_state& scene)
         if (!apply_terrain_delta(scene, *value.terrain, true)) return false;
         last_terrain_change_ = editor_terrain_history_change{
             .entity = value.terrain->entity,
-            .region = {value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true}};
+            .region = {value.terrain->min_x, value.terrain->min_z, value.terrain->max_x, value.terrain->max_z, true,
+                       value.terrain->before_heights != value.terrain->after_heights,
+                       value.terrain->before_weights != value.terrain->after_weights}};
     }
     else
     {

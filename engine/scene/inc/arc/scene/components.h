@@ -556,6 +556,9 @@ struct terrain_component
     float size{32.0f};
     std::uint32_t subdivisions{256};
     std::uint32_t chunk_quads{128};
+    std::uint32_t patch_quads{32};
+    std::uint32_t maximum_hierarchy_depth{};
+    float geometric_error_multiplier{1.0f};
     float height_scale{1.45f};
     math::vector3f base_color = math::vector3f::one;
     render::material_handle material{};
@@ -565,7 +568,6 @@ struct terrain_component
     float maximum_shadow_distance{};
     std::vector<float> heights;
     std::vector<std::array<std::uint8_t, 4>> layer_weights;
-    std::vector<render::mesh_handle> chunk_meshes;
     std::uint64_t content_revision{};
 };
 

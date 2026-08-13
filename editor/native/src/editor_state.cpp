@@ -467,71 +467,37 @@ ecs::entity add_terrain_to_scene(editor_scene_state& scene, render::renderer& re
     terrain.height_scale = defaults::default_terrain_height_scale;
     terrain.material = material;
     scene::generate_terrain_heightfield(terrain);
-    const auto chunks_per_axis = (terrain.subdivisions + terrain.chunk_quads - 1u) / terrain.chunk_quads;
-    for (std::uint32_t z = 0; z < chunks_per_axis; ++z)
-        for (std::uint32_t x = 0; x < chunks_per_axis; ++x)
-            terrain.chunk_meshes.push_back(renderer.create_mesh(scene::make_terrain_chunk_mesh(terrain, x, z)));
-    const auto [minimum, maximum] = std::minmax_element(terrain.heights.begin(), terrain.heights.end());
-    const float half = terrain.size * 0.5f;
-    const geometric::box3f local_bounds{
-        geometric::point3f{-half, minimum != terrain.heights.end() ? *minimum : 0.0f, -half},
-        geometric::point3f{half, maximum != terrain.heights.end() ? *maximum : 0.0f, half}};
     scene.scene.emplace<scene::terrain_component>(entity, terrain);
-    scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     scene.scene.emplace<scene::transform_component>(entity);
+    if (!synchronize_terrain_render_resource(scene, renderer, entity)) return {};
     scene.world_feature_entities.push_back(entity);
     return entity;
 }
 
-bool rebuild_terrain_chunks(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
-                            const scene::terrain_dirty_region* dirty_region)
+bool synchronize_terrain_render_resource(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                         const scene::terrain_dirty_region* dirty_region)
 {
     auto* terrain = scene.scene.try_get<scene::terrain_component>(entity);
     if (terrain == nullptr || !scene::terrain_heightfield_valid(*terrain)) return false;
-
-    const auto chunks_per_axis = (terrain->subdivisions + terrain->chunk_quads - 1u) / terrain->chunk_quads;
-    const auto required_chunk_count = static_cast<std::size_t>(chunks_per_axis) * chunks_per_axis;
-    while (terrain->chunk_meshes.size() > required_chunk_count)
+    auto guid = entity_guid_of(scene, entity);
+    if (!guid.valid())
     {
-        renderer.destroy_mesh(terrain->chunk_meshes.back());
-        terrain->chunk_meshes.pop_back();
+        ensure_scene_authoring_metadata(scene);
+        guid = entity_guid_of(scene, entity);
     }
-    terrain->chunk_meshes.resize(required_chunk_count);
-
-    for (std::uint32_t chunk_z = 0; chunk_z < chunks_per_axis; ++chunk_z)
-    {
-        for (std::uint32_t chunk_x = 0; chunk_x < chunks_per_axis; ++chunk_x)
-        {
-            const auto sample_min_x = chunk_x * terrain->chunk_quads;
-            const auto sample_min_z = chunk_z * terrain->chunk_quads;
-            const auto sample_max_x = std::min(sample_min_x + terrain->chunk_quads, terrain->subdivisions);
-            const auto sample_max_z = std::min(sample_min_z + terrain->chunk_quads, terrain->subdivisions);
-            if (dirty_region != nullptr && dirty_region->valid &&
-                (dirty_region->max_x < sample_min_x || dirty_region->min_x > sample_max_x ||
-                 dirty_region->max_z < sample_min_z || dirty_region->min_z > sample_max_z))
-                continue;
-
-            const auto index = static_cast<std::size_t>(chunk_z) * chunks_per_axis + chunk_x;
-            auto mesh = scene::make_terrain_chunk_mesh(*terrain, chunk_x, chunk_z);
-            if (!terrain->chunk_meshes[index].valid() ||
-                !renderer.update_mesh_vertices(terrain->chunk_meshes[index], mesh.vertices))
-            {
-                if (terrain->chunk_meshes[index].valid()) renderer.destroy_mesh(terrain->chunk_meshes[index]);
-                terrain->chunk_meshes[index] = renderer.create_mesh(std::move(mesh));
-            }
-        }
-    }
-
-    const auto [minimum, maximum] = std::minmax_element(terrain->heights.begin(), terrain->heights.end());
-    const float half = terrain->size * 0.5f;
-    const geometric::box3f local_bounds{geometric::point3f{-half, *minimum, -half},
-                                        geometric::point3f{half, *maximum, half}};
+    if (!scene.terrain_render_proxies.synchronize(guid, *terrain, renderer, dirty_region)) return false;
+    const auto* proxy = scene.terrain_render_proxies.find(guid);
+    const auto* resource = proxy ? renderer.terrain_data_for(proxy->handle) : nullptr;
+    if (!resource) return false;
+    const auto local_bounds = resource->local_bounds;
     if (auto* bounds = scene.scene.try_get<scene::bounds_component>(entity))
     {
         bounds->local_bounds = local_bounds;
         bounds->world_bounds = local_bounds;
         bounds->dirty = true;
     }
+    else
+        scene.scene.emplace<scene::bounds_component>(entity, local_bounds, local_bounds, true);
     return true;
 }
 

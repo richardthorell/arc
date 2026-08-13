@@ -435,6 +435,9 @@ struct host_terrain_snapshot
     float size{180.0f};
     std::uint32_t resolution{257u};
     std::uint32_t chunk_quads{128u};
+    std::uint32_t patch_quads{32u};
+    std::uint32_t maximum_hierarchy_depth{};
+    float geometric_error_multiplier{1.0f};
     bool receive_shadows{true};
     bool cast_shadows{true};
     float shadow_lod_bias{};
@@ -960,6 +963,9 @@ struct host_set_terrain_command
     bool enabled{true};
     bool receive_shadows{true};
     bool cast_shadows{true};
+    std::uint32_t patch_quads{32u};
+    std::uint32_t maximum_hierarchy_depth{};
+    float geometric_error_multiplier{1.0f};
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
 };

@@ -942,7 +942,7 @@ TEST_CASE("render scene applies first valid LOD mesh")
     REQUIRE(world_event.packet->items[0].mesh == lod_mesh);
 }
 
-TEST_CASE("terrain heightfields generate deterministic normalized chunk data")
+TEST_CASE("terrain heightfields generate deterministic normalized resource data")
 {
     arc::scene::terrain_component first;
     first.size = 180.0f;
@@ -961,11 +961,12 @@ TEST_CASE("terrain heightfields generate deterministic normalized chunk data")
     for (const auto& weights : first.layer_weights)
         REQUIRE(static_cast<unsigned>(weights[0]) + weights[1] + weights[2] + weights[3] == 255u);
 
-    const auto chunk00 = arc::scene::make_terrain_chunk_mesh(first, 0, 0);
-    const auto chunk10 = arc::scene::make_terrain_chunk_mesh(first, 1, 0);
-    REQUIRE(chunk00.vertices.size() == 129u * 129u);
-    REQUIRE(chunk00.indices.size() == 128u * 128u * 6u);
-    REQUIRE(chunk00.vertices[128].position[1] == Catch::Approx(chunk10.vertices[0].position[1]));
+    const auto hierarchy = arc::render::build_terrain_hierarchy(first.heights, 257u, first.size, first.size,
+                                                                 {.patch_quads = first.patch_quads});
+    REQUIRE(hierarchy.root < hierarchy.nodes.size());
+    REQUIRE(hierarchy.leaf_count == 64u);
+    REQUIRE(hierarchy.nodes[hierarchy.root].samples.max_x == 256u);
+    REQUIRE(hierarchy.nodes[hierarchy.root].samples.max_z == 256u);
 }
 
 TEST_CASE("terrain brushes sculpt smooth flatten and paint normalized layers")

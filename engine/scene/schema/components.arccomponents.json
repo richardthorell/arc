@@ -599,7 +599,7 @@
                            "type":  "terrain_component",
                            "id":  "a7c00000000000010000000000000019",
                            "display":  "Terrain",
-                           "version":  2,
+                           "version":  3,
                            "customSerialization":  true,
                            "description":  "Reflected scene data for the Terrain component."
                        },

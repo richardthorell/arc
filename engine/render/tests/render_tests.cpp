@@ -2330,6 +2330,137 @@ TEST_CASE("lighting geometry cooking is deterministic and produces hole-free pro
     REQUIRE(hit.distance < 3.0f);
 }
 
+TEST_CASE("terrain hierarchy is deterministic monotonic and incrementally updated")
+{
+    constexpr std::uint32_t resolution = 65u;
+    std::vector<float> heights(static_cast<std::size_t>(resolution) * resolution);
+    for (std::uint32_t z = 0; z < resolution; ++z)
+        for (std::uint32_t x = 0; x < resolution; ++x)
+            heights[static_cast<std::size_t>(z) * resolution + x] =
+                std::sin(static_cast<float>(x) * 0.11f) * std::cos(static_cast<float>(z) * 0.07f);
+    const auto first = arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f,
+                                                            {.patch_quads = 16u});
+    auto second = arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f,
+                                                       {.patch_quads = 16u});
+    REQUIRE(first.nodes.size() == second.nodes.size());
+    REQUIRE(first.leaf_count == 16u);
+    REQUIRE(first.nodes[first.root].geometric_error ==
+            Catch::Approx(second.nodes[second.root].geometric_error));
+    for (const auto& node : first.nodes)
+        for (const auto child : node.children)
+            if (child != arc::render::invalid_terrain_node)
+                REQUIRE(node.geometric_error >= first.nodes[child].geometric_error);
+
+    const auto root_before = second.nodes[second.root].maximum_height;
+    heights[32u * resolution + 32u] += 20.0f;
+    REQUIRE(arc::render::update_terrain_hierarchy(second, heights, resolution, 64.0f, 64.0f,
+                                                  {31u, 31u, 33u, 33u}, {.patch_quads = 16u}));
+    REQUIRE(second.nodes[second.root].maximum_height > root_before);
+}
+
+TEST_CASE("terrain stitched topology variants remain valid and deterministic")
+{
+    for (std::uint8_t mask = 0u; mask < 16u; ++mask)
+    {
+        const auto first = arc::render::make_terrain_patch_indices(32u, mask);
+        const auto second = arc::render::make_terrain_patch_indices(32u, mask);
+        REQUIRE(first == second);
+        REQUIRE_FALSE(first.empty());
+        REQUIRE(first.size() % 3u == 0u);
+        for (const auto index : first) REQUIRE(index < 33u * 33u);
+        for (std::size_t triangle = 0; triangle < first.size(); triangle += 3u)
+        {
+            REQUIRE(first[triangle] != first[triangle + 1u]);
+            REQUIRE(first[triangle + 1u] != first[triangle + 2u]);
+            REQUIRE(first[triangle] != first[triangle + 2u]);
+        }
+    }
+}
+
+TEST_CASE("terrain selection responds to projected error and balances neighboring LODs")
+{
+    constexpr std::uint32_t resolution = 129u;
+    std::vector<float> heights(static_cast<std::size_t>(resolution) * resolution);
+    for (std::uint32_t z = 0; z < resolution; ++z)
+        for (std::uint32_t x = 0; x < resolution; ++x)
+            heights[static_cast<std::size_t>(z) * resolution + x] =
+                5.0f * std::sin(static_cast<float>(x) * 0.17f) * std::cos(static_cast<float>(z) * 0.13f);
+    const auto hierarchy = arc::render::build_terrain_hierarchy(heights, resolution, 128.0f, 128.0f,
+                                                                {.patch_quads = 16u});
+    arc::render::render_camera camera;
+    camera.position = {0.0f, 5.0f, 96.0f};
+    camera.render_width = 1920u;
+    camera.render_height = 1080u;
+    const float near_plane = 0.1f;
+    const float far_plane = 500.0f;
+    const float inverse_tangent = 1.0f / std::tan(arc::math::to_radians(60.0f) * 0.5f);
+    camera.projection = {};
+    camera.projection(0, 0) = inverse_tangent / (16.0f / 9.0f);
+    camera.projection(1, 1) = inverse_tangent;
+    camera.projection(2, 2) = far_plane / (near_plane - far_plane);
+    camera.projection(2, 3) = far_plane * near_plane / (near_plane - far_plane);
+    camera.projection(3, 2) = -1.0f;
+    camera.view = arc::math::identity<float, 4>();
+    camera.view(0, 3) = -camera.position[0];
+    camera.view(1, 3) = -camera.position[1];
+    camera.view(2, 3) = -camera.position[2];
+    camera.view_projection = arc::math::matmul(camera.projection, camera.view);
+    arc::render::terrain_selection_scratch scratch;
+    const auto detailed = arc::render::select_terrain_patches({1u, 1u}, hierarchy,
+                                                               arc::math::identity<float, 4>(), camera, 0.25f, 1.0f,
+                                                               &scratch);
+    const auto coarse = arc::render::select_terrain_patches({1u, 1u}, hierarchy,
+                                                             arc::math::identity<float, 4>(), camera, 10000.0f);
+    REQUIRE(detailed.patches.size() > coarse.patches.size());
+    REQUIRE(detailed.statistics.rendered_triangles > coarse.statistics.rendered_triangles);
+    for (std::size_t a = 0; a < detailed.patches.size(); ++a)
+        for (std::size_t b = a + 1u; b < detailed.patches.size(); ++b)
+        {
+            const auto& left = detailed.patches[a];
+            const auto& right = detailed.patches[b];
+            const bool vertical =
+                (left.samples.max_x == right.samples.min_x || right.samples.max_x == left.samples.min_x) &&
+                left.samples.min_z < right.samples.max_z && right.samples.min_z < left.samples.max_z;
+            const bool horizontal =
+                (left.samples.max_z == right.samples.min_z || right.samples.max_z == left.samples.min_z) &&
+                left.samples.min_x < right.samples.max_x && right.samples.min_x < left.samples.max_x;
+            if (vertical || horizontal)
+                REQUIRE(std::abs(static_cast<int>(left.lod) - static_cast<int>(right.lod)) <= 1);
+        }
+}
+
+TEST_CASE("terrain renderer resources preserve weight-only hierarchy and emit partial events")
+{
+    arc::render::renderer renderer;
+    arc::render::terrain_resource_descriptor descriptor;
+    descriptor.sample_resolution = 33u;
+    descriptor.width = 32.0f;
+    descriptor.depth = 32.0f;
+    descriptor.heights.resize(33u * 33u);
+    descriptor.weights.resize(33u * 33u, {255u, 0u, 0u, 0u});
+    descriptor.lod.patch_quads = 16u;
+    const auto terrain = renderer.create_terrain(std::move(descriptor));
+    REQUIRE(terrain.valid());
+    const auto before = renderer.terrain_snapshot(terrain);
+    (void)renderer.frame_queue().commit(1u);
+
+    arc::render::terrain_weight_region_update weights;
+    weights.region = {4u, 5u, 7u, 8u};
+    weights.row_stride = weights.region.width();
+    weights.values.resize(static_cast<std::size_t>(weights.row_stride) * weights.region.height(),
+                          {0u, 255u, 0u, 0u});
+    weights.content_revision = 2u;
+    REQUIRE(renderer.update_terrain_weights(terrain, std::move(weights)));
+    const auto after = renderer.terrain_snapshot(terrain);
+    REQUIRE(after.hierarchy_nodes == before.hierarchy_nodes);
+    REQUIRE(after.uploaded_height_bytes == before.uploaded_height_bytes);
+    REQUIRE(after.uploaded_weight_bytes == before.uploaded_weight_bytes + 4u * 4u * 4u);
+    const auto packet = renderer.frame_queue().commit(2u);
+    REQUIRE(packet.events.size() == 1u);
+    REQUIRE(packet.events.front().type() == arc::render::render_event_type::terrain_weight_update);
+    REQUIRE(renderer.destroy_terrain(terrain));
+}
+
 TEST_CASE("lighting scene emits precise incremental updates and rejects stale world generations")
 {
     using namespace arc::render;

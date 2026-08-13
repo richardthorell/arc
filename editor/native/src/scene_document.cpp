@@ -904,11 +904,14 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
             std::copy(component->layer_weights[sample].begin(), component->layer_weights[sample].end(),
                       weight_bytes.begin() + static_cast<std::ptrdiff_t>(sample * 4u));
         }
-        components["Terrain"] = {{"version", 2},
+        components["Terrain"] = {{"version", 3},
                                  {"enabled", component->enabled},
                                  {"size", component->size},
                                  {"subdivisions", component->subdivisions},
                                  {"chunkQuads", component->chunk_quads},
+                                 {"patchQuads", component->patch_quads},
+                                 {"maximumHierarchyDepth", component->maximum_hierarchy_depth},
+                                 {"geometricErrorMultiplier", component->geometric_error_multiplier},
                                  {"heightScale", component->height_scale},
                                  {"baseColor", vector3(component->base_color)},
                                  {"receiveShadows", component->receive_shadows},
@@ -1193,6 +1196,7 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
         return {.message = "world environment references a missing sun"};
 
     editor_scene_state loaded = state;
+    loaded.terrain_render_proxies.clear(renderer);
     const auto old_editor_transform = state.scene.try_get<scene::transform_component>(state.camera_entity)
                                           ? *state.scene.try_get<scene::transform_component>(state.camera_entity)
                                           : scene::transform_component{};
@@ -1561,6 +1565,9 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 value.size = source.value("size", value.size);
                 value.subdivisions = source.value("subdivisions", value.subdivisions);
                 value.chunk_quads = source.value("chunkQuads", scene::default_terrain_chunk_quads);
+                value.patch_quads = source.value("patchQuads", 32u);
+                value.maximum_hierarchy_depth = source.value("maximumHierarchyDepth", 0u);
+                value.geometric_error_multiplier = source.value("geometricErrorMultiplier", 1.0f);
                 value.height_scale = source.value("heightScale", value.height_scale);
                 value.base_color = read_vector3(source.at("baseColor"));
                 value.receive_shadows = source.value("receiveShadows", true);
@@ -1592,7 +1599,7 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     }
                     value.content_revision = source.value("revision", std::uint64_t{1});
                 }
-                if (!rebuild_terrain_chunks(loaded, renderer, entity))
+                if (!synchronize_terrain_render_resource(loaded, renderer, entity))
                     throw std::runtime_error("terrain runtime chunks could not be rebuilt");
             }
             if (components.contains("Water"))

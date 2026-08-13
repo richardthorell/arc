@@ -11,6 +11,10 @@ render_event_type render_event::type() const noexcept
     if (std::holds_alternative<mesh_destroy_event>(payload)) return render_event_type::mesh_destroy;
     if (std::holds_alternative<virtual_mesh_upload_event>(payload)) return render_event_type::virtual_mesh_upload;
     if (std::holds_alternative<virtual_mesh_destroy_event>(payload)) return render_event_type::virtual_mesh_destroy;
+    if (std::holds_alternative<terrain_upload_event>(payload)) return render_event_type::terrain_upload;
+    if (std::holds_alternative<terrain_height_update_event>(payload)) return render_event_type::terrain_height_update;
+    if (std::holds_alternative<terrain_weight_update_event>(payload)) return render_event_type::terrain_weight_update;
+    if (std::holds_alternative<terrain_destroy_event>(payload)) return render_event_type::terrain_destroy;
     if (std::holds_alternative<lighting_geometry_upload_event>(payload))
         return render_event_type::lighting_geometry_upload;
     if (std::holds_alternative<lighting_geometry_destroy_event>(payload))
@@ -92,6 +96,30 @@ void render_event_writer::virtual_mesh_destroy(virtual_mesh_handle handle)
     render_event event{};
     event.payload = virtual_mesh_destroy_event{.handle = handle};
     buffer_->push(std::move(event));
+}
+
+void render_event_writer::terrain_upload(terrain_handle handle,
+                                         std::shared_ptr<const terrain_resource_descriptor> terrain,
+                                         std::string label)
+{
+    push({.payload = terrain_upload_event{handle, std::move(terrain), std::move(label)}});
+}
+
+void render_event_writer::terrain_height_update(terrain_handle handle,
+                                                std::shared_ptr<const terrain_height_region_update> update)
+{
+    push({.payload = terrain_height_update_event{handle, std::move(update)}});
+}
+
+void render_event_writer::terrain_weight_update(terrain_handle handle,
+                                                std::shared_ptr<const terrain_weight_region_update> update)
+{
+    push({.payload = terrain_weight_update_event{handle, std::move(update)}});
+}
+
+void render_event_writer::terrain_destroy(terrain_handle handle)
+{
+    push({.payload = terrain_destroy_event{handle}});
 }
 
 void render_event_writer::texture_upload(texture_handle handle, std::shared_ptr<const texture_data> texture,

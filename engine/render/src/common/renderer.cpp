@@ -667,6 +667,157 @@ bool renderer::destroy_virtual_mesh(virtual_mesh_handle handle)
     return true;
 }
 
+terrain_handle renderer::create_terrain(terrain_resource_descriptor terrain)
+{
+    if (terrain.sample_resolution < 2u ||
+        terrain.heights.size() != static_cast<std::size_t>(terrain.sample_resolution) * terrain.sample_resolution ||
+        terrain.weights.size() != terrain.heights.size())
+        return {};
+    if (terrain.hierarchy.root >= terrain.hierarchy.nodes.size())
+        terrain.hierarchy = build_terrain_hierarchy(terrain.heights, terrain.sample_resolution, terrain.width,
+                                                    terrain.depth, terrain.lod);
+    if (terrain.hierarchy.root >= terrain.hierarchy.nodes.size()) return {};
+    terrain.local_bounds = terrain.hierarchy.nodes[terrain.hierarchy.root].local_bounds;
+    const terrain_handle handle = terrain_handles_.allocate();
+    const auto key = renderer_resource_key(handle);
+    auto shared = std::make_shared<terrain_resource_descriptor>(std::move(terrain));
+    terrain_data_[key] = shared;
+    terrain_snapshots_[key] = {.handle = handle,
+                               .sample_resolution = shared->sample_resolution,
+                               .hierarchy_nodes = static_cast<std::uint32_t>(shared->hierarchy.nodes.size()),
+                               .hierarchy_leaves = shared->hierarchy.leaf_count,
+                               .local_bounds = shared->local_bounds,
+                               .height_bytes = shared->heights.size() * sizeof(float),
+                               .weight_bytes = shared->weights.size() * sizeof(shared->weights[0]),
+                               .uploaded_height_bytes = shared->heights.size() * sizeof(float),
+                               .uploaded_weight_bytes = shared->weights.size() * sizeof(shared->weights[0]),
+                               .content_revision = shared->content_revision,
+                               .valid = true};
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.terrain_upload(handle, shared, shared->name);
+    frame_queue_.submit(std::move(buffer));
+    return handle;
+}
+
+bool renderer::update_terrain(terrain_handle handle, material_handle material, terrain_lod_settings settings,
+                              std::uint64_t content_revision)
+{
+    if (!terrain_handles_.alive(handle)) return false;
+    const auto key = renderer_resource_key(handle);
+    const auto found = terrain_data_.find(key);
+    if (found == terrain_data_.end()) return false;
+    auto replacement = std::make_shared<terrain_resource_descriptor>(*found->second);
+    replacement->material = material;
+    replacement->lod = settings;
+    replacement->content_revision = content_revision;
+    replacement->hierarchy = build_terrain_hierarchy(replacement->heights, replacement->sample_resolution,
+                                                     replacement->width, replacement->depth, replacement->lod);
+    replacement->local_bounds = replacement->hierarchy.nodes[replacement->hierarchy.root].local_bounds;
+    terrain_data_[key] = replacement;
+    auto& snapshot = terrain_snapshots_[key];
+    snapshot.hierarchy_nodes = static_cast<std::uint32_t>(replacement->hierarchy.nodes.size());
+    snapshot.hierarchy_leaves = replacement->hierarchy.leaf_count;
+    snapshot.local_bounds = replacement->local_bounds;
+    snapshot.content_revision = content_revision;
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.terrain_upload(handle, replacement, replacement->name);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::update_terrain_heights(terrain_handle handle, terrain_height_region_update update)
+{
+    if (!terrain_handles_.alive(handle) || !update.region.valid()) return false;
+    const auto key = renderer_resource_key(handle);
+    const auto found = terrain_data_.find(key);
+    if (found == terrain_data_.end()) return false;
+    auto replacement = std::make_shared<terrain_resource_descriptor>(*found->second);
+    if (update.region.max_x >= replacement->sample_resolution || update.region.max_z >= replacement->sample_resolution ||
+        update.row_stride < update.region.width() ||
+        update.values.size() < static_cast<std::size_t>(update.row_stride) * update.region.height())
+        return false;
+    for (std::uint32_t z = 0; z < update.region.height(); ++z)
+        std::copy_n(update.values.begin() + static_cast<std::ptrdiff_t>(z * update.row_stride), update.region.width(),
+                    replacement->heights.begin() + static_cast<std::ptrdiff_t>(
+                        static_cast<std::size_t>(update.region.min_z + z) * replacement->sample_resolution +
+                        update.region.min_x));
+    update_terrain_hierarchy(replacement->hierarchy, replacement->heights, replacement->sample_resolution,
+                             replacement->width, replacement->depth, update.region, replacement->lod);
+    replacement->local_bounds = replacement->hierarchy.nodes[replacement->hierarchy.root].local_bounds;
+    replacement->content_revision = update.content_revision;
+    terrain_data_[key] = replacement;
+    auto& snapshot = terrain_snapshots_[key];
+    snapshot.local_bounds = replacement->local_bounds;
+    snapshot.content_revision = update.content_revision;
+    snapshot.uploaded_height_bytes += static_cast<std::uint64_t>(update.region.width()) * update.region.height() *
+                                      sizeof(float);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.terrain_height_update(handle, std::make_shared<terrain_height_region_update>(std::move(update)));
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::update_terrain_weights(terrain_handle handle, terrain_weight_region_update update)
+{
+    if (!terrain_handles_.alive(handle) || !update.region.valid()) return false;
+    const auto key = renderer_resource_key(handle);
+    const auto found = terrain_data_.find(key);
+    if (found == terrain_data_.end()) return false;
+    auto replacement = std::make_shared<terrain_resource_descriptor>(*found->second);
+    if (update.region.max_x >= replacement->sample_resolution || update.region.max_z >= replacement->sample_resolution ||
+        update.row_stride < update.region.width() ||
+        update.values.size() < static_cast<std::size_t>(update.row_stride) * update.region.height())
+        return false;
+    for (std::uint32_t z = 0; z < update.region.height(); ++z)
+        std::copy_n(update.values.begin() + static_cast<std::ptrdiff_t>(z * update.row_stride), update.region.width(),
+                    replacement->weights.begin() + static_cast<std::ptrdiff_t>(
+                        static_cast<std::size_t>(update.region.min_z + z) * replacement->sample_resolution +
+                        update.region.min_x));
+    replacement->content_revision = update.content_revision;
+    terrain_data_[key] = replacement;
+    auto& snapshot = terrain_snapshots_[key];
+    snapshot.content_revision = update.content_revision;
+    snapshot.uploaded_weight_bytes += static_cast<std::uint64_t>(update.region.width()) * update.region.height() *
+                                      sizeof(replacement->weights[0]);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.terrain_weight_update(handle, std::make_shared<terrain_weight_region_update>(std::move(update)));
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::destroy_terrain(terrain_handle handle)
+{
+    if (!terrain_handles_.release(handle)) return false;
+    const auto key = renderer_resource_key(handle);
+    terrain_data_.erase(key);
+    terrain_snapshots_.erase(key);
+    terrain_selection_scratch_.erase(key);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.terrain_destroy(handle);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::terrain_alive(terrain_handle handle) const noexcept { return terrain_handles_.alive(handle); }
+
+const terrain_resource_descriptor* renderer::terrain_data_for(terrain_handle handle) const noexcept
+{
+    if (!terrain_handles_.alive(handle)) return nullptr;
+    const auto found = terrain_data_.find(renderer_resource_key(handle));
+    return found == terrain_data_.end() ? nullptr : found->second.get();
+}
+
+terrain_resource_snapshot renderer::terrain_snapshot(terrain_handle handle) const noexcept
+{
+    const auto found = terrain_snapshots_.find(renderer_resource_key(handle));
+    return found == terrain_snapshots_.end() ? terrain_resource_snapshot{} : found->second;
+}
+
 geometry_resource_handle renderer::create_geometry_resource(virtual_mesh_data geometry, std::uint32_t asset_generation)
 {
     geometry_resource_handle result;
@@ -984,6 +1135,44 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             prepared->camera.view_projection = math::matmul(prepared->camera.projection, prepared->camera.view);
             if (!math::try_inverse(prepared->camera.view_projection, prepared->camera.inverse_view_projection))
                 prepared->camera.camera_cut = true;
+        }
+
+        prepared->visible_terrain_patches.clear();
+        prepared->terrain_statistics = {};
+        render_camera terrain_camera = prepared->camera;
+        terrain_camera.render_width = std::max(1u, static_cast<std::uint32_t>(
+                                                       std::round(terrain_camera.output_width * resolved_config_.render_scale)));
+        terrain_camera.render_height = std::max(1u, static_cast<std::uint32_t>(
+                                                        std::round(terrain_camera.output_height * resolved_config_.render_scale)));
+        for (std::uint32_t terrain_index = 0; terrain_index < prepared->terrains.size(); ++terrain_index)
+        {
+            const auto& submission = prepared->terrains[terrain_index];
+            if ((submission.render_layer_mask & 0xffffffffu) == 0u) continue;
+            const auto* resource = terrain_data_for(submission.terrain);
+            if (!resource) continue;
+            auto selection = select_terrain_patches(
+                submission.terrain, resource->hierarchy, submission.model, terrain_camera,
+                resolved_config_.geometry_error_threshold, resource->lod.geometric_error_multiplier,
+                &terrain_selection_scratch_[renderer_resource_key(submission.terrain)]);
+            prepared->terrain_statistics.hierarchy_nodes += selection.statistics.hierarchy_nodes;
+            prepared->terrain_statistics.selected_patches += selection.statistics.selected_patches;
+            prepared->terrain_statistics.culled_nodes += selection.statistics.culled_nodes;
+            prepared->terrain_statistics.rendered_triangles += selection.statistics.rendered_triangles;
+            for (std::size_t lod = 0; lod < prepared->terrain_statistics.patches_per_lod.size(); ++lod)
+                prepared->terrain_statistics.patches_per_lod[lod] += selection.statistics.patches_per_lod[lod];
+            prepared->visible_terrain_patches.reserve(prepared->visible_terrain_patches.size() +
+                                                      selection.patches.size());
+            for (const auto& patch : selection.patches)
+                prepared->visible_terrain_patches.push_back({.terrain = patch.terrain,
+                                                              .terrain_index = terrain_index,
+                                                              .hierarchy_node = patch.node_index,
+                                                              .sample_min_x = patch.samples.min_x,
+                                                              .sample_min_z = patch.samples.min_z,
+                                                              .sample_max_x = patch.samples.max_x,
+                                                              .sample_max_z = patch.samples.max_z,
+                                                              .lod = patch.lod,
+                                                              .stitch_mask = patch.stitch_mask,
+                                                              .projected_error = patch.projected_error});
         }
 
         previous = {.view_projection = prepared->camera.view_projection,
