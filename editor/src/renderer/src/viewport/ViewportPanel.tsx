@@ -456,7 +456,7 @@ export function ViewportPanel({
               <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'lighting' })}>Unlit</button>
               <button onClick={() => void updateRenderOptions({ renderMode: 'wireframe', visualization: 'standard' })}>Wireframe</button>
               <hr />
-              {[['worldNormal','Normals'],['albedo','Base Color'],['gloss','Roughness'],['metalness','Metallic'],['lightingHitDistance','Depth'],['virtualOverdraw','Overdraw'],['lightComplexity','Lighting Complexity'],['shadowMask','Shadows'],['indirectDiffuse','GI'],['reflections','Reflections']].map(([mode,label]) => <button key={mode} onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: mode })}>{label}</button>)}
+              {[['worldNormal','Normals'],['albedo','Base Color'],['gloss','Roughness'],['metalness','Metallic'],['lightingHitDistance','Depth'],['virtualOverdraw','Overdraw'],['lightComplexity','Lighting Complexity'],['shadowMask','Shadows'],['indirectDiffuse','GI'],['reflections','Reflections'],['terrainPatchBoundaries','Terrain Patches'],['terrainLodLevel','Terrain LOD'],['terrainHierarchyNodes','Terrain Hierarchy'],['terrainGeometricError','Terrain Error'],['terrainCulledNodes','Terrain Culling'],['terrainTriangleDensity','Terrain Density'],['terrainBounds','Terrain Bounds']].map(([mode,label]) => <button key={mode} onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: mode })}>{label}</button>)}
             </div>
           </details>
           <details className="arc-viewport-show-menu">

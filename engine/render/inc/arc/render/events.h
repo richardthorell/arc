@@ -105,7 +105,14 @@ enum class mesh_visualization_mode : std::uint8_t
     lighting_temporal_confidence,
     indirect_diffuse,
     reflections,
-    denoiser_variance
+    denoiser_variance,
+    terrain_patch_boundaries,
+    terrain_lod_level,
+    terrain_hierarchy_nodes,
+    terrain_geometric_error,
+    terrain_culled_nodes,
+    terrain_triangle_density,
+    terrain_bounds
 };
 
 /**

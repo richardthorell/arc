@@ -203,10 +203,18 @@ function TerrainRange({
         type="range"
         value={value}
       />
-      <output>
-        {value.toFixed(label === 'Radius' ? 1 : 2)}
-        {suffix}
-      </output>
+      <label className="terrain-range-number">
+        <input
+          aria-label={`${label} numeric value`}
+          max={max}
+          min={min}
+          onChange={(event) => onChange(Number(event.target.value))}
+          step={step}
+          type="number"
+          value={value}
+        />
+        {suffix && <span>{suffix}</span>}
+      </label>
     </label>
   );
 }

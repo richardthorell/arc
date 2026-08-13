@@ -9,6 +9,7 @@
 #include <arc/editor/material_preview.h>
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/scene_document.h>
+#include <arc/editor/terrain_heightmap_io.h>
 #include "project_module_loader.h"
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
@@ -189,7 +190,10 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_set_mobility_command> || std::is_same_v<Command, host_set_camera_command> ||
            std::is_same_v<Command, host_set_light_command> || std::is_same_v<Command, host_set_mesh_renderer_command> ||
            std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_terrain_stroke_command> ||
-           std::is_same_v<Command, host_set_terrain_layer_command> ||
+           std::is_same_v<Command, host_set_terrain_layer_command> || std::is_same_v<Command, host_create_terrain_command> ||
+           std::is_same_v<Command, host_generate_terrain_command> ||
+           std::is_same_v<Command, host_import_terrain_heightmap_command> ||
+           std::is_same_v<Command, host_resample_terrain_command> ||
            std::is_same_v<Command, host_set_entity_material_command> ||
            std::is_same_v<Command, host_component_operation_command> ||
            std::is_same_v<Command, host_patch_project_component_command> ||
@@ -250,6 +254,14 @@ std::string history_label(const host_command_payload& command)
                 return "Assign Terrain Layer";
             else if constexpr (std::is_same_v<type, host_terrain_stroke_command>)
                 return "Terrain Stroke";
+            else if constexpr (std::is_same_v<type, host_create_terrain_command>)
+                return "Create Terrain";
+            else if constexpr (std::is_same_v<type, host_generate_terrain_command>)
+                return "Generate Terrain";
+            else if constexpr (std::is_same_v<type, host_import_terrain_heightmap_command>)
+                return "Import Terrain Heightmap";
+            else if constexpr (std::is_same_v<type, host_resample_terrain_command>)
+                return "Resample Terrain";
             else if constexpr (std::is_same_v<type, host_set_world_environment_command> ||
                                std::is_same_v<type, host_apply_world_environment_preset_command> ||
                                std::is_same_v<type, host_set_environment_hdri_command>)
@@ -857,6 +869,20 @@ render::mesh_visualization_mode to_visualization(host_visualization_mode mode) n
             return render::mesh_visualization_mode::reflections;
         case host_visualization_mode::denoiser_variance:
             return render::mesh_visualization_mode::denoiser_variance;
+        case host_visualization_mode::terrain_patch_boundaries:
+            return render::mesh_visualization_mode::terrain_patch_boundaries;
+        case host_visualization_mode::terrain_lod_level:
+            return render::mesh_visualization_mode::terrain_lod_level;
+        case host_visualization_mode::terrain_hierarchy_nodes:
+            return render::mesh_visualization_mode::terrain_hierarchy_nodes;
+        case host_visualization_mode::terrain_geometric_error:
+            return render::mesh_visualization_mode::terrain_geometric_error;
+        case host_visualization_mode::terrain_culled_nodes:
+            return render::mesh_visualization_mode::terrain_culled_nodes;
+        case host_visualization_mode::terrain_triangle_density:
+            return render::mesh_visualization_mode::terrain_triangle_density;
+        case host_visualization_mode::terrain_bounds:
+            return render::mesh_visualization_mode::terrain_bounds;
         case host_visualization_mode::standard:
             break;
     }
@@ -1586,6 +1612,9 @@ struct arc_host::state
     scene::terrain_brush_settings terrain_brush;
     bool terrain_flatten_height_captured{};
     std::optional<math::vector3f> terrain_brush_local_position;
+    std::optional<math::vector3f> terrain_stroke_previous_position;
+    host_terrain_operation_snapshot terrain_operation;
+    std::uint64_t next_terrain_operation_id{1};
     gizmo_axis gizmo_highlight{gizmo_axis::none};
     std::vector<host_event> events;
     std::uint64_t event_sequence{};
@@ -1747,6 +1776,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     .frame_revision = state_->viewport_frame_index};
         synchronize_all_terrain_resources(state_->scene, *state_->renderer);
         state_->terrain_brush_local_position.reset();
+        state_->terrain_stroke_previous_position.reset();
         ++state_->scene_revision;
         push_event(state_->events, state_->event_sequence, host_event_type::scene_changed,
                    "Edit transaction cancelled");
@@ -2640,6 +2670,181 @@ host_response arc_host::execute(const host_command_envelope& command)
                            "Terrain brush changed", entity, to_json(terrain_tool_snapshot()));
                 return success(to_json(terrain_tool_snapshot()));
             }
+            else if constexpr (std::is_same_v<command_type, host_create_terrain_command>)
+            {
+                scene::terrain_creation_descriptor descriptor;
+                descriptor.size = payload.size;
+                descriptor.minimum_elevation = payload.minimum_elevation;
+                descriptor.maximum_elevation = payload.maximum_elevation;
+                descriptor.sample_resolution = payload.resolution;
+                descriptor.patch_quads = payload.patch_quads;
+                descriptor.procedural_seed = payload.seed;
+                descriptor.source = payload.source == "procedural" ? scene::terrain_initial_source::procedural
+                                                                    : scene::terrain_initial_source::flat;
+                const auto validation = scene::validate_terrain_creation(descriptor);
+                if (!validation.succeeded) return fail(validation.message);
+                const auto estimate = scene::estimate_terrain_memory(descriptor.sample_resolution);
+                constexpr std::uint64_t history_budget = 64ull * 1024ull * 1024ull;
+                if (estimate.history_bytes > history_budget)
+                    return fail("Terrain creation needs " + std::to_string(estimate.history_bytes) +
+                                " bytes of undo storage, exceeding the 64 MiB history budget");
+
+                scene::terrain_component staged;
+                staged.size = descriptor.size;
+                staged.subdivisions = descriptor.sample_resolution - 1u;
+                staged.patch_quads = descriptor.patch_quads;
+                staged.height_scale = descriptor.maximum_elevation - descriptor.minimum_elevation;
+                staged.material = state_->scene.terrain_material;
+                const scene::terrain_generation_descriptor generation{
+                    .generator_id = descriptor.source == scene::terrain_initial_source::procedural
+                                        ? "arc.terrain.domain_warped.v1"
+                                        : "arc.terrain.flat.v1",
+                    .seed = descriptor.procedural_seed,
+                    .minimum_elevation = descriptor.minimum_elevation,
+                    .maximum_elevation = descriptor.maximum_elevation};
+                const auto generated = scene::generate_terrain(staged, generation);
+                if (!generated.succeeded) return fail(generated.message);
+
+                const auto created = state_->scene.scene.create();
+                state_->scene.scene.emplace<scene::name_component>(created, "Terrain");
+                state_->scene.scene.emplace<scene::tag_component>(created, "Environment");
+                state_->scene.scene.emplace<scene::active_component>(created);
+                state_->scene.scene.emplace<scene::transform_component>(created);
+                state_->scene.scene.emplace<scene::selection_component>(created, false);
+                state_->scene.scene.emplace<scene::terrain_component>(created, std::move(staged));
+                ensure_scene_authoring_metadata(state_->scene);
+                if (payload.parent.valid() &&
+                    !scene::reparent(state_->scene.scene, created, to_scene_entity(payload.parent), {},
+                                     scene::reparent_transform_policy::preserve_local))
+                {
+                    state_->scene.scene.destroy(created);
+                    return fail("Terrain parent is missing or invalid");
+                }
+                if (!synchronize_terrain_render_resource(state_->scene, *state_->renderer, created))
+                {
+                    state_->scene.scene.destroy(created);
+                    return fail("Terrain render resource could not be created");
+                }
+                select_entity(state_->scene.scene, created, state_->scene.selected_entity);
+                state_->scene.terrain_entity = created;
+                state_->terrain_operation = {.operation_id = state_->next_terrain_operation_id++,
+                                             .state = host_terrain_operation_state::completed,
+                                             .progress = 1.0f,
+                                             .label = "Create Terrain",
+                                             .entity = to_host_entity(created)};
+                push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
+                           "Terrain creation completed", created);
+                push_event(state_->events, state_->event_sequence, host_event_type::entity_created,
+                           "Created terrain", created);
+                return success("{\"entity\":" + to_json(to_host_entity(created)) +
+                               ",\"operationId\":" + std::to_string(state_->terrain_operation.operation_id) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_generate_terrain_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+                if (!terrain) return fail("Terrain generation requires a terrain entity", entity);
+                const auto estimate = scene::estimate_terrain_memory(terrain->subdivisions + 1u);
+                if (estimate.history_bytes > 64ull * 1024ull * 1024ull)
+                    return fail("Terrain generation exceeds the configured undo budget", entity);
+                auto staged = *terrain;
+                const auto generated = scene::generate_terrain(
+                    staged, {.generator_id = payload.generator_id,
+                             .seed = payload.seed,
+                             .minimum_elevation = payload.minimum_elevation,
+                             .maximum_elevation = payload.maximum_elevation});
+                if (!generated.succeeded) return fail(generated.message, entity);
+                *terrain = std::move(staged);
+                state_->scene.terrain_render_proxies.erase(entity_guid_of(state_->scene, entity), *state_->renderer);
+                if (!synchronize_terrain_render_resource(state_->scene, *state_->renderer, entity))
+                    return fail("Generated terrain could not be published to the renderer", entity);
+                push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
+                           "Terrain generation completed", entity);
+                return success("{\"entity\":" + to_json(payload.entity) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_import_terrain_heightmap_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+                if (!terrain) return fail("Heightmap import requires a terrain entity", entity);
+                const auto estimate = scene::estimate_terrain_memory(payload.target_resolution);
+                if (estimate.history_bytes > 64ull * 1024ull * 1024ull)
+                    return fail("Heightmap import exceeds the configured undo budget", entity);
+                const auto path = payload.path.is_absolute() ? payload.path : state_->project.root / payload.path;
+                scene::terrain_heightmap heightmap;
+                const auto loaded = load_terrain_heightmap(path, payload.raw_width, payload.raw_height, heightmap);
+                if (!loaded.succeeded) return fail(loaded.message, entity);
+                auto staged = *terrain;
+                const auto imported = scene::import_terrain_heightmap(
+                    staged, heightmap,
+                    {.target_resolution = payload.target_resolution,
+                     .physical_size = payload.physical_size,
+                     .minimum_elevation = payload.minimum_elevation,
+                     .maximum_elevation = payload.maximum_elevation,
+                     .flip_x = payload.flip_x,
+                     .flip_z = payload.flip_z,
+                     .normalize_source_range = payload.normalize});
+                if (!imported.succeeded) return fail(imported.message, entity);
+                *terrain = std::move(staged);
+                state_->scene.terrain_render_proxies.erase(entity_guid_of(state_->scene, entity), *state_->renderer);
+                if (!synchronize_terrain_render_resource(state_->scene, *state_->renderer, entity))
+                    return fail("Imported terrain could not be published to the renderer", entity);
+                push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
+                           "Terrain heightmap import completed", entity);
+                return success("{\"entity\":" + to_json(payload.entity) +
+                               ",\"sourceWidth\":" + std::to_string(heightmap.width) +
+                               ",\"sourceHeight\":" + std::to_string(heightmap.height) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_export_terrain_heightmap_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+                if (!terrain) return fail("Heightmap export requires a terrain entity", entity);
+                const auto heightmap = scene::export_terrain_heightmap(
+                    *terrain, {.format = payload.path.extension() == ".png"
+                                             ? scene::terrain_heightmap_format::png16
+                                             : scene::terrain_heightmap_format::raw_r16_le,
+                               .minimum_elevation = payload.minimum_elevation,
+                               .maximum_elevation = payload.maximum_elevation});
+                const auto path = payload.path.is_absolute() ? payload.path : state_->project.root / payload.path;
+                const auto saved = save_terrain_heightmap(path, heightmap);
+                if (!saved.succeeded) return fail(saved.message, entity);
+                push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
+                           "Terrain heightmap export completed", entity);
+                return success("{\"path\":" + to_json_string(path.generic_string()) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_resample_terrain_command>)
+            {
+                const auto entity = to_scene_entity(payload.entity);
+                auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
+                if (!terrain) return fail("Terrain resampling requires a terrain entity", entity);
+                const auto estimate = scene::estimate_terrain_memory(payload.resolution);
+                if (estimate.history_bytes > 64ull * 1024ull * 1024ull)
+                    return fail("Terrain resampling exceeds the configured undo budget", entity);
+                auto staged = *terrain;
+                const auto resampled = scene::resample_terrain(
+                    staged, {.sample_resolution = payload.resolution, .physical_size = payload.physical_size});
+                if (!resampled.succeeded) return fail(resampled.message, entity);
+                *terrain = std::move(staged);
+                state_->scene.terrain_render_proxies.erase(entity_guid_of(state_->scene, entity), *state_->renderer);
+                if (!synchronize_terrain_render_resource(state_->scene, *state_->renderer, entity))
+                    return fail("Resampled terrain could not be published to the renderer", entity);
+                push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
+                           "Terrain resampling completed", entity);
+                return success("{\"entity\":" + to_json(payload.entity) + '}');
+            }
+            else if constexpr (std::is_same_v<command_type, host_cancel_terrain_operation_command>)
+            {
+                if (state_->terrain_operation.operation_id != payload.operation_id ||
+                    (state_->terrain_operation.state != host_terrain_operation_state::queued &&
+                     state_->terrain_operation.state != host_terrain_operation_state::running))
+                    return fail("Terrain operation is not active");
+                state_->terrain_operation.state = host_terrain_operation_state::cancelled;
+                state_->terrain_operation.message = "Operation cancelled before publication";
+                push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
+                           state_->terrain_operation.message);
+                return success("{\"operationId\":" + std::to_string(payload.operation_id) + '}');
+            }
             else if constexpr (std::is_same_v<command_type, host_set_terrain_layer_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
@@ -2697,15 +2902,21 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return fail("Terrain transform cannot be inverted", entity);
                 const auto local_origin = math::transform_point(inverse_terrain, ray.origin);
                 const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
-                const auto hit = scene::raycast_terrain(*terrain, local_origin, local_direction);
+                const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, entity));
+                const auto* resource = proxy ? state_->renderer->terrain_data_for(proxy->handle) : nullptr;
+                const auto hit = resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin,
+                                                                   local_direction)
+                                          : scene::raycast_terrain(*terrain, local_origin, local_direction);
                 if (!hit.hit)
                 {
                     state_->terrain_brush_local_position.reset();
+                    state_->terrain_stroke_previous_position.reset();
                     return success("{\"hit\":false}");
                 }
                 state_->terrain_brush_local_position = hit.position;
                 if (payload.phase == host_edit_phase::commit)
                 {
+                    state_->terrain_stroke_previous_position.reset();
                     push_event(state_->events, state_->event_sequence, host_event_type::terrain_stroke_committed,
                                "Terrain stroke committed", entity,
                                "{\"revision\":" + std::to_string(terrain->content_revision) + '}');
@@ -2716,8 +2927,41 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     state_->terrain_flatten_height_captured = true;
                     state_->terrain_brush.flatten_height = hit.position[1];
+                    state_->terrain_stroke_previous_position = hit.position;
                 }
-                const auto dirty = scene::apply_terrain_brush(*terrain, hit.position, state_->terrain_brush);
+                scene::terrain_dirty_region dirty{};
+                const auto merge_dirty = [&dirty](const scene::terrain_dirty_region& stamp)
+                {
+                    if (!stamp.valid) return;
+                    if (!dirty.valid)
+                    {
+                        dirty = stamp;
+                        return;
+                    }
+                    dirty.min_x = std::min(dirty.min_x, stamp.min_x);
+                    dirty.min_z = std::min(dirty.min_z, stamp.min_z);
+                    dirty.max_x = std::max(dirty.max_x, stamp.max_x);
+                    dirty.max_z = std::max(dirty.max_z, stamp.max_z);
+                    dirty.heights_changed = dirty.heights_changed || stamp.heights_changed;
+                    dirty.weights_changed = dirty.weights_changed || stamp.weights_changed;
+                };
+                const auto previous = state_->terrain_stroke_previous_position.value_or(hit.position);
+                const auto offset = hit.position - previous;
+                const auto distance = math::length(offset);
+                const auto sample_interval = terrain->subdivisions > 0
+                                                 ? terrain->size / static_cast<float>(terrain->subdivisions)
+                                                 : terrain->size;
+                const auto spacing = std::max(0.0001f, std::min(state_->terrain_brush.radius * 0.25f,
+                                                               sample_interval));
+                const auto stamp_count = std::max(1u, static_cast<std::uint32_t>(std::ceil(distance / spacing)));
+                const auto stamp_seconds = payload.elapsed_seconds / static_cast<float>(stamp_count);
+                for (std::uint32_t stamp_index = 1; stamp_index <= stamp_count; ++stamp_index)
+                {
+                    const auto alpha = static_cast<float>(stamp_index) / static_cast<float>(stamp_count);
+                    merge_dirty(scene::apply_terrain_brush(*terrain, previous + offset * alpha,
+                                                           state_->terrain_brush, stamp_seconds));
+                }
+                state_->terrain_stroke_previous_position = hit.position;
                 if (dirty.valid && !synchronize_terrain_render_resource(state_->scene, *state_->renderer, entity, &dirty))
                     return fail("Terrain runtime chunks could not be updated", entity);
                 return success("{\"hit\":true,\"revision\":" + std::to_string(terrain->content_revision) + '}');
@@ -2749,9 +2993,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                     terrain_transform->dirty ? scene::local_matrix(*terrain_transform) : terrain_transform->world;
                 if (!scene::inverse_affine(terrain_world, inverse_terrain))
                     return fail("Terrain transform cannot be inverted", entity);
-                const auto hit =
-                    scene::raycast_terrain(*terrain, math::transform_point(inverse_terrain, ray.origin),
-                                           math::normalize(math::transform_vector(inverse_terrain, ray.direction)));
+                const auto local_origin = math::transform_point(inverse_terrain, ray.origin);
+                const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
+                const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, entity));
+                const auto* resource = proxy ? state_->renderer->terrain_data_for(proxy->handle) : nullptr;
+                const auto hit = resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin,
+                                                                   local_direction)
+                                          : scene::raycast_terrain(*terrain, local_origin, local_direction);
                 if (hit.hit)
                     state_->terrain_brush_local_position = hit.position;
                 else
@@ -4251,6 +4499,12 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         host_terrain_snapshot terrain_snapshot;
         terrain_snapshot.enabled = terrain->enabled;
         terrain_snapshot.size = terrain->size;
+        if (!terrain->heights.empty())
+        {
+            const auto [minimum, maximum] = std::minmax_element(terrain->heights.begin(), terrain->heights.end());
+            terrain_snapshot.minimum_elevation = *minimum;
+            terrain_snapshot.maximum_elevation = *maximum;
+        }
         terrain_snapshot.resolution = terrain->subdivisions + 1u;
         terrain_snapshot.chunk_quads = terrain->chunk_quads;
         terrain_snapshot.patch_quads = terrain->patch_quads;
@@ -4261,6 +4515,26 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         terrain_snapshot.shadow_lod_bias = terrain->shadow_lod_bias;
         terrain_snapshot.maximum_shadow_distance = terrain->maximum_shadow_distance;
         terrain_snapshot.content_revision = terrain->content_revision;
+        terrain_snapshot.cpu_memory_bytes = terrain->heights.size() * sizeof(float) +
+                                            terrain->layer_weights.size() * sizeof(terrain->layer_weights[0]);
+        if (const auto* binding = find_asset_binding(state_->scene, entity_guid_of(state_->scene, selected)))
+        {
+            terrain_snapshot.material_guid = assets::to_string(binding->material.guid);
+            terrain_snapshot.material_path = binding->material.path_hint;
+        }
+        if (const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, selected)))
+        {
+            const auto resource = state_->renderer->terrain_snapshot(proxy->handle);
+            terrain_snapshot.hierarchy_nodes = resource.hierarchy_nodes;
+            terrain_snapshot.source_patches = resource.hierarchy_leaves;
+            terrain_snapshot.gpu_memory_bytes = resource.height_bytes + resource.weight_bytes;
+            terrain_snapshot.uploaded_bytes = resource.uploaded_height_bytes + resource.uploaded_weight_bytes;
+            if (const auto* data = state_->renderer->terrain_data_for(proxy->handle))
+                terrain_snapshot.hierarchy_depth = data->hierarchy.maximum_depth;
+        }
+        const auto& profile = state_->renderer->last_frame_profile().terrain;
+        terrain_snapshot.visible_patches = profile.selected_patches;
+        terrain_snapshot.rendered_triangles = profile.rendered_triangles;
         terrain_snapshot.brush_tool =
             state_->terrain_brush.tool == scene::terrain_brush_tool::smooth    ? host_terrain_brush_tool::smooth
             : state_->terrain_brush.tool == scene::terrain_brush_tool::flatten ? host_terrain_brush_tool::flatten

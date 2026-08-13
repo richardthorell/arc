@@ -11,6 +11,7 @@ import {
   Folder,
   FolderTree,
   Lightbulb,
+  Mountain,
   Lock,
   Unlock,
   Copy,
@@ -51,6 +52,7 @@ import { ProfilerPanel } from '../profiler/ProfilerPanel';
 import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
 import { TerrainToolsPanel } from '../terrain/TerrainToolsPanel';
 import type { TerrainToolState } from '../terrain/TerrainToolsPanel';
+import { CreateTerrainDialog } from '../terrain/CreateTerrainDialog';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
@@ -97,7 +99,7 @@ type HostSceneSnapshot = {
   entities: HostSceneEntity[];
 };
 
-type BasicEntityKind = 'empty' | 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
+type BasicEntityKind = 'empty' | 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule' | 'terrain';
 
 type SceneDocumentState = Omit<HostSceneSnapshot, 'entities'>;
 
@@ -365,6 +367,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [viewportGridVisible, setViewportGridVisible] = useState(true);
   const [viewportFocused, setViewportFocused] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [createTerrainOpen, setCreateTerrainOpen] = useState(false);
   const [requestedWorkspaceLayout, setRequestedWorkspaceLayout] = useState<WorkspaceLayoutName | 'Reset' | null>(null);
   const [requestedWorkspacePanel, setRequestedWorkspacePanel] = useState<WorkbenchPanelId | null>(null);
   const keybindings = useRef(new KeybindingService());
@@ -997,6 +1000,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   };
 
   const createHierarchyEntity = (kind: BasicEntityKind) => {
+    if (kind === 'terrain') {
+      setCreateTerrainOpen(true);
+      return;
+    }
     const parent = selectedSnapshot?.entity;
     void mutateHierarchyEntity('entity.create', { kind, ...(parent ? { parent } : {}) });
   };
@@ -1600,11 +1607,19 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           shortcut={(command) => keybindings.current.primaryBinding(command)}
         />
       )}
+      {createTerrainOpen && (
+        <CreateTerrainDialog
+          parent={selectedSnapshot?.entity}
+          command={(type, payload) => window.arc.host.command(type, payload) as Promise<HostResponse>}
+          onClose={() => setCreateTerrainOpen(false)}
+          onCreated={() => void refreshProjectFromHost()}
+        />
+      )}
     </main>
   );
 }
 
-function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty'> }) {
+function PrimitivePreview({ kind }: { kind: Exclude<BasicEntityKind, 'empty' | 'terrain'> }) {
   const fillId = `primitive-fill-${kind}`;
   const common = { fill: `url(#${fillId})`, stroke: '#8fc8ff', strokeWidth: 1.35 };
   return (
@@ -1783,6 +1798,10 @@ export function ExplorerPanel({
                 </button>
               ))}
             </div>
+            <div className="primitive-palette-heading">Landscape</div>
+            <button className="primitive-palette-empty" type="button" role="menuitem" onClick={() => {
+              onCreateEntity('terrain'); setCreateMenuOpen(false);
+            }}><Mountain size={16} /> Terrain...</button>
           </section>
         )}
         <label className="hierarchy-search">

@@ -77,7 +77,9 @@ export type InspectorMeshRenderer = {
 
 export type InspectorTerrain = {
   enabled: boolean;
-  size: number;
+    size: number;
+    minimumElevation?: number;
+    maximumElevation?: number;
   resolution: number;
   chunkQuads: number;
   patchQuads: number;
@@ -87,7 +89,17 @@ export type InspectorTerrain = {
   castShadows: boolean;
   shadowLodBias: number;
   maximumShadowDistance: number;
-  contentRevision: number;
+    contentRevision: number;
+    materialGuid?: string;
+    materialPath?: string;
+    hierarchyNodes?: number;
+    hierarchyDepth?: number;
+    sourcePatches?: number;
+    visiblePatches?: number;
+    renderedTriangles?: number;
+    cpuMemoryBytes?: number;
+    gpuMemoryBytes?: number;
+    uploadedBytes?: number;
   brushTool: 'sculpt' | 'smooth' | 'flatten' | 'paint';
   brushRadius: number;
   brushStrength: number;
@@ -244,6 +256,8 @@ const hostSelectedEntitySchema = z.object({
     .object({
       enabled: z.boolean(),
       size: finiteNumber.positive(),
+      minimumElevation: finiteNumber.default(0),
+      maximumElevation: finiteNumber.default(0),
       resolution: z.number().int().min(3),
       chunkQuads: z.number().int().positive(),
       patchQuads: z.union([z.literal(16), z.literal(32), z.literal(64)]),
@@ -254,6 +268,16 @@ const hostSelectedEntitySchema = z.object({
       shadowLodBias: finiteNumber.min(-4).max(8).default(0),
       maximumShadowDistance: finiteNumber.nonnegative().default(0),
       contentRevision: z.number().int().nonnegative(),
+      materialGuid: z.string().default(''),
+      materialPath: z.string().default(''),
+      hierarchyNodes: z.number().int().nonnegative().default(0),
+      hierarchyDepth: z.number().int().nonnegative().default(0),
+      sourcePatches: z.number().int().nonnegative().default(0),
+      visiblePatches: z.number().int().nonnegative().default(0),
+      renderedTriangles: z.number().int().nonnegative().default(0),
+      cpuMemoryBytes: z.number().int().nonnegative().default(0),
+      gpuMemoryBytes: z.number().int().nonnegative().default(0),
+      uploadedBytes: z.number().int().nonnegative().default(0),
       brushTool: z.enum(['sculpt', 'smooth', 'flatten', 'paint']),
       brushRadius: finiteNumber.min(0.25).max(128),
       brushStrength: finiteNumber.positive().max(1),

@@ -657,6 +657,8 @@ const char* to_string(host_event_type value) noexcept
             return "terrain.toolChanged";
         case host_event_type::terrain_stroke_committed:
             return "terrain.strokeCommitted";
+        case host_event_type::terrain_operation_changed:
+            return "terrain.operationChanged";
         case host_event_type::runtime_state_changed:
             return "runtime.stateChanged";
         case host_event_type::runtime_tick_completed:
@@ -877,6 +879,20 @@ const char* to_string(host_visualization_mode value) noexcept
             return "reflections";
         case host_visualization_mode::denoiser_variance:
             return "denoiserVariance";
+        case host_visualization_mode::terrain_patch_boundaries:
+            return "terrainPatchBoundaries";
+        case host_visualization_mode::terrain_lod_level:
+            return "terrainLodLevel";
+        case host_visualization_mode::terrain_hierarchy_nodes:
+            return "terrainHierarchyNodes";
+        case host_visualization_mode::terrain_geometric_error:
+            return "terrainGeometricError";
+        case host_visualization_mode::terrain_culled_nodes:
+            return "terrainCulledNodes";
+        case host_visualization_mode::terrain_triangle_density:
+            return "terrainTriangleDensity";
+        case host_visualization_mode::terrain_bounds:
+            return "terrainBounds";
     }
     return "standard";
 }
@@ -1062,6 +1078,18 @@ std::string command_type(const host_command_payload& payload)
                 return "terrain.setBrush";
             else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
                 return "terrain.assignLayer";
+            else if constexpr (std::is_same_v<type, host_create_terrain_command>)
+                return "terrain.create";
+            else if constexpr (std::is_same_v<type, host_generate_terrain_command>)
+                return "terrain.generate";
+            else if constexpr (std::is_same_v<type, host_import_terrain_heightmap_command>)
+                return "terrain.importHeightmap";
+            else if constexpr (std::is_same_v<type, host_export_terrain_heightmap_command>)
+                return "terrain.exportHeightmap";
+            else if constexpr (std::is_same_v<type, host_resample_terrain_command>)
+                return "terrain.resample";
+            else if constexpr (std::is_same_v<type, host_cancel_terrain_operation_command>)
+                return "terrain.operation.cancel";
             else if constexpr (std::is_same_v<type, host_terrain_stroke_command>)
                 return "terrain.stroke";
             else if constexpr (std::is_same_v<type, host_terrain_hover_command>)
@@ -1303,13 +1331,25 @@ std::string to_json(const host_terrain_snapshot& terrain)
     std::ostringstream stream;
     stream << "{\"enabled\":" << bool_json(terrain.enabled) << ",\"size\":" << terrain.size
            << ",\"resolution\":" << terrain.resolution << ",\"chunkQuads\":" << terrain.chunk_quads
+           << ",\"minimumElevation\":" << terrain.minimum_elevation
+           << ",\"maximumElevation\":" << terrain.maximum_elevation
            << ",\"patchQuads\":" << terrain.patch_quads << ",\"maximumHierarchyDepth\":"
            << terrain.maximum_hierarchy_depth << ",\"geometricErrorMultiplier\":"
            << terrain.geometric_error_multiplier
            << ",\"receiveShadows\":" << bool_json(terrain.receive_shadows)
            << ",\"castShadows\":" << bool_json(terrain.cast_shadows) << ",\"shadowLodBias\":" << terrain.shadow_lod_bias
            << ",\"maximumShadowDistance\":" << terrain.maximum_shadow_distance
-           << ",\"contentRevision\":" << terrain.content_revision << ",\"brushTool\":" << quote(tool)
+           << ",\"contentRevision\":" << terrain.content_revision
+           << ",\"materialGuid\":" << quote(terrain.material_guid)
+           << ",\"materialPath\":" << quote(terrain.material_path)
+           << ",\"hierarchyNodes\":" << terrain.hierarchy_nodes
+           << ",\"hierarchyDepth\":" << terrain.hierarchy_depth
+           << ",\"sourcePatches\":" << terrain.source_patches
+           << ",\"visiblePatches\":" << terrain.visible_patches
+           << ",\"renderedTriangles\":" << terrain.rendered_triangles
+           << ",\"cpuMemoryBytes\":" << terrain.cpu_memory_bytes
+           << ",\"gpuMemoryBytes\":" << terrain.gpu_memory_bytes
+           << ",\"uploadedBytes\":" << terrain.uploaded_bytes << ",\"brushTool\":" << quote(tool)
            << ",\"brushRadius\":" << terrain.brush_radius << ",\"brushStrength\":" << terrain.brush_strength
            << ",\"brushFalloff\":" << terrain.brush_falloff << ",\"activeLayer\":" << terrain.active_layer
            << ",\"layers\":[";
@@ -1499,6 +1539,39 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"layer\":" + std::to_string(payload.layer) +
                        ",\"path\":" + quote(payload.path.generic_string()) + '}';
+            else if constexpr (std::is_same_v<type, host_create_terrain_command>)
+                return "{\"size\":" + std::to_string(payload.size) +
+                       ",\"minimumElevation\":" + std::to_string(payload.minimum_elevation) +
+                       ",\"maximumElevation\":" + std::to_string(payload.maximum_elevation) +
+                       ",\"resolution\":" + std::to_string(payload.resolution) +
+                       ",\"patchQuads\":" + std::to_string(payload.patch_quads) +
+                       ",\"source\":" + quote(payload.source) + ",\"seed\":" + std::to_string(payload.seed) +
+                       ",\"parent\":" + to_json(payload.parent) + '}';
+            else if constexpr (std::is_same_v<type, host_generate_terrain_command>)
+                return "{\"entity\":" + to_json(payload.entity) + ",\"generatorId\":" +
+                       quote(payload.generator_id) + ",\"seed\":" + std::to_string(payload.seed) +
+                       ",\"minimumElevation\":" + std::to_string(payload.minimum_elevation) +
+                       ",\"maximumElevation\":" + std::to_string(payload.maximum_elevation) + '}';
+            else if constexpr (std::is_same_v<type, host_import_terrain_heightmap_command>)
+                return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
+                       ",\"rawWidth\":" + std::to_string(payload.raw_width) +
+                       ",\"rawHeight\":" + std::to_string(payload.raw_height) +
+                       ",\"targetResolution\":" + std::to_string(payload.target_resolution) +
+                       ",\"physicalSize\":" + std::to_string(payload.physical_size) +
+                       ",\"minimumElevation\":" + std::to_string(payload.minimum_elevation) +
+                       ",\"maximumElevation\":" + std::to_string(payload.maximum_elevation) +
+                       ",\"flipX\":" + bool_json(payload.flip_x) + ",\"flipZ\":" + bool_json(payload.flip_z) +
+                       ",\"normalize\":" + bool_json(payload.normalize) + '}';
+            else if constexpr (std::is_same_v<type, host_export_terrain_heightmap_command>)
+                return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
+                       ",\"minimumElevation\":" + std::to_string(payload.minimum_elevation) +
+                       ",\"maximumElevation\":" + std::to_string(payload.maximum_elevation) + '}';
+            else if constexpr (std::is_same_v<type, host_resample_terrain_command>)
+                return "{\"entity\":" + to_json(payload.entity) + ",\"resolution\":" +
+                       std::to_string(payload.resolution) + ",\"physicalSize\":" +
+                       std::to_string(payload.physical_size) + '}';
+            else if constexpr (std::is_same_v<type, host_cancel_terrain_operation_command>)
+                return "{\"operationId\":" + std::to_string(payload.operation_id) + '}';
             else if constexpr (std::is_same_v<type, host_terrain_stroke_command>)
             {
                 const char* phase = payload.phase == host_edit_phase::update   ? "update"
@@ -1507,7 +1580,8 @@ std::string to_json(const host_command_envelope& envelope)
                                                                                : "begin";
                 return "{\"entity\":" + to_json(payload.entity) + ",\"x\":" + std::to_string(payload.x) +
                        ",\"y\":" + std::to_string(payload.y) + ",\"phase\":" + quote(phase) +
-                       ",\"invert\":" + bool_json(payload.invert) + '}';
+                       ",\"invert\":" + bool_json(payload.invert) +
+                       ",\"elapsedSeconds\":" + std::to_string(payload.elapsed_seconds) + '}';
             }
             else if constexpr (std::is_same_v<type, host_terrain_hover_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"x\":" + std::to_string(payload.x) +
@@ -2325,6 +2399,94 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         parse_enum(payload, "tool", tools, std::size(tools), command.tool);
         envelope.payload = command;
     }
+    else if (type == "terrain.create")
+    {
+        host_create_terrain_command command;
+        if (!number_value(payload, "size", command.size) ||
+            !number_value(payload, "minimumElevation", command.minimum_elevation) ||
+            !number_value(payload, "maximumElevation", command.maximum_elevation) ||
+            !number_value(payload, "resolution", command.resolution) ||
+            !number_value(payload, "patchQuads", command.patch_quads))
+        {
+            error = "Terrain creation requires size, elevation range, resolution, and patch topology";
+            return false;
+        }
+        string_value(payload, "source", command.source);
+        number_value(payload, "seed", command.seed);
+        entity_field_value(payload, "parent", command.parent);
+        envelope.payload = command;
+    }
+    else if (type == "terrain.generate")
+    {
+        host_generate_terrain_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !string_value(payload, "generatorId", command.generator_id) ||
+            !number_value(payload, "minimumElevation", command.minimum_elevation) ||
+            !number_value(payload, "maximumElevation", command.maximum_elevation))
+        {
+            error = "Terrain generation requires entity, generator, and elevation range";
+            return false;
+        }
+        number_value(payload, "seed", command.seed);
+        envelope.payload = command;
+    }
+    else if (type == "terrain.importHeightmap")
+    {
+        host_import_terrain_heightmap_command command;
+        std::string path;
+        if (!entity_field_value(payload, "entity", command.entity) || !string_value(payload, "path", path) ||
+            !number_value(payload, "targetResolution", command.target_resolution) ||
+            !number_value(payload, "physicalSize", command.physical_size) ||
+            !number_value(payload, "minimumElevation", command.minimum_elevation) ||
+            !number_value(payload, "maximumElevation", command.maximum_elevation))
+        {
+            error = "Terrain heightmap import requires entity, path, resolution, size, and elevation range";
+            return false;
+        }
+        command.path = path;
+        number_value(payload, "rawWidth", command.raw_width);
+        number_value(payload, "rawHeight", command.raw_height);
+        bool_value(payload, "flipX", command.flip_x);
+        bool_value(payload, "flipZ", command.flip_z);
+        bool_value(payload, "normalize", command.normalize);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "terrain.exportHeightmap")
+    {
+        host_export_terrain_heightmap_command command;
+        std::string path;
+        if (!entity_field_value(payload, "entity", command.entity) || !string_value(payload, "path", path) ||
+            !number_value(payload, "minimumElevation", command.minimum_elevation) ||
+            !number_value(payload, "maximumElevation", command.maximum_elevation))
+        {
+            error = "Terrain heightmap export requires entity, path, and elevation range";
+            return false;
+        }
+        command.path = path;
+        envelope.payload = std::move(command);
+    }
+    else if (type == "terrain.resample")
+    {
+        host_resample_terrain_command command;
+        if (!entity_field_value(payload, "entity", command.entity) ||
+            !number_value(payload, "resolution", command.resolution) ||
+            !number_value(payload, "physicalSize", command.physical_size))
+        {
+            error = "Terrain resampling requires entity, resolution, and physical size";
+            return false;
+        }
+        envelope.payload = command;
+    }
+    else if (type == "terrain.operation.cancel")
+    {
+        host_cancel_terrain_operation_command command;
+        if (!number_value(payload, "operationId", command.operation_id))
+        {
+            error = "Terrain operation cancellation requires an operation ID";
+            return false;
+        }
+        envelope.payload = command;
+    }
     else if (type == "terrain.stroke")
     {
         host_terrain_stroke_command command;
@@ -2340,6 +2502,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                         : phase == "cancel" ? host_edit_phase::cancel
                                             : host_edit_phase::begin;
         bool_value(payload, "invert", command.invert);
+        number_value(payload, "elapsedSeconds", command.elapsed_seconds);
         envelope.payload = command;
     }
     else if (type == "terrain.hover")
@@ -2542,7 +2705,14 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"lightingTemporalConfidence", host_visualization_mode::lighting_temporal_confidence},
             {"indirectDiffuse", host_visualization_mode::indirect_diffuse},
             {"reflections", host_visualization_mode::reflections},
-            {"denoiserVariance", host_visualization_mode::denoiser_variance}};
+            {"denoiserVariance", host_visualization_mode::denoiser_variance},
+            {"terrainPatchBoundaries", host_visualization_mode::terrain_patch_boundaries},
+            {"terrainLodLevel", host_visualization_mode::terrain_lod_level},
+            {"terrainHierarchyNodes", host_visualization_mode::terrain_hierarchy_nodes},
+            {"terrainGeometricError", host_visualization_mode::terrain_geometric_error},
+            {"terrainCulledNodes", host_visualization_mode::terrain_culled_nodes},
+            {"terrainTriangleDensity", host_visualization_mode::terrain_triangle_density},
+            {"terrainBounds", host_visualization_mode::terrain_bounds}};
         static constexpr std::pair<std::string_view, host_overlay_mode> overlays[]{
             {"none", host_overlay_mode::none},
             {"selectedWireframe", host_overlay_mode::selected_wireframe},

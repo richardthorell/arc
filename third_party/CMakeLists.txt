@@ -15,6 +15,61 @@ option(ARC_FETCH_UFBX "Fetch ufbx when ARC_USE_SYSTEM_UFBX is OFF" ON)
 option(ARC_USE_SYSTEM_NLOHMANN_JSON "Use a system-provided nlohmann_json package" OFF)
 option(ARC_USE_SYSTEM_SQLITE "Use a system-provided SQLite package" OFF)
 option(ARC_USE_SYSTEM_MESHOPTIMIZER "Use a system-provided meshoptimizer package" OFF)
+option(ARC_USE_SYSTEM_PNG "Use a system-provided libpng package" OFF)
+
+if(ARC_BUILD_EDITOR)
+    add_library(arc-third-party-png INTERFACE)
+    if(NOT TARGET arc::third-party-png)
+        add_library(arc::third-party-png ALIAS arc-third-party-png)
+    endif()
+    if(ARC_USE_SYSTEM_PNG)
+        find_package(PNG REQUIRED)
+        target_link_libraries(arc-third-party-png INTERFACE PNG::PNG)
+    elseif(ARC_FETCH_THIRD_PARTY)
+        set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            zlib
+            GIT_REPOSITORY https://github.com/madler/zlib.git
+            GIT_TAG v1.3.1
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(zlib)
+        set(ZLIB_INCLUDE_DIR "${zlib_SOURCE_DIR};${zlib_BINARY_DIR}" CACHE STRING "" FORCE)
+        if(TARGET ZLIB::ZLIB)
+            set_property(TARGET ZLIB::ZLIB PROPERTY INTERFACE_LINK_LIBRARIES zlibstatic)
+        else()
+            add_library(ZLIB::ZLIB ALIAS zlibstatic)
+        endif()
+        set(PNG_SHARED OFF CACHE BOOL "" FORCE)
+        set(PNG_STATIC ON CACHE BOOL "" FORCE)
+        set(PNG_TESTS OFF CACHE BOOL "" FORCE)
+        set(PNG_TOOLS OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            libpng
+            GIT_REPOSITORY https://github.com/pnggroup/libpng.git
+            GIT_TAG v1.6.50
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(libpng)
+        if(TARGET png_static)
+            target_link_libraries(arc-third-party-png INTERFACE png_static zlibstatic)
+        elseif(TARGET PNG::PNG)
+            target_link_libraries(arc-third-party-png INTERFACE PNG::PNG)
+        endif()
+        foreach(target zlibstatic png_static)
+            if(TARGET ${target})
+                if(MSVC)
+                    target_compile_options(${target} PRIVATE /W0)
+                else()
+                    target_compile_options(${target} PRIVATE -w)
+                endif()
+            endif()
+        endforeach()
+    else()
+        message(FATAL_ERROR "ARC_FETCH_THIRD_PARTY is OFF and ARC_USE_SYSTEM_PNG is OFF")
+    endif()
+endif()
 
 add_library(arc-third-party-meshoptimizer INTERFACE)
 if(NOT TARGET arc::third-party-meshoptimizer)

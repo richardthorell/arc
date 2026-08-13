@@ -31,13 +31,16 @@ std::uint32_t hash(std::uint32_t x, std::uint32_t z) noexcept
     return value ^ (value >> 16u);
 }
 
-float random_signed(std::int32_t x, std::int32_t z) noexcept
+float random_signed(std::int32_t x, std::int32_t z, std::uint64_t seed = 1u) noexcept
 {
-    return static_cast<float>(hash(static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(z)) & 0xffffu) / 32767.5f -
+    const auto seed_x = static_cast<std::uint32_t>(seed);
+    const auto seed_z = static_cast<std::uint32_t>(seed >> 32u);
+    return static_cast<float>(hash(static_cast<std::uint32_t>(x) ^ seed_x,
+                                   static_cast<std::uint32_t>(z) ^ seed_z) & 0xffffu) / 32767.5f -
            1.0f;
 }
 
-float value_noise(float x, float z) noexcept
+float value_noise(float x, float z, std::uint64_t seed = 1u) noexcept
 {
     const auto ix = static_cast<std::int32_t>(std::floor(x));
     const auto iz = static_cast<std::int32_t>(std::floor(z));
@@ -45,18 +48,18 @@ float value_noise(float x, float z) noexcept
     const float fz = z - static_cast<float>(iz);
     const float sx = fx * fx * (3.0f - 2.0f * fx);
     const float sz = fz * fz * (3.0f - 2.0f * fz);
-    const float a = std::lerp(random_signed(ix, iz), random_signed(ix + 1, iz), sx);
-    const float b = std::lerp(random_signed(ix, iz + 1), random_signed(ix + 1, iz + 1), sx);
+    const float a = std::lerp(random_signed(ix, iz, seed), random_signed(ix + 1, iz, seed), sx);
+    const float b = std::lerp(random_signed(ix, iz + 1, seed), random_signed(ix + 1, iz + 1, seed), sx);
     return std::lerp(a, b, sz);
 }
 
-float fbm(float x, float z, std::uint32_t octaves) noexcept
+float fbm(float x, float z, std::uint32_t octaves, std::uint64_t seed = 1u) noexcept
 {
     float result{};
     float amplitude{0.5f};
     for (std::uint32_t octave = 0; octave < octaves; ++octave)
     {
-        result += value_noise(x, z) * amplitude;
+        result += value_noise(x, z, seed + octave * 0x9e3779b97f4a7c15ull) * amplitude;
         x = x * 2.03f + 17.1f;
         z = z * 2.01f - 11.7f;
         amplitude *= 0.5f;
@@ -131,6 +134,102 @@ bool intersect_triangle(const math::vector3f& origin, const math::vector3f& dire
     return true;
 }
 
+bool intersect_bounds(const math::vector3f& origin, const math::vector3f& direction,
+                      const geometric::box3f& bounds, float maximum_distance) noexcept
+{
+    float near_distance{};
+    float far_distance = maximum_distance;
+    for (std::size_t axis = 0; axis < 3u; ++axis)
+    {
+        if (std::abs(direction[axis]) < 0.000001f)
+        {
+            if (origin[axis] < bounds.min[axis] || origin[axis] > bounds.max[axis]) return false;
+            continue;
+        }
+        const float inverse = 1.0f / direction[axis];
+        float first = (bounds.min[axis] - origin[axis]) * inverse;
+        float second = (bounds.max[axis] - origin[axis]) * inverse;
+        if (first > second) std::swap(first, second);
+        near_distance = std::max(near_distance, first);
+        far_distance = std::min(far_distance, second);
+        if (near_distance > far_distance) return false;
+    }
+    return far_distance >= 0.0f;
+}
+
+float sinc(float value) noexcept
+{
+    if (std::abs(value) < 0.00001f) return 1.0f;
+    const float angle = value * math::pi<float>;
+    return std::sin(angle) / angle;
+}
+
+float lanczos(float value) noexcept
+{
+    value = std::abs(value);
+    return value >= 3.0f ? 0.0f : sinc(value) * sinc(value / 3.0f);
+}
+
+std::vector<float> resample_scalar_field(std::span<const float> source, std::uint32_t source_width,
+                                         std::uint32_t source_height, std::uint32_t target_width,
+                                         std::uint32_t target_height)
+{
+    if (source_width == target_width && source_height == target_height) return {source.begin(), source.end()};
+    std::vector<float> horizontal(static_cast<std::size_t>(target_width) * source_height);
+    std::vector<float> result(static_cast<std::size_t>(target_width) * target_height);
+    const auto sample_line = [](auto sample, std::uint32_t source_count, std::uint32_t target_count,
+                                std::uint32_t target_index)
+    {
+        if (target_count < source_count)
+        {
+            const double begin = static_cast<double>(target_index) * source_count / target_count;
+            const double end = static_cast<double>(target_index + 1u) * source_count / target_count;
+            double total{};
+            double weight{};
+            const auto last = static_cast<std::uint32_t>(std::ceil(end));
+            for (auto index = static_cast<std::uint32_t>(std::floor(begin)); index < last; ++index)
+            {
+                const double overlap = std::max(0.0, std::min(end, static_cast<double>(index + 1u)) -
+                                                         std::max(begin, static_cast<double>(index)));
+                total += sample(std::min(index, source_count - 1u)) * overlap;
+                weight += overlap;
+            }
+            return static_cast<float>(total / std::max(weight, 0.000001));
+        }
+        const float position = static_cast<float>(target_index) * static_cast<float>(source_count - 1u) /
+                               static_cast<float>(target_count - 1u);
+        const auto center = static_cast<int>(std::floor(position));
+        float total{};
+        float weight{};
+        for (int offset = -2; offset <= 3; ++offset)
+        {
+            const int index = std::clamp(center + offset, 0, static_cast<int>(source_count - 1u));
+            const float filter = lanczos(position - static_cast<float>(center + offset));
+            total += sample(static_cast<std::uint32_t>(index)) * filter;
+            weight += filter;
+        }
+        return total / std::max(weight, 0.000001f);
+    };
+    for (std::uint32_t z = 0; z < source_height; ++z)
+        for (std::uint32_t x = 0; x < target_width; ++x)
+            horizontal[static_cast<std::size_t>(z) * target_width + x] =
+                sample_line([&](std::uint32_t value) { return source[static_cast<std::size_t>(z) * source_width + value]; },
+                            source_width, target_width, x);
+    for (std::uint32_t z = 0; z < target_height; ++z)
+        for (std::uint32_t x = 0; x < target_width; ++x)
+            result[static_cast<std::size_t>(z) * target_width + x] =
+                sample_line([&](std::uint32_t value) { return horizontal[static_cast<std::size_t>(value) * target_width + x]; },
+                            source_height, target_height, z);
+    return result;
+}
+
+std::vector<float> resample_square_field(std::span<const float> source, std::uint32_t source_resolution,
+                                         std::uint32_t target_resolution)
+{
+    return resample_scalar_field(source, source_resolution, source_resolution, target_resolution,
+                                 target_resolution);
+}
+
 } // namespace
 
 bool terrain_heightfield_valid(const terrain_component& terrain) noexcept
@@ -139,6 +238,98 @@ bool terrain_heightfield_valid(const terrain_component& terrain) noexcept
     const auto resolution = static_cast<std::size_t>(terrain.subdivisions) + 1u;
     const auto count = resolution * resolution;
     return terrain.heights.size() == count && terrain.layer_weights.size() == count;
+}
+
+bool terrain_resolution_supported(std::uint32_t resolution) noexcept
+{
+    return std::find(supported_terrain_resolutions.begin(), supported_terrain_resolutions.end(), resolution) !=
+           supported_terrain_resolutions.end();
+}
+
+terrain_memory_estimate estimate_terrain_memory(std::uint32_t resolution) noexcept
+{
+    if (!terrain_resolution_supported(resolution)) return {};
+    const auto samples = static_cast<std::uint64_t>(resolution) * resolution;
+    return {.cpu_bytes = samples * (sizeof(float) + 4u),
+            .gpu_bytes = samples * (sizeof(float) + 4u),
+            .staging_bytes = samples * (sizeof(float) + 4u),
+            .history_bytes = samples * (sizeof(std::uint16_t) * 2u + 8u)};
+}
+
+terrain_authoring_result validate_terrain_creation(const terrain_creation_descriptor& descriptor) noexcept
+{
+    if (!std::isfinite(descriptor.size) || descriptor.size < 1.0f || descriptor.size > 262144.0f)
+        return {false, "terrain size must be finite and in [1, 262144] metres"};
+    if (!std::isfinite(descriptor.minimum_elevation) || !std::isfinite(descriptor.maximum_elevation) ||
+        descriptor.maximum_elevation <= descriptor.minimum_elevation)
+        return {false, "terrain elevation range must be finite and increasing"};
+    if (!terrain_resolution_supported(descriptor.sample_resolution))
+        return {false, "terrain resolution must be one of 257, 513, 1025, 2049, or 4097"};
+    if (descriptor.patch_quads != 16u && descriptor.patch_quads != 32u && descriptor.patch_quads != 64u)
+        return {false, "terrain patch topology must contain 16, 32, or 64 quads"};
+    if ((descriptor.sample_resolution - 1u) % descriptor.patch_quads != 0u)
+        return {false, "terrain resolution is incompatible with the selected patch topology"};
+    return {true, {}};
+}
+
+terrain_authoring_result generate_terrain(terrain_component& terrain, const terrain_generation_descriptor& descriptor)
+{
+    if (!std::isfinite(descriptor.minimum_elevation) || !std::isfinite(descriptor.maximum_elevation) ||
+        descriptor.maximum_elevation <= descriptor.minimum_elevation)
+        return {false, "terrain generation requires a finite increasing elevation range"};
+    const auto resolution = terrain.subdivisions + 1u;
+    if (!terrain_resolution_supported(resolution)) return {false, "terrain resolution is unsupported"};
+    const auto count = static_cast<std::size_t>(resolution) * resolution;
+    terrain.heights.assign(count, descriptor.minimum_elevation);
+    terrain.layer_weights.assign(count, {255u, 0u, 0u, 0u});
+    terrain.height_scale = descriptor.maximum_elevation - descriptor.minimum_elevation;
+    if (descriptor.generator_id == "arc.terrain.flat.v1")
+    {
+        ++terrain.content_revision;
+        return {true, {}};
+    }
+    if (descriptor.generator_id != "arc.terrain.domain_warped.v1")
+        return {false, "terrain generator ID is not registered"};
+
+    float minimum = std::numeric_limits<float>::max();
+    float maximum = std::numeric_limits<float>::lowest();
+    for (std::uint32_t z = 0; z < resolution; ++z)
+        for (std::uint32_t x = 0; x < resolution; ++x)
+        {
+            const float nx = static_cast<float>(x) / terrain.subdivisions * 2.0f - 1.0f;
+            const float nz = static_cast<float>(z) / terrain.subdivisions * 2.0f - 1.0f;
+            const float warp_x = fbm(nx * 1.7f + 7.0f, nz * 1.7f - 4.0f, 3, descriptor.seed) * 0.18f;
+            const float warp_z = fbm(nx * 1.7f - 9.0f, nz * 1.7f + 3.0f, 3, descriptor.seed ^ 0xa5a5a5a5u) * 0.18f;
+            const float rear = std::exp(-std::pow((nz + 0.58f) / 0.30f, 2.0f));
+            const float mountains = std::pow(saturate(fbm((nx + warp_x) * 2.25f, (nz + warp_z) * 2.25f, 6,
+                                                          descriptor.seed) * 0.72f + 0.48f), 1.65f);
+            const float ridges = std::pow(1.0f - std::abs(fbm((nx + warp_x) * 4.2f + 13.0f,
+                                                              (nz + warp_z) * 4.2f, 4,
+                                                              descriptor.seed ^ 0x55aa55aau)), 3.0f);
+            const float basin = std::exp(-((nx - 0.18f) * (nx - 0.18f) / 0.10f +
+                                            (nz - 0.18f) * (nz - 0.18f) / 0.13f));
+            float normalized = 0.035f + mountains * (0.22f + rear * 0.80f) + ridges * rear * 0.16f -
+                               basin * 0.16f;
+            normalized = saturate(normalized);
+            const auto index = sample_index(terrain, x, z);
+            terrain.heights[index] = std::lerp(descriptor.minimum_elevation, descriptor.maximum_elevation, normalized);
+            minimum = std::min(minimum, terrain.heights[index]);
+            maximum = std::max(maximum, terrain.heights[index]);
+        }
+    for (std::uint32_t z = 0; z < resolution; ++z)
+        for (std::uint32_t x = 0; x < resolution; ++x)
+        {
+            const auto index = sample_index(terrain, x, z);
+            const float height01 = (terrain.heights[index] - minimum) / std::max(maximum - minimum, 0.001f);
+            const float slope = 1.0f - normal_at(terrain, x, z)[1];
+            const float rock = saturate(smoothstep(0.10f, 0.38f, slope) + smoothstep(0.62f, 0.92f, height01));
+            const float sand = (1.0f - smoothstep(0.03f, 0.12f, height01)) * (1.0f - rock);
+            const float dirt = saturate(smoothstep(0.04f, 0.22f, slope) * (1.0f - rock));
+            terrain.layer_weights[index] = normalized_weights({std::max(0.0f, 1.0f - rock - sand - dirt * 0.55f),
+                                                               dirt, rock, sand});
+        }
+    ++terrain.content_revision;
+    return {true, {}};
 }
 
 void generate_terrain_heightfield(terrain_component& terrain)
@@ -202,6 +393,93 @@ void generate_terrain_heightfield(terrain_component& terrain)
         }
     }
     ++terrain.content_revision;
+}
+
+terrain_authoring_result resample_terrain(terrain_component& terrain, const terrain_resample_descriptor& descriptor)
+{
+    if (!terrain_heightfield_valid(terrain)) return {false, "terrain heightfield is invalid"};
+    if (!terrain_resolution_supported(descriptor.sample_resolution)) return {false, "target resolution is unsupported"};
+    if (!std::isfinite(descriptor.physical_size) || descriptor.physical_size < 1.0f ||
+        descriptor.physical_size > 262144.0f)
+        return {false, "target terrain size must be finite and in [1, 262144] metres"};
+    const auto source_resolution = terrain.subdivisions + 1u;
+    if (source_resolution != descriptor.sample_resolution)
+    {
+        const auto source_weights = terrain.layer_weights;
+        terrain.heights = resample_square_field(terrain.heights, source_resolution, descriptor.sample_resolution);
+        std::array<std::vector<float>, 4> channels;
+        for (std::size_t channel = 0; channel < channels.size(); ++channel)
+        {
+            std::vector<float> source(static_cast<std::size_t>(source_resolution) * source_resolution);
+            for (std::size_t sample = 0; sample < source.size(); ++sample)
+                source[sample] = static_cast<float>(source_weights[sample][channel]) / 255.0f;
+            channels[channel] = resample_square_field(source, source_resolution, descriptor.sample_resolution);
+        }
+        terrain.layer_weights.resize(static_cast<std::size_t>(descriptor.sample_resolution) * descriptor.sample_resolution);
+        for (std::size_t sample = 0; sample < terrain.layer_weights.size(); ++sample)
+            terrain.layer_weights[sample] = normalized_weights(
+                {channels[0][sample], channels[1][sample], channels[2][sample], channels[3][sample]});
+        terrain.subdivisions = descriptor.sample_resolution - 1u;
+    }
+    terrain.size = descriptor.physical_size;
+    ++terrain.content_revision;
+    return {true, {}};
+}
+
+terrain_authoring_result import_terrain_heightmap(terrain_component& terrain, const terrain_heightmap& heightmap,
+                                                  const terrain_heightmap_import_settings& settings)
+{
+    if (heightmap.width < 2u || heightmap.height < 2u ||
+        heightmap.samples.size() != static_cast<std::size_t>(heightmap.width) * heightmap.height)
+        return {false, "heightmap dimensions and sample payload do not agree"};
+    if (!terrain_resolution_supported(settings.target_resolution)) return {false, "target resolution is unsupported"};
+    if (!std::isfinite(settings.minimum_elevation) || !std::isfinite(settings.maximum_elevation) ||
+        settings.maximum_elevation <= settings.minimum_elevation)
+        return {false, "heightmap import elevation range must be finite and increasing"};
+
+    const auto [minimum, maximum] = std::minmax_element(heightmap.samples.begin(), heightmap.samples.end());
+    const float source_minimum = settings.normalize_source_range ? static_cast<float>(*minimum) : 0.0f;
+    const float source_maximum = settings.normalize_source_range ? static_cast<float>(*maximum) : 65535.0f;
+    const float source_range = std::max(source_maximum - source_minimum, 1.0f);
+    std::vector<float> source(static_cast<std::size_t>(heightmap.width) * heightmap.height);
+    for (std::uint32_t z = 0; z < heightmap.height; ++z)
+        for (std::uint32_t x = 0; x < heightmap.width; ++x)
+        {
+            const auto source_x = settings.flip_x ? heightmap.width - 1u - x : x;
+            const auto source_z = settings.flip_z ? heightmap.height - 1u - z : z;
+            const float normalized = (static_cast<float>(heightmap.samples[static_cast<std::size_t>(source_z) *
+                                                                           heightmap.width + source_x]) -
+                                      source_minimum) / source_range;
+            source[static_cast<std::size_t>(z) * heightmap.width + x] =
+                std::lerp(settings.minimum_elevation, settings.maximum_elevation, saturate(normalized));
+        }
+    terrain.heights = resample_scalar_field(source, heightmap.width, heightmap.height, settings.target_resolution,
+                                            settings.target_resolution);
+    terrain.layer_weights.assign(terrain.heights.size(), {255u, 0u, 0u, 0u});
+    terrain.subdivisions = settings.target_resolution - 1u;
+    terrain.size = settings.physical_size;
+    terrain.height_scale = settings.maximum_elevation - settings.minimum_elevation;
+    ++terrain.content_revision;
+    return {true, {}};
+}
+
+terrain_heightmap export_terrain_heightmap(const terrain_component& terrain,
+                                           const terrain_heightmap_export_settings& settings)
+{
+    terrain_heightmap result;
+    if (!terrain_heightfield_valid(terrain) || !std::isfinite(settings.minimum_elevation) ||
+        !std::isfinite(settings.maximum_elevation) || settings.maximum_elevation <= settings.minimum_elevation)
+        return result;
+    result.width = terrain.subdivisions + 1u;
+    result.height = result.width;
+    result.encoded_minimum_elevation = settings.minimum_elevation;
+    result.encoded_maximum_elevation = settings.maximum_elevation;
+    result.samples.resize(terrain.heights.size());
+    const float inverse_range = 1.0f / (settings.maximum_elevation - settings.minimum_elevation);
+    for (std::size_t sample = 0; sample < terrain.heights.size(); ++sample)
+        result.samples[sample] = static_cast<std::uint16_t>(std::lround(
+            saturate((terrain.heights[sample] - settings.minimum_elevation) * inverse_range) * 65535.0f));
+    return result;
 }
 
 float sample_terrain_height(const terrain_component& terrain, float local_x, float local_z) noexcept
@@ -360,6 +638,62 @@ terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math
         result.distance = nearest;
         result.position = math::add(local_origin, math::mul(local_direction, nearest));
         result.normal = sample_terrain_normal(terrain, result.position[0], result.position[2]);
+    }
+    return result;
+}
+
+terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const render::terrain_hierarchy& hierarchy,
+                                    const math::vector3f& local_origin,
+                                    const math::vector3f& local_direction) noexcept
+{
+    terrain_raycast_hit result{};
+    if (!terrain_heightfield_valid(terrain) || hierarchy.root == render::invalid_terrain_node ||
+        hierarchy.root >= hierarchy.nodes.size())
+        return result;
+    float closest = std::numeric_limits<float>::max();
+    std::vector<std::uint32_t> stack{hierarchy.root};
+    const float spacing = terrain.size / terrain.subdivisions;
+    const float half = terrain.size * 0.5f;
+    while (!stack.empty())
+    {
+        const auto index = stack.back();
+        stack.pop_back();
+        if (index >= hierarchy.nodes.size()) continue;
+        const auto& node = hierarchy.nodes[index];
+        if (!intersect_bounds(local_origin, local_direction, node.local_bounds, closest)) continue;
+        if (!node.leaf())
+        {
+            for (auto child = node.children.rbegin(); child != node.children.rend(); ++child)
+                if (*child != render::invalid_terrain_node) stack.push_back(*child);
+            continue;
+        }
+        for (std::uint32_t z = node.samples.min_z; z < node.samples.max_z; ++z)
+            for (std::uint32_t x = node.samples.min_x; x < node.samples.max_x; ++x)
+            {
+                const auto position = [&](std::uint32_t sx, std::uint32_t sz)
+                {
+                    return math::vector3f{-half + static_cast<float>(sx) * spacing, height_at(terrain, sx, sz),
+                                          -half + static_cast<float>(sz) * spacing};
+                };
+                const auto a = position(x, z);
+                const auto b = position(x + 1u, z);
+                const auto c = position(x + 1u, z + 1u);
+                const auto d = position(x, z + 1u);
+                float distance{};
+                math::vector3f normal{};
+                if (intersect_triangle(local_origin, local_direction, a, b, c, distance))
+                    normal = math::normalize(math::cross(math::sub(b, a), math::sub(c, a)));
+                else if (intersect_triangle(local_origin, local_direction, a, c, d, distance))
+                    normal = math::normalize(math::cross(math::sub(c, a), math::sub(d, a)));
+                else
+                    continue;
+                if (distance < closest)
+                {
+                    closest = distance;
+                    result = {.position = math::add(local_origin, math::mul(local_direction, distance)),
+                              .normal = normal, .distance = distance, .hit = true};
+                }
+            }
     }
     return result;
 }

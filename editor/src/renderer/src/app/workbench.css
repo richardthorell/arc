@@ -1425,7 +1425,7 @@
 
 .terrain-range {
   display: grid;
-  grid-template-columns: 62px minmax(70px, 1fr) 46px;
+  grid-template-columns: 62px minmax(70px, 1fr) 92px;
   align-items: center;
   gap: 7px;
   min-height: 32px;
@@ -1445,6 +1445,78 @@
   font-family: var(--arc-font-mono);
   font-size: var(--arc-text-xs);
 }
+
+.terrain-range-number {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.terrain-range-number input {
+  background: var(--arc-control-bg, #0d1720);
+  border: 1px solid var(--arc-border, #263747);
+  border-radius: 3px;
+  color: var(--arc-text, #d8e5f1);
+  padding: 4px 6px;
+  width: 64px;
+}
+
+.terrain-create-dialog {
+  background: #121d27;
+  border: 1px solid #31485c;
+  border-radius: 8px;
+  box-shadow: 0 18px 60px #000a;
+  color: #dbe8f3;
+  left: 50%;
+  max-width: 620px;
+  padding: 0;
+  position: fixed;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(620px, calc(100vw - 32px));
+  z-index: 10000;
+}
+
+.terrain-create-dialog > header,
+.terrain-create-dialog > footer {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.terrain-create-dialog > header { border-bottom: 1px solid #263747; font-weight: 700; }
+.terrain-create-dialog > header span { align-items: center; display: flex; gap: 8px; }
+.terrain-create-dialog > footer { border-top: 1px solid #263747; justify-content: flex-end; gap: 8px; }
+
+.terrain-create-fields {
+  display: grid;
+  gap: 12px 16px;
+  grid-template-columns: 1fr 1fr;
+  padding: 18px 16px;
+}
+
+.terrain-create-fields label { color: #9fb2c4; display: grid; gap: 5px; font-size: 12px; }
+.terrain-create-fields input,
+.terrain-create-fields select {
+  background: #0b151e;
+  border: 1px solid #2b3e4f;
+  border-radius: 4px;
+  color: #e3eef8;
+  min-height: 32px;
+  padding: 5px 8px;
+}
+
+.terrain-memory-estimate {
+  background: #0c1720;
+  border-block: 1px solid #233443;
+  display: flex;
+  gap: 20px;
+  padding: 10px 16px;
+}
+
+.terrain-operation-warning,
+.terrain-create-dialog .command-error { color: #f1b25c; margin: 10px 16px; }
 
 .terrain-tool-hint {
   margin: 8px 0 0;

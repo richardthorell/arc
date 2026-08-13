@@ -605,6 +605,10 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
     title: generatedTitle('arc::scene.terrain_component', 'Terrain'),
     fields: [
       { id: 'enabled', label: 'Enabled', path: 'terrain.enabled', type: 'boolean' },
+      { id: 'size', label: 'Physical Size', path: 'terrain.size', type: 'readonly', format: (value) => `${Number(value).toFixed(1)} m` },
+      { id: 'resolution', label: 'Resolution', path: 'terrain.resolution', type: 'readonly', format: (value) => `${value} × ${value}` },
+      { id: 'heightRange', label: 'Height Range', path: 'terrain.maximumElevation', type: 'readonly', format: (value, snapshot) => `${(snapshot.terrain?.minimumElevation ?? 0).toFixed(2)} – ${Number(value).toFixed(2)} m` },
+      { id: 'material', label: 'Terrain Material', path: 'terrain.materialPath', type: 'readonly' },
       { id: 'receiveShadows', label: 'Receive Shadows', path: 'terrain.receiveShadows', type: 'boolean' },
       { id: 'castShadows', label: 'Cast Shadows', path: 'terrain.castShadows', type: 'boolean' },
       {
@@ -698,6 +702,11 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'],
         allowEmpty: true,
       },
+      { id: 'hierarchyNodes', label: 'Hierarchy Nodes', path: 'terrain.hierarchyNodes', type: 'readonly' },
+      { id: 'visiblePatches', label: 'Visible Patches', path: 'terrain.visiblePatches', type: 'readonly' },
+      { id: 'renderedTriangles', label: 'Rendered Triangles', path: 'terrain.renderedTriangles', type: 'readonly' },
+      { id: 'cpuMemory', label: 'CPU Memory', path: 'terrain.cpuMemoryBytes', type: 'readonly', format: (value) => `${(Number(value) / 1048576).toFixed(1)} MiB` },
+      { id: 'gpuMemory', label: 'GPU Memory', path: 'terrain.gpuMemoryBytes', type: 'readonly', format: (value) => `${(Number(value) / 1048576).toFixed(1)} MiB` },
     ],
   },
   {

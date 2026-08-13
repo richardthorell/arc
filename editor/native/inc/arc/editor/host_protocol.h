@@ -81,6 +81,7 @@ enum class host_event_type : std::uint8_t
     profiler_snapshot,
     terrain_tool_changed,
     terrain_stroke_committed,
+    terrain_operation_changed,
     runtime_state_changed,
     runtime_tick_completed,
     runtime_fault,
@@ -244,7 +245,14 @@ enum class host_visualization_mode : std::uint8_t
     lighting_temporal_confidence,
     indirect_diffuse,
     reflections,
-    denoiser_variance
+    denoiser_variance,
+    terrain_patch_boundaries,
+    terrain_lod_level,
+    terrain_hierarchy_nodes,
+    terrain_geometric_error,
+    terrain_culled_nodes,
+    terrain_triangle_density,
+    terrain_bounds
 };
 enum class host_indirect_lighting_method : std::uint8_t
 {
@@ -433,6 +441,8 @@ struct host_terrain_snapshot
 {
     bool enabled{true};
     float size{180.0f};
+    float minimum_elevation{};
+    float maximum_elevation{};
     std::uint32_t resolution{257u};
     std::uint32_t chunk_quads{128u};
     std::uint32_t patch_quads{32u};
@@ -443,6 +453,16 @@ struct host_terrain_snapshot
     float shadow_lod_bias{};
     float maximum_shadow_distance{};
     std::uint64_t content_revision{};
+    std::string material_guid;
+    std::string material_path;
+    std::uint32_t hierarchy_nodes{};
+    std::uint32_t hierarchy_depth{};
+    std::uint32_t source_patches{};
+    std::uint32_t visible_patches{};
+    std::uint64_t rendered_triangles{};
+    std::uint64_t cpu_memory_bytes{};
+    std::uint64_t gpu_memory_bytes{};
+    std::uint64_t uploaded_bytes{};
     host_terrain_brush_tool brush_tool{host_terrain_brush_tool::sculpt};
     float brush_radius{6.0f};
     float brush_strength{0.25f};
@@ -450,6 +470,25 @@ struct host_terrain_snapshot
     std::uint32_t active_layer{};
     std::array<std::string, 4> layer_names{"Grass", "Dirt", "Rock", "Sand"};
     std::array<std::string, 4> layer_base_color_paths{};
+};
+
+enum class host_terrain_operation_state : std::uint8_t
+{
+    queued,
+    running,
+    completed,
+    cancelled,
+    failed
+};
+
+struct host_terrain_operation_snapshot
+{
+    std::uint64_t operation_id{};
+    host_terrain_operation_state state{host_terrain_operation_state::queued};
+    float progress{};
+    std::string label;
+    std::string message;
+    host_entity_id entity{};
 };
 
 struct host_terrain_tool_snapshot
@@ -994,6 +1033,7 @@ struct host_terrain_stroke_command
     std::uint32_t y{};
     host_edit_phase phase{host_edit_phase::begin};
     bool invert{};
+    float elapsed_seconds{1.0f / 60.0f};
 };
 
 struct host_terrain_hover_command
@@ -1070,6 +1110,62 @@ struct host_viewport_resize_command
     std::int32_t y{};
     std::uint32_t width{};
     std::uint32_t height{};
+};
+
+struct host_create_terrain_command
+{
+    float size{180.0f};
+    float minimum_elevation{};
+    float maximum_elevation{48.0f};
+    std::uint32_t resolution{257u};
+    std::uint32_t patch_quads{32u};
+    std::string source{"flat"};
+    std::uint64_t seed{1u};
+    host_entity_id parent{};
+};
+
+struct host_generate_terrain_command
+{
+    host_entity_id entity{};
+    std::string generator_id{"arc.terrain.domain_warped.v1"};
+    std::uint64_t seed{1u};
+    float minimum_elevation{};
+    float maximum_elevation{48.0f};
+};
+
+struct host_import_terrain_heightmap_command
+{
+    host_entity_id entity{};
+    std::filesystem::path path;
+    std::uint32_t raw_width{};
+    std::uint32_t raw_height{};
+    std::uint32_t target_resolution{257u};
+    float physical_size{180.0f};
+    float minimum_elevation{};
+    float maximum_elevation{48.0f};
+    bool flip_x{};
+    bool flip_z{};
+    bool normalize{true};
+};
+
+struct host_export_terrain_heightmap_command
+{
+    host_entity_id entity{};
+    std::filesystem::path path;
+    float minimum_elevation{};
+    float maximum_elevation{48.0f};
+};
+
+struct host_resample_terrain_command
+{
+    host_entity_id entity{};
+    std::uint32_t resolution{257u};
+    float physical_size{180.0f};
+};
+
+struct host_cancel_terrain_operation_command
+{
+    std::uint64_t operation_id{};
 };
 
 struct host_viewport_detach_command
@@ -1205,6 +1301,8 @@ using host_command_payload = std::variant<
     host_set_active_command, host_set_tag_command, host_set_transform_command, host_set_render_layer_command,
     host_set_mobility_command, host_set_camera_command, host_set_light_command, host_set_mesh_renderer_command,
     host_set_terrain_command, host_set_terrain_brush_command, host_set_terrain_layer_command,
+    host_create_terrain_command, host_generate_terrain_command, host_import_terrain_heightmap_command,
+    host_export_terrain_heightmap_command, host_resample_terrain_command, host_cancel_terrain_operation_command,
     host_terrain_stroke_command, host_terrain_hover_command, host_set_entity_material_command,
     host_component_operation_command, host_patch_project_component_command, host_set_world_environment_command,
     host_apply_world_environment_preset_command, host_set_environment_hdri_command, host_set_camera_projection_command,
