@@ -37,7 +37,7 @@ class ReactPanelRenderer implements IContentRenderer {
   constructor(panel: WorkbenchPanelId, renderPanel: () => WorkspaceDockProps['renderPanel']) {
     this.panel = panel;
     this.renderPanel = renderPanel;
-    this.element.className = 'workspace-dock-panel';
+    this.element.className = `workspace-dock-panel workspace-dock-panel-${panel}`;
   }
 
   init(parameters: GroupPanelPartInitParameters) {

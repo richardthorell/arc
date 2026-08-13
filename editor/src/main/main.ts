@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
@@ -410,18 +410,15 @@ export class ArcHostClient {
   }
 }
 
-const normalizeViewportBounds = (bounds: NativeViewportBounds): NativeViewportBounds => {
-  // The host-created viewport is parented to Electron's HWND and SetWindowPos
-  // consumes that parent's client-coordinate space. Chromium's element bounds
-  // already map to that space for a cross-process child window. Applying the
-  // monitor scale factor here a second time makes the viewport overlap adjacent
-  // docks on displays using 125%/150% scaling.
+const scaleViewportBounds = (window: BrowserWindow, bounds: NativeViewportBounds): NativeViewportBounds => {
+  const display = screen.getDisplayMatching(window.getBounds());
+  const scale = display.scaleFactor || 1;
   return {
     viewportId: bounds.viewportId,
-    x: Math.round(bounds.x),
-    y: Math.round(bounds.y),
-    width: Math.max(1, Math.round(bounds.width)),
-    height: Math.max(1, Math.round(bounds.height)),
+    x: Math.round(bounds.x * scale),
+    y: Math.round(bounds.y * scale),
+    width: Math.max(1, Math.round(bounds.width * scale)),
+    height: Math.max(1, Math.round(bounds.height * scale)),
   };
 };
 
@@ -1009,10 +1006,10 @@ void app.whenReady().then(async () => {
     if (!target) {
       throw new Error('No active editor window');
     }
-    const normalized = normalizeViewportBounds(bounds);
+    const scaled = scaleViewportBounds(target, bounds);
     return hostClient?.command('viewport.attach', {
       nativeHandle: nativeWindowHandleNumber(target),
-      ...normalized,
+      ...scaled,
     });
   });
   ipcMain.handle('viewport:resize', (event, bounds: NativeViewportBounds) => {
@@ -1021,7 +1018,7 @@ void app.whenReady().then(async () => {
     if (!target) {
       throw new Error('No active editor window');
     }
-    return hostClient?.command('viewport.resize', normalizeViewportBounds(bounds));
+    return hostClient?.command('viewport.resize', scaleViewportBounds(target, bounds));
   });
   ipcMain.handle('viewport:detach', (_event, viewportId: string) =>
     hostClient?.command('viewport.detach', { viewportId }),

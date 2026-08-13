@@ -2,8 +2,11 @@
   display: grid;
   grid-template-rows: 34px minmax(0, 1fr);
   width: 100%;
+  max-width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: #0f1117;
 }
 
@@ -12,6 +15,7 @@
   align-items: center;
   gap: 8px;
   height: 34px;
+  min-width: 0;
   padding: 0 8px;
   border-bottom: 1px solid #2b2b2b;
   background: #202020;
@@ -33,6 +37,7 @@
 
 .arc-viewport-view-options {
   gap: 4px;
+  min-width: 0;
 }
 
 .arc-viewport-view-options button {
@@ -185,10 +190,13 @@
 
 .arc-viewport-header-spacer {
   flex: 1;
+  min-width: 0;
 }
 
 .arc-viewport-body {
   position: relative;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;

@@ -186,6 +186,10 @@
   min-height: 0;
 }
 
+.workspace-dock-panel-viewport {
+  overflow: hidden;
+}
+
 .editor-region.foundation-editor-region {
   grid-column: 3;
   grid-row: 1;
