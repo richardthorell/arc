@@ -152,7 +152,11 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
     label: 'Terrain Tool',
     description: 'Sculpt or paint the selected terrain.',
     category: 'Viewport',
-    enabled: (context) => context.viewportFocused && context.hasSelection,
+    // Clicking the main toolbar necessarily moves DOM focus out of the viewport.
+    // Terrain eligibility is validated from the selected entity snapshot and by
+    // the native host, so requiring transient viewport focus makes the button
+    // reject the very click intended to activate it.
+    enabled: (context) => context.hasSelection,
   },
   'viewport.frameSelected': {
     id: 'viewport.frameSelected',

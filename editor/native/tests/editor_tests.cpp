@@ -2357,6 +2357,17 @@ TEST_CASE("blank 3D project template opens its persisted startup scene")
     const auto& floor_renderer = host->scene_state().scene.get<arc::scene::mesh_renderer_component>(floor_entity);
     REQUIRE_FALSE(floor_renderer.casts_shadows);
     REQUIRE(floor_renderer.receives_shadows);
+    REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = floor->entity}).succeeded);
+    REQUIRE(host->execute(arc::editor::host_delete_entity_command{.entity = floor->entity}).succeeded);
+    snapshot = host->scene_snapshot();
+    REQUIRE(snapshot.entities.size() == 2u);
+    REQUIRE(std::none_of(snapshot.entities.begin(), snapshot.entities.end(),
+                         [](const auto& entity) { return entity.name == "Floor"; }));
+    REQUIRE_FALSE(host->selected_entity_snapshot().entity.valid());
+    REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
+    snapshot = host->scene_snapshot();
+    REQUIRE(std::any_of(snapshot.entities.begin(), snapshot.entities.end(),
+                        [](const auto& entity) { return entity.name == "Floor"; }));
     REQUIRE(host->execute(arc::editor::host_select_entity_command{.entity = sky_id}).succeeded);
     REQUIRE(host->execute(arc::editor::host_set_active_command{.entity = sky_id, .active = false}).succeeded);
     snapshot = host->scene_snapshot();
@@ -2878,6 +2889,7 @@ TEST_CASE("terrain host snapshots validate brush settings and group a stroke int
         host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::terrain})
             .succeeded);
     const auto terrain_entity = host->scene_state().terrain_entity;
+    REQUIRE(host->scene_state().terrain_material.valid());
     REQUIRE(host->execute(arc::editor::host_select_entity_command{
                               .entity = {terrain_entity.index, terrain_entity.generation}})
                 .succeeded);

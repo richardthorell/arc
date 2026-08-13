@@ -2221,9 +2221,41 @@ host_response arc_host::execute(const host_command_envelope& command)
 
                 const std::string name = entity_name(state_->scene, entity, "Entity");
                 const auto removed = scene::subtree(state_->scene.scene, entity);
+                std::vector<ecs::entity_guid> removed_guids;
+                removed_guids.reserve(removed.size());
+                for (const auto nested : removed)
+                {
+                    const auto guid = entity_guid_of(state_->scene, nested);
+                    if (guid.valid()) removed_guids.push_back(guid);
+                }
+                const auto was_removed = [&](ecs::entity candidate)
+                { return std::ranges::find(removed, candidate) != removed.end(); };
+                if (was_removed(state_->scene.selected_entity))
+                    clear_selection(state_->scene.scene, state_->scene.selected_entity);
+                if (state_->pending_pick && was_removed(state_->pending_pick->cpu_fallback.entity))
+                    state_->pending_pick.reset();
+                if (was_removed(state_->scene.terrain_entity))
+                {
+                    state_->terrain_brush_local_position.reset();
+                    state_->terrain_stroke_previous_position.reset();
+                    state_->terrain_flatten_height_captured = false;
+                    if (state_->viewport_tool.tool == host_viewport_tool::terrain)
+                        state_->viewport_tool.tool = host_viewport_tool::select;
+                }
+                for (const auto guid : removed_guids)
+                    state_->scene.terrain_render_proxies.erase(guid, *state_->renderer);
                 scene::destroy_subtree(state_->scene.scene, entity);
                 for (const auto nested : removed)
                     forget_entity(state_->scene, nested);
+                const auto removed_guid = [&](ecs::entity_guid guid)
+                { return std::ranges::find(removed_guids, guid) != removed_guids.end(); };
+                std::erase_if(state_->scene.asset_bindings,
+                              [&](const auto& binding) { return removed_guid(binding.entity); });
+                std::erase_if(state_->scene.unknown_component_records,
+                              [&](const auto& record) { return removed_guid(record.first); });
+                std::erase_if(state_->scene.preserved_component_records,
+                              [&](const auto& record) { return removed_guid(record.entity); });
+                state_->scene.last_render = {};
                 const std::string message = "Deleted entity: " + name;
                 arc::diagnostics::info("editor.host", message);
                 push_event(state_->events, state_->event_sequence, host_event_type::entity_deleted, message, entity);
@@ -2688,6 +2720,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (estimate.history_bytes > history_budget)
                     return fail("Terrain creation needs " + std::to_string(estimate.history_bytes) +
                                 " bytes of undo storage, exceeding the 64 MiB history budget");
+
+                if (!state_->scene.terrain_material.valid())
+                {
+                    const auto asset_root = !state_->assets.root.empty() ? state_->assets.root
+                                                                         : state_->project.root / "Content";
+                    if (!create_default_terrain_material(state_->scene, *state_->renderer, asset_root).valid())
+                        return fail("Default terrain material could not be created");
+                }
 
                 scene::terrain_component staged;
                 staged.size = descriptor.size;
