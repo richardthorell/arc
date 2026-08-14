@@ -98,7 +98,7 @@ export function RemoteAssetBrowser({ source }: Props) {
       .then((next) => {
         setManifest(next);
         const resolutions = manifestResolutions(next);
-        const formats = manifestFormats(next);
+        const formats = manifestFormats(next, asset.kind);
         setResolution(preferredResolution(resolutions));
         setFormat(preferredFormat(formats, asset.kind));
       })
@@ -107,7 +107,10 @@ export function RemoteAssetBrowser({ source }: Props) {
   };
 
   const resolutions = useMemo(() => (manifest ? manifestResolutions(manifest) : []), [manifest]);
-  const formats = useMemo(() => (manifest ? manifestFormats(manifest) : []), [manifest]);
+  const formats = useMemo(
+    () => (manifest ? manifestFormats(manifest, selected?.kind) : []),
+    [manifest, selected?.kind],
+  );
   const selectedFiles = useMemo(
     () => (manifest ? selectManifestFiles(manifest, resolution, format) : []),
     [format, manifest, resolution],
