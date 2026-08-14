@@ -5,6 +5,8 @@ add_library(arc-render-vulkan SHARED
     src/vulkan_pick_utils.h
     src/vulkan_sky_constants.cpp
     src/vulkan_sky_constants.h
+    src/vulkan_swapchain.cpp
+    src/vulkan_swapchain.h
 )
 arc_configure_first_party_target(arc-render-vulkan)
 
@@ -52,17 +54,6 @@ target_compile_definitions(arc-render-vulkan
         VMA_STATIC_VULKAN_FUNCTIONS=1
         VMA_DYNAMIC_VULKAN_FUNCTIONS=0
 )
-
-if(ARC_BUILD_EDITOR AND TARGET arc-third-party-imgui)
-    target_link_libraries(arc-render-vulkan
-        PRIVATE
-            arc-third-party-imgui
-    )
-    target_compile_definitions(arc-render-vulkan
-        PRIVATE
-            ARC_RENDER_VULKAN_ENABLE_IMGUI=1
-    )
-endif()
 
 if(NOT TARGET arc::render-vulkan)
     add_library(arc::render-vulkan ALIAS arc-render-vulkan)
