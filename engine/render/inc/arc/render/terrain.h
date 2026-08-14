@@ -124,7 +124,7 @@ struct terrain_selection_statistics
 };
 
 /** @brief Result of selecting terrain patches for one view. */
-struct terrain_selection_result
+struct [[nodiscard]] terrain_selection_result
 {
     std::vector<terrain_patch> patches;
     terrain_selection_statistics statistics{};
