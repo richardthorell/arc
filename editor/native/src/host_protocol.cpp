@@ -1645,10 +1645,25 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"viewportId\":" + quote(payload.viewport_id) +
                        ",\"visible\":" + bool_json(payload.visible) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_pointer_command>)
-                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"x\":" +
-                       std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) + '}';
+            {
+                const char* phase = payload.phase == host_viewport_pointer_phase::down    ? "down"
+                                    : payload.phase == host_viewport_pointer_phase::up     ? "up"
+                                    : payload.phase == host_viewport_pointer_phase::wheel  ? "wheel"
+                                    : payload.phase == host_viewport_pointer_phase::leave  ? "leave"
+                                    : payload.phase == host_viewport_pointer_phase::cancel ? "cancel"
+                                                                                           : "move";
+                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"phase\":" + quote(phase) +
+                       ",\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
+                       ",\"button\":" + std::to_string(payload.button) +
+                       ",\"wheel\":" + std::to_string(payload.wheel) + ",\"alt\":" + bool_json(payload.alt) +
+                       ",\"shift\":" + bool_json(payload.shift) +
+                       ",\"control\":" + bool_json(payload.control) + '}';
+            }
             else if constexpr (std::is_same_v<type, host_viewport_key_command>)
-                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"key\":" + quote(payload.key) + '}';
+                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"key\":" + quote(payload.key) +
+                       ",\"down\":" + bool_json(payload.down) + ",\"repeat\":" + bool_json(payload.repeat) +
+                       ",\"alt\":" + bool_json(payload.alt) + ",\"shift\":" + bool_json(payload.shift) +
+                       ",\"control\":" + bool_json(payload.control) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>)
                 return "{\"viewportId\":" + quote(payload.viewport_id) +
                        ",\"projection\":" + quote(to_string(payload.projection)) + '}';

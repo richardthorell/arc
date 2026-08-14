@@ -15,6 +15,14 @@ def run(command: list[str], *, env: dict[str, str] | None = None, output=None) -
     subprocess.run(command, check=True, env=env, stdout=output)
 
 
+def require_tool(name: str, *, environment_variable: str | None = None) -> str:
+    requested = os.environ.get(environment_variable, name) if environment_variable else name
+    resolved = shutil.which(requested)
+    if resolved is None:
+        raise RuntimeError(f"required coverage tool is unavailable: {requested}")
+    return resolved
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", type=Path, default=Path("out/build/coverage-clang"))
@@ -24,20 +32,20 @@ def main() -> int:
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for tool in ("ctest", "llvm-profdata", "llvm-cov"):
-        if shutil.which(tool) is None:
-            raise RuntimeError(f"required coverage tool is unavailable: {tool}")
+    ctest = require_tool("ctest")
+    llvm_profdata = require_tool("llvm-profdata", environment_variable="LLVM_PROFDATA")
+    llvm_cov = require_tool("llvm-cov", environment_variable="LLVM_COV")
 
     raw_pattern = output_dir / "arc-%p-%m.profraw"
     environment = os.environ.copy()
     environment["LLVM_PROFILE_FILE"] = str(raw_pattern)
-    run(["ctest", "--test-dir", str(build_dir), "--output-on-failure"], env=environment)
+    run([ctest, "--test-dir", str(build_dir), "--output-on-failure"], env=environment)
 
     raw_profiles = sorted(output_dir.glob("*.profraw"))
     if not raw_profiles:
         raise RuntimeError("tests produced no LLVM raw profiles")
     profile = output_dir / "arc.profdata"
-    run(["llvm-profdata", "merge", "-sparse", *map(str, raw_profiles), "-o", str(profile)])
+    run([llvm_profdata, "merge", "-sparse", *map(str, raw_profiles), "-o", str(profile)])
 
     suffix = ".exe" if os.name == "nt" else ""
     test_binaries = sorted(path for path in build_dir.rglob(f"*tests{suffix}") if path.is_file())
@@ -49,11 +57,11 @@ def main() -> int:
 
     report = output_dir / "summary.txt"
     with report.open("w", encoding="utf-8") as stream:
-        run(["llvm-cov", "report", *objects, f"-instr-profile={profile}"], output=stream)
+        run([llvm_cov, "report", *objects, f"-instr-profile={profile}"], output=stream)
     lcov = output_dir / "coverage.lcov"
     with lcov.open("w", encoding="utf-8") as stream:
         run([
-            "llvm-cov", "export", *objects, f"-instr-profile={profile}", "-format=lcov",
+            llvm_cov, "export", *objects, f"-instr-profile={profile}", "-format=lcov",
             "-ignore-filename-regex=(third_party|out/build)",
         ], output=stream)
     print(f"coverage reports written to {output_dir}")
