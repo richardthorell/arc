@@ -1290,6 +1290,63 @@ TEST_CASE("mesh renderer host snapshot edits and material assignment round trip"
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("mesh renderer snapshot preserves secondary content root catalog path")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-secondary-material-roundtrip";
+    std::filesystem::remove_all(root);
+    const auto primary_root = root / "Content";
+    const auto secondary_root = root / "Assets";
+    std::filesystem::create_directories(primary_root);
+    std::filesystem::create_directories(secondary_root / "materials");
+
+    auto material = arc::editor::make_default_material_asset("Forest Ground");
+    material.path = secondary_root / "materials" / "forest_ground.arcmat";
+    std::string message;
+    REQUIRE(arc::editor::save_material_asset(material, secondary_root, message));
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = primary_root;
+    REQUIRE(host->open_project({.name = "Secondary Material Roundtrip",
+                                .root = root,
+                                .content_roots = {primary_root, secondary_root}},
+                               assets)
+                .succeeded);
+    REQUIRE(host->execute(
+                    {.request_id = 1,
+                     .payload =
+                         arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::sphere}})
+                .succeeded);
+    const auto entity = host->selected_entity_snapshot().entity;
+
+    const auto catalog = host->project_assets_snapshot();
+    const auto found = std::find_if(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset)
+                                    { return asset.path == "Assets/materials/forest_ground.arcmat"; });
+    REQUIRE(found != catalog.assets.end());
+    REQUIRE(found->kind == "material");
+
+    REQUIRE(host->execute({.request_id = 2,
+                           .payload = arc::editor::host_set_entity_material_command{.entity = entity,
+                                                                                   .path = found->path}})
+                .succeeded);
+    const auto assigned = host->selected_entity_snapshot();
+    REQUIRE(assigned.mesh_renderer.has_value());
+    REQUIRE(assigned.mesh_renderer->asset_backed_material);
+    REQUIRE(assigned.mesh_renderer->material_name == "Forest Ground");
+    REQUIRE(assigned.mesh_renderer->material_path == found->path);
+    REQUIRE_FALSE(assigned.mesh_renderer->material_path.starts_with(".."));
+
+    const auto preview = host->asset_thumbnail(assigned.mesh_renderer->material_path, 64);
+    REQUIRE(preview.has_value());
+    REQUIRE(preview->data_url.starts_with("data:image/bmp;base64,Qk"));
+
+    host.reset();
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+}
+
 TEST_CASE("world environment JSON round trips every field and enum")
 {
     arc::editor::host_world_environment_snapshot environment;

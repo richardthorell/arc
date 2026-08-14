@@ -1446,6 +1446,7 @@ bool validate_project_field_value(const project_field_schema& field, const nlohm
 }
 
 host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& state, const editor_asset_state& assets,
+                                                   const std::filesystem::path& project_root, ecs::entity entity,
                                                    const scene::mesh_renderer_component& mesh_renderer)
 {
     host_mesh_renderer_snapshot snapshot;
@@ -1462,7 +1463,21 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
         if (record.material != mesh_renderer.material) continue;
         snapshot.asset_backed_material = true;
         snapshot.material_name = record.asset.name;
-        snapshot.material_path = asset_relative_path(assets.root, record.path);
+        const auto relative_to_primary = record.path.lexically_relative(assets.root);
+        const auto relative_to_project = record.path.lexically_relative(project_root);
+        const auto stays_within = [](const std::filesystem::path& relative)
+        {
+            return !relative.empty() && *relative.begin() != std::filesystem::path("..");
+        };
+        if (!assets.root.empty() && stays_within(relative_to_primary))
+            snapshot.material_path = arc::assets::normalize_asset_path(relative_to_primary);
+        else if (!project_root.empty() && stays_within(relative_to_project))
+            snapshot.material_path = arc::assets::normalize_asset_path(relative_to_project);
+        else if (const auto* binding = find_asset_binding(state, entity_guid_of(state, entity));
+                 binding && !binding->material.path_hint.empty())
+            snapshot.material_path = arc::assets::normalize_asset_path(binding->material.path_hint);
+        else
+            snapshot.material_path = asset_relative_path(assets.root, record.path);
         return snapshot;
     }
     if (mesh_renderer.material == state.default_material)
@@ -4558,7 +4573,8 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
     }
     if (const auto* mesh_renderer = state_->scene.scene.try_get<scene::mesh_renderer_component>(selected))
     {
-        snapshot.mesh_renderer = mesh_renderer_snapshot(state_->scene, state_->assets, *mesh_renderer);
+        snapshot.mesh_renderer =
+            mesh_renderer_snapshot(state_->scene, state_->assets, state_->project.root, selected, *mesh_renderer);
         add_component_snapshot<scene::mesh_renderer_component>(state_->scene.scene, selected, snapshot.components,
                                                                host_component_kind::mesh_renderer, "Mesh Renderer");
     }
