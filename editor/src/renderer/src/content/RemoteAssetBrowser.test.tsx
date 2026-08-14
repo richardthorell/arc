@@ -75,6 +75,6 @@ describe('RemoteAssetBrowser', () => {
       logicalPaths: ['gltf/2k/gltf', 'gltf/2k/gltf/include/0'],
       destinationScope: 'project',
     });
-    expect(await view.findByText(/Imported 2 files/)).toBeInTheDocument();
+    expect(await view.findByText('Imported 2 files · 0 cache hits · 2 downloaded')).toBeInTheDocument();
   });
 });
