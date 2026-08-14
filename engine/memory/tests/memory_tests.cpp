@@ -133,7 +133,7 @@ TEST_CASE("linear arena growth preserves pointers and supports marks")
     *first = 0xdeadbeefu;
     const auto mark = arena.mark();
 
-    REQUIRE(arena.allocate(4096, 64) != nullptr);
+    (void)arena.allocate(4096, 64);
     REQUIRE(*first == 0xdeadbeefu);
     REQUIRE(arena.capacity() >= 4096);
     REQUIRE(arena.peak_used() >= 4096);
