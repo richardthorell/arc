@@ -110,8 +110,10 @@ type SharedViewportFrame = {
 };
 
 const sharedViewportEnabled = process.platform === 'win32' && process.env.ARC_NATIVE_VIEWPORT !== '1';
+const connectedViewportMode = (): 'streamed' | 'native' => (sharedViewportEnabled ? 'streamed' : 'native');
 const sharedViewportTargets = new Map<string, number>();
 const sharedViewportPresented = new Set<string>();
+const sharedViewportFailures = new Map<string, string>();
 
 const sharedViewportWindow = (viewportId: string): BrowserWindow | null => {
   const webContentsId = sharedViewportTargets.get(viewportId);
@@ -798,7 +800,7 @@ void app.whenReady().then(async () => {
   ipcMain.handle('editor:getStartupState', () => ({
     appVersion: app.getVersion(),
     engineHostConnected: hostClient?.connected ?? false,
-    viewportMode: hostClient?.connected ? (sharedViewportEnabled ? 'streamed' : 'native') : 'unavailable',
+    viewportMode: hostClient?.connected ? connectedViewportMode() : 'unavailable',
     hostError: hostClient?.error ?? '',
     activeProject: projectService?.snapshot().activeProject ?? null,
     ciSmoke: isCiSmoke,
@@ -938,7 +940,7 @@ void app.whenReady().then(async () => {
       noLink: true,
     });
     return confirmation.response === 0
-      ? sourceControlService?.checkout(reference)
+      ? sourceControlService?.checkout(paths)
       : { succeeded: false, output: '', error: 'Checkout cancelled' };
   });
   ipcMain.handle('vcs:pull', () => sourceControlService?.pull());
@@ -982,6 +984,9 @@ void app.whenReady().then(async () => {
     hostClient?.query(type, payload),
   );
   ipcMain.handle('host:reconnect', async () => {
+    sharedViewportTargets.clear();
+    sharedViewportPresented.clear();
+    sharedViewportFailures.clear();
     hostClient?.restart();
     const project = projectService?.active() ?? null;
     if (!hostClient?.connected) {
@@ -1008,7 +1013,7 @@ void app.whenReady().then(async () => {
     return {
       appVersion: app.getVersion(),
       engineHostConnected: true,
-      viewportMode: 'native',
+      viewportMode: connectedViewportMode(),
       hostError: '',
       activeProject: project,
     };
@@ -1100,31 +1105,71 @@ void app.whenReady().then(async () => {
     });
     return { canceled: false, filePath, response };
   });
-  ipcMain.handle('viewport:attach', (event, bounds: NativeViewportBounds) => {
+  ipcMain.handle('viewport:attach', async (event, bounds: NativeViewportBounds) => {
     if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
     const target = BrowserWindow.fromWebContents(event.sender);
     if (!target) {
       throw new Error('No active editor window');
     }
     const scaled = scaleViewportBounds(target, bounds);
-    return hostClient?.command('viewport.attach', {
+    const fallbackReason = sharedViewportFailures.get(scaled.viewportId);
+    const response = await hostClient?.command('viewport.attach', {
       nativeHandle: nativeWindowHandleNumber(target),
       ...scaled,
     });
+    if (fallbackReason && response?.succeeded) {
+      sharedViewportTargets.delete(scaled.viewportId);
+      sharedViewportPresented.delete(scaled.viewportId);
+      sharedViewportFailures.delete(scaled.viewportId);
+      sendHostLog({
+        level: 'warning',
+        source: 'viewport.nativeFallback',
+        message: `Native viewport fallback '${scaled.viewportId}' is active after shared GPU failure: ${fallbackReason}`,
+      });
+    } else if (fallbackReason && response?.succeeded === false) {
+      sendHostLog({
+        level: 'error',
+        source: 'viewport.nativeFallback',
+        message: `Native viewport fallback '${scaled.viewportId}' failed after shared GPU failure '${fallbackReason}': ${response.error || 'unknown native fallback error'}`,
+      });
+    }
+    return response;
   });
-  ipcMain.handle('viewport:create', (event, bounds: NativeViewportBounds) => {
+  ipcMain.handle('viewport:create', async (event, bounds: NativeViewportBounds) => {
     if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
     const target = BrowserWindow.fromWebContents(event.sender);
     if (!target) throw new Error('No active editor window');
     const scaled = scaleViewportBounds(target, bounds);
     sharedViewportTargets.set(scaled.viewportId, target.webContents.id);
-    return hostClient?.command('viewport.create', {
-      viewportId: scaled.viewportId,
-      output: 'sharedTexture',
-      consumerProcessId: process.pid,
-      width: scaled.width,
-      height: scaled.height,
-    });
+    sharedViewportFailures.delete(scaled.viewportId);
+    try {
+      const response = await hostClient?.command('viewport.create', {
+        viewportId: scaled.viewportId,
+        output: 'sharedTexture',
+        consumerProcessId: process.pid,
+        width: scaled.width,
+        height: scaled.height,
+      });
+      if (response?.succeeded === false) {
+        const reason = response.error || 'Unknown shared-texture error';
+        sharedViewportFailures.set(scaled.viewportId, reason);
+        sendHostLog({
+          level: 'error',
+          source: 'viewport.sharedTexture',
+          message: `Shared GPU viewport '${scaled.viewportId}' failed: ${reason}. Native fallback requires explicit confirmation in the viewport.`,
+        });
+      }
+      return response;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      sharedViewportFailures.set(scaled.viewportId, reason);
+      sendHostLog({
+        level: 'error',
+        source: 'viewport.sharedTexture',
+        message: `Shared GPU viewport '${scaled.viewportId}' failed: ${reason}. Native fallback requires explicit confirmation in the viewport.`,
+      });
+      throw error;
+    }
   });
   ipcMain.handle('viewport:resize', (event, bounds: NativeViewportBounds) => {
     if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
@@ -1137,6 +1182,7 @@ void app.whenReady().then(async () => {
   ipcMain.handle('viewport:detach', (_event, viewportId: string) => {
     sharedViewportTargets.delete(viewportId);
     sharedViewportPresented.delete(viewportId);
+    sharedViewportFailures.delete(viewportId);
     return hostClient?.command('viewport.detach', { viewportId });
   });
   ipcMain.handle('viewport:setVisibility', (_event, viewportId: string, visible: boolean) =>
