@@ -30,9 +30,6 @@
 
 #if defined(_WIN32)
 #include <windows.h>
-#include <d3d11.h>
-#include <dxgi1_2.h>
-#include <wrl/client.h>
 #endif
 
 #if defined(_WIN32)
@@ -57,6 +54,12 @@ constexpr std::uint32_t material_binding_count = 18u;
 constexpr std::uint32_t material_descriptor_set_capacity = 12288u;
 constexpr std::uint32_t directional_shadow_layer_count = directional_shadow_cascade_count * 2u;
 constexpr VkDeviceSize upload_staging_capacity = 64u * 1024u * 1024u;
+#if ARC_VULKAN_SHARED_VIEWPORT
+// Electron/Chromium consumes a Windows NT shared-texture handle. Vulkan can
+// export that D3D-compatible handle type directly without creating a D3D device.
+constexpr VkExternalMemoryHandleTypeFlagBits shared_viewport_external_handle_type =
+    VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+#endif
 constexpr std::array<std::uint32_t, 15> material_image_bindings{0u,
                                                                 1u,
                                                                 2u,
@@ -317,7 +320,6 @@ class vulkan_render_backend final : public render_backend
     {
         VkImage image{};
         VkDeviceMemory memory{};
-        Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
         HANDLE shared_handle{};
         VkCommandPool command_pool{};
         VkCommandBuffer command_buffer{};
@@ -951,16 +953,17 @@ private:
     void query_shared_viewport_support()
     {
         shared_viewport_supported_ = false;
-        get_memory_win32_handle_properties_ = reinterpret_cast<PFN_vkGetMemoryWin32HandlePropertiesKHR>(
-            vkGetDeviceProcAddr(device_, "vkGetMemoryWin32HandlePropertiesKHR"));
-        if (get_memory_win32_handle_properties_ == nullptr)
+        get_memory_win32_handle_ = reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(
+            vkGetDeviceProcAddr(device_, "vkGetMemoryWin32HandleKHR"));
+        if (get_memory_win32_handle_ == nullptr)
         {
-            shared_viewport_failure_ = "VK_KHR_external_memory_win32 is unavailable";
+            shared_viewport_failure_ = "VK_KHR_external_memory_win32 export is unavailable";
             return;
         }
+
         VkPhysicalDeviceExternalImageFormatInfo external{};
         external.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
-        external.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+        external.handleType = shared_viewport_external_handle_type;
         VkPhysicalDeviceImageFormatInfo2 image{};
         image.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
         image.pNext = &external;
@@ -976,82 +979,19 @@ private:
         const auto result = vkGetPhysicalDeviceImageFormatProperties2(physical_device_, &image, &properties);
         const auto features = external_properties.externalMemoryProperties.externalMemoryFeatures;
         const auto compatible = external_properties.externalMemoryProperties.compatibleHandleTypes;
-        if (result != VK_SUCCESS || (features & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) == 0 ||
-            (compatible & VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT) == 0)
+        if (result != VK_SUCCESS || (features & VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT) == 0 ||
+            (compatible & shared_viewport_external_handle_type) == 0)
         {
             std::ostringstream diagnostic;
-            diagnostic << "selected Vulkan adapter cannot import BGRA8 D3D11-compatible textures (query="
+            diagnostic << "selected Vulkan adapter cannot export BGRA8 Windows shared textures (query="
                        << describe_vk_result(result) << ", features=0x" << std::hex << features
                        << ", compatible=0x" << compatible << ')';
             shared_viewport_failure_ = std::move(diagnostic).str();
             return;
         }
-        if (!create_shared_d3d_device()) return;
+
         shared_viewport_supported_ = true;
         shared_viewport_failure_.clear();
-    }
-
-    bool create_shared_d3d_device()
-    {
-        VkPhysicalDeviceIDProperties vulkan_id{};
-        vulkan_id.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
-        VkPhysicalDeviceProperties2 properties{};
-        properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-        properties.pNext = &vulkan_id;
-        vkGetPhysicalDeviceProperties2(physical_device_, &properties);
-        if (vulkan_id.deviceLUIDValid != VK_TRUE)
-        {
-            shared_viewport_failure_ = "selected Vulkan adapter does not expose a Windows adapter LUID";
-            return false;
-        }
-
-        LUID vulkan_luid{};
-        static_assert(sizeof(vulkan_luid) == VK_LUID_SIZE);
-        std::memcpy(&vulkan_luid, vulkan_id.deviceLUID, sizeof(vulkan_luid));
-        Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
-        if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
-        {
-            shared_viewport_failure_ = "failed to create the DXGI factory for shared viewport textures";
-            return false;
-        }
-
-        Microsoft::WRL::ComPtr<IDXGIAdapter1> selected_adapter;
-        for (UINT index = 0;; ++index)
-        {
-            Microsoft::WRL::ComPtr<IDXGIAdapter1> candidate;
-            if (factory->EnumAdapters1(index, &candidate) == DXGI_ERROR_NOT_FOUND) break;
-            DXGI_ADAPTER_DESC1 descriptor{};
-            if (SUCCEEDED(candidate->GetDesc1(&descriptor)) &&
-                descriptor.AdapterLuid.HighPart == vulkan_luid.HighPart &&
-                descriptor.AdapterLuid.LowPart == vulkan_luid.LowPart)
-            {
-                selected_adapter = std::move(candidate);
-                break;
-            }
-        }
-        if (!selected_adapter)
-        {
-            shared_viewport_failure_ = "could not match the Vulkan adapter to a DXGI adapter";
-            return false;
-        }
-
-        constexpr std::array<D3D_FEATURE_LEVEL, 3> levels{D3D_FEATURE_LEVEL_12_0, D3D_FEATURE_LEVEL_11_1,
-                                                          D3D_FEATURE_LEVEL_11_0};
-        Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
-        D3D_FEATURE_LEVEL selected_level{};
-        const auto result = D3D11CreateDevice(selected_adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
-                                               D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels.data(),
-                                               static_cast<UINT>(levels.size()), D3D11_SDK_VERSION,
-                                               &shared_d3d_device_, &selected_level, &context);
-        if (FAILED(result))
-        {
-            std::ostringstream diagnostic;
-            diagnostic << "failed to create the D3D11 interoperability device (HRESULT=0x" << std::hex
-                       << static_cast<std::uint32_t>(result) << ')';
-            shared_viewport_failure_ = std::move(diagnostic).str();
-            return false;
-        }
-        return true;
     }
 
     std::uint32_t shared_memory_type(std::uint32_t type_bits) const noexcept
@@ -1071,26 +1011,9 @@ private:
     {
         for (auto& slot : output.slots)
         {
-            D3D11_TEXTURE2D_DESC texture{};
-            texture.Width = output.width;
-            texture.Height = output.height;
-            texture.MipLevels = 1;
-            texture.ArraySize = 1;
-            texture.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-            texture.SampleDesc.Count = 1;
-            texture.Usage = D3D11_USAGE_DEFAULT;
-            texture.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-            texture.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
-            if (FAILED(shared_d3d_device_->CreateTexture2D(&texture, nullptr, &slot.texture))) return false;
-            Microsoft::WRL::ComPtr<IDXGIResource1> resource;
-            if (FAILED(slot.texture.As(&resource)) ||
-                FAILED(resource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
-                                                    nullptr, &slot.shared_handle)))
-                return false;
-
             VkExternalMemoryImageCreateInfo external_image{};
             external_image.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
-            external_image.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+            external_image.handleTypes = shared_viewport_external_handle_type;
             VkImageCreateInfo image{};
             image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             image.pNext = &external_image;
@@ -1106,20 +1029,15 @@ private:
 
             VkMemoryRequirements requirements{};
             vkGetImageMemoryRequirements(device_, slot.image, &requirements);
-            VkMemoryWin32HandlePropertiesKHR handle_properties{};
-            handle_properties.sType = VK_STRUCTURE_TYPE_MEMORY_WIN32_HANDLE_PROPERTIES_KHR;
-            if (get_memory_win32_handle_properties_(device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT,
-                                                    slot.shared_handle, &handle_properties) != VK_SUCCESS)
-                return false;
-            const auto memory_type = shared_memory_type(requirements.memoryTypeBits & handle_properties.memoryTypeBits);
+            const auto memory_type = shared_memory_type(requirements.memoryTypeBits);
             if (memory_type == UINT32_MAX) return false;
-            VkImportMemoryWin32HandleInfoKHR import_memory{};
-            import_memory.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
-            import_memory.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
-            import_memory.handle = slot.shared_handle;
+
+            VkExportMemoryAllocateInfo export_memory{};
+            export_memory.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+            export_memory.handleTypes = shared_viewport_external_handle_type;
             VkMemoryDedicatedAllocateInfo dedicated{};
             dedicated.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
-            dedicated.pNext = &import_memory;
+            dedicated.pNext = &export_memory;
             dedicated.image = slot.image;
             VkMemoryAllocateInfo allocation{};
             allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -1129,6 +1047,12 @@ private:
             if (vkAllocateMemory(device_, &allocation, nullptr, &slot.memory) != VK_SUCCESS ||
                 vkBindImageMemory(device_, slot.image, slot.memory, 0) != VK_SUCCESS)
                 return false;
+
+            VkMemoryGetWin32HandleInfoKHR handle_info{};
+            handle_info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+            handle_info.memory = slot.memory;
+            handle_info.handleType = shared_viewport_external_handle_type;
+            if (get_memory_win32_handle_(device_, &handle_info, &slot.shared_handle) != VK_SUCCESS) return false;
 
             VkCommandPoolCreateInfo pool{};
             pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -1265,7 +1189,6 @@ private:
             if (slot.image != VK_NULL_HANDLE) vkDestroyImage(device_, slot.image, nullptr);
             if (slot.memory != VK_NULL_HANDLE) vkFreeMemory(device_, slot.memory, nullptr);
             if (slot.shared_handle != nullptr) CloseHandle(slot.shared_handle);
-            slot.texture.Reset();
             slot = {};
         }
         if (!preserve_identity) output = {};
@@ -8378,8 +8301,7 @@ private:
 #if ARC_VULKAN_SHARED_VIEWPORT
     bool shared_viewport_supported_{};
     std::string shared_viewport_failure_;
-    PFN_vkGetMemoryWin32HandlePropertiesKHR get_memory_win32_handle_properties_{};
-    Microsoft::WRL::ComPtr<ID3D11Device> shared_d3d_device_;
+    PFN_vkGetMemoryWin32HandleKHR get_memory_win32_handle_{};
     std::unordered_map<std::string, std::uint64_t> shared_viewport_generations_;
     std::unordered_map<std::string, shared_viewport_output> shared_viewports_;
 #endif
