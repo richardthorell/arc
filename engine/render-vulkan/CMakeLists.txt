@@ -5,6 +5,8 @@ add_library(arc-render-vulkan SHARED
     src/vulkan_pick_utils.h
     src/vulkan_sky_constants.cpp
     src/vulkan_sky_constants.h
+    src/vulkan_swapchain.cpp
+    src/vulkan_swapchain.h
 )
 arc_configure_first_party_target(arc-render-vulkan)
 
@@ -14,6 +16,13 @@ if(MSVC)
     set_source_files_properties(src/vma_impl.cpp PROPERTIES COMPILE_OPTIONS "/W0;/WX-")
 else()
     set_source_files_properties(src/vma_impl.cpp PROPERTIES COMPILE_OPTIONS "-w;-Wno-error")
+endif()
+
+# VMA 3.3 annotates pointers with Clang's _Nonnull/_Nullable extensions. ARC
+# builds first-party code with -Wpedantic -Werror, so suppress only that vendor
+# header diagnostic in the translation unit that consumes VMA's public API.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_source_files_properties(src/vulkan_backend.cpp PROPERTIES COMPILE_OPTIONS "-Wno-nullability-extension")
 endif()
 
 target_compile_features(arc-render-vulkan
@@ -45,21 +54,8 @@ target_compile_definitions(arc-render-vulkan
         VMA_STATIC_VULKAN_FUNCTIONS=1
         VMA_DYNAMIC_VULKAN_FUNCTIONS=0
 )
-
 if(WIN32)
     target_compile_definitions(arc-render-vulkan PRIVATE VK_USE_PLATFORM_WIN32_KHR=1 WIN32_LEAN_AND_MEAN=1 NOMINMAX=1)
-    target_link_libraries(arc-render-vulkan PRIVATE d3d11 dxgi)
-endif()
-
-if(ARC_BUILD_EDITOR AND TARGET arc-third-party-imgui)
-    target_link_libraries(arc-render-vulkan
-        PRIVATE
-            arc-third-party-imgui
-    )
-    target_compile_definitions(arc-render-vulkan
-        PRIVATE
-            ARC_RENDER_VULKAN_ENABLE_IMGUI=1
-    )
 endif()
 
 if(NOT TARGET arc::render-vulkan)

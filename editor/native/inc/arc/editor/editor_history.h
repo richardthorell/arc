@@ -59,6 +59,8 @@ private:
     {
         struct terrain_delta
         {
+            terrain_delta() noexcept : entity{} {}
+
             ecs::entity_guid entity;
             std::uint32_t min_x{};
             std::uint32_t min_z{};

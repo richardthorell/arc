@@ -123,7 +123,7 @@ int run_process(const std::filesystem::path& executable, const std::vector<std::
     if (child < 0) return -1;
     if (child == 0)
     {
-        if (!working_directory.empty()) chdir(working_directory.c_str());
+        if (!working_directory.empty() && chdir(working_directory.c_str()) != 0) _exit(127);
         std::vector<char*> argv;
         std::string executable_text = executable.string();
         argv.push_back(executable_text.data());

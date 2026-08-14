@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.20)
 include(FetchContent)
 
 option(ARC_FETCH_THIRD_PARTY "Fetch third-party dependencies when system packages are not requested" ON)
-option(ARC_USE_SYSTEM_IMGUI "Use a system-provided Dear ImGui package for Vulkan presentation helpers" OFF)
 option(ARC_USE_SYSTEM_VULKAN "Use a system-provided Vulkan package" OFF)
 option(ARC_USE_SYSTEM_VOLK "Use a system-provided volk package" OFF)
 option(ARC_USE_SYSTEM_VMA "Use a system-provided Vulkan Memory Allocator package" OFF)
@@ -351,45 +350,4 @@ if(ARC_BUILD_RENDER_VULKAN)
     else()
     target_compile_definitions(arc-third-party-slang INTERFACE ARC_RENDER_SLANG_UNAVAILABLE=1)
     endif()
-
-    if(ARC_BUILD_EDITOR)
-        add_library(arc-third-party-imgui STATIC)
-        if(NOT TARGET arc::third-party-imgui)
-            add_library(arc::third-party-imgui ALIAS arc-third-party-imgui)
-        endif()
-
-        if(ARC_USE_SYSTEM_IMGUI)
-            find_package(imgui CONFIG REQUIRED)
-            target_link_libraries(arc-third-party-imgui PUBLIC imgui::imgui arc-third-party-volk)
-        elseif(ARC_FETCH_THIRD_PARTY)
-            FetchContent_Declare(
-                imgui
-                GIT_REPOSITORY https://github.com/ocornut/imgui.git
-                GIT_TAG v1.92.8-docking
-                GIT_SHALLOW TRUE
-            )
-            FetchContent_MakeAvailable(imgui)
-
-            target_sources(arc-third-party-imgui
-                PRIVATE
-                    "${imgui_SOURCE_DIR}/imgui.cpp"
-                    "${imgui_SOURCE_DIR}/imgui_draw.cpp"
-                    "${imgui_SOURCE_DIR}/imgui_tables.cpp"
-                    "${imgui_SOURCE_DIR}/imgui_widgets.cpp"
-                    "${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp"
-            )
-            target_include_directories(arc-third-party-imgui
-                PUBLIC
-                    "${imgui_SOURCE_DIR}"
-                    "${imgui_SOURCE_DIR}/backends"
-            )
-            target_link_libraries(arc-third-party-imgui PUBLIC arc-third-party-volk)
-        else()
-            message(FATAL_ERROR "ARC_FETCH_THIRD_PARTY is OFF and ARC_USE_SYSTEM_IMGUI is OFF")
-        endif()
-
-        target_compile_features(arc-third-party-imgui PUBLIC cxx_std_20)
-        target_compile_definitions(arc-third-party-imgui PUBLIC IMGUI_IMPL_VULKAN_USE_VOLK)
-    endif()
-
 endif()
