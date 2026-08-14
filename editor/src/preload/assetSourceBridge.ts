@@ -18,12 +18,14 @@ import type {
   ArcRemoteAssetKind,
 } from '../common/assetSourceTypes';
 import type { ArcProjectBrowserSnapshot } from '../common/projectTypes';
-import { createDefaultAssetSourceRegistry, type AssetSourceRegistry } from '../main/assetSources/assetSourceRegistry';
+import { AssetSourceRegistry } from '../main/assetSources/assetSourceRegistry';
+import { PolyHavenAssetSource } from '../main/assetSources/polyHavenAssetSource';
 
 type Invoke = <T>(channel: string, ...args: unknown[]) => Promise<T>;
 type ProgressCallback = (progress: ArcAssetImportProgress) => void;
 
 const imageExtensions = new Set(['exr', 'hdr', 'jpeg', 'jpg', 'png', 'tga', 'tif', 'tiff', 'webp']);
+const maxMetadataResponseBytes = 64 * 1024 * 1024;
 
 const normalizeSegment = (value: string): string => {
   const normalized = value
@@ -69,6 +71,57 @@ const ensureContained = (root: string, candidate: string): string => {
   return resolved;
 };
 
+const httpClient = (url: URL): typeof http | typeof https => {
+  if (url.protocol === 'https:') return https;
+  if (url.protocol === 'http:') return http;
+  throw new Error('Remote asset URL must use HTTP(S)');
+};
+
+const requestJson = async (
+  url: string,
+  headers: Record<string, string>,
+  redirects = 0,
+): Promise<unknown> => {
+  if (redirects > 5) throw new Error('Asset source metadata request exceeded redirect limit');
+  const parsed = new URL(url);
+  const client = httpClient(parsed);
+  return new Promise<unknown>((resolve, reject) => {
+    const request = client.get(parsed, { headers: { Accept: 'application/json', ...headers } }, (response) => {
+      const statusCode = response.statusCode ?? 0;
+      if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
+        response.resume();
+        const redirect = new URL(response.headers.location, parsed).toString();
+        void requestJson(redirect, headers, redirects + 1).then(resolve, reject);
+        return;
+      }
+      if (statusCode < 200 || statusCode >= 300) {
+        response.resume();
+        reject(new Error(`Asset source metadata request failed (${statusCode})`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      response.on('data', (chunk: Buffer) => {
+        bytes += chunk.byteLength;
+        if (bytes > maxMetadataResponseBytes) {
+          response.destroy(new Error('Asset source metadata response is too large'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('error', reject);
+      response.on('end', () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown);
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+    });
+    request.on('error', reject);
+  });
+};
+
 const hashFile = async (filePath: string, algorithm: 'md5' | 'sha256'): Promise<string> =>
   new Promise((resolve, reject) => {
     const hash = createHash(algorithm);
@@ -99,8 +152,7 @@ const requestDownload = async (
 ): Promise<void> => {
   if (redirects > 5) throw new Error('Remote asset download exceeded redirect limit');
   const parsed = new URL(url);
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('Remote asset URL must use HTTP(S)');
-  const client = parsed.protocol === 'https:' ? https : http;
+  const client = httpClient(parsed);
 
   await new Promise<void>((resolve, reject) => {
     const request = client.get(parsed, { headers: { 'User-Agent': userAgent } }, (response) => {
@@ -134,7 +186,9 @@ const downloadToCache = async (
   const temporary = `${cachePath}.part-${process.pid}-${Date.now()}`;
   try {
     await requestDownload(file.url, temporary, userAgent, onBytes);
-    if (!(await cachedFileIsValid(temporary, file))) throw new Error(`Checksum verification failed for ${file.logicalPath}`);
+    if (!(await cachedFileIsValid(temporary, file))) {
+      throw new Error(`Checksum verification failed for ${file.logicalPath}`);
+    }
     await copyFile(temporary, cachePath);
     return 'downloaded';
   } finally {
@@ -150,10 +204,13 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
 
   const registry = (): Promise<{ registry: AssetSourceRegistry; userAgent: string }> => {
     if (!registryPromise) {
-      registryPromise = invoke<string>('app:getVersion').then((version) => ({
-        registry: createDefaultAssetSourceRegistry(version),
-        userAgent: `ARC-Editor/${version || 'dev'}`,
-      }));
+      registryPromise = invoke<string>('app:getVersion').then((version) => {
+        const userAgent = `ARC-Editor/${version || 'dev'}`;
+        return {
+          registry: new AssetSourceRegistry([new PolyHavenAssetSource({ userAgent, fetchJson: requestJson })]),
+          userAgent,
+        };
+      });
     }
     return registryPromise;
   };
@@ -166,7 +223,7 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
     const projectRoot = path.resolve(project.projectRoot);
     const contentRoot = ensureContained(projectRoot, path.resolve(projectRoot, project.descriptor.paths.content));
     const savedRoot = ensureContained(projectRoot, path.resolve(projectRoot, project.descriptor.paths.saved));
-    return { project, projectRoot, contentRoot, savedRoot };
+    return { projectRoot, contentRoot, savedRoot };
   };
 
   return {
