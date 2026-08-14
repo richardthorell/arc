@@ -452,7 +452,7 @@ describe('data-driven InspectorPanel', () => {
     expect(screen.getByRole('button', { name: 'Linear' })).toBeDisabled();
   });
 
-  it('renders the Mesh Renderer material preview and assigns a material asset', async () => {
+  it('renders one Mesh Renderer material selector and assigns a material asset', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     const thumbnailProvider = vi.fn().mockResolvedValue('data:image/bmp;base64,Qkpreview');
     render(
@@ -475,8 +475,8 @@ describe('data-driven InspectorPanel', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Material Preview')).toBeInTheDocument();
-    expect(screen.getAllByText('Mountain Landscape')).toHaveLength(2);
+    expect(screen.queryByLabelText('Material Preview')).not.toBeInTheDocument();
+    expect(screen.getByText('Mountain Landscape')).toBeVisible();
     await userEvent.click(screen.getByLabelText('Choose Material asset'));
     expect(screen.getByRole('dialog', { name: 'Material asset picker' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Select Rock Albedo')).not.toBeInTheDocument();

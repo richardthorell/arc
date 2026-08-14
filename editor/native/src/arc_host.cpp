@@ -396,6 +396,8 @@ struct resolved_editor_asset
 };
 
 std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
+                                                           const assets::asset_manager* registry,
+                                                           const std::filesystem::path& project_root,
                                                            const std::filesystem::path& reference)
 {
     if (reference.empty()) return std::nullopt;
@@ -413,6 +415,22 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
     }
     if (const auto resolved = resolve_project_asset(asset_state.root, reference))
         return resolved_editor_asset{.path = *resolved, .asset_root = asset_state.root, .read_only = false};
+
+    // Assets from secondary project content roots are exposed using their registry path rather than a path
+    // relative to the primary asset root. Resolve that catalog identity back to the owning source mount so
+    // previews and material assignment use the same asset that the picker displays.
+    if (!registry || project_root.empty()) return std::nullopt;
+    const auto snapshot = registry->find(normalized);
+    if (!snapshot || snapshot->read_only) return std::nullopt;
+    const auto candidate = (project_root / snapshot->source_path).lexically_normal();
+    const auto& config = registry->config();
+    if (const auto resolved = resolve_project_asset(config.asset_root, candidate))
+        return resolved_editor_asset{.path = *resolved, .asset_root = config.asset_root, .read_only = false};
+    for (const auto& source_root : config.additional_source_roots)
+    {
+        if (const auto resolved = resolve_project_asset(source_root, candidate))
+            return resolved_editor_asset{.path = *resolved, .asset_root = source_root, .read_only = false};
+    }
     return std::nullopt;
 }
 
@@ -3087,7 +3105,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
-                const auto resolved_material = resolve_editor_asset(state_->assets, payload.path);
+                const auto resolved_material =
+                    resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root, payload.path);
                 if (!resolved_material || !is_material_asset_path(resolved_material->path))
                     return fail("Material must be an .arcmat project or built-in asset", entity);
                 std::string message;
@@ -4858,7 +4877,8 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
 std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::string_view path,
                                                                        std::uint32_t max_size) const
 {
-    const auto resolved = resolve_editor_asset(state_->assets, std::filesystem::path{path});
+    const auto resolved = resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                                std::filesystem::path{path});
     if (!resolved) return std::nullopt;
     render::texture_data preview;
     if (is_material_asset_path(resolved->path))

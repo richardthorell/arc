@@ -10,6 +10,8 @@ export type AssetPickerItem = {
   path: string;
   kind: string;
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
+  scope?: 'builtin' | 'project' | 'user' | 'organization';
+  readOnly?: boolean;
 };
 
 export type AssetThumbnailProvider = (path: string) => Promise<string | null>;
@@ -30,7 +32,31 @@ export type AssetPickerProps = {
 };
 
 const thumbnailCaches = new WeakMap<AssetThumbnailProvider, Map<string, Promise<string | null>>>();
-const extensionOf = (path: string) => path.slice(path.lastIndexOf('.')).toLocaleLowerCase();
+const extensionOf = (path: string) => {
+  const index = path.lastIndexOf('.');
+  return index >= 0 ? path.slice(index).toLocaleLowerCase() : '';
+};
+const basenameOf = (path: string) => path.split(/[\\/]/).pop() || path;
+const displayNameOf = (asset?: AssetPickerItem, fallback = '') => {
+  const raw = asset?.name || basenameOf(fallback);
+  const extension = extensionOf(asset?.path || fallback);
+  return extension && raw.toLocaleLowerCase().endsWith(extension)
+    ? raw.slice(0, Math.max(0, raw.length - extension.length))
+    : raw;
+};
+const sourceLabelOf = (asset: AssetPickerItem | undefined, assetTypeLabel: string) => {
+  const scope =
+    asset?.scope === 'builtin'
+      ? 'Engine'
+      : asset?.scope === 'user'
+        ? 'User'
+        : asset?.scope === 'organization'
+          ? 'Organization'
+          : asset?.scope === 'project'
+            ? 'Project'
+            : '';
+  return scope ? `${scope} ${assetTypeLabel}` : assetTypeLabel;
+};
 
 function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promise<string | null> {
   let cache = thumbnailCaches.get(provider);
@@ -40,7 +66,15 @@ function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promi
   }
   let request = cache.get(path);
   if (!request) {
-    request = provider(path).catch(() => null);
+    request = provider(path)
+      .then((value) => {
+        if (!value) cache?.delete(path);
+        return value;
+      })
+      .catch(() => {
+        cache?.delete(path);
+        return null;
+      });
     cache.set(path, request);
   }
   return request;
@@ -99,11 +133,15 @@ export function AssetPicker({
         >
           <AssetThumbnail asset={selected} path={mixed ? '' : value} provider={thumbnailProvider} />
           <span className="asset-reference-copy">
-            <strong>{mixed ? 'Mixed' : selected?.name || (value ? value.split(/[\\/]/).pop() : 'None')}</strong>
+            <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : 'None'}</strong>
             <small>
               {mixed
                 ? 'Choose an asset to replace all values'
-                : value || `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
+                : selected
+                  ? sourceLabelOf(selected, assetTypeLabel)
+                  : value
+                    ? assetTypeLabel
+                    : `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
             </small>
           </span>
           <ChevronDown size={13} />
@@ -262,16 +300,16 @@ function AssetPickerPopover({
       <div className="asset-picker-grid">
         {shown.map((asset) => (
           <button
-            aria-label={`Select ${asset.name}`}
+            aria-label={`Select ${displayNameOf(asset)}`}
             className={valueFor(asset) === selectedValue ? 'is-selected' : ''}
             key={asset.id}
             onClick={() => onSelect(asset)}
             type="button"
           >
             <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
-            <strong>{asset.name}</strong>
+            <strong>{displayNameOf(asset)}</strong>
             <small>
-              {extensionOf(asset.path).slice(1).toUpperCase()} · {asset.status}
+              {sourceLabelOf(asset, assetTypeLabel)} · {asset.status}
             </small>
           </button>
         ))}
@@ -326,7 +364,7 @@ export function AssetThumbnail({
     return () => {
       active = false;
     };
-  }, [path, provider, visible]);
+  }, [asset?.status, path, provider, visible]);
 
   return (
     <span className={`asset-thumbnail ${source ? 'has-image' : ''}`} ref={elementRef}>
