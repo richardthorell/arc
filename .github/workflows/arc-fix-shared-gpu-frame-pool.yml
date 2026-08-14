@@ -1,0 +1,131 @@
+name: ARC one-shot shared GPU frame pool fix
+
+on:
+  push:
+    branches:
+      - agent/fix-shared-gpu-frame-pool
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Apply shared texture fix and diagnostics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('engine/render-vulkan/src/vulkan_backend.cpp')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''    bool create_shared_output_slots(shared_viewport_output& output)\n    {\n        for (auto& slot : output.slots)\n''',
+                  '''    bool create_shared_output_slots(shared_viewport_output& output)\n    {\n        shared_viewport_failure_.clear();\n        const auto fail_hresult = [this](std::string_view operation, HRESULT result)\n        {\n            std::ostringstream diagnostic;\n            diagnostic << operation << " (HRESULT=0x" << std::hex << static_cast<std::uint32_t>(result) << ')';\n            shared_viewport_failure_ = std::move(diagnostic).str();\n            return false;\n        };\n        const auto fail_vk = [this](std::string_view operation, VkResult result)\n        {\n            std::ostringstream diagnostic;\n            diagnostic << operation << " (VkResult=" << static_cast<std::int32_t>(result) << ')';\n            shared_viewport_failure_ = std::move(diagnostic).str();\n            return false;\n        };\n\n        for (auto& slot : output.slots)\n'''
+              ),
+              (
+                  '            texture.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE;\n',
+                  '            texture.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED;\n'
+              ),
+              (
+                  '''            if (FAILED(shared_d3d_device_->CreateTexture2D(&texture, nullptr, &slot.texture))) return false;\n            Microsoft::WRL::ComPtr<IDXGIResource1> resource;\n            if (FAILED(slot.texture.As(&resource)) ||\n                FAILED(resource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,\n                                                    nullptr, &slot.shared_handle)))\n                return false;\n''',
+                  '''            const auto create_texture_result =\n                shared_d3d_device_->CreateTexture2D(&texture, nullptr, &slot.texture);\n            if (FAILED(create_texture_result))\n                return fail_hresult("D3D11 CreateTexture2D for shared viewport texture failed", create_texture_result);\n            Microsoft::WRL::ComPtr<IDXGIResource1> resource;\n            const auto resource_result = slot.texture.As(&resource);\n            if (FAILED(resource_result))\n                return fail_hresult("D3D11 shared texture QueryInterface<IDXGIResource1> failed", resource_result);\n            const auto shared_handle_result = resource->CreateSharedHandle(\n                nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, nullptr, &slot.shared_handle);\n            if (FAILED(shared_handle_result))\n                return fail_hresult("IDXGIResource1::CreateSharedHandle for shared viewport texture failed",\n                                    shared_handle_result);\n'''
+              ),
+              (
+                  '            if (vkCreateImage(device_, &image, nullptr, &slot.image) != VK_SUCCESS) return false;\n',
+                  '''            const auto create_image_result = vkCreateImage(device_, &image, nullptr, &slot.image);\n            if (create_image_result != VK_SUCCESS)\n                return fail_vk("vkCreateImage for imported D3D11 viewport texture failed", create_image_result);\n'''
+              ),
+              (
+                  '''            if (get_memory_win32_handle_properties_(device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT,\n                                                    slot.shared_handle, &handle_properties) != VK_SUCCESS)\n                return false;\n            const auto memory_type = shared_memory_type(requirements.memoryTypeBits & handle_properties.memoryTypeBits);\n            if (memory_type == UINT32_MAX) return false;\n''',
+                  '''            const auto handle_properties_result = get_memory_win32_handle_properties_(\n                device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT, slot.shared_handle, &handle_properties);\n            if (handle_properties_result != VK_SUCCESS)\n                return fail_vk("vkGetMemoryWin32HandlePropertiesKHR for D3D11 viewport texture failed",\n                               handle_properties_result);\n            const auto memory_type = shared_memory_type(requirements.memoryTypeBits & handle_properties.memoryTypeBits);\n            if (memory_type == UINT32_MAX)\n            {\n                std::ostringstream diagnostic;\n                diagnostic << "no compatible Vulkan memory type for imported D3D11 viewport texture (imageTypes=0x"\n                           << std::hex << requirements.memoryTypeBits << ", handleTypes=0x"\n                           << handle_properties.memoryTypeBits << ')';\n                shared_viewport_failure_ = std::move(diagnostic).str();\n                return false;\n            }\n'''
+              ),
+              (
+                  '''            if (vkAllocateMemory(device_, &allocation, nullptr, &slot.memory) != VK_SUCCESS ||\n                vkBindImageMemory(device_, slot.image, slot.memory, 0) != VK_SUCCESS)\n                return false;\n''',
+                  '''            const auto allocate_result = vkAllocateMemory(device_, &allocation, nullptr, &slot.memory);\n            if (allocate_result != VK_SUCCESS)\n                return fail_vk("vkAllocateMemory for imported D3D11 viewport texture failed", allocate_result);\n            const auto bind_result = vkBindImageMemory(device_, slot.image, slot.memory, 0);\n            if (bind_result != VK_SUCCESS)\n                return fail_vk("vkBindImageMemory for imported D3D11 viewport texture failed", bind_result);\n'''
+              ),
+              (
+                  '            if (vkCreateCommandPool(device_, &pool, nullptr, &slot.command_pool) != VK_SUCCESS) return false;\n',
+                  '''            const auto command_pool_result = vkCreateCommandPool(device_, &pool, nullptr, &slot.command_pool);\n            if (command_pool_result != VK_SUCCESS)\n                return fail_vk("vkCreateCommandPool for shared viewport frame failed", command_pool_result);\n'''
+              ),
+              (
+                  '            if (vkAllocateCommandBuffers(device_, &command, &slot.command_buffer) != VK_SUCCESS) return false;\n',
+                  '''            const auto command_buffer_result = vkAllocateCommandBuffers(device_, &command, &slot.command_buffer);\n            if (command_buffer_result != VK_SUCCESS)\n                return fail_vk("vkAllocateCommandBuffers for shared viewport frame failed", command_buffer_result);\n'''
+              ),
+              (
+                  '            if (vkCreateFence(device_, &fence, nullptr, &slot.fence) != VK_SUCCESS) return false;\n',
+                  '''            const auto fence_result = vkCreateFence(device_, &fence, nullptr, &slot.fence);\n            if (fence_result != VK_SUCCESS)\n                return fail_vk("vkCreateFence for shared viewport frame failed", fence_result);\n'''
+              ),
+              (
+                  '                 .message = "failed to create Vulkan shared viewport frame pool"});\n',
+                  '''                 .message = shared_viewport_failure_.empty() ? "failed to create Vulkan shared viewport frame pool"\n                                                             : shared_viewport_failure_});\n'''
+              ),
+              (
+                  '                 .message = "failed to resize Vulkan shared viewport frame pool"});\n',
+                  '''                 .message = shared_viewport_failure_.empty() ? "failed to resize Vulkan shared viewport frame pool"\n                                                             : shared_viewport_failure_});\n'''
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one occurrence, found {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+
+      - name: Set up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
+
+      - name: Configure editor Vulkan build
+        shell: pwsh
+        run: |
+          cmake -S . -B out/build/shared-frame-pool -G Ninja `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DARC_BUILD_EDITOR=ON `
+            -DARC_BUILD_RENDER_VULKAN=ON `
+            -DARC_BUILD_PROJECT_TOOL=OFF `
+            -DARC_BUILD_SAMPLES=OFF `
+            -DBUILD_TESTING=OFF
+
+      - name: Build Vulkan renderer
+        run: cmake --build out/build/shared-frame-pool --target arc-render-vulkan --parallel
+
+      - name: Validate patch
+        shell: python
+        run: |
+          from pathlib import Path
+          text = Path('engine/render-vulkan/src/vulkan_backend.cpp').read_text(encoding='utf-8')
+          required = [
+              'D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED',
+              'D3D11 CreateTexture2D for shared viewport texture failed',
+              'IDXGIResource1::CreateSharedHandle for shared viewport texture failed',
+              'vkGetMemoryWin32HandlePropertiesKHR for D3D11 viewport texture failed',
+              'shared_viewport_failure_.empty() ? "failed to create Vulkan shared viewport frame pool"',
+          ]
+          for value in required:
+              if value not in text:
+                  raise SystemExit(f'missing expected patch: {value}')
+
+      - name: Commit fix and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/arc-fix-shared-gpu-frame-pool.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/render-vulkan/src/vulkan_backend.cpp .github/workflows/arc-fix-shared-gpu-frame-pool.yml
+          git diff --cached --check
+          git commit -m "Fix Windows shared GPU frame pool creation"
+          git push
