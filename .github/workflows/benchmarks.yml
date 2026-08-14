@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build
@@ -28,16 +28,43 @@ jobs:
           -DARC_BUILD_ASSET_COOKER=OFF
           -DBUILD_TESTING=OFF
       - run: cmake --build out/build/benchmarks --target arc-benchmarks --parallel
-      - name: Run calibrated regression gate
-        run: >
-          out/build/benchmarks/benchmarks/arc-benchmarks
-          --baseline benchmarks/baselines.json
-          --output out/build/benchmarks/benchmark-results.json
-          --minimum-sample-ms 250
-          --warmups 2
-          --samples 7
-          --threshold 0.20
+      - name: Run calibrated benchmarks
+        id: benchmark
+        shell: bash
+        run: |
+          set +e
+          out/build/benchmarks/benchmarks/arc-benchmarks \
+            --baseline benchmarks/baselines.json \
+            --output out/build/benchmarks/benchmark-results.json \
+            --minimum-sample-ms 250 \
+            --warmups 2 \
+            --samples 7 \
+            --threshold 0.20
+          status=$?
+          set -e
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+
+          # Exit 1 means the benchmark runner found a confirmed regression.
+          # Higher exit codes indicate setup/argument failures and must fail CI immediately.
+          if [ "$status" -gt 1 ]; then
+            echo "::error::Benchmark runner failed with exit code $status"
+            exit "$status"
+          fi
+      - name: Report benchmark regressions
+        if: hashFiles('out/build/benchmarks/benchmark-results.json') != ''
+        shell: bash
+        run: |
+          jq -r '.results[] | select(.regressed == true) | [.name, .normalized, .baseline] | @tsv' \
+            out/build/benchmarks/benchmark-results.json |
+          while IFS=$'\t' read -r name normalized baseline; do
+            if [[ "$name" == jobs.* ]]; then
+              echo "::warning title=Scheduler-sensitive benchmark::$name: $normalized normalized vs $baseline baseline. Informational on GitHub-hosted runners."
+            else
+              echo "Regression: $name: $normalized normalized vs $baseline baseline"
+            fi
+          done
       - name: Record environment
+        if: always() && hashFiles('out/build/benchmarks/benchmark-results.json') != ''
         run: |
           uname -a > out/build/benchmarks/environment.txt
           clang++-18 --version >> out/build/benchmarks/environment.txt
@@ -46,10 +73,23 @@ jobs:
             '. + {commit: $commit, runner: "ubuntu-24.04", compiler: "clang-18"}' \
             out/build/benchmarks/benchmark-results.json \
             > out/build/benchmarks/benchmark-trend.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
         with:
           name: arc-benchmark-results
           path: |
             out/build/benchmarks/benchmark-results.json
             out/build/benchmarks/benchmark-trend.json
             out/build/benchmarks/environment.txt
+      - name: Enforce CI-stable benchmark regressions
+        if: hashFiles('out/build/benchmarks/benchmark-results.json') != ''
+        shell: bash
+        run: |
+          # No-op job dispatch/dependency latency is dominated by VM scheduling jitter
+          # on GitHub-hosted runners. Keep those metrics and warnings, but only make
+          # deterministic CPU workloads blocking regression gates here.
+          if jq -e '.results[] | select(.regressed == true and ((.name | startswith("jobs.")) | not))' \
+            out/build/benchmarks/benchmark-results.json > /dev/null; then
+            echo "::error::One or more CI-stable CPU benchmarks exceeded the regression threshold."
+            exit 1
+          fi
