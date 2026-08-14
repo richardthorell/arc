@@ -19,7 +19,10 @@ jobs:
           fetch-depth: 0
 
       - name: Refactor Vulkan presentation
-        run: python3 tools/remove_imgui_refactor.py
+        shell: bash
+        run: |
+          sed -i 's/ImGui texture handle/legacy texture handle/' tools/remove_imgui_refactor.py
+          python3 tools/remove_imgui_refactor.py
 
       - name: Commit refactor
         shell: bash
