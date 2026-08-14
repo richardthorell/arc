@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ContentBrowserPanel } from './ContentBrowserPanel';
 
 afterEach(cleanup);
+beforeEach(() => {
+  Object.defineProperty(window, 'arc', {
+    configurable: true,
+    value: { assetSources: { list: vi.fn().mockResolvedValue([]) } },
+  });
+});
 
 const project = {
   name: 'Test', root: 'D:/Test', assetRoot: 'D:/Test/Content', activeScene: '', scene: [], console: [],
