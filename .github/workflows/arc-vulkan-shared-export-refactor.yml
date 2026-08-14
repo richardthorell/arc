@@ -1,0 +1,37 @@
+name: ARC Vulkan shared texture export refactor
+
+on:
+  push:
+    branches:
+      - agent/vulkan-direct-shared-texture-export
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply direct Vulkan export refactor
+        run: python3 tools/refactor_vulkan_shared_export.py
+
+      - name: Remove one-shot refactor files
+        run: |
+          rm tools/refactor_vulkan_shared_export.py
+          rm .github/workflows/arc-vulkan-shared-export-refactor.yml
+
+      - name: Commit refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          test "$(git diff --cached --name-only | grep -v -E '^(tools/refactor_vulkan_shared_export.py|\.github/workflows/arc-vulkan-shared-export-refactor.yml|engine/render-vulkan/src/vulkan_backend.cpp)$' | wc -l)" -eq 0
+          git diff --cached --check
+          git commit -m "Export shared viewport textures from Vulkan"
+          git push
