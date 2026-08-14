@@ -1072,6 +1072,22 @@ private:
 
     bool create_shared_output_slots(shared_viewport_output& output)
     {
+        shared_viewport_failure_.clear();
+        const auto fail_hresult = [this](std::string_view operation, HRESULT result)
+        {
+            std::ostringstream diagnostic;
+            diagnostic << operation << " (HRESULT=0x" << std::hex << static_cast<std::uint32_t>(result) << ')';
+            shared_viewport_failure_ = std::move(diagnostic).str();
+            return false;
+        };
+        const auto fail_vk = [this](std::string_view operation, VkResult result)
+        {
+            std::ostringstream diagnostic;
+            diagnostic << operation << " (VkResult=" << static_cast<std::int32_t>(result) << ')';
+            shared_viewport_failure_ = std::move(diagnostic).str();
+            return false;
+        };
+
         for (auto& slot : output.slots)
         {
             D3D11_TEXTURE2D_DESC texture{};
@@ -1083,13 +1099,20 @@ private:
             texture.SampleDesc.Count = 1;
             texture.Usage = D3D11_USAGE_DEFAULT;
             texture.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-            texture.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
-            if (FAILED(shared_d3d_device_->CreateTexture2D(&texture, nullptr, &slot.texture))) return false;
+            texture.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE | D3D11_RESOURCE_MISC_SHARED;
+            const auto create_texture_result =
+                shared_d3d_device_->CreateTexture2D(&texture, nullptr, &slot.texture);
+            if (FAILED(create_texture_result))
+                return fail_hresult("D3D11 CreateTexture2D for shared viewport texture failed", create_texture_result);
             Microsoft::WRL::ComPtr<IDXGIResource1> resource;
-            if (FAILED(slot.texture.As(&resource)) ||
-                FAILED(resource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
-                                                    nullptr, &slot.shared_handle)))
-                return false;
+            const auto resource_result = slot.texture.As(&resource);
+            if (FAILED(resource_result))
+                return fail_hresult("D3D11 shared texture QueryInterface<IDXGIResource1> failed", resource_result);
+            const auto shared_handle_result = resource->CreateSharedHandle(
+                nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE, nullptr, &slot.shared_handle);
+            if (FAILED(shared_handle_result))
+                return fail_hresult("IDXGIResource1::CreateSharedHandle for shared viewport texture failed",
+                                    shared_handle_result);
 
             VkExternalMemoryImageCreateInfo external_image{};
             external_image.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
@@ -1105,17 +1128,29 @@ private:
             image.samples = VK_SAMPLE_COUNT_1_BIT;
             image.tiling = VK_IMAGE_TILING_OPTIMAL;
             image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-            if (vkCreateImage(device_, &image, nullptr, &slot.image) != VK_SUCCESS) return false;
+            const auto create_image_result = vkCreateImage(device_, &image, nullptr, &slot.image);
+            if (create_image_result != VK_SUCCESS)
+                return fail_vk("vkCreateImage for imported D3D11 viewport texture failed", create_image_result);
 
             VkMemoryRequirements requirements{};
             vkGetImageMemoryRequirements(device_, slot.image, &requirements);
             VkMemoryWin32HandlePropertiesKHR handle_properties{};
             handle_properties.sType = VK_STRUCTURE_TYPE_MEMORY_WIN32_HANDLE_PROPERTIES_KHR;
-            if (get_memory_win32_handle_properties_(device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT,
-                                                    slot.shared_handle, &handle_properties) != VK_SUCCESS)
-                return false;
+            const auto handle_properties_result = get_memory_win32_handle_properties_(
+                device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT, slot.shared_handle, &handle_properties);
+            if (handle_properties_result != VK_SUCCESS)
+                return fail_vk("vkGetMemoryWin32HandlePropertiesKHR for D3D11 viewport texture failed",
+                               handle_properties_result);
             const auto memory_type = shared_memory_type(requirements.memoryTypeBits & handle_properties.memoryTypeBits);
-            if (memory_type == UINT32_MAX) return false;
+            if (memory_type == UINT32_MAX)
+            {
+                std::ostringstream diagnostic;
+                diagnostic << "no compatible Vulkan memory type for imported D3D11 viewport texture (imageTypes=0x"
+                           << std::hex << requirements.memoryTypeBits << ", handleTypes=0x"
+                           << handle_properties.memoryTypeBits << ')';
+                shared_viewport_failure_ = std::move(diagnostic).str();
+                return false;
+            }
             VkImportMemoryWin32HandleInfoKHR import_memory{};
             import_memory.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
             import_memory.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
@@ -1129,25 +1164,34 @@ private:
             allocation.pNext = &dedicated;
             allocation.allocationSize = requirements.size;
             allocation.memoryTypeIndex = memory_type;
-            if (vkAllocateMemory(device_, &allocation, nullptr, &slot.memory) != VK_SUCCESS ||
-                vkBindImageMemory(device_, slot.image, slot.memory, 0) != VK_SUCCESS)
-                return false;
+            const auto allocate_result = vkAllocateMemory(device_, &allocation, nullptr, &slot.memory);
+            if (allocate_result != VK_SUCCESS)
+                return fail_vk("vkAllocateMemory for imported D3D11 viewport texture failed", allocate_result);
+            const auto bind_result = vkBindImageMemory(device_, slot.image, slot.memory, 0);
+            if (bind_result != VK_SUCCESS)
+                return fail_vk("vkBindImageMemory for imported D3D11 viewport texture failed", bind_result);
 
             VkCommandPoolCreateInfo pool{};
             pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             pool.queueFamilyIndex = graphics_queue_family_;
-            if (vkCreateCommandPool(device_, &pool, nullptr, &slot.command_pool) != VK_SUCCESS) return false;
+            const auto command_pool_result = vkCreateCommandPool(device_, &pool, nullptr, &slot.command_pool);
+            if (command_pool_result != VK_SUCCESS)
+                return fail_vk("vkCreateCommandPool for shared viewport frame failed", command_pool_result);
             VkCommandBufferAllocateInfo command{};
             command.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
             command.commandPool = slot.command_pool;
             command.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             command.commandBufferCount = 1;
-            if (vkAllocateCommandBuffers(device_, &command, &slot.command_buffer) != VK_SUCCESS) return false;
+            const auto command_buffer_result = vkAllocateCommandBuffers(device_, &command, &slot.command_buffer);
+            if (command_buffer_result != VK_SUCCESS)
+                return fail_vk("vkAllocateCommandBuffers for shared viewport frame failed", command_buffer_result);
             VkFenceCreateInfo fence{};
             fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
             fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-            if (vkCreateFence(device_, &fence, nullptr, &slot.fence) != VK_SUCCESS) return false;
+            const auto fence_result = vkCreateFence(device_, &fence, nullptr, &slot.fence);
+            if (fence_result != VK_SUCCESS)
+                return fail_vk("vkCreateFence for shared viewport frame failed", fence_result);
             slot.state = shared_viewport_frame_state::available;
         }
         return true;
@@ -2975,7 +3019,8 @@ private:
             shared_viewports_.erase(descriptor.id);
             return surface_frame_result::failure(
                 {.code = surface_frame_error_code::backend_failure,
-                 .message = "failed to create Vulkan shared viewport frame pool"});
+                 .message = shared_viewport_failure_.empty() ? "failed to create Vulkan shared viewport frame pool"
+                                                             : shared_viewport_failure_});
         }
         return surface_frame_result::success();
 #else
@@ -3014,7 +3059,8 @@ private:
         if (!create_shared_output_slots(output))
             return surface_frame_result::failure(
                 {.code = surface_frame_error_code::backend_failure,
-                 .message = "failed to resize Vulkan shared viewport frame pool"});
+                 .message = shared_viewport_failure_.empty() ? "failed to resize Vulkan shared viewport frame pool"
+                                                             : shared_viewport_failure_});
         return surface_frame_result::success();
 #else
         (void)viewport_id;
