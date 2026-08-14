@@ -66,6 +66,31 @@ export type ArcImportedAssetProvenance = {
   sourceRevision?: string;
 };
 
+export type ArcAssetImportRequest = {
+  sourceId: string;
+  assetId: string;
+  logicalPaths: string[];
+  destinationScope: 'project';
+};
+
+export type ArcAssetImportProgress = {
+  phase: 'resolving' | 'downloading' | 'verifying' | 'copying' | 'complete';
+  completedFiles: number;
+  totalFiles: number;
+  completedBytes: number;
+  totalBytes?: number;
+  currentFile?: string;
+};
+
+export type ArcAssetImportResult = {
+  succeeded: boolean;
+  destinationRoot: string;
+  importedFiles: string[];
+  cacheHits: number;
+  downloadedFiles: number;
+  provenance: ArcImportedAssetProvenance;
+};
+
 export interface ArcAssetSourceAdapter {
   readonly descriptor: ArcAssetSourceDescriptor;
   search(query?: ArcAssetSourceQuery): Promise<ArcAssetSearchResult>;
