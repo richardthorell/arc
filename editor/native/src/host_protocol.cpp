@@ -1443,6 +1443,7 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"name\":" + quote(payload.name) + ",\"root\":" + quote(payload.root.generic_string()) +
                        ",\"descriptorPath\":" + quote(payload.descriptor_path.generic_string()) +
                        ",\"contentRoots\":" + path_array_json(payload.content_roots) +
+                       ",\"builtinContentRoots\":" + path_array_json(payload.builtin_content_roots) +
                        ",\"cacheRoot\":" + quote(payload.cache_root.generic_string()) +
                        ",\"defaultScene\":" + quote(payload.default_scene.generic_string()) +
                        ",\"projectGuid\":" + quote(payload.project_guid) +
@@ -1982,7 +1983,8 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
     {
         const auto& asset = snapshot.assets[index];
         if (index != 0) json += ',';
-        json += "{\"guid\":" + quote(asset.guid) + ",\"path\":" + quote(asset.path) + ",\"kind\":" + quote(asset.kind) +
+        json += "{\"guid\":" + quote(asset.guid) + ",\"path\":" + quote(asset.path) +
+                ",\"scope\":" + quote(asset.scope) + ",\"kind\":" + quote(asset.kind) +
                 ",\"typeId\":" + quote(asset.type_id) + ",\"importerId\":" + quote(asset.importer_id) +
                 ",\"state\":" + quote(asset.state) + ",\"residency\":" + quote(asset.residency) +
                 ",\"generation\":" + std::to_string(asset.generation) +
@@ -2000,7 +2002,8 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
             if (dependency != 0) json += ',';
             json += quote(asset.reverse_dependencies[dependency]);
         }
-        json += "],\"imported\":" + bool_json(asset.imported) +
+        json += "],\"readOnly\":" + bool_json(asset.read_only) +
+                ",\"imported\":" + bool_json(asset.imported) +
                 ",\"importRunning\":" + bool_json(asset.import_running) + '}';
     }
     json += "]}";
@@ -2048,6 +2051,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         command.default_scene = default_scene;
         command.editor_module_path = editor_module_path;
         string_array_value(payload, "contentRoots", command.content_roots);
+        string_array_value(payload, "builtinContentRoots", command.builtin_content_roots);
         bool_value(payload, "readOnly", command.read_only);
         envelope.payload = std::move(command);
     }

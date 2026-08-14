@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
@@ -10,6 +12,7 @@ const bundledHost = process.env.ARC_PACKAGED_HOST_PATH;
 const bundledProjectTool = process.env.ARC_PACKAGED_PROJECT_TOOL_PATH;
 const bundledTemplates = process.env.ARC_PACKAGED_TEMPLATES_PATH;
 const bundledRenderVulkan = process.env.ARC_PACKAGED_RENDER_VULKAN_PATH;
+const bundledAssets = process.env.ARC_PACKAGED_ASSETS_PATH ?? path.resolve(process.cwd(), '..', 'assets');
 if (process.env.ARC_REQUIRE_PACKAGED_HOST === '1' && !bundledHost) {
   throw new Error('ARC_PACKAGED_HOST_PATH is required for packaged editor builds');
 }
@@ -18,7 +21,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName: 'arc-editor',
-    extraResource: [bundledHost, bundledProjectTool, bundledTemplates, bundledRenderVulkan].filter(
+    extraResource: [bundledHost, bundledProjectTool, bundledTemplates, bundledRenderVulkan, bundledAssets].filter(
       (entry): entry is string => Boolean(entry),
     ),
   },

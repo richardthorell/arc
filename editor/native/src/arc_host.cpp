@@ -388,6 +388,34 @@ std::optional<std::filesystem::path> resolve_project_asset(const std::filesystem
     return candidate;
 }
 
+struct resolved_editor_asset
+{
+    std::filesystem::path path;
+    std::filesystem::path asset_root;
+    bool read_only{};
+};
+
+std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
+                                                           const std::filesystem::path& reference)
+{
+    if (reference.empty()) return std::nullopt;
+    const auto normalized = arc::assets::normalize_asset_path(reference);
+    if (normalized == "builtin" || normalized.starts_with("builtin/"))
+    {
+        const auto relative = std::filesystem::path(normalized).lexically_relative("builtin");
+        if (relative.empty()) return std::nullopt;
+        for (const auto& builtin_root : asset_state.builtin_roots)
+        {
+            if (const auto resolved = resolve_project_asset(builtin_root, relative))
+                return resolved_editor_asset{.path = *resolved, .asset_root = builtin_root, .read_only = true};
+        }
+        return std::nullopt;
+    }
+    if (const auto resolved = resolve_project_asset(asset_state.root, reference))
+        return resolved_editor_asset{.path = *resolved, .asset_root = asset_state.root, .read_only = false};
+    return std::nullopt;
+}
+
 std::optional<std::filesystem::path> resolve_project_document(const std::filesystem::path& project_root,
                                                               const std::filesystem::path& authored, bool must_exist)
 {
@@ -1691,6 +1719,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
                                               .asset_root = content_roots.front(),
                                               .additional_source_roots = std::vector<std::filesystem::path>(
                                                   content_roots.begin() + 1, content_roots.end()),
+                                              .read_only_source_roots = command.builtin_content_roots,
                                               .cache_root = cache_root},
             state_->simulation.jobs(), *state_->asset_files, state_->simulation.memory());
         framework::runtime_service_context context(state_->simulation.services());
@@ -1853,7 +1882,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 }
                 const auto asset_root =
                     !resolved.content_roots.empty() ? resolved.content_roots.front() : resolved.root / "Content";
-                return open_project(resolved, load_default_editor_assets(asset_root), request_id);
+                auto editor_assets = load_default_editor_assets(asset_root);
+                editor_assets.builtin_roots = resolved.builtin_content_roots;
+                return open_project(resolved, std::move(editor_assets), request_id);
             }
             else if constexpr (std::is_same_v<command_type, host_close_project_command>)
             {
@@ -1931,6 +1962,8 @@ host_response arc_host::execute(const host_command_envelope& command)
 
                 if constexpr (std::is_same_v<command_type, host_asset_reimport_command>)
                 {
+                    const auto asset = state_->asset_registry->find(*guid);
+                    if (asset && asset->read_only) return fail("Built-in assets are read-only");
                     const auto job = state_->asset_registry->reimport(*guid, assets::asset_streaming_priority::high);
                     if (!job.valid()) return fail("Asset could not be queued for reimport");
                     return success("{\"queued\":true}");
@@ -3054,25 +3087,27 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
-                const auto path = resolve_project_asset(state_->assets.root, payload.path);
-                if (!path || !is_material_asset_path(*path))
-                    return fail("Material must be an .arcmat project asset", entity);
+                const auto resolved_material = resolve_editor_asset(state_->assets, payload.path);
+                if (!resolved_material || !is_material_asset_path(resolved_material->path))
+                    return fail("Material must be an .arcmat project or built-in asset", entity);
                 std::string message;
                 for (const auto target : targets)
                 {
                     if (!apply_material_asset_to_entity(state_->scene.material_library, *state_->renderer,
-                                                        state_->assets.root, *path, state_->scene.scene, target,
-                                                        &message))
+                                                        resolved_material->asset_root, resolved_material->path,
+                                                        state_->scene.scene, target, &message))
                         return fail(message.empty() ? "Material assignment failed" : message, target);
                 }
                 ensure_scene_authoring_metadata(state_->scene);
+                const auto registry_path = resolved_material->read_only
+                                               ? arc::assets::normalize_asset_path(payload.path)
+                                               : arc::assets::normalize_asset_path(
+                                                     resolved_material->path.lexically_relative(state_->project.root));
                 const auto material =
                     state_->asset_registry
-                        ? state_->asset_registry->resolve(
-                              arc::assets::normalize_asset_path(path->lexically_relative(state_->project.root)),
-                              arc::assets::asset_types::material)
+                        ? state_->asset_registry->resolve(registry_path, arc::assets::asset_types::material)
                         : arc::assets::asset_reference{.expected_type = arc::assets::asset_types::material,
-                                                       .path_hint = path->generic_string()};
+                                                       .path_hint = registry_path};
                 for (const auto target : targets)
                 {
                     const auto guid = entity_guid_of(state_->scene, target);
@@ -4749,6 +4784,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                 display_path = asset.source_path;
             host_asset_snapshot host_asset{.guid = arc::assets::to_string(asset.guid),
                                            .path = arc::assets::normalize_asset_path(display_path),
+                                           .scope = asset.read_only ? "builtin" : "project",
                                            .kind = kind_name(asset.type),
                                            .type_id = arc::assets::to_string(asset.type),
                                            .importer_id = arc::assets::to_string(asset.importer),
@@ -4765,6 +4801,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             host_asset.reverse_dependencies.reserve(asset.reverse_dependencies.size());
             for (const auto dependency : asset.reverse_dependencies)
                 host_asset.reverse_dependencies.push_back(arc::assets::to_string(dependency));
+            host_asset.read_only = asset.read_only;
             host_asset.imported = asset.state == arc::assets::asset_state::ready;
             host_asset.import_running = running;
             snapshot.assets.push_back(std::move(host_asset));
@@ -4821,22 +4858,22 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
 std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::string_view path,
                                                                        std::uint32_t max_size) const
 {
-    const auto resolved = resolve_project_asset(state_->assets.root, std::filesystem::path{path});
+    const auto resolved = resolve_editor_asset(state_->assets, std::filesystem::path{path});
     if (!resolved) return std::nullopt;
     render::texture_data preview;
-    if (is_material_asset_path(*resolved))
+    if (is_material_asset_path(resolved->path))
     {
         material_asset material;
         std::string message;
-        if (!load_material_asset(*resolved, state_->assets.root, material, message)) return std::nullopt;
-        auto rendered = render_material_preview(material, state_->assets.root, std::clamp(max_size, 32u, 256u));
+        if (!load_material_asset(resolved->path, resolved->asset_root, material, message)) return std::nullopt;
+        auto rendered = render_material_preview(material, resolved->asset_root, std::clamp(max_size, 32u, 256u));
         if (!rendered.succeeded()) return std::nullopt;
         preview = std::move(rendered.texture);
     }
     else
     {
-        if (!render::is_supported_texture_asset(*resolved)) return std::nullopt;
-        const auto loaded = render::load_texture_asset(*resolved);
+        if (!render::is_supported_texture_asset(resolved->path)) return std::nullopt;
+        const auto loaded = render::load_texture_asset(resolved->path);
         if (!loaded.succeeded()) return std::nullopt;
         preview = loaded.texture;
     }

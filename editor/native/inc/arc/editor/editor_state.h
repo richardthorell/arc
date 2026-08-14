@@ -21,6 +21,7 @@ namespace arc::editor
 struct editor_asset_state
 {
     std::filesystem::path root;
+    std::vector<std::filesystem::path> builtin_roots;
     std::filesystem::path default_mesh_path;
     std::filesystem::path default_vertex_shader_path;
     std::filesystem::path default_fragment_shader_path;

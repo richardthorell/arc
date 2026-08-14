@@ -300,6 +300,7 @@ struct asset_snapshot
     std::uint32_t pins{};
     bool source_missing{};
     bool has_last_good{};
+    bool read_only{};
     std::vector<asset_guid> dependencies;
     std::vector<asset_guid> reverse_dependencies;
     std::vector<asset_subasset_metadata> subassets;
@@ -432,6 +433,7 @@ struct asset_manager_config
     std::filesystem::path project_root;
     std::filesystem::path asset_root;
     std::vector<std::filesystem::path> additional_source_roots;
+    std::vector<std::filesystem::path> read_only_source_roots;
     std::filesystem::path cache_root;
     std::string target_profile{"desktop"};
     std::size_t streaming_heap_bytes{256u * 1024u * 1024u};

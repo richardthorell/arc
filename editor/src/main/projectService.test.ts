@@ -33,8 +33,11 @@ describe('ProjectService', () => {
   it('creates an exact-version project and opens it through the native host', async () => {
     const root = temporary();
     const commands: Array<{ type: string; payload: Record<string, unknown> }> = [];
+    const builtinAssetsRoot = path.join(root, 'engine-assets');
+    fs.mkdirSync(builtinAssetsRoot);
     const service = new ProjectService({
       ...nativeProjectAuthority,
+      builtinAssetsRoot,
       userDataPath: path.join(root, 'user'),
       currentEngineVersion: '1.2.3',
       currentEditorPath: 'arc-editor',
@@ -54,7 +57,7 @@ describe('ProjectService', () => {
     expect(opened.succeeded).toBe(true);
     expect(commands[0]).toMatchObject({
       type: 'project.open',
-      payload: { name: 'Alpine', readOnly: false },
+      payload: { name: 'Alpine', readOnly: false, builtinContentRoots: [builtinAssetsRoot] },
     });
     expect(service.snapshot().recentProjects[0].guid).toBe(created.project?.descriptor.guid);
   });

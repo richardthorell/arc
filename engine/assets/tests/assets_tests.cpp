@@ -514,3 +514,50 @@ TEST_CASE("HTTP shared cache authenticates and verifies immutable blob responses
     REQUIRE_FALSE(corrupt.get_blob(hash, error));
     REQUIRE(error);
 }
+
+
+TEST_CASE("read-only source roots mount built-in assets without allowing source mutation")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    const auto builtin_root = std::filesystem::path(project.root.string() + "-builtin");
+    std::filesystem::create_directories(builtin_root / "materials");
+    const auto source_path = builtin_root / "materials" / "default_phong.arcmat";
+    {
+        std::ofstream output(source_path, std::ios::binary | std::ios::trunc);
+        output << R"({"version":1,"name":"Default Phong"})";
+    }
+    const auto guid = generate_asset_guid();
+    REQUIRE(save_asset_metadata(metadata_path_for(source_path),
+                                {.guid = guid, .type = asset_types::material, .importer = importer_ids::material}));
+
+    arc::memory::memory_system memory;
+    arc::jobs::job_system jobs({.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory});
+    arc::io::async_file_service files(jobs);
+    asset_manager manager({.project_root = project.root,
+                           .asset_root = project.assets,
+                           .read_only_source_roots = {builtin_root},
+                           .cache_root = project.root / ".arc" / "cache",
+                           .enable_source_monitor = false},
+                          jobs, files, memory);
+    arc::framework::runtime_service_registry services;
+    arc::framework::runtime_service_context context(services);
+    manager.on_start(context);
+
+    const auto builtin = manager.find("builtin/materials/default_phong.arcmat");
+    REQUIRE(builtin);
+    REQUIRE(builtin->guid == guid);
+    REQUIRE(builtin->read_only);
+    const auto loaded = manager.load<source_asset_data>({.reference = {guid, asset_types::material,
+                                                                       "builtin/materials/default_phong.arcmat"}}).get();
+    REQUIRE(loaded.succeeded());
+    const auto moved = manager.move(guid, "assets/materials/copied.arcmat");
+    REQUIRE_FALSE(moved.succeeded());
+    REQUIRE(moved.error.code == asset_error_code::invalid_request);
+    REQUIRE(moved.error.message == "Built-in assets are read-only");
+    REQUIRE(std::filesystem::exists(source_path));
+
+    manager.on_shutdown(context);
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(builtin_root, cleanup_error);
+}

@@ -134,6 +134,8 @@ type HostRuntimeSnapshot = {
 type HostAssetSnapshot = {
   guid: string;
   path: string;
+  scope: 'builtin' | 'project' | 'user' | 'organization';
+  readOnly: boolean;
   kind: AssetItem['kind'] | 'environment' | 'unknown';
   typeId: string;
   importerId: string;
@@ -860,6 +862,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         id: asset.guid || asset.path,
         name: assetNameFromPath(asset.path),
         path: asset.path,
+        scope: asset.scope,
+        readOnly: asset.readOnly,
         kind: assetKindFromHost(asset.kind),
         status: asset.state === 'unknown' ? 'missing' : asset.state,
         guid: asset.guid,
@@ -1274,11 +1278,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [viewportCount, setViewportCount] = useState<1 | 2 | 3 | 4>(1);
   const [activeViewportId, setActiveViewportId] = useState('viewport-1');
 
-  const renderCenterPanel = (
-    panel: WorkbenchPanelId,
-    viewportId?: string,
-    onMaximizeToggle?: () => void,
-  ) => {
+  const renderCenterPanel = (panel: WorkbenchPanelId, viewportId?: string, onMaximizeToggle?: () => void) => {
     if (panel === 'viewport') {
       return (
         <ViewportPanel
@@ -1799,9 +1799,17 @@ export function ExplorerPanel({
               ))}
             </div>
             <div className="primitive-palette-heading">Landscape</div>
-            <button className="primitive-palette-empty" type="button" role="menuitem" onClick={() => {
-              onCreateEntity('terrain'); setCreateMenuOpen(false);
-            }}><Mountain size={16} /> Terrain...</button>
+            <button
+              className="primitive-palette-empty"
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onCreateEntity('terrain');
+                setCreateMenuOpen(false);
+              }}
+            >
+              <Mountain size={16} /> Terrain...
+            </button>
           </section>
         )}
         <label className="hierarchy-search">
@@ -2181,18 +2189,18 @@ function SceneTreeItem({
               <button className="hierarchy-lock-toggle" title={entity.locked ? 'Unlock entity' : 'Lock entity'}>
                 {entity.locked ? <Lock size={11} /> : <Unlock size={11} />}
               </button>
-            <button
-              aria-label={entity.active ? 'Disable entity' : 'Enable entity'}
-              className="hierarchy-active-toggle"
-              type="button"
-              aria-pressed={entity.active}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSetEntityActive(entity.id, !entity.active);
-              }}
-            >
-              {entity.active ? <Eye size={12} /> : <EyeOff size={12} />}
-            </button>
+              <button
+                aria-label={entity.active ? 'Disable entity' : 'Enable entity'}
+                className="hierarchy-active-toggle"
+                type="button"
+                aria-pressed={entity.active}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSetEntityActive(entity.id, !entity.active);
+                }}
+              >
+                {entity.active ? <Eye size={12} /> : <EyeOff size={12} />}
+              </button>
             </span>
           )
         }
