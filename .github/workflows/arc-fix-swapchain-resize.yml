@@ -1,0 +1,35 @@
+name: ARC one-shot swapchain resize fix
+
+on:
+  push:
+    branches:
+      - agent/remove-imgui-vulkan-presentation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/remove-imgui-vulkan-presentation
+          fetch-depth: 0
+
+      - name: Patch resize tracking
+        shell: bash
+        run: |
+          sed -i '/        const bool size_changed = width != output_viewport_width_ || height != output_viewport_height_;/d' engine/render-vulkan/src/vulkan_backend.cpp
+          sed -i 's/if (!swapchain_\.valid() || swapchain_rebuild_ || size_changed)/if (!swapchain_.valid() || swapchain_rebuild_ || swapchain_.extent.width != width || swapchain_.extent.height != height)/' engine/render-vulkan/src/vulkan_backend.cpp
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          rm .github/workflows/arc-fix-swapchain-resize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Track native swapchain extent on resize"
+          git push origin HEAD:agent/remove-imgui-vulkan-presentation
