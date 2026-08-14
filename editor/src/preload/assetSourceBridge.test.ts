@@ -9,10 +9,10 @@ const file = {
 };
 
 describe('asset source bridge paths', () => {
-  it('uses the download filename while sanitizing manifest path segments', () => {
+  it('uses safe file names and keeps model image dependencies under textures', () => {
     expect(remoteFileName(file)).toBe('rock_diff.png');
-    const relative = remoteDestinationPath('../rock', file).replaceAll(path.sep, '/');
-    expect(relative).toBe('_rock/gltf/2k/gltf/include/0/rock_diff.png');
+    const relative = remoteDestinationPath('../rock', file, 'model').replaceAll(path.sep, '/');
+    expect(relative).toBe('_rock/textures/rock_diff.png');
     expect(relative).not.toContain('../');
   });
 });
