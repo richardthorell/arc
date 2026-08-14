@@ -940,7 +940,7 @@ void app.whenReady().then(async () => {
       noLink: true,
     });
     return confirmation.response === 0
-      ? sourceControlService?.checkout(paths)
+      ? sourceControlService?.checkout(reference)
       : { succeeded: false, output: '', error: 'Checkout cancelled' };
   });
   ipcMain.handle('vcs:pull', () => sourceControlService?.pull());
