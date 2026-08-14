@@ -134,7 +134,9 @@ export function ViewportPanel({
   const lastViewportBoundsRef = useRef('');
   const pendingViewportBoundsRef = useRef<ViewportBounds | null>(null);
   const resizeInFlightRef = useRef(false);
+  const sharedFailureRef = useRef('');
   const [viewportError, setViewportError] = useState('');
+  const [sharedFailure, setSharedFailure] = useState('');
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
   const [localGridVisible, setLocalGridVisible] = useState(true);
   const [projection, setProjection] = useState('perspective');
@@ -162,10 +164,25 @@ export function ViewportPanel({
     };
   }, [viewportId]);
 
-  useEffect(() => setTransport(startupState?.viewportMode ?? 'unavailable'), [startupState?.viewportMode]);
+  useEffect(() => {
+    const nextTransport = startupState?.viewportMode ?? 'unavailable';
+    setTransport(nextTransport);
+    sharedFailureRef.current = '';
+    setSharedFailure('');
+    viewportAttachedRef.current = false;
+    setViewportError('');
+  }, [startupState]);
+
+  const recordSharedFailure = useCallback((reason: string) => {
+    const detail = reason.trim() || 'Unknown shared-texture error';
+    sharedFailureRef.current = detail;
+    setSharedFailure(detail);
+    viewportAttachedRef.current = false;
+    setViewportError(`Shared GPU viewport failed: ${detail}`);
+  }, []);
 
   const attachViewport = useCallback(async () => {
-    if (!viewportActive) {
+    if (!viewportActive || (streamedAvailable && sharedFailureRef.current)) {
       return;
     }
     const bounds = viewportBounds();
@@ -174,22 +191,58 @@ export function ViewportPanel({
     }
     try {
       lastAttachAttemptRef.current = Date.now();
-      let response = (await (streamedAvailable
+      const response = (await (streamedAvailable
         ? window.arc.viewport.create(bounds)
         : window.arc.viewport.attach(bounds))) as ViewportCommandResponse | undefined;
-      if (response?.succeeded === false && streamedAvailable) {
-        console.warn(`ARC shared viewport unavailable; using native fallback: ${response.error || 'unknown error'}`);
-        response = (await window.arc.viewport.attach(bounds)) as ViewportCommandResponse | undefined;
-        if (response?.succeeded !== false) setTransport('native');
+      if (response?.succeeded === false) {
+        if (streamedAvailable) {
+          recordSharedFailure(response.error || 'Unknown shared-texture error');
+          return;
+        }
+        throw new Error(response.error || 'Viewport attachment was rejected');
       }
-      if (response?.succeeded === false) throw new Error(response.error || 'Viewport attachment was rejected');
       viewportAttachedRef.current = true;
       lastViewportBoundsRef.current = boundsKey(bounds);
+      if (streamedAvailable) {
+        sharedFailureRef.current = '';
+        setSharedFailure('');
+      }
+      setViewportError('');
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (streamedAvailable) {
+        recordSharedFailure(reason);
+        return;
+      }
+      setViewportError(reason);
+    }
+  }, [recordSharedFailure, streamedAvailable, viewportActive, viewportBounds]);
+
+  const retrySharedViewport = useCallback(() => {
+    if (!streamedAvailable) return;
+    sharedFailureRef.current = '';
+    setSharedFailure('');
+    setViewportError('');
+    lastAttachAttemptRef.current = 0;
+    void attachViewport();
+  }, [attachViewport, streamedAvailable]);
+
+  const useNativeFallback = useCallback(async () => {
+    if (!streamedAvailable || !sharedFailureRef.current) return;
+    const bounds = viewportBounds();
+    if (!bounds || bounds.width < 2 || bounds.height < 2) return;
+    try {
+      lastAttachAttemptRef.current = Date.now();
+      const response = (await window.arc.viewport.attach(bounds)) as ViewportCommandResponse | undefined;
+      if (response?.succeeded === false) throw new Error(response.error || 'Native viewport fallback was rejected');
+      viewportAttachedRef.current = true;
+      lastViewportBoundsRef.current = boundsKey(bounds);
+      setTransport('native');
       setViewportError('');
     } catch (error) {
       setViewportError(error instanceof Error ? error.message : String(error));
     }
-  }, [streamedAvailable, viewportActive, viewportBounds]);
+  }, [streamedAvailable, viewportBounds]);
 
   const resizeViewport = useCallback(() => {
     if (!viewportActive || !viewportAttachedRef.current) {
@@ -283,9 +336,10 @@ export function ViewportPanel({
           setViewportStats(response.payload);
           if (typeof response.payload.renderOptions?.grid === 'boolean')
             setLocalGridVisible(response.payload.renderOptions.grid);
-          setViewportError('');
+          if (!streamedAvailable || !sharedFailureRef.current) setViewportError('');
           if (
             (!response.payload.submitted || response.payload.frameIndex === 0) &&
+            (!streamedAvailable || !sharedFailureRef.current) &&
             Date.now() - lastAttachAttemptRef.current >= 1000
           )
             await attachViewport();
@@ -303,7 +357,7 @@ export function ViewportPanel({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [attachViewport, project, viewportActive, viewportId]);
+  }, [attachViewport, project, streamedAvailable, viewportActive, viewportId]);
 
   const sendCameraInput = (input: Parameters<typeof window.arc.viewport.cameraInput>[0]) => {
     void window.arc.viewport.cameraInput({ ...input, viewportId }).catch((error) => {
@@ -520,6 +574,18 @@ export function ViewportPanel({
       : renderOptions.visualization === 'lighting'
         ? 'Unlit'
         : 'Lit';
+  const transportLabel =
+    transport === 'streamed' ? 'GPU Shared' : transport === 'native' ? (sharedFailure ? 'Native Fallback' : 'Native') : 'Unavailable';
+  const transportTitle =
+    transport === 'streamed'
+      ? sharedFailure
+        ? `Shared GPU viewport failed: ${sharedFailure}`
+        : 'Shared GPU texture viewport'
+      : transport === 'native' && sharedFailure
+        ? `Native child-window fallback. Shared GPU failure: ${sharedFailure}`
+        : transport === 'native'
+          ? 'Native child-window viewport'
+          : 'Viewport unavailable';
 
   return (
     <section className="arc-viewport-shell">
@@ -619,6 +685,12 @@ export function ViewportPanel({
         </div>
         <div className="arc-viewport-header-spacer" />
         <div className="arc-viewport-view-options compact">
+          <span
+            className={`arc-viewport-transport-pill ${transport}${sharedFailure && transport === 'native' ? ' fallback' : ''}`}
+            title={transportTitle}
+          >
+            {transportLabel}
+          </span>
           <span className={stats.submitted ? 'arc-viewport-live-pill live' : 'arc-viewport-live-pill'}>
             {stats.submitted ? 'Live' : 'Idle'}
           </span>
@@ -734,7 +806,24 @@ export function ViewportPanel({
           </div>
         )}
 
-        {viewportActive && (viewportError || startupState?.hostError) && (
+        {viewportActive && streamedAvailable && sharedFailure && (
+          <div className="arc-viewport-shared-failure" role="alert" onPointerDown={(event) => event.stopPropagation()}>
+            <Box size={24} />
+            <div className="arc-viewport-shared-failure-copy">
+              <strong>Shared GPU viewport failed</strong>
+              <span>{sharedFailure}</span>
+              <small>Native fallback uses a child window and can render above editor menus.</small>
+            </div>
+            <div className="arc-viewport-shared-failure-actions">
+              <button onClick={retrySharedViewport}>Retry Shared GPU</button>
+              <button className="fallback" onClick={() => void useNativeFallback()}>
+                Use Native Fallback
+              </button>
+            </div>
+          </div>
+        )}
+
+        {viewportActive && (!streamedAvailable || !sharedFailure) && (viewportError || startupState?.hostError) && (
           <div className="arc-viewport-note">
             <Box size={18} />
             <span>{viewportError || startupState?.hostError}</span>

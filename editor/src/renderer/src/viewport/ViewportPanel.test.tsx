@@ -95,10 +95,70 @@ describe('ViewportPanel', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalled());
     expect(registerSurface).toHaveBeenCalledWith('viewport-1', expect.stringContaining('viewport-1'));
+    expect(view.getByText('GPU Shared')).toBeInTheDocument();
     const canvas = view.getByLabelText('ARC 3D viewport');
     expect(canvas).toBeInstanceOf(HTMLCanvasElement);
     fireEvent.pointerMove(canvas.parentElement!, { clientX: 320, clientY: 240, pointerId: 1 });
     await waitFor(() => expect(pointer).toHaveBeenCalledWith(expect.objectContaining({ phase: 'move' })));
+  });
+
+  it('requires explicit confirmation before falling back from shared GPU rendering', async () => {
+    const create = vi.fn().mockResolvedValue({ succeeded: false, error: 'D3D12 shared handle import failed' });
+    const attach = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 640,
+              height: 480,
+              fps: 0,
+              frameTimeMs: 0,
+              drawCalls: 0,
+              frameIndex: 0,
+              submitted: false,
+            },
+          }),
+        },
+        viewport: {
+          create,
+          attach,
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+          pointer: vi.fn().mockResolvedValue({ succeeded: true }),
+          key: vi.fn().mockResolvedValue({ succeeded: true }),
+          registerSurface: vi.fn(),
+          unregisterSurface: vi.fn(),
+          setVisibility: vi.fn(),
+        },
+      },
+    });
+
+    const view = render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'streamed' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByText('Shared GPU viewport failed')).toBeInTheDocument());
+    expect(view.getByText('D3D12 shared handle import failed')).toBeInTheDocument();
+    expect(attach).not.toHaveBeenCalled();
+    expect(view.getByText('GPU Shared')).toHaveAttribute('title', expect.stringContaining('D3D12 shared handle import failed'));
+
+    fireEvent.click(view.getByRole('button', { name: 'Use Native Fallback' }));
+
+    await waitFor(() => expect(attach).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(view.getByText('Native Fallback')).toBeInTheDocument());
+    expect(view.getByText('Native Fallback')).toHaveAttribute(
+      'title',
+      expect.stringContaining('D3D12 shared handle import failed'),
+    );
   });
 
   it('resizes the native viewport when docking changes its position without changing its size', async () => {
