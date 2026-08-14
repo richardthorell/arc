@@ -1,6 +1,7 @@
 #include "vulkan_swapchain.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <utility>
 
