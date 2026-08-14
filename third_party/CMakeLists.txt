@@ -354,6 +354,7 @@ if(ARC_BUILD_RENDER_VULKAN)
 
     if(ARC_BUILD_EDITOR)
         add_library(arc-third-party-imgui STATIC)
+        set_target_properties(arc-third-party-imgui PROPERTIES POSITION_INDEPENDENT_CODE ON)
         if(NOT TARGET arc::third-party-imgui)
             add_library(arc::third-party-imgui ALIAS arc-third-party-imgui)
         endif()
