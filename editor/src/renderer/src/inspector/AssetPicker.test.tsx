@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -49,5 +49,41 @@ describe('AssetPicker', () => {
     expect(screen.queryByRole('button', { name: 'Select Hero Mesh' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Select Albedo' }));
     expect(onChange).toHaveBeenCalledWith('texture-guid');
+  });
+
+  it('shows a friendly material identity and retries a thumbnail when importing becomes ready', async () => {
+    const thumbnailProvider = vi
+      .fn<(path: string) => Promise<string | null>>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('data:image/bmp;base64,Qk');
+    const importing = {
+      id: 'material-guid',
+      guid: 'material-guid',
+      name: 'Antenna_Plastic.arcmat',
+      path: 'Assets/imported/BistroExterior/materials/Antenna_Plastic.arcmat',
+      kind: 'material',
+      status: 'importing' as const,
+      scope: 'project' as const,
+    };
+    const props = {
+      assetKinds: ['material'],
+      assetTypeLabel: 'Material',
+      assets: [importing],
+      label: 'Material',
+      value: importing.path,
+      thumbnailProvider,
+      onChange: vi.fn(),
+    };
+    const { container, rerender } = render(<AssetPicker {...props} />);
+
+    expect(screen.getByText('Antenna_Plastic')).toBeVisible();
+    expect(screen.queryByText('Antenna_Plastic.arcmat')).not.toBeInTheDocument();
+    expect(screen.getByText('Project Material')).toBeVisible();
+    expect(screen.queryByText(importing.path)).not.toBeInTheDocument();
+    await waitFor(() => expect(thumbnailProvider).toHaveBeenCalledTimes(1));
+
+    rerender(<AssetPicker {...props} assets={[{ ...importing, status: 'ready' as const }]} />);
+    await waitFor(() => expect(thumbnailProvider).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(container.querySelector('.asset-reference-main img')).not.toBeNull());
   });
 });

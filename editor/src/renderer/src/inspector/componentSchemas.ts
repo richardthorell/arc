@@ -548,14 +548,6 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         ],
       },
       {
-        id: 'preview',
-        label: 'Material Preview',
-        path: 'meshRenderer.materialPath',
-        namePath: 'meshRenderer.materialName',
-        type: 'assetPreview',
-        assetKind: 'material',
-      },
-      {
         id: 'material',
         label: 'Material',
         path: 'meshRenderer.materialPath',

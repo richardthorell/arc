@@ -1031,6 +1031,47 @@ TEST_CASE("profiler snapshots serialize scheduler and allocation telemetry")
             "profiler.snapshot");
 }
 
+TEST_CASE("arc host resolves material thumbnails from secondary project asset roots")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-secondary-material-thumbnail";
+    std::filesystem::remove_all(root);
+    const auto primary_root = root / "Content";
+    const auto secondary_root = root / "Assets";
+    std::filesystem::create_directories(primary_root);
+    std::filesystem::create_directories(secondary_root / "materials");
+
+    auto material = arc::editor::make_default_material_asset("Secondary Material");
+    material.path = secondary_root / "materials" / "secondary.arcmat";
+    std::string message;
+    REQUIRE(arc::editor::save_material_asset(material, secondary_root, message));
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = primary_root;
+    REQUIRE(host->open_project({.name = "Secondary Material Thumbnail",
+                                .root = root,
+                                .content_roots = {primary_root, secondary_root}},
+                               assets)
+                .succeeded);
+
+    const auto catalog = host->project_assets_snapshot();
+    const auto found = std::find_if(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset)
+                                    { return asset.path == "Assets/materials/secondary.arcmat"; });
+    REQUIRE(found != catalog.assets.end());
+    REQUIRE(found->kind == "material");
+    const auto preview = host->asset_thumbnail(found->path, 64);
+    REQUIRE(preview.has_value());
+    REQUIRE(preview->width == 64);
+    REQUIRE(preview->height == 64);
+    REQUIRE(preview->data_url.starts_with("data:image/bmp;base64,Qk"));
+
+    host.reset();
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(root, cleanup_error);
+}
+
 TEST_CASE("arc host catalogs textures and generates safe lazy thumbnails")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-editor-thumbnail-test";

@@ -794,11 +794,11 @@
 
 .asset-reference-main {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 18px;
+  grid-template-columns: 54px minmax(0, 1fr) 18px;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
-  min-height: 48px;
+  min-height: 56px;
   padding: 2px 3px;
   border: 1px solid #2d3841;
   border-radius: 3px;
@@ -806,6 +806,10 @@
   background: #11181e;
   text-align: left;
   cursor: pointer;
+}
+
+.asset-reference-main .asset-thumbnail {
+  width: 52px;
 }
 
 .asset-reference-main:hover,
@@ -829,13 +833,13 @@
 
 .asset-reference-copy strong {
   color: #dce1e5;
-  font-size: 11px;
-  font-weight: 550;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .asset-reference-copy small {
   color: #77828b;
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .asset-reference-clear {
