@@ -16,15 +16,24 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
-        with:
-          arch: x64
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installationPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installationPath) { throw "Visual Studio with the x64 C++ toolchain was not found" }
+          $devCmd = Join-Path $installationPath "Common7\Tools\VsDevCmd.bat"
+          & cmd.exe /s /c "`"$devCmd`" -arch=x64 -host_arch=x64 && set" |
+            ForEach-Object {
+              if ($_ -match '^([^=]+)=(.*)$') {
+                "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV
+              }
+            }
 
       - name: Set up Node 22.12
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.12.0
           cache: npm
@@ -32,15 +41,6 @@ jobs:
 
       - name: Set up Vulkan SDK 1.4.350.0
         uses: ./.github/actions/setup-vulkan
-
-      - name: Restore local derived-data cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            out/cook-fixture/Intermediate/Cache/cas
-            out/cook-fixture/Intermediate/Cache/actions
-          key: arc-ddc-windows-v3-${{ hashFiles('templates/**/*.arcproject', 'editor/package-lock.json', 'engine/assets/**', 'engine/render/**') }}
-          restore-keys: arc-ddc-windows-v3-
 
       - name: Install Electron dependencies
         working-directory: editor
@@ -73,30 +73,65 @@ jobs:
           npm run typecheck
           npm test
 
-      - name: Cook and verify fixture
+      - name: Create cook fixture
+        run: out/build/ci-windows/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
+
+      - name: Restore local derived-data cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            out/cook-fixture/Intermediate/Cache/cas
+            out/cook-fixture/Intermediate/Cache/actions
+          key: arc-ddc-windows-v3-${{ hashFiles('templates/**/*.arcproject', 'editor/package-lock.json', 'engine/assets/**', 'engine/render/**') }}
+          restore-keys: arc-ddc-windows-v3-
+
+      - name: Cook fixture
+        run: out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+
+      - name: Verify cooked fixture
+        run: out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+
+      - name: Verify warm cook cache hits
         run: |
-          out/build/ci-windows/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
-          out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
-          out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
           $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan --json | ConvertFrom-Json)
           if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
 
-      - name: Install SDK and build an external Blank 3D project
+      - name: Configure and build Debug SDK
         run: |
           cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-debug --parallel
+
+      - name: Configure and build Shipping SDK
+        run: |
           cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-shipping --parallel
+
+      - name: Install SDK configurations
+        run: |
           cmake --install out/build/ci-windows --prefix out/sdk/arc-0.1.0
           cmake --install out/build/sdk-debug --prefix out/sdk/arc-0.1.0
           cmake --install out/build/sdk-shipping --prefix out/sdk/arc-0.1.0
-          out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+
+      - name: Create external Blank 3D project
+        run: out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+
+      - name: Configure and build external Blank 3D RelWithDebInfo
+        run: |
           cmake -S out/external-game -B out/external-game/Build/ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci --parallel
+
+      - name: Configure and build external Blank 3D Debug
+        run: |
           cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci-debug --parallel
+
+      - name: Configure and build external Blank 3D Shipping
+        run: |
           cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci-shipping --parallel
+
+      - name: Verify SDK and generated project relocatability
+        run: |
           $tracked = Get-ChildItem out/external-game,out/sdk/arc-0.1.0/lib/cmake/ARC -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/]Build[\\/]' }
           if ($tracked | Select-String -SimpleMatch "${{ github.workspace }}") { throw "Installed SDK or generated project embeds the ARC checkout path" }
 
@@ -138,13 +173,13 @@ jobs:
           python tools/run_process_smoke.py --timeout 30 out/dist/runtime/bin/arc_sample_game.exe --ci-smoke
 
       - name: Upload packaged editor
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-editor-windows-x64
           path: editor/out/arc-editor-win32-x64
 
       - name: Upload Shipping headless server
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-headless-windows-x64
           path: |
@@ -153,7 +188,7 @@ jobs:
             out/dist/runtime/build-manifest.json
 
       - name: Upload Shipping sample game
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-sample-game-windows-x64
           path: |
@@ -162,7 +197,7 @@ jobs:
             out/dist/runtime/build-manifest.json
 
       - name: Upload debug symbols
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-symbols-windows-x64
           path: |
@@ -171,7 +206,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload CMake component packages
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-cmake-packages-windows-x64
           path: out/build/ci-shipping/packages/*.zip
