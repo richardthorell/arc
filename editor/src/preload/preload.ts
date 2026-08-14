@@ -15,6 +15,7 @@ import type {
 } from '../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
+import { createAssetSourceBridge } from './assetSourceBridge';
 
 export type ArcStartupState = {
   appVersion: string;
@@ -166,9 +167,12 @@ export type ArcAiGatewayStatus = {
   }>;
 };
 
+const assetSourceBridge = createAssetSourceBridge((channel, ...args) => ipcRenderer.invoke(channel, ...args));
+
 const arcApi = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getStartupState: (): Promise<ArcStartupState> => ipcRenderer.invoke('editor:getStartupState'),
+  assetSources: assetSourceBridge,
   projects: {
     snapshot: (): Promise<ArcProjectBrowserSnapshot | null> => ipcRenderer.invoke('project:snapshot'),
     open: (
@@ -215,7 +219,7 @@ const arcApi = {
     snapshot: (projectGuid?: string, projectRoot?: string): Promise<RecoverySnapshot | null> =>
       ipcRenderer.invoke('recovery:snapshot', projectGuid, projectRoot),
     restore: (id: string): Promise<unknown> => ipcRenderer.invoke('recovery:restore', id),
-    discard: (id: string): Promise<boolean> => ipcRenderer.invoke('recovery:discard', id),
+    discard: (id: string): Promise<boolean> => ipcRenderer.invoke('recovery:discard', id) ?? false,
   },
   extensions: {
     snapshot: (force = false): Promise<ArcExtensionSnapshot | null> => ipcRenderer.invoke('extensions:snapshot', force),
