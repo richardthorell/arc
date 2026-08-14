@@ -36,6 +36,11 @@ endforeach()
 
 add_executable(arc_editor_host_tests ${TEST_SOURCES})
 arc_configure_first_party_target(arc_editor_host_tests)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  # Some validation cases intentionally iterate a temporary initializer list of
+  # camera snapshots by value. Keep GCC's copy diagnostic visible but non-fatal.
+  target_compile_options(arc_editor_host_tests PRIVATE -Wno-error=range-loop-construct)
+endif()
 target_link_libraries(arc_editor_host_tests PRIVATE arc-editor-host Catch2::Catch2WithMain)
 target_compile_definitions(arc_editor_host_tests PRIVATE "ARC_SOURCE_ROOT=\"${CMAKE_SOURCE_DIR}\"")
 target_compile_definitions(arc_editor_host_tests PRIVATE

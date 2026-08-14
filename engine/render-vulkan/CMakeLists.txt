@@ -16,6 +16,13 @@ else()
     set_source_files_properties(src/vma_impl.cpp PROPERTIES COMPILE_OPTIONS "-w;-Wno-error")
 endif()
 
+# VMA 3.3 annotates pointers with Clang's _Nonnull/_Nullable extensions. ARC
+# builds first-party code with -Wpedantic -Werror, so suppress only that vendor
+# header diagnostic in the translation unit that consumes VMA's public API.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_source_files_properties(src/vulkan_backend.cpp PROPERTIES COMPILE_OPTIONS "-Wno-nullability-extension")
+endif()
+
 target_compile_features(arc-render-vulkan
     PUBLIC
         cxx_std_20

@@ -96,6 +96,12 @@ function(arc_configure_first_party_target target)
         return()
     endif()
 
+    if(_arc_target_type STREQUAL "STATIC_LIBRARY" OR _arc_target_type STREQUAL "OBJECT_LIBRARY")
+        # First-party static/object libraries can be linked into shared modules
+        # such as arc-render-vulkan, so keep their objects relocatable on ELF platforms.
+        set_target_properties("${target}" PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+
     if(_arc_target_type STREQUAL "EXECUTABLE")
         target_link_libraries("${target}" PRIVATE arc-build-config)
     else()
