@@ -336,10 +336,10 @@ export function ViewportPanel({
           setViewportStats(response.payload);
           if (typeof response.payload.renderOptions?.grid === 'boolean')
             setLocalGridVisible(response.payload.renderOptions.grid);
-          if (!sharedFailureRef.current) setViewportError('');
+          if (!streamedAvailable || !sharedFailureRef.current) setViewportError('');
           if (
             (!response.payload.submitted || response.payload.frameIndex === 0) &&
-            !sharedFailureRef.current &&
+            (!streamedAvailable || !sharedFailureRef.current) &&
             Date.now() - lastAttachAttemptRef.current >= 1000
           )
             await attachViewport();
@@ -357,7 +357,7 @@ export function ViewportPanel({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [attachViewport, project, viewportActive, viewportId]);
+  }, [attachViewport, project, streamedAvailable, viewportActive, viewportId]);
 
   const sendCameraInput = (input: Parameters<typeof window.arc.viewport.cameraInput>[0]) => {
     void window.arc.viewport.cameraInput({ ...input, viewportId }).catch((error) => {
@@ -823,7 +823,7 @@ export function ViewportPanel({
           </div>
         )}
 
-        {viewportActive && !sharedFailure && (viewportError || startupState?.hostError) && (
+        {viewportActive && (!streamedAvailable || !sharedFailure) && (viewportError || startupState?.hostError) && (
           <div className="arc-viewport-note">
             <Box size={18} />
             <span>{viewportError || startupState?.hostError}</span>
