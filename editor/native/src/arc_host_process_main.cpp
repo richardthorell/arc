@@ -1543,12 +1543,29 @@ LRESULT CALLBACK native_viewport_wnd_proc(HWND window, UINT message, WPARAM wpar
 class native_viewport_controller
 {
 public:
-    native_viewport_controller(std::shared_ptr<arc::editor::arc_host>, std::mutex&, arc::jobs::job_system&) {}
+    native_viewport_controller(std::shared_ptr<arc::editor::arc_host>, std::mutex&, std::mutex&,
+                               arc::jobs::job_system&)
+    {
+    }
 
     void attach(std::string, std::uint64_t, std::int32_t, std::int32_t, std::uint32_t, std::uint32_t)
     {
         std::cerr << "arc_host_process native viewport rendering is not available in this build\n";
     }
+
+    bool create_shared(std::string, std::uint64_t, std::uint32_t, std::uint32_t, std::string& error)
+    {
+        error = "Shared viewport rendering is not available in this build";
+        return false;
+    }
+
+    void release_frame(std::string, std::uint64_t, std::uint64_t, std::string) {}
+
+    void set_visible(std::string_view, bool) {}
+
+    void pointer(const arc::editor::host_viewport_pointer_command&) {}
+
+    void key(const arc::editor::host_viewport_key_command&) {}
 
     void resize(std::int32_t, std::int32_t, std::uint32_t, std::uint32_t) {}
 
