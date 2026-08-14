@@ -384,7 +384,9 @@ public:
         destroy_buffer(exposure_buffer_);
         destroy_buffer(gpu_scene_buffer_);
         destroy_gpu_visibility_resources();
+#if ARC_VULKAN_SHARED_VIEWPORT
         destroy_all_shared_viewports();
+#endif
         destroy_meshes();
         destroy_support_objects();
         if (allocator_ != VK_NULL_HANDLE) vmaDestroyAllocator(allocator_);
@@ -1278,6 +1280,7 @@ private:
         }
         shared_viewports_.clear();
     }
+#endif // ARC_VULKAN_SHARED_VIEWPORT
 
     struct vulkan_command_context
     {
