@@ -683,6 +683,7 @@ struct host_asset_snapshot
 {
     std::string guid;
     std::string path;
+    std::string scope{"project"};
     std::string kind;
     std::string type_id;
     std::string importer_id;
@@ -694,6 +695,7 @@ struct host_asset_snapshot
     std::string diagnostic;
     std::vector<std::string> dependencies;
     std::vector<std::string> reverse_dependencies;
+    bool read_only{};
     bool imported{};
     bool import_running{};
 };
@@ -794,6 +796,7 @@ struct host_open_project_command
     std::filesystem::path root;
     std::filesystem::path descriptor_path;
     std::vector<std::filesystem::path> content_roots;
+    std::vector<std::filesystem::path> builtin_content_roots;
     std::filesystem::path cache_root;
     std::filesystem::path default_scene;
     std::string project_guid;

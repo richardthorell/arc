@@ -34,6 +34,8 @@ export type AssetItem = {
   id: string;
   name: string;
   path: string;
+  scope?: 'builtin' | 'project' | 'user' | 'organization';
+  readOnly?: boolean;
   kind: 'scene' | 'mesh' | 'material' | 'texture' | 'shader' | 'prefab' | 'folder';
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
   guid?: string;

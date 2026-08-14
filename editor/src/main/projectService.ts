@@ -283,6 +283,7 @@ export class ProjectService {
   private readonly currentEditorPath: string;
   private readonly projectToolPath: string;
   private readonly templatesRoot: string;
+  private readonly builtinAssetsRoot: string;
   private readonly installationRegistryPath?: string;
   private readonly host: ProjectHost;
   private activeProject: ArcProjectCandidate | null = null;
@@ -293,6 +294,7 @@ export class ProjectService {
     currentEditorPath: string;
     projectToolPath?: string;
     templatesRoot?: string;
+    builtinAssetsRoot?: string;
     installationRegistryPath?: string;
     host: ProjectHost;
   }) {
@@ -302,6 +304,7 @@ export class ProjectService {
     this.projectToolPath =
       options.projectToolPath ?? process.env.ARC_PROJECT_TOOL_PATH ?? resolveDevelopmentProjectTool();
     this.templatesRoot = options.templatesRoot ?? path.resolve(process.cwd(), '..', 'templates');
+    this.builtinAssetsRoot = options.builtinAssetsRoot ?? '';
     this.installationRegistryPath = options.installationRegistryPath;
     this.host = options.host;
   }
@@ -368,6 +371,7 @@ export class ProjectService {
         root: project.projectRoot,
         descriptorPath: project.descriptorPath,
         contentRoots: project.descriptor.assetRoots.map((entry) => path.join(project.projectRoot, entry)),
+        builtinContentRoots: this.builtinAssetsRoot ? [this.builtinAssetsRoot] : [],
         cacheRoot: path.join(project.projectRoot, project.descriptor.paths.intermediate, 'Cache'),
         defaultScene: project.descriptor.defaultScene?.pathHint ?? '',
         projectGuid: project.descriptor.guid,

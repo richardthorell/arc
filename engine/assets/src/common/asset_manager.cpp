@@ -180,9 +180,33 @@ asset_reference dependency_from_path(const asset_import_context& context, std::s
 {
     if (text.empty() || text.starts_with("data:") || text.find("://") != std::string_view::npos) return {};
     std::filesystem::path authored(text);
-    std::filesystem::path resolved;
     if (authored.is_absolute() || authored.has_root_name()) return {};
+
     const auto normalized_text = normalize_asset_path(authored);
+    const auto source_hint = normalize_asset_path(context.reference.path_hint);
+    if (source_hint == "builtin" || source_hint.starts_with("builtin/"))
+    {
+        const auto mounted_relative = std::filesystem::path(source_hint).lexically_relative("builtin");
+        auto mounted_root = context.source_path;
+        for (const auto& component : mounted_relative)
+        {
+            (void)component;
+            mounted_root = mounted_root.parent_path();
+        }
+        const auto resolved = context.metadata.type == asset_types::material
+                                  ? mounted_root / authored
+                                  : context.source_path.parent_path() / authored;
+        const auto relative_to_mount = resolved.lexically_normal().lexically_relative(mounted_root);
+        if (relative_to_mount.empty() ||
+            relative_to_mount.native().starts_with(std::filesystem::path("..").native()))
+            return {};
+        const auto path_hint = std::filesystem::path("builtin") / relative_to_mount;
+        if (!expected_type.valid())
+            if (const auto classification = classify_asset_path(path_hint)) expected_type = classification->first;
+        return {.expected_type = expected_type, .path_hint = normalize_asset_path(path_hint)};
+    }
+
+    std::filesystem::path resolved;
     if (normalized_text == "assets" || normalized_text.starts_with("assets/"))
         resolved = context.project_root / authored;
     else if (context.metadata.type == asset_types::material)
@@ -419,6 +443,13 @@ struct asset_manager::implementation
         }
         std::erase_if(config.additional_source_roots,
                       [&](const auto& root) { return !path_within(config.project_root, root); });
+        for (auto& root : config.read_only_source_roots)
+        {
+            if (root.is_relative()) root = config.project_root / root;
+            root = std::filesystem::absolute(root).lexically_normal();
+        }
+        std::erase_if(config.read_only_source_roots,
+                      [](const auto& root) { return root.empty() || !std::filesystem::exists(root); });
         streaming = std::make_unique<memory::streaming_heap>(*memory, config.streaming_heap_bytes);
         for (auto& importer : default_importers())
             importers.emplace(importer->descriptor().id, std::move(importer));
@@ -633,6 +664,7 @@ struct asset_manager::implementation
             value.snapshot.imported_version = static_cast<std::uint32_t>(sqlite3_column_int(statement.get(), 11));
             value.snapshot.source_missing = sqlite3_column_int(statement.get(), 12) != 0;
             value.snapshot.has_last_good = sqlite3_column_int(statement.get(), 13) != 0;
+            value.snapshot.read_only = normalize_asset_path(value.snapshot.source_path).starts_with("builtin/");
             value.modified = std::filesystem::file_time_type(
                 std::filesystem::file_time_type::duration(sqlite3_column_int64(statement.get(), 14)));
             value.file_size = static_cast<std::uint64_t>(sqlite3_column_int64(statement.get(), 15));
@@ -924,6 +956,7 @@ struct asset_manager::implementation
             [this, guid, importer_id, priority, cancellation]
             {
                 std::filesystem::path source_path;
+                std::string source_path_hint;
                 asset_source_metadata metadata;
                 asset_hash source_hash;
                 asset_residency import_residency{asset_residency::cpu};
@@ -936,6 +969,7 @@ struct asset_manager::implementation
                     current->second.snapshot.state = asset_state::importing;
                     current->second.snapshot.revision = ++revision;
                     source_path = current->second.absolute_path;
+                    source_path_hint = normalize_asset_path(current->second.snapshot.source_path);
                     metadata = current->second.metadata;
                     source_hash = current->second.snapshot.source_hash;
                     import_residency = current->second.requested_residency;
@@ -1012,7 +1046,7 @@ struct asset_manager::implementation
                 const auto& bytes = read.value();
                 asset_import_result imported = importer->import(
                     {.reference = {guid, metadata.type,
-                                   normalize_asset_path(std::filesystem::relative(source_path, config.project_root))},
+                                   source_path_hint},
                      .metadata = metadata,
                      .project_root = config.project_root,
                      .source_path = source_path,
@@ -1161,10 +1195,13 @@ struct asset_manager::implementation
                     }
                     target.metadata.subassets = std::move(merged);
                     target.snapshot.subassets = target.metadata.subassets;
-                    auto saved = save_asset_metadata(metadata_path_for(target.absolute_path), target.metadata);
-                    if (!saved)
-                        target.snapshot.diagnostics.push_back(
-                            diagnostic(guid, asset_diagnostic_severity::warning, "metadata", saved.error().message));
+                    if (!target.snapshot.read_only)
+                    {
+                        auto saved = save_asset_metadata(metadata_path_for(target.absolute_path), target.metadata);
+                        if (!saved)
+                            target.snapshot.diagnostics.push_back(
+                                diagnostic(guid, asset_diagnostic_severity::warning, "metadata", saved.error().message));
+                    }
                 }
 
                 std::vector<asset_hash> dependency_hashes;
@@ -1379,6 +1416,7 @@ bool asset_manager::register_virtual_asset(asset_guid guid, asset_type_id type, 
     value.snapshot.generation = 1;
     value.snapshot.revision = ++implementation_->revision;
     value.snapshot.has_last_good = true;
+    value.snapshot.read_only = true;
     value.slot->requested_guid = guid;
     value.slot->resolved_guid = guid;
     value.slot->type = type;
@@ -1449,15 +1487,26 @@ asset_scan_result asset_manager::scan()
         asset_hash hash{};
         bool metadata_created{};
         bool hash_deferred{};
+        bool read_only{};
+    };
+    struct mounted_source_root
+    {
+        std::filesystem::path path;
+        bool read_only{};
     };
     std::vector<discovered_source> discovered;
-    std::vector<std::filesystem::path> source_roots{implementation_->config.asset_root};
-    for (const auto& root : implementation_->config.additional_source_roots)
-        if (std::none_of(source_roots.begin(), source_roots.end(),
-                         [&](const auto& value) { return path_key(value) == path_key(root); }))
-            source_roots.push_back(root);
-    for (const auto& source_root : source_roots)
+    std::vector<mounted_source_root> source_roots{{implementation_->config.asset_root, false}};
+    const auto append_root = [&](const std::filesystem::path& root, bool read_only)
     {
+        if (std::none_of(source_roots.begin(), source_roots.end(),
+                         [&](const auto& value) { return path_key(value.path) == path_key(root); }))
+            source_roots.push_back({root, read_only});
+    };
+    for (const auto& root : implementation_->config.additional_source_roots) append_root(root, false);
+    for (const auto& root : implementation_->config.read_only_source_roots) append_root(root, true);
+    for (const auto& mounted_root : source_roots)
+    {
+        const auto& source_root = mounted_root.path;
         if (!std::filesystem::exists(source_root, error))
         {
             error.clear();
@@ -1476,12 +1525,15 @@ asset_scan_result asset_manager::scan()
             if (!iterator->is_regular_file(error)) continue;
             const auto classification = classify_asset_path(iterator->path());
             if (!classification) continue;
-            const auto relative = iterator->path().lexically_relative(implementation_->config.project_root);
+            const auto relative = mounted_root.read_only
+                                      ? std::filesystem::path("builtin") / iterator->path().lexically_relative(source_root)
+                                      : iterator->path().lexically_relative(implementation_->config.project_root);
             if (relative.empty() || relative.native().starts_with(std::filesystem::path("..").native())) continue;
 
             discovered_source source;
             source.absolute = iterator->path();
             source.relative = relative;
+            source.read_only = mounted_root.read_only;
             source.modified = iterator->last_write_time(error);
             source.size = iterator->file_size(error);
             const auto metadata_path = metadata_path_for(source.absolute);
@@ -1494,6 +1546,15 @@ asset_scan_result asset_manager::scan()
                         {.severity = asset_diagnostic_severity::error,
                          .category = "metadata",
                          .message = normalize_asset_path(relative) + ": " + loaded_metadata.error().message});
+                    continue;
+                }
+                if (mounted_root.read_only)
+                {
+                    result.diagnostics.push_back(
+                        {.severity = asset_diagnostic_severity::error,
+                         .category = "metadata",
+                         .message = normalize_asset_path(relative) +
+                                    ": built-in assets require a checked-in .arcmeta sidecar"});
                     continue;
                 }
                 if (!implementation_->config.create_missing_metadata) continue;
@@ -1636,6 +1697,7 @@ asset_scan_result asset_manager::scan()
             value.snapshot.source_hash = source.hash;
             value.snapshot.state = asset_state::stale;
             value.snapshot.residency = asset_residency::source;
+            value.snapshot.read_only = source.read_only;
             value.snapshot.revision = ++implementation_->revision;
             value.snapshot.subassets = source.metadata.subassets;
             value.slot->requested_guid = value.snapshot.guid;
@@ -1701,6 +1763,7 @@ asset_scan_result asset_manager::scan()
             value.pending_source_change = false;
         }
         value.snapshot.source_missing = false;
+        value.snapshot.read_only = source.read_only;
         value.snapshot.type = source.metadata.type;
         value.snapshot.importer = source.metadata.importer;
         value.snapshot.importer_version = registered_importer_version;
@@ -1972,6 +2035,14 @@ asset_move_result asset_manager::move(asset_guid guid, std::filesystem::path des
     asset_move_result result{.guid = guid};
     std::unique_lock lock(implementation_->mutex);
     const auto found = implementation_->records.find(guid);
+    if (found != implementation_->records.end() && found->second.snapshot.read_only)
+    {
+        result.error = {.code = asset_error_code::invalid_request,
+                        .guid = guid,
+                        .path = found->second.snapshot.source_path,
+                        .message = "Built-in assets are read-only"};
+        return result;
+    }
     if (found == implementation_->records.end() || found->second.virtual_asset)
     {
         result.error = {.code = asset_error_code::not_found, .guid = guid, .message = "Asset is not movable"};

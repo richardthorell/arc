@@ -290,6 +290,15 @@ const resolveTemplatesRoot = (): string | null =>
     path.resolve(process.cwd(), 'templates'),
   ]);
 
+const resolveBuiltinAssetsRoot = (): string | null =>
+  firstExistingPath([
+    process.env.ARC_BUILTIN_ASSETS_PATH,
+    app.isPackaged ? path.join(process.resourcesPath, 'assets') : undefined,
+    app.isPackaged ? path.join(process.resourcesPath, 'share', 'arc', 'assets') : undefined,
+    path.resolve(process.cwd(), '..', 'assets'),
+    path.resolve(process.cwd(), 'assets'),
+  ]);
+
 const resolveHostProcessPath = (): string | null => {
   const candidates: Array<string | undefined> = [
     process.env.ARC_HOST_PROCESS_PATH,
@@ -716,6 +725,7 @@ void app.whenReady().then(async () => {
     currentEditorPath: app.getPath('exe'),
     projectToolPath: resolveProjectToolPath() ?? '',
     templatesRoot: resolveTemplatesRoot() ?? '',
+    builtinAssetsRoot: resolveBuiltinAssetsRoot() ?? '',
     host: hostClient,
   });
   buildService = new BuildService(
