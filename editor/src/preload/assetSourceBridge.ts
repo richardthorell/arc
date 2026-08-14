@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readFile, stat, unlink, writeFile, copyFile } from 'node:fs/promises';
+import { copyFile, mkdir, stat, unlink, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
@@ -15,6 +15,7 @@ import type {
   ArcAssetSearchResult,
   ArcAssetSourceDescriptor,
   ArcAssetSourceQuery,
+  ArcRemoteAssetKind,
 } from '../common/assetSourceTypes';
 import type { ArcProjectBrowserSnapshot } from '../common/projectTypes';
 import { createDefaultAssetSourceRegistry, type AssetSourceRegistry } from '../main/assetSources/assetSourceRegistry';
@@ -22,17 +23,16 @@ import { createDefaultAssetSourceRegistry, type AssetSourceRegistry } from '../m
 type Invoke = <T>(channel: string, ...args: unknown[]) => Promise<T>;
 type ProgressCallback = (progress: ArcAssetImportProgress) => void;
 
+const imageExtensions = new Set(['exr', 'hdr', 'jpeg', 'jpg', 'png', 'tga', 'tif', 'tiff', 'webp']);
+
 const normalizeSegment = (value: string): string => {
-  const normalized = value.trim().replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^\.+$/, '_');
+  const normalized = value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^\.+/, '')
+    .replace(/^\.+$/, '_');
   return normalized || '_';
 };
-
-const safeLogicalSegments = (logicalPath: string): string[] =>
-  logicalPath
-    .replaceAll('\\', '/')
-    .split('/')
-    .filter((segment) => segment && segment !== '.' && segment !== '..')
-    .map(normalizeSegment);
 
 export const remoteFileName = (file: ArcAssetDownloadFile): string => {
   try {
@@ -45,8 +45,19 @@ export const remoteFileName = (file: ArcAssetDownloadFile): string => {
   return `${normalizeSegment(file.logicalPath.replaceAll('/', '_')) || 'asset'}.bin`;
 };
 
-export const remoteDestinationPath = (assetId: string, file: ArcAssetDownloadFile): string =>
-  path.join(normalizeSegment(assetId), ...safeLogicalSegments(file.logicalPath), remoteFileName(file));
+const fileExtension = (file: ArcAssetDownloadFile): string =>
+  remoteFileName(file).split('.').at(-1)?.toLocaleLowerCase() ?? '';
+
+export const remoteDestinationPath = (
+  assetId: string,
+  file: ArcAssetDownloadFile,
+  kind: ArcRemoteAssetKind = 'other',
+): string => {
+  const assetRoot = normalizeSegment(assetId);
+  const filename = remoteFileName(file);
+  if (kind === 'model' && imageExtensions.has(fileExtension(file))) return path.join(assetRoot, 'textures', filename);
+  return path.join(assetRoot, filename);
+};
 
 const ensureContained = (root: string, candidate: string): string => {
   const resolvedRoot = path.resolve(root);
@@ -193,7 +204,7 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
       );
 
       for (const file of selected) {
-        const relativePath = remoteDestinationPath(request.assetId, file);
+        const relativePath = remoteDestinationPath(request.assetId, file, asset.kind);
         const cachePath = ensureContained(
           roots.savedRoot,
           path.join(
@@ -239,7 +250,9 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
           totalBytes,
           currentFile: file.logicalPath,
         });
-        if (!(await cachedFileIsValid(cachePath, file))) throw new Error(`Cached download failed verification: ${file.logicalPath}`);
+        if (!(await cachedFileIsValid(cachePath, file))) {
+          throw new Error(`Cached download failed verification: ${file.logicalPath}`);
+        }
         const destinationPath = ensureContained(
           roots.contentRoot,
           path.join(roots.contentRoot, 'External', normalizeSegment(request.sourceId), relativePath),
