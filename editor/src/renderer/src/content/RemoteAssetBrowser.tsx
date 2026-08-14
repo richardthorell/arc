@@ -171,7 +171,11 @@ export function RemoteAssetBrowser({ source }: Props) {
           </button>
         </header>
         <div className="remote-result-summary">
-          {loading ? 'Loading assets…' : error ? error : `${result?.total ?? 0} assets · ${source.licenseSummary ?? 'License varies'}`}
+          {loading
+            ? 'Loading assets…'
+            : error
+              ? error
+              : `${result?.total ?? 0} assets · ${source.licenseSummary ?? 'License varies'}`}
         </div>
         <div className={`content-assets remote-assets ${view}`} role="listbox">
           {(result?.assets ?? []).map((asset) => (
@@ -181,7 +185,11 @@ export function RemoteAssetBrowser({ source }: Props) {
               onClick={() => selectAsset(asset)}
             >
               <span className="content-asset-preview remote-asset-preview">
-                {asset.thumbnailUrl ? <img src={asset.thumbnailUrl} alt="" loading="lazy" /> : <span className="remote-no-preview">No preview</span>}
+                {asset.thumbnailUrl ? (
+                  <img src={asset.thumbnailUrl} alt="" loading="lazy" />
+                ) : (
+                  <span className="remote-no-preview">No preview</span>
+                )}
               </span>
               <span className="content-asset-name">{asset.name}</span>
               <small>{asset.kind} · {asset.category || 'uncategorized'}</small>
@@ -207,7 +215,11 @@ export function RemoteAssetBrowser({ source }: Props) {
               {resolutions.length > 0 && (
                 <label>
                   Resolution
-                  <select aria-label="Remote asset resolution" value={resolution} onChange={(event) => setResolution(event.target.value)}>
+                  <select
+                    aria-label="Remote asset resolution"
+                    value={resolution}
+                    onChange={(event) => setResolution(event.target.value)}
+                  >
                     {resolutions.map((value) => <option key={value}>{value}</option>)}
                   </select>
                 </label>
@@ -215,7 +227,11 @@ export function RemoteAssetBrowser({ source }: Props) {
               {formats.length > 0 && (
                 <label>
                   Format
-                  <select aria-label="Remote asset format" value={format} onChange={(event) => setFormat(event.target.value)}>
+                  <select
+                    aria-label="Remote asset format"
+                    value={format}
+                    onChange={(event) => setFormat(event.target.value)}
+                  >
                     {formats.map((value) => <option key={value}>{value}</option>)}
                   </select>
                 </label>
@@ -224,10 +240,19 @@ export function RemoteAssetBrowser({ source }: Props) {
                 <span>{selectedFiles.length} files</span>
                 <span>{formatBytes(selectionBytes)}</span>
               </div>
-              <button className="remote-import-button" disabled={selectedFiles.length === 0 || importing} onClick={importSelected}>
+              <button
+                className="remote-import-button"
+                disabled={selectedFiles.length === 0 || importing}
+                onClick={importSelected}
+              >
                 <Download size={14} /> {importing ? 'Importing…' : 'Import to Project'}
               </button>
-              {importProgress && <progress max={importProgress.totalBytes ?? importProgress.totalFiles || 1} value={importProgress.totalBytes ? importProgress.completedBytes : importProgress.completedFiles} />}
+              {importProgress && (
+                <progress
+                  max={importProgress.totalBytes ?? Math.max(importProgress.totalFiles, 1)}
+                  value={importProgress.totalBytes ? importProgress.completedBytes : importProgress.completedFiles}
+                />
+              )}
               {importProgress && <small>{progressLabel(importProgress)}</small>}
             </>
           ) : null}
