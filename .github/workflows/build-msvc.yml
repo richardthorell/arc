@@ -96,22 +96,42 @@ jobs:
           $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan --json | ConvertFrom-Json)
           if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
 
-      - name: Install SDK and build an external Blank 3D project
+      - name: Configure and build Debug SDK
         run: |
           cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-debug --parallel
+
+      - name: Configure and build Shipping SDK
+        run: |
           cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-shipping --parallel
+
+      - name: Install SDK configurations
+        run: |
           cmake --install out/build/ci-windows --prefix out/sdk/arc-0.1.0
           cmake --install out/build/sdk-debug --prefix out/sdk/arc-0.1.0
           cmake --install out/build/sdk-shipping --prefix out/sdk/arc-0.1.0
-          out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+
+      - name: Create external Blank 3D project
+        run: out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+
+      - name: Configure and build external Blank 3D RelWithDebInfo
+        run: |
           cmake -S out/external-game -B out/external-game/Build/ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci --parallel
+
+      - name: Configure and build external Blank 3D Debug
+        run: |
           cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci-debug --parallel
+
+      - name: Configure and build external Blank 3D Shipping
+        run: |
           cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci-shipping --parallel
+
+      - name: Verify SDK and generated project relocatability
+        run: |
           $tracked = Get-ChildItem out/external-game,out/sdk/arc-0.1.0/lib/cmake/ARC -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/]Build[\\/]' }
           if ($tracked | Select-String -SimpleMatch "${{ github.workspace }}") { throw "Installed SDK or generated project embeds the ARC checkout path" }
 
