@@ -58,6 +58,14 @@ if(WIN32)
     target_compile_definitions(arc-render-vulkan PRIVATE VK_USE_PLATFORM_WIN32_KHR=1 WIN32_LEAN_AND_MEAN=1 NOMINMAX=1)
 endif()
 
+# D3D11 is used only to allocate NT-handle textures for Electron's shared
+# editor viewport. Runtime/Shipping builds keep the Vulkan backend free of
+# D3D and DXGI link dependencies.
+if(WIN32 AND ARC_BUILD_EDITOR)
+    target_compile_definitions(arc-render-vulkan PRIVATE ARC_EDITOR=1)
+    target_link_libraries(arc-render-vulkan PRIVATE d3d11 dxgi)
+endif()
+
 if(NOT TARGET arc::render-vulkan)
     add_library(arc::render-vulkan ALIAS arc-render-vulkan)
 endif()
