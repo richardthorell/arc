@@ -150,6 +150,7 @@
 }
 
 .arc-viewport-live-pill,
+.arc-viewport-transport-pill,
 .arc-viewport-header-stat {
   display: inline-flex;
   align-items: center;
@@ -162,6 +163,26 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.arc-viewport-transport-pill.streamed {
+  color: #cde8ff;
+  border-color: rgba(56, 139, 253, 0.35);
+  background: rgba(31, 111, 235, 0.18);
+}
+
+.arc-viewport-transport-pill.native {
+  color: #d4d4d4;
+}
+
+.arc-viewport-transport-pill.native.fallback {
+  color: #ffd8a8;
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(146, 64, 14, 0.25);
+}
+
+.arc-viewport-transport-pill.unavailable {
+  color: #8b949e;
 }
 
 .arc-viewport-live-pill {
@@ -274,6 +295,70 @@
 
 .arc-viewport-body.native-active:active {
   cursor: grabbing;
+}
+
+.arc-viewport-shared-failure {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  display: grid;
+  grid-template-columns: auto minmax(220px, 520px);
+  gap: 10px 12px;
+  width: min(620px, calc(100% - 36px));
+  padding: 14px;
+  border: 1px solid rgba(245, 158, 11, 0.48);
+  border-radius: 8px;
+  color: #f2f2f2;
+  background: rgba(30, 24, 18, 0.96);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+}
+
+.arc-viewport-shared-failure-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.arc-viewport-shared-failure-copy strong {
+  color: #ffd8a8;
+  font-size: 13px;
+}
+
+.arc-viewport-shared-failure-copy span {
+  overflow-wrap: anywhere;
+  color: #e7e7e7;
+  font-size: 12px;
+}
+
+.arc-viewport-shared-failure-copy small {
+  color: #b9b0a5;
+  font-size: 11px;
+}
+
+.arc-viewport-shared-failure-actions {
+  grid-column: 2;
+  display: flex;
+  gap: 8px;
+}
+
+.arc-viewport-shared-failure-actions button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  color: #e5e7eb;
+  background: #252b32;
+  font-size: 12px;
+}
+
+.arc-viewport-shared-failure-actions button:hover {
+  background: #313841;
+}
+
+.arc-viewport-shared-failure-actions button.fallback {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(146, 64, 14, 0.38);
 }
 
 .arc-viewport-note {
