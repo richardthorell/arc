@@ -484,6 +484,94 @@ struct surface_frame_error
 /** @brief Result of presenting one backend-owned surface frame. */
 using surface_frame_result = core::status<surface_frame_error>;
 
+/** @brief Presentation transport selected for an editor viewport. */
+enum class viewport_output_type : std::uint8_t
+{
+    /// Present through a platform window and swapchain.
+    native_window,
+    /// Present through an externally shareable GPU texture.
+    shared_texture
+};
+
+/** @brief Backend-neutral pixel formats supported by external viewport images. */
+enum class viewport_pixel_format : std::uint8_t
+{
+    bgra8_unorm,
+    rgba8_unorm,
+    rgba16_float
+};
+
+/** @brief Platform handle representation carried by an exported GPU resource. */
+enum class external_gpu_handle_type : std::uint8_t
+{
+    none,
+    win32_nt_handle,
+    posix_file_descriptor,
+    io_surface
+};
+
+/**
+ * @brief Opaque platform handle exported by a rendering backend.
+ *
+ * The numeric payload is meaningful only to the platform integration layer in
+ * the process that owns it. Consumers must duplicate or transfer it explicitly
+ * before crossing a process boundary.
+ */
+struct external_gpu_handle
+{
+    external_gpu_handle_type type{external_gpu_handle_type::none};
+    std::uint64_t payload{};
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return type != external_gpu_handle_type::none && payload != 0;
+    }
+};
+
+/** @brief Producer/consumer state of one shared viewport frame slot. */
+enum class shared_viewport_frame_state : std::uint8_t
+{
+    available,
+    rendering,
+    ready,
+    consumer_owned
+};
+
+/** @brief Synchronization guarantee attached to an exported viewport frame. */
+struct shared_viewport_frame_sync
+{
+    /// The producer GPU fence completed before the frame was published.
+    bool producer_complete{};
+    /// Monotonic producer sequence associated with the completed submission.
+    std::uint64_t value{};
+};
+
+/** @brief Description used to create or recreate one backend viewport output. */
+struct viewport_output_descriptor
+{
+    std::string id{"viewport-1"};
+    viewport_output_type type{viewport_output_type::native_window};
+    std::uint32_t width{1};
+    std::uint32_t height{1};
+    bool visible{true};
+};
+
+/** @brief Immutable metadata for a shared GPU viewport frame. */
+struct shared_viewport_frame
+{
+    std::string viewport_id;
+    std::uint64_t frame_id{};
+    std::uint64_t generation{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    viewport_pixel_format format{viewport_pixel_format::bgra8_unorm};
+    external_gpu_handle texture;
+    shared_viewport_frame_sync synchronization;
+};
+
+/** @brief Result of polling a completed shared viewport frame. */
+using shared_viewport_frame_result = core::result<std::optional<shared_viewport_frame>, surface_frame_error>;
+
 /**
  * @brief One named GPU/backend timing sample in milliseconds.
  */
@@ -815,6 +903,29 @@ public:
      * @note Must be called from the backend's render thread.
      */
     [[nodiscard]] virtual surface_frame_result present_surface_frame(std::uint32_t width, std::uint32_t height);
+
+    /** @brief Create a viewport presentation output. */
+    [[nodiscard]] virtual surface_frame_result create_viewport_output(const viewport_output_descriptor& descriptor);
+
+    /** @brief Resize an existing viewport output and advance its generation. */
+    [[nodiscard]] virtual surface_frame_result resize_viewport_output(std::string_view viewport_id,
+                                                                      std::uint32_t width, std::uint32_t height);
+
+    /** @brief Submit the latest rendered frame to a named viewport output. */
+    [[nodiscard]] virtual surface_frame_result present_viewport_output(std::string_view viewport_id);
+
+    /** @brief Poll one producer-complete frame without blocking the CPU. */
+    [[nodiscard]] virtual shared_viewport_frame_result poll_viewport_output(std::string_view viewport_id);
+
+    /** @brief Return a consumer-owned frame slot to the producer. */
+    virtual void release_viewport_frame(std::string_view viewport_id, std::uint64_t generation,
+                                        std::uint64_t frame_id);
+
+    /** @brief Change whether a viewport should produce frames. */
+    virtual void set_viewport_output_visible(std::string_view viewport_id, bool visible);
+
+    /** @brief Destroy a viewport output after consumer-owned frames are released. */
+    virtual void destroy_viewport_output(std::string_view viewport_id);
 
     /**
      * @brief Resize the backend-owned editor/game viewport target.

@@ -137,6 +137,31 @@ public:
     std::size_t ended_passes{};
 };
 
+TEST_CASE("viewport output metadata is backend neutral and unsupported by default")
+{
+    recording_backend backend;
+    const arc::render::viewport_output_descriptor descriptor{.id = "viewport-a",
+                                                              .type = arc::render::viewport_output_type::shared_texture,
+                                                              .width = 1280,
+                                                              .height = 720};
+    const auto created = backend.create_viewport_output(descriptor);
+    REQUIRE_FALSE(created);
+    REQUIRE(created.error().code == arc::render::surface_frame_error_code::unsupported);
+
+    const arc::render::shared_viewport_frame frame{
+        .viewport_id = "viewport-a",
+        .frame_id = 7,
+        .generation = 3,
+        .width = 1280,
+        .height = 720,
+        .format = arc::render::viewport_pixel_format::bgra8_unorm,
+        .texture = {.type = arc::render::external_gpu_handle_type::win32_nt_handle, .payload = 0x1234u},
+        .synchronization = {.producer_complete = true, .value = 7}};
+    REQUIRE(frame.texture.valid());
+    REQUIRE(frame.generation == 3);
+    REQUIRE(frame.synchronization.producer_complete);
+}
+
 void count_recorded_pass(arc::render::command_encoder&, void* user_data)
 {
     ++*static_cast<std::uint32_t*>(user_data);

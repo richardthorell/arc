@@ -7,6 +7,7 @@ import type { StartupState } from '../app/workbenchTypes';
 import type { ProjectSnapshot } from '../services/editorHostTypes';
 
 import './viewport.css';
+import { toViewportPixels } from './viewportCoordinates';
 
 type ViewportPanelProps = {
   viewportId?: string;
@@ -126,6 +127,7 @@ export function ViewportPanel({
   active = true,
 }: ViewportPanelProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const surfaceId = `arc-viewport-surface-${viewportId.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`;
   const dragRef = useRef<DragState | null>(null);
   const lastAttachAttemptRef = useRef(0);
   const viewportAttachedRef = useRef(false);
@@ -136,10 +138,14 @@ export function ViewportPanel({
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
   const [localGridVisible, setLocalGridVisible] = useState(true);
   const [projection, setProjection] = useState('perspective');
+  const [transport, setTransport] = useState<'unavailable' | 'native' | 'streamed'>(
+    startupState?.viewportMode ?? 'unavailable',
+  );
   const gridVisible = controlledGridVisible ?? localGridVisible;
-  const nativeAvailable = startupState?.viewportMode === 'native' && Boolean(window.arc?.viewport);
-  const nativeActive = active && nativeAvailable;
-  const stats = nativeActive ? viewportStats : fallbackStats(project);
+  const viewportAvailable = (transport === 'native' || transport === 'streamed') && Boolean(window.arc?.viewport);
+  const streamedAvailable = transport === 'streamed' && Boolean(window.arc?.viewport);
+  const viewportActive = active && viewportAvailable;
+  const stats = viewportActive ? viewportStats : fallbackStats(project);
 
   const viewportBounds = useCallback(() => {
     const element = bodyRef.current;
@@ -156,8 +162,10 @@ export function ViewportPanel({
     };
   }, [viewportId]);
 
+  useEffect(() => setTransport(startupState?.viewportMode ?? 'unavailable'), [startupState?.viewportMode]);
+
   const attachViewport = useCallback(async () => {
-    if (!nativeActive) {
+    if (!viewportActive) {
       return;
     }
     const bounds = viewportBounds();
@@ -166,18 +174,25 @@ export function ViewportPanel({
     }
     try {
       lastAttachAttemptRef.current = Date.now();
-      const response = (await window.arc.viewport.attach(bounds)) as ViewportCommandResponse | undefined;
-      if (response?.succeeded === false) throw new Error(response.error || 'Native viewport attachment was rejected');
+      let response = (await (streamedAvailable
+        ? window.arc.viewport.create(bounds)
+        : window.arc.viewport.attach(bounds))) as ViewportCommandResponse | undefined;
+      if (response?.succeeded === false && streamedAvailable) {
+        console.warn(`ARC shared viewport unavailable; using native fallback: ${response.error || 'unknown error'}`);
+        response = (await window.arc.viewport.attach(bounds)) as ViewportCommandResponse | undefined;
+        if (response?.succeeded !== false) setTransport('native');
+      }
+      if (response?.succeeded === false) throw new Error(response.error || 'Viewport attachment was rejected');
       viewportAttachedRef.current = true;
       lastViewportBoundsRef.current = boundsKey(bounds);
       setViewportError('');
     } catch (error) {
       setViewportError(error instanceof Error ? error.message : String(error));
     }
-  }, [nativeActive, viewportBounds]);
+  }, [streamedAvailable, viewportActive, viewportBounds]);
 
   const resizeViewport = useCallback(() => {
-    if (!nativeActive || !viewportAttachedRef.current) {
+    if (!viewportActive || !viewportAttachedRef.current) {
       return;
     }
     const bounds = viewportBounds();
@@ -197,8 +212,7 @@ export function ViewportPanel({
           const next = pendingViewportBoundsRef.current;
           pendingViewportBoundsRef.current = null;
           const response = (await window.arc.viewport.resize(next)) as ViewportCommandResponse | undefined;
-          if (response?.succeeded === false)
-            throw new Error(response.error || 'Native viewport resize was rejected');
+          if (response?.succeeded === false) throw new Error(response.error || 'Native viewport resize was rejected');
         }
         setViewportError('');
       } catch (error) {
@@ -210,7 +224,7 @@ export function ViewportPanel({
         resizeInFlightRef.current = false;
       }
     })();
-  }, [nativeActive, viewportBounds]);
+  }, [viewportActive, viewportBounds]);
 
   useEffect(() => {
     void attachViewport();
@@ -218,13 +232,24 @@ export function ViewportPanel({
       viewportAttachedRef.current = false;
       pendingViewportBoundsRef.current = null;
       lastViewportBoundsRef.current = '';
-      if (nativeActive) void window.arc.viewport.detach?.(viewportId);
+      if (viewportActive) void window.arc.viewport.detach?.(viewportId);
     };
-  }, [attachViewport, nativeActive, viewportId]);
+  }, [attachViewport, viewportActive, viewportId]);
+
+  useEffect(() => {
+    if (!streamedAvailable) return;
+    window.arc.viewport.registerSurface?.(viewportId, surfaceId);
+    return () => window.arc.viewport.unregisterSurface?.(viewportId);
+  }, [streamedAvailable, surfaceId, viewportId]);
+
+  useEffect(() => {
+    if (!viewportAvailable) return;
+    void window.arc.viewport.setVisibility?.(viewportId, active);
+  }, [active, viewportAvailable, viewportId]);
 
   useEffect(() => {
     const element = bodyRef.current;
-    if (!element || !nativeActive) {
+    if (!element || !viewportActive) {
       return;
     }
 
@@ -242,10 +267,10 @@ export function ViewportPanel({
       observer.disconnect();
       window.removeEventListener('resize', resizeViewport);
     };
-  }, [nativeActive, resizeViewport]);
+  }, [viewportActive, resizeViewport]);
 
   useEffect(() => {
-    if (!nativeActive || !window.arc?.host) {
+    if (!viewportActive || !window.arc?.host) {
       setViewportStats(fallbackStats(project));
       return;
     }
@@ -278,7 +303,7 @@ export function ViewportPanel({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [attachViewport, nativeActive, project, viewportId]);
+  }, [attachViewport, project, viewportActive, viewportId]);
 
   const sendCameraInput = (input: Parameters<typeof window.arc.viewport.cameraInput>[0]) => {
     void window.arc.viewport.cameraInput({ ...input, viewportId }).catch((error) => {
@@ -286,14 +311,48 @@ export function ViewportPanel({
     });
   };
 
+  const pointerCoordinates = (clientX: number, clientY: number) => {
+    const rect = bodyRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return toViewportPixels({
+      clientX,
+      clientY,
+      left: rect.left,
+      top: rect.top,
+      cssWidth: rect.width,
+      cssHeight: rect.height,
+      renderWidth: stats.width,
+      renderHeight: stats.height,
+      devicePixelRatio: window.devicePixelRatio,
+    });
+  };
+
+  const sendPointer = (event: PointerEvent<HTMLDivElement>, phase: 'down' | 'move' | 'up' | 'leave' | 'cancel') => {
+    if (!streamedAvailable) return;
+    const position = pointerCoordinates(event.clientX, event.clientY);
+    void window.arc.viewport.pointer({
+      viewportId,
+      phase,
+      ...position,
+      button: event.button,
+      alt: event.altKey,
+      shift: event.shiftKey,
+      control: event.ctrlKey,
+    });
+  };
+
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (!nativeAvailable) {
+    if (!viewportAvailable) {
       return;
     }
     event.currentTarget.focus();
     onFocusChange?.(true);
-    if (!nativeActive) return;
+    if (!viewportActive) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (streamedAvailable) {
+      sendPointer(event, 'down');
+      return;
+    }
     dragRef.current = {
       pointerId: event.pointerId,
       mode: event.altKey && event.button === 0 ? 'orbit' : event.shiftKey || event.button === 1 ? 'pan' : 'look',
@@ -303,8 +362,12 @@ export function ViewportPanel({
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (streamedAvailable) {
+      sendPointer(event, 'move');
+      return;
+    }
     const drag = dragRef.current;
-    if (!nativeActive || !drag || drag.pointerId !== event.pointerId) {
+    if (!viewportActive || !drag || drag.pointerId !== event.pointerId) {
       return;
     }
     const dx = event.clientX - drag.x;
@@ -325,13 +388,27 @@ export function ViewportPanel({
   };
 
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (streamedAvailable) sendPointer(event, 'up');
     if (dragRef.current?.pointerId === event.pointerId) {
       dragRef.current = null;
     }
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!nativeActive) {
+    if (!viewportActive) {
+      return;
+    }
+    if (streamedAvailable) {
+      const position = pointerCoordinates(event.clientX, event.clientY);
+      void window.arc.viewport.pointer({
+        viewportId,
+        phase: 'wheel',
+        ...position,
+        wheel: -event.deltaY / 120,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        control: event.ctrlKey,
+      });
       return;
     }
     sendCameraInput({ zoom: -event.deltaY / 120 });
@@ -339,7 +416,7 @@ export function ViewportPanel({
 
   const frameSelected = () => {
     onCommand('viewport.frameSelected');
-    if (nativeActive) {
+    if (viewportActive) {
       sendCameraInput({ focusSelected: true });
     }
   };
@@ -389,8 +466,12 @@ export function ViewportPanel({
     const position = camera?.transform.position ?? [0, 5, 10];
     const distance = Math.max(1, Math.hypot(position[0] - focus[0], position[1] - focus[1], position[2] - focus[2]));
     const direction: Record<string, [number, number, number]> = {
-      top: [0, distance, 0], bottom: [0, -distance, 0], front: [0, 0, distance], back: [0, 0, -distance],
-      left: [-distance, 0, 0], right: [distance, 0, 0],
+      top: [0, distance, 0],
+      bottom: [0, -distance, 0],
+      front: [0, 0, distance],
+      back: [0, 0, -distance],
+      left: [-distance, 0, 0],
+      right: [distance, 0, 0],
     };
     try {
       if (mode !== 'perspective') {
@@ -433,9 +514,12 @@ export function ViewportPanel({
     ...viewportStats.renderOptions,
     environment: { ...defaultRenderOptions.environment, ...viewportStats.renderOptions?.environment },
   };
-  const viewModeLabel = renderOptions.renderMode === 'wireframe'
-    ? 'Wireframe'
-    : renderOptions.visualization === 'lighting' ? 'Unlit' : 'Lit';
+  const viewModeLabel =
+    renderOptions.renderMode === 'wireframe'
+      ? 'Wireframe'
+      : renderOptions.visualization === 'lighting'
+        ? 'Unlit'
+        : 'Lit';
 
   return (
     <section className="arc-viewport-shell">
@@ -445,18 +529,57 @@ export function ViewportPanel({
           <span>{viewportId === 'viewport-1' ? 'Viewport 1' : viewportId.replace('viewport-', 'Viewport ')}</span>
         </div>
         <div className="arc-viewport-view-options">
-          <details className="arc-viewport-show-menu"><summary>{projection === 'perspective' ? 'Perspective' : projection[0].toUpperCase() + projection.slice(1)}</summary>
+          <details className="arc-viewport-show-menu">
+            <summary>
+              {projection === 'perspective' ? 'Perspective' : projection[0].toUpperCase() + projection.slice(1)}
+            </summary>
             <div className="arc-viewport-show-popup viewport-projection-menu">
-              {['perspective', 'top', 'bottom', 'front', 'back', 'left', 'right'].map((mode) => <button key={mode} onClick={() => void setProjectionMode(mode)}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}
+              {['perspective', 'top', 'bottom', 'front', 'back', 'left', 'right'].map((mode) => (
+                <button key={mode} onClick={() => void setProjectionMode(mode)}>
+                  {mode[0].toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
             </div>
           </details>
-          <details className="arc-viewport-show-menu"><summary>{viewModeLabel}</summary>
+          <details className="arc-viewport-show-menu">
+            <summary>{viewModeLabel}</summary>
             <div className="arc-viewport-show-popup viewport-mode-menu">
-              <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'standard' })}>Lit</button>
-              <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'lighting' })}>Unlit</button>
-              <button onClick={() => void updateRenderOptions({ renderMode: 'wireframe', visualization: 'standard' })}>Wireframe</button>
+              <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'standard' })}>
+                Lit
+              </button>
+              <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'lighting' })}>
+                Unlit
+              </button>
+              <button onClick={() => void updateRenderOptions({ renderMode: 'wireframe', visualization: 'standard' })}>
+                Wireframe
+              </button>
               <hr />
-              {[['worldNormal','Normals'],['albedo','Base Color'],['gloss','Roughness'],['metalness','Metallic'],['lightingHitDistance','Depth'],['virtualOverdraw','Overdraw'],['lightComplexity','Lighting Complexity'],['shadowMask','Shadows'],['indirectDiffuse','GI'],['reflections','Reflections'],['terrainPatchBoundaries','Terrain Patches'],['terrainLodLevel','Terrain LOD'],['terrainHierarchyNodes','Terrain Hierarchy'],['terrainGeometricError','Terrain Error'],['terrainCulledNodes','Terrain Culling'],['terrainTriangleDensity','Terrain Density'],['terrainBounds','Terrain Bounds']].map(([mode,label]) => <button key={mode} onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: mode })}>{label}</button>)}
+              {[
+                ['worldNormal', 'Normals'],
+                ['albedo', 'Base Color'],
+                ['gloss', 'Roughness'],
+                ['metalness', 'Metallic'],
+                ['lightingHitDistance', 'Depth'],
+                ['virtualOverdraw', 'Overdraw'],
+                ['lightComplexity', 'Lighting Complexity'],
+                ['shadowMask', 'Shadows'],
+                ['indirectDiffuse', 'GI'],
+                ['reflections', 'Reflections'],
+                ['terrainPatchBoundaries', 'Terrain Patches'],
+                ['terrainLodLevel', 'Terrain LOD'],
+                ['terrainHierarchyNodes', 'Terrain Hierarchy'],
+                ['terrainGeometricError', 'Terrain Error'],
+                ['terrainCulledNodes', 'Terrain Culling'],
+                ['terrainTriangleDensity', 'Terrain Density'],
+                ['terrainBounds', 'Terrain Bounds'],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: mode })}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </details>
           <details className="arc-viewport-show-menu">
@@ -471,8 +594,26 @@ export function ViewportPanel({
                 <span className="arc-viewport-menu-check">{gridVisible ? '✓' : ''}</span>
                 Grid
               </button>
-              <button role="menuitemcheckbox" aria-checked={renderOptions.shadows} onClick={() => void updateRenderOptions({ shadows: !renderOptions.shadows })}><span className="arc-viewport-menu-check">{renderOptions.shadows ? '✓' : ''}</span>Shadows</button>
-              {Object.entries(renderOptions.environment).map(([flag, enabled]) => <button key={flag} role="menuitemcheckbox" aria-checked={enabled} onClick={() => void updateRenderOptions({ environment: { ...renderOptions.environment, [flag]: !enabled } })}><span className="arc-viewport-menu-check">{enabled ? '✓' : ''}</span>{flag[0].toUpperCase() + flag.slice(1)}</button>)}
+              <button
+                role="menuitemcheckbox"
+                aria-checked={renderOptions.shadows}
+                onClick={() => void updateRenderOptions({ shadows: !renderOptions.shadows })}
+              >
+                <span className="arc-viewport-menu-check">{renderOptions.shadows ? '✓' : ''}</span>Shadows
+              </button>
+              {Object.entries(renderOptions.environment).map(([flag, enabled]) => (
+                <button
+                  key={flag}
+                  role="menuitemcheckbox"
+                  aria-checked={enabled}
+                  onClick={() =>
+                    void updateRenderOptions({ environment: { ...renderOptions.environment, [flag]: !enabled } })
+                  }
+                >
+                  <span className="arc-viewport-menu-check">{enabled ? '✓' : ''}</span>
+                  {flag[0].toUpperCase() + flag.slice(1)}
+                </button>
+              ))}
             </div>
           </details>
         </div>
@@ -489,12 +630,46 @@ export function ViewportPanel({
               {stats.width}x{stats.height}
             </span>
           )}
-          <details className="arc-viewport-show-menu"><summary>Speed {renderOptions.cameraSpeed}</summary><div className="arc-viewport-show-popup viewport-speed-menu">{[0.5,1,2,4,8,16].map((speed) => <button key={speed} onClick={() => void updateRenderOptions({ cameraSpeed: speed })}>{speed}x</button>)}</div></details>
-          <button className={renderOptions.realtime ? 'active' : ''} title="Toggle realtime rendering" onClick={() => void updateRenderOptions({ realtime: !renderOptions.realtime })}>
+          <details className="arc-viewport-show-menu">
+            <summary>Speed {renderOptions.cameraSpeed}</summary>
+            <div className="arc-viewport-show-popup viewport-speed-menu">
+              {[0.5, 1, 2, 4, 8, 16].map((speed) => (
+                <button key={speed} onClick={() => void updateRenderOptions({ cameraSpeed: speed })}>
+                  {speed}x
+                </button>
+              ))}
+            </div>
+          </details>
+          <button
+            className={renderOptions.realtime ? 'active' : ''}
+            title="Toggle realtime rendering"
+            onClick={() => void updateRenderOptions({ realtime: !renderOptions.realtime })}
+          >
             {renderOptions.realtime ? <Eye size={13} /> : <EyeOff size={13} />}
           </button>
-          <details className="arc-viewport-show-menu"><summary>Bookmarks</summary><div className="arc-viewport-show-popup viewport-bookmark-menu">{[1,2,3,4].map((slot) => <div className="viewport-bookmark-row" key={slot}><button onClick={() => void restoreBookmark(slot)}>Recall {slot}</button><button title={`Save bookmark ${slot}`} onClick={() => saveBookmark(slot)}>+</button></div>)}</div></details>
-          <details className="arc-viewport-show-menu"><summary>Layout</summary><div className="arc-viewport-show-popup viewport-layout-menu">{([1,2,3,4] as const).map((count) => <button key={count} onClick={() => onViewportLayoutChange?.(count)}>{count} Viewport{count > 1 ? 's' : ''}</button>)}</div></details>
+          <details className="arc-viewport-show-menu">
+            <summary>Bookmarks</summary>
+            <div className="arc-viewport-show-popup viewport-bookmark-menu">
+              {[1, 2, 3, 4].map((slot) => (
+                <div className="viewport-bookmark-row" key={slot}>
+                  <button onClick={() => void restoreBookmark(slot)}>Recall {slot}</button>
+                  <button title={`Save bookmark ${slot}`} onClick={() => saveBookmark(slot)}>
+                    +
+                  </button>
+                </div>
+              ))}
+            </div>
+          </details>
+          <details className="arc-viewport-show-menu">
+            <summary>Layout</summary>
+            <div className="arc-viewport-show-popup viewport-layout-menu">
+              {([1, 2, 3, 4] as const).map((count) => (
+                <button key={count} onClick={() => onViewportLayoutChange?.(count)}>
+                  {count} Viewport{count > 1 ? 's' : ''}
+                </button>
+              ))}
+            </div>
+          </details>
           <button title="Frame selected (F), then Alt + Left Drag to orbit" onClick={frameSelected}>
             <Focus size={13} />
           </button>
@@ -506,7 +681,7 @@ export function ViewportPanel({
 
       <div
         ref={bodyRef}
-        className={nativeActive ? 'arc-viewport-body native-active' : 'arc-viewport-body'}
+        className={viewportActive ? 'arc-viewport-body native-active' : 'arc-viewport-body'}
         onBlur={(event) => {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange?.(false);
         }}
@@ -515,11 +690,32 @@ export function ViewportPanel({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onPointerLeave={(event) => streamedAvailable && sendPointer(event, 'leave')}
+        onKeyDown={(event) => {
+          if (!streamedAvailable) return;
+          void window.arc.viewport.key({
+            viewportId,
+            key: event.key,
+            down: true,
+            repeat: event.repeat,
+            alt: event.altKey,
+            shift: event.shiftKey,
+            control: event.ctrlKey,
+          });
+        }}
+        onKeyUp={(event) => {
+          if (!streamedAvailable) return;
+          void window.arc.viewport.key({ viewportId, key: event.key, down: false });
+        }}
         onWheel={onWheel}
         onContextMenu={(event) => event.preventDefault()}
         tabIndex={0}
       >
-        {!nativeActive && !nativeAvailable && (
+        {streamedAvailable && (
+          <canvas id={surfaceId} className="arc-viewport-shared-surface" aria-label="ARC 3D viewport" />
+        )}
+
+        {!viewportActive && !viewportAvailable && (
           <div className="arc-viewport-unavailable" role="alert">
             <Box size={32} />
             <h3>Native renderer unavailable</h3>
@@ -531,14 +727,14 @@ export function ViewportPanel({
           </div>
         )}
 
-        {!active && nativeAvailable && (
+        {!active && viewportAvailable && (
           <div className="arc-viewport-inactive">
             <Camera size={22} />
             <span>Click to activate {viewportId.replace('viewport-', 'Viewport ')}</span>
           </div>
         )}
 
-        {nativeActive && (viewportError || startupState?.hostError) && (
+        {viewportActive && (viewportError || startupState?.hostError) && (
           <div className="arc-viewport-note">
             <Box size={18} />
             <span>{viewportError || startupState?.hostError}</span>

@@ -46,6 +46,11 @@ target_compile_definitions(arc-render-vulkan
         VMA_DYNAMIC_VULKAN_FUNCTIONS=0
 )
 
+if(WIN32)
+    target_compile_definitions(arc-render-vulkan PRIVATE VK_USE_PLATFORM_WIN32_KHR=1 WIN32_LEAN_AND_MEAN=1 NOMINMAX=1)
+    target_link_libraries(arc-render-vulkan PRIVATE d3d11 dxgi)
+endif()
+
 if(ARC_BUILD_EDITOR AND TARGET arc-third-party-imgui)
     target_link_libraries(arc-render-vulkan
         PRIVATE

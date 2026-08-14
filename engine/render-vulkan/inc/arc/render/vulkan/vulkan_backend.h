@@ -35,6 +35,7 @@ struct vulkan_backend_config
     std::vector<std::string> device_extensions;
     vulkan_surface_create_fn create_surface{};
     void* surface_user_data{};
+    viewport_output_type viewport_output{viewport_output_type::native_window};
 };
 
 /**

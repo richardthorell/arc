@@ -32,6 +32,19 @@
 #include <utility>
 #include <vector>
 
+#if defined(_WIN32)
+#include <windows.h>
+#include <d3d11.h>
+#include <dxgi1_2.h>
+#include <wrl/client.h>
+#endif
+
+#if defined(_WIN32) && ARC_RENDER_VULKAN_ENABLE_IMGUI
+#define ARC_VULKAN_SHARED_VIEWPORT 1
+#else
+#define ARC_VULKAN_SHARED_VIEWPORT 0
+#endif
+
 namespace arc::render::vulkan
 {
 namespace
@@ -308,14 +321,55 @@ struct graph_image
 
 class vulkan_render_backend final : public render_backend
 {
+#if ARC_VULKAN_SHARED_VIEWPORT
+    struct shared_viewport_slot
+    {
+        VkImage image{};
+        VkDeviceMemory memory{};
+        Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+        HANDLE shared_handle{};
+        VkCommandPool command_pool{};
+        VkCommandBuffer command_buffer{};
+        VkFence fence{};
+        shared_viewport_frame_state state{shared_viewport_frame_state::available};
+        std::uint64_t frame_id{};
+        bool initialized{};
+    };
+
+    struct shared_viewport_output
+    {
+        std::string id;
+        std::uint64_t generation{};
+        std::uint64_t next_frame_id{1};
+        std::uint64_t dropped_frames{};
+        std::uint32_t width{1};
+        std::uint32_t height{1};
+        std::uint32_t pending_width{};
+        std::uint32_t pending_height{};
+        bool visible{true};
+        bool destroy_pending{};
+        std::array<shared_viewport_slot, 3> slots;
+    };
+#endif
+
 public:
     vulkan_render_backend(VkInstance instance, VkSurfaceKHR surface, VkPhysicalDevice physical_device, VkDevice device,
                           VkQueue queue, VmaAllocator allocator, std::uint32_t graphics_queue_family,
-                          render_capabilities capabilities)
+                          render_capabilities capabilities, viewport_output_type viewport_output)
         : instance_(instance), surface_(surface), physical_device_(physical_device), device_(device), queue_(queue),
-          allocator_(allocator), graphics_queue_family_(graphics_queue_family), capabilities_(capabilities)
+          allocator_(allocator), graphics_queue_family_(graphics_queue_family), capabilities_(capabilities),
+          configured_viewport_output_(viewport_output)
     {
+        if (configured_viewport_output_ == viewport_output_type::shared_texture)
+#if ARC_RENDER_VULKAN_ENABLE_IMGUI
+            viewport_format_ = VK_FORMAT_B8G8R8A8_UNORM;
+#else
+            arc::diagnostics::warn("render.vulkan", "shared viewport output requires the editor rendering path");
+#endif
         create_support_objects();
+#if ARC_VULKAN_SHARED_VIEWPORT
+        query_shared_viewport_support();
+#endif
     }
 
     ~vulkan_render_backend() override
@@ -339,6 +393,7 @@ public:
         destroy_buffer(exposure_buffer_);
         destroy_buffer(gpu_scene_buffer_);
         destroy_gpu_visibility_resources();
+        destroy_all_shared_viewports();
         destroy_meshes();
         destroy_support_objects();
         if (allocator_ != VK_NULL_HANDLE) vmaDestroyAllocator(allocator_);
@@ -1159,6 +1214,347 @@ private:
         }
         if (!fences.empty())
             vkWaitForFences(device_, static_cast<std::uint32_t>(fences.size()), fences.data(), VK_TRUE, UINT64_MAX);
+#if ARC_VULKAN_SHARED_VIEWPORT
+        for (const auto& [_, output] : shared_viewports_)
+            for (const auto& slot : output.slots)
+                if (slot.fence != VK_NULL_HANDLE && slot.state == shared_viewport_frame_state::rendering)
+                    vkWaitForFences(device_, 1, &slot.fence, VK_TRUE, UINT64_MAX);
+#endif
+    }
+#endif
+
+#if ARC_VULKAN_SHARED_VIEWPORT
+    void query_shared_viewport_support()
+    {
+        shared_viewport_supported_ = false;
+        get_memory_win32_handle_properties_ = reinterpret_cast<PFN_vkGetMemoryWin32HandlePropertiesKHR>(
+            vkGetDeviceProcAddr(device_, "vkGetMemoryWin32HandlePropertiesKHR"));
+        if (get_memory_win32_handle_properties_ == nullptr)
+        {
+            shared_viewport_failure_ = "VK_KHR_external_memory_win32 is unavailable";
+            return;
+        }
+        VkPhysicalDeviceExternalImageFormatInfo external{};
+        external.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+        external.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+        VkPhysicalDeviceImageFormatInfo2 image{};
+        image.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+        image.pNext = &external;
+        image.format = VK_FORMAT_B8G8R8A8_UNORM;
+        image.type = VK_IMAGE_TYPE_2D;
+        image.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        VkExternalImageFormatProperties external_properties{};
+        external_properties.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+        VkImageFormatProperties2 properties{};
+        properties.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+        properties.pNext = &external_properties;
+        const auto result = vkGetPhysicalDeviceImageFormatProperties2(physical_device_, &image, &properties);
+        const auto features = external_properties.externalMemoryProperties.externalMemoryFeatures;
+        const auto compatible = external_properties.externalMemoryProperties.compatibleHandleTypes;
+        if (result != VK_SUCCESS || (features & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) == 0 ||
+            (compatible & VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT) == 0)
+        {
+            std::ostringstream diagnostic;
+            diagnostic << "selected Vulkan adapter cannot import BGRA8 D3D11-compatible textures (query="
+                       << describe_vk_result(result) << ", features=0x" << std::hex << features
+                       << ", compatible=0x" << compatible << ')';
+            shared_viewport_failure_ = std::move(diagnostic).str();
+            return;
+        }
+        if (!create_shared_d3d_device()) return;
+        shared_viewport_supported_ = true;
+        shared_viewport_failure_.clear();
+    }
+
+    bool create_shared_d3d_device()
+    {
+        VkPhysicalDeviceIDProperties vulkan_id{};
+        vulkan_id.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+        VkPhysicalDeviceProperties2 properties{};
+        properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+        properties.pNext = &vulkan_id;
+        vkGetPhysicalDeviceProperties2(physical_device_, &properties);
+        if (vulkan_id.deviceLUIDValid != VK_TRUE)
+        {
+            shared_viewport_failure_ = "selected Vulkan adapter does not expose a Windows adapter LUID";
+            return false;
+        }
+
+        LUID vulkan_luid{};
+        static_assert(sizeof(vulkan_luid) == VK_LUID_SIZE);
+        std::memcpy(&vulkan_luid, vulkan_id.deviceLUID, sizeof(vulkan_luid));
+        Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+        if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+        {
+            shared_viewport_failure_ = "failed to create the DXGI factory for shared viewport textures";
+            return false;
+        }
+
+        Microsoft::WRL::ComPtr<IDXGIAdapter1> selected_adapter;
+        for (UINT index = 0;; ++index)
+        {
+            Microsoft::WRL::ComPtr<IDXGIAdapter1> candidate;
+            if (factory->EnumAdapters1(index, &candidate) == DXGI_ERROR_NOT_FOUND) break;
+            DXGI_ADAPTER_DESC1 descriptor{};
+            if (SUCCEEDED(candidate->GetDesc1(&descriptor)) &&
+                descriptor.AdapterLuid.HighPart == vulkan_luid.HighPart &&
+                descriptor.AdapterLuid.LowPart == vulkan_luid.LowPart)
+            {
+                selected_adapter = std::move(candidate);
+                break;
+            }
+        }
+        if (!selected_adapter)
+        {
+            shared_viewport_failure_ = "could not match the Vulkan adapter to a DXGI adapter";
+            return false;
+        }
+
+        constexpr std::array<D3D_FEATURE_LEVEL, 3> levels{D3D_FEATURE_LEVEL_12_0, D3D_FEATURE_LEVEL_11_1,
+                                                          D3D_FEATURE_LEVEL_11_0};
+        Microsoft::WRL::ComPtr<ID3D11DeviceContext> context;
+        D3D_FEATURE_LEVEL selected_level{};
+        const auto result = D3D11CreateDevice(selected_adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+                                               D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels.data(),
+                                               static_cast<UINT>(levels.size()), D3D11_SDK_VERSION,
+                                               &shared_d3d_device_, &selected_level, &context);
+        if (FAILED(result))
+        {
+            std::ostringstream diagnostic;
+            diagnostic << "failed to create the D3D11 interoperability device (HRESULT=0x" << std::hex
+                       << static_cast<std::uint32_t>(result) << ')';
+            shared_viewport_failure_ = std::move(diagnostic).str();
+            return false;
+        }
+        return true;
+    }
+
+    std::uint32_t shared_memory_type(std::uint32_t type_bits) const noexcept
+    {
+        VkPhysicalDeviceMemoryProperties properties{};
+        vkGetPhysicalDeviceMemoryProperties(physical_device_, &properties);
+        for (std::uint32_t index = 0; index < properties.memoryTypeCount; ++index)
+            if ((type_bits & (1u << index)) != 0 &&
+                (properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0)
+                return index;
+        for (std::uint32_t index = 0; index < properties.memoryTypeCount; ++index)
+            if ((type_bits & (1u << index)) != 0) return index;
+        return UINT32_MAX;
+    }
+
+    bool create_shared_output_slots(shared_viewport_output& output)
+    {
+        for (auto& slot : output.slots)
+        {
+            D3D11_TEXTURE2D_DESC texture{};
+            texture.Width = output.width;
+            texture.Height = output.height;
+            texture.MipLevels = 1;
+            texture.ArraySize = 1;
+            texture.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            texture.SampleDesc.Count = 1;
+            texture.Usage = D3D11_USAGE_DEFAULT;
+            texture.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+            texture.MiscFlags = D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
+            if (FAILED(shared_d3d_device_->CreateTexture2D(&texture, nullptr, &slot.texture))) return false;
+            Microsoft::WRL::ComPtr<IDXGIResource1> resource;
+            if (FAILED(slot.texture.As(&resource)) ||
+                FAILED(resource->CreateSharedHandle(nullptr, DXGI_SHARED_RESOURCE_READ | DXGI_SHARED_RESOURCE_WRITE,
+                                                    nullptr, &slot.shared_handle)))
+                return false;
+
+            VkExternalMemoryImageCreateInfo external_image{};
+            external_image.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+            external_image.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+            VkImageCreateInfo image{};
+            image.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            image.pNext = &external_image;
+            image.imageType = VK_IMAGE_TYPE_2D;
+            image.format = VK_FORMAT_B8G8R8A8_UNORM;
+            image.extent = {output.width, output.height, 1};
+            image.mipLevels = 1;
+            image.arrayLayers = 1;
+            image.samples = VK_SAMPLE_COUNT_1_BIT;
+            image.tiling = VK_IMAGE_TILING_OPTIMAL;
+            image.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+            if (vkCreateImage(device_, &image, nullptr, &slot.image) != VK_SUCCESS) return false;
+
+            VkMemoryRequirements requirements{};
+            vkGetImageMemoryRequirements(device_, slot.image, &requirements);
+            VkMemoryWin32HandlePropertiesKHR handle_properties{};
+            handle_properties.sType = VK_STRUCTURE_TYPE_MEMORY_WIN32_HANDLE_PROPERTIES_KHR;
+            if (get_memory_win32_handle_properties_(device_, VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT,
+                                                    slot.shared_handle, &handle_properties) != VK_SUCCESS)
+                return false;
+            const auto memory_type = shared_memory_type(requirements.memoryTypeBits & handle_properties.memoryTypeBits);
+            if (memory_type == UINT32_MAX) return false;
+            VkImportMemoryWin32HandleInfoKHR import_memory{};
+            import_memory.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
+            import_memory.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+            import_memory.handle = slot.shared_handle;
+            VkMemoryDedicatedAllocateInfo dedicated{};
+            dedicated.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+            dedicated.pNext = &import_memory;
+            dedicated.image = slot.image;
+            VkMemoryAllocateInfo allocation{};
+            allocation.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocation.pNext = &dedicated;
+            allocation.allocationSize = requirements.size;
+            allocation.memoryTypeIndex = memory_type;
+            if (vkAllocateMemory(device_, &allocation, nullptr, &slot.memory) != VK_SUCCESS ||
+                vkBindImageMemory(device_, slot.image, slot.memory, 0) != VK_SUCCESS)
+                return false;
+
+            VkCommandPoolCreateInfo pool{};
+            pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            pool.queueFamilyIndex = graphics_queue_family_;
+            if (vkCreateCommandPool(device_, &pool, nullptr, &slot.command_pool) != VK_SUCCESS) return false;
+            VkCommandBufferAllocateInfo command{};
+            command.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            command.commandPool = slot.command_pool;
+            command.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            command.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(device_, &command, &slot.command_buffer) != VK_SUCCESS) return false;
+            VkFenceCreateInfo fence{};
+            fence.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            fence.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+            if (vkCreateFence(device_, &fence, nullptr, &slot.fence) != VK_SUCCESS) return false;
+            slot.state = shared_viewport_frame_state::available;
+        }
+        return true;
+    }
+
+    void poll_shared_output_fences(shared_viewport_output& output)
+    {
+        for (auto& slot : output.slots)
+            if (slot.state == shared_viewport_frame_state::rendering &&
+                vkGetFenceStatus(device_, slot.fence) == VK_SUCCESS)
+            {
+                slot.state = shared_viewport_frame_state::ready;
+                last_completed_frame_ = std::max(last_completed_frame_, slot.frame_id);
+            }
+    }
+
+    void wait_for_shared_output(shared_viewport_output& output)
+    {
+        for (auto& slot : output.slots)
+            if (slot.fence != VK_NULL_HANDLE && slot.state == shared_viewport_frame_state::rendering)
+            {
+                vkWaitForFences(device_, 1, &slot.fence, VK_TRUE, UINT64_MAX);
+                slot.state = shared_viewport_frame_state::ready;
+            }
+    }
+
+    surface_frame_result render_shared_viewport_frame(shared_viewport_output& output, shared_viewport_slot& slot)
+    {
+        output_viewport_width_ = output.width;
+        output_viewport_height_ = output.height;
+        const auto slot_index = static_cast<std::uint32_t>(&slot - output.slots.data());
+        active_frame_index_ = slot_index;
+        ensure_viewport(scaled_dimension(output.width), scaled_dimension(output.height));
+        if (viewport_image_ == VK_NULL_HANDLE)
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::backend_failure, .message = "viewport render target is unavailable"});
+        collect_timestamp_results();
+        collect_object_pick_result();
+        collect_frame_capture_result();
+        retire_completed_resources();
+        prepare_frame_gpu_resources();
+        vkResetFences(device_, 1, &slot.fence);
+        vkResetCommandPool(device_, slot.command_pool, 0);
+        VkCommandBufferBeginInfo begin{};
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(slot.command_buffer, &begin) != VK_SUCCESS)
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::backend_failure, .message = "failed to begin shared viewport frame"});
+
+        begin_debug_label(slot.command_buffer, "ARC shared viewport frame", {0.16f, 0.75f, 0.65f, 1.0f});
+        reset_timestamp_queries(slot.command_buffer);
+        if (graph_selects_any_directional_shadow_pass()) render_shadow_maps(slot.command_buffer);
+        if (!active_local_shadows_.empty() &&
+            (graph_selects(builtin_render_pass::point_shadow) || graph_selects(builtin_render_pass::spot_shadow)))
+            render_local_shadow_maps(slot.command_buffer);
+        else
+            transition_local_shadow_atlas(slot.command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        render_viewport(slot.command_buffer);
+        transition_viewport(slot.command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+        VkImageMemoryBarrier destination{};
+        destination.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        destination.oldLayout = slot.initialized ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED;
+        destination.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        destination.srcQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
+        destination.dstQueueFamilyIndex = graphics_queue_family_;
+        destination.image = slot.image;
+        destination.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        destination.subresourceRange.levelCount = 1;
+        destination.subresourceRange.layerCount = 1;
+        destination.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        vkCmdPipelineBarrier(slot.command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                             0, nullptr, 0, nullptr, 1, &destination);
+        VkImageBlit blit{};
+        blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.layerCount = 1;
+        blit.srcOffsets[1] = {static_cast<std::int32_t>(viewport_width_), static_cast<std::int32_t>(viewport_height_), 1};
+        blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.layerCount = 1;
+        blit.dstOffsets[1] = {static_cast<std::int32_t>(output.width), static_cast<std::int32_t>(output.height), 1};
+        vkCmdBlitImage(slot.command_buffer, viewport_image_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.image,
+                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+        destination.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        destination.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        destination.srcQueueFamilyIndex = graphics_queue_family_;
+        destination.dstQueueFamilyIndex = VK_QUEUE_FAMILY_EXTERNAL;
+        destination.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        destination.dstAccessMask = 0;
+        vkCmdPipelineBarrier(slot.command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                             0, 0, nullptr, 0, nullptr, 1, &destination);
+        end_debug_label(slot.command_buffer);
+        if (vkEndCommandBuffer(slot.command_buffer) != VK_SUCCESS)
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::backend_failure, .message = "failed to record shared viewport frame"});
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &slot.command_buffer;
+        const auto result = vkQueueSubmit(queue_, 1, &submit, slot.fence);
+        if (result != VK_SUCCESS)
+            return surface_frame_result::failure(
+                {.code = result == VK_ERROR_DEVICE_LOST ? surface_frame_error_code::device_lost
+                                                        : surface_frame_error_code::backend_failure,
+                 .message = "failed to submit shared viewport frame: " + describe_vk_result(result)});
+        slot.frame_id = output.next_frame_id++;
+        slot.state = shared_viewport_frame_state::rendering;
+        slot.initialized = true;
+        return surface_frame_result::success();
+    }
+
+    void retire_shared_output(shared_viewport_output& output, bool preserve_identity) noexcept
+    {
+        for (auto& slot : output.slots)
+        {
+            if (slot.fence != VK_NULL_HANDLE) vkDestroyFence(device_, slot.fence, nullptr);
+            if (slot.command_pool != VK_NULL_HANDLE) vkDestroyCommandPool(device_, slot.command_pool, nullptr);
+            if (slot.image != VK_NULL_HANDLE) vkDestroyImage(device_, slot.image, nullptr);
+            if (slot.memory != VK_NULL_HANDLE) vkFreeMemory(device_, slot.memory, nullptr);
+            if (slot.shared_handle != nullptr) CloseHandle(slot.shared_handle);
+            slot.texture.Reset();
+            slot = {};
+        }
+        if (!preserve_identity) output = {};
+    }
+
+    void destroy_all_shared_viewports() noexcept
+    {
+        for (auto& [_, output] : shared_viewports_)
+        {
+            wait_for_shared_output(output);
+            retire_shared_output(output, false);
+        }
+        shared_viewports_.clear();
     }
 #endif
 
@@ -2834,6 +3230,212 @@ private:
                                          destroy_buffer(vertices);
                                      destroy_buffer(retired.indices);
                                  });
+    }
+
+    surface_frame_result create_viewport_output(const viewport_output_descriptor& descriptor) override
+    {
+        if (descriptor.type == viewport_output_type::native_window)
+            return surface_frame_result::success();
+#if ARC_VULKAN_SHARED_VIEWPORT
+        if (!shared_viewport_supported_)
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::unsupported,
+                 .message = shared_viewport_failure_.empty() ? "Vulkan shared textures are unsupported"
+                                                             : shared_viewport_failure_});
+        if (auto existing = shared_viewports_.find(descriptor.id); existing != shared_viewports_.end())
+        {
+            existing->second.visible = descriptor.visible;
+            existing->second.destroy_pending = false;
+            return resize_viewport_output(descriptor.id, descriptor.width, descriptor.height);
+        }
+        auto& output = shared_viewports_[descriptor.id];
+        output.id = descriptor.id;
+        output.width = std::max(1u, descriptor.width);
+        output.height = std::max(1u, descriptor.height);
+        output.visible = descriptor.visible;
+        output.generation = ++shared_viewport_generations_[descriptor.id];
+        if (!create_shared_output_slots(output))
+        {
+            retire_shared_output(output, false);
+            shared_viewports_.erase(descriptor.id);
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::backend_failure,
+                 .message = "failed to create Vulkan shared viewport frame pool"});
+        }
+        return surface_frame_result::success();
+#else
+        (void)descriptor;
+        return surface_frame_result::failure(
+            {.code = surface_frame_error_code::unsupported,
+             .message = "shared viewport textures are not implemented on this platform"});
+#endif
+    }
+
+    surface_frame_result resize_viewport_output(std::string_view viewport_id, std::uint32_t width,
+                                                std::uint32_t height) override
+    {
+#if ARC_VULKAN_SHARED_VIEWPORT
+        auto found = shared_viewports_.find(std::string(viewport_id));
+        if (found == shared_viewports_.end())
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::unavailable, .message = "shared viewport is not created"});
+        auto& output = found->second;
+        width = std::max(1u, width);
+        height = std::max(1u, height);
+        if (output.width == width && output.height == height) return surface_frame_result::success();
+        if (std::ranges::any_of(output.slots, [](const auto& slot)
+                               { return slot.state == shared_viewport_frame_state::consumer_owned; }))
+        {
+            output.pending_width = width;
+            output.pending_height = height;
+            return surface_frame_result::success();
+        }
+        wait_for_shared_output(output);
+        retire_shared_output(output, true);
+        output.width = width;
+        output.height = height;
+        ++output.generation;
+        shared_viewport_generations_[output.id] = output.generation;
+        if (!create_shared_output_slots(output))
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::backend_failure,
+                 .message = "failed to resize Vulkan shared viewport frame pool"});
+        return surface_frame_result::success();
+#else
+        (void)viewport_id;
+        (void)width;
+        (void)height;
+        return surface_frame_result::failure(
+            {.code = surface_frame_error_code::unsupported, .message = "shared viewport textures are unsupported"});
+#endif
+    }
+
+    surface_frame_result present_viewport_output(std::string_view viewport_id) override
+    {
+#if ARC_VULKAN_SHARED_VIEWPORT
+        auto found = shared_viewports_.find(std::string(viewport_id));
+        if (found == shared_viewports_.end())
+            return surface_frame_result::failure(
+                {.code = surface_frame_error_code::unavailable, .message = "shared viewport is not created"});
+        auto& output = found->second;
+        if (!output.visible) return surface_frame_result::success();
+        if (output.pending_width != 0 &&
+            std::ranges::none_of(output.slots, [](const auto& slot)
+                                { return slot.state == shared_viewport_frame_state::consumer_owned; }))
+        {
+            const auto resize = resize_viewport_output(output.id, output.pending_width, output.pending_height);
+            output.pending_width = 0;
+            output.pending_height = 0;
+            if (!resize) return resize;
+        }
+        poll_shared_output_fences(output);
+        if (std::ranges::any_of(output.slots, [](const auto& slot)
+                               { return slot.state == shared_viewport_frame_state::rendering; }))
+        {
+            ++output.dropped_frames;
+            return surface_frame_result::success();
+        }
+        auto available = std::ranges::find_if(output.slots, [](const auto& slot)
+                                              { return slot.state == shared_viewport_frame_state::available; });
+        if (available == output.slots.end())
+        {
+            ++output.dropped_frames;
+            return surface_frame_result::success();
+        }
+        return render_shared_viewport_frame(output, *available);
+#else
+        (void)viewport_id;
+        return surface_frame_result::failure(
+            {.code = surface_frame_error_code::unsupported, .message = "shared viewport textures are unsupported"});
+#endif
+    }
+
+    shared_viewport_frame_result poll_viewport_output(std::string_view viewport_id) override
+    {
+#if ARC_VULKAN_SHARED_VIEWPORT
+        auto found = shared_viewports_.find(std::string(viewport_id));
+        if (found == shared_viewports_.end()) return shared_viewport_frame_result::success(std::nullopt);
+        auto& output = found->second;
+        poll_shared_output_fences(output);
+        auto ready = std::ranges::max_element(
+            output.slots, {}, [](const auto& slot) { return slot.state == shared_viewport_frame_state::ready
+                                                                ? slot.frame_id
+                                                                : 0u; });
+        if (ready == output.slots.end() || ready->state != shared_viewport_frame_state::ready)
+            return shared_viewport_frame_result::success(std::nullopt);
+        ready->state = shared_viewport_frame_state::consumer_owned;
+        return shared_viewport_frame_result::success(shared_viewport_frame{
+            .viewport_id = output.id,
+            .frame_id = ready->frame_id,
+            .generation = output.generation,
+            .width = output.width,
+            .height = output.height,
+            .format = viewport_pixel_format::bgra8_unorm,
+            .texture = {.type = external_gpu_handle_type::win32_nt_handle,
+                        .payload = reinterpret_cast<std::uint64_t>(ready->shared_handle)},
+            .synchronization = {.producer_complete = true, .value = ready->frame_id}});
+#else
+        (void)viewport_id;
+        return shared_viewport_frame_result::failure(
+            {.code = surface_frame_error_code::unsupported, .message = "shared viewport textures are unsupported"});
+#endif
+    }
+
+    void release_viewport_frame(std::string_view viewport_id, std::uint64_t generation,
+                                std::uint64_t frame_id) override
+    {
+#if ARC_VULKAN_SHARED_VIEWPORT
+        auto found = shared_viewports_.find(std::string(viewport_id));
+        if (found == shared_viewports_.end() || found->second.generation != generation) return;
+        auto& output = found->second;
+        const auto slot = std::ranges::find_if(output.slots, [&](const auto& candidate)
+                                               { return candidate.frame_id == frame_id; });
+        if (slot != output.slots.end() && slot->state == shared_viewport_frame_state::consumer_owned)
+            slot->state = shared_viewport_frame_state::available;
+        if (output.destroy_pending &&
+            std::ranges::none_of(output.slots, [](const auto& candidate)
+                                { return candidate.state == shared_viewport_frame_state::consumer_owned; }))
+        {
+            wait_for_shared_output(output);
+            retire_shared_output(output, false);
+            shared_viewports_.erase(found);
+        }
+#else
+        (void)viewport_id;
+        (void)generation;
+        (void)frame_id;
+#endif
+    }
+
+    void set_viewport_output_visible(std::string_view viewport_id, bool visible) override
+    {
+#if ARC_VULKAN_SHARED_VIEWPORT
+        if (auto found = shared_viewports_.find(std::string(viewport_id)); found != shared_viewports_.end())
+            found->second.visible = visible;
+#else
+        (void)viewport_id;
+        (void)visible;
+#endif
+    }
+
+    void destroy_viewport_output(std::string_view viewport_id) override
+    {
+#if ARC_VULKAN_SHARED_VIEWPORT
+        const auto found = shared_viewports_.find(std::string(viewport_id));
+        if (found == shared_viewports_.end()) return;
+        found->second.visible = false;
+        if (std::ranges::any_of(found->second.slots, [](const auto& slot)
+                               { return slot.state == shared_viewport_frame_state::consumer_owned; }))
+        {
+            found->second.destroy_pending = true;
+            return;
+        }
+        wait_for_shared_output(found->second);
+        retire_shared_output(found->second, false);
+        shared_viewports_.erase(found);
+#else
+        (void)viewport_id;
+#endif
     }
 
     bool ensure_terrain_descriptors()
@@ -8070,6 +8672,16 @@ private:
     VkPipeline debug_overlay_output_line_pipeline_{};
     VkPipeline debug_overlay_output_triangle_pipeline_{};
     bool wireframe_warning_reported_{};
+    viewport_output_type configured_viewport_output_{viewport_output_type::native_window};
+
+#if ARC_VULKAN_SHARED_VIEWPORT
+    bool shared_viewport_supported_{};
+    std::string shared_viewport_failure_;
+    PFN_vkGetMemoryWin32HandlePropertiesKHR get_memory_win32_handle_properties_{};
+    Microsoft::WRL::ComPtr<ID3D11Device> shared_d3d_device_;
+    std::unordered_map<std::string, std::uint64_t> shared_viewport_generations_;
+    std::unordered_map<std::string, shared_viewport_output> shared_viewports_;
+#endif
 
 #if ARC_RENDER_VULKAN_ENABLE_IMGUI
     ImGui_ImplVulkanH_Window window_{};
@@ -8441,6 +9053,15 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
 
     auto required_device_extensions = config.device_extensions;
     if (surface != VK_NULL_HANDLE) append_unique_extension(required_device_extensions, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+#if defined(_WIN32)
+    if (config.viewport_output == viewport_output_type::shared_texture)
+    {
+        append_unique_extension(required_device_extensions, VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+        append_unique_extension(required_device_extensions, VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+        append_unique_extension(required_device_extensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
+        append_unique_extension(required_device_extensions, VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME);
+    }
+#endif
 
     for (std::uint32_t adapter_index = 0; adapter_index < physical_devices.size(); ++adapter_index)
     {
@@ -8575,7 +9196,8 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
                                "Developer compatibility override left all non-required Vulkan features disabled");
     arc::diagnostics::info("render.vulkan", "Created Vulkan backend");
     return render_backend_create_result::success(std::make_unique<vulkan_render_backend>(
-        instance, surface, selected_device, device, queue, allocator, graphics_queue_family, selected_capabilities));
+        instance, surface, selected_device, device, queue, allocator, graphics_queue_family, selected_capabilities,
+        config.viewport_output));
 }
 
 } // namespace arc::render::vulkan

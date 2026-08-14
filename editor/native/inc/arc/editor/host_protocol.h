@@ -78,6 +78,7 @@ enum class host_event_type : std::uint8_t
     component_changed,
     command_failed,
     viewport_error,
+    viewport_frame_ready,
     profiler_snapshot,
     terrain_tool_changed,
     terrain_stroke_committed,
@@ -1112,6 +1113,21 @@ struct host_viewport_resize_command
     std::uint32_t height{};
 };
 
+enum class host_viewport_output_type : std::uint8_t
+{
+    native_window,
+    shared_texture
+};
+
+struct host_viewport_create_command
+{
+    std::string viewport_id{"viewport-1"};
+    host_viewport_output_type output{host_viewport_output_type::shared_texture};
+    std::uint64_t consumer_process_id{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+};
+
 struct host_create_terrain_command
 {
     float size{180.0f};
@@ -1171,6 +1187,54 @@ struct host_cancel_terrain_operation_command
 struct host_viewport_detach_command
 {
     std::string viewport_id{"viewport-1"};
+};
+
+struct host_viewport_frame_released_command
+{
+    std::string viewport_id{"viewport-1"};
+    std::uint64_t generation{};
+    std::uint64_t frame_id{};
+    std::string consumer_handle;
+};
+
+struct host_viewport_set_visibility_command
+{
+    std::string viewport_id{"viewport-1"};
+    bool visible{true};
+};
+
+enum class host_viewport_pointer_phase : std::uint8_t
+{
+    down,
+    move,
+    up,
+    wheel,
+    leave,
+    cancel
+};
+
+struct host_viewport_pointer_command
+{
+    std::string viewport_id{"viewport-1"};
+    host_viewport_pointer_phase phase{host_viewport_pointer_phase::move};
+    std::int32_t x{};
+    std::int32_t y{};
+    std::int32_t button{};
+    float wheel{};
+    bool alt{};
+    bool shift{};
+    bool control{};
+};
+
+struct host_viewport_key_command
+{
+    std::string viewport_id{"viewport-1"};
+    std::string key;
+    bool down{true};
+    bool repeat{};
+    bool alt{};
+    bool shift{};
+    bool control{};
 };
 
 struct host_viewport_set_camera_mode_command
@@ -1306,7 +1370,9 @@ using host_command_payload = std::variant<
     host_terrain_stroke_command, host_terrain_hover_command, host_set_entity_material_command,
     host_component_operation_command, host_patch_project_component_command, host_set_world_environment_command,
     host_apply_world_environment_preset_command, host_set_environment_hdri_command, host_set_camera_projection_command,
-    host_viewport_attach_command, host_viewport_resize_command, host_viewport_detach_command,
+    host_viewport_attach_command, host_viewport_create_command, host_viewport_resize_command,
+    host_viewport_detach_command, host_viewport_frame_released_command, host_viewport_set_visibility_command,
+    host_viewport_pointer_command, host_viewport_key_command,
     host_viewport_set_camera_mode_command,
     host_viewport_set_render_options_command, host_viewport_camera_input_command, host_viewport_set_pose_command,
     host_history_undo_command, host_history_redo_command, host_history_begin_transaction_command,

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, sharedTexture, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
@@ -95,6 +95,104 @@ type NativeViewportBounds = {
   y: number;
   width: number;
   height: number;
+};
+
+type SharedViewportFrame = {
+  viewportId: string;
+  frameId: number;
+  generation: number;
+  width: number;
+  height: number;
+  format: 'bgra' | 'rgba' | 'rgbaf16';
+  handleType: 'win32NtHandle';
+  handle: string;
+  producerComplete: boolean;
+};
+
+const sharedViewportEnabled = process.platform === 'win32' && process.env.ARC_NATIVE_VIEWPORT !== '1';
+const sharedViewportTargets = new Map<string, number>();
+const sharedViewportPresented = new Set<string>();
+
+const sharedViewportWindow = (viewportId: string): BrowserWindow | null => {
+  const webContentsId = sharedViewportTargets.get(viewportId);
+  if (webContentsId === undefined) return activeWindow();
+  return (
+    BrowserWindow.getAllWindows().find((window) => !window.isDestroyed() && window.webContents.id === webContentsId) ??
+    null
+  );
+};
+
+const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
+  const frame = event.payload as Partial<SharedViewportFrame>;
+  const target = typeof frame.viewportId === 'string' ? sharedViewportWindow(frame.viewportId) : null;
+  if (
+    !target ||
+    target.isDestroyed() ||
+    typeof frame.viewportId !== 'string' ||
+    typeof frame.handle !== 'string' ||
+    typeof frame.frameId !== 'number' ||
+    typeof frame.generation !== 'number' ||
+    typeof frame.width !== 'number' ||
+    typeof frame.height !== 'number'
+  )
+    return;
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    void hostClient
+      ?.command('viewport.frameReleased', {
+        viewportId: frame.viewportId,
+        frameId: frame.frameId,
+        generation: frame.generation,
+        consumerHandle: frame.handle,
+      })
+      .catch(() => undefined);
+  };
+  try {
+    const nativeHandle = BigInt(frame.handle);
+    const handle = Buffer.alloc(8);
+    handle.writeBigUInt64LE(nativeHandle);
+    const imported = sharedTexture.importSharedTexture({
+      textureInfo: {
+        codedSize: { width: frame.width, height: frame.height },
+        pixelFormat: frame.format ?? 'bgra',
+        handle: { ntHandle: handle },
+        timestamp: frame.frameId,
+      },
+      allReferencesReleased: release,
+    });
+    try {
+      await sharedTexture.sendSharedTexture(
+        { frame: target.webContents.mainFrame, importedSharedTexture: imported },
+        {
+          viewportId: frame.viewportId,
+          frameId: frame.frameId,
+          generation: frame.generation,
+          width: frame.width,
+          height: frame.height,
+        },
+      );
+      if (!sharedViewportPresented.has(frame.viewportId)) {
+        sharedViewportPresented.add(frame.viewportId);
+        sendHostLog({
+          level: 'info',
+          source: 'viewport.sharedTexture',
+          message: `Shared GPU viewport '${frame.viewportId}' is active`,
+        });
+      }
+    } finally {
+      imported.release();
+    }
+  } catch (error) {
+    release();
+    sendHostLog({
+      level: 'error',
+      source: 'viewport.sharedTexture',
+      message: `Could not import shared viewport frame: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
 };
 
 type CameraInput = {
@@ -376,7 +474,9 @@ export class ArcHostClient {
     if ((parsed as Partial<HostEvent>).kind === 'event') {
       const event = parsed as HostEvent;
       for (const listener of this.eventListeners) listener(event);
-      if (event.type === 'runtime.tickCompleted') {
+      if (event.type === 'viewport.frameReady') {
+        void presentSharedViewportFrame(event);
+      } else if (event.type === 'runtime.tickCompleted') {
         this.pendingRuntimeTick = event;
         if (!this.runtimeTickScheduled) {
           this.runtimeTickScheduled = true;
@@ -698,7 +798,7 @@ void app.whenReady().then(async () => {
   ipcMain.handle('editor:getStartupState', () => ({
     appVersion: app.getVersion(),
     engineHostConnected: hostClient?.connected ?? false,
-    viewportMode: hostClient?.connected ? 'native' : 'unavailable',
+    viewportMode: hostClient?.connected ? (sharedViewportEnabled ? 'streamed' : 'native') : 'unavailable',
     hostError: hostClient?.error ?? '',
     activeProject: projectService?.snapshot().activeProject ?? null,
     ciSmoke: isCiSmoke,
@@ -1012,6 +1112,20 @@ void app.whenReady().then(async () => {
       ...scaled,
     });
   });
+  ipcMain.handle('viewport:create', (event, bounds: NativeViewportBounds) => {
+    if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
+    const target = BrowserWindow.fromWebContents(event.sender);
+    if (!target) throw new Error('No active editor window');
+    const scaled = scaleViewportBounds(target, bounds);
+    sharedViewportTargets.set(scaled.viewportId, target.webContents.id);
+    return hostClient?.command('viewport.create', {
+      viewportId: scaled.viewportId,
+      output: 'sharedTexture',
+      consumerProcessId: process.pid,
+      width: scaled.width,
+      height: scaled.height,
+    });
+  });
   ipcMain.handle('viewport:resize', (event, bounds: NativeViewportBounds) => {
     if (isCiSmoke) return { skipped: true, reason: 'ci-smoke' };
     const target = BrowserWindow.fromWebContents(event.sender);
@@ -1020,11 +1134,22 @@ void app.whenReady().then(async () => {
     }
     return hostClient?.command('viewport.resize', scaleViewportBounds(target, bounds));
   });
-  ipcMain.handle('viewport:detach', (_event, viewportId: string) =>
-    hostClient?.command('viewport.detach', { viewportId }),
+  ipcMain.handle('viewport:detach', (_event, viewportId: string) => {
+    sharedViewportTargets.delete(viewportId);
+    sharedViewportPresented.delete(viewportId);
+    return hostClient?.command('viewport.detach', { viewportId });
+  });
+  ipcMain.handle('viewport:setVisibility', (_event, viewportId: string, visible: boolean) =>
+    hostClient?.command('viewport.setVisibility', { viewportId, visible }),
   );
   ipcMain.handle('viewport:cameraInput', (_event, input: CameraInput) =>
     hostClient?.command('viewport.cameraInput', input),
+  );
+  ipcMain.handle('viewport:pointer', (_event, input: Record<string, unknown>) =>
+    hostClient?.command('viewport.pointer', input),
+  );
+  ipcMain.handle('viewport:key', (_event, input: Record<string, unknown>) =>
+    hostClient?.command('viewport.key', input),
   );
 
   ipcMain.handle('nativeWindow:minimize', () => activeWindow()?.minimize());

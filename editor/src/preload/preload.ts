@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, sharedTexture } from 'electron';
 import type {
   ArcCloneProjectRequest,
   ArcCreateProjectRequest,
@@ -32,6 +32,35 @@ export type NativeViewportBounds = {
   height: number;
 };
 
+type SharedViewportMetadata = {
+  viewportId: string;
+  frameId: number;
+  generation: number;
+  width: number;
+  height: number;
+};
+
+const sharedViewportSurfaces = new Map<string, string>();
+sharedTexture.setSharedTextureReceiver(async ({ importedSharedTexture }, metadata: SharedViewportMetadata) => {
+  try {
+    const elementId = sharedViewportSurfaces.get(metadata.viewportId);
+    const canvas = elementId ? document.getElementById(elementId) : null;
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+    if (canvas.width !== metadata.width) canvas.width = metadata.width;
+    if (canvas.height !== metadata.height) canvas.height = metadata.height;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) return;
+    const frame = importedSharedTexture.getVideoFrame();
+    try {
+      context.drawImage(frame, 0, 0, canvas.width, canvas.height);
+    } finally {
+      frame.close();
+    }
+  } finally {
+    importedSharedTexture.release();
+  }
+});
+
 export type ViewportCameraInput = {
   viewportId?: string;
   orbitX?: number;
@@ -43,6 +72,18 @@ export type ViewportCameraInput = {
   forward?: number;
   zoom?: number;
   focusSelected?: boolean;
+};
+
+export type ViewportPointerInput = {
+  viewportId: string;
+  phase: 'down' | 'move' | 'up' | 'wheel' | 'leave' | 'cancel';
+  x: number;
+  y: number;
+  button?: number;
+  wheel?: number;
+  alt?: boolean;
+  shift?: boolean;
+  control?: boolean;
 };
 
 export type OpenSceneDialogOptions = {
@@ -237,10 +278,21 @@ const arcApi = {
       ipcRenderer.invoke('dialog:instantiatePrefab', parent),
   },
   viewport: {
+    create: (bounds: NativeViewportBounds): Promise<unknown> => ipcRenderer.invoke('viewport:create', bounds),
     attach: (bounds: NativeViewportBounds): Promise<unknown> => ipcRenderer.invoke('viewport:attach', bounds),
     resize: (bounds: NativeViewportBounds): Promise<unknown> => ipcRenderer.invoke('viewport:resize', bounds),
     detach: (viewportId: string): Promise<unknown> => ipcRenderer.invoke('viewport:detach', viewportId),
     cameraInput: (input: ViewportCameraInput): Promise<unknown> => ipcRenderer.invoke('viewport:cameraInput', input),
+    setVisibility: (viewportId: string, visible: boolean): Promise<unknown> =>
+      ipcRenderer.invoke('viewport:setVisibility', viewportId, visible),
+    pointer: (input: ViewportPointerInput): Promise<unknown> => ipcRenderer.invoke('viewport:pointer', input),
+    key: (input: Record<string, unknown>): Promise<unknown> => ipcRenderer.invoke('viewport:key', input),
+    registerSurface: (viewportId: string, elementId: string): void => {
+      sharedViewportSurfaces.set(viewportId, elementId);
+    },
+    unregisterSurface: (viewportId: string): void => {
+      sharedViewportSurfaces.delete(viewportId);
+    },
   },
   nativeWindow: {
     minimize: (): Promise<void> => ipcRenderer.invoke('nativeWindow:minimize'),

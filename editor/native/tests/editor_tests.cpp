@@ -817,6 +817,23 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {.request_id = 9,
          .payload = arc::editor::host_viewport_resize_command{
              .viewport_id = "scene-main", .x = 24, .y = 48, .width = 640, .height = 360}},
+        {.request_id = 28,
+         .payload = arc::editor::host_viewport_create_command{
+             .viewport_id = "scene-shared",
+             .output = arc::editor::host_viewport_output_type::shared_texture,
+             .consumer_process_id = 4242,
+             .width = 1920,
+             .height = 1080}},
+        {.request_id = 29,
+         .payload = arc::editor::host_viewport_frame_released_command{
+             .viewport_id = "scene-shared", .generation = 4, .frame_id = 99, .consumer_handle = "0x1234"}},
+        {.request_id = 30,
+         .payload = arc::editor::host_viewport_pointer_command{
+             .viewport_id = "scene-shared",
+             .phase = arc::editor::host_viewport_pointer_phase::move,
+             .x = 640,
+             .y = 360,
+             .alt = true}},
         {.request_id = 10,
          .payload =
              arc::editor::host_viewport_set_camera_mode_command{.projection =
@@ -920,6 +937,25 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {
             const auto& pick = std::get<arc::editor::host_viewport_pick_command>(parsed.payload);
             REQUIRE(pick.viewport_id == "scene-main");
+        }
+        if (command.request_id == 28)
+        {
+            const auto& create = std::get<arc::editor::host_viewport_create_command>(parsed.payload);
+            REQUIRE(create.viewport_id == "scene-shared");
+            REQUIRE(create.output == arc::editor::host_viewport_output_type::shared_texture);
+            REQUIRE(create.consumer_process_id == 4242);
+        }
+        if (command.request_id == 29)
+        {
+            const auto& release = std::get<arc::editor::host_viewport_frame_released_command>(parsed.payload);
+            REQUIRE(release.generation == 4);
+            REQUIRE(release.consumer_handle == "0x1234");
+        }
+        if (command.request_id == 30)
+        {
+            const auto& pointer = std::get<arc::editor::host_viewport_pointer_command>(parsed.payload);
+            REQUIRE(pointer.x == 640);
+            REQUIRE(pointer.alt);
         }
     }
 

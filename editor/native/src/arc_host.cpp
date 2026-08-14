@@ -3374,6 +3374,18 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->viewport_options.height = payload.height;
                 return success("{\"nativeHandle\":" + std::to_string(payload.native_handle) + '}');
             }
+            else if constexpr (std::is_same_v<command_type, host_viewport_create_command>)
+            {
+                state_->active_viewport_id = payload.viewport_id.empty() ? "viewport-1" : payload.viewport_id;
+                state_->viewport_options.viewport_id = state_->active_viewport_id;
+                state_->viewport_options.width = payload.width;
+                state_->viewport_options.height = payload.height;
+                return success("{\"output\":\"" +
+                               std::string(payload.output == host_viewport_output_type::shared_texture
+                                               ? "sharedTexture"
+                                               : "nativeWindow") +
+                               "\"}");
+            }
             else if constexpr (std::is_same_v<command_type, host_viewport_resize_command>)
             {
                 if (payload.viewport_id != state_->active_viewport_id) return fail("Viewport is not attached");
@@ -3411,6 +3423,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->viewport_options.height = 0;
                     state_->viewport_submitted = false;
                 }
+                return success();
+            }
+            else if constexpr (std::is_same_v<command_type, host_viewport_frame_released_command> ||
+                               std::is_same_v<command_type, host_viewport_set_visibility_command> ||
+                               std::is_same_v<command_type, host_viewport_pointer_command> ||
+                               std::is_same_v<command_type, host_viewport_key_command>)
+            {
                 return success();
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_set_camera_mode_command>)

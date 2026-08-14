@@ -48,6 +48,59 @@ afterEach(() => {
 });
 
 describe('ViewportPanel', () => {
+  it('uses a DOM canvas and shared viewport transport when streaming is available', async () => {
+    const create = vi.fn().mockResolvedValue({ succeeded: true });
+    const registerSurface = vi.fn();
+    const pointer = vi.fn().mockResolvedValue({ succeeded: true });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 1280,
+              height: 960,
+              fps: 60,
+              frameTimeMs: 1,
+              drawCalls: 1,
+              frameIndex: 2,
+              submitted: true,
+            },
+          }),
+        },
+        viewport: {
+          create,
+          attach: vi.fn(),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+          pointer,
+          key: vi.fn(),
+          registerSurface,
+          unregisterSurface: vi.fn(),
+          setVisibility: vi.fn(),
+        },
+      },
+    });
+
+    const view = render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'streamed' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(registerSurface).toHaveBeenCalledWith('viewport-1', expect.stringContaining('viewport-1'));
+    const canvas = view.getByLabelText('ARC 3D viewport');
+    expect(canvas).toBeInstanceOf(HTMLCanvasElement);
+    fireEvent.pointerMove(canvas.parentElement!, { clientX: 320, clientY: 240, pointerId: 1 });
+    await waitFor(() => expect(pointer).toHaveBeenCalledWith(expect.objectContaining({ phase: 'move' })));
+  });
+
   it('resizes the native viewport when docking changes its position without changing its size', async () => {
     let left = 40;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
@@ -97,15 +150,17 @@ describe('ViewportPanel', () => {
       />,
     );
 
-    await waitFor(() => expect(window.arc.viewport.attach).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 40, y: 80, width: 640, height: 480 }),
-    ));
+    await waitFor(() =>
+      expect(window.arc.viewport.attach).toHaveBeenCalledWith(
+        expect.objectContaining({ x: 40, y: 80, width: 640, height: 480 }),
+      ),
+    );
     left = 260;
     nextAnimationFrame?.(16);
 
-    await waitFor(() => expect(resize).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 260, y: 80, width: 640, height: 480 }),
-    ));
+    await waitFor(() =>
+      expect(resize).toHaveBeenCalledWith(expect.objectContaining({ x: 260, y: 80, width: 640, height: 480 })),
+    );
   });
 
   it('toggles the adaptive grid through the viewport render options', async () => {
@@ -250,9 +305,7 @@ describe('ViewportPanel', () => {
     fireEvent.pointerDown(viewport!, { pointerId: 7, button: 0, clientX: 20, clientY: 30, altKey: true });
     fireEvent.pointerMove(viewport!, { pointerId: 7, clientX: 32, clientY: 24, altKey: false });
 
-    await waitFor(() =>
-      expect(cameraInput).toHaveBeenCalledWith({ viewportId: 'viewport-1', orbitX: 12, orbitY: -6 }),
-    );
+    await waitFor(() => expect(cameraInput).toHaveBeenCalledWith({ viewportId: 'viewport-1', orbitX: 12, orbitY: -6 }));
     expect(cameraInput).not.toHaveBeenCalledWith(expect.objectContaining({ lookX: expect.any(Number) }));
   });
 });

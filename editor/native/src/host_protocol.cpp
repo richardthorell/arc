@@ -651,6 +651,8 @@ const char* to_string(host_event_type value) noexcept
             return "command.failed";
         case host_event_type::viewport_error:
             return "viewport.error";
+        case host_event_type::viewport_frame_ready:
+            return "viewport.frameReady";
         case host_event_type::profiler_snapshot:
             return "profiler.snapshot";
         case host_event_type::terrain_tool_changed:
@@ -1121,10 +1123,20 @@ std::string command_type(const host_command_payload& payload)
                 return "camera.setProjection";
             else if constexpr (std::is_same_v<type, host_viewport_attach_command>)
                 return "viewport.attach";
+            else if constexpr (std::is_same_v<type, host_viewport_create_command>)
+                return "viewport.create";
             else if constexpr (std::is_same_v<type, host_viewport_resize_command>)
                 return "viewport.resize";
             else if constexpr (std::is_same_v<type, host_viewport_detach_command>)
                 return "viewport.detach";
+            else if constexpr (std::is_same_v<type, host_viewport_frame_released_command>)
+                return "viewport.frameReleased";
+            else if constexpr (std::is_same_v<type, host_viewport_set_visibility_command>)
+                return "viewport.setVisibility";
+            else if constexpr (std::is_same_v<type, host_viewport_pointer_command>)
+                return "viewport.pointer";
+            else if constexpr (std::is_same_v<type, host_viewport_key_command>)
+                return "viewport.key";
             else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>)
                 return "viewport.setCameraMode";
             else if constexpr (std::is_same_v<type, host_viewport_set_render_options_command>)
@@ -1615,8 +1627,28 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"x\":" + std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) +
                        ",\"width\":" + std::to_string(payload.width) + ",\"height\":" + std::to_string(payload.height) +
                        '}';
+            else if constexpr (std::is_same_v<type, host_viewport_create_command>)
+                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"output\":" +
+                       quote(payload.output == host_viewport_output_type::shared_texture ? "sharedTexture"
+                                                                                       : "nativeWindow") +
+                       ",\"consumerProcessId\":" + std::to_string(payload.consumer_process_id) +
+                       ",\"width\":" + std::to_string(payload.width) +
+                       ",\"height\":" + std::to_string(payload.height) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_detach_command>)
                 return "{\"viewportId\":" + quote(payload.viewport_id) + '}';
+            else if constexpr (std::is_same_v<type, host_viewport_frame_released_command>)
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"generation\":" + std::to_string(payload.generation) +
+                       ",\"frameId\":" + std::to_string(payload.frame_id) +
+                       ",\"consumerHandle\":" + quote(payload.consumer_handle) + '}';
+            else if constexpr (std::is_same_v<type, host_viewport_set_visibility_command>)
+                return "{\"viewportId\":" + quote(payload.viewport_id) +
+                       ",\"visible\":" + bool_json(payload.visible) + '}';
+            else if constexpr (std::is_same_v<type, host_viewport_pointer_command>)
+                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"x\":" +
+                       std::to_string(payload.x) + ",\"y\":" + std::to_string(payload.y) + '}';
+            else if constexpr (std::is_same_v<type, host_viewport_key_command>)
+                return "{\"viewportId\":" + quote(payload.viewport_id) + ",\"key\":" + quote(payload.key) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_set_camera_mode_command>)
                 return "{\"viewportId\":" + quote(payload.viewport_id) +
                        ",\"projection\":" + quote(to_string(payload.projection)) + '}';
@@ -2648,6 +2680,19 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         number_value(payload, "height", command.height);
         envelope.payload = command;
     }
+    else if (type == "viewport.create")
+    {
+        host_viewport_create_command command;
+        string_value(payload, "viewportId", command.viewport_id);
+        std::string output;
+        string_value(payload, "output", output);
+        command.output = output == "nativeWindow" ? host_viewport_output_type::native_window
+                                                   : host_viewport_output_type::shared_texture;
+        number_value(payload, "consumerProcessId", command.consumer_process_id);
+        number_value(payload, "width", command.width);
+        number_value(payload, "height", command.height);
+        envelope.payload = std::move(command);
+    }
     else if (type == "prefab.revertOverride")
     {
         host_revert_prefab_override_command command;
@@ -2666,6 +2711,52 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     {
         host_viewport_detach_command command;
         string_value(payload, "viewportId", command.viewport_id);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "viewport.frameReleased")
+    {
+        host_viewport_frame_released_command command;
+        string_value(payload, "viewportId", command.viewport_id);
+        number_value(payload, "generation", command.generation);
+        number_value(payload, "frameId", command.frame_id);
+        string_value(payload, "consumerHandle", command.consumer_handle);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "viewport.setVisibility")
+    {
+        host_viewport_set_visibility_command command;
+        string_value(payload, "viewportId", command.viewport_id);
+        bool_value(payload, "visible", command.visible);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "viewport.pointer")
+    {
+        host_viewport_pointer_command command;
+        string_value(payload, "viewportId", command.viewport_id);
+        static constexpr std::pair<std::string_view, host_viewport_pointer_phase> phases[]{
+            {"down", host_viewport_pointer_phase::down}, {"move", host_viewport_pointer_phase::move},
+            {"up", host_viewport_pointer_phase::up}, {"wheel", host_viewport_pointer_phase::wheel},
+            {"leave", host_viewport_pointer_phase::leave}, {"cancel", host_viewport_pointer_phase::cancel}};
+        parse_enum(payload, "phase", phases, std::size(phases), command.phase);
+        number_value(payload, "x", command.x);
+        number_value(payload, "y", command.y);
+        number_value(payload, "button", command.button);
+        number_value(payload, "wheel", command.wheel);
+        bool_value(payload, "alt", command.alt);
+        bool_value(payload, "shift", command.shift);
+        bool_value(payload, "control", command.control);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "viewport.key")
+    {
+        host_viewport_key_command command;
+        string_value(payload, "viewportId", command.viewport_id);
+        string_value(payload, "key", command.key);
+        bool_value(payload, "down", command.down);
+        bool_value(payload, "repeat", command.repeat);
+        bool_value(payload, "alt", command.alt);
+        bool_value(payload, "shift", command.shift);
+        bool_value(payload, "control", command.control);
         envelope.payload = std::move(command);
     }
     else if (type == "viewport.setRenderOptions")

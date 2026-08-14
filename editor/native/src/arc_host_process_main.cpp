@@ -22,11 +22,15 @@
 #include <atomic>
 #include <algorithm>
 #include <chrono>
+#include <charconv>
 #include <cmath>
+#include <condition_variable>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <variant>
 #include <vector>
@@ -173,8 +177,8 @@ class native_viewport_controller
 {
 public:
     native_viewport_controller(std::shared_ptr<arc::editor::arc_host> host, std::mutex& host_mutex,
-                               arc::jobs::job_system& jobs)
-        : host_(std::move(host)), host_mutex_(host_mutex), jobs_(&jobs)
+                               std::mutex& output_mutex, arc::jobs::job_system& jobs)
+        : host_(std::move(host)), host_mutex_(host_mutex), output_mutex_(output_mutex), jobs_(&jobs)
     {
     }
 
@@ -197,6 +201,7 @@ public:
                 std::max(static_cast<std::uint32_t>(arc::editor::defaults::native_viewport_min_dimension), height);
             bounds_dirty_ = true;
             attached_ = true;
+            shared_texture_ = false;
         }
 
         if (!running_.exchange(true))
@@ -211,6 +216,153 @@ public:
                                          [this] { render_loop(); });
     }
 
+    bool create_shared(std::string viewport_id, std::uint64_t consumer_process_id, std::uint32_t width,
+                       std::uint32_t height, std::string& error)
+    {
+        if (consumer_process_id == 0 || consumer_process_id > std::numeric_limits<DWORD>::max())
+        {
+            error = "Shared viewport consumer process is invalid";
+            return false;
+        }
+        const bool renderer_running = running_.load();
+        {
+            std::lock_guard lock(bounds_mutex_);
+            if (renderer_running && !shared_texture_)
+            {
+                error = "A native viewport renderer is already active";
+                return false;
+            }
+            viewport_id_ = viewport_id.empty() ? "viewport-1" : std::move(viewport_id);
+            width_ = std::max(1u, width);
+            height_ = std::max(1u, height);
+            consumer_process_id_ = static_cast<DWORD>(consumer_process_id);
+            parent_ = nullptr;
+            shared_texture_ = true;
+            attached_ = true;
+            visible_ = true;
+            bounds_dirty_ = true;
+            if (renderer_running)
+            {
+                destroy_dirty_ = false;
+                recreate_dirty_ = true;
+            }
+        }
+        if (renderer_running) return true;
+        {
+            std::lock_guard lock(setup_mutex_);
+            setup_complete_ = false;
+            setup_error_.clear();
+        }
+        if (!running_.exchange(true))
+            render_task_ = jobs_->submit({.name = "editor.shared_viewport",
+                                          .priority = arc::jobs::job_priority::critical,
+                                          .affinity = arc::jobs::job_affinity::render_thread},
+                                         [this] { render_loop(); });
+        std::unique_lock lock(setup_mutex_);
+        if (!setup_cv_.wait_for(lock, std::chrono::seconds(10), [this] { return setup_complete_; }))
+            setup_error_ = "Timed out creating shared viewport renderer";
+        error = setup_error_;
+        lock.unlock();
+        if (!error.empty() && render_task_.valid()) (void)render_task_.wait_result();
+        return error.empty();
+    }
+
+    void release_frame(std::string viewport_id, std::uint64_t generation, std::uint64_t frame_id,
+                       std::string consumer_handle)
+    {
+        if (!consumer_handle.empty())
+        {
+            std::uint64_t value{};
+            const auto first = consumer_handle.starts_with("0x") ? consumer_handle.data() + 2 : consumer_handle.data();
+            const auto last = consumer_handle.data() + consumer_handle.size();
+            if (std::from_chars(first, last, value, 16).ec == std::errc{})
+            {
+                HANDLE consumer = OpenProcess(PROCESS_DUP_HANDLE, FALSE, consumer_process_id_);
+                if (consumer != nullptr)
+                {
+                    HANDLE local{};
+                    if (DuplicateHandle(consumer, reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(value)),
+                                        GetCurrentProcess(), &local, 0, FALSE,
+                                        DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE))
+                        CloseHandle(local);
+                    CloseHandle(consumer);
+                }
+            }
+        }
+        std::lock_guard lock(bounds_mutex_);
+        pending_releases_.push_back({std::move(viewport_id), generation, frame_id});
+    }
+
+    void set_visible(std::string_view viewport_id, bool visible)
+    {
+        std::lock_guard lock(bounds_mutex_);
+        if (viewport_id != viewport_id_) return;
+        visible_ = visible;
+        visibility_dirty_ = true;
+    }
+
+    void pointer(const arc::editor::host_viewport_pointer_command& pointer)
+    {
+        std::lock_guard lock(bounds_mutex_);
+        if (pointer.viewport_id != viewport_id_) return;
+        pending_pointer_inputs_.push_back(pointer);
+    }
+
+    void key(const arc::editor::host_viewport_key_command& key)
+    {
+        std::lock_guard lock(bounds_mutex_);
+        if (key.viewport_id != viewport_id_) return;
+        pending_key_inputs_.push_back(key);
+    }
+
+private:
+    void process_pointer(const arc::editor::host_viewport_pointer_command& pointer)
+    {
+        input_alt_ = pointer.alt;
+        input_shift_ = pointer.shift;
+        input_control_ = pointer.control;
+        if (pointer.phase == arc::editor::host_viewport_pointer_phase::down)
+        {
+            const UINT message = pointer.button == 1 ? WM_MBUTTONDOWN : pointer.button == 2 ? WM_RBUTTONDOWN
+                                                                                             : WM_LBUTTONDOWN;
+            begin_drag(nullptr, message, pointer.x, pointer.y);
+        }
+        else if (pointer.phase == arc::editor::host_viewport_pointer_phase::move)
+            update_drag(pointer.x, pointer.y);
+        else if (pointer.phase == arc::editor::host_viewport_pointer_phase::up)
+            end_drag(nullptr, pointer.x, pointer.y);
+        else if (pointer.phase == arc::editor::host_viewport_pointer_phase::wheel)
+            send_camera_input(arc::editor::host_viewport_camera_input_command{.zoom = pointer.wheel});
+        else
+            cancel_pointer_interaction();
+    }
+
+    void process_key(const arc::editor::host_viewport_key_command& key)
+    {
+        input_alt_ = key.alt;
+        input_shift_ = key.shift;
+        input_control_ = key.control;
+        if (!key.down)
+        {
+            if (sun_rotating_ && (key.key == "l" || key.key == "L" || key.key == "Control"))
+                finish_sun_rotation(true);
+            return;
+        }
+        WPARAM native_key = key.key == "Escape" ? VK_ESCAPE : key.key == "Delete" ? VK_DELETE
+                            : key.key == "["     ? VK_OEM_4
+                            : key.key == "]"     ? VK_OEM_6
+                            : key.key.empty()    ? 0
+                                                 : static_cast<WPARAM>(std::toupper(key.key.front()));
+        if (native_key == VK_ESCAPE)
+        {
+            cancel_pointer_interaction();
+            return;
+        }
+        if (!sun_rotating_ && input_control_ && native_key == 'L') begin_sun_rotation();
+        if (!key.repeat) handle_key(native_key);
+    }
+
+public:
     void detach(std::string_view viewport_id)
     {
         std::lock_guard lock(bounds_mutex_);
@@ -218,6 +370,7 @@ public:
         attached_ = false;
         parent_ = nullptr;
         bounds_dirty_ = true;
+        destroy_dirty_ = shared_texture_;
         if (window_) ShowWindow(window_, SW_HIDE);
     }
 
@@ -375,9 +528,16 @@ private:
     bool create_backend()
     {
         arc::render::vulkan::vulkan_backend_config config{};
-        config.instance_extensions = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
-        config.create_surface = create_win32_surface;
-        config.surface_user_data = window_;
+        if (shared_texture_)
+        {
+            config.viewport_output = arc::render::viewport_output_type::shared_texture;
+        }
+        else
+        {
+            config.instance_extensions = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
+            config.create_surface = create_win32_surface;
+            config.surface_user_data = window_;
+        }
 
         auto result = arc::render::vulkan::create_vulkan_backend(config);
         if (!result)
@@ -412,13 +572,15 @@ private:
             host_->request_viewport(arc::editor::host_viewport_request{
                 .viewport_id = viewport_id_,
                 .frame_index = frame_index_++, .width = value.width, .height = value.height});
-            auto present = backend_->present_surface_frame(value.width, value.height);
+            auto present = shared_texture_ ? backend_->present_viewport_output(viewport_id_)
+                                           : backend_->present_surface_frame(value.width, value.height);
             rendered = present.has_value();
             if (!rendered) message = std::move(present.error().message);
         }
         if (rendered)
         {
             last_render_error_.clear();
+            if (shared_texture_) publish_ready_frame();
             return;
         }
         if (message.empty()) return;
@@ -448,6 +610,48 @@ private:
         }
     }
 
+    struct pending_release
+    {
+        std::string viewport_id;
+        std::uint64_t generation{};
+        std::uint64_t frame_id{};
+    };
+
+    void publish_ready_frame()
+    {
+        const auto polled = backend_->poll_viewport_output(viewport_id_);
+        if (!polled || !polled.value()) return;
+        const auto& frame = *polled.value();
+        HANDLE consumer = OpenProcess(PROCESS_DUP_HANDLE, FALSE, consumer_process_id_);
+        HANDLE duplicate{};
+        const auto source = reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(frame.texture.payload));
+        if (consumer == nullptr ||
+            !DuplicateHandle(GetCurrentProcess(), source, consumer, &duplicate, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        {
+            if (consumer != nullptr) CloseHandle(consumer);
+            backend_->release_viewport_frame(frame.viewport_id, frame.generation, frame.frame_id);
+            std::cerr << "arc_host_process shared viewport handle duplication failed: " << GetLastError() << '\n';
+            return;
+        }
+        CloseHandle(consumer);
+        std::ostringstream handle;
+        handle << "0x" << std::hex << std::setw(sizeof(std::uintptr_t) * 2) << std::setfill('0')
+               << reinterpret_cast<std::uintptr_t>(duplicate);
+        const auto payload = "{\"viewportId\":\"" + frame.viewport_id + "\",\"frameId\":" +
+                             std::to_string(frame.frame_id) + ",\"generation\":" +
+                             std::to_string(frame.generation) + ",\"width\":" +
+                             std::to_string(frame.width) + ",\"height\":" + std::to_string(frame.height) +
+                             ",\"format\":\"bgra\",\"handleType\":\"win32NtHandle\",\"handle\":\"" +
+                             handle.str() + "\",\"producerComplete\":true}";
+        const arc::editor::host_event event{.sequence = shared_event_sequence_++,
+                                             .event_type = arc::editor::host_event_type::viewport_frame_ready,
+                                             .message = "Shared viewport frame ready",
+                                             .payload_json = payload};
+        std::lock_guard output_lock(output_mutex_);
+        std::cout << arc::editor::to_json(event) << '\n';
+        std::cout.flush();
+    }
+
     void begin_drag(HWND window, UINT message, int x, int y)
     {
         if (sun_rotating_) return;
@@ -461,8 +665,10 @@ private:
         drag_button_ = message == WM_MBUTTONDOWN   ? drag_button::middle
                        : message == WM_RBUTTONDOWN ? drag_button::right
                                                    : drag_button::left;
-        const bool alt = (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
-        const bool shift = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        const bool alt = shared_texture_ ? input_alt_
+                                         : (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        const bool shift = shared_texture_ ? input_shift_
+                                           : (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
         camera_drag_mode_ = camera_drag_mode::none;
         if (alt && drag_button_ == drag_button::left)
             camera_drag_mode_ = camera_drag_mode::orbit;
@@ -482,8 +688,11 @@ private:
             else
                 selection_candidate_ = false;
         }
-        SetCapture(window);
-        SetFocus(window);
+        if (window)
+        {
+            SetCapture(window);
+            SetFocus(window);
+        }
     }
 
     void update_drag(int x, int y)
@@ -591,6 +800,20 @@ private:
         camera_drag_started_ = false;
     }
 
+    void cancel_pointer_interaction()
+    {
+        if (sun_rotating_) finish_sun_rotation(false);
+        if (manipulating_) cancel_manipulation();
+        if (terrain_stroking_) finish_terrain_stroke(false, drag_x_, drag_y_);
+        dragging_ = false;
+        drag_button_ = drag_button::none;
+        camera_drag_mode_ = camera_drag_mode::none;
+        selection_candidate_ = false;
+        camera_drag_started_ = false;
+        pointer_inside_ = false;
+        clear_terrain_hover();
+    }
+
     void send_pick(int x, int y)
     {
         std::lock_guard lock(host_mutex_);
@@ -625,7 +848,9 @@ private:
         if (!snapshot.entity.valid() || !snapshot.terrain || !host_->terrain_tool_snapshot().hover_visible)
             return false;
         const auto transaction = ++next_manipulation_transaction_;
-        const bool invert = (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
+        const bool invert = shared_texture_
+                                ? input_shift_
+                                : (GetKeyState(VK_SHIFT) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
         const auto response = host_->execute(arc::editor::host_command_envelope{
             .command_type = "terrain.stroke",
             .payload =
@@ -915,7 +1140,7 @@ private:
     {
         if (key == 'F')
             return send_camera_input(arc::editor::host_viewport_camera_input_command{.focus_selected = true});
-        if (key == VK_DELETE || ((GetKeyState(VK_CONTROL) & 0x8000) && key == 'D'))
+        if (key == VK_DELETE || ((shared_texture_ ? input_control_ : (GetKeyState(VK_CONTROL) & 0x8000) != 0) && key == 'D'))
         {
             std::lock_guard lock(host_mutex_);
             const auto selected = host_->selected_entity_snapshot().entity;
@@ -938,8 +1163,8 @@ private:
                 terrain.brush_strength, terrain.brush_falloff, terrain.active_layer});
             return;
         }
-        if ((GetKeyState(VK_CONTROL) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0 ||
-            (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0)
+        if ((shared_texture_ ? input_control_ : (GetKeyState(VK_CONTROL) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0) ||
+            (shared_texture_ ? input_alt_ : (GetKeyState(VK_MENU) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0))
             return;
         const auto editor_tool = arc::editor::editor_tool_from_shortcut(static_cast<std::uint32_t>(key));
         if (!editor_tool) return;
@@ -956,6 +1181,7 @@ private:
 
     bool sun_shortcut_down() const noexcept
     {
+        if (shared_texture_) return input_control_;
         return (GetKeyState(VK_CONTROL) & arc::editor::defaults::viewport_modifier_key_down_mask) != 0 &&
                (GetKeyState('L') & arc::editor::defaults::viewport_modifier_key_down_mask) != 0;
     }
@@ -1089,22 +1315,47 @@ private:
     void render_loop()
     {
         auto value = current_bounds();
-        if (!create_window(value))
+        if (!shared_texture_ && !create_window(value))
         {
             std::cerr << "arc_host_process failed to create native viewport window\n";
+            signal_setup("Failed to create native viewport window");
             running_ = false;
             return;
         }
-        apply_bounds(value);
+        if (!shared_texture_) apply_bounds(value);
         if (!create_backend())
         {
+            signal_setup("Failed to create Vulkan viewport backend");
             running_ = false;
             return;
         }
+        if (shared_texture_)
+        {
+            const auto created = backend_->create_viewport_output({.id = viewport_id_,
+                                                                    .type = arc::render::viewport_output_type::shared_texture,
+                                                                    .width = value.width,
+                                                                    .height = value.height,
+                                                                    .visible = visible_});
+            if (!created)
+            {
+                signal_setup(created.error().message);
+                running_ = false;
+            }
+            if (!running_)
+            {
+                std::lock_guard lock(host_mutex_);
+                backend_ = nullptr;
+                host_->renderer_service().set_backend(nullptr);
+                return;
+            }
+        }
+        signal_setup({});
 
         while (running_)
         {
             jobs_->pump_render_thread(32);
+            std::vector<arc::editor::host_viewport_pointer_command> pointer_inputs;
+            std::vector<arc::editor::host_viewport_key_command> key_inputs;
             MSG message{};
             while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
             {
@@ -1113,20 +1364,61 @@ private:
                 DispatchMessageW(&message);
             }
 
-            if (!attached_)
-            {
-                std::this_thread::sleep_for(arc::editor::defaults::native_viewport_frame_interval);
-                continue;
-            }
-
             {
                 std::lock_guard lock(bounds_mutex_);
+                pointer_inputs.swap(pending_pointer_inputs_);
+                key_inputs.swap(pending_key_inputs_);
+                for (const auto& release : pending_releases_)
+                    if (backend_)
+                        backend_->release_viewport_frame(release.viewport_id, release.generation, release.frame_id);
+                pending_releases_.clear();
+                if (visibility_dirty_ && backend_)
+                {
+                    backend_->set_viewport_output_visible(viewport_id_, visible_);
+                    visibility_dirty_ = false;
+                }
+                if (destroy_dirty_ && backend_)
+                {
+                    backend_->destroy_viewport_output(viewport_id_);
+                    destroy_dirty_ = false;
+                }
+                if (recreate_dirty_ && backend_)
+                {
+                    const auto recreated = backend_->create_viewport_output(
+                        {.id = viewport_id_,
+                         .type = arc::render::viewport_output_type::shared_texture,
+                         .width = width_,
+                         .height = height_,
+                         .visible = visible_});
+                    if (!recreated)
+                        std::cerr << "arc_host_process shared viewport recreation error: "
+                                  << recreated.error().message << '\n';
+                    recreate_dirty_ = false;
+                }
                 if (bounds_dirty_)
                 {
                     value = {.parent = parent_, .x = x_, .y = y_, .width = width_, .height = height_};
                     bounds_dirty_ = false;
-                    apply_bounds(value);
+                    if (shared_texture_)
+                    {
+                        const auto resized = backend_->resize_viewport_output(viewport_id_, value.width, value.height);
+                        if (!resized) std::cerr << "arc_host_process shared viewport resize error: "
+                                                << resized.error().message << '\n';
+                    }
+                    else
+                        apply_bounds(value);
                 }
+            }
+
+            for (const auto& pointer_input : pointer_inputs)
+                process_pointer(pointer_input);
+            for (const auto& key_input : key_inputs)
+                process_key(key_input);
+
+            if (!attached_)
+            {
+                std::this_thread::sleep_for(arc::editor::defaults::native_viewport_frame_interval);
+                continue;
             }
 
             render_once(value);
@@ -1135,6 +1427,7 @@ private:
 
         {
             std::lock_guard lock(host_mutex_);
+            if (backend_ && shared_texture_) backend_->destroy_viewport_output(viewport_id_);
             host_->renderer_service().set_backend(nullptr);
         }
         if (window_)
@@ -1144,8 +1437,19 @@ private:
         }
     }
 
+    void signal_setup(std::string error)
+    {
+        {
+            std::lock_guard lock(setup_mutex_);
+            setup_error_ = std::move(error);
+            setup_complete_ = true;
+        }
+        setup_cv_.notify_all();
+    }
+
     std::shared_ptr<arc::editor::arc_host> host_;
     std::mutex& host_mutex_;
+    std::mutex& output_mutex_;
     arc::jobs::job_system* jobs_{};
     arc::jobs::job_handle render_task_;
     std::atomic<bool> running_{};
@@ -1160,6 +1464,23 @@ private:
     std::uint32_t height_{1};
     std::string viewport_id_{"viewport-1"};
     bool bounds_dirty_{};
+    bool shared_texture_{};
+    bool visible_{true};
+    bool visibility_dirty_{};
+    bool destroy_dirty_{};
+    bool recreate_dirty_{};
+    DWORD consumer_process_id_{};
+    std::vector<pending_release> pending_releases_;
+    std::vector<arc::editor::host_viewport_pointer_command> pending_pointer_inputs_;
+    std::vector<arc::editor::host_viewport_key_command> pending_key_inputs_;
+    std::mutex setup_mutex_;
+    std::condition_variable setup_cv_;
+    bool setup_complete_{};
+    std::string setup_error_;
+    std::uint64_t shared_event_sequence_{std::uint64_t{1} << 62u};
+    bool input_alt_{};
+    bool input_shift_{};
+    bool input_control_{};
     std::uint64_t frame_index_{};
     std::string last_render_error_;
     std::chrono::steady_clock::time_point last_render_error_time_{};
@@ -1253,7 +1574,7 @@ int main()
     auto host = std::make_shared<arc::editor::arc_host>(std::make_unique<arc::render::renderer>());
     std::mutex host_mutex;
     std::mutex output_mutex;
-    native_viewport_controller native_viewport(host, host_mutex, jobs);
+    native_viewport_controller native_viewport(host, host_mutex, output_mutex, jobs);
     const auto write_response = [&](const arc::editor::host_response& response)
     {
         std::lock_guard output_lock(output_mutex);
@@ -1332,6 +1653,25 @@ int main()
                 continue;
             }
             arc::editor::host_response response;
+            if (const auto* create = std::get_if<arc::editor::host_viewport_create_command>(&command.payload);
+                create && create->output == arc::editor::host_viewport_output_type::shared_texture)
+            {
+                {
+                    std::lock_guard lock(host_mutex);
+                    response = host->execute(command);
+                }
+                if (response.succeeded)
+                {
+                    std::string setup_error;
+                    if (!native_viewport.create_shared(create->viewport_id, create->consumer_process_id,
+                                                       create->width, create->height, setup_error))
+                    {
+                        response.succeeded = false;
+                        response.error = std::move(setup_error);
+                    }
+                }
+            }
+            else
             {
                 std::lock_guard lock(host_mutex);
                 response = host->execute(command);
@@ -1347,6 +1687,17 @@ int main()
                     native_viewport.resize(resize->x, resize->y, resize->width, resize->height);
                 else if (const auto* detach = std::get_if<arc::editor::host_viewport_detach_command>(&command.payload))
                     native_viewport.detach(detach->viewport_id);
+                else if (const auto* release =
+                             std::get_if<arc::editor::host_viewport_frame_released_command>(&command.payload))
+                    native_viewport.release_frame(release->viewport_id, release->generation, release->frame_id,
+                                                  release->consumer_handle);
+                else if (const auto* visibility =
+                             std::get_if<arc::editor::host_viewport_set_visibility_command>(&command.payload))
+                    native_viewport.set_visible(visibility->viewport_id, visibility->visible);
+                else if (const auto* pointer = std::get_if<arc::editor::host_viewport_pointer_command>(&command.payload))
+                    native_viewport.pointer(*pointer);
+                else if (const auto* key = std::get_if<arc::editor::host_viewport_key_command>(&command.payload))
+                    native_viewport.key(*key);
             }
         }
     }

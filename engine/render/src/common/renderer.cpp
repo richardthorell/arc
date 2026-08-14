@@ -667,6 +667,36 @@ bool renderer::destroy_virtual_mesh(virtual_mesh_handle handle)
     return true;
 }
 
+surface_frame_result render_backend::create_viewport_output(const viewport_output_descriptor&)
+{
+    return surface_frame_result::failure(
+        {.code = surface_frame_error_code::unsupported, .message = "viewport outputs are unsupported"});
+}
+
+surface_frame_result render_backend::resize_viewport_output(std::string_view, std::uint32_t, std::uint32_t)
+{
+    return surface_frame_result::failure(
+        {.code = surface_frame_error_code::unsupported, .message = "viewport output resize is unsupported"});
+}
+
+surface_frame_result render_backend::present_viewport_output(std::string_view)
+{
+    return surface_frame_result::failure(
+        {.code = surface_frame_error_code::unsupported, .message = "viewport output presentation is unsupported"});
+}
+
+shared_viewport_frame_result render_backend::poll_viewport_output(std::string_view)
+{
+    return shared_viewport_frame_result::failure(
+        {.code = surface_frame_error_code::unsupported, .message = "shared viewport output is unsupported"});
+}
+
+void render_backend::release_viewport_frame(std::string_view, std::uint64_t, std::uint64_t) {}
+
+void render_backend::set_viewport_output_visible(std::string_view, bool) {}
+
+void render_backend::destroy_viewport_output(std::string_view) {}
+
 terrain_handle renderer::create_terrain(terrain_resource_descriptor terrain)
 {
     if (terrain.sample_resolution < 2u ||
