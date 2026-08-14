@@ -4,6 +4,7 @@ option(ARC_WARNINGS_AS_ERRORS "Treat warnings in first-party ARC targets as erro
 option(ARC_ENABLE_ADDRESS_SANITIZER "Enable AddressSanitizer for first-party targets" OFF)
 option(ARC_ENABLE_UNDEFINED_SANITIZER "Enable UndefinedBehaviorSanitizer for first-party targets" OFF)
 option(ARC_ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer for first-party targets" OFF)
+option(ARC_ENABLE_SHIPPING_LTO "Enable link-time optimization for Shipping builds" ON)
 
 if(ARC_ENABLE_THREAD_SANITIZER AND
    (ARC_ENABLE_ADDRESS_SANITIZER OR ARC_ENABLE_UNDEFINED_SANITIZER))
@@ -25,22 +26,41 @@ if(CMAKE_CONFIGURATION_TYPES)
 endif()
 
 if(MSVC)
-    set(CMAKE_CXX_FLAGS_SHIPPING "${CMAKE_CXX_FLAGS_RELEASE} /GL" CACHE STRING
+    set(_arc_shipping_cxx_flags "${CMAKE_CXX_FLAGS_RELEASE}")
+    set(_arc_shipping_exe_linker_flags
+        "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+    set(_arc_shipping_shared_linker_flags
+        "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+    if(ARC_ENABLE_SHIPPING_LTO)
+        string(APPEND _arc_shipping_cxx_flags " /GL")
+        string(APPEND _arc_shipping_exe_linker_flags " /LTCG")
+        string(APPEND _arc_shipping_shared_linker_flags " /LTCG")
+    endif()
+    set(CMAKE_CXX_FLAGS_SHIPPING "${_arc_shipping_cxx_flags}" CACHE STRING
         "C++ flags used by Shipping builds" FORCE)
-    set(CMAKE_EXE_LINKER_FLAGS_SHIPPING
-        "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG /DEBUG /OPT:REF /OPT:ICF"
+    set(CMAKE_EXE_LINKER_FLAGS_SHIPPING "${_arc_shipping_exe_linker_flags}"
         CACHE STRING "Executable linker flags used by Shipping builds" FORCE)
-    set(CMAKE_SHARED_LINKER_FLAGS_SHIPPING
-        "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /LTCG /DEBUG /OPT:REF /OPT:ICF"
+    set(CMAKE_SHARED_LINKER_FLAGS_SHIPPING "${_arc_shipping_shared_linker_flags}"
         CACHE STRING "Shared-library linker flags used by Shipping builds" FORCE)
 else()
-    set(CMAKE_CXX_FLAGS_SHIPPING "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG -flto"
+    set(_arc_shipping_cxx_flags "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
+    set(_arc_shipping_exe_linker_flags "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
+    set(_arc_shipping_shared_linker_flags "${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")
+    if(ARC_ENABLE_SHIPPING_LTO)
+        string(APPEND _arc_shipping_cxx_flags " -flto")
+        string(APPEND _arc_shipping_exe_linker_flags " -flto")
+        string(APPEND _arc_shipping_shared_linker_flags " -flto")
+    endif()
+    set(CMAKE_CXX_FLAGS_SHIPPING "${_arc_shipping_cxx_flags}"
         CACHE STRING "C++ flags used by Shipping builds" FORCE)
-    set(CMAKE_EXE_LINKER_FLAGS_SHIPPING "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -flto"
+    set(CMAKE_EXE_LINKER_FLAGS_SHIPPING "${_arc_shipping_exe_linker_flags}"
         CACHE STRING "Executable linker flags used by Shipping builds" FORCE)
-    set(CMAKE_SHARED_LINKER_FLAGS_SHIPPING "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} -flto"
+    set(CMAKE_SHARED_LINKER_FLAGS_SHIPPING "${_arc_shipping_shared_linker_flags}"
         CACHE STRING "Shared-library linker flags used by Shipping builds" FORCE)
 endif()
+unset(_arc_shipping_cxx_flags)
+unset(_arc_shipping_exe_linker_flags)
+unset(_arc_shipping_shared_linker_flags)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Shipping")
     set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)

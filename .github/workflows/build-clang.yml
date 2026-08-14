@@ -50,7 +50,7 @@ jobs:
           cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_EDITOR=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-debug --parallel
           cmake --install out/build/sdk-debug --prefix out/dist/linux
-          cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Shipping -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-shipping --parallel
           cmake --install out/build/sdk-shipping --prefix out/dist/linux
       - name: Build an external headless project from the installed SDK
