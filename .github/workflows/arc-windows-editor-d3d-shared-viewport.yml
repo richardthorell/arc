@@ -1,0 +1,144 @@
+name: ARC Windows editor D3D shared viewport import
+
+on:
+  push:
+    branches:
+      - agent/windows-editor-d3d-shared-viewport
+
+permissions:
+  contents: write
+
+jobs:
+  apply-shared-viewport-import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Restore D3D11 import path and gate it to editor builds
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          source_path = Path('engine/render-vulkan/src/vulkan_backend.cpp')
+          historical = subprocess.run(
+              [
+                  'git',
+                  'show',
+                  '5eaea8b400de5613c85e7970200ed7ae08ca46de:engine/render-vulkan/src/vulkan_backend.cpp',
+              ],
+              check=True,
+              capture_output=True,
+              text=True,
+          ).stdout
+
+          include_and_guard = '''#if defined(_WIN32)
+          #include <windows.h>
+          #include <d3d11.h>
+          #include <dxgi1_2.h>
+          #include <wrl/client.h>
+          #endif
+
+          #if defined(_WIN32)
+          #define ARC_VULKAN_SHARED_VIEWPORT 1
+          #else
+          #define ARC_VULKAN_SHARED_VIEWPORT 0
+          #endif
+          '''
+          editor_guard = '''#if defined(_WIN32)
+          #include <windows.h>
+          #endif
+
+          #if defined(_WIN32) && defined(ARC_EDITOR) && ARC_EDITOR
+          #define ARC_VULKAN_SHARED_VIEWPORT 1
+          #else
+          #define ARC_VULKAN_SHARED_VIEWPORT 0
+          #endif
+
+          #if ARC_VULKAN_SHARED_VIEWPORT
+          #include <d3d11.h>
+          #include <dxgi1_2.h>
+          #include <wrl/client.h>
+          #endif
+          '''
+          if historical.count(include_and_guard) != 1:
+              raise SystemExit(f'expected one Windows shared viewport include block, found {historical.count(include_and_guard)}')
+          historical = historical.replace(include_and_guard, editor_guard, 1)
+
+          warning = 'shared viewport output is only available on Windows'
+          if historical.count(warning) != 1:
+              raise SystemExit(f'expected one shared viewport warning, found {historical.count(warning)}')
+          historical = historical.replace(warning, 'shared viewport output is only available in Windows editor builds', 1)
+
+          extension_guard = '''#if defined(_WIN32)
+              if (config.viewport_output == viewport_output_type::shared_texture)
+          '''
+          guarded_extensions = '''#if ARC_VULKAN_SHARED_VIEWPORT
+              if (config.viewport_output == viewport_output_type::shared_texture)
+          '''
+          if historical.count(extension_guard) != 1:
+              raise SystemExit(f'expected one shared viewport extension guard, found {historical.count(extension_guard)}')
+          historical = historical.replace(extension_guard, guarded_extensions, 1)
+
+          source_path.write_text(historical, encoding='utf-8')
+
+          cmake_path = Path('engine/render-vulkan/CMakeLists.txt')
+          cmake = cmake_path.read_text(encoding='utf-8')
+          win32_block = '''if(WIN32)
+              target_compile_definitions(arc-render-vulkan PRIVATE VK_USE_PLATFORM_WIN32_KHR=1 WIN32_LEAN_AND_MEAN=1 NOMINMAX=1)
+          endif()
+          '''
+          editor_link_block = '''if(WIN32)
+              target_compile_definitions(arc-render-vulkan PRIVATE VK_USE_PLATFORM_WIN32_KHR=1 WIN32_LEAN_AND_MEAN=1 NOMINMAX=1)
+          endif()
+
+          # D3D11 is used only to allocate NT-handle textures for Electron's shared
+          # editor viewport. Runtime/Shipping builds keep the Vulkan backend free of
+          # D3D and DXGI link dependencies.
+          if(WIN32 AND ARC_BUILD_EDITOR)
+              target_compile_definitions(arc-render-vulkan PRIVATE ARC_EDITOR=1)
+              target_link_libraries(arc-render-vulkan PRIVATE d3d11 dxgi)
+          endif()
+          '''
+          if cmake.count(win32_block) != 1:
+              raise SystemExit(f'expected one Vulkan Win32 CMake block, found {cmake.count(win32_block)}')
+          cmake = cmake.replace(win32_block, editor_link_block, 1)
+          cmake_path.write_text(cmake, encoding='utf-8')
+          PY
+
+      - name: Verify editor-only interop boundaries
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('engine/render-vulkan/src/vulkan_backend.cpp').read_text(encoding='utf-8')
+          cmake = Path('engine/render-vulkan/CMakeLists.txt').read_text(encoding='utf-8')
+
+          assert '#if defined(_WIN32) && defined(ARC_EDITOR) && ARC_EDITOR' in source
+          assert 'VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT' in source
+          assert 'VkImportMemoryWin32HandleInfoKHR' in source
+          assert 'D3D11CreateDevice' in source
+          assert 'vkGetMemoryWin32HandleKHR' not in source
+          assert 'VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT' not in source
+          assert 'if(WIN32 AND ARC_BUILD_EDITOR)' in cmake
+          assert 'target_compile_definitions(arc-render-vulkan PRIVATE ARC_EDITOR=1)' in cmake
+          assert 'target_link_libraries(arc-render-vulkan PRIVATE d3d11 dxgi)' in cmake
+          PY
+          git diff --check
+
+      - name: Commit implementation and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/arc-windows-editor-d3d-shared-viewport.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/render-vulkan/src/vulkan_backend.cpp engine/render-vulkan/CMakeLists.txt .github/workflows/arc-windows-editor-d3d-shared-viewport.yml
+          git diff --cached --check
+          git commit -m "Import Windows editor shared textures through D3D11"
+          git push
