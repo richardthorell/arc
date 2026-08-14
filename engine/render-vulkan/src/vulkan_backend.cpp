@@ -637,11 +637,10 @@ public:
         }
         if (width == 0 || height == 0) return true;
 
-        const bool size_changed = width != output_viewport_width_ || height != output_viewport_height_;
         output_viewport_width_ = width;
         output_viewport_height_ = height;
 
-        if (!swapchain_.valid() || swapchain_rebuild_ || size_changed)
+        if (!swapchain_.valid() || swapchain_rebuild_ || swapchain_.extent.width != width || swapchain_.extent.height != height)
         {
             VkBool32 present_supported = VK_FALSE;
             vkGetPhysicalDeviceSurfaceSupportKHR(physical_device_, graphics_queue_family_, surface_,
