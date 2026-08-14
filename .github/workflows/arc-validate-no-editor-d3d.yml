@@ -1,0 +1,63 @@
+name: Validate editor-only D3D viewport interop
+
+on:
+  push:
+    branches:
+      - agent/windows-editor-d3d-shared-viewport
+
+permissions:
+  contents: write
+
+jobs:
+  validate-no-editor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-2022
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+
+      - name: Set up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
+
+      - name: Configure and build Vulkan without editor
+        shell: pwsh
+        run: |
+          cmake -S . -B out/build/no-editor -G Ninja `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DARC_BUILD_EDITOR=OFF `
+            -DARC_BUILD_RENDER_VULKAN=ON `
+            -DARC_BUILD_PROJECT_TOOL=OFF `
+            -DARC_BUILD_SAMPLES=OFF `
+            -DBUILD_TESTING=OFF
+          cmake --build out/build/no-editor --target arc-render-vulkan --parallel
+
+      - name: Verify generated commands contain no editor D3D dependency
+        shell: pwsh
+        run: |
+          $commands = (& ninja -C out/build/no-editor -t commands arc-render-vulkan) -join "`n"
+          if ($commands -match 'ARC_EDITOR') {
+            throw 'ARC_EDITOR leaked into ARC_BUILD_EDITOR=OFF compile commands'
+          }
+          if ($commands -match '(?i)(^|[\s;/\\"])d3d11(?:\.lib)?([\s;/\\"]|$)') {
+            throw 'd3d11 leaked into ARC_BUILD_EDITOR=OFF link commands'
+          }
+          if ($commands -match '(?i)(^|[\s;/\\"])dxgi(?:\.lib)?([\s;/\\"]|$)') {
+            throw 'dxgi leaked into ARC_BUILD_EDITOR=OFF link commands'
+          }
+
+      - name: Remove one-shot validation workflow
+        shell: bash
+        run: |
+          rm .github/workflows/arc-validate-no-editor-d3d.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/arc-validate-no-editor-d3d.yml
+          git commit -m "Remove editor-only D3D validation workflow"
+          git push
