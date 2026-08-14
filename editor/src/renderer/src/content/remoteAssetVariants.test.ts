@@ -21,11 +21,11 @@ const manifest: ArcAssetDownloadManifest = {
 };
 
 describe('remote asset variants', () => {
-  it('discovers resolution and format choices with sensible defaults', () => {
+  it('discovers resolution and relevant model formats with sensible defaults', () => {
     expect(manifestResolutions(manifest)).toEqual(['2k', '4k']);
-    expect(manifestFormats(manifest)).toEqual(['blend', 'gltf', 'png']);
+    expect(manifestFormats(manifest, 'model')).toEqual(['blend', 'gltf']);
     expect(preferredResolution(manifestResolutions(manifest))).toBe('2k');
-    expect(preferredFormat(manifestFormats(manifest), 'model')).toBe('gltf');
+    expect(preferredFormat(manifestFormats(manifest, 'model'), 'model')).toBe('gltf');
   });
 
   it('keeps dependency files nested under the selected variant', () => {
