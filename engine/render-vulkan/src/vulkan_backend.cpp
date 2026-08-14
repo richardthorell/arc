@@ -35,7 +35,7 @@
 #include <wrl/client.h>
 #endif
 
-#if defined(_WIN32) && ARC_RENDER_VULKAN_ENABLE_IMGUI
+#if defined(_WIN32)
 #define ARC_VULKAN_SHARED_VIEWPORT 1
 #else
 #define ARC_VULKAN_SHARED_VIEWPORT 0
@@ -352,11 +352,13 @@ public:
           configured_viewport_output_(viewport_output)
     {
         if (configured_viewport_output_ == viewport_output_type::shared_texture)
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
+        {
+#if ARC_VULKAN_SHARED_VIEWPORT
             viewport_format_ = VK_FORMAT_B8G8R8A8_UNORM;
 #else
-            arc::diagnostics::warn("render.vulkan", "shared viewport output requires the editor rendering path");
+            arc::diagnostics::warn("render.vulkan", "shared viewport output is only available on Windows");
 #endif
+        }
         create_support_objects();
 #if ARC_VULKAN_SHARED_VIEWPORT
         query_shared_viewport_support();
@@ -942,7 +944,6 @@ private:
                     vkWaitForFences(device_, 1, &slot.fence, VK_TRUE, UINT64_MAX);
 #endif
     }
-#endif
 
 #if ARC_VULKAN_SHARED_VIEWPORT
     void query_shared_viewport_support()
