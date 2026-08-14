@@ -8,11 +8,7 @@
 #include "builtin_shaders.h"
 #include "vulkan_pick_utils.h"
 #include "vulkan_sky_constants.h"
-
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-#include <imgui.h>
-#include <imgui_impl_vulkan.h>
-#endif
+#include "vulkan_swapchain.h"
 
 #include <volk.h>
 #include <vk_mem_alloc.h>
@@ -63,11 +59,6 @@ constexpr std::array<std::uint32_t, 15> material_image_bindings{0u,
                                                                 terrain_surface_binding + 2u,
                                                                 terrain_surface_binding + 3u,
                                                                 material_local_shadow_binding};
-
-void log_vk_result(VkResult result)
-{
-    if (result != VK_SUCCESS) arc::diagnostics::error("render.vulkan", "Vulkan call failed");
-}
 
 const char* vk_result_name(VkResult result) noexcept
 {
@@ -320,9 +311,7 @@ public:
 
     ~vulkan_render_backend() override
     {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        shutdown_imgui();
-#endif
+        shutdown_surface_presenter();
         if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
         destroy_mesh_pipeline();
         destroy_shadow_resources();
@@ -386,13 +375,11 @@ public:
         }
         upload_timeline_enabled_ = config.features.timeline_semaphores && upload_timeline_ != VK_NULL_HANDLE;
         last_profile_.configuration = config;
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        if (imgui_initialized_ && previous_scale != config.render_scale && output_viewport_width_ > 0 &&
+        if (native_swapchain_initialized_ && previous_scale != config.render_scale && output_viewport_width_ > 0 &&
             output_viewport_height_ > 0)
         {
             ensure_viewport(scaled_dimension(output_viewport_width_), scaled_dimension(output_viewport_height_));
         }
-#endif
     }
 
     render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) override
@@ -581,26 +568,17 @@ public:
 
     void resize_viewport(std::uint32_t width, std::uint32_t height) override
     {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
         output_viewport_width_ = width;
         output_viewport_height_ = height;
-        if (imgui_initialized_ && width > 0 && height > 0)
+        if (native_swapchain_initialized_ && width > 0 && height > 0)
             ensure_viewport(scaled_dimension(width), scaled_dimension(height));
-#else
-        (void)width;
-        (void)height;
-#endif
     }
 
     render_viewport_texture viewport_texture() const noexcept override
     {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        return {.id = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(viewport_descriptor_)),
-                .width = viewport_width_,
-                .height = viewport_height_};
-#else
+        // Native editor presentation owns the surface directly. The old opaque
+        // legacy texture handle is intentionally no longer exposed.
         return {};
-#endif
     }
 
     render_backend_frame_profile last_frame_profile() const override
@@ -629,238 +607,6 @@ public:
         return last_capture_result_;
     }
 
-    bool initialize_imgui(std::uint32_t width, std::uint32_t height, std::string& message)
-    {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        if (surface_ == VK_NULL_HANDLE)
-        {
-            message = "Vulkan backend was created without a presentation surface";
-            return false;
-        }
-
-        VkBool32 present_supported = VK_FALSE;
-        vkGetPhysicalDeviceSurfaceSupportKHR(physical_device_, graphics_queue_family_, surface_, &present_supported);
-        if (present_supported != VK_TRUE)
-        {
-            message = "Vulkan queue does not support the editor surface";
-            return false;
-        }
-
-        const std::array<VkFormat, 4> formats{VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM,
-                                              VK_FORMAT_B8G8R8_UNORM, VK_FORMAT_R8G8B8_UNORM};
-        window_.Surface = surface_;
-        window_.SurfaceFormat =
-            ImGui_ImplVulkanH_SelectSurfaceFormat(physical_device_, window_.Surface, formats.data(),
-                                                  static_cast<int>(formats.size()), VK_COLORSPACE_SRGB_NONLINEAR_KHR);
-
-        const VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
-        window_.PresentMode = ImGui_ImplVulkanH_SelectPresentMode(physical_device_, window_.Surface, &present_mode, 1);
-        ImGui_ImplVulkanH_CreateOrResizeWindow(instance_, physical_device_, device_, &window_, graphics_queue_family_,
-                                               nullptr, static_cast<int>(std::max(1u, width)),
-                                               static_cast<int>(std::max(1u, height)), min_image_count_,
-                                               VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-
-        ImGui_ImplVulkan_InitInfo init_info{};
-        init_info.ApiVersion = VK_API_VERSION_1_2;
-        init_info.Instance = instance_;
-        init_info.PhysicalDevice = physical_device_;
-        init_info.Device = device_;
-        init_info.QueueFamily = graphics_queue_family_;
-        init_info.Queue = queue_;
-        init_info.DescriptorPoolSize = 1024;
-        init_info.MinImageCount = min_image_count_;
-        init_info.ImageCount = window_.ImageCount;
-        init_info.PipelineInfoMain.RenderPass = window_.RenderPass;
-        init_info.PipelineInfoMain.Subpass = 0;
-        init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-        init_info.CheckVkResultFn = log_vk_result;
-
-        if (!ImGui_ImplVulkan_Init(&init_info))
-        {
-            message = "failed to initialize ImGui Vulkan backend";
-            return false;
-        }
-
-        imgui_initialized_ = true;
-        output_viewport_width_ = std::max(1u, width / 2);
-        output_viewport_height_ = std::max(1u, height / 2);
-        ensure_viewport(scaled_dimension(output_viewport_width_), scaled_dimension(output_viewport_height_));
-        message = "initialized Vulkan editor presentation";
-        return true;
-#else
-        (void)width;
-        (void)height;
-        message = "Vulkan ImGui presentation support is not compiled";
-        return false;
-#endif
-    }
-
-    void new_imgui_frame()
-    {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        if (imgui_initialized_) ImGui_ImplVulkan_NewFrame();
-#endif
-    }
-
-    bool render_imgui_frame(void* draw_data, std::uint32_t width, std::uint32_t height, std::string& message)
-    {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        if (!imgui_initialized_)
-        {
-            message = "Vulkan ImGui presentation is not initialized";
-            return false;
-        }
-        if (!draw_data || width == 0 || height == 0) return true;
-
-        if (swapchain_rebuild_ || window_.Width != static_cast<int>(width) ||
-            window_.Height != static_cast<int>(height))
-        {
-            ImGui_ImplVulkan_SetMinImageCount(min_image_count_);
-            ImGui_ImplVulkanH_CreateOrResizeWindow(instance_, physical_device_, device_, &window_,
-                                                   graphics_queue_family_, nullptr, static_cast<int>(width),
-                                                   static_cast<int>(height), min_image_count_,
-                                                   VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
-            window_.FrameIndex = 0;
-            swapchain_rebuild_ = false;
-        }
-
-        VkSemaphore image_acquired_semaphore = window_.FrameSemaphores[window_.SemaphoreIndex].ImageAcquiredSemaphore;
-        VkSemaphore render_complete_semaphore = window_.FrameSemaphores[window_.SemaphoreIndex].RenderCompleteSemaphore;
-        VkResult result = vkAcquireNextImageKHR(device_, window_.Swapchain, UINT64_MAX, image_acquired_semaphore,
-                                                VK_NULL_HANDLE, &window_.FrameIndex);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-        {
-            swapchain_rebuild_ = true;
-            return true;
-        }
-        if (result != VK_SUCCESS)
-        {
-            message = "failed to acquire Vulkan swapchain image";
-            return false;
-        }
-        active_frame_index_ = window_.FrameIndex;
-
-        ImGui_ImplVulkanH_Frame* frame = &window_.Frames[window_.FrameIndex];
-        vkWaitForFences(device_, 1, &frame->Fence, VK_TRUE, UINT64_MAX);
-        collect_timestamp_results();
-        collect_object_pick_result();
-        collect_frame_capture_result();
-        retire_completed_resources();
-
-        // Resource preparation may need to wait for every swapchain frame
-        // before replacing frame-count-dependent buffers or attachments. Keep
-        // the acquired frame fence signaled until that work has completed;
-        // resetting it first makes wait_for_in_flight_frames() wait forever on
-        // a fence that cannot be submitted until this function continues.
-        prepare_frame_gpu_resources();
-
-        vkResetFences(device_, 1, &frame->Fence);
-        vkResetCommandPool(device_, frame->CommandPool, 0);
-
-        VkCommandBufferBeginInfo begin_info{};
-        begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(frame->CommandBuffer, &begin_info);
-
-        begin_debug_label(frame->CommandBuffer, "ARC frame", {0.16f, 0.45f, 1.0f, 1.0f});
-        reset_timestamp_queries(frame->CommandBuffer);
-        for (const auto& marker : pending_debug_markers_)
-            insert_debug_label(frame->CommandBuffer, marker, {0.25f, 0.75f, 1.0f, 1.0f});
-
-        if (graph_selects_any_directional_shadow_pass())
-        {
-            const auto shadow_scope =
-                begin_gpu_scope(frame->CommandBuffer, graph_pass_name(builtin_render_pass::directional_shadow_dynamic,
-                                                                      "directional shadow cascades"));
-            render_shadow_maps(frame->CommandBuffer);
-            end_gpu_scope(frame->CommandBuffer, shadow_scope);
-        }
-        if (!active_local_shadows_.empty() &&
-            (graph_selects(builtin_render_pass::point_shadow) || graph_selects(builtin_render_pass::spot_shadow)))
-        {
-            const auto local_shadow_scope = begin_gpu_scope(frame->CommandBuffer, "local shadow atlas");
-            render_local_shadow_maps(frame->CommandBuffer);
-            end_gpu_scope(frame->CommandBuffer, local_shadow_scope);
-        }
-        else
-            transition_local_shadow_atlas(frame->CommandBuffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-
-        const auto viewport_scope = begin_gpu_scope(
-            frame->CommandBuffer, resolved_config_.path == render_path::forward_plus ? "forward+ viewport raster"
-                                                                                     : "deferred viewport raster");
-        render_viewport(frame->CommandBuffer);
-        end_gpu_scope(frame->CommandBuffer, viewport_scope);
-
-        VkClearValue clear_value{};
-        clear_value.color.float32[0] = 0.055f;
-        clear_value.color.float32[1] = 0.071f;
-        clear_value.color.float32[2] = 0.086f;
-        clear_value.color.float32[3] = 1.0f;
-
-        const auto imgui_scope = begin_gpu_scope(frame->CommandBuffer, "imgui pass");
-        VkRenderPassBeginInfo render_pass{};
-        render_pass.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        render_pass.renderPass = window_.RenderPass;
-        render_pass.framebuffer = frame->Framebuffer;
-        render_pass.renderArea.extent.width = window_.Width;
-        render_pass.renderArea.extent.height = window_.Height;
-        render_pass.clearValueCount = 1;
-        render_pass.pClearValues = &clear_value;
-        vkCmdBeginRenderPass(frame->CommandBuffer, &render_pass, VK_SUBPASS_CONTENTS_INLINE);
-        ImGui_ImplVulkan_RenderDrawData(static_cast<ImDrawData*>(draw_data), frame->CommandBuffer);
-        vkCmdEndRenderPass(frame->CommandBuffer);
-        end_gpu_scope(frame->CommandBuffer, imgui_scope);
-        end_debug_label(frame->CommandBuffer);
-        vkEndCommandBuffer(frame->CommandBuffer);
-
-        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.waitSemaphoreCount = 1;
-        submit.pWaitSemaphores = &image_acquired_semaphore;
-        submit.pWaitDstStageMask = &wait_stage;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &frame->CommandBuffer;
-        submit.signalSemaphoreCount = 1;
-        submit.pSignalSemaphores = &render_complete_semaphore;
-        result = vkQueueSubmit(queue_, 1, &submit, frame->Fence);
-        if (result != VK_SUCCESS)
-        {
-            message = "failed to submit Vulkan editor frame";
-            return false;
-        }
-
-        VkPresentInfoKHR present{};
-        present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-        present.waitSemaphoreCount = 1;
-        present.pWaitSemaphores = &render_complete_semaphore;
-        present.swapchainCount = 1;
-        present.pSwapchains = &window_.Swapchain;
-        present.pImageIndices = &window_.FrameIndex;
-        result = vkQueuePresentKHR(queue_, &present);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-        {
-            swapchain_rebuild_ = true;
-            return true;
-        }
-        if (result != VK_SUCCESS)
-        {
-            message = "failed to present Vulkan editor frame";
-            return false;
-        }
-
-        window_.SemaphoreIndex = (window_.SemaphoreIndex + 1) % window_.SemaphoreCount;
-        last_completed_frame_ = last_profile_.frame_index;
-        return true;
-#else
-        (void)draw_data;
-        (void)width;
-        (void)height;
-        message = "Vulkan ImGui presentation support is not compiled";
-        return false;
-#endif
-    }
-
     surface_frame_result present_surface_frame(std::uint32_t width, std::uint32_t height) override
     {
         std::string message;
@@ -878,7 +624,6 @@ public:
 
     bool render_native_viewport_frame(std::uint32_t width, std::uint32_t height, std::string& message)
     {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
         message.clear();
         if (device_lost_)
         {
@@ -892,10 +637,11 @@ public:
         }
         if (width == 0 || height == 0) return true;
 
+        const bool size_changed = width != output_viewport_width_ || height != output_viewport_height_;
         output_viewport_width_ = width;
         output_viewport_height_ = height;
 
-        if (!native_swapchain_initialized_)
+        if (!swapchain_.valid() || swapchain_rebuild_ || size_changed)
         {
             VkBool32 present_supported = VK_FALSE;
             vkGetPhysicalDeviceSurfaceSupportKHR(physical_device_, graphics_queue_family_, surface_,
@@ -908,49 +654,34 @@ public:
 
             const std::array<VkFormat, 4> formats{VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM,
                                                   VK_FORMAT_B8G8R8_UNORM, VK_FORMAT_R8G8B8_UNORM};
-            window_.Surface = surface_;
-            window_.SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(
-                physical_device_, window_.Surface, formats.data(), static_cast<int>(formats.size()),
-                VK_COLORSPACE_SRGB_NONLINEAR_KHR);
-
-            const VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
-            window_.PresentMode =
-                ImGui_ImplVulkanH_SelectPresentMode(physical_device_, window_.Surface, &present_mode, 1);
-            ImGui_ImplVulkanH_CreateOrResizeWindow(
-                instance_, physical_device_, device_, &window_, graphics_queue_family_, nullptr,
-                static_cast<int>(width), static_cast<int>(height), min_image_count_,
-                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-            if (window_.Swapchain == VK_NULL_HANDLE || window_.SemaphoreCount == 0 || window_.FrameSemaphores.Size == 0)
-            {
-                message = "native viewport swapchain creation returned no usable images";
+            const VkFormat previous_format = viewport_format_;
+            if (!swapchain_.create_or_resize(physical_device_, device_, surface_, graphics_queue_family_, width, height,
+                                             min_image_count_, VK_IMAGE_USAGE_TRANSFER_DST_BIT, formats,
+                                             VK_PRESENT_MODE_FIFO_KHR, message))
                 return false;
-            }
-            viewport_format_ = window_.SurfaceFormat.format;
+
+            viewport_format_ = swapchain_.surface_format.format;
             native_swapchain_initialized_ = true;
-        }
-
-        if (swapchain_rebuild_ || window_.Width != static_cast<int>(width) ||
-            window_.Height != static_cast<int>(height))
-        {
-            ImGui_ImplVulkanH_CreateOrResizeWindow(
-                instance_, physical_device_, device_, &window_, graphics_queue_family_, nullptr,
-                static_cast<int>(width), static_cast<int>(height), min_image_count_,
-                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
-            if (window_.Swapchain == VK_NULL_HANDLE || window_.SemaphoreCount == 0 || window_.FrameSemaphores.Size == 0)
-            {
-                message = "native viewport swapchain rebuild returned no usable images";
-                return false;
-            }
-            window_.FrameIndex = 0;
             swapchain_rebuild_ = false;
+            if (previous_format != viewport_format_ && viewport_image_ != VK_NULL_HANDLE)
+            {
+                destroy_mesh_pipeline();
+                destroy_viewport();
+            }
         }
 
         ensure_viewport(scaled_dimension(width), scaled_dimension(height));
+        if (!swapchain_.valid() || swapchain_.semaphore_index >= swapchain_.semaphores.size())
+        {
+            message = "native viewport swapchain has no usable frame resources";
+            return false;
+        }
 
-        VkSemaphore image_acquired_semaphore = window_.FrameSemaphores[window_.SemaphoreIndex].ImageAcquiredSemaphore;
-        VkSemaphore render_complete_semaphore = window_.FrameSemaphores[window_.SemaphoreIndex].RenderCompleteSemaphore;
-        VkResult result = vkAcquireNextImageKHR(device_, window_.Swapchain, UINT64_MAX, image_acquired_semaphore,
-                                                VK_NULL_HANDLE, &window_.FrameIndex);
+        const auto& sync = swapchain_.semaphores[swapchain_.semaphore_index];
+        const VkSemaphore image_acquired_semaphore = sync.image_acquired;
+        const VkSemaphore render_complete_semaphore = sync.render_complete;
+        VkResult result = vkAcquireNextImageKHR(device_, swapchain_.handle, UINT64_MAX, image_acquired_semaphore,
+                                                VK_NULL_HANDLE, &swapchain_.frame_index);
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
         {
             swapchain_rebuild_ = true;
@@ -974,56 +705,60 @@ public:
             message = "failed to acquire native viewport swapchain image: " + describe_vk_result(result);
             return false;
         }
-        active_frame_index_ = window_.FrameIndex;
+        if (swapchain_.frame_index >= swapchain_.frames.size())
+        {
+            message = "Vulkan returned a swapchain image index outside ARC's frame resources";
+            return false;
+        }
+        active_frame_index_ = swapchain_.frame_index;
 
-        ImGui_ImplVulkanH_Frame* frame = &window_.Frames[window_.FrameIndex];
-        vkWaitForFences(device_, 1, &frame->Fence, VK_TRUE, UINT64_MAX);
+        auto* frame = &swapchain_.frames[swapchain_.frame_index];
+        vkWaitForFences(device_, 1, &frame->fence, VK_TRUE, UINT64_MAX);
         collect_timestamp_results();
         collect_object_pick_result();
         collect_frame_capture_result();
         retire_completed_resources();
 
-        // See the ImGui presentation path above. Frame-dependent resource
-        // creation can wait on all swapchain fences and must happen before the
-        // current acquired fence is reset for this frame's submission.
+        // Frame-dependent resources may wait on every swapchain fence. Keep
+        // the acquired fence signaled until preparation has completed.
         prepare_frame_gpu_resources();
 
-        vkResetFences(device_, 1, &frame->Fence);
-        vkResetCommandPool(device_, frame->CommandPool, 0);
+        vkResetFences(device_, 1, &frame->fence);
+        vkResetCommandPool(device_, frame->command_pool, 0);
 
         VkCommandBufferBeginInfo begin_info{};
         begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(frame->CommandBuffer, &begin_info);
+        vkBeginCommandBuffer(frame->command_buffer, &begin_info);
 
-        begin_debug_label(frame->CommandBuffer, "ARC native viewport frame", {0.16f, 0.45f, 1.0f, 1.0f});
-        reset_timestamp_queries(frame->CommandBuffer);
+        begin_debug_label(frame->command_buffer, "ARC native viewport frame", {0.16f, 0.45f, 1.0f, 1.0f});
+        reset_timestamp_queries(frame->command_buffer);
 
         if (graph_selects_any_directional_shadow_pass())
         {
             const auto shadow_scope =
-                begin_gpu_scope(frame->CommandBuffer, graph_pass_name(builtin_render_pass::directional_shadow_dynamic,
-                                                                      "directional shadow cascades"));
-            render_shadow_maps(frame->CommandBuffer);
-            end_gpu_scope(frame->CommandBuffer, shadow_scope);
+                begin_gpu_scope(frame->command_buffer, graph_pass_name(builtin_render_pass::directional_shadow_dynamic,
+                                                                       "directional shadow cascades"));
+            render_shadow_maps(frame->command_buffer);
+            end_gpu_scope(frame->command_buffer, shadow_scope);
         }
         if (!active_local_shadows_.empty() &&
             (graph_selects(builtin_render_pass::point_shadow) || graph_selects(builtin_render_pass::spot_shadow)))
         {
-            const auto local_shadow_scope = begin_gpu_scope(frame->CommandBuffer, "local shadow atlas");
-            render_local_shadow_maps(frame->CommandBuffer);
-            end_gpu_scope(frame->CommandBuffer, local_shadow_scope);
+            const auto local_shadow_scope = begin_gpu_scope(frame->command_buffer, "local shadow atlas");
+            render_local_shadow_maps(frame->command_buffer);
+            end_gpu_scope(frame->command_buffer, local_shadow_scope);
         }
         else
-            transition_local_shadow_atlas(frame->CommandBuffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+            transition_local_shadow_atlas(frame->command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
 
         const auto viewport_scope = begin_gpu_scope(
-            frame->CommandBuffer, resolved_config_.path == render_path::forward_plus ? "forward+ viewport raster"
-                                                                                     : "deferred viewport raster");
-        render_viewport(frame->CommandBuffer);
-        end_gpu_scope(frame->CommandBuffer, viewport_scope);
+            frame->command_buffer, resolved_config_.path == render_path::forward_plus ? "forward+ viewport raster"
+                                                                                      : "deferred viewport raster");
+        render_viewport(frame->command_buffer);
+        end_gpu_scope(frame->command_buffer, viewport_scope);
 
-        transition_viewport(frame->CommandBuffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        transition_viewport(frame->command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
         VkImageMemoryBarrier swapchain_to_transfer{};
         swapchain_to_transfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1031,23 +766,23 @@ public:
         swapchain_to_transfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         swapchain_to_transfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         swapchain_to_transfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        swapchain_to_transfer.image = frame->Backbuffer;
+        swapchain_to_transfer.image = frame->backbuffer;
         swapchain_to_transfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         swapchain_to_transfer.subresourceRange.levelCount = 1;
         swapchain_to_transfer.subresourceRange.layerCount = 1;
         swapchain_to_transfer.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        vkCmdPipelineBarrier(frame->CommandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+        vkCmdPipelineBarrier(frame->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
                              0, nullptr, 0, nullptr, 1, &swapchain_to_transfer);
 
         VkImageBlit blit{};
         blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.srcSubresource.layerCount = 1;
-        blit.srcOffsets[1] = {static_cast<std::int32_t>(viewport_width_), static_cast<std::int32_t>(viewport_height_),
-                              1};
+        blit.srcOffsets[1] = {static_cast<std::int32_t>(viewport_width_), static_cast<std::int32_t>(viewport_height_), 1};
         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.layerCount = 1;
-        blit.dstOffsets[1] = {static_cast<std::int32_t>(width), static_cast<std::int32_t>(height), 1};
-        vkCmdBlitImage(frame->CommandBuffer, viewport_image_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, frame->Backbuffer,
+        blit.dstOffsets[1] = {static_cast<std::int32_t>(swapchain_.extent.width),
+                              static_cast<std::int32_t>(swapchain_.extent.height), 1};
+        vkCmdBlitImage(frame->command_buffer, viewport_image_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, frame->backbuffer,
                        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
 
         VkImageMemoryBarrier swapchain_to_present = swapchain_to_transfer;
@@ -1055,11 +790,11 @@ public:
         swapchain_to_present.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         swapchain_to_present.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         swapchain_to_present.dstAccessMask = 0;
-        vkCmdPipelineBarrier(frame->CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        vkCmdPipelineBarrier(frame->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                              0, 0, nullptr, 0, nullptr, 1, &swapchain_to_present);
 
-        end_debug_label(frame->CommandBuffer);
-        vkEndCommandBuffer(frame->CommandBuffer);
+        end_debug_label(frame->command_buffer);
+        vkEndCommandBuffer(frame->command_buffer);
 
         VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         VkSubmitInfo submit{};
@@ -1068,10 +803,10 @@ public:
         submit.pWaitSemaphores = &image_acquired_semaphore;
         submit.pWaitDstStageMask = &wait_stage;
         submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &frame->CommandBuffer;
+        submit.pCommandBuffers = &frame->command_buffer;
         submit.signalSemaphoreCount = 1;
         submit.pSignalSemaphores = &render_complete_semaphore;
-        result = vkQueueSubmit(queue_, 1, &submit, frame->Fence);
+        result = vkQueueSubmit(queue_, 1, &submit, frame->fence);
         if (result != VK_SUCCESS)
         {
             device_lost_ = result == VK_ERROR_DEVICE_LOST;
@@ -1084,8 +819,8 @@ public:
         present.waitSemaphoreCount = 1;
         present.pWaitSemaphores = &render_complete_semaphore;
         present.swapchainCount = 1;
-        present.pSwapchains = &window_.Swapchain;
-        present.pImageIndices = &window_.FrameIndex;
+        present.pSwapchains = &swapchain_.handle;
+        present.pImageIndices = &swapchain_.frame_index;
         result = vkQueuePresentKHR(queue_, &present);
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
         {
@@ -1105,29 +840,20 @@ public:
             return false;
         }
 
-        window_.SemaphoreIndex = (window_.SemaphoreIndex + 1) % window_.SemaphoreCount;
+        swapchain_.semaphore_index =
+            (swapchain_.semaphore_index + 1u) % static_cast<std::uint32_t>(swapchain_.semaphores.size());
         last_completed_frame_ = last_profile_.frame_index;
         return true;
-#else
-        (void)width;
-        (void)height;
-        message = "Vulkan native viewport presentation support is not compiled";
-        return false;
-#endif
     }
 
-    void shutdown_imgui() noexcept
+    void shutdown_surface_presenter() noexcept
     {
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-        if (!imgui_initialized_ && !native_swapchain_initialized_) return;
-
-        vkDeviceWaitIdle(device_);
+        if (!native_swapchain_initialized_ && !swapchain_.valid()) return;
+        if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
         destroy_viewport();
-        if (imgui_initialized_) ImGui_ImplVulkan_Shutdown();
-        if (window_.Surface != VK_NULL_HANDLE) ImGui_ImplVulkanH_DestroyWindow(instance_, device_, &window_, nullptr);
-        imgui_initialized_ = false;
+        swapchain_.destroy(device_);
         native_swapchain_initialized_ = false;
-#endif
+        swapchain_rebuild_ = false;
     }
 
 private:
@@ -1141,7 +867,6 @@ private:
         render_capabilities capabilities{};
     };
 
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
     std::uint32_t scaled_dimension(std::uint32_t value) const noexcept
     {
         return std::max(
@@ -1151,16 +876,12 @@ private:
     void wait_for_in_flight_frames() const
     {
         std::vector<VkFence> fences;
-        fences.reserve(window_.ImageCount);
-        for (std::uint32_t index = 0; index < window_.ImageCount; ++index)
-        {
-            const auto fence = window_.Frames[index].Fence;
-            if (fence != VK_NULL_HANDLE) fences.push_back(fence);
-        }
+        fences.reserve(swapchain_.frames.size());
+        for (const auto& frame : swapchain_.frames)
+            if (frame.fence != VK_NULL_HANDLE) fences.push_back(frame.fence);
         if (!fences.empty())
             vkWaitForFences(device_, static_cast<std::uint32_t>(fences.size()), fences.data(), VK_TRUE, UINT64_MAX);
     }
-#endif
 
     struct vulkan_command_context
     {
@@ -1169,13 +890,6 @@ private:
         VkFence fence{};
     };
 
-    struct vulkan_swapchain_state
-    {
-        VkSwapchainKHR swapchain{};
-        VkFormat format{};
-        VkExtent2D extent{};
-        bool rebuild_requested{};
-    };
 
     struct gpu_buffer
     {
@@ -1726,8 +1440,8 @@ private:
         if (!in_flight_pick_.active || pick_readback_buffer_.buffer == VK_NULL_HANDLE) return;
         if (in_flight_pick_.frame_slot != active_frame_index_)
         {
-            if (in_flight_pick_.frame_slot >= window_.ImageCount) return;
-            const auto submitting_fence = window_.Frames[in_flight_pick_.frame_slot].Fence;
+            if (in_flight_pick_.frame_slot >= swapchain_.frames.size()) return;
+            const auto submitting_fence = swapchain_.frames[in_flight_pick_.frame_slot].fence;
             if (submitting_fence == VK_NULL_HANDLE || vkGetFenceStatus(device_, submitting_fence) != VK_SUCCESS) return;
         }
 
@@ -1764,8 +1478,8 @@ private:
         if (!in_flight_capture_.active || capture_readback_buffer_.buffer == VK_NULL_HANDLE) return;
         if (in_flight_capture_.frame_slot != active_frame_index_)
         {
-            if (in_flight_capture_.frame_slot >= window_.ImageCount) return;
-            const auto submitting_fence = window_.Frames[in_flight_capture_.frame_slot].Fence;
+            if (in_flight_capture_.frame_slot >= swapchain_.frames.size()) return;
+            const auto submitting_fence = swapchain_.frames[in_flight_capture_.frame_slot].fence;
             if (submitting_fence == VK_NULL_HANDLE || vkGetFenceStatus(device_, submitting_fence) != VK_SUCCESS) return;
         }
 
@@ -1796,13 +1510,8 @@ private:
     clustered_light_grid_profile make_clustered_light_profile() const noexcept
     {
         clustered_light_grid_profile profile{};
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
         const std::uint32_t width = std::max(1u, viewport_width_);
         const std::uint32_t height = std::max(1u, viewport_height_);
-#else
-        const std::uint32_t width = 1u;
-        const std::uint32_t height = 1u;
-#endif
         profile.tiles_x = (width + profile.tile_size_pixels - 1u) / profile.tile_size_pixels;
         profile.tiles_y = (height + profile.tile_size_pixels - 1u) / profile.tile_size_pixels;
         profile.cluster_count = profile.tiles_x * profile.tiles_y * profile.depth_slices;
@@ -4109,7 +3818,6 @@ private:
         }
     }
 
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
     VkShaderModule create_shader_module(const std::uint32_t* code, std::size_t word_count)
     {
         VkShaderModuleCreateInfo info{};
@@ -4227,7 +3935,7 @@ private:
 
     std::uint32_t frame_resource_count() const noexcept
     {
-        return std::max(1u, window_.ImageCount);
+        return std::max(1u, swapchain_.image_count());
     }
 
     std::uint32_t current_frame_slot() const noexcept
@@ -6298,9 +6006,6 @@ private:
             return;
         }
 
-        if (imgui_initialized_)
-            viewport_descriptor_ = ImGui_ImplVulkan_AddTexture(viewport_sampler_, viewport_view_,
-                                                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         viewport_width_ = width;
         viewport_height_ = height;
         exposure_needs_reset_ = true;
@@ -6346,11 +6051,6 @@ private:
 
     void destroy_viewport() noexcept
     {
-        if (viewport_descriptor_ != VK_NULL_HANDLE)
-        {
-            ImGui_ImplVulkan_RemoveTexture(viewport_descriptor_);
-            viewport_descriptor_ = VK_NULL_HANDLE;
-        }
         if (viewport_sampler_ != VK_NULL_HANDLE)
         {
             vkDestroySampler(device_, viewport_sampler_, nullptr);
@@ -7917,7 +7617,6 @@ private:
         record_frame_capture(command_buffer);
         transition_viewport(command_buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
-#endif
 
     VkInstance instance_{};
     VkSurfaceKHR surface_{};
@@ -7929,7 +7628,6 @@ private:
     render_capabilities capabilities_{};
     resolved_render_config resolved_config_{};
     vulkan_context context_{};
-    vulkan_swapchain_state swapchain_state_{};
     vulkan_command_context command_context_{};
     descriptor_slot_pool descriptor_slots_;
     deferred_resource_releaser deferred_releases_;
@@ -8071,9 +7769,7 @@ private:
     VkPipeline debug_overlay_output_triangle_pipeline_{};
     bool wireframe_warning_reported_{};
 
-#if ARC_RENDER_VULKAN_ENABLE_IMGUI
-    ImGui_ImplVulkanH_Window window_{};
-    bool imgui_initialized_{};
+    detail::vulkan_swapchain swapchain_{};
     bool native_swapchain_initialized_{};
     bool swapchain_rebuild_{};
     bool device_lost_{};
@@ -8085,7 +7781,6 @@ private:
     VmaAllocation viewport_allocation_{};
     VkImageView viewport_view_{};
     VkSampler viewport_sampler_{};
-    VkDescriptorSet viewport_descriptor_{};
     VkImageLayout viewport_layout_{VK_IMAGE_LAYOUT_UNDEFINED};
     VkImage viewport_depth_image_{};
     VmaAllocation viewport_depth_allocation_{};
@@ -8103,7 +7798,6 @@ private:
     std::uint32_t viewport_height_{};
     std::uint32_t output_viewport_width_{};
     std::uint32_t output_viewport_height_{};
-#endif
 };
 
 bool has_extension(const std::vector<VkExtensionProperties>& extensions, const char* name)
