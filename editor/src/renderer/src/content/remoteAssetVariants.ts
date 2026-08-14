@@ -1,6 +1,11 @@
 import type { ArcAssetDownloadFile, ArcAssetDownloadManifest, ArcRemoteAssetKind } from '../../../common/assetSourceTypes';
 
 const knownFormats = new Set(['hdr', 'exr', 'jpg', 'jpeg', 'png', 'blend', 'gltf', 'glb', 'fbx', 'usd', 'usdz']);
+const formatFamilies: Partial<Record<ArcRemoteAssetKind, ReadonlySet<string>>> = {
+  hdri: new Set(['hdr', 'exr']),
+  model: new Set(['blend', 'gltf', 'glb', 'fbx', 'usd', 'usdz']),
+  texture: new Set(['jpg', 'jpeg', 'png', 'exr']),
+};
 
 const segments = (file: ArcAssetDownloadFile): string[] =>
   file.logicalPath
@@ -29,15 +34,17 @@ export const manifestResolutions = (manifest: ArcAssetDownloadManifest): string[
     ),
   ).sort((left, right) => resolutionValue(left) - resolutionValue(right));
 
-export const manifestFormats = (manifest: ArcAssetDownloadManifest): string[] =>
-  Array.from(
+export const manifestFormats = (manifest: ArcAssetDownloadManifest, kind?: ArcRemoteAssetKind): string[] => {
+  const allowed = kind ? (formatFamilies[kind] ?? knownFormats) : knownFormats;
+  return Array.from(
     new Set(
       manifest.files.flatMap((file) => {
         const candidates = [...segments(file).filter((segment) => knownFormats.has(segment)), extension(file)];
-        return candidates.filter((candidate) => knownFormats.has(candidate));
+        return candidates.filter((candidate) => allowed.has(candidate));
       }),
     ),
   ).sort();
+};
 
 export const preferredResolution = (resolutions: string[]): string => {
   if (resolutions.includes('2k')) return '2k';
@@ -50,7 +57,7 @@ export const preferredFormat = (formats: string[], kind: ArcRemoteAssetKind): st
     kind === 'hdri'
       ? ['hdr', 'exr']
       : kind === 'model'
-        ? ['gltf', 'glb', 'fbx', 'blend']
+        ? ['gltf', 'glb', 'fbx', 'usd', 'usdz', 'blend']
         : ['jpg', 'png', 'exr'];
   return preferences.find((format) => formats.includes(format)) ?? formats[0] ?? '';
 };
