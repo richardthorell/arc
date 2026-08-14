@@ -111,7 +111,7 @@ struct terrain_memory_estimate
 };
 
 /** @brief Nonthrowing result returned by terrain authoring operations. */
-struct terrain_authoring_result
+struct [[nodiscard]] terrain_authoring_result
 {
     bool succeeded{};
     std::string message;
