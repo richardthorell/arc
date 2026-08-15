@@ -1,4 +1,4 @@
-name: Quality Gates
+name: Code Quality
 
 on:
   push:
@@ -25,32 +25,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  dependency-and-format:
+  code-quality:
+    name: Code Quality
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set Up Node 22.12
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         with:
           node-version: 22.12.0
           cache: npm
           cache-dependency-path: editor/package-lock.json
-      - name: Install native quality tools
+      - name: Install Native Quality Tools
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-format-18 clang-tidy-18 ninja-build
-      - name: Install Electron dependencies
+      - name: Install Electron Dependencies
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         run: npm ci --prefix editor
-      - name: Dependency policy
+      - name: Dependency Policy
         run: |
           python3 tools/check_dependencies.py
           python3 -m unittest discover -s tools/tests -p "test_*.py"
-      - name: C++ formatting
+      - name: C++ Formatting
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: python3 tools/check_format.py --clang-format clang-format-18
-      - name: Electron formatting, lint, typecheck, and tests
+      - name: Electron Formatting, Lint, Typecheck, and Tests
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         working-directory: editor
         run: |
@@ -58,7 +61,7 @@ jobs:
           npm run lint
           npm run typecheck
           npm test
-      - name: Configure compile database
+      - name: Configure Compile Database
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: >
           cmake -S . -B out/build/analysis -G Ninja
@@ -67,6 +70,6 @@ jobs:
           -DARC_BUILD_EDITOR=OFF
           -DARC_BUILD_RENDER_VULKAN=OFF
           -DBUILD_TESTING=OFF
-      - name: Static analysis
+      - name: Static Analysis
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: run-clang-tidy-18 -p out/build/analysis -quiet -source-filter='.*/(engine|editor/native|samples|tools)/.*'
