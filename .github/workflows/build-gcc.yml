@@ -18,12 +18,25 @@ jobs:
   gcc-portability:
     name: GCC 14 engine and Vulkan portability
     runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-gcc
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPRESS: "true"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install GCC 14 and shader tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-14 g++-14 ninja-build
+          sudo apt-get install -y gcc-14 g++-14 ninja-build ccache
+      - name: Restore compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: arc-ccache-gcc14-relwithdebinfo-v1-${{ github.sha }}
+          restore-keys: |
+            arc-ccache-gcc14-relwithdebinfo-v1-
+      - name: Reset compiler cache stats
+        run: ccache --zero-stats
       - name: Set up Vulkan SDK 1.4.350.0
         uses: ./.github/actions/setup-vulkan
       - name: Configure
@@ -31,6 +44,8 @@ jobs:
           cmake -S . -B out/build/gcc -G Ninja
           -DCMAKE_C_COMPILER=gcc-14
           -DCMAKE_CXX_COMPILER=g++-14
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DARC_BUILD_EDITOR=ON
           -DARC_BUILD_RENDER_VULKAN=ON
@@ -39,3 +54,6 @@ jobs:
       - run: cmake --build out/build/gcc --parallel
       - run: cmake --build out/build/gcc --target arc-shaders-check
       - run: ctest --test-dir out/build/gcc --output-on-failure
+      - name: Compiler cache stats
+        if: always()
+        run: ccache --show-stats
