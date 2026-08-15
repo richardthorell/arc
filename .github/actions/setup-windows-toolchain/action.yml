@@ -1,0 +1,29 @@
+name: Set Up Windows Toolchain
+description: Configure MSVC, sccache, and the pinned Vulkan SDK for Windows CI jobs.
+
+runs:
+  using: composite
+  steps:
+    - name: Set Up MSVC
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installationPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $installationPath) { throw "Visual Studio with the x64 C++ toolchain was not found" }
+        $devCmd = Join-Path $installationPath "Common7\Tools\VsDevCmd.bat"
+        & cmd.exe /s /c "`"$devCmd`" -arch=x64 -host_arch=x64 && set" |
+          ForEach-Object {
+            if ($_ -match '^([^=]+)=(.*)$') {
+              "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV
+            }
+          }
+
+    - name: Set Up Compiler Cache
+      uses: ./.github/actions/setup-msvc-sccache
+
+    - name: Reset Compiler Cache Stats
+      shell: pwsh
+      run: sccache --zero-stats
+
+    - name: Set Up Vulkan SDK 1.4.350.0
+      uses: ./.github/actions/setup-vulkan

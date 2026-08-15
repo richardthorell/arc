@@ -1,4 +1,4 @@
-name: Product - Linux GCC
+name: Linux GCC
 
 on:
   push:
@@ -20,29 +20,30 @@ permissions:
   contents: read
 
 jobs:
-  gcc-portability:
-    name: GCC 14 engine and Vulkan portability
+  gcc:
+    name: Linux GCC 14
     runs-on: ubuntu-24.04
     env:
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-gcc
       CCACHE_MAXSIZE: 2G
       CCACHE_COMPRESS: "true"
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install GCC 14 and shader tools
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install GCC 14 and Shader Tools
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-14 g++-14 ninja-build ccache
-      - name: Set up Vulkan SDK 1.4.350.0
+      - name: Set Up Vulkan SDK 1.4.350.0
         uses: ./.github/actions/setup-vulkan
-      - name: Restore compiler cache
+      - name: Restore Compiler Cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CCACHE_DIR }}
           key: arc-ccache-gcc14-relwithdebinfo-v1-${{ github.sha }}
           restore-keys: |
             arc-ccache-gcc14-relwithdebinfo-v1-
-      - name: Reset compiler cache stats
+      - name: Reset Compiler Cache Stats
         run: ccache --zero-stats
       - name: Configure
         run: >
@@ -56,11 +57,13 @@ jobs:
           -DARC_BUILD_RENDER_VULKAN=ON
           -DARC_WARNINGS_AS_ERRORS=ON
           -DBUILD_TESTING=ON
-      - run: cmake --build out/build/gcc --parallel
-      - name: Validate shaders
+      - name: Build
+        run: cmake --build out/build/gcc --parallel
+      - name: Validate Shaders
         if: ${{ github.event_name != 'pull_request' || inputs.run_shaders }}
         run: cmake --build out/build/gcc --target arc-shaders-check
-      - run: ctest --test-dir out/build/gcc --output-on-failure
-      - name: Compiler cache stats
+      - name: Test
+        run: ctest --test-dir out/build/gcc --output-on-failure
+      - name: Compiler Cache Stats
         if: always()
         run: ccache --show-stats
