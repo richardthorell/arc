@@ -1,17 +1,18 @@
 {
-  "version": 1,
+  "version": 3,
   "name": "Matte Clay",
   "shader": "arc/default_phong",
   "domain": "surface",
   "blendMode": "opaque",
+  "shadingModel": "skin",
   "doubleSided": false,
   "surface": {
-    "baseColor": [0.62, 0.38, 0.27, 1.0],
+    "baseColor": { "r": 0.62, "g": 0.38, "b": 0.27, "a": 1.0 },
     "metallic": 0.0,
     "roughness": 0.88,
     "normalScale": 1.0,
     "aoStrength": 1.0,
-    "emissiveColor": [0.0, 0.0, 0.0],
+    "emissive": { "r": 0.0, "g": 0.0, "b": 0.0 },
     "emissiveStrength": 0.0,
     "alphaCutoff": 0.5
   },

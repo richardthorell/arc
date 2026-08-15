@@ -1,17 +1,18 @@
 {
-  "version": 1,
+  "version": 3,
   "name": "Mountain Landscape",
   "shader": "arc/default_phong",
   "domain": "surface",
   "blendMode": "opaque",
+  "shadingModel": "standard",
   "doubleSided": false,
   "surface": {
-    "baseColor": [0.92, 0.96, 0.88, 1.0],
+    "baseColor": { "r": 0.92, "g": 0.96, "b": 0.88, "a": 1.0 },
     "metallic": 0.0,
     "roughness": 0.82,
     "normalScale": 1.0,
     "aoStrength": 0.78,
-    "emissiveColor": [0.0, 0.0, 0.0],
+    "emissive": { "r": 0.0, "g": 0.0, "b": 0.0 },
     "emissiveStrength": 0.0,
     "alphaCutoff": 0.5
   },

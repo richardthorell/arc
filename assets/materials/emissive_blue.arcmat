@@ -1,17 +1,18 @@
 {
-  "version": 1,
+  "version": 3,
   "name": "Emissive Blue",
   "shader": "arc/default_phong",
   "domain": "surface",
   "blendMode": "opaque",
+  "shadingModel": "standard",
   "doubleSided": false,
   "surface": {
-    "baseColor": [0.08, 0.18, 0.38, 1.0],
+    "baseColor": { "r": 0.08, "g": 0.18, "b": 0.38, "a": 1.0 },
     "metallic": 0.0,
     "roughness": 0.42,
     "normalScale": 1.0,
     "aoStrength": 1.0,
-    "emissiveColor": [0.10, 0.55, 1.0],
+    "emissive": { "r": 0.10, "g": 0.55, "b": 1.0 },
     "emissiveStrength": 2.2,
     "alphaCutoff": 0.5
   },

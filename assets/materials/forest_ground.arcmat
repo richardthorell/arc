@@ -1,17 +1,18 @@
 {
-  "version": 1,
+  "version": 3,
   "name": "Forest Ground",
   "shader": "arc/terrain_phong",
   "domain": "surface",
   "blendMode": "opaque",
+  "shadingModel": "skin",
   "doubleSided": false,
   "surface": {
-    "baseColor": [0.36, 0.32, 0.22, 1.0],
+    "baseColor": { "r": 0.36, "g": 0.32, "b": 0.22, "a": 1.0 },
     "metallic": 0.0,
     "roughness": 0.86,
     "normalScale": 1.0,
     "aoStrength": 1.0,
-    "emissiveColor": [0.0, 0.0, 0.0],
+    "emissive": { "r": 0.0, "g": 0.0, "b": 0.0 },
     "emissiveStrength": 0.0,
     "alphaCutoff": 0.5
   },
