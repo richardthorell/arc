@@ -1,4 +1,4 @@
-name: Product - Windows MSVC
+name: Windows MSVC
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
         type: boolean
         default: true
       run_cooker:
-        description: Run the cook fixture smoke for this pull request
+        description: Run the asset cook smoke for this pull request
         required: false
         type: boolean
         default: false
@@ -25,48 +25,28 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  windows-products:
-    name: Editor, Vulkan, tests and Shipping packages
+  build-test:
+    name: Build & Test
     runs-on: windows-2022
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up MSVC
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $installationPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-          if (-not $installationPath) { throw "Visual Studio with the x64 C++ toolchain was not found" }
-          $devCmd = Join-Path $installationPath "Common7\Tools\VsDevCmd.bat"
-          & cmd.exe /s /c "`"$devCmd`" -arch=x64 -host_arch=x64 && set" |
-            ForEach-Object {
-              if ($_ -match '^([^=]+)=(.*)$') {
-                "$($matches[1])=$($matches[2])" >> $env:GITHUB_ENV
-              }
-            }
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
 
-      - name: Set up compiler cache
-        uses: ./.github/actions/setup-msvc-sccache
-
-      - name: Reset compiler cache stats
-        run: sccache --zero-stats
-
-      - name: Set up Node 22.12
+      - name: Set Up Node 22.12
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.12.0
           cache: npm
           cache-dependency-path: editor/package-lock.json
 
-      - name: Set up Vulkan SDK 1.4.350.0
-        uses: ./.github/actions/setup-vulkan
-
-      - name: Install Electron dependencies
+      - name: Install Electron Dependencies
         working-directory: editor
         run: npm ci
 
-      - name: Configure native products
+      - name: Configure Native Products
         run: >
           cmake -S . -B out/build/ci-windows -G Ninja
           -DCMAKE_C_COMPILER_LAUNCHER=sccache
@@ -80,14 +60,14 @@ jobs:
           -DARC_WARNINGS_AS_ERRORS=ON
           -DBUILD_TESTING=ON
 
-      - name: Build native editor, Vulkan, sample and tests
+      - name: Build Native Products
         run: cmake --build out/build/ci-windows --parallel
 
-      - name: Compile and validate built-in shaders
+      - name: Validate Shaders
         if: ${{ github.event_name != 'pull_request' || inputs.run_shaders }}
         run: cmake --build out/build/ci-windows --target arc-shaders-check
 
-      - name: Run native tests
+      - name: Run Native Tests
         run: ctest --test-dir out/build/ci-windows --output-on-failure
 
       - name: Validate Electron
@@ -98,16 +78,51 @@ jobs:
           npm run typecheck
           npm test
 
-      - name: Compiler cache stats
+      - name: Stage Product Symbols
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-product-symbols-windows-x64
+          path: out/build/ci-windows/**/*.pdb
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compiler Cache Stats
         if: always()
         run: sccache --show-stats
 
-      - name: Create cook fixture
-        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
-        run: out/build/ci-windows/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
+  asset-cook:
+    name: Asset Cook
+    if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Restore local derived-data cache
-        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Configure Cook Tools
+        run: >
+          cmake -S . -B out/build/cook -G Ninja
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_EDITOR=OFF
+          -DARC_BUILD_RENDER_VULKAN=ON
+          -DARC_BUILD_SAMPLES=OFF
+          -DARC_WARNINGS_AS_ERRORS=ON
+          -DBUILD_TESTING=OFF
+
+      - name: Build Cook Tools
+        run: cmake --build out/build/cook --target arc-project-cli arc-cook --parallel
+
+      - name: Create Cook Fixture
+        run: out/build/cook/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
+
+      - name: Restore Derived-Data Cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -116,148 +131,306 @@ jobs:
           key: arc-ddc-windows-v3-${{ hashFiles('templates/**/*.arcproject', 'editor/package-lock.json', 'engine/assets/**', 'engine/render/**') }}
           restore-keys: arc-ddc-windows-v3-
 
-      - name: Cook fixture
-        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
-        run: out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+      - name: Cook Fixture
+        run: out/build/cook/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
 
-      - name: Verify cooked fixture
-        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
-        run: out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+      - name: Verify Cooked Fixture
+        run: out/build/cook/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
 
-      - name: Verify warm cook cache hits
-        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
+      - name: Verify Warm Cook Cache Hits
         run: |
-          $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan --json | ConvertFrom-Json)
+          $warmCook = (& out/build/cook/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan --json | ConvertFrom-Json)
           if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
 
-      - name: Configure and build Debug SDK
+      - name: Stage Cooked Content
         if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-cooked-windows-x64
+          path: out/cooked/windows-x64-vulkan
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compiler Cache Stats
+        if: always()
+        run: sccache --show-stats
+
+  sdk-validation:
+    name: SDK Validation
+    if: github.event_name != 'pull_request'
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Configure and Build RelWithDebInfo SDK
         run: |
-          cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake -S . -B out/build/sdk-relwithdebinfo -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake --build out/build/sdk-relwithdebinfo --parallel
+
+      - name: Configure and Build Debug SDK
+        run: |
+          cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-debug --parallel
 
-      - name: Configure and build Shipping SDK
-        if: github.event_name != 'pull_request'
+      - name: Configure and Build Shipping SDK
         run: |
-          cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-shipping --parallel
 
-      - name: Install SDK configurations
-        if: github.event_name != 'pull_request'
+      - name: Install SDK Configurations
         run: |
-          cmake --install out/build/ci-windows --prefix out/sdk/arc-0.1.0
+          cmake --install out/build/sdk-relwithdebinfo --prefix out/sdk/arc-0.1.0
           cmake --install out/build/sdk-debug --prefix out/sdk/arc-0.1.0
           cmake --install out/build/sdk-shipping --prefix out/sdk/arc-0.1.0
 
-      - name: Create external Blank 3D project
-        if: github.event_name != 'pull_request'
+      - name: Verify SDK Registry
+        run: |
+          out/sdk/arc-0.1.0/bin/arc-project.exe engine register --manifest out/sdk/arc-0.1.0/arc-installation.json --registry out/sdk/installations.v1.json
+          out/sdk/arc-0.1.0/bin/arc-project.exe engine verify --registry out/sdk/installations.v1.json
+
+      - name: Create External Blank 3D Project
         run: out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
 
-      - name: Configure and build external Blank 3D RelWithDebInfo
-        if: github.event_name != 'pull_request'
+      - name: Build External RelWithDebInfo Project
         run: |
-          cmake -S out/external-game -B out/external-game/Build/ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake -S out/external-game -B out/external-game/Build/ci -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci --parallel
 
-      - name: Configure and build external Blank 3D Debug
-        if: github.event_name != 'pull_request'
+      - name: Build External Debug Project
         run: |
-          cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci-debug --parallel
 
-      - name: Configure and build external Blank 3D Shipping
-        if: github.event_name != 'pull_request'
+      - name: Build External Shipping Project
         run: |
-          cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           cmake --build out/external-game/Build/ci-shipping --parallel
 
-      - name: Verify SDK and generated project relocatability
-        if: github.event_name != 'pull_request'
+      - name: Verify SDK Relocatability
         run: |
           $tracked = Get-ChildItem out/external-game,out/sdk/arc-0.1.0/lib/cmake/ARC -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/]Build[\\/]' }
           if ($tracked | Select-String -SimpleMatch "${{ github.workspace }}") { throw "Installed SDK or generated project embeds the ARC checkout path" }
 
-      - name: Package Electron editor with native host
-        if: github.event_name != 'pull_request'
-        working-directory: editor
-        env:
-          ARC_PACKAGED_HOST_PATH: ${{ github.workspace }}\out\build\ci-windows\editor\native\arc_host_process.exe
-          ARC_PACKAGED_PROJECT_TOOL_PATH: ${{ github.workspace }}\out\build\ci-windows\tools\project_cli\arc-project.exe
-          ARC_PACKAGED_TEMPLATES_PATH: ${{ github.workspace }}\templates
-          ARC_PACKAGED_RENDER_VULKAN_PATH: ${{ github.workspace }}\out\build\ci-windows\engine\render-vulkan\arc-render-vulkan.dll
-          ARC_REQUIRE_PACKAGED_HOST: "1"
-        run: npm run build
+      - name: Compiler Cache Stats
+        if: always()
+        run: sccache --show-stats
 
-      - name: Smoke packaged editor and sample
-        if: github.event_name != 'pull_request'
-        run: |
-          Copy-Item editor/out/arc-editor-win32-x64 out/sdk/arc-0.1.0/editor -Recurse
-          out/sdk/arc-0.1.0/bin/arc-project.exe engine register --manifest out/sdk/arc-0.1.0/arc-installation.json --registry out/sdk/installations.v1.json
-          out/sdk/arc-0.1.0/bin/arc-project.exe engine verify --registry out/sdk/installations.v1.json
-          python tools/verify_distribution.py editor/out/arc-editor-win32-x64 --require resources/arc_host_process.exe --require resources/app.asar
-          python tools/run_process_smoke.py --timeout 45 editor/out/arc-editor-win32-x64/arc-editor.exe --ci-smoke
-          python tools/run_process_smoke.py --timeout 30 out/build/ci-windows/samples/arc_sample_game.exe --ci-smoke
-          python tools/run_process_smoke.py --timeout 30 out/build/ci-windows/samples/arc_headless.exe --ticks 10 --no-sleep
+  shipping-runtime:
+    name: Shipping Runtime
+    if: github.event_name != 'pull_request'
+    needs: asset-cook
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Configure Shipping runtime
-        if: github.event_name != 'pull_request'
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Download Cooked Content
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: _arc-cooked-windows-x64
+          path: out/cooked/windows-x64-vulkan
+
+      - name: Configure Shipping Runtime
         run: >
           cmake -S . -B out/build/ci-shipping -G Ninja
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
           -DCMAKE_BUILD_TYPE=Shipping
           -DARC_BUILD_SAMPLES=ON
           -DARC_WARNINGS_AS_ERRORS=ON
           -DARC_SHIPPING_CONTENT_DIR=${{ github.workspace }}/out/cooked/windows-x64-vulkan
 
-      - name: Build and install Shipping runtime
-        if: github.event_name != 'pull_request'
+      - name: Build and Install Shipping Runtime
         run: |
           cmake --build out/build/ci-shipping --parallel
           cmake --install out/build/ci-shipping --prefix out/dist/runtime
           cpack --config out/build/ci-shipping/CPackConfig.cmake -C Shipping
+
+      - name: Verify Shipping Runtime
+        run: |
           python tools/verify_distribution.py out/dist/runtime --require bin/arc_headless.exe --require bin/arc_sample_game.exe --require build-manifest.json
           python tools/run_process_smoke.py --timeout 30 out/dist/runtime/bin/arc_headless.exe --ticks 10 --no-sleep
           python tools/run_process_smoke.py --timeout 30 out/dist/runtime/bin/arc_sample_game.exe --ci-smoke
 
-      - name: Upload packaged editor
-        if: github.event_name != 'pull_request'
+      - name: Stage Headless Runtime
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: arc-editor-windows-x64
-          path: editor/out/arc-editor-win32-x64
-
-      - name: Upload Shipping headless server
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: arc-headless-windows-x64
+          name: _arc-headless-windows-x64
           path: |
             out/dist/runtime/bin/arc_headless.exe
             out/dist/runtime/content
             out/dist/runtime/build-manifest.json
+          retention-days: 1
 
-      - name: Upload Shipping sample game
-        if: github.event_name != 'pull_request'
+      - name: Stage Sample Game
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: arc-sample-game-windows-x64
+          name: _arc-sample-game-windows-x64
           path: |
             out/dist/runtime/bin/arc_sample_game.exe
             out/dist/runtime/content
             out/dist/runtime/build-manifest.json
+          retention-days: 1
 
-      - name: Upload debug symbols
-        if: github.event_name != 'pull_request'
+      - name: Stage Shipping Symbols
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-shipping-symbols-windows-x64
+          path: out/build/ci-shipping/**/*.pdb
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Stage CMake Packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-cmake-packages-windows-x64
+          path: out/build/ci-shipping/packages/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compiler Cache Stats
+        if: always()
+        run: sccache --show-stats
+
+  editor-package:
+    name: Editor Package
+    if: github.event_name != 'pull_request'
+    needs: build-test
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Set Up Node 22.12
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Install Electron Dependencies
+        working-directory: editor
+        run: npm ci
+
+      - name: Configure Editor Package Build
+        run: >
+          cmake -S . -B out/build/editor-package -G Ninja
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_EDITOR=ON
+          -DARC_BUILD_RENDER_VULKAN=ON
+          -DARC_BUILD_SAMPLES=ON
+          -DARC_WARNINGS_AS_ERRORS=ON
+          -DBUILD_TESTING=OFF
+
+      - name: Build Editor Package Dependencies
+        run: cmake --build out/build/editor-package --parallel
+
+      - name: Package Electron Editor
+        working-directory: editor
+        env:
+          ARC_PACKAGED_HOST_PATH: ${{ github.workspace }}\out\build\editor-package\editor\native\arc_host_process.exe
+          ARC_PACKAGED_PROJECT_TOOL_PATH: ${{ github.workspace }}\out\build\editor-package\tools\project_cli\arc-project.exe
+          ARC_PACKAGED_TEMPLATES_PATH: ${{ github.workspace }}\templates
+          ARC_PACKAGED_RENDER_VULKAN_PATH: ${{ github.workspace }}\out\build\editor-package\engine\render-vulkan\arc-render-vulkan.dll
+          ARC_REQUIRE_PACKAGED_HOST: "1"
+        run: npm run build
+
+      - name: Smoke Editor and Native Samples
+        run: |
+          python tools/verify_distribution.py editor/out/arc-editor-win32-x64 --require resources/arc_host_process.exe --require resources/app.asar
+          python tools/run_process_smoke.py --timeout 45 editor/out/arc-editor-win32-x64/arc-editor.exe --ci-smoke
+          python tools/run_process_smoke.py --timeout 30 out/build/editor-package/samples/arc_sample_game.exe --ci-smoke
+          python tools/run_process_smoke.py --timeout 30 out/build/editor-package/samples/arc_headless.exe --ticks 10 --no-sleep
+
+      - name: Stage Editor Package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-editor-windows-x64
+          path: editor/out/arc-editor-win32-x64
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compiler Cache Stats
+        if: always()
+        run: sccache --show-stats
+
+  publish-artifacts:
+    name: Publish Artifacts
+    if: github.event_name != 'pull_request'
+    needs: [build-test, sdk-validation, shipping-runtime, editor-package]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Editor Package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: _arc-editor-windows-x64
+          path: staging/editor
+
+      - name: Download Headless Runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: _arc-headless-windows-x64
+          path: staging/headless
+
+      - name: Download Sample Game
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: _arc-sample-game-windows-x64
+          path: staging/sample-game
+
+      - name: Download Debug Symbols
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: _arc-*-symbols-windows-x64
+          path: staging/symbols
+          merge-multiple: true
+
+      - name: Download CMake Packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: _arc-cmake-packages-windows-x64
+          path: staging/cmake-packages
+
+      - name: Publish Editor Package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: arc-editor-windows-x64
+          path: staging/editor
+
+      - name: Publish Headless Runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: arc-headless-windows-x64
+          path: staging/headless
+
+      - name: Publish Sample Game
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: arc-sample-game-windows-x64
+          path: staging/sample-game
+
+      - name: Publish Debug Symbols
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-symbols-windows-x64
-          path: |
-            out/build/ci-windows/**/*.pdb
-            out/build/ci-shipping/**/*.pdb
-          if-no-files-found: error
+          path: staging/symbols
 
-      - name: Upload CMake component packages
-        if: github.event_name != 'pull_request'
+      - name: Publish CMake Packages
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-cmake-packages-windows-x64
-          path: out/build/ci-shipping/packages/*.zip
+          path: staging/cmake-packages
