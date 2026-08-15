@@ -268,6 +268,29 @@ editor_asset_state load_default_editor_assets(const std::filesystem::path& asset
     return assets;
 }
 
+render::material_handle create_default_primitive_material(editor_scene_state& scene, render::renderer& renderer,
+                                                          const editor_asset_state& editor_assets)
+{
+    scene.primitive_material_asset = {};
+    for (const auto& builtin_root : editor_assets.builtin_roots)
+    {
+        const auto authored_path = builtin_root / "materials" / "default_phong.arcmat";
+        if (!std::filesystem::is_regular_file(authored_path)) continue;
+
+        material_asset authored;
+        const auto authored_handle =
+            load_material_for_editor(scene.material_library, renderer, builtin_root, authored_path, &authored);
+        if (!authored_handle.valid()) continue;
+
+        scene.primitive_material = authored_handle;
+        scene.primitive_material_asset.expected_type = assets::asset_types::material;
+        scene.primitive_material_asset.path_hint = "builtin/materials/default_phong.arcmat";
+        return authored_handle;
+    }
+
+    return ensure_default_material(scene, renderer);
+}
+
 render::material_handle create_default_terrain_material(editor_scene_state& scene, render::renderer& renderer,
                                                         const std::filesystem::path& asset_root)
 {
@@ -425,7 +448,8 @@ ecs::entity add_primitive_to_scene(editor_scene_state& scene, render::renderer& 
     scene.scene.emplace<scene::hierarchy_component>(entity);
     scene.asset_bindings.push_back({.entity = scene.scene.get<scene::persistent_id_component>(entity).value,
                                     .source_kind = "primitive",
-                                    .subresource = primitive_type_name(type)});
+                                    .subresource = primitive_type_name(type),
+                                    .material = scene.primitive_material_asset});
     scene.primitive_entities.push_back(entity);
     select_entity(scene.scene, entity, scene.selected_entity);
     return entity;

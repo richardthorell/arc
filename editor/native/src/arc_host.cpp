@@ -134,6 +134,7 @@ void resolve_editor_asset_bindings(editor_scene_state& state, assets::asset_mana
         else
             reference.path_hint = normalized;
     };
+    resolve(state.primitive_material_asset);
     for (auto& binding : state.asset_bindings)
     {
         resolve(binding.source);
@@ -1531,7 +1532,8 @@ ecs::entity add_default_sky_to_scene(editor_scene_state& state)
     return sky;
 }
 
-editor_scene_state create_blank_scene(render::renderer& renderer, bool include_floor = true)
+editor_scene_state create_blank_scene(render::renderer& renderer, bool include_floor = true,
+                                      const editor_asset_state* editor_assets = nullptr)
 {
     editor_scene_state state;
     const auto editor_camera = state.scene.create();
@@ -1561,6 +1563,7 @@ editor_scene_state create_blank_scene(render::renderer& renderer, bool include_f
     state.scene.emplace<scene::camera_component>(game_camera, game_camera_settings);
 
     add_default_sky_to_scene(state);
+    if (editor_assets != nullptr) create_default_primitive_material(state, renderer, *editor_assets);
     if (include_floor)
     {
         const auto floor = add_primitive_to_scene(state, renderer, editor_primitive_type::plane);
@@ -1762,7 +1765,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     // Project opening never synthesizes sample content. Rendering samples are
     // ordinary persisted scenes supplied by the selected project template.
     state_->scene.terrain_render_proxies.clear(*state_->renderer);
-    state_->scene = create_blank_scene(*state_->renderer, command.default_scene.empty());
+    state_->scene = create_blank_scene(*state_->renderer, command.default_scene.empty(), &state_->assets);
     if (state_->asset_registry)
     {
         register_editor_asset_fallbacks(state_->scene, *state_->asset_registry);
