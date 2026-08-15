@@ -1,9 +1,10 @@
 {
-  "version": 2,
+  "version": 3,
   "name": "ARC Layered Terrain",
   "shader": "arc/terrain",
   "domain": "terrain",
   "blendMode": "opaque",
+  "shadingModel": "standard",
   "doubleSided": false,
   "surface": {
     "baseColor": { "r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0 },

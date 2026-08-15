@@ -1,17 +1,18 @@
 {
-  "version": 1,
+  "version": 3,
   "name": "Water Preview",
   "shader": "arc/water_preview",
   "domain": "surface",
   "blendMode": "blend",
+  "shadingModel": "transmission",
   "doubleSided": true,
   "surface": {
-    "baseColor": [0.08, 0.32, 0.44, 0.58],
+    "baseColor": { "r": 0.08, "g": 0.32, "b": 0.44, "a": 0.58 },
     "metallic": 0.0,
     "roughness": 0.08,
     "normalScale": 1.0,
     "aoStrength": 1.0,
-    "emissiveColor": [0.0, 0.02, 0.04],
+    "emissive": { "r": 0.0, "g": 0.02, "b": 0.04 },
     "emissiveStrength": 0.0,
     "alphaCutoff": 0.5
   },
