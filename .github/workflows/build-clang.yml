@@ -18,12 +18,25 @@ jobs:
   clang-vulkan:
     name: Clang 18 Vulkan and native host compile
     runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-clang
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPRESS: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install pinned toolchain family
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 ninja-build
+          sudo apt-get install -y clang-18 ninja-build ccache
+      - name: Restore compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: arc-ccache-clang18-relwithdebinfo-v1-${{ github.sha }}
+          restore-keys: |
+            arc-ccache-clang18-relwithdebinfo-v1-
+      - name: Reset compiler cache stats
+        run: ccache --zero-stats
       - name: Set up Vulkan SDK 1.4.350.0
         uses: ./.github/actions/setup-vulkan
       - name: Configure
@@ -31,6 +44,8 @@ jobs:
           cmake -S . -B out/build/clang-vulkan -G Ninja
           -DCMAKE_C_COMPILER=clang-18
           -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DARC_BUILD_EDITOR=ON
           -DARC_BUILD_RENDER_VULKAN=ON
@@ -43,6 +58,9 @@ jobs:
         run: cmake --build out/build/clang-vulkan --target arc-shaders-check
       - name: Test
         run: ctest --test-dir out/build/clang-vulkan --output-on-failure
+      - name: Compiler cache stats
+        if: always()
+        run: ccache --show-stats
       - name: Package and smoke headless runtime
         if: github.event_name != 'pull_request'
         run: |
