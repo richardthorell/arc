@@ -14,19 +14,35 @@ concurrency:
 jobs:
   coverage:
     runs-on: ubuntu-24.04
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-coverage
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPRESS: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Keep instrumentation and report tooling on the same LLVM major version.
       - name: Install LLVM and Clang 18
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 llvm-18 ninja-build
+          sudo apt-get install -y clang-18 llvm-18 ninja-build ccache
+      - name: Restore compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: arc-ccache-clang18-coverage-v1-${{ github.sha }}
+          restore-keys: |
+            arc-ccache-clang18-coverage-v1-
+      - name: Reset compiler cache stats
+        run: ccache --zero-stats
       - name: Verify coverage tools
         run: |
           llvm-profdata-18 --version
           llvm-cov-18 --version
       - name: Configure
-        run: cmake --preset coverage-clang
+        run: >
+          cmake --preset coverage-clang
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: Build
         run: cmake --build --preset coverage-clang --parallel
       - name: Generate report
@@ -34,6 +50,9 @@ jobs:
           LLVM_PROFDATA: llvm-profdata-18
           LLVM_COV: llvm-cov-18
         run: python3 tools/generate_coverage.py
+      - name: Compiler cache stats
+        if: always()
+        run: ccache --show-stats
       - name: Upload report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
