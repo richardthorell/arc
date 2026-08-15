@@ -3,15 +3,20 @@ name: Product - Linux Clang
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
+    inputs:
+      run_shaders:
+        description: Validate built-in shaders for this pull request
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: clang-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -55,6 +60,7 @@ jobs:
       - name: Build
         run: cmake --build out/build/clang-vulkan --parallel
       - name: Validate shaders
+        if: ${{ github.event_name != 'pull_request' || inputs.run_shaders }}
         run: cmake --build out/build/clang-vulkan --target arc-shaders-check
       - name: Test
         run: ctest --test-dir out/build/clang-vulkan --output-on-failure

@@ -3,15 +3,25 @@ name: Product - Windows MSVC
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
+    inputs:
+      run_shaders:
+        description: Validate built-in shaders for this pull request
+        required: false
+        type: boolean
+        default: true
+      run_cooker:
+        description: Run the cook fixture smoke for this pull request
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: msvc-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -74,6 +84,7 @@ jobs:
         run: cmake --build out/build/ci-windows --parallel
 
       - name: Compile and validate built-in shaders
+        if: ${{ github.event_name != 'pull_request' || inputs.run_shaders }}
         run: cmake --build out/build/ci-windows --target arc-shaders-check
 
       - name: Run native tests
@@ -92,11 +103,11 @@ jobs:
         run: sccache --show-stats
 
       - name: Create cook fixture
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
         run: out/build/ci-windows/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
 
       - name: Restore local derived-data cache
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -106,15 +117,15 @@ jobs:
           restore-keys: arc-ddc-windows-v3-
 
       - name: Cook fixture
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
         run: out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
 
       - name: Verify cooked fixture
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
         run: out/build/ci-windows/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
 
       - name: Verify warm cook cache hits
-        if: github.event_name != 'pull_request'
+        if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
         run: |
           $warmCook = (& out/build/ci-windows/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan --json | ConvertFrom-Json)
           if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
