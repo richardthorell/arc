@@ -1,4 +1,4 @@
-name: PR Gate
+name: Pull Request
 
 on:
   pull_request:
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   changes:
-    name: Classify changes
+    name: Classify Changes
     runs-on: ubuntu-24.04
     outputs:
       clang: ${{ steps.classify.outputs.clang }}
@@ -26,10 +26,11 @@ jobs:
       cooker: ${{ steps.classify.outputs.cooker }}
       docs_only: ${{ steps.classify.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Classify changed paths
+      - name: Classify Changed Paths
         id: classify
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -38,7 +39,7 @@ jobs:
         run: |
           git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" | tee /tmp/arc-changed-paths.txt
           python3 tools/classify_ci_changes.py --github-output "$GITHUB_OUTPUT" < /tmp/arc-changed-paths.txt
-      - name: Summarize selection
+      - name: Summarize Selection
         shell: bash
         run: |
           {
@@ -103,7 +104,7 @@ jobs:
     needs: [changes, quality, clang, gcc, msvc, coverage]
     runs-on: ubuntu-24.04
     steps:
-      - name: Verify selected checks
+      - name: Verify Selected Checks
         env:
           CHANGES: ${{ needs.changes.result }}
           QUALITY: ${{ needs.quality.result }}
