@@ -3136,10 +3136,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                         return fail(message.empty() ? "Material assignment failed" : message, target);
                 }
                 ensure_scene_authoring_metadata(state_->scene);
-                const auto registry_path = resolved_material->read_only
-                                               ? arc::assets::normalize_asset_path(payload.path)
-                                               : arc::assets::normalize_asset_path(
-                                                     resolved_material->path.lexically_relative(state_->project.root));
+                const auto registry_path = arc::assets::normalize_asset_path(payload.path);
                 const auto material =
                     state_->asset_registry
                         ? state_->asset_registry->resolve(registry_path, arc::assets::asset_types::material)
