@@ -3,15 +3,25 @@ name: Quality Gates
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
+    inputs:
+      run_native:
+        description: Run C++ formatting and static analysis
+        required: false
+        type: boolean
+        default: true
+      run_editor:
+        description: Run Electron formatting, lint, typecheck, and tests
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -20,28 +30,36 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         with:
           node-version: 22.12.0
           cache: npm
           cache-dependency-path: editor/package-lock.json
-      - name: Install quality tools
+      - name: Install native quality tools
+        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-format-18 clang-tidy-18 ninja-build
-          npm ci --prefix editor
+      - name: Install Electron dependencies
+        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
+        run: npm ci --prefix editor
       - name: Dependency policy
         run: |
           python3 tools/check_dependencies.py
           python3 -m unittest discover -s tools/tests -p "test_*.py"
       - name: C++ formatting
+        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: python3 tools/check_format.py --clang-format clang-format-18
-      - name: Electron formatting and lint
+      - name: Electron formatting, lint, typecheck, and tests
+        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         working-directory: editor
         run: |
           npm run format:check
           npm run lint
           npm run typecheck
+          npm test
       - name: Configure compile database
+        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: >
           cmake -S . -B out/build/analysis -G Ninja
           -DCMAKE_CXX_COMPILER=clang++-18
@@ -50,4 +68,5 @@ jobs:
           -DARC_BUILD_RENDER_VULKAN=OFF
           -DBUILD_TESTING=OFF
       - name: Static analysis
+        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: run-clang-tidy-18 -p out/build/analysis -quiet -source-filter='.*/(engine|editor/native|samples|tools)/.*'
