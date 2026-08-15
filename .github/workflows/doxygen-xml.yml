@@ -1,7 +1,6 @@
 name: Doxygen Docs Data
 
 on:
-  pull_request:
   push:
     branches: [main]
   schedule:

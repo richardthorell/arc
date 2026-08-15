@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   clang-vulkan:
     name: Clang 18 Vulkan and native host compile
@@ -40,12 +44,14 @@ jobs:
       - name: Test
         run: ctest --test-dir out/build/clang-vulkan --output-on-failure
       - name: Package and smoke headless runtime
+        if: github.event_name != 'pull_request'
         run: |
           cmake --install out/build/clang-vulkan --prefix out/dist/linux
           cpack --config out/build/clang-vulkan/CPackConfig.cmake -C RelWithDebInfo
           python3 tools/run_process_smoke.py out/dist/linux/bin/arc_headless --ticks 10 --no-sleep
           python3 tools/verify_distribution.py out/dist/linux --require bin/arc_headless --require build-manifest.json
       - name: Install Debug and Shipping SDK configurations
+        if: github.event_name != 'pull_request'
         run: |
           cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_EDITOR=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-debug --parallel
@@ -54,6 +60,7 @@ jobs:
           cmake --build out/build/sdk-shipping --parallel
           cmake --install out/build/sdk-shipping --prefix out/dist/linux
       - name: Build an external headless project from the installed SDK
+        if: github.event_name != 'pull_request'
         run: |
           out/dist/linux/bin/arc-project create --name ExternalServer --destination out/external-server --template blank-headless --templates out/dist/linux/share/arc/templates --engine 0.1.0
           cmake -S out/external-server -B out/external-server/Build/ci -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/dist/linux
@@ -64,6 +71,7 @@ jobs:
           cmake --build out/external-server/Build/ci-shipping --parallel
           ! grep -R -F "${{ github.workspace }}" out/dist/linux/lib/cmake/ARC out/external-server --exclude-dir=Build
       - name: Upload headless package
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: arc-headless-linux-x64
@@ -73,6 +81,7 @@ jobs:
 
   address-undefined:
     name: Clang 18 ASan and UBSan
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -99,6 +108,7 @@ jobs:
 
   thread:
     name: Clang 18 ThreadSanitizer
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -123,6 +133,7 @@ jobs:
 
   no-coroutines:
     name: Coroutine-disabled engine
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
