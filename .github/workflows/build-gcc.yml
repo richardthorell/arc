@@ -3,12 +3,17 @@ name: Product - Linux GCC
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_call:
+    inputs:
+      run_shaders:
+        description: Validate built-in shaders for this pull request
+        required: false
+        type: boolean
+        default: true
   workflow_dispatch:
 
 concurrency:
-  group: gcc-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: gcc-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -28,6 +33,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-14 g++-14 ninja-build ccache
+      - name: Set up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
       - name: Restore compiler cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -37,8 +44,6 @@ jobs:
             arc-ccache-gcc14-relwithdebinfo-v1-
       - name: Reset compiler cache stats
         run: ccache --zero-stats
-      - name: Set up Vulkan SDK 1.4.350.0
-        uses: ./.github/actions/setup-vulkan
       - name: Configure
         run: >
           cmake -S . -B out/build/gcc -G Ninja
@@ -52,7 +57,9 @@ jobs:
           -DARC_WARNINGS_AS_ERRORS=ON
           -DBUILD_TESTING=ON
       - run: cmake --build out/build/gcc --parallel
-      - run: cmake --build out/build/gcc --target arc-shaders-check
+      - name: Validate shaders
+        if: ${{ github.event_name != 'pull_request' || inputs.run_shaders }}
+        run: cmake --build out/build/gcc --target arc-shaders-check
       - run: ctest --test-dir out/build/gcc --output-on-failure
       - name: Compiler cache stats
         if: always()
