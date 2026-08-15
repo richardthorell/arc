@@ -40,6 +40,7 @@ struct editor_scene_state
     render::mesh_handle default_mesh;
     render::material_handle default_material;
     render::material_handle primitive_material;
+    assets::asset_reference primitive_material_asset;
     render::material_handle terrain_material;
     render::material_descriptor terrain_material_descriptor;
     std::array<std::filesystem::path, 4> terrain_layer_paths{};
@@ -91,6 +92,9 @@ struct editor_scene_state
     bool focus_imported_scene_requested{};
     bool recovered_document{};
 };
+
+render::material_handle create_default_primitive_material(editor_scene_state& scene, render::renderer& renderer,
+                                                          const editor_asset_state& assets);
 
 void ensure_scene_authoring_metadata(editor_scene_state& scene);
 ecs::entity find_entity_by_guid(const editor_scene_state& scene, ecs::entity_guid guid) noexcept;
