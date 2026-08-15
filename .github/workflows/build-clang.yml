@@ -1,4 +1,4 @@
-name: Product - Linux Clang
+name: Linux Clang
 
 on:
   push:
@@ -20,29 +20,30 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  clang-vulkan:
-    name: Clang 18 Vulkan and native host compile
+  clang:
+    name: Linux Clang 18
     runs-on: ubuntu-24.04
     env:
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-clang
       CCACHE_MAXSIZE: 2G
       CCACHE_COMPRESS: "true"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned toolchain family
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Clang 18 Toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build ccache
-      - name: Restore compiler cache
+      - name: Restore Compiler Cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CCACHE_DIR }}
           key: arc-ccache-clang18-relwithdebinfo-v1-${{ github.sha }}
           restore-keys: |
             arc-ccache-clang18-relwithdebinfo-v1-
-      - name: Reset compiler cache stats
+      - name: Reset Compiler Cache Stats
         run: ccache --zero-stats
-      - name: Set up Vulkan SDK 1.4.350.0
+      - name: Set Up Vulkan SDK 1.4.350.0
         uses: ./.github/actions/setup-vulkan
       - name: Configure
         run: >
@@ -59,22 +60,22 @@ jobs:
           -DBUILD_TESTING=ON
       - name: Build
         run: cmake --build out/build/clang-vulkan --parallel
-      - name: Validate shaders
+      - name: Validate Shaders
         if: ${{ github.event_name != 'pull_request' || inputs.run_shaders }}
         run: cmake --build out/build/clang-vulkan --target arc-shaders-check
       - name: Test
         run: ctest --test-dir out/build/clang-vulkan --output-on-failure
-      - name: Compiler cache stats
+      - name: Compiler Cache Stats
         if: always()
         run: ccache --show-stats
-      - name: Package and smoke headless runtime
+      - name: Package and Smoke Headless Runtime
         if: github.event_name != 'pull_request'
         run: |
           cmake --install out/build/clang-vulkan --prefix out/dist/linux
           cpack --config out/build/clang-vulkan/CPackConfig.cmake -C RelWithDebInfo
           python3 tools/run_process_smoke.py out/dist/linux/bin/arc_headless --ticks 10 --no-sleep
           python3 tools/verify_distribution.py out/dist/linux --require bin/arc_headless --require build-manifest.json
-      - name: Install Debug and Shipping SDK configurations
+      - name: Install Debug and Shipping SDK Configurations
         if: github.event_name != 'pull_request'
         run: |
           cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_EDITOR=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
@@ -83,7 +84,7 @@ jobs:
           cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_CXX_COMPILER=clang++-18 -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           cmake --build out/build/sdk-shipping --parallel
           cmake --install out/build/sdk-shipping --prefix out/dist/linux
-      - name: Build an external headless project from the installed SDK
+      - name: Validate Installed SDK with External Headless Project
         if: github.event_name != 'pull_request'
         run: |
           out/dist/linux/bin/arc-project create --name ExternalServer --destination out/external-server --template blank-headless --templates out/dist/linux/share/arc/templates --engine 0.1.0
@@ -94,7 +95,7 @@ jobs:
           cmake -S out/external-server -B out/external-server/Build/ci-shipping -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/dist/linux
           cmake --build out/external-server/Build/ci-shipping --parallel
           ! grep -R -F "${{ github.workspace }}" out/dist/linux/lib/cmake/ARC out/external-server --exclude-dir=Build
-      - name: Upload headless package
+      - name: Upload Headless Package
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -104,12 +105,14 @@ jobs:
             out/build/clang-vulkan/packages/*.tar.gz
 
   address-undefined:
-    name: Clang 18 ASan and UBSan
+    name: Address + Undefined Sanitizers
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: |
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Clang 18 Toolchain
+        run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build
       - name: Configure
@@ -123,20 +126,23 @@ jobs:
           -DARC_BUILD_RENDER_VULKAN=OFF
           -DARC_BUILD_EDITOR=OFF
           -DBUILD_TESTING=ON
-      - run: cmake --build out/build/asan --parallel
-      - name: Test under sanitizers
+      - name: Build
+        run: cmake --build out/build/asan --parallel
+      - name: Test Under Sanitizers
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:strict_string_checks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: ctest --test-dir out/build/asan --output-on-failure
 
   thread:
-    name: Clang 18 ThreadSanitizer
+    name: Thread Sanitizer
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: |
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Clang 18 Toolchain
+        run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build
       - name: Configure
@@ -149,27 +155,33 @@ jobs:
           -DARC_BUILD_RENDER_VULKAN=OFF
           -DARC_BUILD_EDITOR=OFF
           -DBUILD_TESTING=ON
-      - run: cmake --build out/build/tsan --parallel
-      - name: Test under ThreadSanitizer
+      - name: Build
+        run: cmake --build out/build/tsan --parallel
+      - name: Test Under ThreadSanitizer
         env:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
         run: ctest --test-dir out/build/tsan --output-on-failure
 
   no-coroutines:
-    name: Coroutine-disabled engine
+    name: No-Coroutines Build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: |
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Clang 18 Toolchain
+        run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build
-      - run: >
+      - name: Configure
+        run: >
           cmake -S . -B out/build/no-coroutines -G Ninja
           -DCMAKE_CXX_COMPILER=clang++-18
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DARC_ENABLE_JOB_COROUTINES=OFF
           -DARC_BUILD_ASSET_COOKER=OFF
           -DBUILD_TESTING=ON
-      - run: cmake --build out/build/no-coroutines --parallel
-      - run: ctest --test-dir out/build/no-coroutines --output-on-failure
+      - name: Build
+        run: cmake --build out/build/no-coroutines --parallel
+      - name: Test
+        run: ctest --test-dir out/build/no-coroutines --output-on-failure
