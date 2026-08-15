@@ -44,7 +44,10 @@ class CiSelection:
 
 
 def _normalise(path: str) -> str:
-    return path.strip().replace("\\", "/").lstrip("./")
+    path = path.strip().replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    return path
 
 
 def _is_docs(path: str) -> bool:
