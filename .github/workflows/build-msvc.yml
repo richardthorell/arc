@@ -36,6 +36,12 @@ jobs:
               }
             }
 
+      - name: Set up compiler cache
+        uses: ./.github/actions/setup-msvc-sccache
+
+      - name: Reset compiler cache stats
+        run: sccache --zero-stats
+
       - name: Set up Node 22.12
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -53,6 +59,10 @@ jobs:
       - name: Configure native products
         run: >
           cmake -S . -B out/build/ci-windows -G Ninja
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DARC_BUILD_EDITOR=ON
           -DARC_BUILD_RENDER_VULKAN=ON
@@ -76,6 +86,10 @@ jobs:
         run: |
           npm run typecheck
           npm test
+
+      - name: Compiler cache stats
+        if: always()
+        run: sccache --show-stats
 
       - name: Create cook fixture
         if: github.event_name != 'pull_request'
