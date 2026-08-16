@@ -11,8 +11,14 @@ export type PanelTabPresentation = {
   closeable: boolean;
 };
 
+const registryPanelId = (component: string): WorkbenchPanelId | null => {
+  if (component === 'viewport' || component.startsWith('viewport-')) return 'viewport';
+  return component in panelRegistry ? (component as WorkbenchPanelId) : null;
+};
+
 export function getPanelTabPresentation(component: string, instanceTitle?: string): PanelTabPresentation {
-  const descriptor = panelRegistry[component as WorkbenchPanelId];
+  const registryId = registryPanelId(component);
+  const descriptor = registryId ? panelRegistry[registryId] : undefined;
   return {
     title: instanceTitle || descriptor?.title || component,
     icon: descriptor?.icon ?? null,
@@ -41,7 +47,10 @@ export class PanelDockTabRenderer implements IHeaderRenderer {
   private render() {
     if (!this.parameters) return;
     const { api } = this.parameters;
-    const presentation = getPanelTabPresentation(api.component, api.title);
+    // Dockview's runtime component value is not reliable for restored/custom
+    // instances. Panel ids are stable and viewport instance ids normalize back
+    // to the shared viewport presentation.
+    const presentation = getPanelTabPresentation(api.id || api.component, api.title);
     const Icon = presentation.icon;
     const closeProps = presentation.closeable
       ? {
