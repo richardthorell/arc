@@ -51,7 +51,12 @@ export function SchemaComponentCard<TContext extends object>({
 
   return (
     <section ref={componentRef} className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
-      <header>
+      <header
+        style={{
+          gridTemplateColumns: 'minmax(0, 1fr) var(--arc-icon-button-size)',
+          minHeight: 'var(--arc-icon-button-size)',
+        }}
+      >
         <button aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${schema.title}`} onClick={onToggle} type="button">
           {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
           <span>{schema.title}</span>
@@ -60,7 +65,6 @@ export function SchemaComponentCard<TContext extends object>({
           <UiIconButton
             aria-expanded={actionsOpen}
             aria-haspopup="menu"
-            className="inspector-component-actions"
             label={`${schema.title} component actions`}
             onClick={() => setActionsOpen((value) => !value)}
             type="button"
@@ -69,7 +73,17 @@ export function SchemaComponentCard<TContext extends object>({
           </UiIconButton>
         )}
         {onAction && actionsOpen && (
-          <div className="menu-dropdown inspector-component-menu" role="menu">
+          <div
+            className="menu-dropdown"
+            role="menu"
+            style={{
+              left: 'auto',
+              right: '4px',
+              top: 'calc(100% + 2px)',
+              width: 'max-content',
+              maxWidth: 'calc(100% - 8px)',
+            }}
+          >
             <UiButton onClick={() => runComponentAction('copy')} role="menuitem" type="button" variant="ghost">
               <span>Copy Component</span>
             </UiButton>
