@@ -12,6 +12,8 @@ import 'dockview/dist/styles/dockview.css';
 
 import { panelRegistry } from '../app/panelRegistry';
 import type { WorkbenchPanelId } from '../app/workbenchTypes';
+import { PanelDockTabRenderer } from './PanelDockTab';
+import './WorkspaceDock.css';
 
 export type WorkspaceLayoutName = 'Level Design' | 'Materials' | 'Profiling';
 
@@ -126,6 +128,7 @@ export function WorkspaceDock({
       floatingGroupDragHandle: 'titlebar',
       popoutUrl: window.location.href,
       getTabContextMenuItems: () => ['close', 'closeOthers', 'closeAll'],
+      createTabComponent: () => new PanelDockTabRenderer(),
       createComponent: ({ name }) => {
         const renderer = new ReactPanelRenderer(name as WorkbenchPanelId, () => renderPanelRef.current);
         renderers.current.add(renderer);
