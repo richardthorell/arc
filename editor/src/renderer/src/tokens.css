@@ -39,7 +39,8 @@
   --arc-dock-tab-height: 32px;
   --arc-control-height: 26px;
   --arc-control-height-sm: 24px;
-  --arc-icon-button-size: 28px;
+  --arc-button-height: 30px;
+  --arc-icon-button-size: var(--arc-button-height);
   --arc-button-padding-x: 14px;
   --arc-activity-collapsed-width: 48px;
   --arc-activity-expanded-width: 142px;
