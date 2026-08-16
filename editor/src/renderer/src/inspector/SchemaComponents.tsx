@@ -180,21 +180,19 @@ function SchemaField<TContext extends object>({
     );
   }
   if (field.type === 'enum') {
+    const options = [
+      ...(mixed ? [{ label: 'Mixed', value: '' }] : []),
+      ...field.options.map((option) => ({ label: option.label, value: option.value })),
+    ];
     return (
       <label className="inspector-property" title={field.tooltip}>
         <span className="inspector-property-label">{field.label}</span>
         <UiSelect
-          aria-label={field.ariaLabel ?? field.label}
+          ariaLabel={field.ariaLabel ?? field.label}
+          options={options}
           value={mixed ? '' : (value as string)}
-          onChange={(event) => onValue(event.target.value, true)}
-        >
-          {mixed && <option value="">Mixed</option>}
-          {field.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </UiSelect>
+          onValueChange={(next) => onValue(next, true)}
+        />
       </label>
     );
   }
