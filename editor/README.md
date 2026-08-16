@@ -15,6 +15,20 @@ Use `python run_editor.py --build-only` to build the native host and type-check
 the Electron application without launching it. Pass `--no-vulkan-render` to
 build the host without the Vulkan viewport backend.
 
+To work on editor controls in isolation, launch the standalone UI Lab:
+
+```bash
+python run_editor.py --ui-lab
+```
+
+UI Lab renders the production React controls and editor CSS in a dedicated
+Electron window without requiring the C++ host build. It includes shared button
+variants, text/search inputs, native form controls still used by production
+panels, inspector numeric/vector/color controls, asset pickers, the terrain
+range control, tabs/tree rows/panels, and a schema-driven ECS component card.
+Use it as the visual test surface when changing control sizing, spacing, states,
+colors, borders, typography, or interaction styling.
+
 Electron-only workflows can be run from this directory:
 
 ```bash
