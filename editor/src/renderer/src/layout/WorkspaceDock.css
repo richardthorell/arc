@@ -1,0 +1,22 @@
+.workspace-dock-tab-host {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 100%;
+}
+
+.workspace-dock-tab-host > .ui-tab,
+.workspace-dock-tab-host > .ui-tab-shell {
+  height: 100%;
+}
+
+.workspace-dock-tab-host .workspace-dock-tab {
+  max-width: 220px;
+}
+
+/* Dockview owns the tab chrome. Older workbench content wrappers still carry
+   their former single-panel tab strip, so suppress that chrome whenever the
+   panel is hosted by the workspace dock. */
+.workspace-dock-panel .workbench-panel > .panel-tabs {
+  display: none;
+}
