@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
+import { UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
@@ -165,9 +166,8 @@ function SchemaField<TContext extends object>({
     return (
       <label className="inspector-property" title={field.tooltip}>
         <span className="inspector-property-label">{field.label}</span>
-        <input
+        <UiTextInput
           aria-label={field.ariaLabel ?? field.label}
-          className="property-text-input"
           disabled={field.readOnly}
           value={mixed ? '' : typeof value === 'string' ? value : ''}
           onChange={(event) => onValue(event.target.value, false)}
@@ -183,7 +183,7 @@ function SchemaField<TContext extends object>({
     return (
       <label className="inspector-property" title={field.tooltip}>
         <span className="inspector-property-label">{field.label}</span>
-        <select
+        <UiSelect
           aria-label={field.ariaLabel ?? field.label}
           value={mixed ? '' : (value as string)}
           onChange={(event) => onValue(event.target.value, true)}
@@ -194,7 +194,7 @@ function SchemaField<TContext extends object>({
               {option.label}
             </option>
           ))}
-        </select>
+        </UiSelect>
       </label>
     );
   }
