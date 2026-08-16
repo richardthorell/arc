@@ -30,6 +30,12 @@ ECS component cards, menu and popup surfaces, feedback states, and the productio
 titlebar/window chrome. Use it as the visual test surface when changing control
 sizing, spacing, states, colors, borders, typography, or interaction styling.
 
+The UI Lab titlebar also exposes a theme selector. Theme IDs come from the shared
+renderer theme registry and map to the `data-theme` selectors used by
+`theme.css`. `Arc Dark` is the only registered theme today; additional themes can
+be added to the registry and corresponding theme CSS without changing the UI Lab
+selector.
+
 Electron-only workflows can be run from this directory:
 
 ```bash
