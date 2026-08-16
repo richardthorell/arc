@@ -19,7 +19,7 @@ jobs:
         with:
           ref: fix/ecs-shared-field-controls
 
-      - name: Replace native select preview
+      - name: Normalize shared select preview
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -27,42 +27,24 @@ jobs:
 
           path = Path('editor/src/renderer/src/uiLab/UiLab.tsx')
           text = path.read_text()
-          if '  UiSelect,\n' not in text:
-              text = text.replace(
-                  '  UiSearchInput,\n  UiSelectButton,',
-                  '  UiSearchInput,\n  UiSelect,\n  UiSelectButton,',
-              )
-
           pattern = re.compile(
-              r'(?P<indent>\s*)<LabCard title="Select" caption="native select">\s*'
-              r'<select value=\{nativeSelect\} onChange=\{\(event\) => setNativeSelect\(event\.target\.value\)\}>\s*'
-              r'<option>Default</option>\s*<option>High</option>\s*<option>Ultra</option>\s*'
-              r'</select>\s*</LabCard>'
+              r'^[ \t]*<LabCard title="Select" caption="UiSelect">.*?^[ \t]*</LabCard>',
+              re.MULTILINE | re.DOTALL,
           )
-          match = pattern.search(text)
-          if not match:
-              if 'caption="UiSelect"' in text:
-                  path.write_text(text)
-                  raise SystemExit(0)
-              raise SystemExit('native select preview block not found')
-
-          indent = match.group('indent')
-          child = indent + '  '
-          grandchild = child + '  '
-          replacement = (
-              f'{indent}<LabCard title="Select" caption="UiSelect">\n'
-              f'{child}<UiSelect\n'
-              f'{grandchild}ariaLabel="Quality preset"\n'
-              f'{grandchild}options={{[\n'
-              f"{grandchild}  {{ label: 'Default', value: 'Default' }},\n"
-              f"{grandchild}  {{ label: 'High', value: 'High' }},\n"
-              f"{grandchild}  {{ label: 'Ultra', value: 'Ultra' }},\n"
-              f'{grandchild}]}}\n'
-              f'{grandchild}value={{nativeSelect}}\n'
-              f'{grandchild}onValueChange={{setNativeSelect}}\n'
-              f'{child}/>\n'
-              f'{indent}</LabCard>'
-          )
+          replacement = '''          <LabCard title="Select" caption="UiSelect">
+            <UiSelect
+              ariaLabel="Quality preset"
+              options={[
+                { label: 'Default', value: 'Default' },
+                { label: 'High', value: 'High' },
+                { label: 'Ultra', value: 'Ultra' },
+              ]}
+              value={nativeSelect}
+              onValueChange={setNativeSelect}
+            />
+          </LabCard>'''
+          if not pattern.search(text):
+              raise SystemExit('shared select preview block not found')
           path.write_text(pattern.sub(replacement, text, count=1))
           PY
 
@@ -74,5 +56,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add editor/src/renderer/src/uiLab/UiLab.tsx
-          git commit -m "Use shared select in UI Lab preview"
+          git commit -m "Format shared select UI Lab preview"
           git push origin HEAD:fix/ecs-shared-field-controls
