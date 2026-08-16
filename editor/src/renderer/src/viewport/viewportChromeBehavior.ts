@@ -9,14 +9,33 @@ const decorateStatsToggle = (button: HTMLButtonElement) => {
   button.setAttribute('aria-pressed', button.closest('.arc-viewport-shell')?.classList.contains('show-stats') ? 'true' : 'false');
 };
 
-const decorateViewportStatsToggles = (root: ParentNode = document) => {
-  root.querySelectorAll<HTMLButtonElement>(viewportStatsToggleSelector).forEach(decorateStatsToggle);
+const decorateStatsRows = (shell: Element) => {
+  const rows = Array.from(shell.querySelectorAll<HTMLElement>('.arc-viewport-header-stat'));
+  const definitions = [
+    ['FPS', (value: string) => value.replace(/\s*FPS$/i, '')],
+    ['Frame Time', (value: string) => value],
+    ['Draw Calls', (value: string) => value.replace(/\s*draws?$/i, '')],
+  ] as const;
+
+  definitions.forEach(([label, format], index) => {
+    const row = rows[index];
+    if (!row) return;
+    const rawValue = row.textContent?.trim() ?? '--';
+    const value = format(rawValue);
+    if (row.dataset.statLabel !== label) row.dataset.statLabel = label;
+    if (row.dataset.statValue !== value) row.dataset.statValue = value;
+  });
 };
 
-decorateViewportStatsToggles();
+const decorateViewportChrome = (root: ParentNode = document) => {
+  root.querySelectorAll<HTMLButtonElement>(viewportStatsToggleSelector).forEach(decorateStatsToggle);
+  root.querySelectorAll('.arc-viewport-shell').forEach(decorateStatsRows);
+};
 
-const observer = new MutationObserver(() => decorateViewportStatsToggles());
-observer.observe(document.documentElement, { childList: true, subtree: true });
+decorateViewportChrome();
+
+const observer = new MutationObserver(() => decorateViewportChrome());
+observer.observe(document.documentElement, { childList: true, characterData: true, subtree: true });
 
 document.addEventListener(
   'click',
@@ -30,6 +49,7 @@ document.addEventListener(
       event.stopPropagation();
       const shell = statsToggle.closest('.arc-viewport-shell');
       if (!shell) return;
+      decorateStatsRows(shell);
       const visible = shell.classList.toggle('show-stats');
       statsToggle.setAttribute('aria-pressed', visible ? 'true' : 'false');
       return;
