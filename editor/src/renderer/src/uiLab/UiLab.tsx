@@ -24,6 +24,7 @@ import { SchemaComponentCard } from '../inspector/SchemaComponents';
 import type { Vec3, Vec4 } from '../inspector/inspectorTypes';
 import { setPathValue } from '../inspector/propertySchema';
 import type { PropertyComponentSchema } from '../inspector/propertySchema';
+import { MenuBar } from '../layout/MenuBar';
 import { TerrainRange } from '../terrain/TerrainToolsPanel';
 import {
   UiButton,
@@ -137,9 +138,19 @@ function LabSection({ title, description, children }: { title: string; descripti
   );
 }
 
-function LabCard({ title, caption, children }: { title: string; caption?: string; children: React.ReactNode }) {
+function LabCard({
+  title,
+  caption,
+  wide = false,
+  children,
+}: {
+  title: string;
+  caption?: string;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <article className="ui-lab-card">
+    <article className={`ui-lab-card ${wide ? 'ui-lab-card-wide' : ''}`}>
       <header>
         <strong>{title}</strong>
         {caption && <code>{caption}</code>}
@@ -152,6 +163,7 @@ function LabCard({ title, caption, children }: { title: string; caption?: string
 export function UiLab() {
   const [text, setText] = useState('Cabin_01');
   const [search, setSearch] = useState('');
+  const [notes, setNotes] = useState('Exterior hero asset used by the mountain village scene.');
   const [tab, setTab] = useState('Inspector');
   const [selectMode, setSelectMode] = useState(false);
   const [position, setPosition] = useState<Vec3>({ x: 12.5, y: 4, z: -8.25 });
@@ -159,6 +171,7 @@ export function UiLab() {
   const [roughness, setRoughness] = useState(0.45);
   const [color, setColor] = useState<Vec4>({ x: 0.42, y: 0.24, z: 0.12, w: 1 });
   const [range, setRange] = useState(12);
+  const [previewQuality, setPreviewQuality] = useState(72);
   const [mesh, setMesh] = useState(demoAssets[0].path);
   const [material, setMaterial] = useState(demoAssets[1].path);
   const [texture, setTexture] = useState(demoAssets[2].path);
@@ -174,6 +187,8 @@ export function UiLab() {
   const [nativeEnabled, setNativeEnabled] = useState(true);
   const [nativeSelect, setNativeSelect] = useState('Default');
   const [nativeNumber, setNativeNumber] = useState(60);
+  const [radioValue, setRadioValue] = useState('static');
+  const [realtime, setRealtime] = useState(true);
 
   const filteredAssets = useMemo(
     () => demoAssets.filter((asset) => asset.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())),
@@ -193,6 +208,7 @@ export function UiLab() {
         <div className="ui-lab-hero-actions">
           <span>Interactive</span>
           <span>Production CSS</span>
+          <span>4 controls max per row</span>
           <span>No engine host required</span>
         </div>
       </header>
@@ -247,7 +263,10 @@ export function UiLab() {
           </LabCard>
         </LabSection>
 
-        <LabSection title="Text and form inputs" description="Editor text fields plus native controls still used by production panels.">
+        <LabSection
+          title="Text and form inputs"
+          description="Editor text fields, numeric entry, multiline text, readonly values, and validation states."
+        >
           <LabCard title="Text input" caption="UiTextInput">
             <UiTextInput aria-label="Entity name" value={text} onChange={(event) => setText(event.target.value)} />
           </LabCard>
@@ -262,6 +281,42 @@ export function UiLab() {
               />
             </div>
           </LabCard>
+          <LabCard title="Number" caption="native number">
+            <input
+              aria-label="Frame limit"
+              min={1}
+              onChange={(event) => setNativeNumber(Number(event.target.value))}
+              type="number"
+              value={nativeNumber}
+            />
+          </LabCard>
+          <LabCard title="Textarea" caption="native textarea">
+            <textarea aria-label="Entity notes" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} />
+          </LabCard>
+          <LabCard title="Readonly" caption="output / readonly">
+            <div className="ui-lab-field-pair">
+              <span>Entity ID</span>
+              <output aria-label="Entity ID">1842:7</output>
+            </div>
+          </LabCard>
+          <LabCard title="Disabled / error" caption="input states">
+            <div className="ui-lab-field-stack">
+              <UiTextInput aria-label="Disabled input" disabled value="Inherited from prefab" readOnly />
+              <UiTextInput
+                aria-invalid="true"
+                aria-label="Invalid input"
+                className="ui-lab-invalid"
+                defaultValue="Missing/Asset.mesh"
+              />
+              <small className="ui-lab-error-copy">Asset reference could not be resolved.</small>
+            </div>
+          </LabCard>
+        </LabSection>
+
+        <LabSection
+          title="Selection controls"
+          description="Single- and multi-choice controls, including states not yet common in the main workbench."
+        >
           <LabCard title="Select" caption="native select">
             <select value={nativeSelect} onChange={(event) => setNativeSelect(event.target.value)}>
               <option>Default</option>
@@ -279,19 +334,58 @@ export function UiLab() {
               <span>Enabled</span>
             </label>
           </LabCard>
-          <LabCard title="Number" caption="native number">
-            <input
-              aria-label="Frame limit"
-              min={1}
-              onChange={(event) => setNativeNumber(Number(event.target.value))}
-              type="number"
-              value={nativeNumber}
-            />
+          <LabCard title="Radio group" caption="native radio">
+            <fieldset className="ui-lab-radio-group">
+              <legend>Mobility</legend>
+              {[
+                ['static', 'Static'],
+                ['stationary', 'Stationary'],
+                ['movable', 'Movable'],
+              ].map(([value, label]) => (
+                <label key={value}>
+                  <input
+                    checked={radioValue === value}
+                    name="ui-lab-mobility"
+                    onChange={() => setRadioValue(value)}
+                    type="radio"
+                    value={value}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </fieldset>
+          </LabCard>
+          <LabCard title="Switch" caption="toggle pattern">
+            <label className="ui-lab-switch">
+              <input checked={realtime} onChange={(event) => setRealtime(event.target.checked)} type="checkbox" />
+              <span className="ui-lab-switch-track" aria-hidden="true">
+                <span />
+              </span>
+              <span>Realtime updates</span>
+            </label>
+          </LabCard>
+          <LabCard title="Mixed / disabled" caption="selection states">
+            <div className="ui-lab-field-stack">
+              <label className="ui-lab-native-check">
+                <input
+                  aria-label="Mixed visibility"
+                  ref={(input) => {
+                    if (input) input.indeterminate = true;
+                  }}
+                  type="checkbox"
+                />
+                <span>Mixed visibility</span>
+              </label>
+              <label className="ui-lab-native-check">
+                <input disabled type="checkbox" />
+                <span>Unavailable option</span>
+              </label>
+            </div>
           </LabCard>
         </LabSection>
 
         <LabSection title="Inspector controls" description="The same controls used by schema-driven ECS component regions.">
-          <LabCard title="Vector 3" caption="Vector3Control">
+          <LabCard title="Vector 3" caption="Vector3Control" wide>
             <Vector3Control
               field={{ label: 'Position', precision: 2, step: 0.1, scrubSensitivity: 0.05 }}
               linked={false}
@@ -300,7 +394,7 @@ export function UiLab() {
               onPreview={(axis, value) => setPosition((current) => ({ ...current, [axis]: value }))}
             />
           </LabCard>
-          <LabCard title="Linked vector" caption="Vector3Control">
+          <LabCard title="Linked vector" caption="Vector3Control" wide>
             <Vector3Control
               field={{ label: 'Scale', precision: 2, step: 0.1, scrubSensitivity: 0.01, linked: true }}
               linked={linkedScale}
@@ -330,6 +424,20 @@ export function UiLab() {
           </LabCard>
           <LabCard title="Range + numeric" caption="TerrainRange">
             <TerrainRange label="Radius" max={128} min={0.25} step={0.25} suffix="m" value={range} onChange={setRange} />
+          </LabCard>
+          <LabCard title="Slider" caption="native range">
+            <label className="ui-lab-slider">
+              <span>Preview quality</span>
+              <input
+                aria-label="Preview quality"
+                max={100}
+                min={0}
+                onChange={(event) => setPreviewQuality(Number(event.target.value))}
+                type="range"
+                value={previewQuality}
+              />
+              <output>{previewQuality}%</output>
+            </label>
           </LabCard>
         </LabSection>
 
@@ -391,7 +499,7 @@ export function UiLab() {
               <div className="ui-lab-demo-panel-body">Panel content region</div>
             </UiPanel>
           </LabCard>
-          <LabCard title="ECS component region" caption="SchemaComponentCard">
+          <LabCard title="ECS component region" caption="SchemaComponentCard" wide>
             <SchemaComponentCard
               assets={demoAssets}
               collapsed={componentCollapsed}
@@ -401,6 +509,84 @@ export function UiLab() {
               onToggle={() => setComponentCollapsed((value) => !value)}
               onValue={(path, value) => setComponent((current) => setPathValue(current, path, value))}
             />
+          </LabCard>
+        </LabSection>
+
+        <LabSection
+          title="Menus and popovers"
+          description="Menu and popup interaction surfaces. Asset and color picker popovers can also be opened from their cards above."
+        >
+          <LabCard title="Context / dropdown menu" caption="menu-dropdown" wide>
+            <div className="ui-lab-menu-preview">
+              <div className="menu-dropdown ui-lab-menu-static" role="menu">
+                <UiButton role="menuitem" variant="ghost">
+                  Rename
+                  <small>F2</small>
+                </UiButton>
+                <UiButton role="menuitem" variant="ghost">
+                  Duplicate
+                  <small>Ctrl+D</small>
+                </UiButton>
+                <UiButton role="menuitem" variant="ghost">
+                  Create Prefab
+                </UiButton>
+                <UiButton className="ui-lab-menu-danger" role="menuitem" variant="ghost">
+                  Delete
+                  <small>Del</small>
+                </UiButton>
+              </div>
+            </div>
+          </LabCard>
+          <LabCard title="Component actions" caption="SchemaComponentCard" wide>
+            <div className="ui-lab-component-menu-hint">
+              <SchemaComponentCard
+                assets={demoAssets}
+                collapsed={false}
+                context={component}
+                schema={demoComponentSchema}
+                onAction={() => undefined}
+                onToggle={() => undefined}
+                onValue={(path, value) => setComponent((current) => setPathValue(current, path, value))}
+              />
+              <small>Use the component chevron menu to inspect copy, paste, reset, and remove actions.</small>
+            </div>
+          </LabCard>
+        </LabSection>
+
+        <LabSection title="Feedback and states" description="Common empty, informational, warning, error, and busy surfaces.">
+          <LabCard title="Message" caption="tool-message">
+            <div className="tool-message ui-lab-feedback-block">Scene saved successfully.</div>
+          </LabCard>
+          <LabCard title="Warning" caption="tool-warning">
+            <div className="tool-warning ui-lab-feedback-block">Ray tracing unavailable. Using software fallback.</div>
+          </LabCard>
+          <LabCard title="Error" caption="tool-error">
+            <div className="tool-error ui-lab-feedback-block">Shader compilation failed.</div>
+          </LabCard>
+          <LabCard title="Empty state" caption="tool-empty">
+            <div className="tool-empty ui-lab-feedback-block">No matching assets.</div>
+          </LabCard>
+          <LabCard title="Loading / busy" caption="busy state">
+            <div className="ui-lab-loading-state" role="status">
+              <span className="ui-lab-spinner" />
+              <span>Importing assets…</span>
+            </div>
+          </LabCard>
+        </LabSection>
+
+        <LabSection title="Window chrome" description="The production titlebar, menus, and native window controls in one wide preview.">
+          <LabCard title="Editor titlebar" caption="MenuBar / WindowControls" wide>
+            <div className="ui-lab-chrome-preview">
+              <MenuBar
+                canRedo
+                canUndo
+                projectTitle="MountainVillage.arcscene"
+                redoLabel="Move Cabin_01"
+                undoLabel="Move Cabin_01"
+                onCommand={() => undefined}
+                onPanel={() => undefined}
+              />
+            </div>
           </LabCard>
         </LabSection>
       </div>
