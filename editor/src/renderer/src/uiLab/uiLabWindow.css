@@ -76,10 +76,25 @@
   box-shadow: 0 0 0 2px var(--arc-color-focus-ring);
 }
 
+.ui-lab-page-tabs {
+  position: sticky;
+  top: var(--arc-titlebar-height);
+  z-index: 35;
+  height: 32px;
+  padding-left: 10px;
+  background: var(--arc-color-bg-chrome);
+}
+
+.ui-lab-page-tabs .ui-tab {
+  min-width: 92px;
+  justify-content: center;
+  font-weight: 500;
+}
+
 .ui-lab-window .ui-lab-shell {
-  min-height: calc(100vh - var(--arc-titlebar-height));
+  min-height: calc(100vh - var(--arc-titlebar-height) - 32px);
 }
 
 .ui-lab-window .ui-lab-hero {
-  top: var(--arc-titlebar-height);
+  top: calc(var(--arc-titlebar-height) + 32px);
 }
