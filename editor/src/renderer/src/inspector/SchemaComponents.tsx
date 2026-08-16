@@ -1,7 +1,7 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
-import { UiButton, UiSelect, UiTextInput } from '../ui';
+import { UiButton, UiIconButton, UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
@@ -30,38 +30,69 @@ export function SchemaComponentCard<TContext extends object>({
 }) {
   const [linked, setLinked] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const componentRef = useRef<HTMLElement | null>(null);
   const visibleFields = schema.fields.filter((field) => !field.visible || field.visible(context));
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+
+    const close = (event: PointerEvent) => {
+      if (!componentRef.current?.contains(event.target as Node)) setActionsOpen(false);
+    };
+
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [actionsOpen]);
+
+  const runComponentAction = (action: string) => {
+    setActionsOpen(false);
+    onAction?.(action);
+  };
+
   return (
-    <section className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
+    <section ref={componentRef} className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
       <header>
         <button aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${schema.title}`} onClick={onToggle} type="button">
           {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
           <span>{schema.title}</span>
-          {schema.badge && <small>{schema.badge}</small>}
         </button>
-        <button
-          aria-expanded={actionsOpen}
-          aria-label={`${schema.title} component actions`}
-          onClick={() => setActionsOpen((value) => !value)}
-          type="button"
-        >
-          <ChevronDown size={15} />
-        </button>
-        {actionsOpen && (
-          <div className="inspector-component-menu">
-            <button onClick={() => onAction?.('copy')} type="button">
-              Copy Component
-            </button>
-            <button onClick={() => onAction?.('paste')} type="button">
-              Paste Component Values
-            </button>
-            <button onClick={() => onAction?.('reset')} type="button">
-              Reset Component
-            </button>
+        {onAction && (
+          <UiIconButton
+            aria-expanded={actionsOpen}
+            aria-haspopup="menu"
+            className="ui-button-ghost"
+            label={`${schema.title} component actions`}
+            onClick={() => setActionsOpen((value) => !value)}
+            type="button"
+          >
+            <MoreVertical size={15} />
+          </UiIconButton>
+        )}
+        {onAction && actionsOpen && (
+          <div
+            className="menu-dropdown"
+            role="menu"
+            style={{ left: 'auto', right: '4px', top: 'calc(100% + 2px)' }}
+          >
+            <UiButton onClick={() => runComponentAction('copy')} role="menuitem" type="button" variant="ghost">
+              <span>Copy Component</span>
+            </UiButton>
+            <UiButton onClick={() => runComponentAction('paste')} role="menuitem" type="button" variant="ghost">
+              <span>Paste Component Values</span>
+            </UiButton>
+            <UiButton onClick={() => runComponentAction('reset')} role="menuitem" type="button" variant="ghost">
+              <span>Reset Component</span>
+            </UiButton>
             {schema.id !== 'transform' && schema.id !== 'prefab' && (
-              <button className="danger" onClick={() => onAction?.('remove')} type="button">
-                Remove Component
-              </button>
+              <UiButton
+                onClick={() => runComponentAction('remove')}
+                role="menuitem"
+                style={{ color: 'var(--arc-color-danger)' }}
+                type="button"
+                variant="ghost"
+              >
+                <span>Remove Component</span>
+              </UiButton>
             )}
           </div>
         )}
