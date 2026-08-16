@@ -9,6 +9,9 @@ import type { Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
 import type { PropertyComponentSchema, PropertyFieldSchema, VectorAxis } from './propertySchema';
 
+const meshAssignmentPrefix = '__arc_mesh__/';
+const meshAssetExtensions = ['.glb', '.gltf', '.fbx'] as const;
+
 export function SchemaComponentCard<TContext extends object>({
   schema,
   context,
@@ -32,6 +35,8 @@ export function SchemaComponentCard<TContext extends object>({
   const [actionsOpen, setActionsOpen] = useState(false);
   const componentRef = useRef<HTMLElement | null>(null);
   const visibleFields = schema.fields.filter((field) => !field.visible || field.visible(context));
+  const mixedFields = (context as { aggregate?: { mixedFields?: string[] } }).aggregate?.mixedFields ?? [];
+  const showMeshAsset = schema.id === 'meshRenderer' && !visibleFields.some((field) => field.id === 'mesh');
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -108,6 +113,20 @@ export function SchemaComponentCard<TContext extends object>({
       </header>
       {!collapsed && (
         <div className="inspector-component-content">
+          {showMeshAsset && (
+            <AssetPicker
+              allowEmpty={false}
+              allowedExtensions={meshAssetExtensions}
+              assetKinds={['mesh', 'scene']}
+              assetTypeLabel="Mesh"
+              assets={assets}
+              label="Mesh"
+              mixed={mixedFields.includes('meshRenderer.meshPath')}
+              thumbnailProvider={thumbnailProvider}
+              value={(getPathValue(context, 'meshRenderer.meshPath') as string) || ''}
+              onChange={(path) => onValue('meshRenderer.materialPath', `${meshAssignmentPrefix}${path}`, true)}
+            />
+          )}
           {visibleFields.map((field) => (
             <SchemaField
               key={field.id}
@@ -121,7 +140,7 @@ export function SchemaComponentCard<TContext extends object>({
               onAction={(action) => onAction?.(action)}
             />
           ))}
-          {!visibleFields.length && (
+          {!visibleFields.length && !showMeshAsset && (
             <div className="inspector-component-empty">No settings are active for this mode.</div>
           )}
         </div>
