@@ -161,6 +161,12 @@
   min-height: 100%;
 }
 
+/* Panel containers provide the outer tab chrome. Keep the real panel content
+   tab-free in the gallery as well, matching how WorkspaceDock composes it. */
+.ui-lab-production-panel-stage .workbench-panel > .panel-tabs {
+  display: none;
+}
+
 /* The panel itself is the real ViewportPanel. Only its render surface is replaced in UI Lab. */
 .ui-lab-production-panel[data-panel-id='viewport'] .arc-viewport-shell {
   min-height: 500px;
