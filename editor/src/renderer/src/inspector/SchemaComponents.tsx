@@ -80,7 +80,6 @@ export function SchemaComponentCard<TContext extends object>({
               left: 'auto',
               right: '4px',
               top: 'calc(100% + 2px)',
-              width: 'max-content',
               maxWidth: 'calc(100% - 8px)',
             }}
           >
