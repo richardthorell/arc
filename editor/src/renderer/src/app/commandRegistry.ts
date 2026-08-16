@@ -195,7 +195,7 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
     label: 'Show Command Palette',
     description: 'Search and run editor commands.',
     category: 'Tools',
-    defaultKeybindings: ['Ctrl+K'],
+    defaultKeybindings: ['Ctrl+Shift+P', 'Ctrl+K'],
   },
   'assets.import': {
     id: 'assets.import',
@@ -226,6 +226,7 @@ export const commandRegistry: Record<CommandId, CommandRegistration> = {
     label: 'Open Settings',
     description: 'Open editor settings.',
     category: 'Tools',
+    defaultKeybindings: ['Ctrl+,'],
   },
 };
 
