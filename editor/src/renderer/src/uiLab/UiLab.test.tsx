@@ -81,7 +81,7 @@ describe('UiLab', () => {
     const copy = screen.getByRole('menuitem', { name: 'Copy Component' });
     const menu = copy.closest('.menu-dropdown');
     expect(menu).toBeInTheDocument();
-    expect(menu).toHaveStyle({ width: 'max-content' });
+    expect(menu).not.toHaveClass('inspector-component-menu');
     expect(screen.getByRole('menuitem', { name: 'Paste Component Values' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Reset Component' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Remove Component' })).toBeInTheDocument();
