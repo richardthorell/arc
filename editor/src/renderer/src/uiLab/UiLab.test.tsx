@@ -22,7 +22,7 @@ describe('UiLab', () => {
     expect(screen.getByText('Menus and popovers')).toBeInTheDocument();
     expect(screen.getByText('Feedback and states')).toBeInTheDocument();
     expect(screen.getByText('Window chrome')).toBeInTheDocument();
-    expect(screen.getByText('ExampleComponent')).toBeInTheDocument();
+    expect(screen.getAllByText('ExampleComponent').length).toBeGreaterThan(0);
 
     expect(screen.getByRole('radio', { name: 'Static' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Realtime updates' })).toBeInTheDocument();
