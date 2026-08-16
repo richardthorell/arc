@@ -60,7 +60,7 @@ export function SchemaComponentCard<TContext extends object>({
           <UiIconButton
             aria-expanded={actionsOpen}
             aria-haspopup="menu"
-            className="ui-button-ghost"
+            className="inspector-component-actions"
             label={`${schema.title} component actions`}
             onClick={() => setActionsOpen((value) => !value)}
             type="button"
@@ -69,11 +69,7 @@ export function SchemaComponentCard<TContext extends object>({
           </UiIconButton>
         )}
         {onAction && actionsOpen && (
-          <div
-            className="menu-dropdown"
-            role="menu"
-            style={{ left: 'auto', right: '4px', top: 'calc(100% + 2px)' }}
-          >
+          <div className="menu-dropdown inspector-component-menu" role="menu">
             <UiButton onClick={() => runComponentAction('copy')} role="menuitem" type="button" variant="ghost">
               <span>Copy Component</span>
             </UiButton>
