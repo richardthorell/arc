@@ -4,6 +4,9 @@ body,
   font-family: var(--arc-font-ui);
   font-size: var(--arc-text-sm);
   line-height: var(--arc-line-default);
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Shared field-label typography used by inspector and UI Lab controls. */
