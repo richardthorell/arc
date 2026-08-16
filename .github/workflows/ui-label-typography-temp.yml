@@ -26,21 +26,19 @@ jobs:
 
           typography = Path('editor/src/renderer/src/typography.css')
           text = typography.read_text()
-          shared = '''
-
-/* Shared field-label typography. Keep property labels visually identical
-   whether a control is rendered in the inspector or in the standalone UI Lab. */
-.ui-field-label,
-.ui-lab-field-pair > span,
-.inspector-property-label,
-.inspector-number-property .inspector-scalar-scrub {
-  color: var(--arc-color-text-muted);
-  font-family: var(--arc-font-ui);
-  font-size: var(--arc-text-sm);
-  font-weight: 400;
-  line-height: var(--arc-line-default);
-}
-'''
+          shared = (
+              '\n\n/* Shared field-label typography used by inspector and UI Lab controls. */\n'
+              '.ui-field-label,\n'
+              '.ui-lab-field-pair > span,\n'
+              '.inspector-property-label,\n'
+              '.inspector-number-property .inspector-scalar-scrub {\n'
+              '  color: var(--arc-color-text-muted);\n'
+              '  font-family: var(--arc-font-ui);\n'
+              '  font-size: var(--arc-text-sm);\n'
+              '  font-weight: 400;\n'
+              '  line-height: var(--arc-line-default);\n'
+              '}\n'
+          )
           if '.ui-field-label,' not in text:
               typography.write_text(text.rstrip() + shared + '\n')
 
@@ -51,19 +49,19 @@ jobs:
 
           inspector = Path('editor/src/renderer/src/inspector/inspector.css')
           css = inspector.read_text()
-          replacements = {
-              '  font-size: 12px;\n  line-height: 1.2;': '  font-size: var(--arc-text-sm);\n  line-height: var(--arc-line-default);',
-              "  font-family:\n    WindowsSystemFont,\n    -apple-system,\n    BlinkMacSystemFont,\n    'Segoe UI',\n    sans-serif;\n  font-size: 11px;": '  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-xs);',
-              "  font-family:\n    WindowsSystemFont,\n    -apple-system,\n    BlinkMacSystemFont,\n    'Segoe UI',\n    sans-serif;\n  font-size: 12px;": '  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);',
-              '  font-size: 12px;\n  font-weight: 600;\n}\n\n.asset-reference-copy small': '  font-size: var(--arc-text-sm);\n  font-weight: 600;\n}\n\n.asset-reference-copy small',
-              '  color: #77828b;\n  font-size: 10px;\n}\n\n.asset-reference-clear': '  color: #77828b;\n  font-size: var(--arc-text-xxs);\n}\n\n.asset-reference-clear',
-              '  color: #d7dde1;\n  font-size: 11px;': '  color: #d7dde1;\n  font-size: var(--arc-text-xs);',
-              '  color: #77838c;\n  font-size: 9px;': '  color: #77838c;\n  font-size: var(--arc-text-xxs);',
-          }
-          for old, new in replacements.items():
-              css = css.replace(old, new)
-
-          # Make the production controls explicitly participate in the shared font system.
+          css = css.replace('  font-size: 12px;\n  line-height: 1.2;', '  font-size: var(--arc-text-sm);\n  line-height: var(--arc-line-default);', 1)
+          css = css.replace(
+              "  font-family:\n    WindowsSystemFont,\n    -apple-system,\n    BlinkMacSystemFont,\n    'Segoe UI',\n    sans-serif;\n  font-size: 11px;",
+              '  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-xs);',
+          )
+          css = css.replace(
+              "  font-family:\n    WindowsSystemFont,\n    -apple-system,\n    BlinkMacSystemFont,\n    'Segoe UI',\n    sans-serif;\n  font-size: 12px;",
+              '  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);',
+          )
+          css = css.replace('  color: #d7dde1;\n  font-size: 11px;', '  color: #d7dde1;\n  font-size: var(--arc-text-xs);')
+          css = css.replace('  color: #77838c;\n  font-size: 9px;', '  color: #77838c;\n  font-size: var(--arc-text-xxs);')
+          css = css.replace('  color: #dce1e5;\n  font-size: 12px;', '  color: #dce1e5;\n  font-size: var(--arc-text-sm);')
+          css = css.replace('  color: #77828b;\n  font-size: 10px;', '  color: #77828b;\n  font-size: var(--arc-text-xxs);')
           css = css.replace(
               '.inspector-component-card {\n  min-width: 0;',
               '.inspector-component-card {\n  min-width: 0;\n  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);',
