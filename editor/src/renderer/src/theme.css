@@ -31,6 +31,27 @@
   --arc-color-danger: #f85149;
   --arc-color-danger-hover: #da3633;
 
+  /* Shared button palette. These are theme tokens so every UiButton-derived
+     control can follow the same mockup-inspired treatment without local colors. */
+  --arc-color-button-border: #35424f;
+  --arc-color-button-border-hover: #4a5b6a;
+  --arc-color-button-bg-top: #27323d;
+  --arc-color-button-bg-bottom: #1f2831;
+  --arc-color-button-hover-top: #303d49;
+  --arc-color-button-hover-bottom: #26313b;
+  --arc-color-button-pressed-top: #1b242c;
+  --arc-color-button-pressed-bottom: #222c35;
+  --arc-color-button-primary-top: #2f81f7;
+  --arc-color-button-primary-bottom: #1765c9;
+  --arc-color-button-primary-hover-top: #4690ff;
+  --arc-color-button-primary-hover-bottom: #2171d7;
+  --arc-color-button-danger-top: #e34c47;
+  --arc-color-button-danger-bottom: #b92e2b;
+  --arc-color-button-danger-hover-top: #ef5d57;
+  --arc-color-button-danger-hover-bottom: #ca3834;
+  --arc-color-button-shadow: rgba(0, 0, 0, 0.34);
+  --arc-color-button-highlight: rgba(255, 255, 255, 0.055);
+
   --arc-color-shadow: rgba(0, 0, 0, 0.45);
   --arc-color-focus-ring: rgba(47, 129, 247, 0.42);
 
