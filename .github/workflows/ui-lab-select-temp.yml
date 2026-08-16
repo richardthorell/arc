@@ -1,0 +1,63 @@
+name: UI Lab Select Update Temp
+
+on:
+  push:
+    branches:
+      - fix/ecs-shared-field-controls
+    paths:
+      - .github/workflows/ui-lab-select-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-ui-lab-select:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v5
+        with:
+          ref: fix/ecs-shared-field-controls
+
+      - name: Replace native select preview
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('editor/src/renderer/src/uiLab/UiLab.tsx')
+          text = path.read_text()
+          text = text.replace(
+              "  UiSearchInput,\n  UiSelectButton,",
+              "  UiSearchInput,\n  UiSelect,\n  UiSelectButton,",
+          )
+          old = '''          <LabCard title="Select" caption="native select">
+            <select value={nativeSelect} onChange={(event) => setNativeSelect(event.target.value)}>
+              <option>Default</option>
+              <option>High</option>
+              <option>Ultra</option>
+            </select>
+          </LabCard>'''
+          new = '''          <LabCard title="Select" caption="UiSelect">
+            <UiSelect
+              ariaLabel="Quality preset"
+              options={[
+                { label: 'Default', value: 'Default' },
+                { label: 'High', value: 'High' },
+                { label: 'Ultra', value: 'Ultra' },
+              ]}
+              value={nativeSelect}
+              onValueChange={setNativeSelect}
+            />
+          </LabCard>'''
+          if old not in text:
+              raise SystemExit('native select preview block not found')
+          path.write_text(text.replace(old, new))
+          PY
+
+      - name: Commit update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/uiLab/UiLab.tsx
+          git commit -m "Use shared select in UI Lab preview"
+          git push origin HEAD:fix/ecs-shared-field-controls
