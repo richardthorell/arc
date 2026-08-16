@@ -22,16 +22,16 @@ const decorateStatsToggle = (button: HTMLButtonElement) => {
 };
 
 const compactCount = (value: number | undefined) => {
-  if (!Number.isFinite(value)) return '—';
-  const count = Math.max(0, value ?? 0);
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  const count = Math.max(0, value);
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(2).replace(/\.00$/, '')}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
   return count.toLocaleString();
 };
 
 const compactMemory = (megabytes: number | undefined) => {
-  if (!Number.isFinite(megabytes)) return '—';
-  const memory = Math.max(0, megabytes ?? 0);
+  if (typeof megabytes !== 'number' || !Number.isFinite(megabytes)) return '—';
+  const memory = Math.max(0, megabytes);
   if (memory >= 1024) return `${(memory / 1024).toFixed(2).replace(/0$/, '').replace(/\.0$/, '')} GB`;
   return `${Math.round(memory)} MB`;
 };
@@ -73,12 +73,11 @@ const decorateStatsRows = (shell: Element) => {
   setStatsCardValue(card, 'Frame Time', frameTime);
   setStatsCardValue(card, 'Draw Calls', drawCalls);
 
-  // The UI Lab has no host to query, so keep deterministic preview values for the
-  // fields already present on its project fixture. Vertices stay unknown until the
-  // renderer reports them rather than inventing production data.
+  // UI Lab has no renderer host. Use deterministic fixture values so all six
+  // rows can be judged visually; production values come from viewport.state.
   if (shell.closest('.ui-lab-production-panel')) {
     setStatsCardValue(card, 'Triangles', compactCount(3_840_220));
-    setStatsCardValue(card, 'Vertices', '—');
+    setStatsCardValue(card, 'Vertices', compactCount(6_120_480));
     setStatsCardValue(card, 'Memory', compactMemory(4280));
   }
 };
