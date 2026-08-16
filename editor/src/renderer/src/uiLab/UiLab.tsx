@@ -43,6 +43,11 @@ type DemoComponent = {
   enabled: boolean;
   name: string;
   mobility: string;
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+  color: Vec4;
+  mesh: string;
   channel: number;
   note: string;
 };
@@ -64,6 +69,51 @@ const demoComponentSchema: PropertyComponentSchema<DemoComponent> = {
         { label: 'Stationary', value: 'stationary' },
         { label: 'Movable', value: 'movable' },
       ],
+    },
+    {
+      id: 'position',
+      label: 'Position',
+      path: 'position',
+      type: 'vector3',
+      precision: 2,
+      step: 0.1,
+      scrubSensitivity: 0.05,
+    },
+    {
+      id: 'rotation',
+      label: 'Rotation',
+      path: 'rotation',
+      type: 'vector3',
+      precision: 1,
+      step: 1,
+      scrubSensitivity: 0.25,
+      unit: '°',
+    },
+    {
+      id: 'scale',
+      label: 'Scale',
+      path: 'scale',
+      type: 'vector3',
+      precision: 2,
+      step: 0.1,
+      scrubSensitivity: 0.01,
+      linked: true,
+    },
+    {
+      id: 'color',
+      label: 'Base Color',
+      path: 'color',
+      type: 'color',
+      precision: 2,
+      min: 0,
+      max: 1,
+    },
+    {
+      id: 'mesh',
+      label: 'Mesh',
+      path: 'mesh',
+      type: 'asset',
+      assetKind: 'asset',
     },
     {
       id: 'channel',
@@ -185,6 +235,11 @@ export function UiLab() {
     enabled: true,
     name: 'Cabin Renderable',
     mobility: 'static',
+    position: { x: 12.5, y: 4, z: -8.25 },
+    rotation: { x: 0, y: 35, z: 0 },
+    scale: { x: 1, y: 1, z: 1 },
+    color: { x: 0.42, y: 0.24, z: 0.12, w: 1 },
+    mesh: demoAssets[0].path,
     channel: 1,
     note: '',
   });
@@ -612,7 +667,7 @@ export function UiLab() {
           title="Window chrome"
           description="The production titlebar, menus, and native window controls in one wide preview."
         >
-          <LabCard title="Editor titlebar" caption="MenuBar / WindowControls" wide>
+          <LabCard title="Editor titlebar" caption="MenuBar / WindowControls">
             <div className="ui-lab-chrome-preview">
               <MenuBar
                 canRedo
