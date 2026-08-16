@@ -28,6 +28,8 @@ describe('UiLab', () => {
     expect(screen.getByRole('checkbox', { name: 'Realtime updates' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Entity notes' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Preview quality' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveClass('ui-text-input');
+    expect(screen.getByRole('combobox', { name: 'Mobility' })).toHaveClass('ui-select-input');
   });
 
   it('keeps gallery controls interactive', () => {
