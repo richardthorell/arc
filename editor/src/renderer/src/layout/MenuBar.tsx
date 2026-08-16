@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   Bug,
+  Check,
   CheckCircle2,
   ChevronRight,
   ClipboardPaste,
@@ -155,9 +156,9 @@ function MenuEntries({ entries, onRun }: { entries: MenuEntry[]; onRun: (entry: 
         const leading = (
           <span className="menu-leading" aria-hidden="true">
             {entry.checked !== undefined ? (
-              entry.checked ? (
-                '✓'
-              ) : null
+              <span className={`menu-entry-check ${entry.checked ? 'is-checked' : ''}`}>
+                {entry.checked && <Check size={10} strokeWidth={2.4} />}
+              </span>
             ) : Icon ? (
               <Icon size={14} strokeWidth={1.8} />
             ) : null}
@@ -168,6 +169,7 @@ function MenuEntries({ entries, onRun }: { entries: MenuEntry[]; onRun: (entry: 
           return (
             <div className="menu-submenu-container" key={`${entry.label}-${index}`}>
               <UiButton
+                className="menu-entry"
                 disabled={entry.disabled}
                 role="menuitem"
                 aria-haspopup="menu"
@@ -186,6 +188,7 @@ function MenuEntries({ entries, onRun }: { entries: MenuEntry[]; onRun: (entry: 
 
         return (
           <UiButton
+            className="menu-entry"
             disabled={entry.disabled}
             key={`${entry.command ?? entry.panel ?? entry.label}-${index}`}
             role={entry.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
@@ -195,7 +198,7 @@ function MenuEntries({ entries, onRun }: { entries: MenuEntry[]; onRun: (entry: 
           >
             {leading}
             <span className="menu-entry-label">{entry.label}</span>
-            {entry.shortcut && <small>{entry.shortcut}</small>}
+            {entry.shortcut && <small className="menu-shortcut">{entry.shortcut}</small>}
           </UiButton>
         );
       })}
@@ -322,8 +325,15 @@ export function MenuBar({
             const commands = menuCommands[item];
             const expanded = openMenu === item;
             return (
-              <div key={item} className="menu-bar-item">
+              <div
+                key={item}
+                className="menu-bar-item"
+                onPointerEnter={() => {
+                  if (openMenu && commands && openMenu !== item) setOpenMenu(item);
+                }}
+              >
                 <UiButton
+                  className="menu-bar-trigger"
                   aria-expanded={expanded}
                   aria-haspopup={commands ? 'menu' : undefined}
                   onClick={() => (commands ? setOpenMenu(expanded ? null : item) : setOpenMenu(null))}
@@ -332,7 +342,7 @@ export function MenuBar({
                   {item}
                 </UiButton>
                 {commands && expanded && (
-                  <div className="menu-dropdown" role="menu">
+                  <div className="menu-dropdown menu-bar-dropdown" role="menu">
                     <MenuEntries entries={commands} onRun={runMenuCommand} />
                   </div>
                 )}
