@@ -17,14 +17,21 @@ const graphTop = 34;
 const resourceTop = 132;
 const resourceLaneHeight = 30;
 
-export function RenderGraphPanel() {
-  const [snapshot, setSnapshot] = useState<EditorDiagnosticsSnapshot | null>(null);
+export function RenderGraphPanel({
+  fixtureSnapshot,
+  queryHost = true,
+}: {
+  fixtureSnapshot?: EditorDiagnosticsSnapshot;
+  queryHost?: boolean;
+} = {}) {
+  const [snapshot, setSnapshot] = useState<EditorDiagnosticsSnapshot | null>(fixtureSnapshot ?? null);
   const [pinned, setPinned] = useState<EditorDiagnosticsSnapshot | null>(null);
-  const [live, setLive] = useState(true);
+  const [live, setLive] = useState(queryHost);
   const [filter, setFilter] = useState('');
   const [error, setError] = useState('');
 
   const refresh = async () => {
+    if (!queryHost) return;
     const response = (await window.arc.host.query('gateway.diagnostics')) as HostResponse<EditorDiagnosticsSnapshot>;
     if (!response.succeeded || !response.payload) {
       setError(response.error || 'Render diagnostics are unavailable');
@@ -35,11 +42,14 @@ export function RenderGraphPanel() {
   };
 
   useEffect(() => {
+    if (!queryHost) return;
     void refresh();
     if (!live) return;
     const timer = window.setInterval(() => void refresh(), 500);
     return () => window.clearInterval(timer);
-  }, [live]);
+    // refresh is intentionally scoped to the current host/query mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, queryHost]);
 
   const resources = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();
@@ -77,10 +87,14 @@ export function RenderGraphPanel() {
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
-        <UiIconButton label={live ? 'Pause graph updates' : 'Resume graph updates'} onClick={() => setLive(!live)}>
+        <UiIconButton
+          disabled={!queryHost}
+          label={live ? 'Pause graph updates' : 'Resume graph updates'}
+          onClick={() => setLive(!live)}
+        >
           {live ? <Pause size={14} /> : <Play size={14} />}
         </UiIconButton>
-        <UiIconButton label="Refresh graph" onClick={() => void refresh()}>
+        <UiIconButton disabled={!queryHost} label="Refresh graph" onClick={() => void refresh()}>
           <RefreshCw size={14} />
         </UiIconButton>
         <UiButton onClick={() => setPinned(snapshot)} variant="toolbar">
