@@ -12,12 +12,7 @@ import {
   Trash2,
 } from 'lucide-react';
 
-import {
-  AssetPicker,
-  MaterialPicker,
-  PrefabPicker,
-  TexturePicker,
-} from '../inspector/AssetPicker';
+import { AssetPicker, MaterialPicker, PrefabPicker, TexturePicker } from '../inspector/AssetPicker';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from '../inspector/InspectorControls';
 import { SchemaComponentCard } from '../inspector/SchemaComponents';
@@ -124,7 +119,15 @@ const demoAssets: AssetPickerItem[] = [
   },
 ];
 
-function LabSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+function LabSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="ui-lab-section">
       <header className="ui-lab-section-header">
@@ -291,7 +294,12 @@ export function UiLab() {
             />
           </LabCard>
           <LabCard title="Textarea" caption="native textarea">
-            <textarea aria-label="Entity notes" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} />
+            <textarea
+              aria-label="Entity notes"
+              rows={4}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+            />
           </LabCard>
           <LabCard title="Readonly" caption="output / readonly">
             <div className="ui-lab-field-pair">
@@ -384,7 +392,10 @@ export function UiLab() {
           </LabCard>
         </LabSection>
 
-        <LabSection title="Inspector controls" description="The same controls used by schema-driven ECS component regions.">
+        <LabSection
+          title="Inspector controls"
+          description="The same controls used by schema-driven ECS component regions."
+        >
           <LabCard title="Vector 3" caption="Vector3Control" wide>
             <Vector3Control
               field={{ label: 'Position', precision: 2, step: 0.1, scrubSensitivity: 0.05 }}
@@ -423,7 +434,15 @@ export function UiLab() {
             <ColorControl label="Base Color" value={color} onCommit={setColor} onPreview={setColor} />
           </LabCard>
           <LabCard title="Range + numeric" caption="TerrainRange">
-            <TerrainRange label="Radius" max={128} min={0.25} step={0.25} suffix="m" value={range} onChange={setRange} />
+            <TerrainRange
+              label="Radius"
+              max={128}
+              min={0.25}
+              step={0.25}
+              suffix="m"
+              value={range}
+              onChange={setRange}
+            />
           </LabCard>
           <LabCard title="Slider" caption="native range">
             <label className="ui-lab-slider">
@@ -441,7 +460,10 @@ export function UiLab() {
           </LabCard>
         </LabSection>
 
-        <LabSection title="Asset references" description="Production asset reference controls, including type-specific pickers.">
+        <LabSection
+          title="Asset references"
+          description="Production asset reference controls, including type-specific pickers."
+        >
           <LabCard title="Generic asset" caption="AssetPicker">
             <AssetPicker
               assetKinds={['mesh']}
@@ -463,7 +485,10 @@ export function UiLab() {
           </LabCard>
         </LabSection>
 
-        <LabSection title="Navigation and containers" description="Tabs, tree rows, panels, and ECS component containers.">
+        <LabSection
+          title="Navigation and containers"
+          description="Tabs, tree rows, panels, and ECS component containers."
+        >
           <LabCard title="Tabs" caption="UiTabs / UiTab">
             <UiTabs>
               {['Inspector', 'Lighting', 'World'].map((name) => (
@@ -553,7 +578,10 @@ export function UiLab() {
           </LabCard>
         </LabSection>
 
-        <LabSection title="Feedback and states" description="Common empty, informational, warning, error, and busy surfaces.">
+        <LabSection
+          title="Feedback and states"
+          description="Common empty, informational, warning, error, and busy surfaces."
+        >
           <LabCard title="Message" caption="tool-message">
             <div className="tool-message ui-lab-feedback-block">Scene saved successfully.</div>
           </LabCard>
@@ -574,7 +602,10 @@ export function UiLab() {
           </LabCard>
         </LabSection>
 
-        <LabSection title="Window chrome" description="The production titlebar, menus, and native window controls in one wide preview.">
+        <LabSection
+          title="Window chrome"
+          description="The production titlebar, menus, and native window controls in one wide preview."
+        >
           <LabCard title="Editor titlebar" caption="MenuBar / WindowControls" wide>
             <div className="ui-lab-chrome-preview">
               <MenuBar

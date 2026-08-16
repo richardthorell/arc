@@ -3,7 +3,11 @@
   height: 100vh;
   color: var(--arc-color-text);
   background:
-    radial-gradient(circle at 15% -10%, color-mix(in srgb, var(--arc-color-accent) 12%, transparent), transparent 32rem),
+    radial-gradient(
+      circle at 15% -10%,
+      color-mix(in srgb, var(--arc-color-accent) 12%, transparent),
+      transparent 32rem
+    ),
     var(--arc-color-bg-app);
   overflow-x: hidden;
   overflow-y: auto;
@@ -287,7 +291,9 @@
   border: var(--arc-border-width) solid var(--arc-color-border-strong);
   border-radius: 999px;
   background: var(--arc-color-bg-field);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .ui-lab-switch-track > span {
@@ -298,7 +304,9 @@
   height: 12px;
   border-radius: 50%;
   background: var(--arc-color-text-muted);
-  transition: transform 120ms ease, background 120ms ease;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
 }
 
 .ui-lab-switch > input:checked + .ui-lab-switch-track {
