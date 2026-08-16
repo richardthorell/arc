@@ -69,15 +69,19 @@ describe('UiLab', () => {
     expect(screen.getByRole('combobox', { name: 'Mobility' })).toHaveTextContent('Movable');
   });
 
-  it('uses the shared context-menu surface for ECS component actions', () => {
+  it('uses the shared compact menu surface for ECS component actions', () => {
     render(<UiLab />);
 
     expect(screen.queryByText('ECS')).not.toBeInTheDocument();
     const actions = screen.getByRole('button', { name: 'ExampleComponent component actions' });
+    expect(actions).toHaveClass('ui-icon-button');
+    expect(actions).not.toHaveClass('ui-button-ghost');
     fireEvent.click(actions);
 
     const copy = screen.getByRole('menuitem', { name: 'Copy Component' });
-    expect(copy.closest('.menu-dropdown')).toBeInTheDocument();
+    const menu = copy.closest('.menu-dropdown');
+    expect(menu).toBeInTheDocument();
+    expect(menu).toHaveStyle({ width: 'max-content' });
     expect(screen.getByRole('menuitem', { name: 'Paste Component Values' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Reset Component' })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: 'Remove Component' })).toBeInTheDocument();
