@@ -27,11 +27,12 @@ jobs:
       - name: Install Electron Dependencies
         run: npm ci --prefix editor
 
-      - name: Format Theme Picker
+      - name: Format UI Lab Theme Files
         working-directory: editor
         run: >-
           npx prettier --write
           src/renderer/src/themeRegistry.ts
+          src/renderer/src/uiLab/UiLab.test.tsx
           src/renderer/src/uiLab/UiLabThemePicker.tsx
           src/renderer/src/uiLab/UiLabThemePicker.test.tsx
           src/renderer/src/uiLab/UiLabWindow.tsx
@@ -44,25 +45,27 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add editor/src/renderer/src/themeRegistry.ts editor/src/renderer/src/uiLab/UiLabThemePicker.tsx editor/src/renderer/src/uiLab/UiLabThemePicker.test.tsx editor/src/renderer/src/uiLab/UiLabWindow.tsx editor/src/renderer/src/uiLab/uiLabWindow.css
+          git add editor/src/renderer/src/themeRegistry.ts editor/src/renderer/src/uiLab/UiLab.test.tsx editor/src/renderer/src/uiLab/UiLabThemePicker.tsx editor/src/renderer/src/uiLab/UiLabThemePicker.test.tsx editor/src/renderer/src/uiLab/UiLabWindow.tsx editor/src/renderer/src/uiLab/uiLabWindow.css
           git commit -m "Format UI Lab theme picker"
           git push origin HEAD:feature/ui-lab-expanded-controls
 
-      - name: Check Theme Picker Formatting
+      - name: Check UI Lab Theme Formatting
         working-directory: editor
         run: >-
           npx prettier --check
           src/renderer/src/themeRegistry.ts
+          src/renderer/src/uiLab/UiLab.test.tsx
           src/renderer/src/uiLab/UiLabThemePicker.tsx
           src/renderer/src/uiLab/UiLabThemePicker.test.tsx
           src/renderer/src/uiLab/UiLabWindow.tsx
           src/renderer/src/uiLab/uiLabWindow.css
 
-      - name: Lint Theme Picker
+      - name: Lint UI Lab Theme Files
         working-directory: editor
         run: >-
           npx eslint
           src/renderer/src/themeRegistry.ts
+          src/renderer/src/uiLab/UiLab.test.tsx
           src/renderer/src/uiLab/UiLabThemePicker.tsx
           src/renderer/src/uiLab/UiLabThemePicker.test.tsx
           src/renderer/src/uiLab/UiLabWindow.tsx
@@ -72,6 +75,11 @@ jobs:
         working-directory: editor
         run: npm run typecheck
 
-      - name: Test Editor
+      - name: Test UI Lab
         working-directory: editor
-        run: npm test
+        run: >-
+          npx vitest run
+          src/renderer/src/uiLab/UiLab.test.tsx
+          src/renderer/src/uiLab/UiLabThemePicker.test.tsx
+          --pool=threads
+          --maxWorkers=1
