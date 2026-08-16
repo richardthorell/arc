@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-type UiButtonVariant = 'default' | 'primary' | 'ghost' | 'icon' | 'toolbar' | 'danger';
+export type UiButtonVariant = 'default' | 'primary' | 'ghost' | 'icon' | 'toolbar' | 'danger';
 
 type UiButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   active?: boolean;
