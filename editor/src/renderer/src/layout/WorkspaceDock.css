@@ -21,82 +21,148 @@
   --dv-active-sash-color: var(--arc-color-accent);
 }
 
-.workspace-dock .dv-tabs-and-actions-container {
+/* Scene documents are editor state, not another dock level. Keep the scene
+   lifecycle/model but do not render a second full-width tab controller above
+   the workspace dock. */
+.workbench-shell section.editor-region.dockview-editor-region {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workbench-shell .dockview-editor-region > .scene-document-tabs {
+  display: none;
+}
+
+.workbench-shell .workspace-dock .dv-tabs-and-actions-container {
   border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
   background: var(--arc-color-bg-panel-muted);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
 }
 
-.workspace-dock .dv-tabs-container {
+.workbench-shell .workspace-dock .dv-tabs-container {
   align-items: stretch;
   gap: 2px;
   padding-inline: 2px;
   background: transparent;
 }
 
-/* Dockview's tab remains the drag/reorder/split hit target. It contributes no
-   presentation of its own; the nested shared UiTab is the visible control. */
-.workspace-dock .dv-tabs-container > .dv-tab {
-  display: flex;
-  align-items: stretch;
-  padding: 0;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  box-shadow: none;
-}
-
-.workspace-dock .dv-tabs-container > .dv-tab.dv-active-tab,
-.workspace-dock .dv-tabs-container > .dv-tab.dv-inactive-tab {
-  color: inherit;
-  background: transparent;
-}
-
-.workspace-dock .dv-tabs-container > .dv-tab::before,
-.workspace-dock .dv-tabs-container > .dv-tab:not(.dv-tab-ghost-drag)::after {
-  display: none;
-}
-
-.workspace-dock .dv-void-container,
-.workspace-dock .dv-right-actions-container {
-  background: transparent;
-}
-
-.workspace-dock-tab-host {
+/* The Dockview tab itself is both the drag target and the ARC visual surface.
+   This avoids a nested interactive tab fighting Dockview's pointer/drag model. */
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab {
   display: flex;
   align-items: stretch;
   min-width: 0;
-  height: 100%;
+  max-width: 220px;
+  height: calc(100% - 2px);
+  margin-top: 2px;
+  padding: 0;
+  border: var(--arc-border-width) solid transparent;
+  border-bottom: 0;
+  border-radius: var(--arc-radius-2) var(--arc-radius-2) 0 0;
   color: var(--arc-color-text-muted);
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 500;
+  transition:
+    border-color 100ms ease,
+    color 100ms ease,
+    background 100ms ease,
+    box-shadow 100ms ease;
 }
 
-.workspace-dock-tab-host > .ui-tab,
-.workspace-dock-tab-host > .ui-tab-shell {
-  max-width: 220px;
-}
-
-.workspace-dock-tab-host .workspace-dock-tab {
-  max-width: 220px;
-}
-
-.workspace-dock-tab-host .ui-tab-icon {
-  display: inline-flex;
-}
-
-/* Make the active panel read as part of the surface below it rather than a
-   generic Dockview tab. The shared UiTab still draws the blue selection line. */
-.workspace-dock .dv-active-tab .workspace-dock-tab-host {
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab:hover {
   color: var(--arc-color-text-strong);
+  border-color: var(--arc-color-border-subtle);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 68%),
+    var(--arc-color-bg-active);
 }
 
-.workspace-dock .dv-tab-dragging .workspace-dock-tab-host,
-.workspace-dock .dv-dragged .workspace-dock-tab-host {
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab.dv-active-tab {
+  color: var(--arc-color-text-strong);
+  border-color: var(--arc-color-border);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(47, 129, 247, 0.24) 0%,
+      rgba(47, 129, 247, 0.11) 52%,
+      rgba(47, 129, 247, 0.035) 100%
+    ),
+    var(--arc-color-bg-panel-raised);
+  box-shadow:
+    inset 0 -2px 0 var(--arc-color-accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 -4px 14px rgba(8, 48, 98, 0.16);
+  font-weight: 600;
+}
+
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab::before,
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab:not(.dv-tab-ghost-drag)::after {
+  display: none;
+}
+
+.workbench-shell .workspace-dock .dv-void-container,
+.workbench-shell .workspace-dock .dv-right-actions-container {
+  background: transparent;
+}
+
+.workspace-dock-tab-content {
+  display: flex;
+  align-items: center;
+  gap: var(--arc-space-3);
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding-left: var(--arc-space-5);
+  color: inherit;
+  overflow: hidden;
+}
+
+.workspace-dock-tab-content .workspace-dock-tab-icon {
+  display: inline-flex;
+  color: var(--arc-color-text-dim);
+}
+
+.workbench-shell .workspace-dock .dv-tab:hover .workspace-dock-tab-icon {
+  color: var(--arc-color-text);
+}
+
+.workbench-shell .workspace-dock .dv-tab.dv-active-tab .workspace-dock-tab-icon {
+  color: var(--arc-color-accent-hover);
+}
+
+.workspace-dock-tab-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-dock-tab-content .workspace-dock-tab-close {
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  height: 100%;
+  margin-left: 0;
+  border-radius: 3px;
+  opacity: 0.58;
+}
+
+.workbench-shell .workspace-dock .dv-tab:hover .workspace-dock-tab-close,
+.workbench-shell .workspace-dock .dv-tab.dv-active-tab .workspace-dock-tab-close,
+.workspace-dock-tab-content .workspace-dock-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.workbench-shell .workspace-dock .dv-tab-dragging .workspace-dock-tab-content,
+.workbench-shell .workspace-dock .dv-dragged .workspace-dock-tab-content {
   opacity: 0.82;
 }
 
-/* Dockview owns panel grouping and movement. Older workbench content wrappers
-   still carry their former single-panel tab strip, so suppress that chrome
-   whenever the panel is hosted by the workspace dock. */
+/* Older workbench content wrappers still carry their former single-panel tab
+   strip. Dockview is now the only tab controller around docked panel content. */
 .workspace-dock-panel .workbench-panel > .panel-tabs {
   display: none;
 }
