@@ -17,6 +17,12 @@ describe('panel dock tab presentation', () => {
     expect(tab.icon).toBe(panelRegistry.viewport.icon);
   });
 
+  it('normalizes viewport instance ids back to the viewport presentation', () => {
+    const tab = getPanelTabPresentation('viewport-3', 'Viewport 3');
+    expect(tab.title).toBe('Viewport 3');
+    expect(tab.icon).toBe(panelRegistry.viewport.icon);
+  });
+
   it('supports a panel registration without an icon', () => {
     const previous = panelRegistry.search.icon;
     panelRegistry.search.icon = null;
