@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Mountain village viewport mock</title>
+  <desc id="desc">Stylized 3D editor viewport background with mountains, pine trees, a cabin, and ground grid.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#526a79"/>
+      <stop offset="0.48" stop-color="#324754"/>
+      <stop offset="1" stop-color="#1b2932"/>
+    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#314137"/>
+      <stop offset="1" stop-color="#18211f"/>
+    </linearGradient>
+    <linearGradient id="mountain" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60727a"/>
+      <stop offset="1" stop-color="#27363d"/>
+    </linearGradient>
+    <linearGradient id="mountain2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#435860"/>
+      <stop offset="1" stop-color="#202d33"/>
+    </linearGradient>
+    <linearGradient id="wood" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9b7654"/>
+      <stop offset="1" stop-color="#5e4635"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4a5560"/>
+      <stop offset="1" stop-color="#242d35"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity=".34"/>
+    </filter>
+    <filter id="haze">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="1240" cy="145" r="86" fill="#d6d7c5" opacity=".16" filter="url(#haze)"/>
+  <path d="M0 428 210 218 355 337 520 118 764 365 1005 176 1198 356 1380 240 1600 404V592H0Z" fill="url(#mountain2)"/>
+  <path d="M0 514 250 344 414 446 667 278 883 460 1115 314 1320 474 1600 348V636H0Z" fill="url(#mountain)" opacity=".94"/>
+  <path d="M0 522 220 374 298 420 476 260 646 405 790 320 960 466 1132 348 1328 470 1600 394V603H0Z" fill="#d8e0dd" opacity=".07"/>
+
+  <path d="M0 520C318 493 497 503 781 542c313 44 512-6 819-14v372H0Z" fill="url(#ground)"/>
+  <path d="M0 641c305-78 595-45 798-5 251 49 478 35 802-25" fill="none" stroke="#7c937c" stroke-width="3" opacity=".18"/>
+
+  <g opacity=".18" stroke="#a9c4bd" stroke-width="1">
+    <path d="M0 677H1600"/><path d="M0 725H1600"/><path d="M0 781H1600"/><path d="M0 846H1600"/>
+    <path d="M166 570 39 900"/><path d="M344 554 269 900"/><path d="M523 548 499 900"/><path d="M701 548 730 900"/><path d="M878 549 959 900"/><path d="M1054 552 1188 900"/><path d="M1228 560 1416 900"/>
+  </g>
+
+  <g fill="#1c3229" opacity=".95">
+    <path d="m184 545 42-118 42 118-18-9 29 67h-106l30-67Z"/>
+    <path d="m325 585 38-108 38 108-16-8 27 61h-98l27-61Z"/>
+    <path d="m1270 584 46-132 46 132-20-10 33 75h-118l33-75Z"/>
+    <path d="m1404 557 36-101 36 101-15-7 24 57h-90l25-57Z"/>
+    <path d="m1118 602 31-88 31 88-13-6 21 49h-78l21-49Z"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <path d="M636 574 768 486 911 563 777 653Z" fill="#3b332d" opacity=".55"/>
+    <path d="M647 486 794 410 934 490 782 575Z" fill="url(#roof)"/>
+    <path d="M650 490 782 566V708L650 640Z" fill="url(#wood)"/>
+    <path d="M782 566 934 490V633L782 708Z" fill="#755740"/>
+    <path d="m650 490 132-80 152 80-13 10-139-69-120 70Z" fill="#252e35"/>
+    <rect x="704" y="574" width="37" height="69" fill="#23303a"/>
+    <rect x="833" y="553" width="55" height="45" rx="2" fill="#263846"/>
+    <rect x="839" y="559" width="43" height="33" fill="#d5b475" opacity=".38"/>
+    <rect x="873" y="432" width="21" height="83" fill="#485057"/>
+  </g>
+
+  <path d="M760 708c-84 47-130 90-190 192h289c-27-79-40-137-99-192Z" fill="#6c5e48" opacity=".48"/>
+
+  <g stroke-linecap="round" stroke-width="4" opacity=".78">
+    <path d="M781 566V469" stroke="#73cf74"/>
+    <path d="M781 566h97" stroke="#ee625e"/>
+    <path d="m781 566-59 49" stroke="#5b9cff"/>
+    <path d="m781 469-8 15h16Z" fill="#73cf74" stroke="#73cf74"/>
+    <path d="m878 566-15-8v16Z" fill="#ee625e" stroke="#ee625e"/>
+    <path d="m722 615 5-16 10 12Z" fill="#5b9cff" stroke="#5b9cff"/>
+  </g>
+
+  <rect x="620" y="397" width="339" height="323" fill="none" stroke="#5aa4ff" stroke-width="2" opacity=".55" stroke-dasharray="7 6"/>
+  <rect width="1600" height="900" fill="url(#sky)" opacity=".04"/>
+</svg>
