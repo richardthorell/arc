@@ -61,7 +61,7 @@ describe('UiLab', () => {
     render(<UiLab />);
 
     fireEvent.click(screen.getByRole('button', { name: 'File' }));
-    expect(screen.getByRole('menuitem', { name: /^New Scene/ })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /^Save Scene/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'New SceneCtrl+N' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Save SceneCtrl+S' })).toBeInTheDocument();
   });
 });
