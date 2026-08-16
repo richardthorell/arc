@@ -11,7 +11,7 @@ textarea {
   justify-content: center;
   gap: var(--arc-space-3);
   min-width: 0;
-  height: var(--arc-control-height);
+  height: var(--arc-button-height);
   padding: 0 var(--arc-button-padding-x);
   border: var(--arc-border-width) solid var(--arc-color-button-border);
   border-radius: var(--arc-radius-1);
@@ -117,7 +117,7 @@ textarea {
 }
 
 .ui-button-toolbar {
-  height: var(--arc-control-height);
+  height: var(--arc-button-height);
   padding-inline: var(--arc-button-padding-x);
   border-color: var(--arc-color-button-border);
   background: linear-gradient(180deg, var(--arc-color-button-bg-top), var(--arc-color-button-bg-bottom));
@@ -219,7 +219,7 @@ textarea {
   justify-content: space-between;
   width: 100%;
   min-width: 0;
-  height: var(--arc-control-height);
+  height: var(--arc-button-height);
   padding: 0 var(--arc-space-4) 0 var(--arc-button-padding-x);
   border-color: var(--arc-color-button-border);
   color: var(--arc-color-text);
