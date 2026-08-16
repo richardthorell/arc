@@ -91,12 +91,14 @@
   background: rgba(255, 255, 255, 0.11);
 }
 
-/* Shared menu surface. Menus size to their content, but never narrower than the editor menu baseline. */
+/* Shared menu surface. The grid establishes the menu's intrinsic width from its
+   longest item, then stretches every item to that resolved width. */
 .menu-dropdown {
   position: absolute;
   left: 0;
   top: 31px;
   z-index: var(--arc-z-dropdown);
+  display: grid;
   width: max-content;
   min-width: 230px;
   max-width: calc(100vw - 16px);
@@ -109,7 +111,8 @@
 
 .menu-dropdown button {
   justify-content: flex-start;
-  width: 100%;
+  width: auto;
+  min-width: 0;
   height: 28px;
   padding: 0 10px;
   color: var(--arc-color-text);
