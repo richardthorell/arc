@@ -167,11 +167,14 @@
   white-space: nowrap;
 }
 
-.menu-dropdown button small,
+/* Metadata in any shared menu uses the same subtle text treatment. */
+.menu-dropdown small {
+  color: var(--arc-color-text-subtle);
+}
+
 .menu-shortcut {
   justify-self: end;
   margin-left: 24px;
-  color: var(--arc-color-text);
   white-space: nowrap;
 }
 
@@ -179,6 +182,7 @@
   border-color: transparent;
   background: transparent;
   box-shadow: none;
+  cursor: default;
   opacity: 0.42;
 }
 
