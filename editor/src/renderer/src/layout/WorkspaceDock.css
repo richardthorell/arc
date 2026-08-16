@@ -63,7 +63,8 @@
   box-shadow: none;
   font-family: var(--arc-font-ui);
   font-size: var(--arc-text-sm);
-  font-weight: 500;
+  font-weight: 400;
+  line-height: var(--arc-line-tight);
   transition:
     border-color 100ms ease,
     color 100ms ease,
@@ -74,27 +75,19 @@
 .workbench-shell .workspace-dock .dv-tabs-container > .dv-tab:hover {
   color: var(--arc-color-text-strong);
   border-color: var(--arc-color-border-subtle);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 68%),
-    var(--arc-color-bg-active);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .workbench-shell .workspace-dock .dv-tabs-container > .dv-tab.dv-active-tab {
   color: var(--arc-color-text-strong);
   border-color: var(--arc-color-border);
   background:
-    linear-gradient(
-      180deg,
-      rgba(47, 129, 247, 0.24) 0%,
-      rgba(47, 129, 247, 0.11) 52%,
-      rgba(47, 129, 247, 0.035) 100%
-    ),
+    linear-gradient(180deg, rgba(47, 129, 247, 0.11), rgba(47, 129, 247, 0.025) 70%, transparent),
     var(--arc-color-bg-panel-raised);
   box-shadow:
     inset 0 -2px 0 var(--arc-color-accent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    0 -4px 14px rgba(8, 48, 98, 0.16);
-  font-weight: 600;
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  font-weight: 400;
 }
 
 .workbench-shell .workspace-dock .dv-tabs-container > .dv-tab::before,
@@ -114,14 +107,25 @@
   min-width: 0;
   width: 100%;
   height: 100%;
-  padding-left: var(--arc-space-5);
+  padding: 0 var(--arc-space-4) 0 var(--arc-space-6);
   color: inherit;
   overflow: hidden;
 }
 
 .workspace-dock-tab-content .workspace-dock-tab-icon {
   display: inline-flex;
+  flex: 0 0 var(--arc-icon-sm);
+  align-items: center;
+  justify-content: center;
+  width: var(--arc-icon-sm);
+  height: var(--arc-icon-sm);
   color: var(--arc-color-text-dim);
+}
+
+.workspace-dock-tab-content .workspace-dock-tab-icon svg {
+  width: var(--arc-icon-sm);
+  height: var(--arc-icon-sm);
+  stroke-width: 1.8;
 }
 
 .workbench-shell .workspace-dock .dv-tab:hover .workspace-dock-tab-icon {
@@ -141,13 +145,13 @@
 }
 
 .workspace-dock-tab-content .workspace-dock-tab-close {
-  flex: 0 0 24px;
-  width: 24px;
-  min-width: 24px;
-  height: 100%;
-  margin-left: 0;
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  margin-left: var(--arc-space-1);
   border-radius: 3px;
-  opacity: 0.58;
+  opacity: 0.52;
 }
 
 .workbench-shell .workspace-dock .dv-tab:hover .workspace-dock-tab-close,
@@ -162,7 +166,13 @@
 }
 
 /* Older workbench content wrappers still carry their former single-panel tab
-   strip. Dockview is now the only tab controller around docked panel content. */
+   strip. Dockview is now the only tab controller around docked panel content.
+   Once that legacy strip is hidden, collapse its old 34px grid row too so the
+   actual panel body fills the complete Dockview content area. */
+.workspace-dock-panel .workbench-panel {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .workspace-dock-panel .workbench-panel > .panel-tabs {
   display: none;
 }
