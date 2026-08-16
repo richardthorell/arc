@@ -27,6 +27,7 @@ import {
   UiPanel,
   UiPanelHeader,
   UiSearchInput,
+  UiSelect,
   UiSelectButton,
   UiTab,
   UiTabs,
@@ -325,12 +326,17 @@ export function UiLab() {
           title="Selection controls"
           description="Single- and multi-choice controls, including states not yet common in the main workbench."
         >
-          <LabCard title="Select" caption="native select">
-            <select value={nativeSelect} onChange={(event) => setNativeSelect(event.target.value)}>
-              <option>Default</option>
-              <option>High</option>
-              <option>Ultra</option>
-            </select>
+          <LabCard title="Select" caption="UiSelect">
+            <UiSelect
+              ariaLabel="Quality preset"
+              options={[
+                { label: 'Default', value: 'Default' },
+                { label: 'High', value: 'High' },
+                { label: 'Ultra', value: 'Ultra' },
+              ]}
+              value={nativeSelect}
+              onValueChange={setNativeSelect}
+            />
           </LabCard>
           <LabCard title="Checkbox" caption="native checkbox">
             <label className="ui-lab-native-check">

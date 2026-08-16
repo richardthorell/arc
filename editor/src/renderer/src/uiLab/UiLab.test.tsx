@@ -28,6 +28,8 @@ describe('UiLab', () => {
     expect(screen.getByRole('checkbox', { name: 'Realtime updates' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Entity notes' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Preview quality' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveClass('ui-text-input');
+    expect(screen.getByRole('combobox', { name: 'Mobility' })).toHaveClass('ui-select-trigger');
   });
 
   it('keeps gallery controls interactive', () => {
@@ -55,6 +57,16 @@ describe('UiLab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Global' }));
     expect(screen.getByRole('button', { name: 'Global' })).toHaveClass('is-active');
+  });
+
+  it('uses the shared context-menu surface for ECS enum choices', () => {
+    render(<UiLab />);
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Mobility' }));
+    const movableOption = screen.getByRole('option', { name: 'Movable' });
+    expect(movableOption.closest('.menu-dropdown')).toHaveClass('ui-select-menu');
+    fireEvent.click(movableOption);
+    expect(screen.getByRole('combobox', { name: 'Mobility' })).toHaveTextContent('Movable');
   });
 
   it('exposes the production titlebar menu in the window chrome preview', () => {

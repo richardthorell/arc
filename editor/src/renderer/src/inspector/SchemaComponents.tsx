@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
+import { UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
@@ -165,9 +166,8 @@ function SchemaField<TContext extends object>({
     return (
       <label className="inspector-property" title={field.tooltip}>
         <span className="inspector-property-label">{field.label}</span>
-        <input
+        <UiTextInput
           aria-label={field.ariaLabel ?? field.label}
-          className="property-text-input"
           disabled={field.readOnly}
           value={mixed ? '' : typeof value === 'string' ? value : ''}
           onChange={(event) => onValue(event.target.value, false)}
@@ -180,21 +180,19 @@ function SchemaField<TContext extends object>({
     );
   }
   if (field.type === 'enum') {
+    const options = [
+      ...(mixed ? [{ label: 'Mixed', value: '' }] : []),
+      ...field.options.map((option) => ({ label: option.label, value: option.value })),
+    ];
     return (
       <label className="inspector-property" title={field.tooltip}>
         <span className="inspector-property-label">{field.label}</span>
-        <select
-          aria-label={field.ariaLabel ?? field.label}
+        <UiSelect
+          ariaLabel={field.ariaLabel ?? field.label}
+          options={options}
           value={mixed ? '' : (value as string)}
-          onChange={(event) => onValue(event.target.value, true)}
-        >
-          {mixed && <option value="">Mixed</option>}
-          {field.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          onValueChange={(next) => onValue(next, true)}
+        />
       </label>
     );
   }
