@@ -17,6 +17,9 @@ import {
 
 import type { ActivityRegistration, PanelRegistration, WorkbenchPanelId } from './workbenchTypes';
 
+// This registry is the source of truth for dock-tab presentation. Panel content
+// should not render its own outer tab/header chrome; WorkspaceDock composes the
+// title, optional icon, active state, and close affordance around the content.
 export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   hierarchy: {
     id: 'hierarchy',

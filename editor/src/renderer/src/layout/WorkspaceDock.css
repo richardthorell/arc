@@ -1,0 +1,178 @@
+.workbench-shell .workspace-dock {
+  /* Dockview remains the behavior layer. ARC owns the visual chrome. */
+  --dv-group-view-background-color: var(--arc-color-bg-panel);
+  --dv-tabs-and-actions-container-background-color: var(--arc-color-bg-panel-muted);
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--arc-color-text-muted);
+  --dv-activegroup-hiddenpanel-tab-color: var(--arc-color-text-muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--arc-color-text-muted);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--arc-color-text-muted);
+  --dv-tab-divider-color: transparent;
+  --dv-tabs-and-actions-container-height: var(--arc-dock-tab-height);
+  --dv-tabs-and-actions-container-font-size: var(--arc-text-sm);
+  --dv-tab-font-size: var(--arc-text-sm);
+  --dv-tab-margin: 0;
+  --dv-tab-border-radius: 0;
+  --dv-icon-hover-background-color: var(--arc-color-bg-hover);
+  --dv-separator-border: var(--arc-color-border-subtle);
+  --dv-active-sash-color: var(--arc-color-accent);
+}
+
+/* Scene documents are editor state, not another dock level. Keep the scene
+   lifecycle/model but do not render a second full-width tab controller above
+   the workspace dock. */
+.workbench-shell section.editor-region.dockview-editor-region {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workbench-shell .dockview-editor-region > .scene-document-tabs {
+  display: none;
+}
+
+.workbench-shell .workspace-dock .dv-tabs-and-actions-container {
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-panel-muted);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
+}
+
+.workbench-shell .workspace-dock .dv-tabs-container {
+  align-items: stretch;
+  gap: 2px;
+  padding-inline: 2px;
+  background: transparent;
+}
+
+/* The Dockview tab itself is both the drag target and the ARC visual surface.
+   This avoids a nested interactive tab fighting Dockview's pointer/drag model. */
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 220px;
+  height: calc(100% - 2px);
+  margin-top: 2px;
+  padding: 0;
+  border: var(--arc-border-width) solid transparent;
+  border-bottom: 0;
+  border-radius: var(--arc-radius-2) var(--arc-radius-2) 0 0;
+  color: var(--arc-color-text-muted);
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 400;
+  line-height: var(--arc-line-tight);
+  transition:
+    border-color 100ms ease,
+    color 100ms ease,
+    background 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab:hover {
+  color: var(--arc-color-text-strong);
+  border-color: var(--arc-color-border-subtle);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab.dv-active-tab {
+  color: var(--arc-color-text-strong);
+  border-color: var(--arc-color-border);
+  background:
+    linear-gradient(180deg, rgba(47, 129, 247, 0.11), rgba(47, 129, 247, 0.025) 70%, transparent),
+    var(--arc-color-bg-panel-raised);
+  box-shadow:
+    inset 0 -2px 0 var(--arc-color-accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  font-weight: 400;
+}
+
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab::before,
+.workbench-shell .workspace-dock .dv-tabs-container > .dv-tab:not(.dv-tab-ghost-drag)::after {
+  display: none;
+}
+
+.workbench-shell .workspace-dock .dv-void-container,
+.workbench-shell .workspace-dock .dv-right-actions-container {
+  background: transparent;
+}
+
+.workspace-dock-tab-content {
+  display: flex;
+  align-items: center;
+  gap: var(--arc-space-3);
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--arc-space-4) 0 var(--arc-space-6);
+  color: inherit;
+  overflow: hidden;
+}
+
+.workspace-dock-tab-content .workspace-dock-tab-icon {
+  display: inline-flex;
+  flex: 0 0 var(--arc-icon-sm);
+  align-items: center;
+  justify-content: center;
+  width: var(--arc-icon-sm);
+  height: var(--arc-icon-sm);
+  color: var(--arc-color-text-dim);
+}
+
+.workspace-dock-tab-content .workspace-dock-tab-icon svg {
+  width: var(--arc-icon-sm);
+  height: var(--arc-icon-sm);
+  stroke-width: 1.8;
+}
+
+.workbench-shell .workspace-dock .dv-tab:hover .workspace-dock-tab-icon {
+  color: var(--arc-color-text);
+}
+
+.workbench-shell .workspace-dock .dv-tab.dv-active-tab .workspace-dock-tab-icon {
+  color: var(--arc-color-accent-hover);
+}
+
+.workspace-dock-tab-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-dock-tab-content .workspace-dock-tab-close {
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  margin-left: var(--arc-space-1);
+  border-radius: 3px;
+  opacity: 0.52;
+}
+
+.workbench-shell .workspace-dock .dv-tab:hover .workspace-dock-tab-close,
+.workbench-shell .workspace-dock .dv-tab.dv-active-tab .workspace-dock-tab-close,
+.workspace-dock-tab-content .workspace-dock-tab-close:focus-visible {
+  opacity: 1;
+}
+
+.workbench-shell .workspace-dock .dv-tab-dragging .workspace-dock-tab-content,
+.workbench-shell .workspace-dock .dv-dragged .workspace-dock-tab-content {
+  opacity: 0.82;
+}
+
+/* Older workbench content wrappers still carry their former single-panel tab
+   strip. Dockview is now the only tab controller around docked panel content.
+   Once that legacy strip is hidden, collapse its old 34px grid row too so the
+   actual panel body fills the complete Dockview content area. */
+.workspace-dock-panel .workbench-panel {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.workspace-dock-panel .workbench-panel > .panel-tabs {
+  display: none;
+}
