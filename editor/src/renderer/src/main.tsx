@@ -9,6 +9,7 @@ import './radio.css';
 import './styles.css';
 import './layout/titlebar.css';
 import './layout/toolbar.css';
+import './ui-polish.css';
 import { App } from './App';
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
