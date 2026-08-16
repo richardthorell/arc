@@ -327,17 +327,17 @@ export function UiLab() {
           description="Single- and multi-choice controls, including states not yet common in the main workbench."
         >
           <LabCard title="Select" caption="UiSelect">
-  <UiSelect
-    ariaLabel="Quality preset"
-    options={[
-      { label: 'Default', value: 'Default' },
-      { label: 'High', value: 'High' },
-      { label: 'Ultra', value: 'Ultra' },
-    ]}
-    value={nativeSelect}
-    onValueChange={setNativeSelect}
-  />
-</LabCard>
+            <UiSelect
+              ariaLabel="Quality preset"
+              options={[
+                { label: 'Default', value: 'Default' },
+                { label: 'High', value: 'High' },
+                { label: 'Ultra', value: 'Ultra' },
+              ]}
+              value={nativeSelect}
+              onValueChange={setNativeSelect}
+            />
+          </LabCard>
           <LabCard title="Checkbox" caption="native checkbox">
             <label className="ui-lab-native-check">
               <input
