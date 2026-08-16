@@ -1,0 +1,152 @@
+.ui-tabs .ui-tab {
+  position: relative;
+  gap: var(--arc-space-3);
+  font-family: var(--arc-font-ui);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 100ms ease,
+    background 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.ui-tabs .ui-tab:hover:not(:disabled) {
+  color: var(--arc-color-text-strong);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    var(--arc-color-bg-active);
+}
+
+.ui-tabs .ui-tab.is-active {
+  color: var(--arc-color-text-strong);
+  background:
+    linear-gradient(180deg, var(--arc-color-accent-soft) 0%, transparent 100%),
+    var(--arc-color-bg-panel);
+  box-shadow:
+    inset 0 -2px 0 var(--arc-color-accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.ui-tabs .ui-tab:focus-visible,
+.ui-tabs .ui-tab-close:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 1px var(--arc-color-accent);
+}
+
+.ui-tabs .ui-tab:disabled,
+.ui-tabs .ui-tab-shell.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.ui-tab-icon {
+  display: inline-flex;
+  flex: 0 0 var(--arc-icon-sm);
+  align-items: center;
+  justify-content: center;
+  width: var(--arc-icon-sm);
+  height: var(--arc-icon-sm);
+  color: var(--arc-color-text-dim);
+  overflow: visible;
+}
+
+.ui-tab:hover:not(:disabled) .ui-tab-icon,
+.ui-tab.is-active .ui-tab-icon {
+  color: currentColor;
+}
+
+.ui-tab-icon svg {
+  width: var(--arc-icon-sm);
+  height: var(--arc-icon-sm);
+  stroke-width: 1.8;
+}
+
+.ui-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-tab-shell {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 220px;
+  height: 100%;
+  border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: transparent;
+  transition:
+    color 100ms ease,
+    background 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.ui-tab-shell > .ui-tab {
+  flex: 1 1 auto;
+  max-width: none;
+  padding-right: var(--arc-space-2);
+  border-right: 0;
+  background: transparent;
+}
+
+.ui-tab-shell:hover:not(.is-disabled) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    var(--arc-color-bg-active);
+}
+
+.ui-tab-shell:hover:not(.is-disabled) > .ui-tab {
+  background: transparent;
+}
+
+.ui-tab-shell.is-active {
+  background:
+    linear-gradient(180deg, var(--arc-color-accent-soft) 0%, transparent 100%),
+    var(--arc-color-bg-panel);
+  box-shadow:
+    inset 0 -2px 0 var(--arc-color-accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.ui-tab-shell.is-active > .ui-tab {
+  background: transparent;
+  box-shadow: none;
+}
+
+.ui-tab-close {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  min-width: 24px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--arc-color-text-dim);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    color 90ms ease,
+    background 90ms ease;
+}
+
+.ui-tab-close:hover:not(:disabled) {
+  color: var(--arc-color-text-strong);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.ui-tab-close:active:not(:disabled) {
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.ui-tab-close:disabled {
+  cursor: not-allowed;
+}
+
+.ui-tab-close svg {
+  stroke-width: 1.9;
+}
