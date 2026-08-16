@@ -1,0 +1,250 @@
+.ui-lab-panels-shell {
+  height: calc(100vh - var(--arc-titlebar-height) - 32px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  color: var(--arc-color-text);
+  background: var(--arc-color-bg-app);
+}
+
+.ui-lab-panels-shell::-webkit-scrollbar {
+  width: 10px;
+}
+
+.ui-lab-panels-shell::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ui-lab-panels-shell::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--arc-color-border-strong);
+  background-clip: padding-box;
+}
+
+.ui-lab-panels-shell::-webkit-scrollbar-thumb:hover {
+  background: var(--arc-color-text-dim);
+  background-clip: padding-box;
+}
+
+.ui-lab-panels-hero {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--arc-space-8);
+  min-height: 64px;
+  padding: 10px 22px;
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: color-mix(in srgb, var(--arc-color-bg-app) 94%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.ui-lab-panels-hero > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.ui-lab-panels-hero strong {
+  color: var(--arc-color-text-strong);
+  font-size: var(--arc-text-xl);
+  font-weight: 650;
+}
+
+.ui-lab-panels-hero span {
+  color: var(--arc-color-text-muted);
+}
+
+.ui-lab-panels-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.ui-lab-panels-meta span {
+  padding: 3px 7px;
+  border: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  border-radius: 999px;
+  color: var(--arc-color-text-dim);
+  background: var(--arc-color-bg-chrome);
+  font-size: var(--arc-text-xxs);
+}
+
+.ui-lab-panels-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding: 20px 22px 44px;
+}
+
+.ui-lab-production-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 360px;
+  border: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-3);
+  background: var(--arc-color-bg-panel);
+  box-shadow: var(--arc-shadow-panel);
+  overflow: hidden;
+}
+
+.ui-lab-production-panel-tall {
+  min-height: 560px;
+}
+
+.ui-lab-production-panel-featured {
+  grid-column: 1 / -1;
+  min-height: 540px;
+}
+
+.ui-lab-production-panel-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 42px;
+  padding: 6px 10px;
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-chrome);
+}
+
+.ui-lab-production-panel-label > span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ui-lab-production-panel-label strong {
+  color: var(--arc-color-text-strong);
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+}
+
+.ui-lab-production-panel-label small,
+.ui-lab-production-panel-label code {
+  color: var(--arc-color-text-dim);
+  font-size: var(--arc-text-xxs);
+}
+
+.ui-lab-production-panel-label code {
+  padding: 2px 5px;
+  border: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  border-radius: var(--arc-radius-1);
+  font-family: var(--arc-font-ui);
+  background: var(--arc-color-bg-field);
+}
+
+.ui-lab-production-panel-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--arc-color-bg-panel);
+}
+
+.ui-lab-production-panel-stage > .production-tool-panel,
+.ui-lab-production-panel-stage > .console-panel,
+.ui-lab-production-panel-stage > .build-output-panel,
+.ui-lab-production-panel-stage > .ai-gateway-panel,
+.ui-lab-production-panel-stage > .arc-viewport-shell,
+.ui-lab-production-panel-stage > .environment-inspector,
+.ui-lab-production-panel-stage > .data-inspector,
+.ui-lab-production-panel-stage > .explorer-view,
+.ui-lab-production-panel-stage > .content-browser-panel,
+.ui-lab-production-panel-stage > section {
+  min-height: 100%;
+}
+
+/* The panel itself is the real ViewportPanel. Only its render surface is replaced in UI Lab. */
+.ui-lab-production-panel[data-panel-id='viewport'] .arc-viewport-shell {
+  min-height: 500px;
+}
+
+.ui-lab-production-panel[data-panel-id='viewport'] .arc-viewport-body {
+  min-height: 500px;
+  background:
+    linear-gradient(180deg, rgba(4, 8, 12, 0.04), rgba(4, 8, 12, 0.22)),
+    url('../assets/project-browser-splash.png') center / cover no-repeat;
+}
+
+.ui-lab-production-panel[data-panel-id='viewport'] .arc-viewport-unavailable,
+.ui-lab-production-panel[data-panel-id='viewport'] .arc-viewport-note,
+.ui-lab-production-panel[data-panel-id='viewport'] .arc-viewport-inactive {
+  display: none;
+}
+
+/* Production hierarchy and inspector are intentionally allowed to scroll in their real layouts. */
+.ui-lab-production-panel[data-panel-id='hierarchy'] .explorer-view,
+.ui-lab-production-panel[data-panel-id='hierarchy'] .workbench-panel,
+.ui-lab-production-panel[data-panel-id='inspector'] .data-inspector {
+  height: 100%;
+}
+
+.ui-lab-production-panel[data-panel-id='hierarchy'] .hierarchy-tree,
+.ui-lab-production-panel[data-panel-id='inspector'] .inspector-component-list {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.ui-lab-production-panel[data-panel-id='renderGraph'] .render-graph-workspace,
+.ui-lab-production-panel[data-panel-id='contentBrowser'] .content-browser-layout,
+.ui-lab-production-panel[data-panel-id='profiler'] .profiler-panel,
+.ui-lab-production-panel[data-panel-id='settings'] .settings-layout {
+  min-height: 430px;
+}
+
+.ui-lab-production-panel[data-panel-id='worldSettings'] .environment-component-list {
+  max-height: 470px;
+  overflow: auto;
+}
+
+.ui-lab-internal-panel-notice {
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  min-height: 300px;
+  padding: 28px;
+  color: var(--arc-color-text-muted);
+  text-align: center;
+}
+
+.ui-lab-internal-panel-notice strong {
+  color: var(--arc-color-text-strong);
+  font-weight: 600;
+}
+
+.ui-lab-internal-panel-notice span {
+  max-width: 520px;
+  line-height: 1.55;
+}
+
+@media (max-width: 1180px) {
+  .ui-lab-panels-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ui-lab-production-panel-featured {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .ui-lab-panels-hero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ui-lab-panels-meta {
+    justify-content: flex-start;
+  }
+
+  .ui-lab-panels-grid {
+    padding-inline: 10px;
+  }
+}

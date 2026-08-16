@@ -1,10 +1,18 @@
+import { useState } from 'react';
+
 import { WindowControls } from '../layout/WindowControls';
+import { UiTab, UiTabs } from '../ui';
 import { UiLab } from './UiLab';
+import { UiLabPanels } from './UiLabPanels';
 import { UiLabThemePicker } from './UiLabThemePicker';
 
 import './uiLabWindow.css';
 
+type UiLabPage = 'controls' | 'panels';
+
 export function UiLabWindow() {
+  const [page, setPage] = useState<UiLabPage>('controls');
+
   return (
     <div className="ui-lab-window">
       <header className="ui-lab-window-titlebar">
@@ -17,7 +25,15 @@ export function UiLabWindow() {
           <WindowControls />
         </div>
       </header>
-      <UiLab />
+      <UiTabs className="ui-lab-page-tabs" aria-label="UI Lab pages">
+        <UiTab active={page === 'controls'} onClick={() => setPage('controls')}>
+          Controls
+        </UiTab>
+        <UiTab active={page === 'panels'} onClick={() => setPage('panels')}>
+          Panels
+        </UiTab>
+      </UiTabs>
+      {page === 'controls' ? <UiLab /> : <UiLabPanels />}
     </div>
   );
 }
