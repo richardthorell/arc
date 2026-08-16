@@ -77,6 +77,23 @@ textarea {
   background: var(--arc-color-danger);
 }
 
+.ui-button-group {
+  display: flex;
+  align-items: center;
+  gap: var(--arc-space-3);
+  min-width: 0;
+}
+
+.ui-button-group-fill {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+.ui-button-group-fill > .ui-button {
+  width: 100%;
+}
+
 .ui-icon-button,
 .ui-button-icon {
   width: var(--arc-icon-button-size);
