@@ -237,6 +237,8 @@ def main():
             run([npm, "install"], editor_dir)
 
         editor_env = os.environ.copy()
+        if args.ui_lab:
+            editor_env["VITE_ARC_UI_LAB"] = "1"
         if host is not None and project_tool is not None:
             editor_env["ARC_HOST_PROCESS_PATH"] = host
             editor_env["ARC_PROJECT_TOOL_PATH"] = project_tool
