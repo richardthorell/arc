@@ -1,12 +1,36 @@
 .ui-lab-panels-shell {
-  min-height: calc(100vh - var(--arc-titlebar-height) - 32px);
+  height: calc(100vh - var(--arc-titlebar-height) - 32px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   color: var(--arc-color-text);
   background: var(--arc-color-bg-app);
 }
 
+.ui-lab-panels-shell::-webkit-scrollbar {
+  width: 10px;
+}
+
+.ui-lab-panels-shell::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ui-lab-panels-shell::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--arc-color-border-strong);
+  background-clip: padding-box;
+}
+
+.ui-lab-panels-shell::-webkit-scrollbar-thumb:hover {
+  background: var(--arc-color-text-dim);
+  background-clip: padding-box;
+}
+
 .ui-lab-panels-hero {
   position: sticky;
-  top: calc(var(--arc-titlebar-height) + 32px);
+  top: 0;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -143,7 +167,7 @@
 }
 
 .ui-lab-production-panel[data-panel-id='viewport'] .arc-viewport-body {
-  min-height: 448px;
+  min-height: 500px;
   background:
     linear-gradient(180deg, rgba(4, 8, 12, 0.04), rgba(4, 8, 12, 0.22)),
     url('../assets/project-browser-splash.png') center / cover no-repeat;
