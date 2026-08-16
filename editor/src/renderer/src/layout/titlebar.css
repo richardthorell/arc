@@ -91,6 +91,7 @@
   background: rgba(255, 255, 255, 0.11);
 }
 
+/* Shared menu surface. Menus size to their content, but never narrower than the editor menu baseline. */
 .menu-dropdown {
   position: absolute;
   left: 0;
