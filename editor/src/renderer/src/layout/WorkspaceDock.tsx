@@ -28,6 +28,7 @@ type WorkspaceDockProps = {
 };
 
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v3.${projectKey}.${name}`;
+const panelTabComponent = 'arc-panel-tab';
 
 class ReactPanelRenderer implements IContentRenderer {
   readonly element = document.createElement('div');
@@ -70,6 +71,7 @@ const addPanel = (
   api.addPanel({
     id: panel,
     component: panel,
+    tabComponent: panelTabComponent,
     title: descriptor.title,
     minimumWidth: descriptor.minimumWidth,
     minimumHeight: descriptor.minimumHeight,
@@ -127,11 +129,12 @@ export function WorkspaceDock({
       theme: themeAbyss,
       floatingGroupDragHandle: 'titlebar',
       popoutUrl: window.location.href,
+      defaultTabComponent: panelTabComponent,
       getTabContextMenuItems: ({ panel }) =>
         getPanelTabPresentation(panel.api.component, panel.api.title).closeable
           ? ['close', 'closeOthers', 'closeAll']
           : [],
-      createTabComponent: () => new PanelDockTabRenderer(),
+      createTabComponent: ({ name }) => (name === panelTabComponent ? new PanelDockTabRenderer() : undefined),
       createComponent: ({ name }) => {
         const renderer = new ReactPanelRenderer(name as WorkbenchPanelId, () => renderPanelRef.current);
         renderers.current.add(renderer);
@@ -206,6 +209,7 @@ export function WorkspaceDock({
         dock.addPanel({
           id,
           component: 'viewport',
+          tabComponent: panelTabComponent,
           title: `Viewport ${index}`,
           params: { viewportId: id },
           position: { referencePanel: 'viewport', direction: index % 2 === 0 ? 'right' : 'below' },
