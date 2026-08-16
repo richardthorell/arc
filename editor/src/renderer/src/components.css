@@ -1,3 +1,10 @@
+button,
+input,
+select,
+textarea {
+  font-family: var(--arc-font-ui);
+}
+
 .ui-button {
   display: inline-flex;
   align-items: center;
@@ -96,39 +103,70 @@
   min-width: 0;
 }
 
-.ui-select-input {
+.ui-select-trigger.ui-button {
+  justify-content: space-between;
   width: 100%;
   min-width: 0;
   height: var(--arc-control-height);
-  padding: 0 30px 0 var(--arc-space-5);
-  appearance: none;
-  border: var(--arc-border-width) solid var(--arc-color-border);
-  border-radius: var(--arc-radius-1);
+  padding: 0 var(--arc-space-4) 0 var(--arc-space-5);
+  border-color: var(--arc-color-border);
   color: var(--arc-color-text);
   background: var(--arc-color-bg-field);
-  outline: 0;
-  font: inherit;
-  font-size: var(--arc-text-sm);
-  line-height: var(--arc-line-tight);
+  text-align: left;
 }
 
-.ui-select-input:focus {
+.ui-select-trigger.ui-button:hover {
+  border-color: var(--arc-color-border-strong);
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-field);
+}
+
+.ui-select-trigger.ui-button[aria-expanded='true'] {
   border-color: var(--arc-color-border-accent);
   box-shadow: 0 0 0 2px var(--arc-color-focus-ring);
 }
 
-.ui-select-input:disabled {
+.ui-select-trigger.ui-button:disabled {
   color: var(--arc-color-text-dim);
   background: var(--arc-color-bg-panel-muted);
-  cursor: not-allowed;
+}
+
+.ui-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ui-select-chevron {
-  position: absolute;
-  right: var(--arc-space-4);
   flex: 0 0 auto;
   color: var(--arc-color-text-dim);
-  pointer-events: none;
+}
+
+.menu-dropdown.ui-select-menu {
+  left: 0;
+  top: calc(100% + var(--arc-space-2));
+  width: 100%;
+  min-width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.ui-select-menu .ui-button {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.ui-select-menu .ui-button.is-active-option {
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-selected-strong);
+}
+
+.ui-select-menu .menu-checkmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--arc-space-5);
 }
 
 .ui-tabs {
