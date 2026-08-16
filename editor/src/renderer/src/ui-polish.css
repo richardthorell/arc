@@ -1,0 +1,44 @@
+/* Keep ECS property rows visually unified: the label and control columns share one surface. */
+.inspector-component-card > .inspector-component-content {
+  gap: 3px;
+  background: #192128;
+}
+
+/* Shared text/select fields use the same control height and text inset. */
+.ui-text-input,
+.ui-select-trigger.ui-button {
+  height: var(--arc-button-height);
+}
+
+.ui-text-input {
+  padding-inline: var(--arc-space-5);
+}
+
+/* Search inputs reserve the leading icon gutter instead of inheriting the plain text inset. */
+.ui-search-input {
+  padding-left: 30px;
+}
+
+.ui-select-trigger.ui-button {
+  padding-left: var(--arc-space-5);
+}
+
+/* Give the production titlebar preview the full UI Lab row and enough room to exercise open menus. */
+.ui-lab-section:last-child .ui-lab-card {
+  grid-column: 1 / -1;
+}
+
+.ui-lab-section:last-child .ui-lab-card-stage {
+  align-items: flex-start;
+  min-height: 320px;
+}
+
+.ui-lab-section:last-child .ui-lab-chrome-preview {
+  min-height: 280px;
+  overflow: visible;
+}
+
+.ui-lab-section:last-child .ui-lab-chrome-preview .workbench-titlebar {
+  width: 100%;
+  min-width: 0;
+}

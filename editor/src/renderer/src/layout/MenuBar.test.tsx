@@ -46,7 +46,42 @@ describe('MenuBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     const grid = screen.getByRole('menuitemcheckbox', { name: /Grid/ });
     expect(grid).toHaveAttribute('aria-checked', 'true');
+    expect(grid.querySelector('.menu-entry-check')).toHaveClass('is-checked');
+    expect(grid.querySelector('.menu-leading svg')).toBeInTheDocument();
     fireEvent.click(grid);
     expect(toggle).toHaveBeenCalledOnce();
+  });
+
+  it('switches top-level menus on hover while a menu is already open', () => {
+    render(<MenuBar projectTitle="Scene" onCommand={vi.fn()} canUndo canRedo />);
+
+    const file = screen.getByRole('button', { name: 'File' });
+    const edit = screen.getByRole('button', { name: 'Edit' });
+    fireEvent.click(file);
+    expect(file).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menuitem', { name: /New Scene/ })).toBeInTheDocument();
+
+    fireEvent.pointerEnter(edit.parentElement as HTMLElement);
+    expect(file).toHaveAttribute('aria-expanded', 'false');
+    expect(edit).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('menuitem', { name: /Undo/ })).toBeInTheDocument();
+  });
+
+  it('uses the shared dropdown surface and exclusive menu entry slots', () => {
+    render(<MenuBar projectTitle="Scene" onCommand={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'File' }));
+    const newScene = screen.getByRole('menuitem', { name: /New Scene/ });
+    const openRecent = screen.getByRole('menuitem', { name: 'Open Recent' });
+
+    expect(newScene.closest('.menu-dropdown')).toHaveClass('menu-bar-dropdown');
+    expect(newScene).toHaveClass('menu-entry');
+    expect(newScene.querySelector('.menu-leading svg')).toBeInTheDocument();
+    expect(newScene.querySelector('.menu-entry-check')).not.toBeInTheDocument();
+    expect(newScene.querySelector('.menu-shortcut')).toHaveTextContent('Ctrl+N');
+    expect(newScene.querySelector('.menu-submenu-chevron')).not.toBeInTheDocument();
+
+    expect(openRecent.querySelector('.menu-shortcut')).not.toBeInTheDocument();
+    expect(openRecent.querySelector('.menu-submenu-chevron')).toBeInTheDocument();
   });
 });
