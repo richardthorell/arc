@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 
 import './theme.css';
 import './tokens.css';
+import './typography.css';
 import './components.css';
 import './styles.css';
 import './layout/titlebar.css';
