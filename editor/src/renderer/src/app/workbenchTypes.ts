@@ -68,7 +68,7 @@ export type CommandId =
 export type PanelRegistration = {
   id: WorkbenchPanelId;
   title: string;
-  icon: LucideIcon;
+  icon: LucideIcon | null;
   defaultRegion: DockRegion;
   activityId?: ActivityId;
   allowMultiple?: boolean;
