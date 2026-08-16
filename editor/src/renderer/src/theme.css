@@ -62,6 +62,17 @@
   --arc-color-button-shadow: rgba(0, 0, 0, 0.22);
   --arc-color-button-highlight: rgba(255, 255, 255, 0.035);
 
+  /* Shared radio palette. */
+  --arc-color-radio-border: #697684;
+  --arc-color-radio-border-hover: #a6b1bd;
+  --arc-color-radio-bg-top: #151e26;
+  --arc-color-radio-bg-bottom: #0f161d;
+  --arc-color-radio-bg-hover-top: #19232c;
+  --arc-color-radio-bg-hover-bottom: #111920;
+  --arc-color-radio-checked-border: #5a9cf0;
+  --arc-color-radio-dot: #d7ebff;
+  --arc-color-radio-glow: rgba(47, 129, 247, 0.42);
+
   --arc-color-shadow: rgba(0, 0, 0, 0.45);
   --arc-color-focus-ring: rgba(47, 129, 247, 0.42);
 
