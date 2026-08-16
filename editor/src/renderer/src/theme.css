@@ -31,6 +31,37 @@
   --arc-color-danger: #f85149;
   --arc-color-danger-hover: #da3633;
 
+  /* Shared button palette. Deliberately low-contrast so the control reads as
+     a crisp editor surface rather than a glossy web button. */
+  --arc-color-button-border: #34414d;
+  --arc-color-button-border-hover: #465563;
+  --arc-color-button-bg-top: #252f38;
+  --arc-color-button-bg-bottom: #222b33;
+  --arc-color-button-hover-top: #2b3640;
+  --arc-color-button-hover-bottom: #27313a;
+  --arc-color-button-pressed-top: #202930;
+  --arc-color-button-pressed-bottom: #232c34;
+  --arc-color-button-field-top: #151e26;
+  --arc-color-button-field-bottom: #131b22;
+  --arc-color-button-field-hover-top: #19232c;
+  --arc-color-button-field-hover-bottom: #151e26;
+  --arc-color-button-primary-border: #3478c8;
+  --arc-color-button-primary-border-hover: #4388d8;
+  --arc-color-button-primary-top: #2879dd;
+  --arc-color-button-primary-bottom: #2370d1;
+  --arc-color-button-primary-hover-top: #3285e9;
+  --arc-color-button-primary-hover-bottom: #2a79dc;
+  --arc-color-button-primary-pressed: #1f63ba;
+  --arc-color-button-danger-border: #bc4541;
+  --arc-color-button-danger-border-hover: #ce504b;
+  --arc-color-button-danger-top: #d64540;
+  --arc-color-button-danger-bottom: #cc3c38;
+  --arc-color-button-danger-hover-top: #e0504b;
+  --arc-color-button-danger-hover-bottom: #d44440;
+  --arc-color-button-danger-pressed: #b73532;
+  --arc-color-button-shadow: rgba(0, 0, 0, 0.22);
+  --arc-color-button-highlight: rgba(255, 255, 255, 0.035);
+
   --arc-color-shadow: rgba(0, 0, 0, 0.45);
   --arc-color-focus-ring: rgba(47, 129, 247, 0.42);
 

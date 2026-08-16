@@ -69,6 +69,24 @@ describe('UiLab', () => {
     expect(screen.getByRole('combobox', { name: 'Mobility' })).toHaveTextContent('Movable');
   });
 
+  it('uses the shared compact menu surface for ECS component actions', () => {
+    render(<UiLab />);
+
+    expect(screen.queryByText('ECS')).not.toBeInTheDocument();
+    const actions = screen.getByRole('button', { name: 'ExampleComponent component actions' });
+    expect(actions).toHaveClass('ui-icon-button');
+    expect(actions).not.toHaveClass('ui-button-ghost');
+    fireEvent.click(actions);
+
+    const copy = screen.getByRole('menuitem', { name: 'Copy Component' });
+    const menu = copy.closest('.menu-dropdown');
+    expect(menu).toBeInTheDocument();
+    expect(menu).not.toHaveClass('inspector-component-menu');
+    expect(screen.getByRole('menuitem', { name: 'Paste Component Values' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Reset Component' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Remove Component' })).toBeInTheDocument();
+  });
+
   it('exposes the production titlebar menu in the window chrome preview', () => {
     render(<UiLab />);
 
