@@ -174,7 +174,7 @@ export function TerrainToolsPanel({
   );
 }
 
-function TerrainRange({
+export function TerrainRange({
   label,
   min,
   max,

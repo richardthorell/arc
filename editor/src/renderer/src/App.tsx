@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import type { ArcProjectCandidate } from '../../common/projectTypes';
 import { Workbench } from './app/Workbench';
 import { ProjectBrowser } from './project/ProjectBrowser';
+import { UiLabWindow } from './uiLab/UiLabWindow';
 
-export function App() {
+const isUiLabMode = () =>
+  import.meta.env.VITE_ARC_UI_LAB === '1' || new URLSearchParams(window.location.search).get('mode') === 'ui-lab';
+
+function EditorApplication() {
   const [project, setProject] = useState<ArcProjectCandidate | null | undefined>(undefined);
 
   useEffect(() => {
@@ -13,4 +17,8 @@ export function App() {
   if (project === undefined) return <div className="application-loading">Starting ARC Editor…</div>;
   if (!project) return <ProjectBrowser onOpened={setProject} />;
   return <Workbench onProjectClosed={() => setProject(null)} />;
+}
+
+export function App() {
+  return isUiLabMode() ? <UiLabWindow /> : <EditorApplication />;
 }
