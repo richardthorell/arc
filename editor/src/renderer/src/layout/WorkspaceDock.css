@@ -1,8 +1,7 @@
 .workbench-shell .workspace-dock {
-  /* Dockview remains responsible for docking, dragging, grouping and layout.
-     Its visual tab palette is neutralized so the shared UiTab owns the chrome. */
+  /* Dockview remains the behavior layer. ARC owns the visual chrome. */
   --dv-group-view-background-color: var(--arc-color-bg-panel);
-  --dv-tabs-and-actions-container-background-color: var(--arc-color-bg-chrome);
+  --dv-tabs-and-actions-container-background-color: var(--arc-color-bg-panel-muted);
   --dv-activegroup-visiblepanel-tab-background-color: transparent;
   --dv-activegroup-hiddenpanel-tab-background-color: transparent;
   --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
@@ -17,20 +16,26 @@
   --dv-tab-font-size: var(--arc-text-sm);
   --dv-tab-margin: 0;
   --dv-tab-border-radius: 0;
+  --dv-icon-hover-background-color: var(--arc-color-bg-hover);
+  --dv-separator-border: var(--arc-color-border-subtle);
+  --dv-active-sash-color: var(--arc-color-accent);
 }
 
 .workspace-dock .dv-tabs-and-actions-container {
   border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
-  background: var(--arc-color-bg-chrome);
+  background: var(--arc-color-bg-panel-muted);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018);
 }
 
 .workspace-dock .dv-tabs-container {
   align-items: stretch;
+  gap: 2px;
+  padding-inline: 2px;
   background: transparent;
 }
 
-/* Dockview's tab element is the drag/drop hit target. Keep it in place but
-   remove its visual padding/background so UiTab is the only visible tab. */
+/* Dockview's tab remains the drag/reorder/split hit target. It contributes no
+   presentation of its own; the nested shared UiTab is the visible control. */
 .workspace-dock .dv-tabs-container > .dv-tab {
   display: flex;
   align-items: stretch;
@@ -47,8 +52,6 @@
   background: transparent;
 }
 
-/* UiTab already draws the divider/focus/selection treatment. Suppress the
-   duplicate Dockview divider and focus outline while retaining drag ghosts. */
 .workspace-dock .dv-tabs-container > .dv-tab::before,
 .workspace-dock .dv-tabs-container > .dv-tab:not(.dv-tab-ghost-drag)::after {
   display: none;
@@ -69,10 +72,6 @@
 
 .workspace-dock-tab-host > .ui-tab,
 .workspace-dock-tab-host > .ui-tab-shell {
-  height: 100%;
-}
-
-.workspace-dock-tab-host > .ui-tab-shell {
   max-width: 220px;
 }
 
@@ -82,6 +81,17 @@
 
 .workspace-dock-tab-host .ui-tab-icon {
   display: inline-flex;
+}
+
+/* Make the active panel read as part of the surface below it rather than a
+   generic Dockview tab. The shared UiTab still draws the blue selection line. */
+.workspace-dock .dv-active-tab .workspace-dock-tab-host {
+  color: var(--arc-color-text-strong);
+}
+
+.workspace-dock .dv-tab-dragging .workspace-dock-tab-host,
+.workspace-dock .dv-dragged .workspace-dock-tab-host {
+  opacity: 0.82;
 }
 
 /* Dockview owns panel grouping and movement. Older workbench content wrappers
