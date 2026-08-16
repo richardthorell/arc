@@ -96,7 +96,9 @@
   left: 0;
   top: 31px;
   z-index: var(--arc-z-dropdown);
+  width: max-content;
   min-width: 230px;
+  max-width: calc(100vw - 16px);
   padding: 5px;
   border: 1px solid var(--arc-color-border-strong);
   border-radius: var(--arc-radius-3);
@@ -112,6 +114,7 @@
   color: var(--arc-color-text);
   text-align: left;
   border-radius: 3px;
+  font-weight: 400;
 }
 
 .menu-dropdown button span {
