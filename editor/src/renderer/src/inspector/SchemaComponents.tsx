@@ -247,7 +247,7 @@ function SchemaField<TContext extends object>({
     return (
       <div className="inspector-property inspector-action-property">
         <span className="inspector-property-label">{field.label}</span>
-        <div className="inspector-action-buttons">
+        <div className="ui-button-group ui-button-group-fill">
           {field.actions.map((action) => (
             <UiButton
               aria-label={action.label}
