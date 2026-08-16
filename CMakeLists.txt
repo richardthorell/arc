@@ -158,7 +158,11 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/templates/"
     COMPONENT project-templates)
 
 if(WIN32)
-    set(_arc_installation_editor "editor/arc-editor.exe")
+    if(ARC_BUILD_EDITOR)
+        set(_arc_installation_editor "editor/arc-editor.exe")
+    else()
+        set(_arc_installation_editor "")
+    endif()
     set(_arc_installation_platforms "\"windows-x64-vulkan\", \"windows-x64-headless\"")
 else()
     set(_arc_installation_editor "")

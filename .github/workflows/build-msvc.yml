@@ -167,53 +167,159 @@ jobs:
         uses: ./.github/actions/setup-windows-toolchain
 
       - name: Configure and Build RelWithDebInfo SDK
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           cmake -S . -B out/build/sdk-relwithdebinfo -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK configure failed with exit code ${exitCode}" }
+
           cmake --build out/build/sdk-relwithdebinfo --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK build failed with exit code ${exitCode}" }
 
       - name: Configure and Build Debug SDK
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Debug SDK configure failed with exit code ${exitCode}" }
+
           cmake --build out/build/sdk-debug --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Debug SDK build failed with exit code ${exitCode}" }
 
       - name: Configure and Build Shipping SDK
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Shipping SDK configure failed with exit code ${exitCode}" }
+
           cmake --build out/build/sdk-shipping --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Shipping SDK build failed with exit code ${exitCode}" }
 
       - name: Install SDK Configurations
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           cmake --install out/build/sdk-relwithdebinfo --prefix out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK install failed with exit code ${exitCode}" }
+
           cmake --install out/build/sdk-debug --prefix out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Debug SDK install failed with exit code ${exitCode}" }
+
           cmake --install out/build/sdk-shipping --prefix out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Shipping SDK install failed with exit code ${exitCode}" }
+
+      - name: Register SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $cli = (Resolve-Path 'out/sdk/arc-0.1.0/bin/arc-project.exe').Path
+          $manifest = (Resolve-Path 'out/sdk/arc-0.1.0/arc-installation.json').Path
+          $registry = Join-Path (Resolve-Path 'out/sdk').Path 'installations.v1.json'
+
+          & $cli engine register --manifest $manifest --registry $registry
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "arc-project engine register failed with exit code ${exitCode}" }
 
       - name: Verify SDK Registry
+        shell: pwsh
         run: |
-          out/sdk/arc-0.1.0/bin/arc-project.exe engine register --manifest out/sdk/arc-0.1.0/arc-installation.json --registry out/sdk/installations.v1.json
-          out/sdk/arc-0.1.0/bin/arc-project.exe engine verify --registry out/sdk/installations.v1.json
+          $ErrorActionPreference = 'Stop'
+
+          $cli = (Resolve-Path 'out/sdk/arc-0.1.0/bin/arc-project.exe').Path
+          $registry = Join-Path (Resolve-Path 'out/sdk').Path 'installations.v1.json'
+
+          & $cli engine verify --registry $registry
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "arc-project engine verify failed with exit code ${exitCode}" }
 
       - name: Create External Blank 3D Project
-        run: out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          & out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "arc-project create failed with exit code ${exitCode}" }
 
       - name: Build External RelWithDebInfo Project
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           cmake -S out/external-game -B out/external-game/Build/ci -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External RelWithDebInfo configure failed with exit code ${exitCode}" }
+
           cmake --build out/external-game/Build/ci --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External RelWithDebInfo build failed with exit code ${exitCode}" }
 
       - name: Build External Debug Project
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Debug configure failed with exit code ${exitCode}" }
+
           cmake --build out/external-game/Build/ci-debug --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Debug build failed with exit code ${exitCode}" }
 
       - name: Build External Shipping Project
+        shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Shipping configure failed with exit code ${exitCode}" }
+
           cmake --build out/external-game/Build/ci-shipping --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Shipping build failed with exit code ${exitCode}" }
 
       - name: Verify SDK Relocatability
+        shell: pwsh
         run: |
           $tracked = Get-ChildItem out/external-game,out/sdk/arc-0.1.0/lib/cmake/ARC -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/]Build[\\/]' }
           if ($tracked | Select-String -SimpleMatch "${{ github.workspace }}") { throw "Installed SDK or generated project embeds the ARC checkout path" }
+
+      - name: SDK Failure Diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host '::group::SDK installation manifest'
+          if (Test-Path 'out/sdk/arc-0.1.0/arc-installation.json') {
+            Get-Content 'out/sdk/arc-0.1.0/arc-installation.json' -Raw
+          } else {
+            Write-Host 'arc-installation.json is missing.'
+          }
+          Write-Host '::endgroup::'
+
+          Write-Host '::group::SDK registry'
+          if (Test-Path 'out/sdk/installations.v1.json') {
+            Get-Content 'out/sdk/installations.v1.json' -Raw
+          } else {
+            Write-Host 'installations.v1.json is missing.'
+          }
+          Write-Host '::endgroup::'
 
       - name: Compiler Cache Stats
         if: always()
