@@ -22,12 +22,19 @@ python run_editor.py --ui-lab
 ```
 
 UI Lab renders the production React controls and editor CSS in a dedicated
-Electron window without requiring the C++ host build. It includes shared button
-variants, text/search inputs, native form controls still used by production
-panels, inspector numeric/vector/color controls, asset pickers, the terrain
-range control, tabs/tree rows/panels, and a schema-driven ECS component card.
-Use it as the visual test surface when changing control sizing, spacing, states,
-colors, borders, typography, or interaction styling.
+Electron window without requiring the C++ host build. The scrollable gallery is
+limited to four cards per row and includes shared button variants, text/search/
+number/multiline inputs, select/checkbox/radio/switch states, inspector numeric/
+vector/color/range controls, asset pickers, tabs/tree rows/panels, schema-driven
+ECS component cards, menu and popup surfaces, feedback states, and the production
+titlebar/window chrome. Use it as the visual test surface when changing control
+sizing, spacing, states, colors, borders, typography, or interaction styling.
+
+The UI Lab titlebar also exposes a theme selector. Theme IDs come from the shared
+renderer theme registry and map to the `data-theme` selectors used by
+`theme.css`. `Arc Dark` is the only registered theme today; additional themes can
+be added to the registry and corresponding theme CSS without changing the UI Lab
+selector.
 
 Electron-only workflows can be run from this directory:
 
