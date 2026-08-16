@@ -78,17 +78,6 @@
   background: transparent;
   font-size: var(--arc-text-sm);
   font-weight: 400;
-  font-family:
-    WindowsSystemFont,
-    -apple-system,
-    system-ui,
-    BlinkMacSystemFont,
-    Segoe UI,
-    Roboto,
-    Ubuntu,
-    Cantarell,
-    Noto Sans,
-    sans-serif;
   letter-spacing: 0.2px;
 }
 
@@ -157,17 +146,6 @@
   color: var(--arc-color-text-muted);
   font-size: var(--arc-text-sm);
   font-weight: 400;
-  font-family:
-    WindowsSystemFont,
-    -apple-system,
-    system-ui,
-    BlinkMacSystemFont,
-    Segoe UI,
-    Roboto,
-    Ubuntu,
-    Cantarell,
-    Noto Sans,
-    sans-serif;
   letter-spacing: 0.2px;
   line-height: 1;
   transform: translate(-50%, -50%);
