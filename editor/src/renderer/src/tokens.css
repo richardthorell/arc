@@ -1,7 +1,5 @@
 :root {
-  --arc-font-ui:
-    Inter, 'Segoe UI Variable Text', 'Segoe UI Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu,
-    Cantarell, 'Noto Sans', WindowsSystemFont, sans-serif;
+  --arc-font-ui: 'Inter Variable';
   --arc-font-mono: 'Cascadia Code', 'Fira Code', Consolas, monospace;
 
   --arc-text-xxs: 10px;
