@@ -1,6 +1,18 @@
 const viewportMenuButtonSelector = '.arc-viewport-show-popup button';
+const viewportMenuSummarySelector = 'details.arc-viewport-show-menu > summary';
 const viewportStatsToggleSelector =
   '.arc-viewport-view-options.compact > button[title^="Frame selected"], .arc-viewport-view-options.compact > button[data-viewport-stats-toggle="true"]';
+
+type RuntimeViewportStats = {
+  triangles?: number;
+  triangleCount?: number;
+  vertices?: number;
+  vertexCount?: number;
+  gpuMemoryMb?: number;
+  memoryMb?: number;
+  gpuMemoryBytes?: number;
+  memoryBytes?: number;
+};
 
 const decorateStatsToggle = (button: HTMLButtonElement) => {
   button.dataset.viewportStatsToggle = 'true';
@@ -9,22 +21,99 @@ const decorateStatsToggle = (button: HTMLButtonElement) => {
   button.setAttribute('aria-pressed', button.closest('.arc-viewport-shell')?.classList.contains('show-stats') ? 'true' : 'false');
 };
 
-const decorateStatsRows = (shell: Element) => {
-  const rows = Array.from(shell.querySelectorAll<HTMLElement>('.arc-viewport-header-stat'));
-  const definitions = [
-    ['FPS', (value: string) => value.replace(/\s*FPS$/i, '')],
-    ['Frame Time', (value: string) => value],
-    ['Draw Calls', (value: string) => value.replace(/\s*draws?$/i, '')],
-  ] as const;
+const compactCount = (value: number | undefined) => {
+  if (!Number.isFinite(value)) return '—';
+  const count = Math.max(0, value ?? 0);
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(2).replace(/\.00$/, '')}M`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return count.toLocaleString();
+};
 
-  definitions.forEach(([label, format], index) => {
-    const row = rows[index];
-    if (!row) return;
-    const rawValue = row.textContent?.trim() ?? '--';
-    const value = format(rawValue);
-    if (row.dataset.statLabel !== label) row.dataset.statLabel = label;
-    if (row.dataset.statValue !== value) row.dataset.statValue = value;
-  });
+const compactMemory = (megabytes: number | undefined) => {
+  if (!Number.isFinite(megabytes)) return '—';
+  const memory = Math.max(0, megabytes ?? 0);
+  if (memory >= 1024) return `${(memory / 1024).toFixed(2).replace(/0$/, '').replace(/\.0$/, '')} GB`;
+  return `${Math.round(memory)} MB`;
+};
+
+const ensureStatsCard = (shell: Element) => {
+  const controls = shell.querySelector<HTMLElement>('.arc-viewport-view-options.compact');
+  if (!controls) return null;
+
+  let card = controls.querySelector<HTMLElement>('.arc-viewport-stats-card');
+  if (!card) {
+    card = document.createElement('div');
+    card.className = 'arc-viewport-stats-card';
+    card.setAttribute('aria-label', 'Viewport statistics');
+    card.innerHTML = ['FPS', 'Frame Time', 'Draw Calls', 'Triangles', 'Vertices', 'Memory']
+      .map(
+        (label) =>
+          `<div class="arc-viewport-stats-row" data-stat-row="${label}"><span>${label}</span><strong>—</strong></div>`,
+      )
+      .join('');
+    controls.append(card);
+  }
+  return card;
+};
+
+const setStatsCardValue = (card: Element, label: string, value: string) => {
+  const output = card.querySelector<HTMLElement>(`.arc-viewport-stats-row[data-stat-row="${label}"] strong`);
+  if (output && output.textContent !== value) output.textContent = value;
+};
+
+const decorateStatsRows = (shell: Element) => {
+  const card = ensureStatsCard(shell);
+  if (!card) return;
+
+  const rows = Array.from(shell.querySelectorAll<HTMLElement>('.arc-viewport-header-stat'));
+  const fps = rows[0]?.textContent?.trim().replace(/\s*FPS$/i, '') || '—';
+  const frameTime = rows[1]?.textContent?.trim() || '—';
+  const drawCalls = rows[2]?.textContent?.trim().replace(/\s*draws?$/i, '') || '—';
+  setStatsCardValue(card, 'FPS', fps);
+  setStatsCardValue(card, 'Frame Time', frameTime);
+  setStatsCardValue(card, 'Draw Calls', drawCalls);
+
+  // The UI Lab has no host to query, so keep deterministic preview values for the
+  // fields already present on its project fixture. Vertices stay unknown until the
+  // renderer reports them rather than inventing production data.
+  if (shell.closest('.ui-lab-production-panel')) {
+    setStatsCardValue(card, 'Triangles', compactCount(3_840_220));
+    setStatsCardValue(card, 'Vertices', '—');
+    setStatsCardValue(card, 'Memory', compactMemory(4280));
+  }
+};
+
+const viewportIdForShell = (shell: Element) => {
+  const title = shell.querySelector('.arc-viewport-title span')?.textContent ?? 'Viewport 1';
+  const index = Number.parseInt(title.match(/\d+/)?.[0] ?? '1', 10);
+  return `viewport-${Number.isFinite(index) ? index : 1}`;
+};
+
+const refreshRuntimeStats = async (shell: Element) => {
+  if (!window.arc?.host?.query || shell.closest('.ui-lab-production-panel')) return;
+  try {
+    const response = (await window.arc.host.query('viewport.state', {
+      viewportId: viewportIdForShell(shell),
+    })) as { succeeded?: boolean; payload?: RuntimeViewportStats };
+    if (response?.succeeded === false || !response?.payload) return;
+
+    const card = ensureStatsCard(shell);
+    if (!card) return;
+    const payload = response.payload;
+    const triangles = payload.triangles ?? payload.triangleCount;
+    const vertices = payload.vertices ?? payload.vertexCount;
+    const memoryMb =
+      payload.gpuMemoryMb ??
+      payload.memoryMb ??
+      (typeof payload.gpuMemoryBytes === 'number' ? payload.gpuMemoryBytes / (1024 * 1024) : undefined) ??
+      (typeof payload.memoryBytes === 'number' ? payload.memoryBytes / (1024 * 1024) : undefined);
+
+    setStatsCardValue(card, 'Triangles', compactCount(triangles));
+    setStatsCardValue(card, 'Vertices', compactCount(vertices));
+    setStatsCardValue(card, 'Memory', compactMemory(memoryMb));
+  } catch {
+    // The existing ViewportPanel handles host errors. Statistics are optional UI.
+  }
 };
 
 const decorateViewportChrome = (root: ParentNode = document) => {
@@ -43,6 +132,16 @@ document.addEventListener(
     const target = event.target;
     if (!(target instanceof Element)) return;
 
+    const summary = target.closest<HTMLElement>(viewportMenuSummarySelector);
+    if (summary) {
+      const selectedMenu = summary.closest<HTMLDetailsElement>('details.arc-viewport-show-menu');
+      const shell = selectedMenu?.closest('.arc-viewport-shell');
+      shell?.querySelectorAll<HTMLDetailsElement>('details.arc-viewport-show-menu[open]').forEach((menu) => {
+        if (menu !== selectedMenu) menu.open = false;
+      });
+      return;
+    }
+
     const statsToggle = target.closest<HTMLButtonElement>(viewportStatsToggleSelector);
     if (statsToggle) {
       event.preventDefault();
@@ -52,6 +151,7 @@ document.addEventListener(
       decorateStatsRows(shell);
       const visible = shell.classList.toggle('show-stats');
       statsToggle.setAttribute('aria-pressed', visible ? 'true' : 'false');
+      if (visible) void refreshRuntimeStats(shell);
       return;
     }
 
