@@ -89,7 +89,15 @@ def parse_args():
         action="store_true",
         help="Open a persistent Blank 3D development project and bypass the project browser.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--ui-lab",
+        action="store_true",
+        help="Launch the standalone editor UI control lab without building or starting the native engine host.",
+    )
+    args = parser.parse_args()
+    if args.ui_lab and args.quick_start:
+        parser.error("--ui-lab and --quick-start cannot be used together")
+    return args
 
 
 def run(command, cwd, env=None):
@@ -210,11 +218,14 @@ def main():
         print("error: editor directory was not found: {}".format(editor_dir), file=sys.stderr)
         return 1
 
-    try:
-        host, project_tool = prepare_native_editor(args, repo_root)
-    except (RuntimeError, subprocess.CalledProcessError) as error:
-        print("error: {}".format(error), file=sys.stderr)
-        return 1
+    host = None
+    project_tool = None
+    if not args.ui_lab:
+        try:
+            host, project_tool = prepare_native_editor(args, repo_root)
+        except (RuntimeError, subprocess.CalledProcessError) as error:
+            print("error: {}".format(error), file=sys.stderr)
+            return 1
 
     npm = find_executable(args.npm)
     if npm is None:
@@ -226,9 +237,10 @@ def main():
             run([npm, "install"], editor_dir)
 
         editor_env = os.environ.copy()
-        editor_env["ARC_HOST_PROCESS_PATH"] = host
-        editor_env["ARC_PROJECT_TOOL_PATH"] = project_tool
-        editor_env["ARC_PROJECT_TEMPLATES_PATH"] = os.path.join(repo_root, "templates")
+        if host is not None and project_tool is not None:
+            editor_env["ARC_HOST_PROCESS_PATH"] = host
+            editor_env["ARC_PROJECT_TOOL_PATH"] = project_tool
+            editor_env["ARC_PROJECT_TEMPLATES_PATH"] = os.path.join(repo_root, "templates")
         if args.quick_start:
             editor_env["ARC_EDITOR_QUICK_START_PROJECT"] = os.path.join(
                 repo_root, "out", "editor-quick-start-project"
@@ -236,11 +248,16 @@ def main():
         if args.build_only:
             run([npm, "run", "typecheck"], editor_dir, editor_env)
             print("ARC Editor is ready: {}".format(editor_dir))
-            print("Native host: {}".format(host))
+            if host is not None:
+                print("Native host: {}".format(host))
             return 0
 
         command = [npm, "run", args.npm_script]
-        if args.quick_start:
+        if args.ui_lab:
+            # npm consumes the first separator and Electron Forge consumes the
+            # second before forwarding the switch to the Electron process.
+            command.extend(["--", "--", "--ui-lab"])
+        elif args.quick_start:
             # npm consumes the first separator and Electron Forge consumes the
             # second before forwarding the switch to the Electron process.
             command.extend(["--", "--", "--quick-start"])
