@@ -4,7 +4,8 @@ import { Workbench } from './app/Workbench';
 import { ProjectBrowser } from './project/ProjectBrowser';
 import { UiLab } from './uiLab/UiLab';
 
-const isUiLabMode = () => new URLSearchParams(window.location.search).get('mode') === 'ui-lab';
+const isUiLabMode = () =>
+  import.meta.env.VITE_ARC_UI_LAB === '1' || new URLSearchParams(window.location.search).get('mode') === 'ui-lab';
 
 function EditorApplication() {
   const [project, setProject] = useState<ArcProjectCandidate | null | undefined>(undefined);
