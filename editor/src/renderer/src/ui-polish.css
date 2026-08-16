@@ -14,6 +14,11 @@
   padding-inline: var(--arc-space-5);
 }
 
+/* Search inputs reserve the leading icon gutter instead of inheriting the plain text inset. */
+.ui-search-input {
+  padding-left: 30px;
+}
+
 .ui-select-trigger.ui-button {
   padding-left: var(--arc-space-5);
 }
