@@ -1,0 +1,55 @@
+name: UI Lab Format Temp
+
+on:
+  push:
+    branches:
+      - feature/ui-lab-expanded-controls
+
+permissions:
+  contents: write
+
+jobs:
+  format-and-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feature/ui-lab-expanded-controls
+
+      - name: Set Up Node 22.12
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+
+      - name: Install Electron Dependencies
+        run: npm ci --prefix editor
+
+      - name: Format UI Lab Files
+        working-directory: editor
+        run: npx prettier --write src/renderer/src/uiLab/UiLab.tsx src/renderer/src/uiLab/uiLab.css src/renderer/src/uiLab/UiLab.test.tsx
+
+      - name: Commit Formatting
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/uiLab/UiLab.tsx editor/src/renderer/src/uiLab/uiLab.css editor/src/renderer/src/uiLab/UiLab.test.tsx
+          git commit -m "Format expanded UI Lab"
+          git push origin HEAD:feature/ui-lab-expanded-controls
+
+      - name: Lint UI Lab Changes
+        working-directory: editor
+        run: npm run lint
+
+      - name: Typecheck Editor
+        working-directory: editor
+        run: npm run typecheck
+
+      - name: Test Editor
+        working-directory: editor
+        run: npm test
