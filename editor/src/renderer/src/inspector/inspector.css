@@ -21,8 +21,8 @@
   min-height: 100%;
   color: var(--inspector-text);
   background: var(--inspector-bg);
-  font-size: 12px;
-  line-height: 1.2;
+  font-size: var(--arc-text-sm);
+  line-height: var(--arc-line-default);
 }
 
 .dock-right .dock-tabs {
@@ -432,6 +432,8 @@
 
 .inspector-component-card {
   min-width: 0;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
   border: 1px solid #28323a;
   background: #192128;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
@@ -559,6 +561,9 @@
 
 .inspector-property-label {
   display: flex;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  line-height: var(--arc-line-default);
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -638,6 +643,8 @@
 
 .inspector-number input {
   grid-column: 2;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
   padding: 0 6px;
   font-variant-numeric: tabular-nums;
 }
@@ -775,14 +782,14 @@
 
 .asset-preview-stage > span:last-child strong {
   color: #d7dde1;
-  font-size: 11px;
+  font-size: var(--arc-text-xs);
   font-weight: 600;
 }
 
 .asset-preview-stage > span:last-child small {
   margin-top: 2px;
   color: #77838c;
-  font-size: 9px;
+  font-size: var(--arc-text-xxs);
 }
 
 .asset-reference-control {
@@ -794,6 +801,8 @@
 
 .asset-reference-main {
   display: grid;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
   grid-template-columns: 54px minmax(0, 1fr) 18px;
   align-items: center;
   gap: 7px;
@@ -833,13 +842,13 @@
 
 .asset-reference-copy strong {
   color: #dce1e5;
-  font-size: 12px;
+  font-size: var(--arc-text-sm);
   font-weight: 600;
 }
 
 .asset-reference-copy small {
   color: #77828b;
-  font-size: 10px;
+  font-size: var(--arc-text-xxs);
 }
 
 .asset-reference-clear {
@@ -923,13 +932,8 @@
   box-shadow:
     0 14px 38px rgba(0, 0, 0, 0.58),
     0 2px 8px rgba(0, 0, 0, 0.45);
-  font-family:
-    WindowsSystemFont,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 11px;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-xs);
 }
 
 .asset-picker-popover > header {
@@ -1071,13 +1075,8 @@
   box-shadow:
     0 14px 38px rgba(0, 0, 0, 0.58),
     0 2px 8px rgba(0, 0, 0, 0.48);
-  font-family:
-    WindowsSystemFont,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
-  font-size: 12px;
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
   line-height: 1.2;
 }
 

@@ -304,7 +304,7 @@ export function UiLab() {
           </LabCard>
           <LabCard title="Readonly" caption="output / readonly">
             <div className="ui-lab-field-pair">
-              <span>Entity ID</span>
+              <span className="ui-field-label">Entity ID</span>
               <output aria-label="Entity ID">1842:7</output>
             </div>
           </LabCard>
