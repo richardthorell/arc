@@ -46,6 +46,8 @@
 }
 
 .arc-viewport-view-options.compact > button[data-viewport-stats-toggle='true']::before {
+  display: inline-block;
+  flex: 0 0 15px;
   width: 15px;
   height: 14px;
   background:
