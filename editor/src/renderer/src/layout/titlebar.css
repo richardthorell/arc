@@ -171,11 +171,14 @@
 .menu-shortcut {
   justify-self: end;
   margin-left: 24px;
-  color: var(--arc-color-text-subtle);
+  color: var(--arc-color-text);
   white-space: nowrap;
 }
 
 .menu-dropdown button:disabled {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
   opacity: 0.42;
 }
 
