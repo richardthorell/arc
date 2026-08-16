@@ -1,6 +1,6 @@
 /* Keep ECS property rows visually unified: the label and control columns share one surface. */
 .inspector-component-card > .inspector-component-content {
-  background: var(--inspector-bg, #192128);
+  background: #192128;
 }
 
 /* Give the production titlebar preview the full UI Lab row and enough room to exercise open menus. */
