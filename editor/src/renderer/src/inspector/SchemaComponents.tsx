@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
-import { UiSelect, UiTextInput } from '../ui';
+import { UiButton, UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
@@ -249,17 +249,17 @@ function SchemaField<TContext extends object>({
         <span className="inspector-property-label">{field.label}</span>
         <div className="inspector-action-buttons">
           {field.actions.map((action) => (
-            <button
+            <UiButton
               aria-label={action.label}
-              className={action.danger ? 'is-danger' : ''}
               disabled={action.disabled?.(context)}
               key={action.id}
               onClick={() => onAction(action.id)}
               title={action.tooltip}
               type="button"
+              variant={action.danger ? 'danger' : 'default'}
             >
               {action.label}
-            </button>
+            </UiButton>
           ))}
         </div>
       </div>
