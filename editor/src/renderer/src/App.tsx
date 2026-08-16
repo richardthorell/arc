@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ArcProjectCandidate } from '../../common/projectTypes';
 import { Workbench } from './app/Workbench';
 import { ProjectBrowser } from './project/ProjectBrowser';
-import { UiLab } from './uiLab/UiLab';
+import { UiLabWindow } from './uiLab/UiLabWindow';
 
 const isUiLabMode = () =>
   import.meta.env.VITE_ARC_UI_LAB === '1' || new URLSearchParams(window.location.search).get('mode') === 'ui-lab';
@@ -20,5 +20,5 @@ function EditorApplication() {
 }
 
 export function App() {
-  return isUiLabMode() ? <UiLab /> : <EditorApplication />;
+  return isUiLabMode() ? <UiLabWindow /> : <EditorApplication />;
 }
