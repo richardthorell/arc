@@ -1,0 +1,46 @@
+.ui-lab-window {
+  min-height: 100vh;
+  background: var(--arc-color-bg-app);
+}
+
+.ui-lab-window-titlebar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  height: var(--arc-titlebar-height);
+  padding-left: 12px;
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  color: var(--arc-color-text);
+  background: var(--arc-color-bg-chrome);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.ui-lab-window-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--arc-text-sm);
+}
+
+.ui-lab-window-title strong {
+  color: var(--arc-color-text-strong);
+  font-size: var(--arc-text-lg);
+  font-weight: 650;
+}
+
+.ui-lab-window-title span {
+  color: var(--arc-color-text-muted);
+}
+
+.ui-lab-window .ui-lab-shell {
+  min-height: calc(100vh - var(--arc-titlebar-height));
+}
+
+.ui-lab-window .ui-lab-hero {
+  top: var(--arc-titlebar-height);
+}
