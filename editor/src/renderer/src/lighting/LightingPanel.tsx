@@ -11,11 +11,15 @@ import '../tools/tools.css';
 export function LightingPanel({
   entities,
   onSelect,
+  fixtureDiagnostics,
+  queryHost = true,
 }: {
   entities: SceneEntity[];
   onSelect: (entityId: string) => void;
+  fixtureDiagnostics?: EditorDiagnosticsSnapshot;
+  queryHost?: boolean;
 }) {
-  const [diagnostics, setDiagnostics] = useState<EditorDiagnosticsSnapshot | null>(null);
+  const [diagnostics, setDiagnostics] = useState<EditorDiagnosticsSnapshot | null>(fixtureDiagnostics ?? null);
   const [filter, setFilter] = useState('');
   const lights = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase();
@@ -28,19 +32,22 @@ export function LightingPanel({
   }, [entities, filter]);
 
   const refresh = async () => {
+    if (!queryHost) return;
     const response = (await window.arc.host.query('gateway.diagnostics')) as HostResponse<EditorDiagnosticsSnapshot>;
     if (response.succeeded && response.payload) setDiagnostics(response.payload);
   };
   useEffect(() => {
-    void refresh();
-  }, []);
+    if (queryHost) void refresh();
+    // refresh is intentionally scoped to the current host/query mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryHost]);
 
   return (
     <section className="production-tool-panel lighting-production-panel">
       <header className="tool-panel-toolbar">
         <Lightbulb size={15} />
         <strong>Lighting</strong>
-        <UiIconButton label="Refresh lighting diagnostics" onClick={() => void refresh()}>
+        <UiIconButton disabled={!queryHost} label="Refresh lighting diagnostics" onClick={() => void refresh()}>
           <RefreshCw size={14} />
         </UiIconButton>
       </header>
