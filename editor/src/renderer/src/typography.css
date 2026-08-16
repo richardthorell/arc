@@ -1,0 +1,19 @@
+html,
+body,
+#root {
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  line-height: var(--arc-line-default);
+}
+
+/* Shared field-label typography used by inspector and UI Lab controls. */
+.ui-field-label,
+.ui-lab-field-pair > span,
+.inspector-property-label,
+.inspector-number-property .inspector-scalar-scrub {
+  color: var(--arc-color-text-muted);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 400;
+  line-height: var(--arc-line-default);
+}
