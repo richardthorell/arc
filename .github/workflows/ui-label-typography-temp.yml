@@ -1,0 +1,97 @@
+name: UI Label Typography Temp
+
+on:
+  push:
+    branches:
+      - fix/shared-control-typography
+    paths:
+      - .github/workflows/ui-label-typography-temp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-shared-typography:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v5
+        with:
+          ref: fix/shared-control-typography
+
+      - name: Unify field and widget typography
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          typography = Path('editor/src/renderer/src/typography.css')
+          text = typography.read_text()
+          shared = '''
+
+/* Shared field-label typography. Keep property labels visually identical
+   whether a control is rendered in the inspector or in the standalone UI Lab. */
+.ui-field-label,
+.ui-lab-field-pair > span,
+.inspector-property-label,
+.inspector-number-property .inspector-scalar-scrub {
+  color: var(--arc-color-text-muted);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 400;
+  line-height: var(--arc-line-default);
+}
+'''
+          if '.ui-field-label,' not in text:
+              typography.write_text(text.rstrip() + shared + '\n')
+
+          ui_lab = Path('editor/src/renderer/src/uiLab/UiLab.tsx')
+          text = ui_lab.read_text()
+          text = text.replace('<span>Entity ID</span>', '<span className="ui-field-label">Entity ID</span>', 1)
+          ui_lab.write_text(text)
+
+          inspector = Path('editor/src/renderer/src/inspector/inspector.css')
+          css = inspector.read_text()
+          replacements = {
+              '  font-size: 12px;\n  line-height: 1.2;': '  font-size: var(--arc-text-sm);\n  line-height: var(--arc-line-default);',
+              "  font-family:\n    WindowsSystemFont,\n    -apple-system,\n    BlinkMacSystemFont,\n    'Segoe UI',\n    sans-serif;\n  font-size: 11px;": '  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-xs);',
+              "  font-family:\n    WindowsSystemFont,\n    -apple-system,\n    BlinkMacSystemFont,\n    'Segoe UI',\n    sans-serif;\n  font-size: 12px;": '  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);',
+              '  font-size: 12px;\n  font-weight: 600;\n}\n\n.asset-reference-copy small': '  font-size: var(--arc-text-sm);\n  font-weight: 600;\n}\n\n.asset-reference-copy small',
+              '  color: #77828b;\n  font-size: 10px;\n}\n\n.asset-reference-clear': '  color: #77828b;\n  font-size: var(--arc-text-xxs);\n}\n\n.asset-reference-clear',
+              '  color: #d7dde1;\n  font-size: 11px;': '  color: #d7dde1;\n  font-size: var(--arc-text-xs);',
+              '  color: #77838c;\n  font-size: 9px;': '  color: #77838c;\n  font-size: var(--arc-text-xxs);',
+          }
+          for old, new in replacements.items():
+              css = css.replace(old, new)
+
+          # Make the production controls explicitly participate in the shared font system.
+          css = css.replace(
+              '.inspector-component-card {\n  min-width: 0;',
+              '.inspector-component-card {\n  min-width: 0;\n  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);',
+              1,
+          )
+          css = css.replace(
+              '.inspector-property-label {\n  display: flex;',
+              '.inspector-property-label {\n  display: flex;\n  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);\n  line-height: var(--arc-line-default);',
+              1,
+          )
+          css = css.replace(
+              '.inspector-number input {\n  grid-column: 2;',
+              '.inspector-number input {\n  grid-column: 2;\n  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);',
+              1,
+          )
+          css = css.replace(
+              '.asset-reference-main {\n  display: grid;',
+              '.asset-reference-main {\n  display: grid;\n  font-family: var(--arc-font-ui);\n  font-size: var(--arc-text-sm);',
+              1,
+          )
+          inspector.write_text(css)
+          PY
+
+      - name: Commit update and remove temporary workflow
+        run: |
+          git rm .github/workflows/ui-label-typography-temp.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/typography.css editor/src/renderer/src/uiLab/UiLab.tsx editor/src/renderer/src/inspector/inspector.css
+          git commit -m "Unify shared field and widget typography"
+          git push origin HEAD:fix/shared-control-typography
