@@ -1,8 +1,70 @@
+.workbench-shell .workspace-dock {
+  /* Dockview remains responsible for docking, dragging, grouping and layout.
+     Its visual tab palette is neutralized so the shared UiTab owns the chrome. */
+  --dv-group-view-background-color: var(--arc-color-bg-panel);
+  --dv-tabs-and-actions-container-background-color: var(--arc-color-bg-chrome);
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--arc-color-text-muted);
+  --dv-activegroup-hiddenpanel-tab-color: var(--arc-color-text-muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--arc-color-text-muted);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--arc-color-text-muted);
+  --dv-tab-divider-color: transparent;
+  --dv-tabs-and-actions-container-height: var(--arc-dock-tab-height);
+  --dv-tabs-and-actions-container-font-size: var(--arc-text-sm);
+  --dv-tab-font-size: var(--arc-text-sm);
+  --dv-tab-margin: 0;
+  --dv-tab-border-radius: 0;
+}
+
+.workspace-dock .dv-tabs-and-actions-container {
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-chrome);
+}
+
+.workspace-dock .dv-tabs-container {
+  align-items: stretch;
+  background: transparent;
+}
+
+/* Dockview's tab element is the drag/drop hit target. Keep it in place but
+   remove its visual padding/background so UiTab is the only visible tab. */
+.workspace-dock .dv-tabs-container > .dv-tab {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workspace-dock .dv-tabs-container > .dv-tab.dv-active-tab,
+.workspace-dock .dv-tabs-container > .dv-tab.dv-inactive-tab {
+  color: inherit;
+  background: transparent;
+}
+
+/* UiTab already draws the divider/focus/selection treatment. Suppress the
+   duplicate Dockview divider and focus outline while retaining drag ghosts. */
+.workspace-dock .dv-tabs-container > .dv-tab::before,
+.workspace-dock .dv-tabs-container > .dv-tab:not(.dv-tab-ghost-drag)::after {
+  display: none;
+}
+
+.workspace-dock .dv-void-container,
+.workspace-dock .dv-right-actions-container {
+  background: transparent;
+}
+
 .workspace-dock-tab-host {
   display: flex;
   align-items: stretch;
   min-width: 0;
   height: 100%;
+  color: var(--arc-color-text-muted);
 }
 
 .workspace-dock-tab-host > .ui-tab,
@@ -10,13 +72,21 @@
   height: 100%;
 }
 
+.workspace-dock-tab-host > .ui-tab-shell {
+  max-width: 220px;
+}
+
 .workspace-dock-tab-host .workspace-dock-tab {
   max-width: 220px;
 }
 
-/* Dockview owns the tab chrome. Older workbench content wrappers still carry
-   their former single-panel tab strip, so suppress that chrome whenever the
-   panel is hosted by the workspace dock. */
+.workspace-dock-tab-host .ui-tab-icon {
+  display: inline-flex;
+}
+
+/* Dockview owns panel grouping and movement. Older workbench content wrappers
+   still carry their former single-panel tab strip, so suppress that chrome
+   whenever the panel is hosted by the workspace dock. */
 .workspace-dock-panel .workbench-panel > .panel-tabs {
   display: none;
 }
