@@ -1,4 +1,4 @@
-.ui-tabs .ui-tab {
+.ui-tab {
   position: relative;
   gap: var(--arc-space-3);
   font-family: var(--arc-font-ui);
@@ -10,14 +10,14 @@
     box-shadow 100ms ease;
 }
 
-.ui-tabs .ui-tab:hover:not(:disabled) {
+.ui-tab:hover:not(:disabled) {
   color: var(--arc-color-text-strong);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
     var(--arc-color-bg-active);
 }
 
-.ui-tabs .ui-tab.is-active {
+.ui-tab.is-active {
   color: var(--arc-color-text-strong);
   background:
     linear-gradient(180deg, var(--arc-color-accent-soft) 0%, transparent 100%),
@@ -27,14 +27,14 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
-.ui-tabs .ui-tab:focus-visible,
-.ui-tabs .ui-tab-close:focus-visible {
+.ui-tab:focus-visible,
+.ui-tab-close:focus-visible {
   outline: 0;
   box-shadow: inset 0 0 0 1px var(--arc-color-accent);
 }
 
-.ui-tabs .ui-tab:disabled,
-.ui-tabs .ui-tab-shell.is-disabled {
+.ui-tab:disabled,
+.ui-tab-shell.is-disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
