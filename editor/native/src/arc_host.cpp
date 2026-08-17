@@ -235,6 +235,7 @@ host_response arc_host::query(const host_query_envelope& query) const
     if (payload.is_discarded() || !payload.is_object()) return response;
 
     const auto stats = collect_viewport_render_stats(state_->scene, *state_->renderer);
+    payload["viewportTelemetryVersion"] = viewport_render_stats_schema_version;
     payload["triangles"] = stats.triangles;
     payload["verticesComplete"] = stats.vertices_complete;
     if (stats.vertices_complete) payload["vertices"] = stats.vertices;
