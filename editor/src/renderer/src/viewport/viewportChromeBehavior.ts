@@ -4,8 +4,11 @@ const viewportStatsToggleSelector =
   '.arc-viewport-view-options.compact > button[title^="Frame selected"], .arc-viewport-view-options.compact > button[data-viewport-stats-toggle="true"]';
 
 const mebibyte = 1024 * 1024;
+const viewportTelemetryVersion = 1;
 
 type RuntimeViewportStats = {
+  viewportId?: string;
+  viewportTelemetryVersion?: number;
   fps?: number;
   frameTimeMs?: number;
   frameIntervalMs?: number;
@@ -15,6 +18,7 @@ type RuntimeViewportStats = {
   triangleCount?: number;
   vertices?: number;
   vertexCount?: number;
+  verticesComplete?: boolean;
   gpuMemoryMb?: number;
   memoryMb?: number;
   gpuMemoryBytes?: number;
@@ -23,6 +27,7 @@ type RuntimeViewportStats = {
 };
 
 const statsPollers = new WeakMap<Element, number>();
+const staleTelemetryWarnings = new WeakSet<Element>();
 
 const decorateStatsToggle = (button: HTMLButtonElement) => {
   button.dataset.viewportStatsToggle = 'true';
@@ -49,7 +54,7 @@ const compactMemoryBytes = (bytes: number | undefined) => {
 
 const compactMemoryUsage = (usedBytes: number | undefined, budgetBytes: number | undefined) => {
   const used = compactMemoryBytes(usedBytes);
-  if (used === '—') return used;
+  if (used === '—') return 'N/A';
   const budget = compactMemoryBytes(budgetBytes);
   return budget === '—' ? used : `${used} / ${budget}`;
 };
@@ -101,9 +106,25 @@ const decorateStatsRows = (shell: Element) => {
 };
 
 const viewportIdForShell = (shell: Element) => {
+  const element = shell as HTMLElement;
+  if (element.dataset.viewportId) return element.dataset.viewportId;
+
   const title = shell.querySelector('.arc-viewport-title span')?.textContent ?? 'Viewport 1';
   const index = Number.parseInt(title.match(/\d+/)?.[0] ?? '1', 10);
-  return `viewport-${Number.isFinite(index) ? index : 1}`;
+  const viewportId = `viewport-${Number.isFinite(index) ? index : 1}`;
+  element.dataset.viewportId = viewportId;
+  return viewportId;
+};
+
+const showTelemetryVersionMismatch = (shell: Element, card: Element) => {
+  setStatsCardValue(card, 'Triangles', 'Restart host');
+  setStatsCardValue(card, 'Vertices', 'Restart host');
+  setStatsCardValue(card, 'Memory', 'Restart host');
+  if (staleTelemetryWarnings.has(shell)) return;
+  staleTelemetryWarnings.add(shell);
+  console.warn(
+    `Viewport telemetry requires arc_host_process schema ${viewportTelemetryVersion}. Rebuild and restart the native editor host.`,
+  );
 };
 
 const refreshRuntimeStats = async (shell: Element) => {
@@ -117,6 +138,15 @@ const refreshRuntimeStats = async (shell: Element) => {
     const card = ensureStatsCard(shell);
     if (!card) return;
     const payload = response.payload;
+    if (typeof payload.viewportId === 'string' && payload.viewportId) {
+      (shell as HTMLElement).dataset.viewportId = payload.viewportId;
+    }
+    if (payload.viewportTelemetryVersion !== viewportTelemetryVersion) {
+      showTelemetryVersionMismatch(shell, card);
+      return;
+    }
+
+    staleTelemetryWarnings.delete(shell);
     const triangles = payload.triangles ?? payload.triangleCount;
     const vertices = payload.vertices ?? payload.vertexCount;
     const memoryBytes =
@@ -134,7 +164,7 @@ const refreshRuntimeStats = async (shell: Element) => {
       setStatsCardValue(card, 'Frame Time', frameIntervalMs > 0 ? `${frameIntervalMs.toFixed(2)} ms` : '—');
     if (typeof payload.drawCalls === 'number') setStatsCardValue(card, 'Draw Calls', compactCount(payload.drawCalls));
     setStatsCardValue(card, 'Triangles', compactCount(triangles));
-    setStatsCardValue(card, 'Vertices', compactCount(vertices));
+    setStatsCardValue(card, 'Vertices', payload.verticesComplete === false ? 'N/A' : compactCount(vertices));
     setStatsCardValue(card, 'Memory', compactMemoryUsage(memoryBytes, payload.gpuMemoryBudgetBytes));
   } catch {
     // The existing ViewportPanel handles host errors. Statistics are optional UI.
