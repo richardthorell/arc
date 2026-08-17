@@ -24,7 +24,11 @@ void add_mesh_stats(viewport_render_stats& stats, const render::renderer& render
 {
     if (!mesh.valid() || instance_count == 0) return;
     const auto* data = renderer.mesh_data_for(mesh);
-    if (!data) return;
+    if (!data)
+    {
+        stats.vertices_complete = false;
+        return;
+    }
 
     const auto instances = static_cast<std::uint64_t>(instance_count);
     const auto triangle_count = data->indices.empty() ? data->vertices.size() / 3u : data->indices.size() / 3u;
@@ -86,6 +90,8 @@ viewport_render_stats collect_viewport_render_stats(const editor_scene_state& st
     const auto profile = renderer.last_frame_profile();
     stats.triangles += profile.virtual_geometry.visible_triangles;
     stats.triangles += profile.terrain.rendered_triangles;
+    if (profile.virtual_geometry.visible_triangles != 0 || profile.terrain.rendered_triangles != 0)
+        stats.vertices_complete = false;
 
     if (const auto* backend = renderer.backend())
     {
