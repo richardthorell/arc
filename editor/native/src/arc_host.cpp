@@ -184,7 +184,8 @@ host_response arc_host::execute(const host_command_envelope& command)
     };
     if (state_->asset_registry)
     {
-        auto resolved_reference = state_->asset_registry->resolve(normalized_path, arc::assets::asset_types::imported_scene);
+        auto resolved_reference =
+            state_->asset_registry->resolve(normalized_path, arc::assets::asset_types::imported_scene);
         if (resolved_reference.guid.valid() || !resolved_reference.path_hint.empty())
             source_reference = std::move(resolved_reference);
     }
@@ -218,7 +219,8 @@ host_response arc_host::execute(const host_command_envelope& command)
 
     ++state_->scene_revision;
     state_->history.record("Assign Mesh", std::move(before), state_->scene);
-    push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Mesh asset assigned", entity);
+    push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Mesh asset assigned",
+               entity);
     return response_with_revisions({.request_id = command.request_id,
                                     .succeeded = true,
                                     .payload_json = "{\"entity\":" + to_json(material_command->entity) + '}'});
