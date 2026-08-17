@@ -15,6 +15,7 @@ add_library(arc-editor-host STATIC
     src/project_module_loader.cpp
     src/scene_document.cpp
     src/terrain_heightmap_io.cpp
+    src/viewport_render_stats.cpp
     src/world_environment_host.cpp
 )
 arc_configure_first_party_target(arc-editor-host)
