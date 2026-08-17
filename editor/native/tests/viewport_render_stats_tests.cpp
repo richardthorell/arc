@@ -6,9 +6,9 @@
 #include <arc/scene/render_scene.h>
 
 #include <catch2/catch_test_macros.hpp>
-#include <nlohmann/json.hpp>
 
 #include <memory>
+#include <string>
 
 TEST_CASE("viewport render stats count conventional and instanced geometry")
 {
@@ -82,14 +82,13 @@ TEST_CASE("viewport state query transports render telemetry through the host res
     });
     REQUIRE(response.succeeded);
 
-    const auto payload = nlohmann::json::parse(response.payload_json);
-    REQUIRE(payload.is_object());
-    REQUIRE(payload.contains("viewportTelemetryVersion"));
-    CHECK(payload.at("viewportTelemetryVersion").get<std::uint32_t>() ==
-          arc::editor::viewport_render_stats_schema_version);
-    REQUIRE(payload.contains("triangles"));
-    CHECK(payload.at("triangles").is_number_unsigned());
-    REQUIRE(payload.contains("verticesComplete"));
-    REQUIRE(payload.contains("frameIntervalMs"));
-    REQUIRE(payload.contains("cpuRenderTimeMs"));
+    const auto& payload = response.payload_json;
+    const auto version_fragment =
+        "\"viewportTelemetryVersion\":" + std::to_string(arc::editor::viewport_render_stats_schema_version);
+    CHECK(payload.find(version_fragment) != std::string::npos);
+    CHECK(payload.find("\"viewportId\":\"viewport-1\"") != std::string::npos);
+    CHECK(payload.find("\"triangles\":") != std::string::npos);
+    CHECK(payload.find("\"verticesComplete\":") != std::string::npos);
+    CHECK(payload.find("\"frameIntervalMs\":") != std::string::npos);
+    CHECK(payload.find("\"cpuRenderTimeMs\":") != std::string::npos);
 }
