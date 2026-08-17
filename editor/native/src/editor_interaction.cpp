@@ -15,6 +15,8 @@ namespace
 constexpr float camera_rotation_radians_per_pixel = 0.008f;
 constexpr float camera_maximum_pitch = 1.45f;
 constexpr float camera_wheel_dolly_units = 1.5f;
+constexpr float camera_minimum_focus_distance = 0.35f;
+constexpr float camera_maximum_wheel_delta = 8.0f;
 
 math::quatf multiply_quaternion(const math::quatf& lhs, const math::quatf& rhs) noexcept
 {
@@ -220,11 +222,24 @@ void editor_camera_controller::move_forward(float delta_y) noexcept
 
 void editor_camera_controller::zoom(float wheel_delta) noexcept
 {
-    // A wheel gesture is a linear camera-space translation, not an orbit
-    // radius change. Keep the explicitly focused point fixed so Alt+left
-    // orbit continues to circle the framed object after a dolly.
-    const auto translation = math::mul(forward_from_yaw_pitch(yaw_, pitch_), wheel_delta * camera_wheel_dolly_units);
-    position_ = math::add(position_, translation);
+    if (!std::isfinite(wheel_delta) || wheel_delta == 0.0f) return;
+
+    const auto forward = forward_from_yaw_pitch(yaw_, pitch_);
+    const auto to_focus = math::sub(focus_, position_);
+    const float focus_distance_along_view = math::dot(to_focus, forward);
+    float translation =
+        std::clamp(wheel_delta, -camera_maximum_wheel_delta, camera_maximum_wheel_delta) * camera_wheel_dolly_units;
+
+    // Positive wheel input moves toward the view direction. When the persistent
+    // orbit focus is ahead of the camera, stop short of that focus instead of
+    // allowing the camera to pass through the scene and leave it behind.
+    if (translation > 0.0f && focus_distance_along_view > 0.0f)
+    {
+        const float available = std::max(0.0f, focus_distance_along_view - camera_minimum_focus_distance);
+        translation = std::min(translation, available);
+    }
+
+    position_ = math::add(position_, math::mul(forward, translation));
 }
 
 void editor_camera_controller::apply_to(scene::transform_component& transform) const noexcept

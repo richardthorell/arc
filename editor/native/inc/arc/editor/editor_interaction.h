@@ -113,7 +113,7 @@ public:
     void move_forward(float delta_y) noexcept;
 
     /**
-     * @brief Translate the camera forward or backward without changing orbit distance.
+     * @brief Dolly along the look direction without crossing a focused pivot ahead.
      */
     void zoom(float wheel_delta) noexcept;
 
