@@ -1,5 +1,5 @@
 import { createRoot, type Root } from 'react-dom/client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createDockview,
   type DockviewApi,
@@ -10,7 +10,13 @@ import {
 } from 'dockview';
 import 'dockview/dist/styles/dockview.css';
 
-import { panelRegistry } from '../app/panelRegistry';
+import {
+  activityRegistry,
+  isSidebarPanel,
+  panelRegistry,
+  sidebarPanelIds,
+  type SidebarPanelId,
+} from '../app/panelRegistry';
 import type { WorkbenchPanelId } from '../app/workbenchTypes';
 import { PanelDockTabRenderer, getPanelTabPresentation } from './PanelDockTab';
 import './WorkspaceDock.css';
@@ -28,7 +34,20 @@ type WorkspaceDockProps = {
 };
 
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v3.${projectKey}.${name}`;
+const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
+
+const initialSidebarPanel = (): SidebarPanelId => {
+  try {
+    const saved = window.localStorage.getItem(workbenchLayoutStorageKey);
+    if (!saved) return 'hierarchy';
+    const activeActivity = (JSON.parse(saved) as { activeActivity?: string }).activeActivity;
+    const activity = activityRegistry.find((entry) => entry.id === activeActivity);
+    return activity && isSidebarPanel(activity.panelId) ? activity.panelId : 'hierarchy';
+  } catch {
+    return 'hierarchy';
+  }
+};
 
 class ReactPanelRenderer implements IContentRenderer {
   readonly element = document.createElement('div');
@@ -67,6 +86,7 @@ const addPanel = (
   referencePanel?: WorkbenchPanelId,
   direction?: 'left' | 'right' | 'above' | 'below' | 'within',
 ) => {
+  if (isSidebarPanel(panel)) return;
   const descriptor = panelRegistry[panel];
   api.addPanel({
     id: panel,
@@ -78,6 +98,10 @@ const addPanel = (
     inactive: Boolean(referencePanel && direction === 'within'),
     ...(referencePanel ? { position: { referencePanel, direction } } : {}),
   });
+};
+
+const removeSidebarPanelsFromDock = (api: DockviewApi) => {
+  for (const panelId of sidebarPanelIds) api.getPanel(panelId)?.api.close();
 };
 
 const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
@@ -92,14 +116,12 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
     return;
   }
   if (name === 'Profiling') {
-    addPanel(api, 'hierarchy', 'viewport', 'left');
     addPanel(api, 'renderGraph', 'viewport', 'within');
     addPanel(api, 'profiler', 'viewport', 'right');
     addPanel(api, 'console', 'viewport', 'below');
     addPanel(api, 'buildOutput', 'console', 'within');
     return;
   }
-  addPanel(api, 'hierarchy', 'viewport', 'left');
   addPanel(api, 'inspector', 'viewport', 'right');
   addPanel(api, 'lighting', 'inspector', 'within');
   addPanel(api, 'worldSettings', 'inspector', 'within');
@@ -121,6 +143,7 @@ export function WorkspaceDock({
   const api = useRef<DockviewApi | null>(null);
   const renderPanelRef = useRef(renderPanel);
   const renderers = useRef(new Set<ReactPanelRenderer>());
+  const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanelId>(initialSidebarPanel);
   renderPanelRef.current = renderPanel;
 
   useEffect(() => {
@@ -154,6 +177,12 @@ export function WorkspaceDock({
     } catch {
       createLayout(dock, 'Level Design');
     }
+    // Layouts from older editor versions may still contain Hierarchy/Search/AI/VCS
+    // as Dockview tabs. They now belong exclusively to the fixed primary sidebar.
+    removeSidebarPanelsFromDock(dock);
+    if (!dock.activePanel) createLayout(dock, 'Level Design');
+    window.localStorage.setItem(storageKey(projectKey, 'current'), JSON.stringify(dock.toJSON()));
+
     const layoutSubscription = dock.onDidLayoutChange(() => {
       window.localStorage.setItem(storageKey(projectKey, 'current'), JSON.stringify(dock.toJSON()));
     });
@@ -182,13 +211,22 @@ export function WorkspaceDock({
       const saved = window.localStorage.getItem(storageKey(projectKey, requestedLayout));
       if (saved) dock.fromJSON(JSON.parse(saved) as SerializedDockview);
       else createLayout(dock, requestedLayout);
+      removeSidebarPanelsFromDock(dock);
+      if (!dock.activePanel) createLayout(dock, requestedLayout);
     }
     onRequestHandled?.();
   }, [onRequestHandled, projectKey, requestedLayout]);
 
   useEffect(() => {
+    if (!requestedPanel) return;
+    if (isSidebarPanel(requestedPanel)) {
+      setActiveSidebarPanel(requestedPanel);
+      onRequestHandled?.();
+      return;
+    }
+
     const dock = api.current;
-    if (!dock || !requestedPanel) return;
+    if (!dock) return;
     let panel = dock.getPanel(requestedPanel);
     if (!panel) {
       addPanel(dock, requestedPanel, dock.activePanel?.id as WorkbenchPanelId | undefined, 'within');
@@ -218,5 +256,15 @@ export function WorkspaceDock({
     }
   }, [requestedViewportCount]);
 
-  return <div className="workspace-dock" ref={host} />;
+  return (
+    <div className="workspace-dock-shell">
+      <aside
+        aria-label={`${panelRegistry[activeSidebarPanel].title} sidebar`}
+        className={`primary-sidebar primary-sidebar-${activeSidebarPanel}`}
+      >
+        {renderPanel(activeSidebarPanel)}
+      </aside>
+      <div className="workspace-dock" ref={host} />
+    </div>
+  );
 }

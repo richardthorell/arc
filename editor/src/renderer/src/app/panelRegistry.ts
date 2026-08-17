@@ -17,9 +17,9 @@ import {
 
 import type { ActivityRegistration, PanelRegistration, WorkbenchPanelId } from './workbenchTypes';
 
-// This registry is the source of truth for dock-tab presentation. Panel content
-// should not render its own outer tab/header chrome; WorkspaceDock composes the
-// title, optional icon, active state, and close affordance around the content.
+// Shared panel metadata. Dockview consumes this for dockable tab presentation,
+// while the primary sidebar reuses the same title/icon metadata for its fixed
+// activity-hosted panels.
 export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   hierarchy: {
     id: 'hierarchy',
@@ -87,15 +87,19 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   settings: { id: 'settings', title: 'Settings', icon: Settings, defaultRegion: 'left', activityId: 'settings' },
 };
 
+export const sidebarPanelIds = ['hierarchy', 'search', 'aiAssistant', 'versionControl'] as const;
+export type SidebarPanelId = (typeof sidebarPanelIds)[number];
+
+export const isSidebarPanel = (panel: WorkbenchPanelId): panel is SidebarPanelId =>
+  (sidebarPanelIds as readonly WorkbenchPanelId[]).includes(panel);
+
+// The activity rail is intentionally small and stable. It switches the fixed
+// primary sidebar only; it does not rearrange or activate Dockview groups.
 export const activityRegistry: ActivityRegistration[] = [
-  { id: 'scene', title: 'Scene', icon: FolderTree, panelId: 'hierarchy' },
-  { id: 'assets', title: 'Assets', icon: Database, panelId: 'assetExplorer' },
+  { id: 'scene', title: 'Hierarchy', icon: FolderTree, panelId: 'hierarchy' },
   { id: 'search', title: 'Search', icon: Search, panelId: 'search' },
-  { id: 'renderGraph', title: 'Render Graph', icon: Layers3, panelId: 'renderGraph' },
-  { id: 'versionControl', title: 'Version Control', icon: GitBranch, panelId: 'versionControl' },
-  { id: 'profiler', title: 'Profiler', icon: Gauge, panelId: 'profiler' },
   { id: 'aiAssistant', title: 'AI Gateway', icon: Bot, panelId: 'aiAssistant' },
-  { id: 'settings', title: 'Settings', icon: Settings, panelId: 'settings' },
+  { id: 'versionControl', title: 'Version Control', icon: GitBranch, panelId: 'versionControl' },
 ];
 
 export const dockPanelIds = {
