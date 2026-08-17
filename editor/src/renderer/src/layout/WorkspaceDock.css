@@ -5,21 +5,31 @@
 }
 
 .workbench-shell .activity-bar {
+  box-sizing: border-box;
+  align-items: center;
+  padding: var(--arc-space-4);
   border-right: 0;
   background: var(--arc-color-bg-panel-muted);
   overflow: hidden;
 }
 
-/* The legacy activity-button rule uses a percentage width plus padding. Without
-   an explicit border-box that can grow past the fixed rail and overlap the
-   primary sidebar. Keep each icon surface fully inside the rail with a small,
-   even gutter on both sides. */
+.workbench-shell .activity-bar .activity-items {
+  align-items: center;
+  width: 100%;
+}
+
+/* The rail has a fixed 56px footprint and the icon buttons have a fixed 40px
+   surface, leaving an 8px gutter on both sides. Avoid percentage sizing here:
+   the legacy activity-button padding/margins made that easy to clip or spill
+   into the adjacent primary sidebar. */
 .workbench-shell .activity-bar .activity-button {
   box-sizing: border-box;
-  width: calc(100% - (2 * var(--arc-space-3)));
-  min-width: 0;
-  margin-right: var(--arc-space-3);
-  margin-left: var(--arc-space-3);
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  margin: 0 0 var(--arc-space-3);
+  padding: 0;
 }
 
 .workspace-dock-shell {
