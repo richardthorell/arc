@@ -236,7 +236,8 @@ host_response arc_host::query(const host_query_envelope& query) const
 
     const auto stats = collect_viewport_render_stats(state_->scene, *state_->renderer);
     payload["triangles"] = stats.triangles;
-    payload["vertices"] = stats.vertices;
+    payload["verticesComplete"] = stats.vertices_complete;
+    if (stats.vertices_complete) payload["vertices"] = stats.vertices;
     if (stats.gpu_memory_available) payload["gpuMemoryBytes"] = stats.gpu_memory_used_bytes;
     if (stats.gpu_memory_budget_bytes != 0) payload["gpuMemoryBudgetBytes"] = stats.gpu_memory_budget_bytes;
 
