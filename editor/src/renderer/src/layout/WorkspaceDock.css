@@ -7,6 +7,19 @@
 .workbench-shell .activity-bar {
   border-right: 0;
   background: var(--arc-color-bg-panel-muted);
+  overflow: hidden;
+}
+
+/* The legacy activity-button rule uses a percentage width plus padding. Without
+   an explicit border-box that can grow past the fixed rail and overlap the
+   primary sidebar. Keep each icon surface fully inside the rail with a small,
+   even gutter on both sides. */
+.workbench-shell .activity-bar .activity-button {
+  box-sizing: border-box;
+  width: calc(100% - (2 * var(--arc-space-3)));
+  min-width: 0;
+  margin-right: var(--arc-space-3);
+  margin-left: var(--arc-space-3);
 }
 
 .workspace-dock-shell {
