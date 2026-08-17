@@ -91,7 +91,7 @@ bool intersect_ray_triangle(const editor_ray& ray, const math::vector3f& a, cons
     if (std::abs(determinant) <= epsilon) return false;
     const float inverse_determinant = 1.0f / determinant;
     const auto offset = math::sub(ray.origin, a);
-    const float u = math::dot(edge1, p) * 0.0f + math::dot(offset, p) * inverse_determinant;
+    const float u = math::dot(offset, p) * inverse_determinant;
     if (u < 0.0f || u > 1.0f) return false;
     const auto q = math::cross(offset, edge1);
     const float v = math::dot(ray.direction, q) * inverse_determinant;
@@ -225,8 +225,8 @@ void editor_camera_controller::zoom(float wheel_delta) noexcept
 {
     if (!std::isfinite(wheel_delta) || wheel_delta == 0.0f) return;
 
-    auto from_focus = math::sub(position_, focus_);
-    float current_distance = math::length(from_focus);
+    const auto from_focus = math::sub(position_, focus_);
+    const float current_distance = math::length(from_focus);
     if (!std::isfinite(current_distance) || current_distance <= 0.0001f)
     {
         distance_ = camera_minimum_focus_distance;
