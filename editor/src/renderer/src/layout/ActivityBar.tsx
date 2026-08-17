@@ -1,49 +1,37 @@
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-
 import { activityRegistry } from '../app/panelRegistry';
 import type { ActivityId } from '../app/workbenchTypes';
-import { UiButton, UiIconButton } from '../ui';
+import { UiButton } from '../ui';
 
 type ActivityBarProps = {
   activeActivity: ActivityId;
-  expanded: boolean;
-  onExpandedChange: (expanded: boolean) => void;
+  /** Kept temporarily for Workbench state compatibility; the rail is now always icon-only. */
+  expanded?: boolean;
+  /** Kept temporarily for Workbench state compatibility; expansion is no longer exposed. */
+  onExpandedChange?: (expanded: boolean) => void;
   onSelectActivity: (activity: ActivityId) => void;
 };
 
-export function ActivityBar({ activeActivity, expanded, onExpandedChange, onSelectActivity }: ActivityBarProps) {
+export function ActivityBar({ activeActivity, onSelectActivity }: ActivityBarProps) {
   return (
-    <aside
-      className={expanded ? 'activity-bar activity-bar-expanded' : 'activity-bar'}
-      aria-label="Editor activity bar"
-    >
+    <aside className="activity-bar" aria-label="Primary sidebar activities">
       <div className="activity-items">
         {activityRegistry.map((activity) => {
           const Icon = activity.icon;
-          const spacerBefore = activity.id === 'settings';
           return (
-            <div className={spacerBefore ? 'activity-group-spaced' : undefined} key={activity.id}>
-              <UiButton
-                active={activeActivity === activity.id}
-                className="activity-button"
-                title={activity.title}
-                onClick={() => onSelectActivity(activity.id)}
-                variant="ghost"
-              >
-                <Icon size={20} />
-                {expanded && <span>{activity.title}</span>}
-              </UiButton>
-            </div>
+            <UiButton
+              active={activeActivity === activity.id}
+              aria-label={activity.title}
+              className="activity-button"
+              key={activity.id}
+              onClick={() => onSelectActivity(activity.id)}
+              title={activity.title}
+              variant="ghost"
+            >
+              <Icon size={20} />
+            </UiButton>
           );
         })}
       </div>
-      <UiIconButton
-        className="activity-collapse-button"
-        label={expanded ? 'Collapse activity bar' : 'Expand activity bar'}
-        onClick={() => onExpandedChange(!expanded)}
-      >
-        {expanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-      </UiIconButton>
     </aside>
   );
 }
