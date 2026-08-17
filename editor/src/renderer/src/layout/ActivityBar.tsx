@@ -12,14 +12,17 @@ type ActivityBarProps = {
 };
 
 export function ActivityBar({ activeActivity, onSelectActivity }: ActivityBarProps) {
+  const registeredActivity = activityRegistry.some((activity) => activity.id === activeActivity);
+
   return (
     <aside className="activity-bar" aria-label="Primary sidebar activities">
       <div className="activity-items">
         {activityRegistry.map((activity) => {
           const Icon = activity.icon;
+          const active = registeredActivity ? activeActivity === activity.id : activity.id === 'scene';
           return (
             <UiButton
-              active={activeActivity === activity.id}
+              active={active}
               aria-label={activity.title}
               className="activity-button"
               key={activity.id}
