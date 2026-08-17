@@ -55,10 +55,11 @@ public:
     void set_viewport_gizmo_highlight(gizmo_axis axis) noexcept;
 
 private:
-    // Internal entry points implemented by arc_host_base.inc. Public execute()
-    // intercepts editor-only asset assignment extensions before delegating here.
+    // Internal entry points implemented by arc_host_base.inc. Public wrappers
+    // intercept narrow editor-only extensions before delegating here.
     host_response execute_base(const host_command_envelope& command);
     host_response execute_base(host_command_payload command);
+    host_response query_base(const host_query_envelope& query) const;
 
     struct state;
     std::unique_ptr<state> state_;
@@ -88,9 +89,10 @@ public:
     host_viewport_frame request_viewport(const host_viewport_request& request) override;
 
 private:
-    // The base implementation is macro-renamed together with arc_host::execute
-    // so the wrapper can keep the externally visible virtual entry point intact.
+    // The base implementation is macro-renamed together with arc_host wrappers
+    // so the externally visible virtual entry points can add editor extensions.
     host_response execute_base(const host_command_envelope& command);
+    host_response query_base(const host_query_envelope& query);
 
     std::shared_ptr<arc_host> host_;
 };
