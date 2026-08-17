@@ -11,6 +11,7 @@ import {
 import 'dockview/dist/styles/dockview.css';
 
 import {
+  activityRegistry,
   isSidebarPanel,
   panelRegistry,
   sidebarPanelIds,
@@ -33,7 +34,20 @@ type WorkspaceDockProps = {
 };
 
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v3.${projectKey}.${name}`;
+const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
+
+const initialSidebarPanel = (): SidebarPanelId => {
+  try {
+    const saved = window.localStorage.getItem(workbenchLayoutStorageKey);
+    if (!saved) return 'hierarchy';
+    const activeActivity = (JSON.parse(saved) as { activeActivity?: string }).activeActivity;
+    const activity = activityRegistry.find((entry) => entry.id === activeActivity);
+    return activity && isSidebarPanel(activity.panelId) ? activity.panelId : 'hierarchy';
+  } catch {
+    return 'hierarchy';
+  }
+};
 
 class ReactPanelRenderer implements IContentRenderer {
   readonly element = document.createElement('div');
@@ -129,7 +143,7 @@ export function WorkspaceDock({
   const api = useRef<DockviewApi | null>(null);
   const renderPanelRef = useRef(renderPanel);
   const renderers = useRef(new Set<ReactPanelRenderer>());
-  const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanelId>('hierarchy');
+  const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanelId>(initialSidebarPanel);
   renderPanelRef.current = renderPanel;
 
   useEffect(() => {
