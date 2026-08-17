@@ -1,5 +1,3 @@
-import type { LucideIcon } from 'lucide-react';
-
 export type StartupState = {
   appVersion: string;
   engineHostConnected: boolean;
@@ -65,10 +63,14 @@ export type CommandId =
   | 'ai.newChat'
   | 'settings.open';
 
+// Keep registry icons as the concrete Lucide component type. Widening them to
+// LucideIcon loses the JSX component signature with the current React typings.
+export type WorkbenchIcon = (typeof import('lucide-react'))['FolderTree'];
+
 export type PanelRegistration = {
   id: WorkbenchPanelId;
   title: string;
-  icon: LucideIcon | null;
+  icon: WorkbenchIcon;
   defaultRegion: DockRegion;
   activityId?: ActivityId;
   allowMultiple?: boolean;
@@ -92,7 +94,7 @@ export type CommandContext = {
 export type ActivityRegistration = {
   id: ActivityId;
   title: string;
-  icon: LucideIcon;
+  icon: WorkbenchIcon;
   panelId: WorkbenchPanelId;
 };
 
