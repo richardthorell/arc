@@ -1,3 +1,4 @@
+#include <arc/editor/arc_host.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/viewport_render_stats.h>
 #include <arc/render/primitives.h>
@@ -5,6 +6,9 @@
 #include <arc/scene/render_scene.h>
 
 #include <catch2/catch_test_macros.hpp>
+#include <nlohmann/json.hpp>
+
+#include <memory>
 
 TEST_CASE("viewport render stats count conventional and instanced geometry")
 {
@@ -64,4 +68,28 @@ TEST_CASE("viewport render stats ignore inactive renderers")
     const auto stats = arc::editor::collect_viewport_render_stats(state, renderer);
     CHECK(stats.triangles == 0u);
     CHECK(stats.vertices == 0u);
+}
+
+TEST_CASE("viewport state query transports render telemetry through the host response")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+
+    const auto response = host->query(arc::editor::host_query_envelope{
+        .request_id = 1,
+        .payload = arc::editor::host_viewport_state_query{.viewport_id = "viewport-1"},
+    });
+    REQUIRE(response.succeeded);
+
+    const auto payload = nlohmann::json::parse(response.payload_json);
+    REQUIRE(payload.is_object());
+    REQUIRE(payload.contains("viewportTelemetryVersion"));
+    CHECK(payload.at("viewportTelemetryVersion").get<std::uint32_t>() ==
+          arc::editor::viewport_render_stats_schema_version);
+    REQUIRE(payload.contains("triangles"));
+    CHECK(payload.at("triangles").is_number_unsigned());
+    REQUIRE(payload.contains("verticesComplete"));
+    REQUIRE(payload.contains("frameIntervalMs"));
+    REQUIRE(payload.contains("cpuRenderTimeMs"));
 }
