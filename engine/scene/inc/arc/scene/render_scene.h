@@ -19,6 +19,8 @@ struct [[nodiscard]] render_scene_result
     bool camera_found{};
     std::size_t renderable_count{};
     std::size_t submitted_draw_count{};
+    std::uint64_t submitted_triangle_count{};
+    std::uint64_t submitted_vertex_count{};
     std::size_t atmosphere_count{};
     std::size_t world_environment_count{};
     std::size_t fog_count{};
