@@ -8,6 +8,7 @@ import type { ProjectSnapshot } from '../services/editorHostTypes';
 
 import './viewport.css';
 import { toViewportPixels } from './viewportCoordinates';
+import { normalizeViewportWheel } from './viewportWheel';
 
 type ViewportPanelProps = {
   viewportId?: string;
@@ -269,8 +270,6 @@ export function ViewportPanel({
         }
         setViewportError('');
       } catch (error) {
-        // Clear the deduplication key so the frame tracker retries the latest
-        // rectangle after a transient host or reparenting failure.
         lastViewportBoundsRef.current = '';
         setViewportError(error instanceof Error ? error.message : String(error));
       } finally {
@@ -449,23 +448,15 @@ export function ViewportPanel({
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
-    if (!viewportActive) {
-      return;
-    }
-    if (streamedAvailable) {
-      const position = pointerCoordinates(event.clientX, event.clientY);
-      void window.arc.viewport.pointer({
-        viewportId,
-        phase: 'wheel',
-        ...position,
-        wheel: -event.deltaY / 120,
-        alt: event.altKey,
-        shift: event.shiftKey,
-        control: event.ctrlKey,
-      });
-      return;
-    }
-    sendCameraInput({ zoom: -event.deltaY / 120 });
+    if (!viewportActive) return;
+    event.preventDefault();
+    const zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
+    if (zoom === 0) return;
+
+    // Wheel zoom does not need pointer coordinates. Route every transport
+    // through the same signed camera-input command instead of the streamed
+    // pointer queue so zoom-in and zoom-out have identical semantics.
+    sendCameraInput({ zoom });
   };
 
   const frameSelected = () => {
