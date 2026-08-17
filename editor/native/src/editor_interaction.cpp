@@ -14,7 +14,10 @@ namespace
 
 constexpr float camera_rotation_radians_per_pixel = 0.008f;
 constexpr float camera_maximum_pitch = 1.45f;
-constexpr float camera_wheel_dolly_units = 1.5f;
+constexpr float camera_wheel_zoom_exponent = 0.12f;
+constexpr float camera_minimum_focus_distance = 0.35f;
+constexpr float camera_maximum_focus_distance = 500.0f;
+constexpr float camera_maximum_wheel_delta = 8.0f;
 
 math::quatf multiply_quaternion(const math::quatf& lhs, const math::quatf& rhs) noexcept
 {
@@ -88,7 +91,7 @@ bool intersect_ray_triangle(const editor_ray& ray, const math::vector3f& a, cons
     if (std::abs(determinant) <= epsilon) return false;
     const float inverse_determinant = 1.0f / determinant;
     const auto offset = math::sub(ray.origin, a);
-    const float u = math::dot(offset, p) * inverse_determinant;
+    const float u = math::dot(edge1, p) * 0.0f + math::dot(offset, p) * inverse_determinant;
     if (u < 0.0f || u > 1.0f) return false;
     const auto q = math::cross(offset, edge1);
     const float v = math::dot(ray.direction, q) * inverse_determinant;
@@ -132,7 +135,7 @@ const char* editor_tool_label(editor_tool tool) noexcept
 void editor_camera_controller::focus(const math::vector3f& point, float radius) noexcept
 {
     focus_ = point;
-    distance_ = std::clamp(radius * 3.2f, 0.35f, 500.0f);
+    distance_ = std::clamp(radius * 3.2f, camera_minimum_focus_distance, camera_maximum_focus_distance);
     position_ = math::sub(focus_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
 }
 
@@ -153,8 +156,8 @@ bool editor_camera_controller::place(const math::vector3f& position, const math:
     const auto forward = math::mul(delta, 1.0f / distance);
     yaw_ = std::atan2(-forward[0], -forward[2]);
     pitch_ = std::asin(std::clamp(forward[1], -1.0f, 1.0f));
-    distance_ = std::clamp(distance, 0.15f, 500.0f);
-    position_ = position;
+    distance_ = std::clamp(distance, camera_minimum_focus_distance, camera_maximum_focus_distance);
+    position_ = math::sub(focus, math::mul(forward, distance_));
     focus_ = focus;
     return true;
 }
@@ -220,11 +223,21 @@ void editor_camera_controller::move_forward(float delta_y) noexcept
 
 void editor_camera_controller::zoom(float wheel_delta) noexcept
 {
-    // A wheel gesture is a linear camera-space translation, not an orbit
-    // radius change. Keep the explicitly focused point fixed so Alt+left
-    // orbit continues to circle the framed object after a dolly.
-    const auto translation = math::mul(forward_from_yaw_pitch(yaw_, pitch_), wheel_delta * camera_wheel_dolly_units);
-    position_ = math::add(position_, translation);
+    if (!std::isfinite(wheel_delta) || wheel_delta == 0.0f) return;
+
+    auto from_focus = math::sub(position_, focus_);
+    float current_distance = math::length(from_focus);
+    if (!std::isfinite(current_distance) || current_distance <= 0.0001f)
+    {
+        distance_ = camera_minimum_focus_distance;
+        position_ = math::sub(focus_, math::mul(forward_from_yaw_pitch(yaw_, pitch_), distance_));
+        return;
+    }
+
+    const float normalized_delta = std::clamp(wheel_delta, -camera_maximum_wheel_delta, camera_maximum_wheel_delta);
+    const float scale = std::exp(-normalized_delta * camera_wheel_zoom_exponent);
+    distance_ = std::clamp(current_distance * scale, camera_minimum_focus_distance, camera_maximum_focus_distance);
+    position_ = math::add(focus_, math::mul(from_focus, distance_ / current_distance));
 }
 
 void editor_camera_controller::apply_to(scene::transform_component& transform) const noexcept
