@@ -113,7 +113,7 @@ host_response arc_host::execute(const host_command_envelope& command)
     const auto mesh_reference = material_command ? mesh_assignment_path(*material_command) : std::nullopt;
     if (!material_command || !mesh_reference) return execute_base(command);
 
-    const auto response_with_revisions = [this, &command](host_response response)
+    const auto response_with_revisions = [this](host_response response)
     {
         response.scene_revision = state_->scene_revision;
         response.world_epoch = state_->world_epoch;
