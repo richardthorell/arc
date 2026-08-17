@@ -225,18 +225,20 @@ void editor_camera_controller::zoom(float wheel_delta) noexcept
     if (!std::isfinite(wheel_delta) || wheel_delta == 0.0f) return;
 
     const auto forward = forward_from_yaw_pitch(yaw_, pitch_);
-    const auto to_focus = math::sub(focus_, position_);
-    const float focus_distance_along_view = math::dot(to_focus, forward);
+    const float projected_focus_distance = math::dot(math::sub(focus_, position_), forward);
     float translation =
         std::clamp(wheel_delta, -camera_maximum_wheel_delta, camera_maximum_wheel_delta) * camera_wheel_dolly_units;
 
-    // Positive wheel input moves toward the view direction. When the persistent
-    // orbit focus is ahead of the camera, stop short of that focus instead of
-    // allowing the camera to pass through the scene and leave it behind.
-    if (translation > 0.0f && focus_distance_along_view > 0.0f)
+    // Clamp only when the requested motion approaches and would cross the
+    // persistent focus plane. This is intentionally symmetric: the opposite
+    // wheel direction always remains free to move away from the focus again.
+    if (std::abs(projected_focus_distance) > 0.0001f && projected_focus_distance * translation > 0.0f)
     {
-        const float available = std::max(0.0f, focus_distance_along_view - camera_minimum_focus_distance);
-        translation = std::min(translation, available);
+        const float direction = projected_focus_distance > 0.0f ? 1.0f : -1.0f;
+        const float maximum_toward_focus =
+            direction * std::max(0.0f, std::abs(projected_focus_distance) - camera_minimum_focus_distance);
+        translation = direction > 0.0f ? std::min(translation, maximum_toward_focus)
+                                       : std::max(translation, maximum_toward_focus);
     }
 
     position_ = math::add(position_, math::mul(forward, translation));
