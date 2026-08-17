@@ -113,7 +113,7 @@ public:
     void move_forward(float delta_y) noexcept;
 
     /**
-     * @brief Scale camera distance around the persistent focus without crossing it.
+     * @brief Dolly along the look direction without crossing a focused pivot ahead.
      */
     void zoom(float wheel_delta) noexcept;
 
