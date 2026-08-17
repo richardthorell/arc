@@ -18,19 +18,24 @@ TEST_CASE("viewport render stats count conventional and instanced geometry")
     const auto mesh = renderer.create_mesh(source);
     REQUIRE(mesh.valid());
 
+    arc::scene::mesh_renderer_component visible_mesh;
+    visible_mesh.mesh.conventional = mesh;
     const auto mesh_entity = state.scene.create();
     state.scene.emplace<arc::scene::transform_component>(mesh_entity);
-    state.scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, mesh, arc::render::material_handle{});
+    state.scene.emplace<arc::scene::mesh_renderer_component>(mesh_entity, visible_mesh);
 
+    arc::scene::instance_group_component instance_group;
+    instance_group.mesh = mesh;
+    instance_group.instance_count = 3u;
     const auto instances = state.scene.create();
     state.scene.emplace<arc::scene::transform_component>(instances);
-    state.scene.emplace<arc::scene::instance_group_component>(instances, mesh, arc::render::material_handle{}, 3u, true);
+    state.scene.emplace<arc::scene::instance_group_component>(instances, instance_group);
 
+    auto hidden_mesh = visible_mesh;
+    hidden_mesh.visible = false;
     const auto hidden = state.scene.create();
     state.scene.emplace<arc::scene::transform_component>(hidden);
-    state.scene.emplace<arc::scene::mesh_renderer_component>(hidden, mesh, arc::render::material_handle{},
-                                                              arc::render::geometry_representation_policy::conventional,
-                                                              false);
+    state.scene.emplace<arc::scene::mesh_renderer_component>(hidden, hidden_mesh);
 
     const auto stats = arc::editor::collect_viewport_render_stats(state, renderer);
     CHECK(stats.triangles == expected_triangles * 4u);
@@ -49,9 +54,11 @@ TEST_CASE("viewport render stats ignore inactive renderers")
     const auto mesh = renderer.create_mesh(source);
     REQUIRE(mesh.valid());
 
+    arc::scene::mesh_renderer_component mesh_renderer;
+    mesh_renderer.mesh.conventional = mesh;
     const auto entity = state.scene.create();
     state.scene.emplace<arc::scene::transform_component>(entity);
-    state.scene.emplace<arc::scene::mesh_renderer_component>(entity, mesh, arc::render::material_handle{});
+    state.scene.emplace<arc::scene::mesh_renderer_component>(entity, mesh_renderer);
     state.scene.emplace<arc::scene::active_component>(entity, false);
 
     const auto stats = arc::editor::collect_viewport_render_stats(state, renderer);
