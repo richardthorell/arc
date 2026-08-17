@@ -12,6 +12,8 @@ namespace arc::editor
 
 struct editor_scene_state;
 
+inline constexpr std::uint32_t viewport_render_stats_schema_version = 1u;
+
 /**
  * @brief Lightweight render telemetry exposed by the editor viewport.
  */
