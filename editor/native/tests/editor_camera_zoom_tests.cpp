@@ -29,6 +29,45 @@ TEST_CASE("editor camera wheel zoom stops before crossing the focused pivot")
     CHECK(camera.distance() == Catch::Approx(0.35f).margin(0.0001f));
 }
 
+TEST_CASE("editor camera wheel zoom can immediately reverse away from the focus clamp")
+{
+    arc::editor::editor_camera_controller camera;
+    camera.focus({0.0f, 0.0f, 0.0f}, 2.0f);
+
+    for (int index = 0; index < 256; ++index) camera.zoom(1.0f);
+    arc::scene::transform_component at_clamp;
+    camera.apply_to(at_clamp);
+    const float near_distance = arc::math::length(arc::math::sub(at_clamp.position, camera.focus_point()));
+    REQUIRE(near_distance == Catch::Approx(0.35f).margin(0.0001f));
+
+    camera.zoom(-1.0f);
+    arc::scene::transform_component zoomed_out;
+    camera.apply_to(zoomed_out);
+    CHECK(arc::math::length(arc::math::sub(zoomed_out.position, camera.focus_point())) > near_distance + 1.0f);
+}
+
+TEST_CASE("editor camera wheel focus clamp follows the geometric direction")
+{
+    arc::editor::editor_camera_controller camera;
+    camera.focus({0.0f, 0.0f, 0.0f}, 2.0f);
+
+    // Turn far enough that the persistent focus is behind the current view.
+    camera.look(400.0f, 0.0f);
+    arc::scene::transform_component before;
+    camera.apply_to(before);
+    const auto focus = camera.focus_point();
+    const auto forward = arc::scene::forward_direction(before);
+    REQUIRE(arc::math::dot(arc::math::sub(focus, before.position), forward) < 0.0f);
+
+    // Negative wheel motion now travels toward the focus. It must be clamped
+    // on the current side rather than being allowed to pass through the pivot.
+    for (int index = 0; index < 256; ++index) camera.zoom(-1.0f);
+    arc::scene::transform_component after;
+    camera.apply_to(after);
+    const float projected = arc::math::dot(arc::math::sub(focus, after.position), forward);
+    CHECK(projected <= -0.35f + 0.0001f);
+}
+
 TEST_CASE("editor camera wheel zoom clamps pathological wheel deltas")
 {
     arc::editor::editor_camera_controller zoom_in;
