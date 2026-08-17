@@ -1,4 +1,7 @@
-import { parseSelectedEntitySnapshot as parseBaseSelectedEntitySnapshot } from './inspectorTypesBase';
+import {
+  aggregateInspectorSnapshots as aggregateBaseInspectorSnapshots,
+  parseSelectedEntitySnapshot as parseBaseSelectedEntitySnapshot,
+} from './inspectorTypesBase';
 import type {
   InspectorEntitySnapshot as BaseInspectorEntitySnapshot,
   InspectorMeshRenderer as BaseInspectorMeshRenderer,
@@ -7,10 +10,12 @@ import type {
 export * from './inspectorTypesBase';
 
 export type InspectorMeshRenderer = BaseInspectorMeshRenderer & {
-  hasMesh: boolean;
-  assetBackedMesh: boolean;
-  meshName: string;
-  meshPath: string;
+  // Mesh metadata was added after the original inspector snapshot contract. Keep
+  // it optional for hand-authored/legacy snapshots; the parser normalizes it.
+  hasMesh?: boolean;
+  assetBackedMesh?: boolean;
+  meshName?: string;
+  meshPath?: string;
 };
 
 export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {
@@ -36,4 +41,13 @@ export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnap
       meshPath: typeof rawMeshRenderer?.meshPath === 'string' ? rawMeshRenderer.meshPath : '',
     },
   };
+}
+
+export function aggregateInspectorSnapshots(
+  primary: InspectorEntitySnapshot,
+  snapshots: ReadonlyArray<InspectorEntitySnapshot>,
+): InspectorEntitySnapshot {
+  // The base aggregator spreads the primary snapshot, so extension metadata is
+  // preserved at runtime. Re-export it with the extended snapshot type as well.
+  return aggregateBaseInspectorSnapshots(primary, snapshots) as InspectorEntitySnapshot;
 }
