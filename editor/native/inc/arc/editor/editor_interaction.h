@@ -113,7 +113,7 @@ public:
     void move_forward(float delta_y) noexcept;
 
     /**
-     * @brief Translate the camera forward or backward without changing orbit distance.
+     * @brief Scale camera distance around the persistent focus without crossing it.
      */
     void zoom(float wheel_delta) noexcept;
 
