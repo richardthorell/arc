@@ -10,6 +10,7 @@
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/scene_document.h>
 #include <arc/editor/terrain_heightmap_io.h>
+#include <arc/editor/viewport_render_stats.h>
 #include "project_module_loader.h"
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
@@ -41,10 +42,11 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 
-// Keep the existing host implementation intact while adding a narrow editor-only
-// mesh assignment path. The base implementation is macro-renamed so public
-// execute() can intercept mesh asset assignments and preserve all other behavior.
+// Keep the existing host implementation intact while adding narrow editor-only
+// mesh assignment and viewport telemetry paths. Base entry points are renamed
+// so public wrappers can extend the protocol without duplicating host logic.
 #define execute execute_base
+#define query(...) query_base(__VA_ARGS__)
 #define has_material \
     has_material = mesh_renderer.material.valid(); \
     snapshot.has_mesh = mesh_renderer.mesh.valid(); \
@@ -65,6 +67,7 @@
     snapshot.has_material
 #include "arc_host_base.inc"
 #undef has_material
+#undef query
 #undef execute
 
 namespace arc::editor
@@ -181,7 +184,8 @@ host_response arc_host::execute(const host_command_envelope& command)
     };
     if (state_->asset_registry)
     {
-        auto resolved_reference = state_->asset_registry->resolve(normalized_path, arc::assets::asset_types::imported_scene);
+        auto resolved_reference =
+            state_->asset_registry->resolve(normalized_path, arc::assets::asset_types::imported_scene);
         if (resolved_reference.guid.valid() || !resolved_reference.path_hint.empty())
             source_reference = std::move(resolved_reference);
     }
@@ -215,15 +219,44 @@ host_response arc_host::execute(const host_command_envelope& command)
 
     ++state_->scene_revision;
     state_->history.record("Assign Mesh", std::move(before), state_->scene);
-    push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Mesh asset assigned", entity);
+    push_event(state_->events, state_->event_sequence, host_event_type::component_changed, "Mesh asset assigned",
+               entity);
     return response_with_revisions({.request_id = command.request_id,
                                     .succeeded = true,
                                     .payload_json = "{\"entity\":" + to_json(material_command->entity) + '}'});
 }
 
+host_response arc_host::query(const host_query_envelope& query) const
+{
+    auto response = query_base(query);
+    if (!response.succeeded || !std::holds_alternative<host_viewport_state_query>(query.payload)) return response;
+
+    auto payload = nlohmann::json::parse(response.payload_json, nullptr, false);
+    if (payload.is_discarded() || !payload.is_object()) return response;
+
+    const auto stats = collect_viewport_render_stats(state_->scene, *state_->renderer);
+    payload["viewportTelemetryVersion"] = viewport_render_stats_schema_version;
+    payload["triangles"] = stats.triangles;
+    payload["verticesComplete"] = stats.vertices_complete;
+    if (stats.vertices_complete) payload["vertices"] = stats.vertices;
+    if (stats.gpu_memory_available) payload["gpuMemoryBytes"] = stats.gpu_memory_used_bytes;
+    if (stats.gpu_memory_budget_bytes != 0) payload["gpuMemoryBudgetBytes"] = stats.gpu_memory_budget_bytes;
+
+    const double fps = payload.value("fps", 0.0);
+    payload["frameIntervalMs"] = fps > 0.0 ? 1000.0 / fps : 0.0;
+    payload["cpuRenderTimeMs"] = payload.value("frameTimeMs", 0.0);
+    response.payload_json = payload.dump();
+    return response;
+}
+
 host_response in_process_host_session::execute(const host_command_envelope& command)
 {
     return host_->execute(command);
+}
+
+host_response in_process_host_session::query(const host_query_envelope& query)
+{
+    return host_->query(query);
 }
 
 } // namespace arc::editor
