@@ -51,7 +51,7 @@ describe('Mesh Renderer asset picker', () => {
     );
   });
 
-  it('shows built-in primitives as procedural meshes and routes procedural selections to the host', async () => {
+  it('shows built-in primitives as procedural meshes with shape icons and routes selections to the host', async () => {
     const onValue = vi.fn();
     render(
       <SchemaComponentCard
@@ -65,6 +65,7 @@ describe('Mesh Renderer asset picker', () => {
 
     expect(screen.getByText('Sphere')).toBeInTheDocument();
     expect(screen.getByText('Procedural Mesh')).toBeInTheDocument();
+    expect(screen.getByTestId('primitive-mesh-icon-sphere')).toBeInTheDocument();
 
     await userEvent.click(screen.getByLabelText('Choose Mesh asset'));
     expect(screen.getByLabelText('Select Plane')).toBeInTheDocument();
@@ -73,6 +74,12 @@ describe('Mesh Renderer asset picker', () => {
     expect(screen.getByLabelText('Select Cylinder')).toBeInTheDocument();
     expect(screen.getByLabelText('Select Cone')).toBeInTheDocument();
     expect(screen.getByLabelText('Select Capsule')).toBeInTheDocument();
+    expect(screen.getByTestId('primitive-mesh-icon-plane')).toBeInTheDocument();
+    expect(screen.getByTestId('primitive-mesh-icon-cube')).toBeInTheDocument();
+    expect(screen.getAllByTestId('primitive-mesh-icon-sphere')).toHaveLength(2);
+    expect(screen.getByTestId('primitive-mesh-icon-cylinder')).toBeInTheDocument();
+    expect(screen.getByTestId('primitive-mesh-icon-cone')).toBeInTheDocument();
+    expect(screen.getByTestId('primitive-mesh-icon-capsule')).toBeInTheDocument();
 
     await userEvent.click(screen.getByLabelText('Select Cube'));
 
