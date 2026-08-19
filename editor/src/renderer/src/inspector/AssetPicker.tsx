@@ -80,7 +80,12 @@ function PrimitiveMeshIcon({ kind }: { kind: PrimitiveMeshKind }) {
     <svg
       aria-hidden="true"
       data-testid={`primitive-mesh-icon-${kind}`}
-      style={{ height: '82%', width: '82%', filter: 'drop-shadow(0 5px 6px rgba(0, 0, 0, 0.38))' }}
+      style={{
+        height: '88%',
+        width: '88%',
+        margin: 'auto',
+        filter: 'drop-shadow(0 5px 6px rgba(0, 0, 0, 0.38))',
+      }}
       viewBox="0 0 64 64"
     >
       <defs>
