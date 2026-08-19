@@ -3,11 +3,11 @@ import { X } from 'lucide-react';
 import type { ITabRenderer, TabPartInitParameters } from 'dockview';
 
 import { panelRegistry } from '../app/panelRegistry';
-import type { WorkbenchPanelId } from '../app/workbenchTypes';
+import type { WorkbenchIcon, WorkbenchPanelId } from '../app/workbenchTypes';
 
 export type PanelTabPresentation = {
   title: string;
-  icon: (typeof panelRegistry)[WorkbenchPanelId]['icon'];
+  icon: WorkbenchIcon | null;
   closeable: boolean;
 };
 
