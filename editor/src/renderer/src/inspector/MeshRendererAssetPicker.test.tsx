@@ -50,4 +50,32 @@ describe('Mesh Renderer asset picker', () => {
       true,
     );
   });
+
+  it('shows built-in primitives as procedural meshes and routes procedural selections to the host', async () => {
+    const onValue = vi.fn();
+    render(
+      <SchemaComponentCard
+        collapsed={false}
+        context={{ meshRenderer: { meshPath: 'arc://primitive/sphere' } }}
+        schema={{ id: 'meshRenderer', title: 'Mesh Renderer', fields: [] }}
+        onToggle={() => undefined}
+        onValue={onValue}
+      />,
+    );
+
+    expect(screen.getByText('Sphere')).toBeInTheDocument();
+    expect(screen.getByText('Procedural Mesh')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Choose Mesh asset'));
+    expect(screen.getByLabelText('Select Plane')).toBeInTheDocument();
+    expect(screen.getByLabelText('Select Cube')).toBeInTheDocument();
+    expect(screen.getByLabelText('Select Sphere')).toBeInTheDocument();
+    expect(screen.getByLabelText('Select Cylinder')).toBeInTheDocument();
+    expect(screen.getByLabelText('Select Cone')).toBeInTheDocument();
+    expect(screen.getByLabelText('Select Capsule')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByLabelText('Select Cube'));
+
+    expect(onValue).toHaveBeenCalledWith('meshRenderer.materialPath', '__arc_primitive__/cube', true);
+  });
 });
