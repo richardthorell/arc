@@ -18,6 +18,7 @@
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
 #include <arc/project/project.h>
+#include <arc/render/primitives.h>
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
 
@@ -42,6 +43,55 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 
+namespace arc::editor
+{
+namespace
+{
+constexpr std::string_view mesh_assignment_prefix = "__arc_mesh__/";
+constexpr std::string_view primitive_assignment_prefix = "__arc_primitive__/";
+constexpr std::string_view primitive_mesh_uri_prefix = "arc://primitive/";
+
+std::optional<editor_primitive_type> primitive_type_from_token(std::string_view token) noexcept
+{
+    if (token == "plane") return editor_primitive_type::plane;
+    if (token == "cube") return editor_primitive_type::cube;
+    if (token == "sphere") return editor_primitive_type::sphere;
+    if (token == "cylinder") return editor_primitive_type::cylinder;
+    if (token == "cone") return editor_primitive_type::cone;
+    if (token == "capsule") return editor_primitive_type::capsule;
+    return std::nullopt;
+}
+
+std::string primitive_mesh_uri(std::string_view name)
+{
+    std::string token{name};
+    std::transform(token.begin(), token.end(), token.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    return std::string{primitive_mesh_uri_prefix} + token;
+}
+
+render::mesh_data make_assigned_primitive_mesh(editor_primitive_type type)
+{
+    switch (type)
+    {
+        case editor_primitive_type::plane:
+            return render::make_plane_mesh(4.0f);
+        case editor_primitive_type::cube:
+            return render::make_cube_mesh(1.0f);
+        case editor_primitive_type::sphere:
+            return render::make_uv_sphere_mesh(0.5f, 32, 16);
+        case editor_primitive_type::cylinder:
+            return render::make_cylinder_mesh(0.5f, 1.0f, 32);
+        case editor_primitive_type::cone:
+            return render::make_cone_mesh(0.5f, 1.0f, 32);
+        case editor_primitive_type::capsule:
+            return render::make_capsule_mesh(0.5f, 1.0f, 32, 8);
+    }
+    return render::make_cube_mesh(1.0f);
+}
+} // namespace
+} // namespace arc::editor
+
 // Keep the existing host implementation intact while adding narrow editor-only
 // mesh assignment and viewport telemetry paths. Base entry points are renamed
 // so public wrappers can extend the protocol without duplicating host logic.
@@ -52,17 +102,26 @@
     snapshot.has_mesh = mesh_renderer.mesh.valid(); \
     if (const auto* arc_mesh_binding = find_asset_binding(state, entity_guid_of(state, entity)); arc_mesh_binding) \
     { \
-        snapshot.asset_backed_mesh = \
-            arc_mesh_binding->source.guid.valid() || !arc_mesh_binding->source.path_hint.empty(); \
-        if (!arc_mesh_binding->source.path_hint.empty()) \
+        if (arc_mesh_binding->source_kind == "primitive" && !arc_mesh_binding->subresource.empty()) \
         { \
-            auto arc_mesh_path = std::filesystem::path{arc_mesh_binding->source.path_hint}; \
-            if (arc_mesh_path.is_absolute()) arc_mesh_path = arc_mesh_path.lexically_relative(project_root); \
-            snapshot.mesh_path = arc::assets::normalize_asset_path(arc_mesh_path); \
+            snapshot.asset_backed_mesh = false; \
+            snapshot.mesh_name = arc_mesh_binding->subresource; \
+            snapshot.mesh_path = arc::editor::primitive_mesh_uri(arc_mesh_binding->subresource); \
         } \
-        snapshot.mesh_name = !arc_mesh_binding->subresource.empty() \
-                                 ? arc_mesh_binding->subresource \
-                                 : std::filesystem::path{snapshot.mesh_path}.stem().string(); \
+        else \
+        { \
+            snapshot.asset_backed_mesh = \
+                arc_mesh_binding->source.guid.valid() || !arc_mesh_binding->source.path_hint.empty(); \
+            if (!arc_mesh_binding->source.path_hint.empty()) \
+            { \
+                auto arc_mesh_path = std::filesystem::path{arc_mesh_binding->source.path_hint}; \
+                if (arc_mesh_path.is_absolute()) arc_mesh_path = arc_mesh_path.lexically_relative(project_root); \
+                snapshot.mesh_path = arc::assets::normalize_asset_path(arc_mesh_path); \
+            } \
+            snapshot.mesh_name = !arc_mesh_binding->subresource.empty() \
+                                     ? arc_mesh_binding->subresource \
+                                     : std::filesystem::path{snapshot.mesh_path}.stem().string(); \
+        } \
     } \
     snapshot.has_material
 #include "arc_host_base.inc"
@@ -74,14 +133,19 @@ namespace arc::editor
 {
 namespace
 {
-constexpr std::string_view mesh_assignment_prefix = "__arc_mesh__/";
-
 std::optional<std::filesystem::path> mesh_assignment_path(const host_set_entity_material_command& command)
 {
     const std::string encoded = command.path.generic_string();
     if (!encoded.starts_with(mesh_assignment_prefix)) return std::nullopt;
     const std::string reference = encoded.substr(mesh_assignment_prefix.size());
     return reference.empty() ? std::nullopt : std::optional<std::filesystem::path>{reference};
+}
+
+std::optional<editor_primitive_type> primitive_assignment_type(const host_set_entity_material_command& command)
+{
+    const std::string encoded = command.path.generic_string();
+    if (!encoded.starts_with(primitive_assignment_prefix)) return std::nullopt;
+    return primitive_type_from_token(encoded.substr(primitive_assignment_prefix.size()));
 }
 
 geometric::box3f assigned_mesh_bounds(const render::mesh_data& mesh)
@@ -114,7 +178,8 @@ host_response arc_host::execute(const host_command_envelope& command)
 {
     const auto* material_command = std::get_if<host_set_entity_material_command>(&command.payload);
     const auto mesh_reference = material_command ? mesh_assignment_path(*material_command) : std::nullopt;
-    if (!material_command || !mesh_reference) return execute_base(command);
+    const auto primitive_type = material_command ? primitive_assignment_type(*material_command) : std::nullopt;
+    if (!material_command || (!mesh_reference && !primitive_type)) return execute_base(command);
 
     const auto response_with_revisions = [this](host_response response)
     {
@@ -135,7 +200,7 @@ host_response arc_host::execute(const host_command_envelope& command)
     if (!state_->project_open) return fail("Cannot assign a mesh before a project is open");
     if (command.expected_scene_revision && *command.expected_scene_revision != state_->scene_revision)
         return fail("Scene revision is stale");
-    if (command.edit) return fail("Mesh asset assignment does not use a continuous edit transaction");
+    if (command.edit) return fail("Mesh assignment does not use a continuous edit transaction");
 
     const auto entity = to_scene_entity(material_command->entity);
     const auto targets = edit_targets(state_->scene.scene, entity, material_command->apply_to_selection);
@@ -143,6 +208,51 @@ host_response arc_host::execute(const host_command_envelope& command)
     if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                     { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
         return fail("Every selected entity must have an editable mesh renderer component", entity);
+
+    if (primitive_type)
+    {
+        const auto selected_mesh = make_assigned_primitive_mesh(*primitive_type);
+        const auto mesh_handle = state_->renderer->create_mesh(selected_mesh);
+        if (!mesh_handle.valid()) return fail("Renderer could not create the procedural mesh", entity);
+        const auto local_bounds = assigned_mesh_bounds(selected_mesh);
+
+        auto before = state_->scene;
+        ensure_scene_authoring_metadata(state_->scene);
+        for (const auto target : targets)
+        {
+            auto& renderer = state_->scene.scene.get<scene::mesh_renderer_component>(target);
+            renderer.mesh = mesh_handle;
+
+            if (auto* bounds = state_->scene.scene.try_get<scene::bounds_component>(target))
+            {
+                bounds->local_bounds = local_bounds;
+                bounds->dirty = true;
+            }
+            else
+            {
+                state_->scene.scene.emplace<scene::bounds_component>(target, local_bounds, local_bounds, true);
+            }
+
+            const auto guid = entity_guid_of(state_->scene, target);
+            auto* binding = find_asset_binding(state_->scene, guid);
+            if (!binding)
+            {
+                state_->scene.asset_bindings.push_back({.entity = guid});
+                binding = &state_->scene.asset_bindings.back();
+            }
+            binding->source_kind = "primitive";
+            binding->source = {};
+            binding->subresource = primitive_type_name(*primitive_type);
+        }
+
+        ++state_->scene_revision;
+        state_->history.record("Assign Procedural Mesh", std::move(before), state_->scene);
+        push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                   "Procedural mesh assigned", entity);
+        return response_with_revisions({.request_id = command.request_id,
+                                        .succeeded = true,
+                                        .payload_json = "{\"entity\":" + to_json(material_command->entity) + '}'});
+    }
 
     const auto resolved =
         resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root, *mesh_reference);

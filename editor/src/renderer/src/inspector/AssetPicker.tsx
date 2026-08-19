@@ -10,7 +10,7 @@ export type AssetPickerItem = {
   path: string;
   kind: string;
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
-  scope?: 'builtin' | 'project' | 'user' | 'organization';
+  scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
   readOnly?: boolean;
 };
 
@@ -46,17 +46,106 @@ const displayNameOf = (asset?: AssetPickerItem, fallback = '') => {
 };
 const sourceLabelOf = (asset: AssetPickerItem | undefined, assetTypeLabel: string) => {
   const scope =
-    asset?.scope === 'builtin'
-      ? 'Engine'
-      : asset?.scope === 'user'
-        ? 'User'
-        : asset?.scope === 'organization'
-          ? 'Organization'
-          : asset?.scope === 'project'
-            ? 'Project'
-            : '';
+    asset?.scope === 'procedural'
+      ? 'Procedural'
+      : asset?.scope === 'builtin'
+        ? 'Engine'
+        : asset?.scope === 'user'
+          ? 'User'
+          : asset?.scope === 'organization'
+            ? 'Organization'
+            : asset?.scope === 'project'
+              ? 'Project'
+              : '';
   return scope ? `${scope} ${assetTypeLabel}` : assetTypeLabel;
 };
+
+type PrimitiveMeshKind = 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
+const primitiveMeshPrefix = 'arc://primitive/';
+const primitiveMeshKinds = new Set<PrimitiveMeshKind>(['plane', 'cube', 'sphere', 'cylinder', 'cone', 'capsule']);
+
+const primitiveMeshKindOf = (asset: AssetPickerItem | undefined, path: string): PrimitiveMeshKind | null => {
+  if (asset?.scope !== 'procedural' && !path.startsWith(primitiveMeshPrefix)) return null;
+  const token = (path.startsWith(primitiveMeshPrefix) ? path.slice(primitiveMeshPrefix.length) : asset?.name || '')
+    .trim()
+    .toLocaleLowerCase() as PrimitiveMeshKind;
+  return primitiveMeshKinds.has(token) ? token : null;
+};
+
+function PrimitiveMeshIcon({ kind }: { kind: PrimitiveMeshKind }) {
+  const fillId = `primitive-fill-${kind}`;
+  const common = { fill: `url(#${fillId})`, stroke: '#8fc8ff', strokeWidth: 1.35 };
+
+  return (
+    <svg
+      aria-hidden="true"
+      data-testid={`primitive-mesh-icon-${kind}`}
+      style={{
+        height: '88%',
+        width: '88%',
+        margin: 'auto',
+        filter: 'drop-shadow(0 5px 6px rgba(0, 0, 0, 0.38))',
+      }}
+      viewBox="0 0 64 64"
+    >
+      <defs>
+        <linearGradient id={fillId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#52789a" />
+          <stop offset="1" stopColor="#172a3a" />
+        </linearGradient>
+      </defs>
+      {kind === 'cube' && (
+        <>
+          <path {...common} d="M14 22 32 12l18 10-18 11z" />
+          <path {...common} d="M14 22v22l18 10V33z" />
+          <path {...common} d="M50 22v22L32 54V33z" />
+        </>
+      )}
+      {kind === 'sphere' && (
+        <>
+          <circle {...common} cx="32" cy="32" r="21" />
+          <ellipse cx="32" cy="32" rx="10" ry="21" fill="none" stroke="#8fc8ff" opacity="0.72" />
+          <path
+            d="M12 32h40M17 21c9 5 21 5 30 0M17 43c9-5 21-5 30 0"
+            fill="none"
+            stroke="#8fc8ff"
+            opacity="0.58"
+          />
+        </>
+      )}
+      {kind === 'cylinder' && (
+        <>
+          <path {...common} d="M16 18c0-6 32-6 32 0v28c0 7-32 7-32 0z" />
+          <ellipse {...common} cx="32" cy="18" rx="16" ry="6" />
+          <path d="M16 45c3 7 29 7 32 0" fill="none" stroke="#8fc8ff" />
+        </>
+      )}
+      {kind === 'cone' && (
+        <>
+          <path {...common} d="M32 10 13 46c1 9 37 9 38 0z" />
+          <ellipse {...common} cx="32" cy="46" rx="19" ry="7" />
+        </>
+      )}
+      {kind === 'capsule' && (
+        <>
+          <path {...common} d="M18 23a14 14 0 0 1 28 0v18a14 14 0 0 1-28 0z" />
+          <path
+            d="M18 23c5 4 23 4 28 0M18 41c5-4 23-4 28 0"
+            fill="none"
+            stroke="#8fc8ff"
+            opacity="0.62"
+          />
+        </>
+      )}
+      {kind === 'plane' && (
+        <>
+          <path {...common} d="m8 40 29-25 19 11-29 25z" />
+          <path d="m17 32 19 11M27 24l19 11M19 46l29-25" fill="none" stroke="#8fc8ff" opacity="0.55" />
+        </>
+      )}
+    </svg>
+  );
+}
 
 function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promise<string | null> {
   let cache = thumbnailCaches.get(provider);
@@ -103,7 +192,9 @@ export function AssetPicker({
         (asset) =>
           assetKinds.includes(asset.kind) &&
           (!assetTypeIds?.length || Boolean(asset.typeId && assetTypeIds.includes(asset.typeId))) &&
-          (!allowedExtensions?.length || allowedExtensions.includes(extensionOf(asset.path))),
+          (asset.scope === 'procedural' ||
+            !allowedExtensions?.length ||
+            allowedExtensions.includes(extensionOf(asset.path))),
       ),
     [allowedExtensions, assetKinds, assetTypeIds, assets],
   );
@@ -338,6 +429,7 @@ export function AssetThumbnail({
   const [source, setSource] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined');
+  const primitiveKind = primitiveMeshKindOf(asset, path);
   useEffect(() => {
     if (visible || typeof IntersectionObserver === 'undefined' || !elementRef.current) return;
     const observer = new IntersectionObserver(
@@ -356,7 +448,7 @@ export function AssetThumbnail({
     let active = true;
     setSource(null);
     setFailed(false);
-    if (!visible || !path || !provider) return;
+    if (!visible || !path || !provider || primitiveKind) return;
     const request = thumbnailRequest(provider, path);
     void request.then((value) => {
       if (active) setSource(value);
@@ -364,11 +456,13 @@ export function AssetThumbnail({
     return () => {
       active = false;
     };
-  }, [asset?.status, path, provider, visible]);
+  }, [asset?.status, path, primitiveKind, provider, visible]);
 
   return (
     <span className={`asset-thumbnail ${source ? 'has-image' : ''}`} ref={elementRef}>
-      {source && !failed ? (
+      {primitiveKind ? (
+        <PrimitiveMeshIcon kind={primitiveKind} />
+      ) : source && !failed ? (
         <img alt="" draggable={false} onError={() => setFailed(true)} src={source} />
       ) : (
         <>
