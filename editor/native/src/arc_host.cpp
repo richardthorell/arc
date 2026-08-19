@@ -8,6 +8,7 @@
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
 #include <arc/editor/prefab_document.h>
+#include <arc/editor/procedural_mesh.h>
 #include <arc/editor/scene_document.h>
 #include <arc/editor/terrain_heightmap_io.h>
 #include <arc/editor/viewport_render_stats.h>
@@ -18,7 +19,6 @@
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
 #include <arc/project/project.h>
-#include <arc/render/primitives.h>
 #include <arc/render/render.h>
 #include <arc/scene/scene.h>
 
@@ -49,18 +49,8 @@ namespace
 {
 constexpr std::string_view mesh_assignment_prefix = "__arc_mesh__/";
 constexpr std::string_view primitive_assignment_prefix = "__arc_primitive__/";
+constexpr std::string_view primitive_parameter_prefix = "__arc_primitive_parameter__/";
 constexpr std::string_view primitive_mesh_uri_prefix = "arc://primitive/";
-
-std::optional<editor_primitive_type> primitive_type_from_token(std::string_view token) noexcept
-{
-    if (token == "plane") return editor_primitive_type::plane;
-    if (token == "cube") return editor_primitive_type::cube;
-    if (token == "sphere") return editor_primitive_type::sphere;
-    if (token == "cylinder") return editor_primitive_type::cylinder;
-    if (token == "cone") return editor_primitive_type::cone;
-    if (token == "capsule") return editor_primitive_type::capsule;
-    return std::nullopt;
-}
 
 std::string primitive_mesh_uri(std::string_view name)
 {
@@ -68,26 +58,6 @@ std::string primitive_mesh_uri(std::string_view name)
     std::transform(token.begin(), token.end(), token.begin(),
                    [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
     return std::string{primitive_mesh_uri_prefix} + token;
-}
-
-render::mesh_data make_assigned_primitive_mesh(editor_primitive_type type)
-{
-    switch (type)
-    {
-        case editor_primitive_type::plane:
-            return render::make_plane_mesh(4.0f);
-        case editor_primitive_type::cube:
-            return render::make_cube_mesh(1.0f);
-        case editor_primitive_type::sphere:
-            return render::make_uv_sphere_mesh(0.5f, 32, 16);
-        case editor_primitive_type::cylinder:
-            return render::make_cylinder_mesh(0.5f, 1.0f, 32);
-        case editor_primitive_type::cone:
-            return render::make_cone_mesh(0.5f, 1.0f, 32);
-        case editor_primitive_type::capsule:
-            return render::make_capsule_mesh(0.5f, 1.0f, 32, 8);
-    }
-    return render::make_cube_mesh(1.0f);
 }
 } // namespace
 } // namespace arc::editor
@@ -133,6 +103,12 @@ namespace arc::editor
 {
 namespace
 {
+struct primitive_parameter_assignment
+{
+    std::string parameter;
+    double value{};
+};
+
 std::optional<std::filesystem::path> mesh_assignment_path(const host_set_entity_material_command& command)
 {
     const std::string encoded = command.path.generic_string();
@@ -145,7 +121,63 @@ std::optional<editor_primitive_type> primitive_assignment_type(const host_set_en
 {
     const std::string encoded = command.path.generic_string();
     if (!encoded.starts_with(primitive_assignment_prefix)) return std::nullopt;
-    return primitive_type_from_token(encoded.substr(primitive_assignment_prefix.size()));
+    return procedural_mesh_type_from_token(encoded.substr(primitive_assignment_prefix.size()));
+}
+
+std::optional<primitive_parameter_assignment> primitive_parameter_assignment_from(
+    const host_set_entity_material_command& command)
+{
+    const std::string encoded = command.path.generic_string();
+    if (!encoded.starts_with(primitive_parameter_prefix)) return std::nullopt;
+    const std::string_view payload{encoded.data() + primitive_parameter_prefix.size(),
+                                   encoded.size() - primitive_parameter_prefix.size()};
+    const auto separator = payload.find('/');
+    if (separator == std::string_view::npos || separator == 0 || separator + 1 >= payload.size()) return std::nullopt;
+
+    try
+    {
+        std::size_t consumed{};
+        const std::string value_text{payload.substr(separator + 1)};
+        const double value = std::stod(value_text, &consumed);
+        if (consumed != value_text.size() || !std::isfinite(value)) return std::nullopt;
+        return primitive_parameter_assignment{std::string{payload.substr(0, separator)}, value};
+    }
+    catch (...)
+    {
+        return std::nullopt;
+    }
+}
+
+bool primitive_create_command(const host_command_payload& payload)
+{
+    const auto* create = std::get_if<host_create_entity_command>(&payload);
+    if (!create) return false;
+    switch (create->kind)
+    {
+        case host_create_entity_kind::plane:
+        case host_create_entity_kind::cube:
+        case host_create_entity_kind::sphere:
+        case host_create_entity_kind::cylinder:
+        case host_create_entity_kind::cone:
+        case host_create_entity_kind::capsule:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool should_synchronize_procedural_meshes(const host_command_payload& payload)
+{
+    return primitive_create_command(payload) || std::holds_alternative<host_open_project_command>(payload) ||
+           std::holds_alternative<host_open_scene_command>(payload) ||
+           std::holds_alternative<host_open_recovery_scene_command>(payload) ||
+           std::holds_alternative<host_duplicate_entity_command>(payload) ||
+           std::holds_alternative<host_instantiate_prefab_command>(payload) ||
+           std::holds_alternative<host_revert_prefab_command>(payload) ||
+           std::holds_alternative<host_history_undo_command>(payload) ||
+           std::holds_alternative<host_history_redo_command>(payload) ||
+           std::holds_alternative<host_history_cancel_transaction_command>(payload) ||
+           std::holds_alternative<host_runtime_restore_snapshot_command>(payload);
 }
 
 geometric::box3f assigned_mesh_bounds(const render::mesh_data& mesh)
@@ -179,7 +211,18 @@ host_response arc_host::execute(const host_command_envelope& command)
     const auto* material_command = std::get_if<host_set_entity_material_command>(&command.payload);
     const auto mesh_reference = material_command ? mesh_assignment_path(*material_command) : std::nullopt;
     const auto primitive_type = material_command ? primitive_assignment_type(*material_command) : std::nullopt;
-    if (!material_command || (!mesh_reference && !primitive_type)) return execute_base(command);
+    const auto parameter_assignment = material_command ? primitive_parameter_assignment_from(*material_command) : std::nullopt;
+    if (!material_command || (!mesh_reference && !primitive_type && !parameter_assignment))
+    {
+        auto response = execute_base(command);
+        if (response.succeeded && state_->project_open && should_synchronize_procedural_meshes(command.payload))
+        {
+            synchronize_procedural_mesh_components(state_->scene, *state_->renderer);
+            if (primitive_create_command(command.payload) && state_->scene.scene.alive(state_->scene.selected_entity))
+                persist_procedural_mesh_component(state_->scene, state_->scene.selected_entity);
+        }
+        return response;
+    }
 
     const auto response_with_revisions = [this](host_response response)
     {
@@ -200,7 +243,6 @@ host_response arc_host::execute(const host_command_envelope& command)
     if (!state_->project_open) return fail("Cannot assign a mesh before a project is open");
     if (command.expected_scene_revision && *command.expected_scene_revision != state_->scene_revision)
         return fail("Scene revision is stale");
-    if (command.edit) return fail("Mesh assignment does not use a continuous edit transaction");
 
     const auto entity = to_scene_entity(material_command->entity);
     const auto targets = edit_targets(state_->scene.scene, entity, material_command->apply_to_selection);
@@ -209,28 +251,87 @@ host_response arc_host::execute(const host_command_envelope& command)
                     { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
         return fail("Every selected entity must have an editable mesh renderer component", entity);
 
+    if (parameter_assignment)
+    {
+        for (const auto target : targets)
+        {
+            auto* component = ensure_procedural_mesh_component(state_->scene, target);
+            if (!component) return fail("Procedural mesh parameters are only available for procedural meshes", target);
+            auto validation = *component;
+            if (!set_procedural_mesh_parameter(validation, parameter_assignment->parameter, parameter_assignment->value))
+                return fail("The selected procedural mesh does not support parameter '" + parameter_assignment->parameter +
+                                "'",
+                            target);
+        }
+
+        if (command.edit && command.edit->phase == host_edit_phase::cancel)
+        {
+            if (!state_->history.cancel(command.edit->id, state_->scene)) return fail("Edit transaction is not active", entity);
+            synchronize_procedural_mesh_components(state_->scene, *state_->renderer);
+            ++state_->scene_revision;
+            return response_with_revisions({.request_id = command.request_id, .succeeded = true});
+        }
+
+        std::optional<editor_scene_state> before;
+        if (!command.edit)
+            before = state_->scene;
+        else if (command.edit->phase == host_edit_phase::begin &&
+                 !state_->history.begin(command.edit->id,
+                                        command.edit->label.empty() ? "Edit Procedural Mesh" : command.edit->label,
+                                        state_->scene))
+            return fail("Could not begin procedural mesh edit transaction", entity);
+        else if (command.edit->phase != host_edit_phase::begin &&
+                 !state_->history.transaction_matches(command.edit->id))
+            return fail("Edit transaction is not active", entity);
+
+        for (const auto target : targets)
+        {
+            auto* component = ensure_procedural_mesh_component(state_->scene, target);
+            if (!component ||
+                !set_procedural_mesh_parameter(*component, parameter_assignment->parameter, parameter_assignment->value) ||
+                !regenerate_procedural_mesh(state_->scene, *state_->renderer, target))
+            {
+                if (command.edit)
+                {
+                    (void)state_->history.cancel(command.edit->id, state_->scene);
+                    synchronize_procedural_mesh_components(state_->scene, *state_->renderer);
+                }
+                else if (before)
+                {
+                    state_->scene = std::move(*before);
+                }
+                return fail("Renderer could not update the procedural mesh", target);
+            }
+            persist_procedural_mesh_component(state_->scene, target);
+        }
+
+        if (!command.edit)
+            state_->history.record("Edit Procedural Mesh", std::move(*before), state_->scene);
+        else if (command.edit->phase == host_edit_phase::commit && !state_->history.commit(command.edit->id, state_->scene))
+            return fail("Could not commit procedural mesh edit transaction", entity);
+
+        ++state_->scene_revision;
+        push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                   "Procedural mesh parameters updated", entity);
+        return response_with_revisions({.request_id = command.request_id,
+                                        .succeeded = true,
+                                        .payload_json = "{\"entity\":" + to_json(material_command->entity) + '}'});
+    }
+
+    if (command.edit) return fail("Mesh assignment does not use a continuous edit transaction");
+
     if (primitive_type)
     {
-        const auto selected_mesh = make_assigned_primitive_mesh(*primitive_type);
-        const auto mesh_handle = state_->renderer->create_mesh(selected_mesh);
-        if (!mesh_handle.valid()) return fail("Renderer could not create the procedural mesh", entity);
-        const auto local_bounds = assigned_mesh_bounds(selected_mesh);
-
         auto before = state_->scene;
         ensure_scene_authoring_metadata(state_->scene);
         for (const auto target : targets)
         {
-            auto& renderer = state_->scene.scene.get<scene::mesh_renderer_component>(target);
-            renderer.mesh = mesh_handle;
-
-            if (auto* bounds = state_->scene.scene.try_get<scene::bounds_component>(target))
+            state_->scene.scene.emplace<procedural_mesh_component>(
+                target, procedural_mesh_component{default_procedural_mesh_parameters(*primitive_type)});
+            if (!regenerate_procedural_mesh(state_->scene, *state_->renderer, target))
             {
-                bounds->local_bounds = local_bounds;
-                bounds->dirty = true;
-            }
-            else
-            {
-                state_->scene.scene.emplace<scene::bounds_component>(target, local_bounds, local_bounds, true);
+                state_->scene = std::move(before);
+                return fail("Renderer could not create the procedural mesh", target);
             }
 
             const auto guid = entity_guid_of(state_->scene, target);
@@ -243,6 +344,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             binding->source_kind = "primitive";
             binding->source = {};
             binding->subresource = primitive_type_name(*primitive_type);
+            persist_procedural_mesh_component(state_->scene, target);
         }
 
         ++state_->scene_revision;
@@ -315,6 +417,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             state_->scene.scene.emplace<scene::bounds_component>(target, local_bounds, local_bounds, true);
         }
 
+        clear_procedural_mesh_component(state_->scene, target);
         const auto guid = entity_guid_of(state_->scene, target);
         auto* binding = find_asset_binding(state_->scene, guid);
         if (!binding)
@@ -339,7 +442,29 @@ host_response arc_host::execute(const host_command_envelope& command)
 host_response arc_host::query(const host_query_envelope& query) const
 {
     auto response = query_base(query);
-    if (!response.succeeded || !std::holds_alternative<host_viewport_state_query>(query.payload)) return response;
+    if (!response.succeeded) return response;
+
+    if (std::holds_alternative<host_selected_entity_query>(query.payload))
+    {
+        auto payload = nlohmann::json::parse(response.payload_json, nullptr, false);
+        if (!payload.is_discarded() && payload.is_object())
+        {
+            const auto entity = state_->scene.selected_entity;
+            if (state_->scene.scene.alive(entity))
+            {
+                if (const auto* procedural =
+                        std::as_const(state_->scene.scene).try_get<procedural_mesh_component>(entity))
+                {
+                    auto procedural_json = nlohmann::json::parse(procedural_mesh_snapshot_json(*procedural), nullptr, false);
+                    if (!procedural_json.is_discarded()) payload["proceduralMesh"] = std::move(procedural_json);
+                }
+            }
+            response.payload_json = payload.dump();
+        }
+        return response;
+    }
+
+    if (!std::holds_alternative<host_viewport_state_query>(query.payload)) return response;
 
     auto payload = nlohmann::json::parse(response.payload_json, nullptr, false);
     if (payload.is_discarded() || !payload.is_object()) return response;
