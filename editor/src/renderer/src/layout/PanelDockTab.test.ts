@@ -23,13 +23,10 @@ describe('panel dock tab presentation', () => {
     expect(tab.icon).toBe(panelRegistry.viewport.icon);
   });
 
-  it('supports a panel registration without an icon', () => {
-    const previous = panelRegistry.search.icon;
-    panelRegistry.search.icon = null;
-    try {
-      expect(getPanelTabPresentation('search').icon).toBeNull();
-    } finally {
-      panelRegistry.search.icon = previous;
-    }
+  it('falls back cleanly for a component without registered panel metadata', () => {
+    const tab = getPanelTabPresentation('extension-panel', 'Extension Panel');
+    expect(tab.title).toBe('Extension Panel');
+    expect(tab.icon).toBeNull();
+    expect(tab.closeable).toBe(true);
   });
 });
