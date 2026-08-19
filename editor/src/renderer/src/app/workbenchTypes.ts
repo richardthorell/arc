@@ -70,7 +70,7 @@ export type WorkbenchIcon = (typeof import('lucide-react'))['FolderTree'];
 export type PanelRegistration = {
   id: WorkbenchPanelId;
   title: string;
-  icon: WorkbenchIcon | null;
+  icon: WorkbenchIcon;
   defaultRegion: DockRegion;
   activityId?: ActivityId;
   allowMultiple?: boolean;
