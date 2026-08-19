@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { panelRegistry } from '../app/panelRegistry';
@@ -45,6 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   Object.defineProperty(window, 'arc', { configurable: true, value: originalArc });
 });
 

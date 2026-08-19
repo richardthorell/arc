@@ -187,7 +187,8 @@ describe('data-driven InspectorPanel', () => {
     expect(screen.getByLabelText('Field of View')).toBeInTheDocument();
     expect(screen.queryByLabelText('Ortho Size')).not.toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByLabelText('Projection'), 'orthographic');
+    await userEvent.click(screen.getByLabelText('Projection'));
+    await userEvent.click(screen.getByRole('option', { name: 'Orthographic' }));
     expect(screen.getByLabelText('Ortho Size')).toBeInTheDocument();
     expect(screen.queryByLabelText('Field of View')).not.toBeInTheDocument();
     expect(command).toHaveBeenCalledWith(
@@ -291,7 +292,8 @@ describe('data-driven InspectorPanel', () => {
     expect(screen.getByLabelText('Width')).toHaveValue('2.00');
     expect(screen.getByLabelText('Height')).toHaveValue('1.00');
     expect(screen.queryByRole('option', { name: 'Candela (cd)' })).not.toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Shape'), 'disk');
+    await userEvent.click(screen.getByLabelText('Shape'));
+    await userEvent.click(screen.getByRole('option', { name: 'Disk' }));
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
         'entity.setLight',
