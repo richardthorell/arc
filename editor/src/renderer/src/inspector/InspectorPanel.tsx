@@ -32,6 +32,7 @@ export type InspectorPanelProps = {
 const knownTags = ['Untagged', 'Camera', 'Light', 'Mesh', 'Environment'];
 const defaultLayerMask = 1;
 const environmentLayerMask = 2;
+const proceduralParameterPrefix = '__arc_primitive_parameter__/';
 
 function entityPayload(snapshot: InspectorEntitySnapshot) {
   return (snapshot.selectionCount ?? 1) > 1
@@ -219,6 +220,7 @@ export function InspectorPanel({
       );
     } else if (component === 'meshRenderer' && next.meshRenderer) {
       if (path === 'meshRenderer.materialPath') {
+        const proceduralParameter = next.meshRenderer.materialPath.startsWith(proceduralParameterPrefix);
         void runMutation(
           next,
           'entity.setMaterial',
@@ -226,7 +228,9 @@ export function InspectorPanel({
             ...entityPayload(next),
             path: next.meshRenderer.materialPath,
           },
-          true,
+          proceduralParameter ? settled : true,
+          proceduralParameter ? transactionKey : undefined,
+          proceduralParameter ? 'Edit Procedural Mesh' : undefined,
         );
       } else {
         const tint = next.meshRenderer.baseColorTint;
