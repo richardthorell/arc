@@ -73,58 +73,71 @@ const primitiveMeshKindOf = (asset: AssetPickerItem | undefined, path: string): 
 };
 
 function PrimitiveMeshIcon({ kind }: { kind: PrimitiveMeshKind }) {
-  const common = {
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    strokeWidth: 1.6,
-  };
-  const shape =
-    kind === 'plane' ? (
-      <>
-        <path d="M5 17.5 14.5 9.5 27 14.5 17.5 22.5Z" />
-        <path d="m5 17.5 12.5 5 9.5-8" opacity="0.42" />
-      </>
-    ) : kind === 'cube' ? (
-      <>
-        <path d="M16 4.5 27 10.5 16 16.5 5 10.5Z" />
-        <path d="M5 10.5v12L16 28l11-5.5v-12M16 16.5V28" />
-      </>
-    ) : kind === 'sphere' ? (
-      <>
-        <circle cx="16" cy="16" r="11" />
-        <ellipse cx="16" cy="16" rx="5" ry="11" />
-        <path d="M5 16h22M7.5 10.5h17M7.5 21.5h17" opacity="0.55" />
-      </>
-    ) : kind === 'cylinder' ? (
-      <>
-        <ellipse cx="16" cy="7.5" rx="9" ry="4" />
-        <path d="M7 7.5v17c0 2.2 4 4 9 4s9-1.8 9-4v-17" />
-        <path d="M7 24.5c0 2.2 4 4 9 4s9-1.8 9-4" opacity="0.55" />
-      </>
-    ) : kind === 'cone' ? (
-      <>
-        <ellipse cx="16" cy="25" rx="10" ry="4" />
-        <path d="M16 4 6 25M16 4l10 21" />
-        <path d="M6 25c0 2.2 4.5 4 10 4s10-1.8 10-4" opacity="0.55" />
-      </>
-    ) : (
-      <>
-        <rect height="26" rx="7" width="14" x="9" y="3" />
-        <path d="M9 16h14" opacity="0.45" />
-      </>
-    );
+  const fillId = `primitive-fill-${kind}`;
+  const common = { fill: `url(#${fillId})`, stroke: '#8fc8ff', strokeWidth: 1.35 };
 
   return (
     <svg
-      {...common}
       aria-hidden="true"
       data-testid={`primitive-mesh-icon-${kind}`}
-      style={{ height: '68%', width: '68%' }}
-      viewBox="0 0 32 32"
+      style={{ height: '82%', width: '82%', filter: 'drop-shadow(0 5px 6px rgba(0, 0, 0, 0.38))' }}
+      viewBox="0 0 64 64"
     >
-      {shape}
+      <defs>
+        <linearGradient id={fillId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#52789a" />
+          <stop offset="1" stopColor="#172a3a" />
+        </linearGradient>
+      </defs>
+      {kind === 'cube' && (
+        <>
+          <path {...common} d="M14 22 32 12l18 10-18 11z" />
+          <path {...common} d="M14 22v22l18 10V33z" />
+          <path {...common} d="M50 22v22L32 54V33z" />
+        </>
+      )}
+      {kind === 'sphere' && (
+        <>
+          <circle {...common} cx="32" cy="32" r="21" />
+          <ellipse cx="32" cy="32" rx="10" ry="21" fill="none" stroke="#8fc8ff" opacity="0.72" />
+          <path
+            d="M12 32h40M17 21c9 5 21 5 30 0M17 43c9-5 21-5 30 0"
+            fill="none"
+            stroke="#8fc8ff"
+            opacity="0.58"
+          />
+        </>
+      )}
+      {kind === 'cylinder' && (
+        <>
+          <path {...common} d="M16 18c0-6 32-6 32 0v28c0 7-32 7-32 0z" />
+          <ellipse {...common} cx="32" cy="18" rx="16" ry="6" />
+          <path d="M16 45c3 7 29 7 32 0" fill="none" stroke="#8fc8ff" />
+        </>
+      )}
+      {kind === 'cone' && (
+        <>
+          <path {...common} d="M32 10 13 46c1 9 37 9 38 0z" />
+          <ellipse {...common} cx="32" cy="46" rx="19" ry="7" />
+        </>
+      )}
+      {kind === 'capsule' && (
+        <>
+          <path {...common} d="M18 23a14 14 0 0 1 28 0v18a14 14 0 0 1-28 0z" />
+          <path
+            d="M18 23c5 4 23 4 28 0M18 41c5-4 23-4 28 0"
+            fill="none"
+            stroke="#8fc8ff"
+            opacity="0.62"
+          />
+        </>
+      )}
+      {kind === 'plane' && (
+        <>
+          <path {...common} d="m8 40 29-25 19 11-29 25z" />
+          <path d="m17 32 19 11M27 24l19 11M19 46l29-25" fill="none" stroke="#8fc8ff" opacity="0.55" />
+        </>
+      )}
     </svg>
   );
 }
