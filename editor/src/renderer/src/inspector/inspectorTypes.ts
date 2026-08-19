@@ -36,7 +36,7 @@ export type InspectorProceduralMesh = {
 
 export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {
   meshRenderer: InspectorMeshRenderer | null;
-  proceduralMesh: InspectorProceduralMesh | null;
+  proceduralMesh?: InspectorProceduralMesh | null;
 };
 
 const finiteNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
