@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <variant>
@@ -29,8 +30,9 @@ TEST_CASE("procedural mesh variants generate denser geometry as subdivisions inc
     cube.segments_y = 3;
     cube.segments_z = 4;
     const auto subdivided_cube = arc::editor::make_procedural_mesh(cube);
-    CHECK(subdivided_cube.vertices.size() > arc::editor::make_procedural_mesh(arc::editor::cube_mesh_parameters{}).vertices.size());
-    CHECK(subdivided_cube.indices.size() > arc::editor::make_procedural_mesh(arc::editor::cube_mesh_parameters{}).indices.size());
+    const auto default_cube = arc::editor::make_procedural_mesh(arc::editor::cube_mesh_parameters{});
+    CHECK(subdivided_cube.vertices.size() > default_cube.vertices.size());
+    CHECK(subdivided_cube.indices.size() > default_cube.indices.size());
 }
 
 TEST_CASE("native host edits procedural mesh parameters with history and persisted authoring data")
