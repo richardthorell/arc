@@ -20,13 +20,18 @@ export type InspectorMeshRenderer = BaseInspectorMeshRenderer & {
 
 export type InspectorProceduralMesh = {
   type: 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
-  size?: number;
-  radius?: number;
+  width?: number;
   height?: number;
+  depth?: number;
+  radius?: number;
+  segmentsX?: number;
+  segmentsY?: number;
+  segmentsZ?: number;
   segments?: number;
   rings?: number;
   radialSegments?: number;
   hemisphereRings?: number;
+  heightSegments?: number;
 };
 
 export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {
@@ -50,13 +55,18 @@ function parseProceduralMesh(value: unknown): InspectorProceduralMesh | null {
   if (typeof raw.type !== 'string' || !proceduralTypes.has(raw.type as InspectorProceduralMesh['type'])) return null;
   return {
     type: raw.type as InspectorProceduralMesh['type'],
-    size: finiteNumber(raw.size),
-    radius: finiteNumber(raw.radius),
+    width: finiteNumber(raw.width),
     height: finiteNumber(raw.height),
+    depth: finiteNumber(raw.depth),
+    radius: finiteNumber(raw.radius),
+    segmentsX: finiteNumber(raw.segmentsX),
+    segmentsY: finiteNumber(raw.segmentsY),
+    segmentsZ: finiteNumber(raw.segmentsZ),
     segments: finiteNumber(raw.segments),
     rings: finiteNumber(raw.rings),
     radialSegments: finiteNumber(raw.radialSegments),
     hemisphereRings: finiteNumber(raw.hemisphereRings),
+    heightSegments: finiteNumber(raw.heightSegments),
   };
 }
 
