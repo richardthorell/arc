@@ -18,28 +18,67 @@ export type InspectorMeshRenderer = BaseInspectorMeshRenderer & {
   meshPath?: string;
 };
 
+export type InspectorProceduralMesh = {
+  type: 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
+  size?: number;
+  radius?: number;
+  height?: number;
+  segments?: number;
+  rings?: number;
+  radialSegments?: number;
+  hemisphereRings?: number;
+};
+
 export type InspectorEntitySnapshot = Omit<BaseInspectorEntitySnapshot, 'meshRenderer'> & {
   meshRenderer: InspectorMeshRenderer | null;
+  proceduralMesh: InspectorProceduralMesh | null;
 };
+
+const finiteNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+const proceduralTypes = new Set<InspectorProceduralMesh['type']>([
+  'plane',
+  'cube',
+  'sphere',
+  'cylinder',
+  'cone',
+  'capsule',
+]);
+
+function parseProceduralMesh(value: unknown): InspectorProceduralMesh | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.type !== 'string' || !proceduralTypes.has(raw.type as InspectorProceduralMesh['type'])) return null;
+  return {
+    type: raw.type as InspectorProceduralMesh['type'],
+    size: finiteNumber(raw.size),
+    radius: finiteNumber(raw.radius),
+    height: finiteNumber(raw.height),
+    segments: finiteNumber(raw.segments),
+    rings: finiteNumber(raw.rings),
+    radialSegments: finiteNumber(raw.radialSegments),
+    hemisphereRings: finiteNumber(raw.hemisphereRings),
+  };
+}
 
 export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnapshot {
   const parsed = parseBaseSelectedEntitySnapshot(value) as BaseInspectorEntitySnapshot;
-  if (!parsed.meshRenderer) return parsed as InspectorEntitySnapshot;
-
-  const rawMeshRenderer =
-    value && typeof value === 'object'
-      ? (value as { meshRenderer?: Record<string, unknown> }).meshRenderer
-      : undefined;
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+  const rawMeshRenderer = raw?.meshRenderer && typeof raw.meshRenderer === 'object'
+    ? (raw.meshRenderer as Record<string, unknown>)
+    : undefined;
 
   return {
     ...parsed,
-    meshRenderer: {
-      ...parsed.meshRenderer,
-      hasMesh: rawMeshRenderer?.hasMesh === true,
-      assetBackedMesh: rawMeshRenderer?.assetBackedMesh === true,
-      meshName: typeof rawMeshRenderer?.meshName === 'string' ? rawMeshRenderer.meshName : '',
-      meshPath: typeof rawMeshRenderer?.meshPath === 'string' ? rawMeshRenderer.meshPath : '',
-    },
+    meshRenderer: parsed.meshRenderer
+      ? {
+          ...parsed.meshRenderer,
+          hasMesh: rawMeshRenderer?.hasMesh === true,
+          assetBackedMesh: rawMeshRenderer?.assetBackedMesh === true,
+          meshName: typeof rawMeshRenderer?.meshName === 'string' ? rawMeshRenderer.meshName : '',
+          meshPath: typeof rawMeshRenderer?.meshPath === 'string' ? rawMeshRenderer.meshPath : '',
+        }
+      : null,
+    proceduralMesh: parseProceduralMesh(raw?.proceduralMesh),
   };
 }
 
