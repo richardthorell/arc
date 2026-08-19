@@ -60,6 +60,75 @@ const sourceLabelOf = (asset: AssetPickerItem | undefined, assetTypeLabel: strin
   return scope ? `${scope} ${assetTypeLabel}` : assetTypeLabel;
 };
 
+type PrimitiveMeshKind = 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
+const primitiveMeshPrefix = 'arc://primitive/';
+const primitiveMeshKinds = new Set<PrimitiveMeshKind>(['plane', 'cube', 'sphere', 'cylinder', 'cone', 'capsule']);
+
+const primitiveMeshKindOf = (asset: AssetPickerItem | undefined, path: string): PrimitiveMeshKind | null => {
+  if (asset?.scope !== 'procedural' && !path.startsWith(primitiveMeshPrefix)) return null;
+  const token = (path.startsWith(primitiveMeshPrefix) ? path.slice(primitiveMeshPrefix.length) : asset?.name || '')
+    .trim()
+    .toLocaleLowerCase() as PrimitiveMeshKind;
+  return primitiveMeshKinds.has(token) ? token : null;
+};
+
+function PrimitiveMeshIcon({ kind }: { kind: PrimitiveMeshKind }) {
+  const common = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    strokeWidth: 1.6,
+  };
+  const shape =
+    kind === 'plane' ? (
+      <>
+        <path d="M5 17.5 14.5 9.5 27 14.5 17.5 22.5Z" />
+        <path d="m5 17.5 12.5 5 9.5-8" opacity="0.42" />
+      </>
+    ) : kind === 'cube' ? (
+      <>
+        <path d="M16 4.5 27 10.5 16 16.5 5 10.5Z" />
+        <path d="M5 10.5v12L16 28l11-5.5v-12M16 16.5V28" />
+      </>
+    ) : kind === 'sphere' ? (
+      <>
+        <circle cx="16" cy="16" r="11" />
+        <ellipse cx="16" cy="16" rx="5" ry="11" />
+        <path d="M5 16h22M7.5 10.5h17M7.5 21.5h17" opacity="0.55" />
+      </>
+    ) : kind === 'cylinder' ? (
+      <>
+        <ellipse cx="16" cy="7.5" rx="9" ry="4" />
+        <path d="M7 7.5v17c0 2.2 4 4 9 4s9-1.8 9-4v-17" />
+        <path d="M7 24.5c0 2.2 4 4 9 4s9-1.8 9-4" opacity="0.55" />
+      </>
+    ) : kind === 'cone' ? (
+      <>
+        <ellipse cx="16" cy="25" rx="10" ry="4" />
+        <path d="M16 4 6 25M16 4l10 21" />
+        <path d="M6 25c0 2.2 4.5 4 10 4s10-1.8 10-4" opacity="0.55" />
+      </>
+    ) : (
+      <>
+        <rect height="26" rx="7" width="14" x="9" y="3" />
+        <path d="M9 16h14" opacity="0.45" />
+      </>
+    );
+
+  return (
+    <svg
+      {...common}
+      aria-hidden="true"
+      data-testid={`primitive-mesh-icon-${kind}`}
+      style={{ height: '68%', width: '68%' }}
+      viewBox="0 0 32 32"
+    >
+      {shape}
+    </svg>
+  );
+}
+
 function thumbnailRequest(provider: AssetThumbnailProvider, path: string): Promise<string | null> {
   let cache = thumbnailCaches.get(provider);
   if (!cache) {
@@ -105,7 +174,9 @@ export function AssetPicker({
         (asset) =>
           assetKinds.includes(asset.kind) &&
           (!assetTypeIds?.length || Boolean(asset.typeId && assetTypeIds.includes(asset.typeId))) &&
-          (asset.scope === 'procedural' || !allowedExtensions?.length || allowedExtensions.includes(extensionOf(asset.path))),
+          (asset.scope === 'procedural' ||
+            !allowedExtensions?.length ||
+            allowedExtensions.includes(extensionOf(asset.path))),
       ),
     [allowedExtensions, assetKinds, assetTypeIds, assets],
   );
@@ -340,6 +411,7 @@ export function AssetThumbnail({
   const [source, setSource] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined');
+  const primitiveKind = primitiveMeshKindOf(asset, path);
   useEffect(() => {
     if (visible || typeof IntersectionObserver === 'undefined' || !elementRef.current) return;
     const observer = new IntersectionObserver(
@@ -358,7 +430,7 @@ export function AssetThumbnail({
     let active = true;
     setSource(null);
     setFailed(false);
-    if (!visible || !path || !provider) return;
+    if (!visible || !path || !provider || primitiveKind) return;
     const request = thumbnailRequest(provider, path);
     void request.then((value) => {
       if (active) setSource(value);
@@ -366,16 +438,18 @@ export function AssetThumbnail({
     return () => {
       active = false;
     };
-  }, [asset?.status, path, provider, visible]);
+  }, [asset?.status, path, primitiveKind, provider, visible]);
 
   return (
     <span className={`asset-thumbnail ${source ? 'has-image' : ''}`} ref={elementRef}>
-      {source && !failed ? (
+      {primitiveKind ? (
+        <PrimitiveMeshIcon kind={primitiveKind} />
+      ) : source && !failed ? (
         <img alt="" draggable={false} onError={() => setFailed(true)} src={source} />
       ) : (
         <>
           <Image aria-hidden="true" size={17} />
-          <em>{asset?.scope === 'procedural' ? 'PROC' : path ? extensionOf(path).slice(1, 5).toUpperCase() : '—'}</em>
+          <em>{path ? extensionOf(path).slice(1, 5).toUpperCase() : '—'}</em>
         </>
       )}
       {asset?.status === 'importing' && <i />}
