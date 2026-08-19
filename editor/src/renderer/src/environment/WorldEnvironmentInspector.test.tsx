@@ -120,7 +120,8 @@ describe('schema-driven WorldEnvironmentInspector', () => {
     expect(screen.getByLabelText('Collapse Cumulus Cloud Layer')).toBeInTheDocument();
     expect(screen.queryByLabelText('Choose HDRI Texture asset')).not.toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByLabelText('Sky Source'), 'hdri');
+    await userEvent.click(screen.getByLabelText('Sky Source'));
+    await userEvent.click(screen.getByRole('option', { name: 'HDRI Texture' }));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ skySource: 'hdri' }));
     expect(screen.getByLabelText('Choose HDRI Texture asset')).toBeInTheDocument();
 
