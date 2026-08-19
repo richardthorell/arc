@@ -10,7 +10,7 @@ export type AssetPickerItem = {
   path: string;
   kind: string;
   status: 'unknown' | 'queued' | 'ready' | 'dirty' | 'stale' | 'importing' | 'failed' | 'missing';
-  scope?: 'builtin' | 'project' | 'user' | 'organization';
+  scope?: 'builtin' | 'project' | 'user' | 'organization' | 'procedural';
   readOnly?: boolean;
 };
 
@@ -46,15 +46,17 @@ const displayNameOf = (asset?: AssetPickerItem, fallback = '') => {
 };
 const sourceLabelOf = (asset: AssetPickerItem | undefined, assetTypeLabel: string) => {
   const scope =
-    asset?.scope === 'builtin'
-      ? 'Engine'
-      : asset?.scope === 'user'
-        ? 'User'
-        : asset?.scope === 'organization'
-          ? 'Organization'
-          : asset?.scope === 'project'
-            ? 'Project'
-            : '';
+    asset?.scope === 'procedural'
+      ? 'Procedural'
+      : asset?.scope === 'builtin'
+        ? 'Engine'
+        : asset?.scope === 'user'
+          ? 'User'
+          : asset?.scope === 'organization'
+            ? 'Organization'
+            : asset?.scope === 'project'
+              ? 'Project'
+              : '';
   return scope ? `${scope} ${assetTypeLabel}` : assetTypeLabel;
 };
 
@@ -103,7 +105,7 @@ export function AssetPicker({
         (asset) =>
           assetKinds.includes(asset.kind) &&
           (!assetTypeIds?.length || Boolean(asset.typeId && assetTypeIds.includes(asset.typeId))) &&
-          (!allowedExtensions?.length || allowedExtensions.includes(extensionOf(asset.path))),
+          (asset.scope === 'procedural' || !allowedExtensions?.length || allowedExtensions.includes(extensionOf(asset.path))),
       ),
     [allowedExtensions, assetKinds, assetTypeIds, assets],
   );
@@ -373,7 +375,7 @@ export function AssetThumbnail({
       ) : (
         <>
           <Image aria-hidden="true" size={17} />
-          <em>{path ? extensionOf(path).slice(1, 5).toUpperCase() : '—'}</em>
+          <em>{asset?.scope === 'procedural' ? 'PROC' : path ? extensionOf(path).slice(1, 5).toUpperCase() : '—'}</em>
         </>
       )}
       {asset?.status === 'importing' && <i />}
