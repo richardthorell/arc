@@ -17,14 +17,22 @@ enum class editor_primitive_type : std::uint8_t;
 
 struct plane_mesh_parameters
 {
-    float size{4.0f};
+    float width{4.0f};
+    float depth{4.0f};
+    std::uint32_t segments_x{1};
+    std::uint32_t segments_z{1};
 
     friend constexpr bool operator==(const plane_mesh_parameters&, const plane_mesh_parameters&) noexcept = default;
 };
 
 struct cube_mesh_parameters
 {
-    float size{1.0f};
+    float width{1.0f};
+    float height{1.0f};
+    float depth{1.0f};
+    std::uint32_t segments_x{1};
+    std::uint32_t segments_y{1};
+    std::uint32_t segments_z{1};
 
     friend constexpr bool operator==(const cube_mesh_parameters&, const cube_mesh_parameters&) noexcept = default;
 };
@@ -43,6 +51,7 @@ struct cylinder_mesh_parameters
     float radius{0.5f};
     float height{1.0f};
     std::uint32_t radial_segments{32};
+    std::uint32_t height_segments{1};
 
     friend constexpr bool operator==(const cylinder_mesh_parameters&, const cylinder_mesh_parameters&) noexcept = default;
 };
@@ -52,6 +61,7 @@ struct cone_mesh_parameters
     float radius{0.5f};
     float height{1.0f};
     std::uint32_t radial_segments{32};
+    std::uint32_t height_segments{1};
 
     friend constexpr bool operator==(const cone_mesh_parameters&, const cone_mesh_parameters&) noexcept = default;
 };
@@ -62,6 +72,7 @@ struct capsule_mesh_parameters
     float height{1.0f};
     std::uint32_t radial_segments{32};
     std::uint32_t hemisphere_rings{8};
+    std::uint32_t height_segments{1};
 
     friend constexpr bool operator==(const capsule_mesh_parameters&, const capsule_mesh_parameters&) noexcept = default;
 };
