@@ -227,8 +227,39 @@ function ProceduralMeshControls({
 
   return (
     <div className="inspector-procedural-mesh-controls">
-      <div className="inspector-subsection-title">Procedural Mesh</div>
-      {(mesh.type === 'plane' || mesh.type === 'cube') && control('size', dimensionField('Size'))}
+      <div
+        className="inspector-subsection-title"
+        style={{
+          marginTop: 4,
+          padding: '7px 0 2px',
+          borderTop: '1px solid var(--inspector-border-soft)',
+          color: 'var(--inspector-text-muted)',
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+        }}
+      >
+        Procedural Mesh · {mesh.type}
+      </div>
+      {mesh.type === 'plane' && (
+        <>
+          {control('width', dimensionField('Width'))}
+          {control('depth', dimensionField('Depth'))}
+          {control('segmentsX', segmentField('Segments X', 1))}
+          {control('segmentsZ', segmentField('Segments Z', 1))}
+        </>
+      )}
+      {mesh.type === 'cube' && (
+        <>
+          {control('width', dimensionField('Width'))}
+          {control('height', dimensionField('Height'))}
+          {control('depth', dimensionField('Depth'))}
+          {control('segmentsX', segmentField('Segments X', 1))}
+          {control('segmentsY', segmentField('Segments Y', 1))}
+          {control('segmentsZ', segmentField('Segments Z', 1))}
+        </>
+      )}
       {mesh.type === 'sphere' && (
         <>
           {control('radius', dimensionField('Radius'))}
@@ -241,6 +272,7 @@ function ProceduralMeshControls({
           {control('radius', dimensionField('Radius'))}
           {control('height', dimensionField('Height'))}
           {control('radialSegments', segmentField('Radial Segments', 3))}
+          {control('heightSegments', segmentField('Height Segments', 1))}
         </>
       )}
       {mesh.type === 'capsule' && (
@@ -248,7 +280,8 @@ function ProceduralMeshControls({
           {control('radius', dimensionField('Radius'))}
           {control('height', dimensionField('Height'))}
           {control('radialSegments', segmentField('Radial Segments', 3))}
-          {control('hemisphereRings', segmentField('Hemisphere Rings', 1))}
+          {control('hemisphereRings', segmentField('Hemisphere Rings', 2))}
+          {control('heightSegments', segmentField('Height Segments', 1))}
         </>
       )}
     </div>
