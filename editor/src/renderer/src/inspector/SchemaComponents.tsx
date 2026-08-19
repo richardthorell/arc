@@ -10,7 +10,17 @@ import { getPathValue } from './propertySchema';
 import type { PropertyComponentSchema, PropertyFieldSchema, VectorAxis } from './propertySchema';
 
 const meshAssignmentPrefix = '__arc_mesh__/';
+const primitiveAssignmentPrefix = '__arc_primitive__/';
+const primitiveMeshUriPrefix = 'arc://primitive/';
 const meshAssetExtensions = ['.glb', '.gltf', '.fbx'] as const;
+const proceduralMeshAssets: ReadonlyArray<AssetPickerItem> = [
+  { id: 'arc-primitive-plane', name: 'Plane', path: `${primitiveMeshUriPrefix}plane`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
+  { id: 'arc-primitive-cube', name: 'Cube', path: `${primitiveMeshUriPrefix}cube`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
+  { id: 'arc-primitive-sphere', name: 'Sphere', path: `${primitiveMeshUriPrefix}sphere`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
+  { id: 'arc-primitive-cylinder', name: 'Cylinder', path: `${primitiveMeshUriPrefix}cylinder`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
+  { id: 'arc-primitive-cone', name: 'Cone', path: `${primitiveMeshUriPrefix}cone`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
+  { id: 'arc-primitive-capsule', name: 'Capsule', path: `${primitiveMeshUriPrefix}capsule`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
+];
 
 export function SchemaComponentCard<TContext extends object>({
   schema,
@@ -37,6 +47,9 @@ export function SchemaComponentCard<TContext extends object>({
   const visibleFields = schema.fields.filter((field) => !field.visible || field.visible(context));
   const mixedFields = (context as { aggregate?: { mixedFields?: string[] } }).aggregate?.mixedFields ?? [];
   const showMeshAsset = schema.id === 'meshRenderer' && !visibleFields.some((field) => field.id === 'mesh');
+  const meshAssets = showMeshAsset
+    ? [...proceduralMeshAssets, ...assets.filter((asset) => !asset.path.startsWith(primitiveMeshUriPrefix))]
+    : assets;
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -119,12 +132,17 @@ export function SchemaComponentCard<TContext extends object>({
               allowedExtensions={meshAssetExtensions}
               assetKinds={['mesh', 'scene']}
               assetTypeLabel="Mesh"
-              assets={assets}
+              assets={meshAssets}
               label="Mesh"
               mixed={mixedFields.includes('meshRenderer.meshPath')}
               thumbnailProvider={thumbnailProvider}
               value={(getPathValue(context, 'meshRenderer.meshPath') as string) || ''}
-              onChange={(path) => onValue('meshRenderer.materialPath', `${meshAssignmentPrefix}${path}`, true)}
+              onChange={(path) => {
+                const assignment = path.startsWith(primitiveMeshUriPrefix)
+                  ? `${primitiveAssignmentPrefix}${path.slice(primitiveMeshUriPrefix.length)}`
+                  : `${meshAssignmentPrefix}${path}`;
+                onValue('meshRenderer.materialPath', assignment, true);
+              }}
             />
           )}
           {visibleFields.map((field) => (
