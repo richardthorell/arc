@@ -5,12 +5,13 @@ import { UiButton, UiIconButton, UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
-import type { Vec3, Vec4 } from './inspectorTypes';
+import type { InspectorProceduralMesh, Vec3, Vec4 } from './inspectorTypes';
 import { getPathValue } from './propertySchema';
 import type { PropertyComponentSchema, PropertyFieldSchema, VectorAxis } from './propertySchema';
 
 const meshAssignmentPrefix = '__arc_mesh__/';
 const primitiveAssignmentPrefix = '__arc_primitive__/';
+const primitiveParameterPrefix = '__arc_primitive_parameter__/';
 const primitiveMeshUriPrefix = 'arc://primitive/';
 const meshAssetExtensions = ['.glb', '.gltf', '.fbx'] as const;
 const proceduralMeshAssets: ReadonlyArray<AssetPickerItem> = [
@@ -50,6 +51,11 @@ export function SchemaComponentCard<TContext extends object>({
   const meshAssets = showMeshAsset
     ? [...proceduralMeshAssets, ...assets.filter((asset) => !asset.path.startsWith(primitiveMeshUriPrefix))]
     : assets;
+  const proceduralMesh =
+    schema.id === 'meshRenderer'
+      ? ((context as { proceduralMesh?: InspectorProceduralMesh | null }).proceduralMesh ?? null)
+      : null;
+  const selectionCount = (context as { selectionCount?: number }).selectionCount ?? 1;
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -145,6 +151,18 @@ export function SchemaComponentCard<TContext extends object>({
               }}
             />
           )}
+          {proceduralMesh && selectionCount === 1 && (
+            <ProceduralMeshControls
+              mesh={proceduralMesh}
+              onValue={(parameter, value, settled) =>
+                onValue(
+                  'meshRenderer.materialPath',
+                  `${primitiveParameterPrefix}${parameter}/${value}`,
+                  settled,
+                )
+              }
+            />
+          )}
           {visibleFields.map((field) => (
             <SchemaField
               key={field.id}
@@ -164,6 +182,76 @@ export function SchemaComponentCard<TContext extends object>({
         </div>
       )}
     </section>
+  );
+}
+
+function ProceduralMeshControls({
+  mesh,
+  onValue,
+}: {
+  mesh: InspectorProceduralMesh;
+  onValue: (parameter: string, value: number, settled: boolean) => void;
+}) {
+  const dimensionField = (label: string) => ({
+    label,
+    precision: 3,
+    step: 0.1,
+    scrubSensitivity: 0.01,
+    min: 0.001,
+    max: 100000,
+  });
+  const segmentField = (label: string, min: number) => ({
+    label,
+    precision: 0,
+    step: 1,
+    scrubSensitivity: 0.25,
+    min,
+    max: 512,
+  });
+  const control = (
+    parameter: keyof Omit<InspectorProceduralMesh, 'type'>,
+    field: ReturnType<typeof dimensionField>,
+  ) => {
+    const value = mesh[parameter];
+    if (typeof value !== 'number') return null;
+    return (
+      <NumberControl
+        key={parameter}
+        field={field}
+        value={value}
+        onCommit={(next) => onValue(parameter, next, true)}
+        onPreview={(next) => onValue(parameter, next, false)}
+      />
+    );
+  };
+
+  return (
+    <div className="inspector-procedural-mesh-controls">
+      <div className="inspector-subsection-title">Procedural Mesh</div>
+      {(mesh.type === 'plane' || mesh.type === 'cube') && control('size', dimensionField('Size'))}
+      {mesh.type === 'sphere' && (
+        <>
+          {control('radius', dimensionField('Radius'))}
+          {control('segments', segmentField('Segments', 3))}
+          {control('rings', segmentField('Rings', 2))}
+        </>
+      )}
+      {(mesh.type === 'cylinder' || mesh.type === 'cone') && (
+        <>
+          {control('radius', dimensionField('Radius'))}
+          {control('height', dimensionField('Height'))}
+          {control('radialSegments', segmentField('Radial Segments', 3))}
+        </>
+      )}
+      {mesh.type === 'capsule' && (
+        <>
+          {control('radius', dimensionField('Radius'))}
+          {control('height', dimensionField('Height'))}
+          {control('radialSegments', segmentField('Radial Segments', 3))}
+          {control('hemisphereRings', segmentField('Hemisphere Rings', 1))}
+        </>
+      )}
+    </div>
   );
 }
 
