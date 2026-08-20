@@ -42,7 +42,11 @@ export function ShaderEditorActions({ document }: { document: EditorDocument }) 
       >
         <Save size={13} /> Save &amp; Compile
       </UiButton>
-      <UiButton disabled={state.compiling || state.loading} onClick={() => void reloadShaderDocument(document)} variant="toolbar">
+      <UiButton
+        disabled={state.compiling || state.loading}
+        onClick={() => void reloadShaderDocument(document)}
+        variant="toolbar"
+      >
         <RefreshCw size={13} /> Reload
       </UiButton>
     </>
