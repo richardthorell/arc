@@ -1,7 +1,10 @@
 import { createElement } from 'react';
-import { FileCode2, Globe2 } from 'lucide-react';
+import { Circle, FileCode2, Globe2 } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
+import { MaterialEditor } from '../material/MaterialEditor';
+import { MaterialEditorToolbar } from '../material/MaterialEditorToolbar';
+import { disposeMaterialDocument, saveMaterialDocument } from '../material/materialDocumentState';
 import { ShaderSourceEditor } from '../shader/ShaderSourceEditor';
 import { ShaderSourceEditorToolbar } from '../shader/ShaderSourceEditorToolbar';
 import { disposeShaderDocument, saveShaderDocument } from '../shader/shaderDocumentState';
@@ -38,6 +41,30 @@ const shaderRegistration: EditorRegistration = {
   onClosed: (document) => disposeShaderDocument(document.id),
 };
 
+const materialRegistration: EditorRegistration = {
+  kind: 'material',
+  title: 'Material Editor',
+  icon: Circle,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) => asset.kind === 'material',
+  createDocument: (asset) => ({
+    id: `material:${asset.guid ?? asset.path}`,
+    kind: 'material',
+    title: asset.name,
+    path: asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(MaterialEditor, { document }),
+  renderToolbar: (document) => createElement(MaterialEditorToolbar, { document }),
+  save: saveMaterialDocument,
+  onClosed: (document) => disposeMaterialDocument(document.id),
+};
+
 let currentRegistry: EditorRegistry | null = null;
 
 export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorRegistry => {
@@ -45,6 +72,7 @@ export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorR
     ...registrations,
     level: { ...registrations.level, icon: Globe2 },
     shader: registrations.shader ?? shaderRegistration,
+    material: registrations.material ?? materialRegistration,
   } as EditorRegistry;
   currentRegistry = registry;
   return registry;
