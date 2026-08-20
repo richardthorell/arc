@@ -88,11 +88,7 @@ export function ShaderCodeEditor({
       if (disposed || !containerRef.current) return;
 
       const language = shaderLanguageForPath(path);
-      const model = monaco.editor.createModel(
-        valueRef.current,
-        language.monacoId,
-        modelUri(monaco, documentId, path),
-      );
+      const model = monaco.editor.createModel(valueRef.current, language.monacoId, modelUri(monaco, documentId, path));
       const editor = monaco.editor.create(containerRef.current, {
         model,
         theme: 'arc-shader-dark',
