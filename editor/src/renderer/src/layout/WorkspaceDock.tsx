@@ -33,19 +33,22 @@ type WorkspaceDockProps = {
   requestedViewportCount?: 1 | 2 | 3 | 4;
 };
 
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v3.${projectKey}.${name}`;
+// v4 separates global utility drawers from document/workspace panels. Older
+// layouts treated Hierarchy as part of the fixed sidebar, so start with a clean
+// layout that places it back into Level Design.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v4.${projectKey}.${name}`;
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 
 const initialSidebarPanel = (): SidebarPanelId => {
   try {
     const saved = window.localStorage.getItem(workbenchLayoutStorageKey);
-    if (!saved) return 'hierarchy';
+    if (!saved) return 'search';
     const activeActivity = (JSON.parse(saved) as { activeActivity?: string }).activeActivity;
     const activity = activityRegistry.find((entry) => entry.id === activeActivity);
-    return activity && isSidebarPanel(activity.panelId) ? activity.panelId : 'hierarchy';
+    return activity && isSidebarPanel(activity.panelId) ? activity.panelId : 'search';
   } catch {
-    return 'hierarchy';
+    return 'search';
   }
 };
 
@@ -122,6 +125,7 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
     addPanel(api, 'buildOutput', 'console', 'within');
     return;
   }
+  addPanel(api, 'hierarchy', 'viewport', 'left');
   addPanel(api, 'inspector', 'viewport', 'right');
   addPanel(api, 'lighting', 'inspector', 'within');
   addPanel(api, 'worldSettings', 'inspector', 'within');
@@ -177,8 +181,8 @@ export function WorkspaceDock({
     } catch {
       createLayout(dock, 'Level Design');
     }
-    // Layouts from older editor versions may still contain Hierarchy/Search/AI/VCS
-    // as Dockview tabs. They now belong exclusively to the fixed primary sidebar.
+    // Global Search/AI/VCS/Settings utilities never belong to a saved Dockview
+    // workspace. Hierarchy is deliberately not in this set anymore.
     removeSidebarPanelsFromDock(dock);
     if (!dock.activePanel) createLayout(dock, 'Level Design');
     window.localStorage.setItem(storageKey(projectKey, 'current'), JSON.stringify(dock.toJSON()));
@@ -259,7 +263,7 @@ export function WorkspaceDock({
   return (
     <div className="workspace-dock-shell">
       <aside
-        aria-label={`${panelRegistry[activeSidebarPanel].title} sidebar`}
+        aria-label={`${panelRegistry[activeSidebarPanel].title} utility drawer`}
         className={`primary-sidebar primary-sidebar-${activeSidebarPanel}`}
       >
         {renderPanel(activeSidebarPanel)}
