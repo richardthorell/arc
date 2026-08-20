@@ -1,40 +1,54 @@
 import { activityRegistry } from '../app/panelRegistry';
-import type { ActivityId } from '../app/workbenchTypes';
+import type { ActivityId, ActivityRegistration } from '../app/workbenchTypes';
 import { UiButton } from '../ui';
 
 type ActivityBarProps = {
   activeActivity: ActivityId;
-  /** Kept temporarily for Workbench state compatibility; the rail is now always icon-only. */
   expanded?: boolean;
-  /** Kept temporarily for Workbench state compatibility; expansion is no longer exposed. */
   onExpandedChange?: (expanded: boolean) => void;
   onSelectActivity: (activity: ActivityId) => void;
 };
 
-export function ActivityBar({ activeActivity, onSelectActivity }: ActivityBarProps) {
-  const registeredActivity = activityRegistry.some((activity) => activity.id === activeActivity);
+const utilityActivities = activityRegistry.filter((activity) => activity.id !== 'scene');
+const primaryActivities = utilityActivities.filter((activity) => activity.id !== 'settings');
+const footerActivities = utilityActivities.filter((activity) => activity.id === 'settings');
+
+export function ActivityBar({
+  activeActivity,
+  expanded = false,
+  onExpandedChange,
+  onSelectActivity,
+}: ActivityBarProps) {
+  const renderActivity = (activity: ActivityRegistration) => {
+    const Icon = activity.icon;
+    const active = expanded && activeActivity === activity.id;
+    return (
+      <UiButton
+        active={active}
+        aria-label={activity.title}
+        aria-pressed={active}
+        className="activity-button"
+        key={activity.id}
+        onClick={() => {
+          if (activeActivity === activity.id && expanded) {
+            onExpandedChange?.(false);
+            return;
+          }
+          onSelectActivity(activity.id);
+          onExpandedChange?.(true);
+        }}
+        title={activity.title}
+        variant="ghost"
+      >
+        <Icon size={20} />
+      </UiButton>
+    );
+  };
 
   return (
-    <aside className="activity-bar" aria-label="Primary sidebar activities">
-      <div className="activity-items">
-        {activityRegistry.map((activity) => {
-          const Icon = activity.icon;
-          const active = registeredActivity ? activeActivity === activity.id : activity.id === 'scene';
-          return (
-            <UiButton
-              active={active}
-              aria-label={activity.title}
-              className="activity-button"
-              key={activity.id}
-              onClick={() => onSelectActivity(activity.id)}
-              title={activity.title}
-              variant="ghost"
-            >
-              <Icon size={20} />
-            </UiButton>
-          );
-        })}
-      </div>
+    <aside className="activity-bar utility-rail" aria-label="Global utilities">
+      <div className="activity-items">{primaryActivities.map(renderActivity)}</div>
+      <div className="activity-footer">{footerActivities.map(renderActivity)}</div>
     </aside>
   );
 }
