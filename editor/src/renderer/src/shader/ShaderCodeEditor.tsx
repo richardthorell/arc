@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
-import * as monaco from 'monaco-editor/editor';
-import 'monaco-editor/features/register.all';
-import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+import type * as Monaco from 'monaco-editor/editor';
 
 import { registerShaderLanguages, shaderLanguageForPath } from './language/ShaderLanguageRegistry';
 
 import './ShaderSourceEditor.css';
+
+type MonacoApi = typeof import('monaco-editor/editor');
 
 type MonacoEnvironment = {
   getWorker: (_moduleId: string, _label: string) => Worker;
@@ -21,19 +21,31 @@ type ShaderCodeEditorProps = {
   onSave: () => void;
 };
 
-const globalWithMonaco = globalThis as typeof globalThis & {
-  MonacoEnvironment?: MonacoEnvironment;
+let monacoPromise: Promise<MonacoApi> | null = null;
+
+const loadMonaco = () => {
+  if (!monacoPromise) {
+    monacoPromise = Promise.all([
+      import('monaco-editor/editor'),
+      import('monaco-editor/editor/editor.worker?worker'),
+      import('monaco-editor/features/register.all'),
+    ]).then(([monaco, workerModule]) => {
+      const globalWithMonaco = globalThis as typeof globalThis & {
+        MonacoEnvironment?: MonacoEnvironment;
+      };
+      if (!globalWithMonaco.MonacoEnvironment) {
+        globalWithMonaco.MonacoEnvironment = {
+          getWorker: () => new workerModule.default(),
+        };
+      }
+      registerShaderLanguages(monaco);
+      return monaco;
+    });
+  }
+  return monacoPromise;
 };
 
-if (!globalWithMonaco.MonacoEnvironment) {
-  globalWithMonaco.MonacoEnvironment = {
-    getWorker: () => new EditorWorker(),
-  };
-}
-
-registerShaderLanguages(monaco);
-
-const modelUri = (documentId: string, path: string) =>
+const modelUri = (monaco: MonacoApi, documentId: string, path: string) =>
   monaco.Uri.from({
     scheme: 'arc-shader',
     path: `/${encodeURIComponent(documentId)}/${path.replace(/^\/+/, '')}`,
@@ -49,8 +61,8 @@ export function ShaderCodeEditor({
   onSave,
 }: ShaderCodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
-  const modelRef = useRef<monaco.editor.ITextModel | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const modelRef = useRef<Monaco.editor.ITextModel | null>(null);
   const applyingExternalValueRef = useRef(false);
   const valueRef = useRef(value);
   const readOnlyRef = useRef(readOnly);
@@ -65,45 +77,67 @@ export function ShaderCodeEditor({
   onSaveRef.current = onSave;
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
 
-    const language = shaderLanguageForPath(path);
-    const model = monaco.editor.createModel(valueRef.current, language.monacoId, modelUri(documentId, path));
-    const editor = monaco.editor.create(containerRef.current, {
-      model,
-      theme: 'arc-shader-dark',
-      readOnly: readOnlyRef.current || loadingRef.current,
-      automaticLayout: true,
-      fontFamily: "Consolas, 'Cascadia Code', monospace",
-      fontSize: 12,
-      lineHeight: 19,
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      renderWhitespace: 'selection',
-      bracketPairColorization: { enabled: true },
-      guides: { bracketPairs: true, indentation: true },
-      padding: { top: 8, bottom: 8 },
-      tabSize: 4,
-      insertSpaces: true,
-      wordWrap: 'off',
-      fixedOverflowWidgets: true,
-      ariaLabel: 'Shader source',
-    });
+    const initialize = async () => {
+      const container = containerRef.current;
+      if (!container) return;
 
-    editorRef.current = editor;
-    modelRef.current = model;
+      const monaco = await loadMonaco();
+      if (disposed || !containerRef.current) return;
 
-    const changeSubscription = model.onDidChangeContent(() => {
-      if (!applyingExternalValueRef.current) onChangeRef.current(model.getValue());
-    });
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
+      const language = shaderLanguageForPath(path);
+      const model = monaco.editor.createModel(
+        valueRef.current,
+        language.monacoId,
+        modelUri(monaco, documentId, path),
+      );
+      const editor = monaco.editor.create(containerRef.current, {
+        model,
+        theme: 'arc-shader-dark',
+        readOnly: readOnlyRef.current || loadingRef.current,
+        automaticLayout: true,
+        fontFamily: "Consolas, 'Cascadia Code', monospace",
+        fontSize: 12,
+        lineHeight: 19,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        renderWhitespace: 'selection',
+        bracketPairColorization: { enabled: true },
+        guides: { bracketPairs: true, indentation: true },
+        padding: { top: 8, bottom: 8 },
+        tabSize: 4,
+        insertSpaces: true,
+        wordWrap: 'off',
+        fixedOverflowWidgets: true,
+        ariaLabel: 'Shader source',
+      });
+
+      editorRef.current = editor;
+      modelRef.current = model;
+
+      const changeSubscription = model.onDidChangeContent(() => {
+        if (!applyingExternalValueRef.current) onChangeRef.current(model.getValue());
+      });
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
+
+      cleanup = () => {
+        changeSubscription.dispose();
+        editor.dispose();
+        model.dispose();
+        if (editorRef.current === editor) editorRef.current = null;
+        if (modelRef.current === model) modelRef.current = null;
+      };
+
+      if (disposed) cleanup();
+    };
+
+    void initialize();
 
     return () => {
-      changeSubscription.dispose();
-      editor.dispose();
-      model.dispose();
-      editorRef.current = null;
-      modelRef.current = null;
+      disposed = true;
+      cleanup?.();
     };
   }, [documentId, path]);
 
