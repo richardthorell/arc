@@ -1,6 +1,8 @@
 name: Shader Editor Validation
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [feature/shader-editor-monaco]
 
