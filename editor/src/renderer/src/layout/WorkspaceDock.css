@@ -118,6 +118,19 @@
   --dv-active-sash-color: var(--arc-color-accent);
 }
 
+/* Asset editors own their entire document workspace. Shader Source currently
+   has no document-specific supporting Dockview panels, so its single editor
+   host does not need another inner "Viewport" tab strip underneath the global
+   document tabs and shader toolbar. The utility rail/drawer remains outside
+   this surface and is unaffected. */
+.workbench-shell .workspace-dock-shell-editor-shader .workspace-dock {
+  --dv-tabs-and-actions-container-height: 0px;
+}
+
+.workbench-shell .workspace-dock-shell-editor-shader .workspace-dock .dv-tabs-and-actions-container {
+  display: none;
+}
+
 /* Scene documents are editor state, not another dock level. Keep the scene
    lifecycle/model but do not render a second full-width tab controller above
    the workspace dock. */
