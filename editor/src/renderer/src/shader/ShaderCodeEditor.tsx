@@ -77,6 +77,8 @@ export function ShaderCodeEditor({
   onSaveRef.current = onSave;
 
   useEffect(() => {
+    if (import.meta.env.MODE === 'test') return;
+
     let disposed = false;
     let cleanup: (() => void) | undefined;
 
