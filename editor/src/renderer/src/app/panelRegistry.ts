@@ -87,15 +87,16 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   settings: { id: 'settings', title: 'Settings', icon: Settings, defaultRegion: 'left', activityId: 'settings' },
 };
 
-export const sidebarPanelIds = ['hierarchy', 'search', 'aiAssistant', 'versionControl', 'settings'] as const;
+// Only document-independent utilities live in the global drawer. Hierarchy is
+// now a normal Level Design workspace panel instead of a global sidebar tool.
+export const sidebarPanelIds = ['search', 'aiAssistant', 'versionControl', 'settings'] as const;
 export type SidebarPanelId = (typeof sidebarPanelIds)[number];
 
 export const isSidebarPanel = (panel: WorkbenchPanelId): panel is SidebarPanelId =>
   (sidebarPanelIds as readonly WorkbenchPanelId[]).includes(panel);
 
-// Keep the scene registration for persisted-layout compatibility and for the
-// Level Editor hierarchy panel, but the ActivityBar intentionally excludes it.
-// The visible rail contains only document-independent global utilities.
+// Keep the scene registration for persisted-layout compatibility. The visible
+// ActivityBar intentionally excludes it and shows only global utilities.
 export const activityRegistry: ActivityRegistration[] = [
   { id: 'scene', title: 'Hierarchy', icon: FolderTree, panelId: 'hierarchy' },
   { id: 'search', title: 'Search', icon: Search, panelId: 'search' },
