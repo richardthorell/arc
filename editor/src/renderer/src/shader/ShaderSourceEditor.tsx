@@ -88,29 +88,6 @@ export function ShaderSourceEditor({
         </header>
       )}
       <div className="shader-editor-body">
-        <aside className="shader-include-tree">
-          <h3>Include closure</h3>
-          <button type="button">{document.path}</button>
-          {includes.map((include) => (
-            <button key={include} type="button">
-              {include}
-            </button>
-          ))}
-          {!includes.length && <p>No direct includes.</p>}
-          <h3>Permutation</h3>
-          <label>
-            Entry point
-            <select defaultValue="main">
-              <option>main</option>
-            </select>
-          </label>
-          <label>
-            Target
-            <select defaultValue="spirv">
-              <option value="spirv">SPIR-V · Vulkan 1.2</option>
-            </select>
-          </label>
-        </aside>
         <div className="shader-source-editor">
           <div ref={gutterRef} className="shader-source-gutter" aria-hidden="true">
             {state.source.split('\n').map((_, index) => (
@@ -134,10 +111,35 @@ export function ShaderSourceEditor({
             }}
           />
         </div>
-        <aside className="shader-preview">
-          <h3>Live preview</h3>
-          <div className="shader-preview-sphere" />
-          <p>Production PBR preview uses the last successfully published shader generation.</p>
+        <aside className="shader-side-panel">
+          <section className="shader-preview">
+            <h3>Live preview</h3>
+            <div className="shader-preview-sphere" />
+            <p>Production PBR preview uses the last successfully published shader generation.</p>
+          </section>
+          <section className="shader-include-tree">
+            <h3>Include closure</h3>
+            <button type="button">{document.path}</button>
+            {includes.map((include) => (
+              <button key={include} type="button">
+                {include}
+              </button>
+            ))}
+            {!includes.length && <p>No direct includes.</p>}
+            <h3>Permutation</h3>
+            <label>
+              Entry point
+              <select defaultValue="main">
+                <option>main</option>
+              </select>
+            </label>
+            <label>
+              Target
+              <select defaultValue="spirv">
+                <option value="spirv">SPIR-V · Vulkan 1.2</option>
+              </select>
+            </label>
+          </section>
         </aside>
       </div>
       {state.message && (
