@@ -33,10 +33,10 @@ type WorkspaceDockProps = {
   requestedViewportCount?: 1 | 2 | 3 | 4;
 };
 
-// v4 separates global utility drawers from document/workspace panels. Older
-// layouts treated Hierarchy as part of the fixed sidebar, so start with a clean
-// layout that places it back into Level Design.
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v4.${projectKey}.${name}`;
+// v5 restores Hierarchy as the default left-side Level Design panel after the
+// global utility rail stopped owning it. Bump the key so transitional v4
+// layouts that were saved without Hierarchy do not keep it hidden.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v5.${projectKey}.${name}`;
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 
@@ -263,7 +263,7 @@ export function WorkspaceDock({
   return (
     <div className="workspace-dock-shell">
       <aside
-        aria-label={`${panelRegistry[activeSidebarPanel].title} utility drawer`}
+        aria-label={`${panelRegistry[activeSidebarPanel].title} sidebar`}
         className={`primary-sidebar primary-sidebar-${activeSidebarPanel}`}
       >
         {renderPanel(activeSidebarPanel)}
