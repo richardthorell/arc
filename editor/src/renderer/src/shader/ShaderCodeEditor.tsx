@@ -51,9 +51,16 @@ export function ShaderCodeEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelRef = useRef<monaco.editor.ITextModel | null>(null);
+  const applyingExternalValueRef = useRef(false);
+  const valueRef = useRef(value);
+  const readOnlyRef = useRef(readOnly);
+  const loadingRef = useRef(loading);
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
 
+  valueRef.current = value;
+  readOnlyRef.current = readOnly;
+  loadingRef.current = loading;
   onChangeRef.current = onChange;
   onSaveRef.current = onSave;
 
@@ -61,11 +68,11 @@ export function ShaderCodeEditor({
     if (!containerRef.current) return;
 
     const language = shaderLanguageForPath(path);
-    const model = monaco.editor.createModel(value, language.monacoId, modelUri(documentId, path));
+    const model = monaco.editor.createModel(valueRef.current, language.monacoId, modelUri(documentId, path));
     const editor = monaco.editor.create(containerRef.current, {
       model,
       theme: 'arc-shader-dark',
-      readOnly: readOnly || loading,
+      readOnly: readOnlyRef.current || loadingRef.current,
       automaticLayout: true,
       fontFamily: "Consolas, 'Cascadia Code', monospace",
       fontSize: 12,
@@ -86,7 +93,9 @@ export function ShaderCodeEditor({
     editorRef.current = editor;
     modelRef.current = model;
 
-    const changeSubscription = model.onDidChangeContent(() => onChangeRef.current(model.getValue()));
+    const changeSubscription = model.onDidChangeContent(() => {
+      if (!applyingExternalValueRef.current) onChangeRef.current(model.getValue());
+    });
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => onSaveRef.current());
 
     return () => {
@@ -96,24 +105,19 @@ export function ShaderCodeEditor({
       editorRef.current = null;
       modelRef.current = null;
     };
-  }, [documentId]);
+  }, [documentId, path]);
 
   useEffect(() => {
     const model = modelRef.current;
     if (!model || model.getValue() === value) return;
+    applyingExternalValueRef.current = true;
     model.setValue(value);
+    applyingExternalValueRef.current = false;
   }, [value]);
 
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly: readOnly || loading });
   }, [loading, readOnly]);
-
-  useEffect(() => {
-    const model = modelRef.current;
-    if (!model) return;
-    const language = shaderLanguageForPath(path);
-    if (model.getLanguageId() !== language.monacoId) monaco.editor.setModelLanguage(model, language.monacoId);
-  }, [path]);
 
   return <div ref={containerRef} className={`shader-code-editor${loading ? ' is-loading' : ''}`} />;
 }
