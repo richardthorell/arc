@@ -1,28 +1,33 @@
 .workbench-shell .workbench-body-dockview.activity-expanded {
-  /* The activity rail is permanently icon-only now, including for users with
-     an older persisted expanded-rail preference. */
+  /* The global utility rail always stays icon-only. Expansion controls the
+     drawer inside WorkspaceDock rather than changing the rail width. */
   grid-template-columns: var(--arc-activity-collapsed-width) minmax(0, 1fr);
 }
 
 .workbench-shell .activity-bar {
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: space-between;
   padding: var(--arc-space-4);
-  border-right: 0;
+  border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
   background: var(--arc-color-bg-panel-muted);
   overflow: hidden;
 }
 
-.workbench-shell .activity-bar .activity-items {
+.workbench-shell .activity-bar .activity-items,
+.workbench-shell .activity-bar .activity-footer {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   width: 100%;
 }
 
-/* The rail has a fixed 56px footprint and the icon buttons have a fixed 40px
-   surface, leaving an 8px gutter on both sides. Avoid percentage sizing here:
-   the legacy activity-button padding/margins made that easy to clip or spill
-   into the adjacent primary sidebar. */
+/* Keep the utility rail compact: the 40px buttons live inside the existing
+   56px rail and use a slim accent instead of a large navigation tile. */
 .workbench-shell .activity-bar .activity-button {
+  position: relative;
   box-sizing: border-box;
   flex: 0 0 40px;
   width: 40px;
@@ -30,26 +35,42 @@
   height: 40px;
   margin: 0 0 var(--arc-space-3);
   padding: 0;
+  border-radius: var(--arc-radius-2);
+}
+
+.workbench-shell .activity-bar .activity-button.is-active {
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-hover);
+  box-shadow: inset 2px 0 0 var(--arc-color-accent);
 }
 
 .workspace-dock-shell {
   display: grid;
-  grid-template-columns: var(--arc-left-panel-width) minmax(0, 1fr);
+  grid-template-columns: 0 minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--arc-color-bg-panel);
+  transition: grid-template-columns 140ms ease;
+}
+
+.workbench-shell .workbench-body-dockview.activity-expanded .workspace-dock-shell {
+  grid-template-columns: var(--arc-left-panel-width) minmax(0, 1fr);
 }
 
 .primary-sidebar {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  border-right: 0;
   color: var(--arc-color-text);
   background: var(--arc-color-bg-panel-muted);
+}
+
+.workbench-shell .workbench-body-dockview.activity-expanded .primary-sidebar {
+  border-right: var(--arc-border-width) solid var(--arc-color-border-subtle);
 }
 
 .primary-sidebar > * {
