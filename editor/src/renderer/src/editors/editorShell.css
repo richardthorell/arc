@@ -1,0 +1,120 @@
+.workbench-shell {
+  --arc-document-tabs-height: 30px;
+  grid-template-rows:
+    var(--arc-titlebar-height)
+    var(--arc-document-tabs-height)
+    var(--arc-toolbar-height)
+    minmax(0, 1fr)
+    var(--arc-statusbar-height);
+}
+
+.editor-document-tabs {
+  min-width: 0;
+  display: flex;
+  align-items: end;
+  gap: 1px;
+  height: var(--arc-document-tabs-height);
+  padding-left: 96px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  background: #151e24;
+}
+
+.editor-document-tab {
+  height: 29px;
+  display: inline-flex;
+  align-items: stretch;
+  border-right: 1px solid var(--arc-color-border-subtle);
+  background: #19242b;
+}
+
+.editor-document-tab.active {
+  border-top: 1px solid #55a8dd;
+  background: #202d35;
+}
+
+.editor-document-tab-main,
+.editor-document-tab-close {
+  border: 0;
+  color: var(--arc-color-text-muted);
+  background: transparent;
+}
+
+.editor-document-tab-main {
+  min-width: 120px;
+  max-width: 280px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.editor-document-tab-main > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-document-tab.active .editor-document-tab-main {
+  color: var(--arc-color-text);
+}
+
+.editor-document-tab-main small {
+  padding: 1px 4px;
+  color: #e3b76d;
+  border-radius: 6px;
+  background: #3b3020;
+}
+
+.editor-document-tab-main b {
+  color: #73b8e4;
+  font-size: 8px;
+}
+
+.editor-document-tab-close {
+  width: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.editor-document-tab-close:hover,
+.editor-document-tab-main:hover {
+  color: var(--arc-color-text);
+  background: var(--arc-color-bg-hover);
+}
+
+.editor-toolbar-host {
+  min-width: 0;
+  min-height: 0;
+}
+
+.editor-toolbar-host > .main-toolbar {
+  width: 100%;
+}
+
+.editor-toolbar-host-empty {
+  border-bottom: 1px solid var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-chrome);
+}
+
+.dockview-editor-region {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.editor-host,
+.level-editor {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.editor-host-empty {
+  display: grid;
+  place-items: center;
+  color: var(--arc-color-text-muted);
+  background: var(--arc-color-bg-panel);
+}
