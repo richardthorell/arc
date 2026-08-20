@@ -38,7 +38,10 @@ const hoverContents = (symbol: ShaderSymbol): Monaco.IMarkdownString[] => {
 
 export const shaderLanguageForPath = (path: string): ShaderLanguageDefinition => {
   const lowerPath = path.toLocaleLowerCase();
-  return definitions.find((definition) => definition.extensions.some((extension) => lowerPath.endsWith(extension))) ?? glslLanguageDefinition;
+  return (
+    definitions.find((definition) => definition.extensions.some((extension) => lowerPath.endsWith(extension))) ??
+    glslLanguageDefinition
+  );
 };
 
 export const getShaderSymbol = (monacoLanguageId: string, name: string): ShaderSymbol | undefined =>

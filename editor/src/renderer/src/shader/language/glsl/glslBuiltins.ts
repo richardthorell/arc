@@ -1,16 +1,13 @@
 import type { ShaderSymbol } from '../ShaderLanguage';
 
-const type = (
-  name: string,
-  description: string,
-  signatures?: ShaderSymbol['signatures'],
-): ShaderSymbol => ({ name, kind: 'type', description, signatures });
+const type = (name: string, description: string, signatures?: ShaderSymbol['signatures']): ShaderSymbol => ({
+  name,
+  kind: 'type',
+  description,
+  signatures,
+});
 
-const fn = (
-  name: string,
-  description: string,
-  signatures: readonly string[],
-): ShaderSymbol => ({
+const fn = (name: string, description: string, signatures: readonly string[]): ShaderSymbol => ({
   name,
   kind: 'function',
   description,
@@ -77,9 +74,7 @@ export const glslSymbols: readonly ShaderSymbol[] = [
   fn('exp', 'Returns e raised to each component of x.', ['genFType exp(genFType x)']),
   fn('log', 'Returns the natural logarithm of each component of x.', ['genFType log(genFType x)']),
   fn('sqrt', 'Returns the square root of each component of x.', ['genFType sqrt(genFType x)']),
-  fn('inversesqrt', 'Returns the reciprocal square root of each component of x.', [
-    'genFType inversesqrt(genFType x)',
-  ]),
+  fn('inversesqrt', 'Returns the reciprocal square root of each component of x.', ['genFType inversesqrt(genFType x)']),
   fn('abs', 'Returns the absolute value of each component.', ['genType abs(genType x)']),
   fn('floor', 'Rounds each component down to the nearest integer value.', ['genFType floor(genFType x)']),
   fn('ceil', 'Rounds each component up to the nearest integer value.', ['genFType ceil(genFType x)']),
@@ -130,8 +125,12 @@ export const glslSymbols: readonly ShaderSymbol[] = [
   fn('transpose', 'Returns the transpose of a matrix.', ['mat transpose(mat m)']),
   fn('determinant', 'Returns the determinant of a square matrix.', ['float determinant(mat m)']),
   fn('inverse', 'Returns the inverse of a square matrix.', ['mat inverse(mat m)']),
-  fn('dFdx', 'Returns the partial derivative of an expression with respect to window x.', ['genFType dFdx(genFType p)']),
-  fn('dFdy', 'Returns the partial derivative of an expression with respect to window y.', ['genFType dFdy(genFType p)']),
+  fn('dFdx', 'Returns the partial derivative of an expression with respect to window x.', [
+    'genFType dFdx(genFType p)',
+  ]),
+  fn('dFdy', 'Returns the partial derivative of an expression with respect to window y.', [
+    'genFType dFdy(genFType p)',
+  ]),
   fn('fwidth', 'Returns abs(dFdx(p)) + abs(dFdy(p)).', ['genFType fwidth(genFType p)']),
   fn('textureSize', 'Returns the dimensions of a texture at the requested mip level.', [
     'ivec textureSize(gsampler sampler, int lod)',
