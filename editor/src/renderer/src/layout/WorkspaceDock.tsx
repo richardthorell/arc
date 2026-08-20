@@ -143,10 +143,11 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
 };
 
 const createEditorWorkspace = (api: DockviewApi, kind: EditorDocumentKind) => {
-  if (kind === 'shader') {
-    // Shader source currently has no document-specific supporting panels. The
-    // editor host therefore owns the complete Dockview workspace. The global
-    // utility rail/drawer lives outside this layout and remains available.
+  if (kind === 'shader' || kind === 'material') {
+    // Asset editors own the complete document workspace. Shader and Material
+    // currently compose their document-specific supporting regions internally,
+    // so Dockview only needs the primary EditorHost surface. The global utility
+    // rail/drawer lives outside this layout and remains available.
     api.clear();
     addPanel(api, 'viewport');
     return;
