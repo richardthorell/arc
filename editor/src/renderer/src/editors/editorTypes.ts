@@ -12,6 +12,7 @@ export type EditorDocument = {
   path?: string;
   assetId?: string;
   assetGuid?: string;
+  assetScope?: AssetItem['scope'];
   dirty: boolean;
   readOnly: boolean;
   recovered?: boolean;
