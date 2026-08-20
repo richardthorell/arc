@@ -27,8 +27,7 @@ export const openEditorDocument = (
   }
 
   const existingIndex = state.documents.findIndex((entry) => entry.id === document.id);
-  if (existingIndex < 0)
-    return { documents: [...state.documents, document], activeDocumentId: document.id };
+  if (existingIndex < 0) return { documents: [...state.documents, document], activeDocumentId: document.id };
 
   const documents = [...state.documents];
   documents[existingIndex] = document;
