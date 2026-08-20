@@ -25,7 +25,7 @@ export function ShaderEditorPanel({ asset }: { asset: AssetItem | null }) {
     assetGuid: shader.guid,
     assetScope: shader.scope,
     dirty: false,
-    readOnly: Boolean(shader.readOnly),
+    readOnly: shader.scope === 'builtin' || Boolean(shader.readOnly),
   };
 
   return <ShaderSourceEditor document={document} embeddedToolbar />;
