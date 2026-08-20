@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, FileCode2, Play, RefreshCw, Save } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -72,6 +72,8 @@ export function ShaderSourceEditor({
   const [activeLine, setActiveLine] = useState(1);
   const includes = [...state.source.matchAll(includePattern)].map((match) => match[1]);
   const dirty = state.source !== state.confirmed;
+
+  useEffect(() => setActiveLine(1), [document.id]);
 
   return (
     <section className="production-tool-panel shader-editor-panel shader-document-editor">
