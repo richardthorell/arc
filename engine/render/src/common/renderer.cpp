@@ -462,7 +462,8 @@ void execute_render_graph(const compiled_render_graph& graph, command_encoder& e
 
         const auto& pass = graph.passes[pass_index];
         encoder.begin_pass(pass);
-        if (pass.record) pass.record(encoder, pass.user_data);
+        render_pass_context context(graph, pass_index, encoder);
+        if (pass.record) pass.record(context);
         encoder.end_pass();
     };
 
@@ -1128,12 +1129,15 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
 {
     virtual_geometry_residency_.begin_frame(frame_index);
     auto packet = frame_queue_.commit(frame_index);
-    const auto compiled = graph.compile();
-
     if (!backend_)
         return render_submit_result::failure(
             {render_submit_error_code::backend_unavailable, "no render backend attached"});
 
+    render_graph_compile_options graph_options{
+        .frame_index = frame_index,
+        .compute_queue_available = resolved_config_.features.async_compute,
+        .transfer_queue_available = backend_->capabilities().transfer_queue};
+    bool graph_view_initialized{};
     std::vector<std::shared_ptr<const gpu_scene_update_batch>> gpu_scene_updates;
     std::vector<std::shared_ptr<const lighting_scene_update_batch>> lighting_scene_updates;
     for (auto& event : packet.events)
@@ -1152,6 +1156,23 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         prepared->camera.history_valid = !prepared->camera.camera_cut;
         prepared->camera.previous_view_projection =
             prepared->camera.history_valid ? previous.view_projection : prepared->camera.view_projection;
+
+        if (!graph_view_initialized)
+        {
+            graph_options.view_id = prepared->render_view_id;
+            graph_options.output_extent = {
+                prepared->camera.output_width, prepared->camera.output_height, 1u};
+            graph_options.render_extent = {
+                prepared->camera.render_width, prepared->camera.render_height, 1u};
+            graph_options.world_epoch = prepared->world_epoch;
+            if (prepared->camera.camera_cut)
+                graph_options.temporal_reset = graph_options.temporal_reset | render_history_reset::camera_cut;
+            if (extent_changed)
+                graph_options.temporal_reset = graph_options.temporal_reset | render_history_reset::resize;
+            if (epoch_changed)
+                graph_options.temporal_reset = graph_options.temporal_reset | render_history_reset::world_epoch_change;
+            graph_view_initialized = true;
+        }
 
         if (resolved_config_.features.temporal_antialiasing && prepared->camera.render_width > 0 &&
             prepared->camera.render_height > 0)
@@ -1330,6 +1351,17 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         if (const auto* resize = std::get_if<viewport_resize_event>(&event.payload))
             resize_viewport(resize->width, resize->height);
     }
+
+    auto compilation = graph.compile(graph_options);
+    if (!compilation)
+    {
+        const auto& error = compilation.error();
+        std::string message = error.message;
+        if (!error.pass.empty()) message += " [pass: " + error.pass + ']';
+        if (!error.resource.empty()) message += " [resource: " + error.resource + ']';
+        return render_submit_result::failure({render_submit_error_code::invalid_render_graph, std::move(message)});
+    }
+    auto compiled = std::move(compilation).value();
 
     return backend_->submit(packet, compiled);
 }

@@ -493,6 +493,60 @@ enum class viewport_output_type : std::uint8_t
     shared_texture
 };
 
+/**
+ * @brief Frame-local context supplied to a render-graph pass recorder.
+ *
+ * The context borrows the immutable compiled plan and active encoder. It is
+ * valid only for the duration of the callback and must not be retained.
+ */
+class render_pass_context
+{
+public:
+    render_pass_context(const compiled_render_graph& graph, std::uint32_t pass_index,
+                        command_encoder& encoder) noexcept
+        : graph_(&graph), pass_index_(pass_index), encoder_(&encoder)
+    {
+    }
+
+    /** @brief Return the backend-neutral command encoder for this pass. */
+    [[nodiscard]] command_encoder& encoder() const noexcept
+    {
+        return *encoder_;
+    }
+
+    /** @brief Return the active compiled pass. */
+    [[nodiscard]] const compiled_render_pass& pass() const noexcept
+    {
+        return graph_->passes[pass_index_];
+    }
+
+    /** @brief Read the active pass's graph-owned inline payload. */
+    template <typename T>
+    [[nodiscard]] T payload() const noexcept
+    {
+        return pass().payload.template get<T>();
+    }
+
+    /** @brief Resolve a logical graph handle to its physical allocation index. */
+    [[nodiscard]] std::uint32_t physical_resource(render_graph_resource_handle handle) const noexcept
+    {
+        return handle.valid() && handle.index < graph_->lifetimes.size()
+                   ? graph_->lifetimes[handle.index].physical_resource
+                   : render_graph_resource_handle::invalid_index;
+    }
+
+    /** @brief Return the immutable compiled graph owning this pass. */
+    [[nodiscard]] const compiled_render_graph& graph() const noexcept
+    {
+        return *graph_;
+    }
+
+private:
+    const compiled_render_graph* graph_{};
+    std::uint32_t pass_index_{};
+    command_encoder* encoder_{};
+};
+
 /** @brief Backend-neutral pixel formats supported by external viewport images. */
 enum class viewport_pixel_format : std::uint8_t
 {

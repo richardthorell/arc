@@ -843,6 +843,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     }
     graph.add_pass({.name = "depth prepass",
                     .kind = render_pass_kind::depth_prepass,
+                    .builtin = builtin_render_pass::depth_prepass,
                     .reads = std::move(depth_reads),
                     .writes = {{.handle = depth,
                                 .kind = render_resource_kind::depth_texture,
@@ -926,6 +927,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         }
         graph.add_pass({.name = "forward opaque",
                         .kind = render_pass_kind::lighting,
+                        .builtin = builtin_render_pass::forward_opaque,
                         .reads = std::move(forward_reads),
                         .writes = {{.handle = scene_color,
                                     .kind = render_resource_kind::color_texture,
@@ -1008,6 +1010,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                       .load_op = render_load_op::clear});
         graph.add_pass({.name = "gbuffer pass",
                         .kind = render_pass_kind::gbuffer,
+                        .builtin = builtin_render_pass::gbuffer,
                         .reads = {{.handle = depth,
                                    .kind = render_resource_kind::depth_texture,
                                    .usage = render_resource_usage::depth_attachment}},
@@ -1162,6 +1165,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         }
         graph.add_pass({.name = "deferred lighting",
                         .kind = render_pass_kind::lighting,
+                        .builtin = builtin_render_pass::deferred_lighting,
                         .reads = std::move(lighting_reads),
                         .writes = {{.handle = scene_color,
                                     .kind = render_resource_kind::color_texture,
@@ -1553,6 +1557,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                      .usage = render_resource_usage::sampled});
     graph.add_pass({.name = "forward transparent",
                     .kind = render_pass_kind::custom,
+                    .builtin = builtin_render_pass::forward_transparent,
                     .reads = std::move(transparent_reads),
                     .writes = {{.handle = scene_color,
                                 .kind = render_resource_kind::color_texture,

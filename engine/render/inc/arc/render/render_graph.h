@@ -1,17 +1,55 @@
 #pragma once
 
+#include <arc/core/result.h>
+
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace arc::render
 {
 
 class command_encoder;
-using render_pass_record_fn = void (*)(command_encoder& encoder, void* user_data);
+class render_pass_context;
+using render_pass_record_fn = void (*)(render_pass_context& context);
+
+/** @brief Allocation-free, graph-owned data copied with a pass declaration. */
+struct render_pass_payload
+{
+    static constexpr std::size_t capacity = 64;
+
+    /** @brief Copy a small trivially-copyable value into inline pass storage. */
+    template <typename T>
+    [[nodiscard]] static render_pass_payload from(const T& value) noexcept
+    {
+        static_assert(std::is_trivially_copyable_v<T>);
+        static_assert(sizeof(T) <= capacity);
+        render_pass_payload result;
+        std::memcpy(result.storage.data(), &value, sizeof(T));
+        result.size = static_cast<std::uint8_t>(sizeof(T));
+        return result;
+    }
+
+    /** @brief Read a copied payload value, returning an empty value on a size mismatch. */
+    template <typename T>
+    [[nodiscard]] T get() const noexcept
+    {
+        static_assert(std::is_trivially_copyable_v<T>);
+        T result{};
+        if (size == sizeof(T)) std::memcpy(&result, storage.data(), sizeof(T));
+        return result;
+    }
+
+    alignas(std::max_align_t) std::array<std::byte, capacity> storage{};
+    std::uint8_t size{};
+};
 
 /**
  * @brief Queue class requested by a render graph pass.
@@ -43,6 +81,12 @@ enum class render_pass_kind : std::uint8_t
 enum class builtin_render_pass : std::uint8_t
 {
     none,
+    depth_prepass,
+    gbuffer,
+    deferred_lighting,
+    forward_opaque,
+    forward_transparent,
+    presentation,
     gpu_scene_upload,
     gpu_visibility_clear,
     gpu_frustum_distance_cull,
@@ -117,6 +161,83 @@ enum class render_resource_kind : std::uint8_t
     swapchain_image
 };
 
+/** @brief Dimensionality of a graph texture resource. */
+enum class render_texture_dimension : std::uint8_t
+{
+    texture_1d,
+    texture_2d,
+    texture_3d,
+    texture_cube
+};
+
+/** @brief Intended allocation lifetime and ownership of a graph resource. */
+enum class render_resource_lifetime_class : std::uint8_t
+{
+    transient,
+    per_view,
+    per_world,
+    external
+};
+
+/** @brief Preferred memory placement for a graph resource. */
+enum class render_memory_class : std::uint8_t
+{
+    device_local,
+    upload,
+    readback
+};
+
+/** @brief Backend-neutral pipeline stages participating in a resource access. */
+enum class render_pipeline_stage : std::uint32_t
+{
+    none = 0,
+    draw_indirect = 1u << 0u,
+    vertex_input = 1u << 1u,
+    vertex_shader = 1u << 2u,
+    fragment_shader = 1u << 3u,
+    early_depth = 1u << 4u,
+    late_depth = 1u << 5u,
+    color_output = 1u << 6u,
+    compute_shader = 1u << 7u,
+    transfer = 1u << 8u,
+    host = 1u << 9u,
+    present = 1u << 10u,
+    all_graphics = (1u << 1u) | (1u << 2u) | (1u << 3u) | (1u << 4u) | (1u << 5u) | (1u << 6u),
+    all_commands = 0xffffffffu
+};
+
+[[nodiscard]] constexpr render_pipeline_stage operator|(render_pipeline_stage lhs,
+                                                         render_pipeline_stage rhs) noexcept
+{
+    return static_cast<render_pipeline_stage>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr render_pipeline_stage operator&(render_pipeline_stage lhs,
+                                                         render_pipeline_stage rhs) noexcept
+{
+    return static_cast<render_pipeline_stage>(static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
+}
+
+/** @brief Texture aspects addressed by a graph access. */
+enum class render_texture_aspect : std::uint8_t
+{
+    automatic,
+    color,
+    depth,
+    stencil,
+    depth_stencil
+};
+
+/** @brief Mip/layer subset addressed by a graph access. */
+struct render_subresource_range
+{
+    render_texture_aspect aspect{render_texture_aspect::automatic};
+    std::uint32_t first_mip{};
+    std::uint32_t mip_count{std::numeric_limits<std::uint32_t>::max()};
+    std::uint32_t first_layer{};
+    std::uint32_t layer_count{std::numeric_limits<std::uint32_t>::max()};
+};
+
 /**
  * @brief Backend-neutral formats used by render-graph resources.
  */
@@ -155,6 +276,11 @@ enum class render_history_reset : std::uint32_t
 [[nodiscard]] constexpr render_history_reset operator|(render_history_reset lhs, render_history_reset rhs) noexcept
 {
     return static_cast<render_history_reset>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr render_history_reset operator&(render_history_reset lhs, render_history_reset rhs) noexcept
+{
+    return static_cast<render_history_reset>(static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
 }
 
 /**
@@ -237,6 +363,7 @@ struct render_graph_resource
 {
     std::string name;
     render_resource_kind kind{render_resource_kind::unknown};
+    render_texture_dimension dimension{render_texture_dimension::texture_2d};
     render_extent extent{};
     render_extent_mode extent_mode{render_extent_mode::relative_to_view};
     float width_scale{1.0f};
@@ -247,12 +374,15 @@ struct render_graph_resource
     std::uint32_t sample_count{1};
     std::uint64_t byte_size{};
     std::uint32_t element_stride{};
+    render_memory_class memory{render_memory_class::device_local};
+    render_resource_lifetime_class lifetime{render_resource_lifetime_class::transient};
     std::string persistent_key;
     std::uint8_t history_length{1};
     render_history_reset history_reset{render_history_reset::none};
     bool imported{};
     bool exported{};
     bool persistent{};
+    bool allow_aliasing{true};
 };
 
 /**
@@ -266,6 +396,8 @@ struct render_resource_access
     std::string resource;
     render_resource_kind kind{render_resource_kind::unknown};
     render_resource_usage usage{render_resource_usage::unknown};
+    render_pipeline_stage stages{render_pipeline_stage::none};
+    render_subresource_range subresources{};
     bool write{};
     render_load_op load_op{render_load_op::load};
     render_store_op store_op{render_store_op::store};
@@ -286,7 +418,8 @@ struct render_graph_pass
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
     render_pass_record_fn record{};
-    void* user_data{};
+    render_pass_payload payload{};
+    bool side_effect{};
 };
 
 /**
@@ -302,7 +435,7 @@ struct compiled_render_pass
     std::vector<render_resource_access> reads;
     std::vector<render_resource_access> writes;
     render_pass_record_fn record{};
-    void* user_data{};
+    render_pass_payload payload{};
 };
 
 /**
@@ -316,6 +449,11 @@ struct render_resource_transition
     render_resource_usage after{render_resource_usage::unknown};
     render_history_access before_history{render_history_access::current};
     render_history_access after_history{render_history_access::current};
+    render_pipeline_stage before_stages{render_pipeline_stage::none};
+    render_pipeline_stage after_stages{render_pipeline_stage::none};
+    render_subresource_range subresources{};
+    bool release{};
+    bool acquire{};
     std::uint32_t before_pass{};
     std::uint32_t after_pass{};
     render_queue_type before_queue{render_queue_type::graphics};
@@ -345,6 +483,7 @@ struct render_history_rotation
     std::string persistent_key;
     std::uint8_t history_length{1};
     render_history_reset reset{render_history_reset::none};
+    bool invalidated{};
 };
 
 /**
@@ -357,6 +496,61 @@ struct render_resource_lifetime
     std::uint32_t last_pass{};
     std::uint32_t physical_resource{};
     std::uint64_t estimated_bytes{};
+    bool aliased{};
+};
+
+/** @brief One physical allocation shared by compatible logical resources. */
+struct render_physical_resource
+{
+    std::uint32_t index{};
+    render_resource_kind kind{render_resource_kind::unknown};
+    std::uint64_t estimated_bytes{};
+    std::vector<render_graph_resource_handle> logical_resources;
+};
+
+/** @brief Reason a pass was removed from the executable plan. */
+struct render_culled_pass
+{
+    std::uint32_t source_index{};
+    std::string name;
+};
+
+/**
+ * @brief Frame/view inputs used to specialize a reusable graph declaration.
+ *
+ * Relative resource extents and queue placement are resolved from this value
+ * during compilation. The value is copied into the immutable execution plan.
+ */
+struct render_graph_compile_options
+{
+    std::uint64_t view_id{1};
+    render_extent output_extent{};
+    render_extent render_extent{};
+    std::uint64_t frame_index{};
+    std::uint64_t world_epoch{};
+    render_history_reset temporal_reset{render_history_reset::none};
+    bool compute_queue_available{true};
+    bool transfer_queue_available{true};
+};
+
+/** @brief Recoverable graph compilation error category. */
+enum class render_graph_compile_error_code : std::uint8_t
+{
+    invalid_resource,
+    invalid_access,
+    read_before_write,
+    dependency_cycle,
+    invalid_history,
+    invalid_attachment
+};
+
+/** @brief Structured graph compilation failure. */
+struct render_graph_compile_error
+{
+    render_graph_compile_error_code code{render_graph_compile_error_code::invalid_resource};
+    std::string message;
+    std::string pass;
+    std::string resource;
 };
 
 /**
@@ -364,13 +558,18 @@ struct render_resource_lifetime
  */
 struct compiled_render_graph
 {
+    render_graph_compile_options view{};
     std::vector<compiled_render_pass> passes;
     std::vector<render_graph_resource> resources;
     std::vector<render_resource_transition> transitions;
     std::vector<render_resource_lifetime> lifetimes;
+    std::vector<render_physical_resource> physical_resources;
     std::vector<compiled_queue_submission> submissions;
     std::vector<render_history_rotation> history_rotations;
+    std::vector<render_culled_pass> culled_passes;
 };
+
+using render_graph_compile_result = core::result<compiled_render_graph, render_graph_compile_error>;
 
 /**
  * @brief Minimal render graph that orders passes by declared resource dependencies.
@@ -401,7 +600,7 @@ public:
     /**
      * @brief Compile pass order and validate dependencies.
      */
-    [[nodiscard]] compiled_render_graph compile() const;
+    [[nodiscard]] render_graph_compile_result compile(const render_graph_compile_options& options = {}) const;
 
     /**
      * @brief Remove all pass declarations.

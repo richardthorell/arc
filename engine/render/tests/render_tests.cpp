@@ -162,9 +162,9 @@ TEST_CASE("viewport output metadata is backend neutral and unsupported by defaul
     REQUIRE(frame.synchronization.producer_complete);
 }
 
-void count_recorded_pass(arc::render::command_encoder&, void* user_data)
+void count_recorded_pass(arc::render::render_pass_context& context)
 {
-    ++*static_cast<std::uint32_t*>(user_data);
+    ++*context.payload<std::uint32_t*>();
 }
 
 void append_u32(std::vector<std::byte>& bytes, std::uint32_t value)
@@ -445,7 +445,7 @@ TEST_CASE("render graph orders passes by declared resources")
                                .kind = arc::render::render_resource_kind::color_texture,
                                .usage = arc::render::render_resource_usage::sampled}}});
 
-    const auto compiled = graph.compile();
+    const auto compiled = graph.compile().value();
     REQUIRE(compiled.passes.size() == 2);
     REQUIRE(compiled.passes[0].name == "clear");
     REQUIRE(compiled.passes[1].name == "present");
@@ -471,9 +471,10 @@ TEST_CASE("render graph compiles typed resources and transitions")
                     .kind = arc::render::render_pass_kind::imgui,
                     .reads = {{.resource = "viewport",
                                .kind = arc::render::render_resource_kind::color_texture,
-                               .usage = arc::render::render_resource_usage::sampled}}});
+                               .usage = arc::render::render_resource_usage::sampled}},
+                    .side_effect = true});
 
-    const auto compiled = graph.compile();
+    const auto compiled = graph.compile().value();
     REQUIRE(compiled.resources.size() == 1);
     REQUIRE(compiled.resources[0].name == "viewport");
     REQUIRE(compiled.resources[0].format == arc::render::render_format::rgba8_unorm);
@@ -498,16 +499,17 @@ TEST_CASE("compiled render graph executes passes and barriers through a command 
                                 .usage = arc::render::render_resource_usage::color_attachment,
                                 .write = true}},
                     .record = count_recorded_pass,
-                    .user_data = &recorded});
+                    .payload = arc::render::render_pass_payload::from(&recorded)});
     graph.add_pass({.name = "consume",
                     .reads = {{.handle = target,
                                .kind = arc::render::render_resource_kind::color_texture,
                                .usage = arc::render::render_resource_usage::sampled}},
                     .record = count_recorded_pass,
-                    .user_data = &recorded});
+                    .payload = arc::render::render_pass_payload::from(&recorded),
+                    .side_effect = true});
 
     recording_command_encoder encoder;
-    arc::render::execute_render_graph(graph.compile(), encoder);
+    arc::render::execute_render_graph(graph.compile().value(), encoder);
 
     REQUIRE(encoder.passes == std::vector<std::string>{"produce", "consume"});
     REQUIRE(encoder.barriers == std::vector<std::string>{"target"});
@@ -548,7 +550,7 @@ TEST_CASE("render graph schedules cross-queue waits and rotates persistent histo
                                 .usage = render_resource_usage::storage,
                                 .write = true}}});
 
-    const auto compiled = graph.compile();
+    const auto compiled = graph.compile().value();
     REQUIRE(compiled.submissions.size() == 2);
     REQUIRE(compiled.submissions[0].queue == render_queue_type::graphics);
     REQUIRE(compiled.submissions[1].queue == render_queue_type::compute);
@@ -565,12 +567,108 @@ TEST_CASE("render graph schedules cross-queue waits and rotates persistent histo
             std::vector<render_queue_type>{render_queue_type::graphics, render_queue_type::compute});
 }
 
+TEST_CASE("render graph specializes view extents queues and temporal resets")
+{
+    using namespace arc::render;
+    render_graph graph;
+    const auto history = graph.add_resource({.name = "history",
+                                             .kind = render_resource_kind::color_texture,
+                                             .extent_mode = render_extent_mode::relative_to_view,
+                                             .width_scale = 0.5f,
+                                             .height_scale = 0.5f,
+                                             .format = render_format::rgba16_float,
+                                             .mip_levels = 3,
+                                             .persistent_key = "view.history",
+                                             .history_length = 2,
+                                             .history_reset = render_history_reset::camera_cut});
+    graph.add_pass({.name = "resolve",
+                    .queue = render_queue_type::compute,
+                    .writes = {{.handle = history,
+                                .kind = render_resource_kind::color_texture,
+                                .usage = render_resource_usage::storage,
+                                .write = true}},
+                    .side_effect = true});
+
+    const auto compiled = graph.compile({.view_id = 42,
+                                         .output_extent = {1920, 1080, 1},
+                                         .render_extent = {1280, 720, 1},
+                                         .frame_index = 7,
+                                         .world_epoch = 9,
+                                         .temporal_reset = render_history_reset::camera_cut,
+                                         .compute_queue_available = false})
+                              .value();
+    REQUIRE(compiled.view.view_id == 42);
+    REQUIRE(compiled.resources[history.index].extent.width == 640);
+    REQUIRE(compiled.resources[history.index].extent.height == 360);
+    REQUIRE(compiled.passes[0].queue == render_queue_type::graphics);
+    REQUIRE(compiled.submissions[0].queue == render_queue_type::graphics);
+    REQUIRE(compiled.history_rotations[0].invalidated);
+    REQUIRE(compiled.lifetimes[history.index].estimated_bytes ==
+            (640ull * 360ull + 320ull * 180ull + 160ull * 90ull) * 8ull);
+}
+
+TEST_CASE("render graph culls dead work and aliases nonoverlapping transient resources")
+{
+    using namespace arc::render;
+    render_graph graph;
+    const auto dead = graph.add_resource({.name = "dead",
+                                          .kind = render_resource_kind::color_texture,
+                                          .extent = {64, 64, 1},
+                                          .extent_mode = render_extent_mode::absolute,
+                                          .format = render_format::rgba8_unorm});
+    const auto first = graph.add_resource({.name = "first",
+                                           .kind = render_resource_kind::color_texture,
+                                           .extent = {64, 64, 1},
+                                           .extent_mode = render_extent_mode::absolute,
+                                           .format = render_format::rgba8_unorm});
+    const auto gate = graph.add_resource({.name = "gate", .kind = render_resource_kind::buffer, .byte_size = 16});
+    const auto second = graph.add_resource({.name = "second",
+                                            .kind = render_resource_kind::color_texture,
+                                            .extent = {64, 64, 1},
+                                            .extent_mode = render_extent_mode::absolute,
+                                            .format = render_format::rgba8_unorm});
+    graph.add_pass({.name = "dead producer",
+                    .writes = {{.handle = dead,
+                                .kind = render_resource_kind::color_texture,
+                                .usage = render_resource_usage::color_attachment,
+                                .write = true}}});
+    graph.add_pass({.name = "first producer",
+                    .writes = {{.handle = first,
+                                .kind = render_resource_kind::color_texture,
+                                .usage = render_resource_usage::color_attachment,
+                                .write = true}}});
+    graph.add_pass({.name = "first consumer",
+                    .reads = {{.handle = first,
+                               .kind = render_resource_kind::color_texture,
+                               .usage = render_resource_usage::sampled}},
+                    .writes = {{.handle = gate,
+                                .kind = render_resource_kind::buffer,
+                                .usage = render_resource_usage::storage_buffer,
+                                .write = true}}});
+    graph.add_pass({.name = "second producer",
+                    .reads = {{.handle = gate,
+                               .kind = render_resource_kind::buffer,
+                               .usage = render_resource_usage::storage_buffer}},
+                    .writes = {{.handle = second,
+                                .kind = render_resource_kind::color_texture,
+                                .usage = render_resource_usage::color_attachment,
+                                .write = true}},
+                    .side_effect = true});
+
+    const auto compiled = graph.compile().value();
+    REQUIRE(compiled.culled_passes.size() == 1);
+    REQUIRE(compiled.culled_passes[0].name == "dead producer");
+    REQUIRE(compiled.lifetimes[dead.index].physical_resource == render_graph_resource_handle::invalid_index);
+    REQUIRE(compiled.lifetimes[first.index].physical_resource == compiled.lifetimes[second.index].physical_resource);
+    REQUIRE(compiled.lifetimes[second.index].aliased);
+}
+
 TEST_CASE("render graph rejects invalid resource declarations and internal reads")
 {
     arc::render::render_graph undeclared;
     undeclared.add_pass(
         {.name = "bad read", .reads = {{.resource = "missing", .usage = arc::render::render_resource_usage::sampled}}});
-    REQUIRE_THROWS_AS(undeclared.compile(), std::invalid_argument);
+    REQUIRE_FALSE(undeclared.compile());
 
     arc::render::render_graph read_before_write;
     const auto transient = read_before_write.add_resource({.name = "transient",
@@ -580,7 +678,7 @@ TEST_CASE("render graph rejects invalid resource declarations and internal reads
                                 .reads = {{.handle = transient,
                                            .kind = arc::render::render_resource_kind::color_texture,
                                            .usage = arc::render::render_resource_usage::sampled}}});
-    REQUIRE_THROWS_AS(read_before_write.compile(), std::invalid_argument);
+    REQUIRE_FALSE(read_before_write.compile());
 
     arc::render::render_graph incompatible;
     const auto depth = incompatible.add_resource({.name = "depth",
@@ -591,13 +689,13 @@ TEST_CASE("render graph rejects invalid resource declarations and internal reads
                                        .kind = arc::render::render_resource_kind::depth_texture,
                                        .usage = arc::render::render_resource_usage::color_attachment,
                                        .write = true}}});
-    REQUIRE_THROWS_AS(incompatible.compile(), std::invalid_argument);
+    REQUIRE_FALSE(incompatible.compile());
 }
 
 TEST_CASE("clear present graph declares the bring-up passes")
 {
     const auto graph = arc::render::make_clear_present_graph("viewport");
-    const auto compiled = graph.compile();
+    const auto compiled = graph.compile().value();
 
     REQUIRE(compiled.passes.size() == 2);
     REQUIRE(compiled.resources.size() == 1);
@@ -609,7 +707,7 @@ TEST_CASE("clear present graph declares the bring-up passes")
 TEST_CASE("scene draw graph selects only implemented deferred passes")
 {
     const auto graph = arc::render::make_scene_draw_graph("viewport", arc::render::render_path::deferred);
-    const auto compiled = graph.compile();
+    const auto compiled = graph.compile().value();
 
     REQUIRE(compiled.passes.size() >= 19);
     const auto pass_index = [&](std::string_view name)
@@ -654,7 +752,7 @@ TEST_CASE("scene draw graph selects only implemented deferred passes")
 TEST_CASE("scene draw graph provides a compact forward plus fallback")
 {
     const auto compiled =
-        arc::render::make_scene_draw_graph("viewport", arc::render::render_path::forward_plus, false).compile();
+        arc::render::make_scene_draw_graph("viewport", arc::render::render_path::forward_plus, false).compile().value();
 
     REQUIRE(compiled.passes.size() >= 11);
     REQUIRE(compiled.resources.size() >= 8);
@@ -680,7 +778,7 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
     config.features.virtual_geometry_path = virtual_geometry_raster_path::compute;
     config.features.submission = gpu_submission_path::indirect_count;
 
-    const auto compiled = make_scene_draw_graph("viewport", config, true).compile();
+    const auto compiled = make_scene_draw_graph("viewport", config, true).compile().value();
     const auto contains = [&](builtin_render_pass expected)
     {
         return std::any_of(compiled.passes.begin(), compiled.passes.end(),
@@ -724,7 +822,7 @@ TEST_CASE("environment lighting graph schedules scalable IBL generation")
     environment.lighting.enabled = true;
     environment.lighting.source = arc::render::environment_lighting_source_mode::follow_sky;
 
-    const auto compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    const auto compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile().value();
     const auto contains = [&](arc::render::builtin_render_pass expected)
     {
         return std::any_of(compiled.passes.begin(), compiled.passes.end(),
@@ -758,7 +856,7 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
     environment.clouds.enabled = true;
     environment.clouds.cast_shadows = true;
 
-    const auto compiled = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile();
+    const auto compiled = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile().value();
     const auto contains = [&](arc::render::builtin_render_pass expected)
     {
         return std::any_of(compiled.passes.begin(), compiled.passes.end(),
@@ -774,7 +872,7 @@ TEST_CASE("world environment graph selects scalable atmosphere and cloud passes"
 
     standard.quality = arc::render::render_quality_tier::low;
     standard.path = arc::render::render_path::forward_plus;
-    const auto low = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile();
+    const auto low = arc::render::make_scene_draw_graph("viewport", standard, true, environment).compile().value();
     REQUIRE(std::none_of(low.passes.begin(), low.passes.end(),
                          [](const auto& pass)
                          {
@@ -804,19 +902,19 @@ TEST_CASE("world environment graph selects off solid and HDRI sky paths without 
     environment.enabled = false;
     environment.sky_visible = false;
     environment.clouds.enabled = false;
-    auto compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    auto compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile().value();
     REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::sky_composite));
     REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::atmosphere_transmittance));
 
     environment.enabled = true;
     environment.sky_visible = true;
     environment.source = arc::render::sky_source_mode::solid_color;
-    compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile().value();
     REQUIRE(contains(compiled, arc::render::builtin_render_pass::sky_composite));
     REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::atmosphere_transmittance));
 
     environment.source = arc::render::sky_source_mode::hdri;
-    compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile();
+    compiled = arc::render::make_scene_draw_graph("viewport", config, true, environment).compile().value();
     REQUIRE(contains(compiled, arc::render::builtin_render_pass::sky_composite));
     REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::atmosphere_transmittance));
     REQUIRE_FALSE(contains(compiled, arc::render::builtin_render_pass::environment_prefilter));
@@ -2176,7 +2274,7 @@ TEST_CASE("virtual geometry graph selects mesh-shader rasterization without soft
     config.features.virtual_geometry = true;
     config.features.virtual_geometry_path = virtual_geometry_raster_path::mesh_shader;
 
-    const auto compiled = make_scene_draw_graph("viewport", config, true).compile();
+    const auto compiled = make_scene_draw_graph("viewport", config, true).compile().value();
     const auto contains = [&](builtin_render_pass expected)
     {
         return std::any_of(compiled.passes.begin(), compiled.passes.end(),
@@ -2543,7 +2641,7 @@ TEST_CASE("dynamic indirect lighting graph selects the resolved screen software 
     environment.enabled = true;
     environment.indirect_lighting.enabled = true;
     environment.indirect_lighting.method = indirect_lighting_method::auto_select;
-    const auto graph = make_scene_draw_graph("gi-test", config, false, environment).compile();
+    const auto graph = make_scene_draw_graph("gi-test", config, false, environment).compile().value();
     const auto contains = [&](builtin_render_pass pass)
     {
         return std::ranges::any_of(graph.passes,
