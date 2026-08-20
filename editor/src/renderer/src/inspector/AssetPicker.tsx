@@ -307,9 +307,12 @@ export function MaterialPicker(
   props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew'>,
 ) {
   const createMaterial = async (name: string) => {
-    const contentRoot = projectContentRootFromAssets(props.assets);
+    const projectSnapshot = await window.arc.projects.snapshot();
+    const activeProject = projectSnapshot?.activeProject;
+    if (activeProject && !activeProject.writable) throw new Error('The active project is read-only');
+    const contentRoot = activeProject?.descriptor.paths.content || projectContentRootFromAssets(props.assets);
     const definition = buildAssetCreation(
-      { root: '', assetRoot: contentRoot },
+      { root: activeProject?.projectRoot ?? '', assetRoot: contentRoot },
       { kind: 'material', name, folder: contentRoot },
     );
     if (props.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
@@ -449,11 +452,15 @@ function AssetPickerPopover({
       className="asset-picker-popover"
       ref={popoverRef}
       role="dialog"
-      style={{ left: position.left, top: position.top }}
+      style={{
+        left: position.left,
+        top: position.top,
+        ...(createMode ? { gridTemplateRows: '31px minmax(0, 1fr)' } : {}),
+      }}
     >
       <header>
-        <strong>{`Select ${assetTypeLabel}`}</strong>
-        <span>{shown.length} assets</span>
+        <strong>{createMode ? `Create ${assetTypeLabel}` : `Select ${assetTypeLabel}`}</strong>
+        <span>{createMode ? 'Project asset' : `${shown.length} assets`}</span>
         <button aria-label="Close asset picker" onClick={onClose} type="button">
           <X size={14} />
         </button>
@@ -480,8 +487,10 @@ function AssetPickerPopover({
             style={{
               gridColumn: '1 / -1',
               display: 'grid',
-              gap: 8,
-              padding: 10,
+              alignContent: 'start',
+              gap: 10,
+              minHeight: 132,
+              padding: 12,
             }}
           >
             <strong>{createNewLabel ?? `Create New ${assetTypeLabel}`}</strong>
@@ -492,9 +501,21 @@ function AssetPickerPopover({
               onChange={(event) => setCreateName(event.target.value)}
               placeholder={`New ${assetTypeLabel}`}
               value={createName}
-              style={{ width: '100%', boxSizing: 'border-box' }}
+              style={{ width: '100%', boxSizing: 'border-box', minHeight: 30 }}
             />
-            {createError && <small style={{ color: 'var(--arc-color-danger)' }}>{createError}</small>}
+            {createError && (
+              <small
+                role="alert"
+                style={{
+                  color: 'var(--arc-color-danger)',
+                  lineHeight: 1.35,
+                  overflowWrap: 'anywhere',
+                  whiteSpace: 'normal',
+                }}
+              >
+                {createError}
+              </small>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
               <button
                 disabled={creating}
