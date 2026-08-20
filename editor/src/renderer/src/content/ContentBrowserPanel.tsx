@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search, Star } from 'lucide-react';
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
@@ -7,7 +7,15 @@ import { openAssetEditorDocument } from '../editors/editorRegistry';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
+import {
+  buildAssetCreation,
+  projectAssetRootPath,
+  type AssetCreationRequest,
+  type ShaderAssetTemplate,
+} from './assetCreation';
 import { RemoteAssetBrowser } from './RemoteAssetBrowser';
+
+import './contentBrowser.css';
 
 type CacheSnapshot = {
   cacheLocalBytes: number;
@@ -31,9 +39,13 @@ type Props = {
   thumbnailProvider: AssetThumbnailProvider;
 };
 
+type CreateKind = 'material' | 'shader';
+type CreateContextMenu = { x: number; y: number; folder: string };
+
 const parentFolder = (path: string) => path.replaceAll('\\', '/').split('/').slice(0, -1).join('/');
 const assetPayload = (asset: AssetItem) =>
   JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path });
+const normalizedPath = (path: string) => path.replaceAll('\\', '/').toLocaleLowerCase();
 
 export function ContentBrowserPanel({
   project,
@@ -61,6 +73,14 @@ export function ContentBrowserPanel({
       return new Set();
     }
   });
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createContextMenu, setCreateContextMenu] = useState<CreateContextMenu | null>(null);
+  const [createKind, setCreateKind] = useState<CreateKind | null>(null);
+  const [createFolder, setCreateFolder] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [shaderTemplate, setShaderTemplate] = useState<ShaderAssetTemplate>('surface');
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -76,6 +96,17 @@ export function ContentBrowserPanel({
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setCreateMenuOpen(false);
+      setCreateContextMenu(null);
+      if (!creating) setCreateKind(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [creating]);
 
   const assets = useMemo(() => project?.assets ?? [], [project?.assets]);
   const localScope = browserSource === 'builtin' ? 'builtin' : 'project';
@@ -109,6 +140,7 @@ export function ContentBrowserPanel({
   const selected = scopedAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
   const crumbs = folder ? folder.split('/') : [];
+  const contentRoot = project ? projectAssetRootPath(project) : 'Content';
 
   const select = (asset: AssetItem, additive: boolean) => {
     setSelection((current) => {
@@ -135,9 +167,80 @@ export function ContentBrowserPanel({
     if (asset.kind === 'prefab') onInstantiatePrefab(asset.path);
   };
 
+  const beginCreate = (nextKind: CreateKind, targetFolder = folder) => {
+    setCreateMenuOpen(false);
+    setCreateContextMenu(null);
+    setCreateKind(nextKind);
+    setCreateFolder(targetFolder);
+    setCreateName(nextKind === 'material' ? 'New Material' : 'New Shader');
+    setShaderTemplate('surface');
+    setCreateError('');
+  };
+
+  const openContextCreate = (event: React.MouseEvent, targetFolder = folder) => {
+    if (browserSource !== 'project') return;
+    event.preventDefault();
+    event.stopPropagation();
+    setCreateMenuOpen(false);
+    setCreateContextMenu({ x: event.clientX, y: event.clientY, folder: targetFolder });
+  };
+
+  const createAsset = async () => {
+    if (!project || !createKind || creating) return;
+    setCreateError('');
+    setCreating(true);
+    try {
+      const request: AssetCreationRequest =
+        createKind === 'material'
+          ? { kind: 'material', name: createName, folder: createFolder }
+          : { kind: 'shader', name: createName, folder: createFolder, template: shaderTemplate };
+      const definition = buildAssetCreation(project, request);
+      if (project.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
+        throw new Error(`An asset already exists at ${definition.asset.path}`);
+      }
+      await window.arc.projects.writeText(definition.asset.path, definition.contents);
+      setSelection(new Set([definition.asset.id]));
+      onSelectAsset(definition.asset.id);
+      openAssetEditorDocument(definition.asset);
+      setCreateKind(null);
+      setCreateName('');
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const createMenu = (targetFolder: string, context = false) => (
+    <div
+      className={`content-create-menu ${context ? 'context' : ''}`}
+      role="menu"
+      aria-label="Create asset"
+      {...(context && createContextMenu
+        ? { style: { left: createContextMenu.x, top: createContextMenu.y } }
+        : {})}
+    >
+      <button role="menuitem" onClick={() => beginCreate('material', targetFolder)}>
+        <span className="content-create-type-icon material" aria-hidden="true" />
+        <span>
+          <strong>Material</strong>
+          <small>PBR material graph</small>
+        </span>
+      </button>
+      <button role="menuitem" onClick={() => beginCreate('shader', targetFolder)}>
+        <span className="content-create-type-icon shader" aria-hidden="true">{'</>'}</span>
+        <span>
+          <strong>Shader</strong>
+          <small>GLSL source asset</small>
+        </span>
+      </button>
+    </div>
+  );
+
   return (
     <section
       className="content-browser-v2"
+      onClick={() => createContextMenu && setCreateContextMenu(null)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         if (browserSource === 'project' && event.dataTransfer.files.length > 0) onCommand('assets.import');
@@ -150,6 +253,7 @@ export function ContentBrowserPanel({
             setBrowserSource('project');
             setFolder('');
           }}
+          onContextMenu={(event) => openContextCreate(event, '')}
         >
           <Folder size={14} />
           Content
@@ -170,6 +274,7 @@ export function ContentBrowserPanel({
               className={folder === path ? 'active' : ''}
               key={path}
               onClick={() => setFolder(path)}
+              onContextMenu={(event) => browserSource === 'project' && openContextCreate(event, path)}
               style={{ paddingLeft: `${12 + path.split('/').length * 10}px` }}
             >
               <Folder size={13} />
@@ -194,9 +299,21 @@ export function ContentBrowserPanel({
         <>
           <div className="content-browser-main">
             <header className="content-browser-v2-toolbar">
-              <button disabled={browserSource === 'builtin'} onClick={() => onCommand('assets.import')}>
-                + Add
-              </button>
+              <div className="content-create-wrap">
+                <button
+                  disabled={browserSource !== 'project'}
+                  aria-haspopup="menu"
+                  aria-expanded={createMenuOpen}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setCreateContextMenu(null);
+                    setCreateMenuOpen((open) => !open);
+                  }}
+                >
+                  + Create <ChevronDown size={12} />
+                </button>
+                {createMenuOpen && createMenu(folder)}
+              </div>
               <button disabled={browserSource === 'builtin'} onClick={() => onCommand('assets.import')}>
                 Import
               </button>
@@ -271,7 +388,14 @@ export function ContentBrowserPanel({
                 <span>Evicted {cache.cacheEvictions}</span>
               </div>
             )}
-            <div className={`content-assets ${view}`} role="listbox" aria-multiselectable="true">
+            <div
+              className={`content-assets ${view}`}
+              role="listbox"
+              aria-multiselectable="true"
+              onContextMenu={(event) => {
+                if (!(event.target as HTMLElement).closest('.content-asset')) openContextCreate(event);
+              }}
+            >
               {filtered.map((asset) => (
                 <button
                   className={`content-asset ${selection.has(asset.id) ? 'selected' : ''}`}
@@ -346,6 +470,67 @@ export function ContentBrowserPanel({
             </aside>
           )}
         </>
+      )}
+      {createContextMenu && createMenu(createContextMenu.folder, true)}
+      {createKind && (
+        <div
+          className="content-create-backdrop"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target && !creating) setCreateKind(null);
+          }}
+        >
+          <form
+            className="content-create-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="content-create-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createAsset();
+            }}
+          >
+            <header>
+              <strong id="content-create-title">Create {createKind === 'material' ? 'Material' : 'Shader'}</strong>
+              <small>{createFolder || contentRoot}</small>
+            </header>
+            <label>
+              Name
+              <input
+                autoFocus
+                aria-label="Asset name"
+                value={createName}
+                onChange={(event) => setCreateName(event.target.value)}
+                disabled={creating}
+              />
+            </label>
+            {createKind === 'shader' && (
+              <label>
+                Template
+                <select
+                  aria-label="Shader template"
+                  value={shaderTemplate}
+                  onChange={(event) => setShaderTemplate(event.target.value as ShaderAssetTemplate)}
+                  disabled={creating}
+                >
+                  <option value="surface">Surface Shader</option>
+                  <option value="unlit">Unlit Shader</option>
+                  <option value="compute">Compute Shader</option>
+                  <option value="post-process">Post Process Shader</option>
+                  <option value="empty">Empty Shader</option>
+                </select>
+              </label>
+            )}
+            {createError && <div className="content-create-error">{createError}</div>}
+            <footer>
+              <button type="button" onClick={() => setCreateKind(null)} disabled={creating}>
+                Cancel
+              </button>
+              <button type="submit" disabled={creating || !createName.trim()}>
+                {creating ? 'Creating…' : `Create ${createKind === 'material' ? 'Material' : 'Shader'}`}
+              </button>
+            </footer>
+          </form>
+        </div>
       )}
     </section>
   );
