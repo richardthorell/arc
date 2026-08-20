@@ -27,6 +27,7 @@ import type { LucideIcon } from 'lucide-react';
 
 import type { CommandId, WorkbenchPanelId } from '../app/workbenchTypes';
 import { panelRegistry } from '../app/panelRegistry';
+import { saveActiveEditorDocument } from '../editors/editorRegistry';
 import { UiButton } from '../ui';
 import { WindowControls } from './WindowControls';
 
@@ -234,7 +235,11 @@ export function MenuBar({
     setOpenMenu(null);
     if (entry.action) entry.action();
     else if (entry.panel) onPanel?.(entry.panel);
-    else if (entry.command) onCommand(entry.command);
+    else if (entry.command === 'file.save') {
+      void saveActiveEditorDocument().then((handled) => {
+        if (!handled) onCommand('file.save');
+      });
+    } else if (entry.command) onCommand(entry.command);
   };
 
   const menuCommands: Partial<Record<MenuItem, MenuEntry[]>> = {
