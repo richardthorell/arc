@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import { FileCode2 } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
@@ -30,8 +31,8 @@ const shaderRegistration: EditorRegistration = {
     dirty: false,
     readOnly: Boolean(asset.readOnly),
   }),
-  render: (document) => <ShaderSourceEditor document={document} />,
-  renderToolbar: (document) => <ShaderSourceEditorToolbar document={document} />,
+  render: (document) => createElement(ShaderSourceEditor, { document }),
+  renderToolbar: (document) => createElement(ShaderSourceEditorToolbar, { document }),
   save: saveShaderDocument,
   onClosed: (document) => disposeShaderDocument(document.id),
 };
