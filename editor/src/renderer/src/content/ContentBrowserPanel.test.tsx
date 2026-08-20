@@ -20,26 +20,54 @@ beforeEach(() => {
 });
 
 const project = {
-  name: 'Test', root: 'D:/Test', assetRoot: 'D:/Test/Content', activeScene: '', scene: [], console: [],
-  renderStats: { fps: 0, frameTimeMs: 0, drawCalls: 0, triangles: 0, visibleEntities: 0, lights: 0, gpuMemoryMb: 0 },
+  name: 'Test',
+  root: 'D:/Test',
+  assetRoot: 'D:/Test/Content',
+  activeScene: '',
+  scene: [],
+  console: [],
+  renderStats: {
+    fps: 0,
+    frameTimeMs: 0,
+    drawCalls: 0,
+    triangles: 0,
+    visibleEntities: 0,
+    lights: 0,
+    gpuMemoryMb: 0,
+  },
   assets: [
-    { id: 'rock', guid: 'rock-guid', name: 'Hero Rock', path: 'Content/Props/hero.glb', kind: 'mesh' as const, status: 'ready' as const },
-    { id: 'sky', guid: 'sky-guid', name: 'Sky', path: 'Content/Environment/sky.hdr', kind: 'texture' as const, status: 'stale' as const },
+    {
+      id: 'rock',
+      guid: 'rock-guid',
+      name: 'Hero Rock',
+      path: 'Content/Props/hero.glb',
+      kind: 'mesh' as const,
+      status: 'ready' as const,
+    },
+    {
+      id: 'sky',
+      guid: 'sky-guid',
+      name: 'Sky',
+      path: 'Content/Environment/sky.hdr',
+      kind: 'texture' as const,
+      status: 'stale' as const,
+    },
   ],
 };
 
-const renderBrowser = () => render(
-  <ContentBrowserPanel
-    project={project}
-    cache={null}
-    selectedAssetId={null}
-    onSelectAsset={vi.fn()}
-    onCommand={vi.fn()}
-    onInstantiatePrefab={vi.fn()}
-    onAssetAction={vi.fn()}
-    thumbnailProvider={vi.fn().mockResolvedValue(null)}
-  />,
-);
+const renderBrowser = (onCommand = vi.fn()) =>
+  render(
+    <ContentBrowserPanel
+      project={project}
+      cache={null}
+      selectedAssetId={null}
+      onSelectAsset={vi.fn()}
+      onCommand={onCommand}
+      onInstantiatePrefab={vi.fn()}
+      onAssetAction={vi.fn()}
+      thumbnailProvider={vi.fn().mockResolvedValue(null)}
+    />,
+  );
 
 describe('ContentBrowserPanel', () => {
   it('filters registry assets and emits GUID drag payloads', () => {
@@ -98,5 +126,27 @@ describe('ContentBrowserPanel', () => {
     expect(view.getByRole('menu', { name: 'Create asset' })).toBeInTheDocument();
     expect(view.getByRole('menuitem', { name: /Material/ })).toBeInTheDocument();
     expect(view.getByRole('menuitem', { name: /Shader/ })).toBeInTheDocument();
+  });
+
+  it('keeps create and import available while browsing Engine assets', async () => {
+    const onCommand = vi.fn();
+    const view = renderBrowser(onCommand);
+    fireEvent.click(view.getByRole('button', { name: 'Engine' }));
+
+    const create = view.getByRole('button', { name: /Create/ });
+    const importButton = view.getByRole('button', { name: 'Import' });
+    expect(create).not.toBeDisabled();
+    expect(importButton).not.toBeDisabled();
+
+    fireEvent.click(importButton);
+    expect(onCommand).toHaveBeenCalledWith('file.importScene');
+
+    fireEvent.click(create);
+    fireEvent.click(view.getByRole('menuitem', { name: /Material/ }));
+    fireEvent.change(view.getByLabelText('Asset name'), { target: { value: 'Engine View Material' } });
+    fireEvent.click(view.getByRole('button', { name: 'Create Material' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toBe('Content/Engine View Material.arcmat');
   });
 });
