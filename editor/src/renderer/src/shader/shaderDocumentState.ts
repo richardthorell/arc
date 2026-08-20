@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import type { HostResponse } from '../inspector/inspectorTypes';
 import type { EditorDocument } from '../editors/editorTypes';
 import { updateEditorDocumentInStore } from '../editors/editorDocuments';
+import type { HostResponse } from '../inspector/inspectorTypes';
 
 export type ShaderDocumentState = {
   documentId: string;
@@ -88,11 +88,13 @@ export const loadShaderDocument = async (document: EditorDocument, force = false
     setState(document.id, { message: 'Shader source path is unavailable' });
     return false;
   }
-  if (!force && current.loaded) return true;
+  if (!force && (current.loaded || current.loading)) return true;
 
   setState(document.id, { loading: true, message: '' });
   try {
     const file = await window.arc.projects.readText(document.path);
+    const latest = states.get(document.id);
+    if (!latest || latest.path !== document.path) return false;
     setState(document.id, {
       source: file.text,
       confirmed: file.text,
@@ -129,14 +131,16 @@ export const saveShaderDocument = async (document: EditorDocument): Promise<bool
     return false;
   }
 
+  const savedSource = current.source;
   try {
-    await window.arc.projects.writeText(document.path, current.source);
+    await window.arc.projects.writeText(document.path, savedSource);
+    const latest = states.get(document.id) ?? current;
     setState(document.id, {
-      confirmed: current.source,
+      confirmed: savedSource,
       modifiedAt: new Date().toISOString(),
       message: 'Shader saved',
     });
-    updateEditorDocumentInStore(document.id, { dirty: false });
+    updateEditorDocumentInStore(document.id, { dirty: latest.source !== savedSource });
     return true;
   } catch (error) {
     setState(document.id, { message: error instanceof Error ? error.message : String(error) });
