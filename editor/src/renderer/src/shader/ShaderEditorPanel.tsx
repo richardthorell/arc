@@ -23,6 +23,7 @@ export function ShaderEditorPanel({ asset }: { asset: AssetItem | null }) {
     path: shader.path,
     assetId: shader.id,
     assetGuid: shader.guid,
+    assetScope: shader.scope,
     dirty: false,
     readOnly: Boolean(shader.readOnly),
   };
