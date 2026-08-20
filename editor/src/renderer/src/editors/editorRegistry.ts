@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { FileCode2 } from 'lucide-react';
+import { FileCode2, Globe2 } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
 import { ShaderSourceEditor } from '../shader/ShaderSourceEditor';
@@ -42,6 +42,7 @@ let currentRegistry: EditorRegistry | null = null;
 export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorRegistry => {
   const registry = {
     ...registrations,
+    level: { ...registrations.level, icon: Globe2 },
     shader: registrations.shader ?? shaderRegistration,
   } as EditorRegistry;
   currentRegistry = registry;
