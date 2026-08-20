@@ -28,6 +28,7 @@ const shaderRegistration: EditorRegistration = {
     path: asset.path,
     assetId: asset.id,
     assetGuid: asset.guid,
+    assetScope: asset.scope,
     dirty: false,
     readOnly: Boolean(asset.readOnly),
   }),
