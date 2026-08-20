@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { AlertCircle, FileCode2, Play, RefreshCw, Save } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -12,6 +13,7 @@ import {
 } from './shaderDocumentState';
 
 import '../tools/tools.css';
+import './ShaderSourceEditor.css';
 
 const includePattern = /^\s*#\s*include\s*["<]([^">]+)[">]/gm;
 
@@ -61,6 +63,7 @@ export function ShaderSourceEditor({
   embeddedToolbar?: boolean;
 }) {
   const state = useShaderDocumentState(document);
+  const gutterRef = useRef<HTMLDivElement>(null);
   const includes = [...state.source.matchAll(includePattern)].map((match) => match[1]);
   const dirty = state.source !== state.confirmed;
 
@@ -109,7 +112,7 @@ export function ShaderSourceEditor({
           </label>
         </aside>
         <div className="shader-source-editor">
-          <div className="shader-source-gutter" aria-hidden="true">
+          <div ref={gutterRef} className="shader-source-gutter" aria-hidden="true">
             {state.source.split('\n').map((_, index) => (
               <span key={index}>{index + 1}</span>
             ))}
@@ -120,6 +123,9 @@ export function ShaderSourceEditor({
             spellCheck={false}
             value={state.source}
             onChange={(event) => setShaderDocumentSource(document, event.target.value)}
+            onScroll={(event) => {
+              if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
+            }}
             onKeyDown={(event) => {
               if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === 's') {
                 event.preventDefault();
