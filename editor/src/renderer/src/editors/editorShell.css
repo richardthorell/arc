@@ -14,7 +14,6 @@
   align-items: end;
   gap: 1px;
   height: var(--arc-document-tabs-height);
-  padding-left: 96px;
   overflow-x: auto;
   overflow-y: hidden;
   border-bottom: 1px solid var(--arc-color-border-subtle);
