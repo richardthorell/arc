@@ -3,8 +3,9 @@ import { AlertCircle, CheckCircle2, Circle, Lock, RefreshCw } from 'lucide-react
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
 import { replaceMaterialGraph, refreshMaterialPreview, useMaterialDocumentState } from './materialDocumentState';
-import type { MaterialGraphNode } from './materialGraphTypes';
+import { cloneMaterialGraph, type MaterialGraphNode } from './materialGraphTypes';
 import './materialEditor.css';
+import './materialWorkspace.css';
 
 const parameterValue = (node: MaterialGraphNode): number[] => {
   if (typeof node.values.value === 'number') return [node.values.value];
@@ -20,7 +21,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   const warnings = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning');
 
   const setParameterComponent = (nodeId: string, component: number, value: number) => {
-    const next = structuredClone(state.graph);
+    const next = cloneMaterialGraph(state.graph);
     const node = next.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return;
     if (typeof node.values.value === 'number') node.values.value = value;
