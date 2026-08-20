@@ -1,0 +1,48 @@
+name: Shader Editor Validation
+
+on:
+  push:
+    branches: [feature/shader-editor-monaco]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feature/shader-editor-monaco
+      - name: Set Up Node 22.12
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Update Lockfile
+        run: npm install --package-lock-only --ignore-scripts --prefix editor
+      - name: Install Dependencies
+        run: npm ci --ignore-scripts --prefix editor
+      - name: Format Editor
+        run: npm run format --prefix editor
+      - name: Commit Generated Changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- editor/package-lock.json editor/package.json editor/src/renderer/src/shader
+          if ! git diff --cached --quiet; then
+            git commit -m "build(editor): update shader editor generated files"
+            git push origin HEAD:feature/shader-editor-monaco
+          fi
+      - name: Check Formatting
+        run: npm run format:check --prefix editor
+      - name: Lint
+        run: npm run lint --prefix editor
+      - name: Typecheck
+        run: npm run typecheck --prefix editor
+      - name: Test
+        run: npm test --prefix editor
