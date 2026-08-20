@@ -32,7 +32,10 @@ const shader = (id: string, title = 'pbr_lit.hlsl'): EditorDocument => ({
 describe('editor document state', () => {
   it('keeps the level editor singleton while refreshing its metadata', () => {
     const opened = openEditorDocument(emptyEditorDocumentsState, level('level:a'), false);
-    const synced = syncSingletonEditorDocument(opened, 'level', { ...level('level:b', 'Updated'), dirty: true });
+    const synced = syncSingletonEditorDocument(opened, 'level', {
+      ...level('level:b', 'Updated'),
+      dirty: true,
+    });
 
     expect(synced.documents).toEqual([{ ...level('level:b', 'Updated'), dirty: true }]);
     expect(synced.activeDocumentId).toBe('level:b');
@@ -43,11 +46,7 @@ describe('editor document state', () => {
     const withFirstShader = openEditorDocument(withLevel, shader('shader:a'));
     const withSecondShader = openEditorDocument(withFirstShader, shader('shader:b', 'shadow.hlsl'));
 
-    expect(withSecondShader.documents.map((document) => document.id)).toEqual([
-      'level:world',
-      'shader:a',
-      'shader:b',
-    ]);
+    expect(withSecondShader.documents.map((document) => document.id)).toEqual(['level:world', 'shader:a', 'shader:b']);
     expect(withSecondShader.activeDocumentId).toBe('shader:b');
   });
 
