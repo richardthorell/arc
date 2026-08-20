@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { updateEditorDocumentInStore } from '../editors/editorDocuments';
-import { cloneMaterialGraph, materialGraphFromAsset, type MaterialAssetJson, type MaterialGraph } from './materialGraphTypes';
+import {
+  cloneMaterialGraph,
+  materialGraphFromAsset,
+  type MaterialAssetJson,
+  type MaterialGraph,
+} from './materialGraphTypes';
 import { compileMaterialGraph, type MaterialCompileResult } from './materialCompiler';
 
 export type MaterialDocumentState = {
@@ -157,7 +162,10 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
 
   setState(document.id, { loading: true, message: '' });
   try {
-    const file = await window.arc.projects.readText(document.path, document.assetScope === 'builtin' ? 'builtin' : 'project');
+    const file = await window.arc.projects.readText(
+      document.path,
+      document.assetScope === 'builtin' ? 'builtin' : 'project',
+    );
     const parsed = normalizedAsset(JSON.parse(file.text) as MaterialAssetJson, document);
     const graph = materialGraphFromAsset(parsed);
     const fingerprint = graphFingerprint(graph);
@@ -196,7 +204,8 @@ export const replaceMaterialGraph = (
   let historyIndex = current.historyIndex;
   if (options.recordHistory !== false) {
     history = current.history.slice(0, current.historyIndex + 1);
-    if (graphFingerprint(history.at(-1) ?? emptyGraph) !== graphFingerprint(nextGraph)) history.push(cloneMaterialGraph(nextGraph));
+    if (graphFingerprint(history.at(-1) ?? emptyGraph) !== graphFingerprint(nextGraph))
+      history.push(cloneMaterialGraph(nextGraph));
     if (history.length > 80) history = history.slice(history.length - 80);
     historyIndex = history.length - 1;
   }
@@ -216,7 +225,12 @@ export const undoMaterialGraph = (document: EditorDocument) => {
   if (document.readOnly || current.historyIndex <= 0) return false;
   const historyIndex = current.historyIndex - 1;
   const graph = cloneMaterialGraph(current.history[historyIndex]);
-  setState(document.id, { graph, historyIndex, compilation: compileMaterialGraph(graph), message: 'Undo material graph edit' });
+  setState(document.id, {
+    graph,
+    historyIndex,
+    compilation: compileMaterialGraph(graph),
+    message: 'Undo material graph edit',
+  });
   updateDirtyState(document, graph, current.confirmedGraph);
   return true;
 };
@@ -226,7 +240,12 @@ export const redoMaterialGraph = (document: EditorDocument) => {
   if (document.readOnly || current.historyIndex + 1 >= current.history.length) return false;
   const historyIndex = current.historyIndex + 1;
   const graph = cloneMaterialGraph(current.history[historyIndex]);
-  setState(document.id, { graph, historyIndex, compilation: compileMaterialGraph(graph), message: 'Redo material graph edit' });
+  setState(document.id, {
+    graph,
+    historyIndex,
+    compilation: compileMaterialGraph(graph),
+    message: 'Redo material graph edit',
+  });
   updateDirtyState(document, graph, current.confirmedGraph);
   return true;
 };
@@ -246,7 +265,11 @@ export const compileMaterialDocument = async (document: EditorDocument): Promise
   return compilation.succeeded;
 };
 
-const serializedMaterial = (document: EditorDocument, current: MaterialDocumentState, compilation: MaterialCompileResult) => {
+const serializedMaterial = (
+  document: EditorDocument,
+  current: MaterialDocumentState,
+  compilation: MaterialCompileResult,
+) => {
   const surface = { ...(current.asset.surface ?? {}), ...compilation.surface };
   const textures = { ...(current.asset.textures ?? {}), ...compilation.textures };
   const asset: MaterialAssetJson = {
@@ -329,7 +352,10 @@ export const saveAndPublishMaterialDocument = async (document: EditorDocument): 
 
 export const reloadMaterialDocument = async (document: EditorDocument): Promise<boolean> => {
   const current = ensureState(document);
-  if (graphFingerprint(current.graph) !== current.confirmedGraph && !window.confirm(`Discard unsaved changes to ${document.title}?`))
+  if (
+    graphFingerprint(current.graph) !== current.confirmedGraph &&
+    !window.confirm(`Discard unsaved changes to ${document.title}?`)
+  )
     return false;
   setState(document.id, { loaded: false });
   return loadMaterialDocument(document, true);

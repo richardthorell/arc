@@ -36,14 +36,7 @@ export type MaterialIR = {
 };
 
 export type MaterialOutputName =
-  | 'baseColor'
-  | 'metallic'
-  | 'roughness'
-  | 'normal'
-  | 'ao'
-  | 'emissive'
-  | 'opacity'
-  | 'alphaClip';
+  'baseColor' | 'metallic' | 'roughness' | 'normal' | 'ao' | 'emissive' | 'opacity' | 'alphaClip';
 
 export type MaterialCompileResult = {
   succeeded: boolean;
@@ -174,13 +167,15 @@ export const compileMaterialGraph = (graph: MaterialGraph): MaterialCompileResul
         textureChannel: pin,
       };
       expression.texture = texture;
-      if (!texture) diagnostics.push({ severity: 'warning', nodeId: node.id, message: 'Texture Sample has no texture assigned.' });
+      if (!texture)
+        diagnostics.push({ severity: 'warning', nodeId: node.id, message: 'Texture Sample has no texture assigned.' });
     } else if (node.type === 'texCoord') {
       value = { type: 'vec2' };
       diagnostics.push({
         severity: 'warning',
         nodeId: node.id,
-        message: 'Texture-coordinate expressions are preserved in Material IR but are not lowered by the descriptor backend yet.',
+        message:
+          'Texture-coordinate expressions are preserved in Material IR but are not lowered by the descriptor backend yet.',
       });
     } else if (node.type === 'time') {
       value = { type: 'float' };

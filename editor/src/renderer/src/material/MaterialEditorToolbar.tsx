@@ -28,7 +28,11 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
           <span>Material</span>
         </span>
         <span className="toolbar-separator" />
-        <UiButton disabled={busy || document.readOnly || !document.dirty} onClick={() => void saveMaterialDocument(document)} variant="toolbar">
+        <UiButton
+          disabled={busy || document.readOnly || !document.dirty}
+          onClick={() => void saveMaterialDocument(document)}
+          variant="toolbar"
+        >
           <Save size={13} /> Save
         </UiButton>
         <UiButton disabled={busy} onClick={() => void compileMaterialDocument(document)} variant="toolbar">
@@ -59,7 +63,8 @@ export function MaterialEditorToolbar({ document }: { document: EditorDocument }
           </span>
         )}
         <span className="toolbar-group material-document-compile-state">
-          {state.compilation.succeeded ? 'IR ready' : 'Graph errors'} · {state.compilation.ir.expressions.length} expressions
+          {state.compilation.succeeded ? 'IR ready' : 'Graph errors'} · {state.compilation.ir.expressions.length}{' '}
+          expressions
         </span>
       </div>
     </div>

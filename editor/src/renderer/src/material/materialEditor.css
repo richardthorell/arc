@@ -24,7 +24,10 @@
     linear-gradient(rgba(75, 111, 130, 0.055) 1px, transparent 1px),
     linear-gradient(90deg, rgba(75, 111, 130, 0.055) 1px, transparent 1px);
   background-position: 0 0;
-  background-size: 20px 20px, 100px 100px, 100px 100px;
+  background-size:
+    20px 20px,
+    100px 100px,
+    100px 100px;
 }
 
 .material-graph-canvas:focus-visible {

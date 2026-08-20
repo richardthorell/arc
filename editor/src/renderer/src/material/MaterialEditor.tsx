@@ -9,7 +9,8 @@ import './materialWorkspace.css';
 
 const parameterValue = (node: MaterialGraphNode): number[] => {
   if (typeof node.values.value === 'number') return [node.values.value];
-  if (Array.isArray(node.values.value)) return node.values.value.map((value) => (typeof value === 'number' ? value : 0));
+  if (Array.isArray(node.values.value))
+    return node.values.value.map((value) => (typeof value === 'number' ? value : 0));
   return [];
 };
 
@@ -102,7 +103,9 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                           type="number"
                           step="0.01"
                           value={value}
-                          onChange={(event) => setParameterComponent(parameter.nodeId, index, Number(event.target.value))}
+                          onChange={(event) =>
+                            setParameterComponent(parameter.nodeId, index, Number(event.target.value))
+                          }
                         />
                       </span>
                     ))}
@@ -111,7 +114,9 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
               );
             })}
             {!state.compilation.ir.parameters.length && (
-              <div className="material-empty-parameters">Expose a Constant or Vector node as a parameter to edit it here.</div>
+              <div className="material-empty-parameters">
+                Expose a Constant or Vector node as a parameter to edit it here.
+              </div>
             )}
           </div>
         </section>

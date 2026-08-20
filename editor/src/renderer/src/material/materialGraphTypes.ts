@@ -268,9 +268,11 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
 };
 
 let generatedId = 0;
-export const materialGraphId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(generatedId++).toString(36)}`;
+export const materialGraphId = (prefix: string) =>
+  `${prefix}-${Date.now().toString(36)}-${(generatedId++).toString(36)}`;
 
-export const cloneMaterialGraph = (graph: MaterialGraph): MaterialGraph => JSON.parse(JSON.stringify(graph)) as MaterialGraph;
+export const cloneMaterialGraph = (graph: MaterialGraph): MaterialGraph =>
+  JSON.parse(JSON.stringify(graph)) as MaterialGraph;
 
 export const createMaterialNode = (
   type: MaterialGraphNodeType,
@@ -286,11 +288,10 @@ export const createMaterialNode = (
 const finite = (value: unknown, fallback: number) =>
   typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
-const vec3FromAsset = (value: MaterialAssetSurface['baseColor'] | MaterialAssetSurface['emissive'], fallback: number[]) => [
-  finite(value?.r, fallback[0]),
-  finite(value?.g, fallback[1]),
-  finite(value?.b, fallback[2]),
-];
+const vec3FromAsset = (
+  value: MaterialAssetSurface['baseColor'] | MaterialAssetSurface['emissive'],
+  fallback: number[],
+) => [finite(value?.r, fallback[0]), finite(value?.g, fallback[1]), finite(value?.b, fallback[2])];
 
 export const createDefaultMaterialGraph = (asset: MaterialAssetJson = {}): MaterialGraph => {
   const surface = asset.surface ?? {};
@@ -308,15 +309,29 @@ export const createDefaultMaterialGraph = (asset: MaterialAssetJson = {}): Mater
     version: 1,
     nodes: [baseColor, metallic, roughness, output],
     connections: [
-      { id: materialGraphId('connection'), from: { nodeId: baseColor.id, pin: 'value' }, to: { nodeId: output.id, pin: 'baseColor' } },
-      { id: materialGraphId('connection'), from: { nodeId: metallic.id, pin: 'value' }, to: { nodeId: output.id, pin: 'metallic' } },
-      { id: materialGraphId('connection'), from: { nodeId: roughness.id, pin: 'value' }, to: { nodeId: output.id, pin: 'roughness' } },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: baseColor.id, pin: 'value' },
+        to: { nodeId: output.id, pin: 'baseColor' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: metallic.id, pin: 'value' },
+        to: { nodeId: output.id, pin: 'metallic' },
+      },
+      {
+        id: materialGraphId('connection'),
+        from: { nodeId: roughness.id, pin: 'value' },
+        to: { nodeId: output.id, pin: 'roughness' },
+      },
     ],
     viewport: { x: 40, y: 40, zoom: 1 },
   };
 };
 
-const materialNodeTypes = new Set<MaterialGraphNodeType>(Object.keys(materialNodeDefinitions) as MaterialGraphNodeType[]);
+const materialNodeTypes = new Set<MaterialGraphNodeType>(
+  Object.keys(materialNodeDefinitions) as MaterialGraphNodeType[],
+);
 
 export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
   if (!value || typeof value !== 'object') return false;

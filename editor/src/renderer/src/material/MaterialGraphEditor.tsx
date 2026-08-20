@@ -25,7 +25,10 @@ const editableValueNode = (node: MaterialGraphNode) =>
 
 const pinY = (node: MaterialGraphNode, pin: string, output: boolean) => {
   const pins = output ? materialNodeDefinitions[node.type].outputs : materialNodeDefinitions[node.type].inputs;
-  const index = Math.max(0, pins.findIndex((candidate) => candidate.id === pin));
+  const index = Math.max(
+    0,
+    pins.findIndex((candidate) => candidate.id === pin),
+  );
   return node.position[1] + headerHeight + nodePaddingTop + pinRowHeight * index + pinRowHeight / 2;
 };
 
@@ -143,13 +146,7 @@ function MaterialNodeValueEditor({
   return null;
 }
 
-export function MaterialGraphEditor({
-  document,
-  graph,
-}: {
-  document: EditorDocument;
-  graph: MaterialGraph;
-}) {
+export function MaterialGraphEditor({ document, graph }: { document: EditorDocument; graph: MaterialGraph }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(() => new Set());
   const [pendingConnection, setPendingConnection] = useState<MaterialGraphPinRef | null>(null);
@@ -179,12 +176,9 @@ export function MaterialGraphEditor({
   };
 
   const updateViewport = (patch: Partial<typeof viewport>, recordHistory = false) =>
-    mutate(
-      (next) => {
-        next.viewport = { ...viewport, ...patch };
-      },
-      recordHistory,
-    );
+    mutate((next) => {
+      next.viewport = { ...viewport, ...patch };
+    }, recordHistory);
 
   useEffect(() => {
     if (!drag && !pan && !box) return;
@@ -194,15 +188,12 @@ export function MaterialGraphEditor({
       if (drag) {
         const deltaX = point[0] - drag.start[0];
         const deltaY = point[1] - drag.start[1];
-        mutate(
-          (next) => {
-            for (const node of next.nodes) {
-              const origin = drag.nodes.get(node.id);
-              if (origin) node.position = [origin[0] + deltaX, origin[1] + deltaY];
-            }
-          },
-          false,
-        );
+        mutate((next) => {
+          for (const node of next.nodes) {
+            const origin = drag.nodes.get(node.id);
+            if (origin) node.position = [origin[0] + deltaX, origin[1] + deltaY];
+          }
+        }, false);
       } else if (pan) {
         updateViewport(
           {
@@ -257,7 +248,9 @@ export function MaterialGraphEditor({
   const deleteSelected = () => {
     if (document.readOnly || selectedNodes.size === 0) return;
     mutate((next) => {
-      const removable = new Set([...selectedNodes].filter((id) => next.nodes.find((node) => node.id === id)?.type !== 'output'));
+      const removable = new Set(
+        [...selectedNodes].filter((id) => next.nodes.find((node) => node.id === id)?.type !== 'output'),
+      );
       next.nodes = next.nodes.filter((node) => !removable.has(node.id));
       next.connections = next.connections.filter(
         (connection) => !removable.has(connection.from.nodeId) && !removable.has(connection.to.nodeId),
@@ -267,11 +260,15 @@ export function MaterialGraphEditor({
   };
 
   const copySelected = () => {
-    const copiedNodes = graph.nodes.filter((node) => selectedNodes.has(node.id) && node.type !== 'output').map((node) => ({ ...node }));
+    const copiedNodes = graph.nodes
+      .filter((node) => selectedNodes.has(node.id) && node.type !== 'output')
+      .map((node) => ({ ...node }));
     const ids = new Set(copiedNodes.map((node) => node.id));
     graphClipboard = {
       nodes: cloneMaterialGraph({ version: 1, nodes: copiedNodes, connections: [] }).nodes,
-      connections: graph.connections.filter((connection) => ids.has(connection.from.nodeId) && ids.has(connection.to.nodeId)),
+      connections: graph.connections.filter(
+        (connection) => ids.has(connection.from.nodeId) && ids.has(connection.to.nodeId),
+      ),
     };
   };
 
@@ -304,7 +301,12 @@ export function MaterialGraphEditor({
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
       const target = event.target;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      )
+        return;
       const command = event.ctrlKey || event.metaKey;
       if ((event.key === 'Delete' || event.key === 'Backspace') && selectedNodes.size) {
         event.preventDefault();
@@ -363,7 +365,9 @@ export function MaterialGraphEditor({
     const query = nodeSearch.trim().toLocaleLowerCase();
     return (Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>)
       .filter((definition) => definition.type !== 'output')
-      .filter((definition) => !query || `${definition.title} ${definition.category}`.toLocaleLowerCase().includes(query));
+      .filter(
+        (definition) => !query || `${definition.title} ${definition.category}`.toLocaleLowerCase().includes(query),
+      );
   }, [nodeSearch]);
 
   const wirePaths = graph.connections.map((connection) => {
@@ -383,10 +387,7 @@ export function MaterialGraphEditor({
     if (!pendingConnection) return null;
     const node = graph.nodes.find((candidate) => candidate.id === pendingConnection.nodeId);
     if (!node) return null;
-    return connectionPath(
-      [node.position[0] + nodeWidth, pinY(node, pendingConnection.pin, true)],
-      pointerGraph,
-    );
+    return connectionPath([node.position[0] + nodeWidth, pinY(node, pendingConnection.pin, true)], pointerGraph);
   })();
 
   return (
@@ -553,10 +554,12 @@ export function MaterialGraphEditor({
               <MaterialNodeValueEditor
                 node={node}
                 readOnly={document.readOnly}
-                onChange={(updated) => mutate((next) => {
-                  const index = next.nodes.findIndex((candidate) => candidate.id === updated.id);
-                  if (index >= 0) next.nodes[index] = updated;
-                })}
+                onChange={(updated) =>
+                  mutate((next) => {
+                    const index = next.nodes.findIndex((candidate) => candidate.id === updated.id);
+                    if (index >= 0) next.nodes[index] = updated;
+                  })
+                }
               />
 
               {editableValueNode(node) && (
