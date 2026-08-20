@@ -17,7 +17,7 @@ import type { WorkbenchPanelId } from '../app/workbenchTypes';
 import { panelRegistry } from '../app/panelRegistry';
 import { UiButton, UiIconButton, UiSelectButton } from '../ui';
 
-type MainToolbarProps = {
+export type MainToolbarProps = {
   onCommand: (command: CommandId) => void;
   activeTool?: 'select' | 'translate' | 'rotate' | 'scale' | 'terrain';
   terrainEnabled?: boolean;

@@ -67,7 +67,6 @@ export function SearchPanel({
         <Search size={16} />
         <input
           aria-label="Search project"
-          autoFocus
           placeholder="Search entities and assets · type:mesh status:failed component:camera"
           value={query}
           onChange={(event) => setQuery(event.target.value)}

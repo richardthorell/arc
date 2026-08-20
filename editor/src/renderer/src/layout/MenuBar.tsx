@@ -31,7 +31,7 @@ import { UiButton } from '../ui';
 import { WindowControls } from './WindowControls';
 
 type MenuBarProps = {
-  projectTitle: string;
+  projectTitle?: string;
   onCommand: (command: CommandId) => void;
   canUndo?: boolean;
   canRedo?: boolean;
@@ -207,7 +207,6 @@ function MenuEntries({ entries, onRun }: { entries: MenuEntry[]; onRun: (entry: 
 }
 
 export function MenuBar({
-  projectTitle,
   onCommand,
   canUndo = false,
   canRedo = false,
@@ -350,10 +349,6 @@ export function MenuBar({
             );
           })}
         </nav>
-      </div>
-
-      <div className="window-title" aria-label={`Current scene ${projectTitle}`}>
-        <span>{projectTitle}</span>
       </div>
 
       <WindowControls />

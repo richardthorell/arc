@@ -33,9 +33,15 @@ import { defaultWorkbenchLayout, useWorkbenchLayout } from './workbenchStore';
 import type { ActivityId, CommandContext, CommandId, StartupState, WorkbenchPanelId } from './workbenchTypes';
 import { ActivityBar } from '../layout/ActivityBar';
 import { WorkspaceDock, type WorkspaceLayoutName } from '../layout/WorkspaceDock';
-import { MainToolbar } from '../layout/MainToolbar';
 import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
+import { EditorDocumentTabs } from '../editors/EditorDocumentTabs';
+import { EditorHost, EditorToolbarHost } from '../editors/EditorHost';
+import { createEditorRegistry } from '../editors/editorRegistry';
+import { useEditorDocuments } from '../editors/editorDocuments';
+import type { EditorDocument } from '../editors/editorTypes';
+import { LevelEditor } from '../editors/level/LevelEditor';
+import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
 import { flattenScene } from '../services/editorHostTypes';
 import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/editorHostTypes';
 import { UiButton, UiIconButton, UiPanel, UiTab, UiTabs, UiTreeRow } from '../ui';
@@ -67,6 +73,7 @@ import { VersionControlPanel } from '../versionControl/VersionControlPanel';
 import { ContentBrowserPanel as ContentBrowserV2 } from '../content/ContentBrowserPanel';
 
 import './workbench.css';
+import '../editors/editorShell.css';
 
 export type HostSceneEntity = {
   entity: HostEntityId;
@@ -358,6 +365,13 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     activeDocument: '',
     documents: [],
   });
+  const {
+    documents: editorDocuments,
+    activeDocumentId,
+    activeDocument,
+    syncSingletonDocument,
+    activateDocument,
+  } = useEditorDocuments();
   const [activeTool, setActiveTool] = useState<'select' | 'translate' | 'rotate' | 'scale' | 'terrain'>('translate');
   const [terrainToolState, setTerrainToolState] = useState<TerrainToolState | null>(null);
   const [coordinateSpace, setCoordinateSpace] = useState<'world' | 'local'>('world');
@@ -384,6 +398,25 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     worldCount: 0,
   });
   const runtimeRevision = useRef(0);
+
+  useEffect(() => {
+    const workspaceDocument =
+      workspaceDocuments.documents.find((entry) => entry.guid === workspaceDocuments.activeDocument) ??
+      workspaceDocuments.documents[0] ??
+      null;
+    const levelDocument: EditorDocument | null = workspaceDocument
+      ? {
+          id: `level:${workspaceDocument.guid || workspaceDocument.path || 'active'}`,
+          kind: 'level',
+          title: workspaceDocument.name || 'Untitled',
+          path: workspaceDocument.path,
+          dirty: workspaceDocument.dirty,
+          readOnly: workspaceDocument.readOnly,
+          recovered: workspaceDocument.recovered,
+        }
+      : null;
+    syncSingletonDocument('level', levelDocument);
+  }, [syncSingletonDocument, workspaceDocuments]);
 
   const acceptRuntimeSnapshot = useCallback((value: unknown) => {
     if (!value || typeof value !== 'object') return;
@@ -1278,24 +1311,107 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [viewportCount, setViewportCount] = useState<1 | 2 | 3 | 4>(1);
   const [activeViewportId, setActiveViewportId] = useState('viewport-1');
 
+  const editorRegistry = createEditorRegistry({
+    level: {
+      kind: 'level',
+      title: 'Level Editor',
+      icon: FileText,
+      allowMultiple: false,
+      render: (_document, context) => (
+        <LevelEditor>
+          <ViewportPanel
+            viewportId={context.instanceId}
+            project={project}
+            startupState={startupState}
+            onCommand={runCommand}
+            onReconnect={reconnectHost}
+            gridVisible={viewportGridVisible}
+            onGridVisibilityChange={setViewportGridVisible}
+            active={!createTerrainOpen && (context.instanceId ?? 'viewport-1') === activeViewportId}
+            onFocusChange={(focused) => {
+              setViewportFocused(focused);
+              if (focused) setActiveViewportId(context.instanceId ?? 'viewport-1');
+            }}
+            onMaximizeToggle={context.onMaximizeToggle}
+            onViewportLayoutChange={setViewportCount}
+          />
+        </LevelEditor>
+      ),
+      renderToolbar: () => (
+        <LevelEditorToolbar
+          activeTool={activeTool}
+          coordinateSpace={coordinateSpace}
+          snapping={snapping}
+          terrainEnabled={selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined}
+          translationSnap={translationSnap}
+          rotationSnap={rotationSnap}
+          scaleSnap={scaleSnap}
+          onCommand={runCommand}
+          onBuild={() => {
+            setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
+            void window.arc.build
+              .execute({ action: 'build' })
+              .then(setBuildSnapshot)
+              .catch((reason: unknown) => {
+                setLastCommand(reason instanceof Error ? reason.message : String(reason));
+              });
+          }}
+          onLayout={(name) => setRequestedWorkspaceLayout(name)}
+          onPanel={(panel) => setRequestedWorkspacePanel(panel)}
+          runtimeState={runtimeState.state}
+          timeScale={runtimeState.timeScale}
+          onCycleTimeScale={() => {
+            const next = nextSnapOption(timeScaleOptions, runtimeState.timeScale);
+            if (!startupState?.engineHostConnected) {
+              setLastCommand('Native editor host is unavailable');
+              return;
+            }
+            void window.arc.host.command('runtime.setTimeScale', { value: next }).then((response) => {
+              const result = response as HostResponse<HostRuntimeSnapshot>;
+              if (result.succeeded) acceptRuntimeSnapshot(result.payload);
+              else setLastCommand(result.error || 'Could not change runtime time scale');
+            });
+          }}
+          onToggleCoordinateSpace={() =>
+            void updateViewportToolOptions(coordinateSpace === 'world' ? 'local' : 'world', snapping)
+          }
+          onToggleSnapping={() => void updateViewportToolOptions(coordinateSpace, !snapping)}
+          onCycleTranslationSnap={() =>
+            void updateViewportToolOptions(
+              coordinateSpace,
+              snapping,
+              nextSnapOption(translationSnapOptions, translationSnap),
+            )
+          }
+          onCycleRotationSnap={() =>
+            void updateViewportToolOptions(
+              coordinateSpace,
+              snapping,
+              translationSnap,
+              nextSnapOption(rotationSnapOptions, rotationSnap),
+            )
+          }
+          onCycleScaleSnap={() =>
+            void updateViewportToolOptions(
+              coordinateSpace,
+              snapping,
+              translationSnap,
+              rotationSnap,
+              nextSnapOption(scaleSnapOptions, scaleSnap),
+            )
+          }
+        />
+      ),
+    },
+  });
+
   const renderCenterPanel = (panel: WorkbenchPanelId, viewportId?: string, onMaximizeToggle?: () => void) => {
     if (panel === 'viewport') {
       return (
-        <ViewportPanel
-          viewportId={viewportId}
-          project={project}
-          startupState={startupState}
-          onCommand={runCommand}
-          onReconnect={reconnectHost}
-          gridVisible={viewportGridVisible}
-          onGridVisibilityChange={setViewportGridVisible}
-          active={!createTerrainOpen && (viewportId ?? 'viewport-1') === activeViewportId}
-          onFocusChange={(focused) => {
-            setViewportFocused(focused);
-            if (focused) setActiveViewportId(viewportId ?? 'viewport-1');
-          }}
-          onMaximizeToggle={onMaximizeToggle}
-          onViewportLayoutChange={setViewportCount}
+        <EditorHost
+          document={activeDocument}
+          registry={editorRegistry}
+          context={{ instanceId: viewportId, onMaximizeToggle }}
         />
       );
     }
@@ -1460,69 +1576,13 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         onToggleGrid={() => void toggleViewportGrid()}
         onPanel={(panel) => setRequestedWorkspacePanel(panel)}
       />
-      <MainToolbar
-        activeTool={activeTool}
-        coordinateSpace={coordinateSpace}
-        snapping={snapping}
-        terrainEnabled={selectedSnapshot?.terrain !== null && selectedSnapshot?.terrain !== undefined}
-        translationSnap={translationSnap}
-        rotationSnap={rotationSnap}
-        scaleSnap={scaleSnap}
-        onCommand={runCommand}
-        onBuild={() => {
-          setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
-          void window.arc.build
-            .execute({ action: 'build' })
-            .then(setBuildSnapshot)
-            .catch((reason: unknown) => {
-              setLastCommand(reason instanceof Error ? reason.message : String(reason));
-            });
-        }}
-        onLayout={(name) => setRequestedWorkspaceLayout(name)}
-        onPanel={(panel) => setRequestedWorkspacePanel(panel)}
-        runtimeState={runtimeState.state}
-        timeScale={runtimeState.timeScale}
-        onCycleTimeScale={() => {
-          const next = nextSnapOption(timeScaleOptions, runtimeState.timeScale);
-          if (!startupState?.engineHostConnected) {
-            setLastCommand('Native editor host is unavailable');
-            return;
-          }
-          void window.arc.host.command('runtime.setTimeScale', { value: next }).then((response) => {
-            const result = response as HostResponse<HostRuntimeSnapshot>;
-            if (result.succeeded) acceptRuntimeSnapshot(result.payload);
-            else setLastCommand(result.error || 'Could not change runtime time scale');
-          });
-        }}
-        onToggleCoordinateSpace={() =>
-          void updateViewportToolOptions(coordinateSpace === 'world' ? 'local' : 'world', snapping)
-        }
-        onToggleSnapping={() => void updateViewportToolOptions(coordinateSpace, !snapping)}
-        onCycleTranslationSnap={() =>
-          void updateViewportToolOptions(
-            coordinateSpace,
-            snapping,
-            nextSnapOption(translationSnapOptions, translationSnap),
-          )
-        }
-        onCycleRotationSnap={() =>
-          void updateViewportToolOptions(
-            coordinateSpace,
-            snapping,
-            translationSnap,
-            nextSnapOption(rotationSnapOptions, rotationSnap),
-          )
-        }
-        onCycleScaleSnap={() =>
-          void updateViewportToolOptions(
-            coordinateSpace,
-            snapping,
-            translationSnap,
-            rotationSnap,
-            nextSnapOption(scaleSnapOptions, scaleSnap),
-          )
-        }
+      <EditorDocumentTabs
+        documents={editorDocuments}
+        activeDocumentId={activeDocumentId}
+        registry={editorRegistry}
+        onActivate={activateDocument}
       />
+      <EditorToolbarHost document={activeDocument} registry={editorRegistry} />
       <AiGatewayApprovalPrompt
         status={aiGatewayStatus}
         onApprove={(requestId) => void window.arc.aiGateway.approve(requestId)}
@@ -1549,30 +1609,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         />
 
         <section className="editor-region dockview-editor-region">
-          <div className="scene-document-tabs" role="tablist" aria-label="Open scenes">
-            {workspaceDocuments.documents.map((document) => (
-              <button
-                aria-selected={document.guid === workspaceDocuments.activeDocument}
-                className={document.guid === workspaceDocuments.activeDocument ? 'active' : ''}
-                key={document.guid}
-                role="tab"
-                title={[
-                  document.path || 'Unsaved scene',
-                  document.readOnly && 'Read-only',
-                  document.recovered && 'Recovered',
-                ]
-                  .filter(Boolean)
-                  .join('\n')}
-                type="button"
-              >
-                <FileText size={12} />
-                <span>{document.name}</span>
-                {document.readOnly && <small>RO</small>}
-                {document.recovered && <small>Recovered</small>}
-                {document.dirty && <b aria-label="Unsaved changes">●</b>}
-              </button>
-            ))}
-          </div>
           <WorkspaceDock
             onRequestHandled={() => {
               setRequestedWorkspaceLayout(null);

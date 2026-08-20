@@ -33,19 +33,22 @@ type WorkspaceDockProps = {
   requestedViewportCount?: 1 | 2 | 3 | 4;
 };
 
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v3.${projectKey}.${name}`;
+// v5 restores Hierarchy as the default left-side Level Design panel after the
+// global utility rail stopped owning it. Bump the key so transitional v4
+// layouts that were saved without Hierarchy do not keep it hidden.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v5.${projectKey}.${name}`;
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 
 const initialSidebarPanel = (): SidebarPanelId => {
   try {
     const saved = window.localStorage.getItem(workbenchLayoutStorageKey);
-    if (!saved) return 'hierarchy';
+    if (!saved) return 'search';
     const activeActivity = (JSON.parse(saved) as { activeActivity?: string }).activeActivity;
     const activity = activityRegistry.find((entry) => entry.id === activeActivity);
-    return activity && isSidebarPanel(activity.panelId) ? activity.panelId : 'hierarchy';
+    return activity && isSidebarPanel(activity.panelId) ? activity.panelId : 'search';
   } catch {
-    return 'hierarchy';
+    return 'search';
   }
 };
 
@@ -122,6 +125,11 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
     addPanel(api, 'buildOutput', 'console', 'within');
     return;
   }
+
+  // Hierarchy is a Level Editor/workspace panel, not a global utility. Keep it
+  // open on the left in the default Level Design layout just as it was before
+  // the utility rail was introduced.
+  addPanel(api, 'hierarchy', 'viewport', 'left');
   addPanel(api, 'inspector', 'viewport', 'right');
   addPanel(api, 'lighting', 'inspector', 'within');
   addPanel(api, 'worldSettings', 'inspector', 'within');
@@ -177,8 +185,8 @@ export function WorkspaceDock({
     } catch {
       createLayout(dock, 'Level Design');
     }
-    // Layouts from older editor versions may still contain Hierarchy/Search/AI/VCS
-    // as Dockview tabs. They now belong exclusively to the fixed primary sidebar.
+    // Global Search/AI/VCS/Settings utilities never belong to a saved Dockview
+    // workspace. Hierarchy is deliberately not in this set anymore.
     removeSidebarPanelsFromDock(dock);
     if (!dock.activePanel) createLayout(dock, 'Level Design');
     window.localStorage.setItem(storageKey(projectKey, 'current'), JSON.stringify(dock.toJSON()));
