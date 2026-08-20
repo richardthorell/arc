@@ -3978,13 +3978,25 @@ host_response arc_host::query(const host_query_envelope& query) const
                     json += to_json_string(profile.graph.passes[index].name);
                 }
                 std::uint64_t transient_bytes{};
+                std::uint32_t alias_count{};
+                for (const auto& physical : profile.graph.physical_resources)
+                    transient_bytes += physical.estimated_bytes;
                 for (const auto& lifetime : profile.graph.lifetimes)
-                    transient_bytes += lifetime.estimated_bytes;
-                json += "],\"resources\":[";
-                for (std::size_t index = 0; index < profile.graph.lifetimes.size(); ++index)
+                    alias_count += lifetime.aliased ? 1u : 0u;
+                json += "],\"culledPasses\":[";
+                for (std::size_t index = 0; index < profile.graph.culled_passes.size(); ++index)
                 {
                     if (index != 0) json += ',';
+                    json += to_json_string(profile.graph.culled_passes[index].name);
+                }
+                json += "],\"resources\":[";
+                bool first_resource = true;
+                for (std::size_t index = 0; index < profile.graph.lifetimes.size(); ++index)
+                {
                     const auto& lifetime = profile.graph.lifetimes[index];
+                    if (lifetime.first_pass == render::render_graph_resource_handle::invalid_index) continue;
+                    if (!first_resource) json += ',';
+                    first_resource = false;
                     const auto* resource =
                         lifetime.handle.valid() && lifetime.handle.index < profile.graph.resources.size()
                             ? &profile.graph.resources[lifetime.handle.index]
@@ -3994,7 +4006,8 @@ host_response arc_host::query(const host_query_envelope& query) const
                             ",\"firstPass\":" + std::to_string(lifetime.first_pass) +
                             ",\"lastPass\":" + std::to_string(lifetime.last_pass) +
                             ",\"physicalResource\":" + std::to_string(lifetime.physical_resource) +
-                            ",\"estimatedBytes\":" + std::to_string(lifetime.estimated_bytes) + '}';
+                            ",\"estimatedBytes\":" + std::to_string(lifetime.estimated_bytes) +
+                            ",\"aliased\":" + std::string(lifetime.aliased ? "true" : "false") + '}';
                 }
                 json += "],\"transitions\":[";
                 for (std::size_t index = 0; index < profile.graph.transitions.size(); ++index)
@@ -4009,8 +4022,29 @@ host_response arc_host::query(const host_query_envelope& query) const
                             ",\"beforeQueue\":" + to_json_string(queue_name(transition.before_queue)) +
                             ",\"afterQueue\":" + to_json_string(queue_name(transition.after_queue)) + '}';
                 }
+                json += "],\"submissions\":[";
+                for (std::size_t index = 0; index < profile.graph.submissions.size(); ++index)
+                {
+                    if (index != 0) json += ',';
+                    const auto& submission = profile.graph.submissions[index];
+                    json += "{\"queue\":" + to_json_string(queue_name(submission.queue)) +
+                            ",\"passCount\":" + std::to_string(submission.passes.size()) +
+                            ",\"waitCount\":" + std::to_string(submission.waits.size()) +
+                            ",\"signalValue\":" + std::to_string(submission.signal_value) + '}';
+                }
+                json += "],\"histories\":[";
+                for (std::size_t index = 0; index < profile.graph.history_rotations.size(); ++index)
+                {
+                    if (index != 0) json += ',';
+                    const auto& history = profile.graph.history_rotations[index];
+                    json += "{\"key\":" + to_json_string(history.persistent_key) +
+                            ",\"length\":" + std::to_string(history.history_length) +
+                            ",\"invalidated\":" + std::string(history.invalidated ? "true" : "false") + '}';
+                }
                 json +=
                     "],\"resourceCount\":" + std::to_string(profile.graph.resources.size()) +
+                    ",\"physicalResourceCount\":" + std::to_string(profile.graph.physical_resources.size()) +
+                    ",\"aliasCount\":" + std::to_string(alias_count) +
                     ",\"barrierCount\":" + std::to_string(profile.graph.transitions.size()) +
                     ",\"estimatedTransientBytes\":" + std::to_string(transient_bytes) + "},\"renderer\":{\"path\":" +
                     to_json_string(profile.configuration.path == render::render_path::forward_plus ? "forwardPlus"

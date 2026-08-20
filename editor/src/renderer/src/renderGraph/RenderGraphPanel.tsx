@@ -108,8 +108,27 @@ export function RenderGraphPanel({
           <span>{snapshot.renderer.qualityTier}</span>
           <span>{Math.round(snapshot.renderer.renderScale * 100)}%</span>
           <span>{snapshot.graph.resourceCount} resources</span>
+          <span>{snapshot.graph.physicalResourceCount ?? snapshot.graph.resourceCount} physical</span>
+          <span>{snapshot.graph.aliasCount ?? 0} aliases</span>
+          <span>{snapshot.graph.culledPasses?.length ?? 0} culled</span>
           <span>{snapshot.graph.barrierCount} barriers</span>
           <span>{bytes(snapshot.graph.estimatedTransientBytes)} transient</span>
+        </div>
+      )}
+      {!!snapshot?.graph.submissions?.length && (
+        <div className="tool-summary-strip" aria-label="Render graph queue submissions">
+          {snapshot.graph.submissions.map((submission, index) => (
+            <span key={`${submission.queue}-${index}`}>
+              {submission.queue}: {submission.passCount} passes · {submission.waitCount} waits · signal{' '}
+              {submission.signalValue}
+            </span>
+          ))}
+          {!!snapshot.graph.histories?.length && (
+            <span>
+              {snapshot.graph.histories.length} histories
+              {snapshot.graph.histories.some((history) => history.invalidated) ? ' · reset' : ''}
+            </span>
+          )}
         </div>
       )}
       {pinned && snapshot && (
@@ -184,6 +203,7 @@ export function RenderGraphPanel({
                   <g className="render-graph-resource-lifetime" key={`${resource.name}-${resource.physicalResource}`}>
                     <text x={graphLeft} y={y - 6}>
                       {resource.name} · P{resource.physicalResource} · {bytes(resource.estimatedBytes)}
+                      {resource.aliased ? ' · alias' : ''}
                     </text>
                     <line x1={startX} x2={Math.max(startX + 2, endX)} y1={y + 5} y2={y + 5} />
                     <circle cx={startX} cy={y + 5} r="3" />
@@ -203,6 +223,7 @@ export function RenderGraphPanel({
               <strong>{resource.name}</strong>
               <span>
                 P{resource.physicalResource} · pass {resource.firstPass}–{resource.lastPass}
+                {resource.aliased ? ' · alias' : ''}
               </span>
               <small>
                 {resource.format} · {bytes(resource.estimatedBytes)}

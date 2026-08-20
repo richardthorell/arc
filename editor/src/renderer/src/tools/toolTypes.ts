@@ -5,6 +5,7 @@ export type RenderGraphResource = {
   lastPass: number;
   physicalResource: number;
   estimatedBytes: number;
+  aliased?: boolean;
 };
 
 export type RenderGraphTransition = {
@@ -24,9 +25,14 @@ export type EditorDiagnosticsSnapshot = {
   timingsAvailable: boolean;
   graph: {
     executedPasses: string[];
+    culledPasses?: string[];
     resources?: RenderGraphResource[];
     transitions?: RenderGraphTransition[];
+    submissions?: Array<{ queue: string; passCount: number; waitCount: number; signalValue: number }>;
+    histories?: Array<{ key: string; length: number; invalidated: boolean }>;
     resourceCount: number;
+    physicalResourceCount?: number;
+    aliasCount?: number;
     barrierCount: number;
     estimatedTransientBytes: number;
   };

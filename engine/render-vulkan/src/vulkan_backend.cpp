@@ -795,29 +795,7 @@ public:
         begin_debug_label(frame->command_buffer, "ARC native viewport frame", {0.16f, 0.45f, 1.0f, 1.0f});
         reset_timestamp_queries(frame->command_buffer);
 
-        if (graph_selects_any_directional_shadow_pass())
-        {
-            const auto shadow_scope =
-                begin_gpu_scope(frame->command_buffer, graph_pass_name(builtin_render_pass::directional_shadow_dynamic,
-                                                                       "directional shadow cascades"));
-            render_shadow_maps(frame->command_buffer);
-            end_gpu_scope(frame->command_buffer, shadow_scope);
-        }
-        if (!active_local_shadows_.empty() &&
-            (graph_selects(builtin_render_pass::point_shadow) || graph_selects(builtin_render_pass::spot_shadow)))
-        {
-            const auto local_shadow_scope = begin_gpu_scope(frame->command_buffer, "local shadow atlas");
-            render_local_shadow_maps(frame->command_buffer);
-            end_gpu_scope(frame->command_buffer, local_shadow_scope);
-        }
-        else
-            transition_local_shadow_atlas(frame->command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-
-        const auto viewport_scope = begin_gpu_scope(
-            frame->command_buffer, resolved_config_.path == render_path::forward_plus ? "forward+ viewport raster"
-                                                                                      : "deferred viewport raster");
-        render_viewport(frame->command_buffer);
-        end_gpu_scope(frame->command_buffer, viewport_scope);
+        execute_compiled_graph(frame->command_buffer);
 
         transition_viewport(frame->command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
@@ -1244,13 +1222,7 @@ private:
 
         begin_debug_label(slot.command_buffer, "ARC shared viewport frame", {0.16f, 0.75f, 0.65f, 1.0f});
         reset_timestamp_queries(slot.command_buffer);
-        if (graph_selects_any_directional_shadow_pass()) render_shadow_maps(slot.command_buffer);
-        if (!active_local_shadows_.empty() &&
-            (graph_selects(builtin_render_pass::point_shadow) || graph_selects(builtin_render_pass::spot_shadow)))
-            render_local_shadow_maps(slot.command_buffer);
-        else
-            transition_local_shadow_atlas(slot.command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
-        render_viewport(slot.command_buffer);
+        execute_compiled_graph(slot.command_buffer);
         transition_viewport(slot.command_buffer, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
         VkImageMemoryBarrier destination{};
@@ -3901,7 +3873,7 @@ private:
     void dispatch_gpu_visibility(VkCommandBuffer command_buffer)
     {
         gpu_visibility_active_ = false;
-        if (!graph_selects(builtin_render_pass::gpu_frustum_distance_cull) || !ensure_gpu_visibility_resources())
+        if (!ensure_gpu_visibility_resources())
         {
             if (resolved_config_.features.gpu_driven_rendering)
                 last_profile_.gpu_scene.fallback_reason =
@@ -6878,23 +6850,79 @@ private:
         return nullptr;
     }
 
-    bool graph_selects(builtin_render_pass builtin) const noexcept
+    void execute_compiled_graph(VkCommandBuffer command_buffer)
     {
-        return std::ranges::any_of(last_profile_.graph.passes,
-                                   [builtin](const compiled_render_pass& pass) { return pass.builtin == builtin; });
-    }
+        bool directional_shadows_executed{};
+        bool viewport_executed{};
+        bool scene_executed{};
+        bool point_shadows_executed{};
+        bool spot_shadows_executed{};
+        bool gpu_visibility_executed{};
 
-    bool graph_selects_any_directional_shadow_pass() const noexcept
-    {
-        return graph_selects(builtin_render_pass::directional_shadow_static) ||
-               graph_selects(builtin_render_pass::directional_shadow_dynamic);
-    }
+        for (const auto& pass : last_profile_.graph.passes)
+        {
+            const auto scope = begin_gpu_scope(command_buffer, pass.name.c_str());
+            switch (pass.builtin)
+            {
+                case builtin_render_pass::directional_shadow_static:
+                case builtin_render_pass::directional_shadow_dynamic:
+                    if (!directional_shadows_executed)
+                    {
+                        render_shadow_maps(command_buffer);
+                        directional_shadows_executed = true;
+                    }
+                    break;
+                case builtin_render_pass::point_shadow:
+                    if (!point_shadows_executed)
+                    {
+                        render_local_shadow_maps(command_buffer, shadow_light_kind::point);
+                        point_shadows_executed = true;
+                    }
+                    break;
+                case builtin_render_pass::spot_shadow:
+                    if (!spot_shadows_executed)
+                    {
+                        render_local_shadow_maps(command_buffer, shadow_light_kind::spot);
+                        spot_shadows_executed = true;
+                    }
+                    break;
+                case builtin_render_pass::gpu_frustum_distance_cull:
+                    if (!gpu_visibility_executed)
+                    {
+                        dispatch_gpu_visibility(command_buffer);
+                        gpu_visibility_executed = true;
+                    }
+                    break;
+                case builtin_render_pass::gbuffer:
+                case builtin_render_pass::forward_opaque:
+                    if (!scene_executed)
+                    {
+                        render_viewport(command_buffer, true, false);
+                        scene_executed = true;
+                    }
+                    break;
+                case builtin_render_pass::output_transform:
+                    if (!viewport_executed)
+                    {
+                        if (!scene_executed)
+                        {
+                            render_viewport(command_buffer, true, false);
+                            scene_executed = true;
+                        }
+                        render_viewport(command_buffer, false, true);
+                        viewport_executed = true;
+                    }
+                    break;
+                default:
+                    break;
+            }
+            end_gpu_scope(command_buffer, scope);
+        }
 
-    const char* graph_pass_name(builtin_render_pass builtin, const char* fallback) const noexcept
-    {
-        const auto found = std::ranges::find_if(last_profile_.graph.passes, [builtin](const compiled_render_pass& pass)
-                                                { return pass.builtin == builtin; });
-        return found != last_profile_.graph.passes.end() ? found->name.c_str() : fallback;
+        if (!directional_shadows_executed)
+            transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        if (!point_shadows_executed && !spot_shadows_executed)
+            transition_local_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
     }
 
     void prepare_frame_gpu_resources()
@@ -6922,8 +6950,7 @@ private:
 
         if (ensure_mesh_pipeline()) update_current_material_descriptor_sets();
 
-        if (((light && !frame_shadow_draws_.empty() && graph_selects_any_directional_shadow_pass()) ||
-             !active_local_shadows_.empty()))
+        if ((light && !frame_shadow_draws_.empty()) || !active_local_shadows_.empty())
             ensure_shadow_pipeline();
         const auto clear_overlay_counts = [&]
         {
@@ -7470,7 +7497,7 @@ private:
         shadow_cache_.has_directional_key = true;
     }
 
-    void render_local_shadow_maps(VkCommandBuffer command_buffer)
+    void render_local_shadow_maps(VkCommandBuffer command_buffer, shadow_light_kind requested_kind)
     {
         if (active_local_shadows_.empty() || local_shadow_atlas_.image == VK_NULL_HANDLE ||
             shadow_pipeline_ == VK_NULL_HANDLE)
@@ -7482,10 +7509,7 @@ private:
         std::uint32_t packed_face_index{};
         for (const auto& shadow : active_local_shadows_)
         {
-            const bool pass_selected = shadow.kind == shadow_light_kind::point
-                                           ? graph_selects(builtin_render_pass::point_shadow)
-                                           : graph_selects(builtin_render_pass::spot_shadow);
-            if (!pass_selected)
+            if (shadow.kind != requested_kind)
             {
                 packed_face_index += shadow.allocation.face_count;
                 continue;
@@ -7989,12 +8013,12 @@ private:
         return true;
     }
 
-    void render_viewport(VkCommandBuffer command_buffer)
+    void render_viewport(VkCommandBuffer command_buffer, bool render_scene, bool render_output)
     {
         if (viewport_image_ == VK_NULL_HANDLE) return;
 
-        dispatch_gpu_visibility(command_buffer);
-
+        if (render_scene)
+        {
         transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 
@@ -8225,7 +8249,9 @@ private:
 
         draw_debug_overlay(command_buffer, debug_overlay_depth_mode::tested);
         cmd_end_rendering(command_buffer);
+        }
 
+        if (!render_output) return;
         transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         if (!ensure_output_transform_pipeline())
         {
