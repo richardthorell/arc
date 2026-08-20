@@ -12,7 +12,7 @@ export function ShaderEditorPanel({ asset }: { asset: AssetItem | null }) {
       <section className="production-tool-panel tool-empty-state">
         <FileCode2 size={29} />
         <strong>Select a shader asset</strong>
-        <span>The shader editor only opens registered project shader sources.</span>
+        <span>The shader editor opens registered project and built-in shader sources.</span>
       </section>
     );
 
