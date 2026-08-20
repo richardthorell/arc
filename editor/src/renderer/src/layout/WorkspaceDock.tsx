@@ -18,6 +18,8 @@ import {
   type SidebarPanelId,
 } from '../app/panelRegistry';
 import type { WorkbenchPanelId } from '../app/workbenchTypes';
+import { useEditorDocuments } from '../editors/editorDocuments';
+import type { EditorDocumentKind } from '../editors/editorTypes';
 import { PanelDockTabRenderer, getPanelTabPresentation } from './PanelDockTab';
 import './WorkspaceDock.css';
 
@@ -34,9 +36,11 @@ type WorkspaceDockProps = {
 };
 
 // v5 restores Hierarchy as the default left-side Level Design panel after the
-// global utility rail stopped owning it. Bump the key so transitional v4
-// layouts that were saved without Hierarchy do not keep it hidden.
+// global utility rail stopped owning it. Document-owned workspace snapshots use
+// the same version so existing Level layouts can migrate without being lost.
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v5.${projectKey}.${name}`;
+const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) =>
+  storageKey(projectKey, `editor-${kind}`);
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 
@@ -138,6 +142,46 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
   addPanel(api, 'buildOutput', 'contentBrowser', 'within');
 };
 
+const createEditorWorkspace = (api: DockviewApi, kind: EditorDocumentKind) => {
+  if (kind === 'shader') {
+    // Shader source currently has no document-specific supporting panels. The
+    // editor host therefore owns the complete Dockview workspace. The global
+    // utility rail/drawer lives outside this layout and remains available.
+    api.clear();
+    addPanel(api, 'viewport');
+    return;
+  }
+  createLayout(api, 'Level Design');
+};
+
+const readEditorWorkspace = (projectKey: string, kind: EditorDocumentKind) => {
+  const saved = window.localStorage.getItem(editorWorkspaceStorageKey(projectKey, kind));
+  if (saved) return saved;
+  // PR #71 stored the live Level Design layout under `current`. Use it as the
+  // migration source the first time a document-owned Level workspace is used.
+  return kind === 'level' ? window.localStorage.getItem(storageKey(projectKey, 'current')) : null;
+};
+
+const persistEditorWorkspace = (api: DockviewApi, projectKey: string, kind: EditorDocumentKind) => {
+  const serialized = JSON.stringify(api.toJSON());
+  window.localStorage.setItem(editorWorkspaceStorageKey(projectKey, kind), serialized);
+  // Keep the legacy Level key current while the old layout presets still exist.
+  if (kind === 'level') window.localStorage.setItem(storageKey(projectKey, 'current'), serialized);
+};
+
+const restoreEditorWorkspace = (api: DockviewApi, projectKey: string, kind: EditorDocumentKind) => {
+  const saved = readEditorWorkspace(projectKey, kind);
+  try {
+    if (saved) api.fromJSON(JSON.parse(saved) as SerializedDockview);
+    else createEditorWorkspace(api, kind);
+  } catch {
+    createEditorWorkspace(api, kind);
+  }
+  removeSidebarPanelsFromDock(api);
+  if (!api.activePanel) createEditorWorkspace(api, kind);
+  persistEditorWorkspace(api, projectKey, kind);
+};
+
 export function WorkspaceDock({
   projectKey,
   renderPanel,
@@ -151,6 +195,9 @@ export function WorkspaceDock({
   const api = useRef<DockviewApi | null>(null);
   const renderPanelRef = useRef(renderPanel);
   const renderers = useRef(new Set<ReactPanelRenderer>());
+  const { activeDocument } = useEditorDocuments();
+  const activeEditorKind: EditorDocumentKind = activeDocument?.kind ?? 'level';
+  const dockEditorKind = useRef<EditorDocumentKind>(activeEditorKind);
   const [activeSidebarPanel, setActiveSidebarPanel] = useState<SidebarPanelId>(initialSidebarPanel);
   renderPanelRef.current = renderPanel;
 
@@ -178,21 +225,11 @@ export function WorkspaceDock({
       },
     });
     api.current = dock;
-    const saved = window.localStorage.getItem(storageKey(projectKey, 'current'));
-    try {
-      if (saved) dock.fromJSON(JSON.parse(saved) as SerializedDockview);
-      else createLayout(dock, 'Level Design');
-    } catch {
-      createLayout(dock, 'Level Design');
-    }
-    // Global Search/AI/VCS/Settings utilities never belong to a saved Dockview
-    // workspace. Hierarchy is deliberately not in this set anymore.
-    removeSidebarPanelsFromDock(dock);
-    if (!dock.activePanel) createLayout(dock, 'Level Design');
-    window.localStorage.setItem(storageKey(projectKey, 'current'), JSON.stringify(dock.toJSON()));
+    dockEditorKind.current = activeEditorKind;
+    restoreEditorWorkspace(dock, projectKey, activeEditorKind);
 
     const layoutSubscription = dock.onDidLayoutChange(() => {
-      window.localStorage.setItem(storageKey(projectKey, 'current'), JSON.stringify(dock.toJSON()));
+      persistEditorWorkspace(dock, projectKey, dockEditorKind.current);
     });
     const observer = new ResizeObserver(() =>
       dock.layout(host.current?.clientWidth ?? 0, host.current?.clientHeight ?? 0),
@@ -205,6 +242,9 @@ export function WorkspaceDock({
       dock.dispose();
       api.current = null;
     };
+    // Dockview is intentionally created once per project. Document changes are
+    // restored into the existing instance by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onReady, projectKey]);
 
   useEffect(() => {
@@ -213,7 +253,23 @@ export function WorkspaceDock({
 
   useEffect(() => {
     const dock = api.current;
+    if (!dock || dockEditorKind.current === activeEditorKind) return;
+
+    persistEditorWorkspace(dock, projectKey, dockEditorKind.current);
+    dockEditorKind.current = activeEditorKind;
+    restoreEditorWorkspace(dock, projectKey, activeEditorKind);
+  }, [activeEditorKind, projectKey]);
+
+  useEffect(() => {
+    const dock = api.current;
     if (!dock || !requestedLayout) return;
+    // The existing named presets are Level Editor layouts. Asset documents own
+    // their workspace and should not be replaced by a Level/Materials/Profiling
+    // preset just because one was requested through legacy chrome.
+    if (dockEditorKind.current !== 'level') {
+      onRequestHandled?.();
+      return;
+    }
     if (requestedLayout === 'Reset') createLayout(dock, 'Level Design');
     else {
       const saved = window.localStorage.getItem(storageKey(projectKey, requestedLayout));
@@ -222,6 +278,7 @@ export function WorkspaceDock({
       removeSidebarPanelsFromDock(dock);
       if (!dock.activePanel) createLayout(dock, requestedLayout);
     }
+    persistEditorWorkspace(dock, projectKey, 'level');
     onRequestHandled?.();
   }, [onRequestHandled, projectKey, requestedLayout]);
 
@@ -247,7 +304,7 @@ export function WorkspaceDock({
 
   useEffect(() => {
     const dock = api.current;
-    if (!dock || !requestedViewportCount) return;
+    if (!dock || !requestedViewportCount || dockEditorKind.current !== 'level') return;
     for (let index = 2; index <= 4; ++index) {
       const id = `viewport-${index}`;
       const existing = dock.getPanel(id);
@@ -262,10 +319,10 @@ export function WorkspaceDock({
         });
       } else if (index > requestedViewportCount && existing) existing.api.close();
     }
-  }, [requestedViewportCount]);
+  }, [requestedViewportCount, activeEditorKind]);
 
   return (
-    <div className="workspace-dock-shell">
+    <div className={`workspace-dock-shell workspace-dock-shell-editor-${activeEditorKind}`}>
       <aside
         aria-label={`${panelRegistry[activeSidebarPanel].title} sidebar`}
         className={`primary-sidebar primary-sidebar-${activeSidebarPanel}`}
