@@ -6,6 +6,20 @@
   overflow: hidden;
 }
 
+.shader-source-gutter span {
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+.shader-source-gutter span.active {
+  color: #d8e8f2;
+  background: #203746;
+}
+
+.shader-source-editor textarea[readonly] {
+  cursor: text;
+}
+
 .shader-side-panel {
   min-width: 0;
   min-height: 0;
