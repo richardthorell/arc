@@ -22,9 +22,9 @@ const registry = createEditorRegistry({
 afterEach(cleanup);
 
 describe('EditorDocumentTabs', () => {
-  it('renders the active level document and routes activation', () => {
+  it('renders the active level document with the world icon and routes activation', () => {
     const onActivate = vi.fn();
-    render(
+    const { container } = render(
       <EditorDocumentTabs
         documents={[
           {
@@ -45,8 +45,64 @@ describe('EditorDocumentTabs', () => {
     const tab = screen.getByRole('tab', { name: /World\.arcscene/ });
     expect(tab).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByLabelText('Unsaved changes')).toBeInTheDocument();
+    expect(container.querySelector('.lucide-globe-2')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Close World\.arcscene/ })).not.toBeInTheDocument();
 
     fireEvent.click(tab);
     expect(onActivate).toHaveBeenCalledWith('level:world');
+  });
+
+  it('renders shader documents as closeable code-document tabs', () => {
+    const onActivate = vi.fn();
+    const onClose = vi.fn();
+    const { container } = render(
+      <EditorDocumentTabs
+        documents={[
+          {
+            id: 'shader:pbr',
+            kind: 'shader',
+            title: 'pbr_lit.hlsl',
+            path: 'Assets/Shaders/pbr_lit.hlsl',
+            assetGuid: 'pbr',
+            dirty: false,
+            readOnly: false,
+          },
+        ]}
+        activeDocumentId="shader:pbr"
+        registry={registry}
+        onActivate={onActivate}
+        onClose={onClose}
+      />,
+    );
+
+    expect(container.querySelector('.lucide-file-code-2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close pbr_lit.hlsl' }));
+    expect(onClose).toHaveBeenCalledWith('shader:pbr');
+  });
+
+  it('prompts before closing a dirty shader document', () => {
+    render(
+      <EditorDocumentTabs
+        documents={[
+          {
+            id: 'shader:pbr',
+            kind: 'shader',
+            title: 'pbr_lit.hlsl',
+            path: 'Assets/Shaders/pbr_lit.hlsl',
+            assetGuid: 'pbr',
+            dirty: true,
+            readOnly: false,
+          },
+        ]}
+        activeDocumentId="shader:pbr"
+        registry={registry}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close pbr_lit.hlsl' }));
+    expect(screen.getByRole('dialog', { name: 'Save changes?' })).toBeInTheDocument();
+    expect(screen.getByText(/pbr_lit\.hlsl has unsaved changes/)).toBeInTheDocument();
   });
 });
