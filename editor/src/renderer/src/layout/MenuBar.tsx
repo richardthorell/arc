@@ -31,6 +31,7 @@ import { UiButton } from '../ui';
 import { WindowControls } from './WindowControls';
 
 type MenuBarProps = {
+  projectTitle?: string;
   onCommand: (command: CommandId) => void;
   canUndo?: boolean;
   canRedo?: boolean;
