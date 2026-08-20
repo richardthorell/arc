@@ -21,6 +21,7 @@ const shader: AssetItem = {
   guid: 'shader-guid',
   name: 'pbr_lit.hlsl',
   path: 'Assets/Shaders/pbr_lit.hlsl',
+  scope: 'project',
   kind: 'shader',
   status: 'ready',
   readOnly: false,
@@ -40,7 +41,30 @@ describe('editor registry asset routing', () => {
       title: 'pbr_lit.hlsl',
       path: 'Assets/Shaders/pbr_lit.hlsl',
       assetGuid: 'shader-guid',
+      assetScope: 'project',
       dirty: false,
+    });
+  });
+
+  it('keeps built-in shaders scoped to engine assets and read-only', () => {
+    const target = createEditorDocumentForAsset(
+      {
+        ...shader,
+        id: 'builtin-guid',
+        guid: 'builtin-guid',
+        name: 'default_unlit.frag',
+        path: 'builtin/shaders/default_unlit.frag',
+        scope: 'builtin',
+        readOnly: true,
+      },
+      registry,
+    );
+
+    expect(target?.document).toMatchObject({
+      id: 'shader:builtin-guid',
+      path: 'builtin/shaders/default_unlit.frag',
+      assetScope: 'builtin',
+      readOnly: true,
     });
   });
 
