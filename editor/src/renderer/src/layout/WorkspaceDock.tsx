@@ -125,6 +125,10 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
     addPanel(api, 'buildOutput', 'console', 'within');
     return;
   }
+
+  // Hierarchy is a Level Editor/workspace panel, not a global utility. Keep it
+  // open on the left in the default Level Design layout just as it was before
+  // the utility rail was introduced.
   addPanel(api, 'hierarchy', 'viewport', 'left');
   addPanel(api, 'inspector', 'viewport', 'right');
   addPanel(api, 'lighting', 'inspector', 'within');
