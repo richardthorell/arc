@@ -97,32 +97,38 @@ export const glslTokenizer: Monaco.languages.IMonarchLanguage = {
     '<<=',
     '>>=',
   ],
-  symbols: /[=><!~?:&|+\-*/^%]+/,
+  symbols: /[=><!~?:&|+\-*\/^%]+/,
   tokenizer: {
     root: [
       { include: '@whitespace' },
       [/#\s*[A-Za-z_]\w*/, 'keyword.directive'],
-      [/[A-Za-z_]\w*/, {
-        cases: {
-          '@keywords': 'keyword',
-          '@typeKeywords': 'type',
-          '@builtinFunctions': 'predefined',
-          '@builtinVariables': 'variable.predefined',
-          '@default': 'identifier',
+      [
+        /[A-Za-z_]\w*/,
+        {
+          cases: {
+            '@keywords': 'keyword',
+            '@typeKeywords': 'type',
+            '@builtinFunctions': 'predefined',
+            '@builtinVariables': 'variable.predefined',
+            '@default': 'identifier',
+          },
         },
-      }],
+      ],
       [/0[xX][0-9a-fA-F]+[uU]?/, 'number.hex'],
       [/(?:\d+\.\d*|\d*\.\d+)(?:[eE][+-]?\d+)?[fF]?/, 'number.float'],
       [/\d+[eE][+-]?\d+[fF]?/, 'number.float'],
       [/\d+[uU]?/, 'number'],
       [/[{}()[\]]/, '@brackets'],
       [/[;,.]/, 'delimiter'],
-      [/@symbols/, {
-        cases: {
-          '@operators': 'operator',
-          '@default': '',
+      [
+        /@symbols/,
+        {
+          cases: {
+            '@operators': 'operator',
+            '@default': '',
+          },
         },
-      }],
+      ],
       [/"([^"\\]|\\.)*$/, 'string.invalid'],
       [/"/, 'string', '@string'],
     ],
