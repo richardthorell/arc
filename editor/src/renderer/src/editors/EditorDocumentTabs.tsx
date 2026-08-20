@@ -1,13 +1,10 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileCode2, Globe2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import { UiButton } from '../ui';
 import { closeEditorDocumentInStore } from './editorDocuments';
 import type { EditorDocument, EditorRegistry } from './editorTypes';
-
-const DocumentIcon = ({ document }: { document: EditorDocument }) =>
-  document.kind === 'level' ? <Globe2 size={13} /> : <FileCode2 size={13} />;
 
 export function EditorDocumentTabs({
   documents,
@@ -46,6 +43,7 @@ export function EditorDocumentTabs({
       <div className="editor-document-tabs" role="tablist" aria-label="Open documents">
         {documents.map((document) => {
           const registration = registry[document.kind];
+          const Icon = registration.icon;
           const active = document.id === activeDocumentId;
           const closeable = registration.closeable ?? registration.allowMultiple;
           return (
@@ -65,7 +63,7 @@ export function EditorDocumentTabs({
                   .join('\n')}
                 type="button"
               >
-                <DocumentIcon document={document} />
+                <Icon size={13} />
                 <span>{document.title}</span>
                 {document.readOnly && <small>RO</small>}
                 {document.recovered && <small>Recovered</small>}
@@ -100,6 +98,7 @@ export function EditorDocumentTabs({
               </p>
               <div className="editor-document-close-actions">
                 <UiButton
+                  disabled={!registry[pendingClose.kind].save}
                   onClick={() => {
                     const registration = registry[pendingClose.kind];
                     if (!registration.save) return;
