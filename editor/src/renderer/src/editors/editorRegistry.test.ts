@@ -27,6 +27,17 @@ const shader: AssetItem = {
   readOnly: false,
 };
 
+const material: AssetItem = {
+  id: 'material-guid',
+  guid: 'material-guid',
+  name: 'M_Rock.arcmat',
+  path: 'Content/Materials/M_Rock.arcmat',
+  scope: 'project',
+  kind: 'material',
+  status: 'ready',
+  readOnly: false,
+};
+
 afterEach(resetEditorDocuments);
 
 describe('editor registry asset routing', () => {
@@ -68,6 +79,43 @@ describe('editor registry asset routing', () => {
     });
   });
 
+  it('maps material assets to independent material documents', () => {
+    const target = createEditorDocumentForAsset(material, registry);
+
+    expect(target?.registration.kind).toBe('material');
+    expect(target?.registration.allowMultiple).toBe(true);
+    expect(target?.document).toMatchObject({
+      id: 'material:material-guid',
+      kind: 'material',
+      title: 'M_Rock.arcmat',
+      path: 'Content/Materials/M_Rock.arcmat',
+      assetGuid: 'material-guid',
+      assetScope: 'project',
+      dirty: false,
+      readOnly: false,
+    });
+  });
+
+  it('forces built-in materials read-only', () => {
+    const target = createEditorDocumentForAsset(
+      {
+        ...material,
+        id: 'builtin-material-guid',
+        guid: 'builtin-material-guid',
+        path: 'builtin/materials/default.arcmat',
+        scope: 'builtin',
+        readOnly: false,
+      },
+      registry,
+    );
+
+    expect(target?.document).toMatchObject({
+      id: 'material:builtin-material-guid',
+      assetScope: 'builtin',
+      readOnly: true,
+    });
+  });
+
   it('opens the same shader asset only once and activates it again', () => {
     expect(openAssetEditorDocument(shader, registry)).toBe(true);
     expect(openAssetEditorDocument(shader, registry)).toBe(true);
@@ -75,5 +123,17 @@ describe('editor registry asset routing', () => {
     const state = getEditorDocumentsSnapshot();
     expect(state.documents).toHaveLength(1);
     expect(state.activeDocumentId).toBe('shader:shader-guid');
+  });
+
+  it('keeps multiple material documents while de-duplicating the same asset', () => {
+    expect(openAssetEditorDocument(material, registry)).toBe(true);
+    expect(openAssetEditorDocument({ ...material, id: 'water', guid: 'water', name: 'M_Water.arcmat' }, registry)).toBe(
+      true,
+    );
+    expect(openAssetEditorDocument(material, registry)).toBe(true);
+
+    const state = getEditorDocumentsSnapshot();
+    expect(state.documents.map((document) => document.id)).toEqual(['material:material-guid', 'material:water']);
+    expect(state.activeDocumentId).toBe('material:material-guid');
   });
 });

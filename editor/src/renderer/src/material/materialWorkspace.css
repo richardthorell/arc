@@ -1,0 +1,20 @@
+/* Material is a document-owned editor workspace, so the global document tab
+   and material toolbar are the only chrome above its surface. */
+.workbench-shell .workspace-dock-shell-editor-material .workspace-dock {
+  --dv-tabs-and-actions-container-height: 0px;
+}
+
+.workbench-shell .workspace-dock-shell-editor-material .workspace-dock .dv-tabs-and-actions-container {
+  display: none;
+}
+
+/* The transformed graph plane is visual only outside node cards. Let blank
+   canvas gestures reach the canvas for box selection/panning while nodes keep
+   their normal pointer behavior. */
+.material-graph-transform {
+  pointer-events: none;
+}
+
+.material-graph-node {
+  pointer-events: auto;
+}
