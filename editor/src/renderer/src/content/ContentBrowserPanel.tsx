@@ -3,6 +3,7 @@ import { ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search, Star } from 
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
+import { openAssetEditorDocument } from '../editors/editorRegistry';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
@@ -127,6 +128,11 @@ export function ContentBrowserPanel({
       localStorage.setItem('arc.content.favorites', JSON.stringify([...next]));
       return next;
     });
+  };
+
+  const activateAsset = (asset: AssetItem) => {
+    if (openAssetEditorDocument(asset)) return;
+    if (asset.kind === 'prefab') onInstantiatePrefab(asset.path);
   };
 
   return (
@@ -272,7 +278,7 @@ export function ContentBrowserPanel({
                   draggable={Boolean(asset.guid)}
                   key={asset.id}
                   onClick={(event) => select(asset, event.ctrlKey || event.metaKey)}
-                  onDoubleClick={() => asset.kind === 'prefab' && onInstantiatePrefab(asset.path)}
+                  onDoubleClick={() => activateAsset(asset)}
                   onDragStart={(event) => {
                     event.dataTransfer.setData('application/x-arc-asset', assetPayload(asset));
                     event.dataTransfer.effectAllowed = 'copy';
