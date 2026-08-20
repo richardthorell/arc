@@ -113,7 +113,8 @@ export const syncSingletonEditorDocumentInStore = (kind: EditorDocumentKind, doc
 export const activateEditorDocumentInStore = (documentId: string) =>
   publish(activateEditorDocument(sharedState, documentId));
 
-export const closeEditorDocumentInStore = (documentId: string) => publish(closeEditorDocument(sharedState, documentId));
+export const closeEditorDocumentInStore = (documentId: string) =>
+  publish(closeEditorDocument(sharedState, documentId));
 
 export const updateEditorDocumentInStore = (
   documentId: string,
@@ -141,12 +142,9 @@ export const useEditorDocuments = () => {
     closeEditorDocumentInStore(documentId);
   }, []);
 
-  const updateDocument = useCallback(
-    (documentId: string, patch: Partial<Omit<EditorDocument, 'id' | 'kind'>>) => {
-      updateEditorDocumentInStore(documentId, patch);
-    },
-    [],
-  );
+  const updateDocument = useCallback((documentId: string, patch: Partial<Omit<EditorDocument, 'id' | 'kind'>>) => {
+    updateEditorDocumentInStore(documentId, patch);
+  }, []);
 
   const activeDocument = useMemo(
     () => state.documents.find((entry) => entry.id === state.activeDocumentId) ?? null,
