@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { AlertCircle, FileCode2, Play, RefreshCw, Save } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -16,6 +16,11 @@ import '../tools/tools.css';
 import './ShaderSourceEditor.css';
 
 const includePattern = /^\s*#\s*include\s*["<]([^">]+)[">]/gm;
+
+const activeLineForTextarea = (target: HTMLTextAreaElement) => {
+  const caret = target.selectionDirection === 'backward' ? target.selectionStart : target.selectionEnd;
+  return target.value.slice(0, caret).split('\n').length;
+};
 
 export function ShaderEditorActions({ document }: { document: EditorDocument }) {
   const state = useShaderDocumentState(document);
@@ -64,6 +69,7 @@ export function ShaderSourceEditor({
 }) {
   const state = useShaderDocumentState(document);
   const gutterRef = useRef<HTMLDivElement>(null);
+  const [activeLine, setActiveLine] = useState(1);
   const includes = [...state.source.matchAll(includePattern)].map((match) => match[1]);
   const dirty = state.source !== state.confirmed;
 
@@ -91,15 +97,20 @@ export function ShaderSourceEditor({
         <div className="shader-source-editor">
           <div ref={gutterRef} className="shader-source-gutter" aria-hidden="true">
             {state.source.split('\n').map((_, index) => (
-              <span key={index}>{index + 1}</span>
+              <span key={index} className={activeLine === index + 1 ? 'active' : undefined}>
+                {index + 1}
+              </span>
             ))}
           </div>
           <textarea
             aria-label="Shader source"
-            disabled={state.loading || document.readOnly}
+            disabled={state.loading}
+            readOnly={document.readOnly}
             spellCheck={false}
             value={state.source}
             onChange={(event) => setShaderDocumentSource(document, event.target.value)}
+            onFocus={(event) => setActiveLine(activeLineForTextarea(event.currentTarget))}
+            onSelect={(event) => setActiveLine(activeLineForTextarea(event.currentTarget))}
             onScroll={(event) => {
               if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop;
             }}
