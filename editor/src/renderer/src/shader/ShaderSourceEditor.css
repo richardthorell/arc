@@ -1,0 +1,7 @@
+.shader-editor-body {
+  grid-template-columns: 210px minmax(360px, 1fr) minmax(230px, 368px);
+}
+
+.shader-source-gutter {
+  overflow: hidden;
+}
