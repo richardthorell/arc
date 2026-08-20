@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Image, Search, X } from 'lucide-react';
+import { ChevronDown, Image, Plus, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
+
+import { buildAssetCreation } from '../content/assetCreation';
+import { openAssetEditorDocument } from '../editors/editorRegistry';
 
 export type AssetPickerItem = {
   id: string;
@@ -28,6 +31,8 @@ export type AssetPickerProps = {
   mixed?: boolean;
   referenceMode?: 'path' | 'guid';
   thumbnailProvider?: AssetThumbnailProvider;
+  createNewLabel?: string;
+  onCreateNew?: (name: string) => Promise<string>;
   onChange: (path: string) => void;
 };
 
@@ -58,6 +63,17 @@ const sourceLabelOf = (asset: AssetPickerItem | undefined, assetTypeLabel: strin
               ? 'Project'
               : '';
   return scope ? `${scope} ${assetTypeLabel}` : assetTypeLabel;
+};
+const normalizedPath = (value: string) => value.replaceAll('\\', '/').toLocaleLowerCase();
+const projectContentRootFromAssets = (assets: ReadonlyArray<AssetPickerItem>) => {
+  const projectAsset = assets.find(
+    (asset) =>
+      (asset.scope === undefined || asset.scope === 'project') &&
+      !asset.path.startsWith('arc://') &&
+      !/^[a-z]:[\\/]/i.test(asset.path) &&
+      !asset.path.startsWith('/'),
+  );
+  return projectAsset?.path.replaceAll('\\', '/').split('/')[0] || 'Content';
 };
 
 type PrimitiveMeshKind = 'plane' | 'cube' | 'sphere' | 'cylinder' | 'cone' | 'capsule';
@@ -181,6 +197,8 @@ export function AssetPicker({
   mixed = false,
   referenceMode = 'path',
   thumbnailProvider,
+  createNewLabel,
+  onCreateNew,
   onChange,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
@@ -254,11 +272,21 @@ export function AssetPicker({
           anchorRef={anchorRef}
           assets={candidates}
           assetTypeLabel={assetTypeLabel}
+          createNewLabel={createNewLabel}
           filter={filter}
           label={label}
           selectedValue={value}
           thumbnailProvider={thumbnailProvider}
           onClose={() => setOpen(false)}
+          onCreateNew={
+            onCreateNew
+              ? async (name) => {
+                  const next = await onCreateNew(name);
+                  onChange(next);
+                  setOpen(false);
+                }
+              : undefined
+          }
           onFilter={setFilter}
           valueFor={valueFor}
           onSelect={(asset) => {
@@ -275,8 +303,32 @@ export function TexturePicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
   return <AssetPicker {...props} assetKinds={['texture', 'environment']} assetTypeLabel="Texture" />;
 }
 
-export function MaterialPicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
-  return <AssetPicker {...props} assetKinds={['material']} assetTypeLabel="Material" />;
+export function MaterialPicker(
+  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew'>,
+) {
+  const createMaterial = async (name: string) => {
+    const contentRoot = projectContentRootFromAssets(props.assets);
+    const definition = buildAssetCreation(
+      { root: '', assetRoot: contentRoot },
+      { kind: 'material', name, folder: contentRoot },
+    );
+    if (props.assets.some((asset) => normalizedPath(asset.path) === normalizedPath(definition.asset.path))) {
+      throw new Error(`A material already exists at ${definition.asset.path}`);
+    }
+    await window.arc.projects.writeText(definition.asset.path, definition.contents);
+    openAssetEditorDocument(definition.asset);
+    return definition.asset.path;
+  };
+
+  return (
+    <AssetPicker
+      {...props}
+      assetKinds={['material']}
+      assetTypeLabel="Material"
+      createNewLabel="Create New Material…"
+      onCreateNew={createMaterial}
+    />
+  );
 }
 
 export function PrefabPicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
@@ -311,11 +363,13 @@ function AssetPickerPopover({
   anchorRef,
   assets,
   assetTypeLabel,
+  createNewLabel,
   filter,
   label,
   selectedValue,
   thumbnailProvider,
   onClose,
+  onCreateNew,
   onFilter,
   onSelect,
   valueFor,
@@ -323,17 +377,23 @@ function AssetPickerPopover({
   anchorRef: React.RefObject<HTMLElement | null>;
   assets: ReadonlyArray<AssetPickerItem>;
   assetTypeLabel: string;
+  createNewLabel?: string;
   filter: string;
   label: string;
   selectedValue: string;
   thumbnailProvider?: AssetThumbnailProvider;
   onClose: () => void;
+  onCreateNew?: (name: string) => Promise<void>;
   onFilter: (value: string) => void;
   onSelect: (asset: AssetPickerItem) => void;
   valueFor: (asset: AssetPickerItem) => string;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ left: 8, top: 8 });
+  const [createMode, setCreateMode] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [creating, setCreating] = useState(false);
   const shown = assets.filter((asset) =>
     `${asset.name} ${asset.path}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()),
   );
@@ -353,7 +413,14 @@ function AssetPickerPopover({
       if (!popoverRef.current?.contains(target) && !anchorRef.current?.contains(target)) onClose();
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        if (createMode && !creating) {
+          setCreateMode(false);
+          setCreateError('');
+        } else {
+          onClose();
+        }
+      }
     };
     document.addEventListener('pointerdown', outside, true);
     document.addEventListener('keydown', escape);
@@ -361,7 +428,20 @@ function AssetPickerPopover({
       document.removeEventListener('pointerdown', outside, true);
       document.removeEventListener('keydown', escape);
     };
-  }, [anchorRef, onClose]);
+  }, [anchorRef, createMode, creating, onClose]);
+
+  const submitCreate = async () => {
+    if (!onCreateNew || !createName.trim() || creating) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      await onCreateNew(createName);
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return createPortal(
     <section
@@ -378,37 +458,100 @@ function AssetPickerPopover({
           <X size={14} />
         </button>
       </header>
-      <label className="asset-picker-search">
-        <Search size={14} />
-        <input
-          aria-label={`Search ${assetTypeLabel.toLocaleLowerCase()} assets`}
-          autoFocus
-          onChange={(event) => onFilter(event.target.value)}
-          placeholder={`Search ${assetTypeLabel.toLocaleLowerCase()}s…`}
-          value={filter}
-        />
-      </label>
+      {!createMode && (
+        <label className="asset-picker-search">
+          <Search size={14} />
+          <input
+            aria-label={`Search ${assetTypeLabel.toLocaleLowerCase()} assets`}
+            autoFocus
+            onChange={(event) => onFilter(event.target.value)}
+            placeholder={`Search ${assetTypeLabel.toLocaleLowerCase()}s…`}
+            value={filter}
+          />
+        </label>
+      )}
       <div className="asset-picker-grid">
-        {shown.map((asset) => (
-          <button
-            aria-label={`Select ${displayNameOf(asset)}`}
-            className={valueFor(asset) === selectedValue ? 'is-selected' : ''}
-            key={asset.id}
-            onClick={() => onSelect(asset)}
-            type="button"
+        {createMode ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitCreate();
+            }}
+            style={{
+              gridColumn: '1 / -1',
+              display: 'grid',
+              gap: 8,
+              padding: 10,
+            }}
           >
-            <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
-            <strong>{displayNameOf(asset)}</strong>
-            <small>
-              {sourceLabelOf(asset, assetTypeLabel)} · {asset.status}
-            </small>
-          </button>
-        ))}
-        {!shown.length && (
-          <div className="asset-picker-empty">
-            <Image size={22} />
-            <span>{`No matching ${assetTypeLabel.toLocaleLowerCase()}s`}</span>
-          </div>
+            <strong>{createNewLabel ?? `Create New ${assetTypeLabel}`}</strong>
+            <input
+              aria-label={`New ${assetTypeLabel.toLocaleLowerCase()} name`}
+              autoFocus
+              disabled={creating}
+              onChange={(event) => setCreateName(event.target.value)}
+              placeholder={`New ${assetTypeLabel}`}
+              value={createName}
+              style={{ width: '100%', boxSizing: 'border-box' }}
+            />
+            {createError && <small style={{ color: 'var(--arc-color-danger)' }}>{createError}</small>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+              <button
+                disabled={creating}
+                onClick={() => {
+                  setCreateMode(false);
+                  setCreateError('');
+                }}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button disabled={creating || !createName.trim()} type="submit">
+                {creating ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {onCreateNew && (
+              <button
+                aria-label={createNewLabel ?? `Create New ${assetTypeLabel}`}
+                onClick={() => {
+                  setCreateName(`New ${assetTypeLabel}`);
+                  setCreateError('');
+                  setCreateMode(true);
+                }}
+                type="button"
+              >
+                <span className="asset-thumbnail">
+                  <Plus aria-hidden="true" size={18} />
+                </span>
+                <strong>{createNewLabel ?? `Create New ${assetTypeLabel}`}</strong>
+                <small>Project asset</small>
+              </button>
+            )}
+            {shown.map((asset) => (
+              <button
+                aria-label={`Select ${displayNameOf(asset)}`}
+                className={valueFor(asset) === selectedValue ? 'is-selected' : ''}
+                key={asset.id}
+                onClick={() => onSelect(asset)}
+                type="button"
+              >
+                <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
+                <strong>{displayNameOf(asset)}</strong>
+                <small>
+                  {sourceLabelOf(asset, assetTypeLabel)} · {asset.status}
+                </small>
+              </button>
+            ))}
+            {!shown.length && !onCreateNew && (
+              <div className="asset-picker-empty">
+                <Image size={22} />
+                <span>{`No matching ${assetTypeLabel.toLocaleLowerCase()}s`}</span>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>,
