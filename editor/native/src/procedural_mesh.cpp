@@ -495,12 +495,18 @@ editor_primitive_type procedural_mesh_type(const procedural_mesh_parameters& par
         [](const auto& value) noexcept
         {
             using type = std::decay_t<decltype(value)>;
-            if constexpr (std::is_same_v<type, plane_mesh_parameters>) return editor_primitive_type::plane;
-            if constexpr (std::is_same_v<type, cube_mesh_parameters>) return editor_primitive_type::cube;
-            if constexpr (std::is_same_v<type, sphere_mesh_parameters>) return editor_primitive_type::sphere;
-            if constexpr (std::is_same_v<type, cylinder_mesh_parameters>) return editor_primitive_type::cylinder;
-            if constexpr (std::is_same_v<type, cone_mesh_parameters>) return editor_primitive_type::cone;
-            return editor_primitive_type::capsule;
+            if constexpr (std::is_same_v<type, plane_mesh_parameters>)
+                return editor_primitive_type::plane;
+            else if constexpr (std::is_same_v<type, cube_mesh_parameters>)
+                return editor_primitive_type::cube;
+            else if constexpr (std::is_same_v<type, sphere_mesh_parameters>)
+                return editor_primitive_type::sphere;
+            else if constexpr (std::is_same_v<type, cylinder_mesh_parameters>)
+                return editor_primitive_type::cylinder;
+            else if constexpr (std::is_same_v<type, cone_mesh_parameters>)
+                return editor_primitive_type::cone;
+            else
+                return editor_primitive_type::capsule;
         },
         parameters);
 }
