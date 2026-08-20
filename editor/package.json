@@ -29,6 +29,7 @@
     "@tanstack/react-virtual": "3.14.5",
     "dockview": "7.0.2",
     "lucide-react": "1.23.0",
+    "monaco-editor": "0.56.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "zod": "4.4.3",

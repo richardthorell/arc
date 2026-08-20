@@ -1,0 +1,151 @@
+import type * as Monaco from 'monaco-editor/editor';
+
+import { glslSymbols } from './glslBuiltins';
+
+export const glslKeywords = [
+  'attribute',
+  'break',
+  'buffer',
+  'case',
+  'centroid',
+  'coherent',
+  'const',
+  'continue',
+  'default',
+  'discard',
+  'do',
+  'else',
+  'flat',
+  'for',
+  'highp',
+  'if',
+  'in',
+  'inout',
+  'invariant',
+  'layout',
+  'lowp',
+  'mediump',
+  'noperspective',
+  'out',
+  'patch',
+  'precision',
+  'readonly',
+  'restrict',
+  'return',
+  'sample',
+  'shared',
+  'smooth',
+  'struct',
+  'subroutine',
+  'switch',
+  'uniform',
+  'varying',
+  'volatile',
+  'while',
+  'writeonly',
+];
+
+export const glslTypeNames = glslSymbols.filter((symbol) => symbol.kind === 'type').map((symbol) => symbol.name);
+export const glslBuiltinFunctionNames = glslSymbols
+  .filter((symbol) => symbol.kind === 'function')
+  .map((symbol) => symbol.name);
+export const glslBuiltinVariableNames = glslSymbols
+  .filter((symbol) => symbol.kind === 'variable')
+  .map((symbol) => symbol.name);
+
+export const glslTokenizer: Monaco.languages.IMonarchLanguage = {
+  defaultToken: '',
+  tokenPostfix: '.glsl',
+  keywords: glslKeywords,
+  typeKeywords: glslTypeNames,
+  builtinFunctions: glslBuiltinFunctionNames,
+  builtinVariables: glslBuiltinVariableNames,
+  operators: [
+    '=',
+    '>',
+    '<',
+    '!',
+    '~',
+    '?',
+    ':',
+    '==',
+    '<=',
+    '>=',
+    '!=',
+    '&&',
+    '||',
+    '++',
+    '--',
+    '+',
+    '-',
+    '*',
+    '/',
+    '&',
+    '|',
+    '^',
+    '%',
+    '<<',
+    '>>',
+    '+=',
+    '-=',
+    '*=',
+    '/=',
+    '&=',
+    '|=',
+    '^=',
+    '%=',
+    '<<=',
+    '>>=',
+  ],
+  symbols: /[=><!~?:&|+\-*\/^%]+/,
+  tokenizer: {
+    root: [
+      { include: '@whitespace' },
+      [/#\s*[A-Za-z_]\w*/, 'keyword.directive'],
+      [
+        /[A-Za-z_]\w*/,
+        {
+          cases: {
+            '@keywords': 'keyword',
+            '@typeKeywords': 'type',
+            '@builtinFunctions': 'predefined',
+            '@builtinVariables': 'variable.predefined',
+            '@default': 'identifier',
+          },
+        },
+      ],
+      [/0[xX][0-9a-fA-F]+[uU]?/, 'number.hex'],
+      [/(?:\d+\.\d*|\d*\.\d+)(?:[eE][+-]?\d+)?[fF]?/, 'number.float'],
+      [/\d+[eE][+-]?\d+[fF]?/, 'number.float'],
+      [/\d+[uU]?/, 'number'],
+      [/[{}()[\]]/, '@brackets'],
+      [/[;,.]/, 'delimiter'],
+      [
+        /@symbols/,
+        {
+          cases: {
+            '@operators': 'operator',
+            '@default': '',
+          },
+        },
+      ],
+      [/"([^"\\]|\\.)*$/, 'string.invalid'],
+      [/"/, 'string', '@string'],
+    ],
+    whitespace: [
+      [/[ \t\r\n]+/, 'white'],
+      [/\/\*/, 'comment', '@comment'],
+      [/\/\/.*$/, 'comment'],
+    ],
+    comment: [
+      [/[^/*]+/, 'comment'],
+      [/\*\//, 'comment', '@pop'],
+      [/[/*]/, 'comment'],
+    ],
+    string: [
+      [/[^\\"]+/, 'string'],
+      [/\\./, 'string.escape'],
+      [/"/, 'string', '@pop'],
+    ],
+  },
+};

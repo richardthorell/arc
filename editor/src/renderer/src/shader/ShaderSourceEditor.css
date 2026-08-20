@@ -2,27 +2,21 @@
   grid-template-columns: minmax(360px, 1fr) minmax(230px, 442px);
 }
 
-.shader-source-gutter {
-  overflow: hidden;
+.shader-source-editor {
+  display: block;
+  position: relative;
 }
 
-.shader-source-gutter span {
-  margin: 0 -8px;
-  padding: 0 8px;
+.shader-code-editor {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
-.shader-source-gutter span.active {
-  color: #d8f3f5;
-  background: rgba(27, 151, 168, 0.28);
-}
-
-.shader-source-editor textarea::selection {
-  color: inherit;
-  background: rgba(22, 154, 177, 0.48);
-}
-
-.shader-source-editor textarea[readonly] {
-  cursor: text;
+.shader-code-editor.is-loading {
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 .shader-side-panel {
