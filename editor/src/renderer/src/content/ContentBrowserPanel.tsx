@@ -314,7 +314,9 @@ export function ContentBrowserPanel({
                 </button>
                 {createMenuOpen && createMenu(creationFolder)}
               </div>
-              <button onClick={() => onCommand('file.importScene')}>Import</button>
+              <button onClick={() => onCommand('file.importScene')} title="Import scene or model asset">
+                Import
+              </button>
               <nav>
                 <button onClick={() => setFolder('')}>{browserSource === 'builtin' ? 'Engine' : 'Content'}</button>
                 {crumbs.map((crumb, index) => (
