@@ -1,0 +1,9 @@
+/* Material is a document-owned editor workspace, so the global document tab
+   and material toolbar are the only chrome above its surface. */
+.workbench-shell .workspace-dock-shell-editor-material .workspace-dock {
+  --dv-tabs-and-actions-container-height: 0px;
+}
+
+.workbench-shell .workspace-dock-shell-editor-material .workspace-dock .dv-tabs-and-actions-container {
+  display: none;
+}
