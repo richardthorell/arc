@@ -85,4 +85,67 @@ describe('Mesh Renderer asset picker', () => {
 
     expect(onValue).toHaveBeenCalledWith('meshRenderer.materialPath', '__arc_primitive__/cube', true);
   });
+
+  it('shows shape-specific procedural controls and routes subdivision edits to the native host', async () => {
+    const onValue = vi.fn();
+    render(
+      <SchemaComponentCard
+        collapsed={false}
+        context={{
+          selectionCount: 1,
+          meshRenderer: { meshPath: 'arc://primitive/sphere' },
+          proceduralMesh: { type: 'sphere' as const, radius: 0.5, segments: 32, rings: 16 },
+        }}
+        schema={{ id: 'meshRenderer', title: 'Mesh Renderer', fields: [] }}
+        onToggle={() => undefined}
+        onValue={onValue}
+      />,
+    );
+
+    expect(screen.getByText('Procedural Mesh · sphere')).toBeInTheDocument();
+    expect(screen.getByLabelText('Radius')).toHaveValue('0.500');
+    expect(screen.getByLabelText('Segments')).toHaveValue('32');
+    expect(screen.getByLabelText('Rings')).toHaveValue('16');
+
+    await userEvent.clear(screen.getByLabelText('Segments'));
+    await userEvent.type(screen.getByLabelText('Segments'), '64');
+    await userEvent.tab();
+
+    expect(onValue).toHaveBeenCalledWith(
+      'meshRenderer.materialPath',
+      '__arc_primitive_parameter__/segments/64',
+      true,
+    );
+  });
+
+  it('exposes per-axis subdivisions for cube procedural meshes', () => {
+    render(
+      <SchemaComponentCard
+        collapsed={false}
+        context={{
+          selectionCount: 1,
+          meshRenderer: { meshPath: 'arc://primitive/cube' },
+          proceduralMesh: {
+            type: 'cube' as const,
+            width: 1,
+            height: 1,
+            depth: 1,
+            segmentsX: 1,
+            segmentsY: 1,
+            segmentsZ: 1,
+          },
+        }}
+        schema={{ id: 'meshRenderer', title: 'Mesh Renderer', fields: [] }}
+        onToggle={() => undefined}
+        onValue={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText('Width')).toBeInTheDocument();
+    expect(screen.getByLabelText('Height')).toBeInTheDocument();
+    expect(screen.getByLabelText('Depth')).toBeInTheDocument();
+    expect(screen.getByLabelText('Segments X')).toBeInTheDocument();
+    expect(screen.getByLabelText('Segments Y')).toBeInTheDocument();
+    expect(screen.getByLabelText('Segments Z')).toBeInTheDocument();
+  });
 });
