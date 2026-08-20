@@ -76,6 +76,5 @@ export const saveActiveEditorDocument = async (registry: EditorRegistry | null =
   if (!document || !registry) return false;
   const registration = registry[document.kind];
   if (!registration.save) return false;
-  await registration.save(document);
-  return true;
+  return registration.save(document);
 };
