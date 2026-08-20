@@ -30,7 +30,7 @@ const shaderRegistration: EditorRegistration = {
     assetGuid: asset.guid,
     assetScope: asset.scope,
     dirty: false,
-    readOnly: Boolean(asset.readOnly),
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
   }),
   render: (document) => createElement(ShaderSourceEditor, { document }),
   renderToolbar: (document) => createElement(ShaderSourceEditorToolbar, { document }),
