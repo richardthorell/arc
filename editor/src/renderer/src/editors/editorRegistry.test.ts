@@ -55,7 +55,7 @@ describe('editor registry asset routing', () => {
         name: 'default_unlit.frag',
         path: 'builtin/shaders/default_unlit.frag',
         scope: 'builtin',
-        readOnly: true,
+        readOnly: false,
       },
       registry,
     );
