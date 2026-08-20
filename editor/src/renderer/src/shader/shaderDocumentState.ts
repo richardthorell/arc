@@ -8,6 +8,7 @@ export type ShaderDocumentState = {
   documentId: string;
   path: string;
   guid?: string;
+  scope?: EditorDocument['assetScope'];
   readOnly: boolean;
   source: string;
   confirmed: string;
@@ -25,6 +26,7 @@ const initialState = (document: EditorDocument): ShaderDocumentState => ({
   documentId: document.id,
   path: document.path ?? '',
   guid: document.assetGuid,
+  scope: document.assetScope,
   readOnly: document.readOnly,
   source: '',
   confirmed: '',
@@ -54,7 +56,7 @@ const ensureState = (document: EditorDocument) => {
     return next;
   }
 
-  if (current.path !== (document.path ?? '')) {
+  if (current.path !== (document.path ?? '') || current.scope !== document.assetScope) {
     const next = initialState(document);
     states.set(document.id, next);
     emit(document.id);
@@ -92,9 +94,10 @@ export const loadShaderDocument = async (document: EditorDocument, force = false
 
   setState(document.id, { loading: true, message: '' });
   try {
-    const file = await window.arc.projects.readText(document.path);
+    const scope = document.assetScope === 'builtin' ? 'builtin' : 'project';
+    const file = await window.arc.projects.readText(document.path, scope);
     const latest = states.get(document.id);
-    if (!latest || latest.path !== document.path) return false;
+    if (!latest || latest.path !== document.path || latest.scope !== document.assetScope) return false;
     setState(document.id, {
       source: file.text,
       confirmed: file.text,
@@ -116,6 +119,7 @@ export const loadShaderDocument = async (document: EditorDocument, force = false
 
 export const setShaderDocumentSource = (document: EditorDocument, source: string) => {
   const current = ensureState(document);
+  if (document.readOnly || current.readOnly) return;
   setState(document.id, { source });
   updateEditorDocumentInStore(document.id, { dirty: source !== current.confirmed });
 };
@@ -150,6 +154,10 @@ export const saveShaderDocument = async (document: EditorDocument): Promise<bool
 
 export const compileShaderDocument = async (document: EditorDocument): Promise<boolean> => {
   const current = ensureState(document);
+  if (document.readOnly || current.readOnly) {
+    setState(document.id, { message: 'Built-in shaders are read-only and cannot be recompiled from the editor' });
+    return false;
+  }
   const guid = document.assetGuid ?? current.guid;
   if (!guid) {
     setState(document.id, { message: 'This shader has no registered asset GUID and cannot be compiled' });
@@ -201,7 +209,7 @@ export const useShaderDocumentState = (document: EditorDocument) => {
   useEffect(() => subscribe(document.id, () => forceUpdate((value) => value + 1)), [document.id]);
   useEffect(() => {
     void loadShaderDocument(document);
-  }, [document.id, document.path]);
+  }, [document.assetScope, document.id, document.path]);
 
   return states.get(document.id) ?? state;
 };
