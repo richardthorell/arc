@@ -1,0 +1,47 @@
+.shader-editor-body {
+  grid-template-columns: minmax(360px, 1fr) minmax(230px, 442px);
+}
+
+.shader-source-gutter {
+  overflow: hidden;
+}
+
+.shader-source-gutter span {
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+
+.shader-source-gutter span.active {
+  color: #d8f3f5;
+  background: rgba(27, 151, 168, 0.28);
+}
+
+.shader-source-editor textarea::selection {
+  color: inherit;
+  background: rgba(22, 154, 177, 0.48);
+}
+
+.shader-source-editor textarea[readonly] {
+  cursor: text;
+}
+
+.shader-side-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(220px, 3fr) minmax(180px, 2fr);
+  overflow: hidden;
+  border-left: 1px solid var(--arc-border-subtle);
+  background: #121b21;
+}
+
+.shader-side-panel .shader-preview,
+.shader-side-panel .shader-include-tree {
+  min-height: 0;
+  border-left: 0;
+  border-right: 0;
+}
+
+.shader-side-panel .shader-preview {
+  border-bottom: 1px solid var(--arc-border-subtle);
+}

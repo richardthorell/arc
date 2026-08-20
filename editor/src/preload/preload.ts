@@ -16,6 +16,7 @@ import type {
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
 import { createAssetSourceBridge } from './assetSourceBridge';
+import { readBuiltinTextFile } from './builtinTextReader';
 
 export type ArcStartupState = {
   appVersion: string;
@@ -189,7 +190,16 @@ const arcApi = {
     removeRecent: (descriptorPath: string): Promise<void> => ipcRenderer.invoke('project:removeRecent', descriptorPath),
     delete: (descriptorPath: string): Promise<ArcProjectOperationResult> =>
       ipcRenderer.invoke('project:delete', descriptorPath),
-    readText: (path: string): Promise<ProjectTextFile> => ipcRenderer.invoke('project:readText', path),
+    readText: (path: string, scope: 'project' | 'builtin' = 'project'): Promise<ProjectTextFile> =>
+      scope === 'builtin'
+        ? Promise.resolve(
+            readBuiltinTextFile(path, {
+              environmentRoot: process.env.ARC_BUILTIN_ASSETS_PATH,
+              resourcesPath: process.resourcesPath,
+              cwd: process.cwd(),
+            }),
+          )
+        : ipcRenderer.invoke('project:readText', path),
     writeText: (path: string, text: string): Promise<{ succeeded: boolean }> =>
       ipcRenderer.invoke('project:writeText', path, text),
   },
