@@ -18,8 +18,8 @@ import {
 import type { ActivityRegistration, PanelRegistration, WorkbenchPanelId } from './workbenchTypes';
 
 // Shared panel metadata. Dockview consumes this for dockable tab presentation,
-// while the primary sidebar reuses the same title/icon metadata for its fixed
-// activity-hosted panels.
+// while the global utility rail reuses the same title/icon metadata for its
+// drawer-hosted tools.
 export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   hierarchy: {
     id: 'hierarchy',
@@ -87,19 +87,21 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
   settings: { id: 'settings', title: 'Settings', icon: Settings, defaultRegion: 'left', activityId: 'settings' },
 };
 
-export const sidebarPanelIds = ['hierarchy', 'search', 'aiAssistant', 'versionControl'] as const;
+export const sidebarPanelIds = ['hierarchy', 'search', 'aiAssistant', 'versionControl', 'settings'] as const;
 export type SidebarPanelId = (typeof sidebarPanelIds)[number];
 
 export const isSidebarPanel = (panel: WorkbenchPanelId): panel is SidebarPanelId =>
   (sidebarPanelIds as readonly WorkbenchPanelId[]).includes(panel);
 
-// The activity rail is intentionally small and stable. It switches the fixed
-// primary sidebar only; it does not rearrange or activate Dockview groups.
+// Keep the scene registration for persisted-layout compatibility and for the
+// Level Editor hierarchy panel, but the ActivityBar intentionally excludes it.
+// The visible rail contains only document-independent global utilities.
 export const activityRegistry: ActivityRegistration[] = [
   { id: 'scene', title: 'Hierarchy', icon: FolderTree, panelId: 'hierarchy' },
   { id: 'search', title: 'Search', icon: Search, panelId: 'search' },
   { id: 'aiAssistant', title: 'AI Gateway', icon: Bot, panelId: 'aiAssistant' },
   { id: 'versionControl', title: 'Version Control', icon: GitBranch, panelId: 'versionControl' },
+  { id: 'settings', title: 'Settings', icon: Settings, panelId: 'settings' },
 ];
 
 export const dockPanelIds = {
