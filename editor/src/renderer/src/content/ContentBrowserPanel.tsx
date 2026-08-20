@@ -141,6 +141,7 @@ export function ContentBrowserPanel({
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
   const crumbs = folder ? folder.split('/') : [];
   const contentRoot = project ? projectAssetRootPath(project) : 'Content';
+  const creationFolder = browserSource === 'project' ? folder : contentRoot;
 
   const select = (asset: AssetItem, additive: boolean) => {
     setSelection((current) => {
@@ -167,7 +168,7 @@ export function ContentBrowserPanel({
     if (asset.kind === 'prefab') onInstantiatePrefab(asset.path);
   };
 
-  const beginCreate = (nextKind: CreateKind, targetFolder = folder) => {
+  const beginCreate = (nextKind: CreateKind, targetFolder = creationFolder) => {
     setCreateMenuOpen(false);
     setCreateContextMenu(null);
     setCreateKind(nextKind);
@@ -243,7 +244,7 @@ export function ContentBrowserPanel({
       onClick={() => createContextMenu && setCreateContextMenu(null)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
-        if (browserSource === 'project' && event.dataTransfer.files.length > 0) onCommand('assets.import');
+        if (!activeOnlineSource && event.dataTransfer.files.length > 0) onCommand('file.importScene');
       }}
     >
       <aside className="content-folder-tree">
@@ -301,7 +302,6 @@ export function ContentBrowserPanel({
             <header className="content-browser-v2-toolbar">
               <div className="content-create-wrap">
                 <button
-                  disabled={browserSource !== 'project'}
                   aria-haspopup="menu"
                   aria-expanded={createMenuOpen}
                   onClick={(event) => {
@@ -312,11 +312,9 @@ export function ContentBrowserPanel({
                 >
                   + Create <ChevronDown size={12} />
                 </button>
-                {createMenuOpen && createMenu(folder)}
+                {createMenuOpen && createMenu(creationFolder)}
               </div>
-              <button disabled={browserSource === 'builtin'} onClick={() => onCommand('assets.import')}>
-                Import
-              </button>
+              <button onClick={() => onCommand('file.importScene')}>Import</button>
               <nav>
                 <button onClick={() => setFolder('')}>{browserSource === 'builtin' ? 'Engine' : 'Content'}</button>
                 {crumbs.map((crumb, index) => (
