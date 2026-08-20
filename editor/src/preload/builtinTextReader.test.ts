@@ -26,7 +26,12 @@ describe('built-in text reader', () => {
     fs.writeFileSync(shader, '#version 450\nvoid main() {}\n', 'utf8');
 
     expect(resolveBuiltinAssetsRoot({ environmentRoot: assets, cwd: root })).toBe(assets);
-    expect(readBuiltinTextFile('builtin/shaders/default_unlit.frag', { environmentRoot: assets, cwd: root })).toMatchObject({
+    expect(
+      readBuiltinTextFile('builtin/shaders/default_unlit.frag', {
+        environmentRoot: assets,
+        cwd: root,
+      }),
+    ).toMatchObject({
       path: 'builtin/shaders/default_unlit.frag',
       text: '#version 450\nvoid main() {}\n',
     });
@@ -37,8 +42,11 @@ describe('built-in text reader', () => {
     const assets = path.join(root, 'assets');
     fs.mkdirSync(assets, { recursive: true });
 
-    expect(() => readBuiltinTextFile('builtin/../secret.txt', { environmentRoot: assets, cwd: root })).toThrow(
-      'relative to the engine asset root',
-    );
+    expect(() =>
+      readBuiltinTextFile('builtin/../secret.txt', {
+        environmentRoot: assets,
+        cwd: root,
+      }),
+    ).toThrow('relative to the engine asset root');
   });
 });
