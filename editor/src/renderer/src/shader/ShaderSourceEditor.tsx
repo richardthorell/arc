@@ -29,7 +29,7 @@ export function ShaderEditorActions({ document }: { document: EditorDocument }) 
         <Save size={13} /> Save
       </UiButton>
       <UiButton
-        disabled={state.compiling || state.loading || !document.assetGuid}
+        disabled={state.compiling || state.loading || document.readOnly || !document.assetGuid}
         onClick={() => void compileShaderDocument(document)}
         variant="toolbar"
       >
@@ -71,13 +71,15 @@ export function ShaderSourceEditor({
           <FileCode2 size={15} />
           <strong>{document.title}</strong>
           <span className="shader-dirty-state">
-            {dirty
-              ? 'Modified'
-              : state.modifiedAt
-                ? `Saved ${new Date(state.modifiedAt).toLocaleTimeString()}`
-                : state.loading
-                  ? 'Loading...'
-                  : 'Saved'}
+            {document.readOnly
+              ? 'Read-only'
+              : dirty
+                ? 'Modified'
+                : state.modifiedAt
+                  ? `Saved ${new Date(state.modifiedAt).toLocaleTimeString()}`
+                  : state.loading
+                    ? 'Loading...'
+                    : 'Saved'}
           </span>
           <ShaderEditorActions document={document} />
         </header>
