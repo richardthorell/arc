@@ -129,10 +129,17 @@ export class SourceControlService {
   }
 
   private safePath(value: string): string {
-    const normalized = normalizedRepositoryPath(value);
-    if (!normalized || normalized === '..' || normalized.startsWith('../') || path.isAbsolute(normalized))
+    const portable = value.trim().replaceAll('\\', '/');
+    const normalized = path.posix.normalize(portable);
+    if (
+      !portable ||
+      path.posix.isAbsolute(portable) ||
+      path.win32.isAbsolute(value) ||
+      normalized === '..' ||
+      normalized.startsWith('../')
+    )
       throw new Error('Source-control path must remain inside the project');
-    return normalized;
+    return normalized.replace(/^\.\//, '');
   }
 
   private async git(args: string[]): Promise<SourceControlResult> {

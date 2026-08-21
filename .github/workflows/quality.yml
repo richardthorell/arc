@@ -39,7 +39,7 @@ jobs:
           cache: npm
           cache-dependency-path: editor/package-lock.json
       - name: Install Native Quality Tools
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
+        if: ${{ github.event_name != 'pull_request' || inputs.run_native || inputs.run_editor }}
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-format-18 clang-tidy-18 ninja-build
@@ -53,16 +53,8 @@ jobs:
       - name: C++ Formatting
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: python3 tools/check_format.py --clang-format clang-format-18
-      - name: Electron Formatting, Lint, Typecheck, and Tests
-        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
-        working-directory: editor
-        run: |
-          npm run format:check
-          npm run lint
-          npm run typecheck
-          npm test
       - name: Configure Compile Database
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
+        if: ${{ github.event_name != 'pull_request' || inputs.run_native || inputs.run_editor }}
         run: >
           cmake -S . -B out/build/analysis -G Ninja
           -DCMAKE_CXX_COMPILER=clang++-18
@@ -70,6 +62,19 @@ jobs:
           -DARC_BUILD_EDITOR=OFF
           -DARC_BUILD_RENDER_VULKAN=OFF
           -DBUILD_TESTING=OFF
+      - name: Build Project Test Authority
+        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
+        run: cmake --build out/build/analysis --target arc-project-cli --parallel 2
+      - name: Electron Formatting, Lint, Typecheck, and Tests
+        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
+        working-directory: editor
+        env:
+          ARC_PROJECT_TOOL_PATH: ../out/build/analysis/tools/project_cli/arc-project
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm test
       - name: Static Analysis
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: run-clang-tidy-18 -p out/build/analysis -quiet -source-filter='.*/(engine|editor/native|samples|tools)/.*'
