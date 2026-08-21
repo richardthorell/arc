@@ -1,4 +1,11 @@
+.shader-editor-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .shader-editor-body {
+  min-height: 0;
+  flex: 1;
   grid-template-columns: minmax(360px, 1fr) minmax(230px, 442px);
 }
 
