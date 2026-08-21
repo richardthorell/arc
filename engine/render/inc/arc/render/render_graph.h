@@ -585,7 +585,17 @@ struct render_graph_compile_options
 {
     std::uint64_t view_id{1};
     render_extent output_extent{};
+#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 14
+#    pragma GCC diagnostic push
+// GCC 14 diagnoses this intentionally symmetric type/member spelling as
+// -Wchanges-meaning. Keep the stable public field name without weakening the
+// warning for any other declaration in this header.
+#    pragma GCC diagnostic ignored "-Wchanges-meaning"
+#endif
     render_extent render_extent{};
+#if defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 14
+#    pragma GCC diagnostic pop
+#endif
     std::uint64_t frame_index{};
     std::uint64_t world_epoch{};
     render_history_reset temporal_reset{render_history_reset::none};
