@@ -28,7 +28,7 @@ public:
     /**
      * @brief Normalize user-provided configuration into usable defaults.
      */
-    static application_config normalize_config(application_config config);
+    [[nodiscard]] static application_config normalize_config(application_config config);
 
     /**
      * @brief Start the application lifecycle if it has not already started.
@@ -65,53 +65,53 @@ public:
     /**
      * @brief Return whether the runtime should continue ticking.
      */
-    bool running() const noexcept;
+    [[nodiscard]] bool running() const noexcept;
 
     /**
      * @brief Return whether the lifecycle has been started.
      */
-    bool started() const noexcept;
+    [[nodiscard]] bool started() const noexcept;
 
     /**
      * @brief Return normalized application configuration.
      */
-    const application_config& config() const noexcept;
+    [[nodiscard]] const application_config& config() const noexcept;
 
     /**
      * @brief Return the shared runtime job system.
      */
-    jobs::job_system& jobs() noexcept;
+    [[nodiscard]] jobs::job_system& jobs() noexcept;
 
     /**
      * @brief Return the runtime-owned memory service.
      */
-    memory::memory_system& memory() noexcept;
+    [[nodiscard]] memory::memory_system& memory() noexcept;
 
     /**
      * @brief Return transient CPU arenas with frame and tick lifetimes.
      */
-    memory::frame_arena& frame_memory() noexcept;
-    memory::tick_arena& tick_memory() noexcept;
+    [[nodiscard]] memory::frame_arena& frame_memory() noexcept;
+    [[nodiscard]] memory::tick_arena& tick_memory() noexcept;
 
     /**
      * @brief Return the shared runtime module manager.
      */
-    module_manager& modules() noexcept;
-    runtime_service_registry& services() noexcept;
-    runtime_world_manager& worlds() noexcept;
-    const runtime_world_manager& worlds() const noexcept;
+    [[nodiscard]] module_manager& modules() noexcept;
+    [[nodiscard]] runtime_service_registry& services() noexcept;
+    [[nodiscard]] runtime_world_manager& worlds() noexcept;
+    [[nodiscard]] const runtime_world_manager& worlds() const noexcept;
 
     void pause() noexcept;
     void resume() noexcept;
-    bool paused() const noexcept;
+    [[nodiscard]] bool paused() const noexcept;
     bool step(std::uint32_t ticks = 1) noexcept;
     bool set_time_scale(double value) noexcept;
-    double time_scale() const noexcept;
-    simulation_tick current_tick() const noexcept;
-    std::uint64_t discarded_ticks() const noexcept;
+    [[nodiscard]] double time_scale() const noexcept;
+    [[nodiscard]] simulation_tick current_tick() const noexcept;
+    [[nodiscard]] std::uint64_t discarded_ticks() const noexcept;
 
-    world_snapshot_result capture_snapshot(runtime_world_id world, std::string label = {});
-    world_snapshot_result restore_snapshot(world_snapshot_id snapshot);
+    [[nodiscard]] world_snapshot_result capture_snapshot(runtime_world_id world, std::string label = {});
+    [[nodiscard]] world_snapshot_result restore_snapshot(world_snapshot_id snapshot);
 
 private:
     using clock = std::chrono::steady_clock;

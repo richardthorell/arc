@@ -21,7 +21,7 @@ struct runtime_world_id
 {
     std::uint64_t value{};
 
-    constexpr bool valid() const noexcept
+    [[nodiscard]] constexpr bool valid() const noexcept
     {
         return value != 0;
     }
@@ -53,7 +53,7 @@ struct world_snapshot_id
 {
     std::uint64_t value{};
 
-    constexpr bool valid() const noexcept
+    [[nodiscard]] constexpr bool valid() const noexcept
     {
         return value != 0;
     }
@@ -83,7 +83,7 @@ struct [[nodiscard]] runtime_world_run_result
     std::size_t systems_executed{};
     std::vector<ecs::system_schedule_error> errors;
 
-    bool succeeded() const noexcept
+    [[nodiscard]] bool succeeded() const noexcept
     {
         return errors.empty();
     }
@@ -94,60 +94,60 @@ class runtime_world
 public:
     runtime_world(memory::memory_system& memory, runtime_world_id id, runtime_world_descriptor descriptor);
 
-    runtime_world_id id() const noexcept
+    [[nodiscard]] runtime_world_id id() const noexcept
     {
         return id_;
     }
-    std::string_view name() const noexcept
+    [[nodiscard]] std::string_view name() const noexcept
     {
         return descriptor_.name;
     }
-    runtime_world_role role() const noexcept
+    [[nodiscard]] runtime_world_role role() const noexcept
     {
         return descriptor_.role;
     }
-    runtime_world_state state() const noexcept
+    [[nodiscard]] runtime_world_state state() const noexcept
     {
         return state_;
     }
-    std::uint64_t seed() const noexcept
+    [[nodiscard]] std::uint64_t seed() const noexcept
     {
         return descriptor_.seed;
     }
-    std::uint64_t epoch() const noexcept
+    [[nodiscard]] std::uint64_t epoch() const noexcept
     {
         return epoch_;
     }
-    simulation_tick_id last_completed_tick() const noexcept
+    [[nodiscard]] simulation_tick_id last_completed_tick() const noexcept
     {
         return last_completed_tick_;
     }
-    const std::string& fault_message() const noexcept
+    [[nodiscard]] const std::string& fault_message() const noexcept
     {
         return fault_message_;
     }
 
-    ecs::world& entities() noexcept
+    [[nodiscard]] ecs::world& entities() noexcept
     {
         return *entities_;
     }
-    const ecs::world& entities() const noexcept
+    [[nodiscard]] const ecs::world& entities() const noexcept
     {
         return *entities_;
     }
-    ecs::system_scheduler& systems() noexcept
+    [[nodiscard]] ecs::system_scheduler& systems() noexcept
     {
         return systems_;
     }
-    const ecs::system_scheduler& systems() const noexcept
+    [[nodiscard]] const ecs::system_scheduler& systems() const noexcept
     {
         return systems_;
     }
-    ecs::world_partition& partition() noexcept
+    [[nodiscard]] ecs::world_partition& partition() noexcept
     {
         return partition_;
     }
-    const ecs::world_partition& partition() const noexcept
+    [[nodiscard]] const ecs::world_partition& partition() const noexcept
     {
         return partition_;
     }
@@ -195,14 +195,14 @@ public:
 
     runtime_world& create(runtime_world_descriptor descriptor = {});
     bool destroy(runtime_world_id id);
-    runtime_world* find(runtime_world_id id) noexcept;
-    const runtime_world* find(runtime_world_id id) const noexcept;
-    std::vector<runtime_world_id> ordered_worlds() const;
-    std::size_t size() const noexcept
+    [[nodiscard]] runtime_world* find(runtime_world_id id) noexcept;
+    [[nodiscard]] const runtime_world* find(runtime_world_id id) const noexcept;
+    [[nodiscard]] std::vector<runtime_world_id> ordered_worlds() const;
+    [[nodiscard]] std::size_t size() const noexcept
     {
         return worlds_.size();
     }
-    bool executing() const noexcept
+    [[nodiscard]] bool executing() const noexcept
     {
         return executing_;
     }
@@ -223,11 +223,13 @@ public:
     void resume_all() noexcept;
 
     void set_snapshot_budget(std::size_t bytes) noexcept;
-    world_snapshot_result capture_snapshot(runtime_world_id world, simulation_tick_id tick,
-                                           double simulation_time_seconds = 0.0, std::string label = {},
-                                           runtime_service_registry* services = nullptr);
-    world_snapshot_result restore_snapshot(world_snapshot_id snapshot, runtime_service_registry* services = nullptr);
-    std::vector<world_snapshot_metadata> snapshots() const;
+    [[nodiscard]] world_snapshot_result capture_snapshot(runtime_world_id world, simulation_tick_id tick,
+                                                         double simulation_time_seconds = 0.0,
+                                                         std::string label = {},
+                                                         runtime_service_registry* services = nullptr);
+    [[nodiscard]] world_snapshot_result restore_snapshot(world_snapshot_id snapshot,
+                                                         runtime_service_registry* services = nullptr);
+    [[nodiscard]] std::vector<world_snapshot_metadata> snapshots() const;
 
 private:
     struct stored_snapshot
@@ -240,7 +242,7 @@ private:
         simulation_tick_id last_completed_tick{};
     };
 
-    const std::vector<runtime_world*>& execution_order() const noexcept;
+    [[nodiscard]] const std::vector<runtime_world*>& execution_order() const noexcept;
     void rebuild_execution_order();
     void trim_snapshots();
 

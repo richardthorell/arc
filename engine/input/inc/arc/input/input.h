@@ -94,22 +94,22 @@ public:
     /**
      * @brief Return true on the frame the action became held.
      */
-    bool pressed(std::string_view name, player_id player = 0) const;
+    [[nodiscard]] bool pressed(std::string_view name, player_id player = 0) const;
 
     /**
      * @brief Return true on the frame the action stopped being held.
      */
-    bool released(std::string_view name, player_id player = 0) const;
+    [[nodiscard]] bool released(std::string_view name, player_id player = 0) const;
 
     /**
      * @brief Return true while any bound input for the action is held.
      */
-    bool down(std::string_view name, player_id player = 0) const;
+    [[nodiscard]] bool down(std::string_view name, player_id player = 0) const;
 
     /**
      * @brief Return -1, 0, or 1 for the named digital axis.
      */
-    float axis(std::string_view name, player_id player = 0) const;
+    [[nodiscard]] float axis(std::string_view name, player_id player = 0) const;
 
 private:
     struct axis_bindings

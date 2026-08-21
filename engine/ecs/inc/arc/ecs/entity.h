@@ -14,7 +14,7 @@ struct entity
 
     static constexpr std::uint32_t invalid_index = 0xffffffffu;
 
-    constexpr bool valid() const noexcept
+    [[nodiscard]] constexpr bool valid() const noexcept
     {
         return index != invalid_index;
     }
@@ -23,7 +23,7 @@ struct entity
 
 struct entity_hash
 {
-    std::size_t operator()(entity value) const noexcept
+    [[nodiscard]] std::size_t operator()(entity value) const noexcept
     {
         return (static_cast<std::size_t>(value.generation) << 32u) ^ value.index;
     }

@@ -46,32 +46,32 @@ static_assert(std::is_trivially_copyable_v<asset_guid>);
 
 struct asset_guid_hash
 {
-    std::size_t operator()(asset_guid value) const noexcept;
+    [[nodiscard]] std::size_t operator()(asset_guid value) const noexcept;
 };
 
 struct asset_type_id_hash
 {
-    std::size_t operator()(asset_type_id value) const noexcept;
+    [[nodiscard]] std::size_t operator()(asset_type_id value) const noexcept;
 };
 
 struct asset_importer_id_hash
 {
-    std::size_t operator()(asset_importer_id value) const noexcept;
+    [[nodiscard]] std::size_t operator()(asset_importer_id value) const noexcept;
 };
 
-std::string to_string(asset_guid value);
-std::string to_string(asset_type_id value);
-std::string to_string(asset_importer_id value);
-std::optional<asset_guid> parse_asset_guid(std::string_view text) noexcept;
-std::optional<asset_type_id> parse_asset_type_id(std::string_view text) noexcept;
-std::optional<asset_importer_id> parse_asset_importer_id(std::string_view text) noexcept;
-asset_guid generate_asset_guid() noexcept;
+[[nodiscard]] std::string to_string(asset_guid value);
+[[nodiscard]] std::string to_string(asset_type_id value);
+[[nodiscard]] std::string to_string(asset_importer_id value);
+[[nodiscard]] std::optional<asset_guid> parse_asset_guid(std::string_view text) noexcept;
+[[nodiscard]] std::optional<asset_type_id> parse_asset_type_id(std::string_view text) noexcept;
+[[nodiscard]] std::optional<asset_importer_id> parse_asset_importer_id(std::string_view text) noexcept;
+[[nodiscard]] asset_guid generate_asset_guid() noexcept;
 
 struct asset_hash
 {
     std::array<std::byte, 32> bytes{};
 
-    constexpr bool empty() const noexcept
+    [[nodiscard]] constexpr bool empty() const noexcept
     {
         for (std::byte value : bytes)
             if (value != std::byte{}) return false;
@@ -81,10 +81,10 @@ struct asset_hash
     friend constexpr auto operator<=>(const asset_hash&, const asset_hash&) noexcept = default;
 };
 
-std::string to_string(const asset_hash& value);
-std::optional<asset_hash> parse_asset_hash(std::string_view text) noexcept;
-asset_hash hash_bytes(std::span<const std::byte> bytes) noexcept;
-asset_hash combine_hashes(std::span<const asset_hash> hashes) noexcept;
+[[nodiscard]] std::string to_string(const asset_hash& value);
+[[nodiscard]] std::optional<asset_hash> parse_asset_hash(std::string_view text) noexcept;
+[[nodiscard]] asset_hash hash_bytes(std::span<const std::byte> bytes) noexcept;
+[[nodiscard]] asset_hash combine_hashes(std::span<const asset_hash> hashes) noexcept;
 
 namespace asset_types
 {
@@ -190,7 +190,7 @@ struct asset_reference
     asset_type_id expected_type{};
     std::string path_hint;
 
-    constexpr bool resolved() const noexcept
+    [[nodiscard]] constexpr bool resolved() const noexcept
     {
         return guid.valid();
     }
@@ -204,7 +204,7 @@ struct asset_error
     std::filesystem::path path;
     std::string message;
 
-    explicit operator bool() const noexcept
+    [[nodiscard]] explicit operator bool() const noexcept
     {
         return code != asset_error_code::none;
     }
@@ -499,51 +499,51 @@ struct asset_slot
 };
 } // namespace detail
 
-template <class T> class asset_handle
+template <class T> class [[nodiscard]] asset_handle
 {
 public:
-    asset_handle() = default;
+    asset_handle() noexcept = default;
 
-    bool valid() const noexcept
+    [[nodiscard]] bool valid() const noexcept
     {
         return slot_ && slot_->payload.load(std::memory_order_acquire) != nullptr;
     }
 
-    explicit operator bool() const noexcept
+    [[nodiscard]] explicit operator bool() const noexcept
     {
         return valid();
     }
-    asset_guid requested_guid() const noexcept
+    [[nodiscard]] asset_guid requested_guid() const noexcept
     {
         return requested_guid_.valid() ? requested_guid_ : slot_ ? slot_->requested_guid : asset_guid{};
     }
-    asset_guid resolved_guid() const noexcept
+    [[nodiscard]] asset_guid resolved_guid() const noexcept
     {
         return slot_ ? slot_->resolved_guid : asset_guid{};
     }
-    asset_type_id type() const noexcept
+    [[nodiscard]] asset_type_id type() const noexcept
     {
         return slot_ ? slot_->type : asset_type_id{};
     }
-    std::uint64_t generation() const noexcept
+    [[nodiscard]] std::uint64_t generation() const noexcept
     {
         return slot_ ? slot_->generation.load(std::memory_order_acquire) : 0;
     }
-    bool using_fallback() const noexcept
+    [[nodiscard]] bool using_fallback() const noexcept
     {
         return requested_guid() != resolved_guid();
     }
 
-    const T* get() const noexcept
+    [[nodiscard]] const T* get() const noexcept
     {
         snapshot_ = slot_ ? slot_->payload.load(std::memory_order_acquire) : nullptr;
         return snapshot_ ? snapshot_->template get<T>() : nullptr;
     }
-    const T& operator*() const
+    [[nodiscard]] const T& operator*() const noexcept
     {
         return *get();
     }
-    const T* operator->() const noexcept
+    [[nodiscard]] const T* operator->() const noexcept
     {
         return get();
     }
@@ -570,7 +570,7 @@ public:
     asset_pin(const asset_pin&) = delete;
     asset_pin& operator=(const asset_pin&) = delete;
 
-    bool valid() const noexcept
+    [[nodiscard]] bool valid() const noexcept
     {
         return slot_ != nullptr;
     }
@@ -588,34 +588,34 @@ template <class T> struct [[nodiscard]] asset_load_result
     asset_handle<T> asset;
     asset_error error;
 
-    bool succeeded() const noexcept
+    [[nodiscard]] bool succeeded() const noexcept
     {
         return !error && asset.valid();
     }
-    explicit operator bool() const noexcept
+    [[nodiscard]] explicit operator bool() const noexcept
     {
         return succeeded();
     }
 };
 
-template <class T> class asset_load_handle
+template <class T> class [[nodiscard]] asset_load_handle
 {
 public:
-    asset_load_handle() = default;
+    asset_load_handle() noexcept = default;
 
-    bool valid() const noexcept
+    [[nodiscard]] bool valid() const noexcept
     {
         return future_.valid();
     }
-    bool ready() const
+    [[nodiscard]] bool ready() const noexcept
     {
         return future_.ready();
     }
-    jobs::job_status status() const noexcept
+    [[nodiscard]] jobs::job_status status() const noexcept
     {
         return future_.status();
     }
-    float progress() const noexcept
+    [[nodiscard]] float progress() const noexcept
     {
         return progress_ ? progress_->load(std::memory_order_relaxed) : 0.0f;
     }
@@ -623,11 +623,11 @@ public:
     {
         return cancellation_ && cancellation_->request_cancel();
     }
-    asset_load_result<T> get() const
+    [[nodiscard]] asset_load_result<T> get() const
     {
         return future_.get();
     }
-    const jobs::job_handle& job() const noexcept
+    [[nodiscard]] const jobs::job_handle& job() const noexcept
     {
         return future_.handle();
     }
@@ -707,31 +707,34 @@ public:
     bool register_virtual_asset(asset_guid guid, asset_type_id type, asset_payload payload, std::string name,
                                 bool pin = true);
     bool set_fallback(asset_type_id type, asset_guid guid);
-    asset_guid fallback_for(asset_type_id type) const noexcept;
-    std::vector<asset_importer_snapshot> importers() const;
-    asset_scan_result scan();
+    [[nodiscard]] asset_guid fallback_for(asset_type_id type) const noexcept;
+    [[nodiscard]] std::vector<asset_importer_snapshot> importers() const;
+    [[nodiscard]] asset_scan_result scan();
     void poll();
 
-    std::optional<asset_snapshot> find(asset_guid guid) const;
-    std::optional<asset_snapshot> find(std::string_view project_relative_path) const;
-    std::vector<asset_snapshot> search(std::string_view text = {},
-                                       std::optional<asset_type_id> type = std::nullopt) const;
-    asset_registry_snapshot snapshot() const;
-    std::vector<asset_guid> dependencies(asset_guid guid) const;
-    std::vector<asset_guid> reverse_dependencies(asset_guid guid) const;
+    [[nodiscard]] std::optional<asset_snapshot> find(asset_guid guid) const;
+    [[nodiscard]] std::optional<asset_snapshot> find(std::string_view project_relative_path) const;
+    [[nodiscard]] std::vector<asset_snapshot>
+    search(std::string_view text = {}, std::optional<asset_type_id> type = std::nullopt) const;
+    [[nodiscard]] asset_registry_snapshot snapshot() const;
+    [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const;
+    [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const;
 
-    asset_reference resolve(std::string_view project_relative_path, asset_type_id expected_type = {}) const;
-    missing_asset_reference audit_reference(const asset_reference& reference, std::string owner, std::string field);
+    [[nodiscard]] asset_reference resolve(std::string_view project_relative_path,
+                                          asset_type_id expected_type = {}) const;
+    [[nodiscard]] missing_asset_reference audit_reference(const asset_reference& reference, std::string owner,
+                                                          std::string field);
 
     bool set_dependencies(asset_guid guid, std::span<const asset_reference> dependencies);
     bool mark_stale(asset_guid guid, std::string reason);
-    jobs::job_handle reimport(asset_guid guid, asset_streaming_priority priority = asset_streaming_priority::normal,
-                              jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_handle
+    reimport(asset_guid guid, asset_streaming_priority priority = asset_streaming_priority::normal,
+             jobs::cancellation_token cancellation = {});
     bool cancel_import(asset_guid guid);
-    asset_move_result move(asset_guid guid, std::filesystem::path destination);
-    asset_move_result rename(asset_guid guid, std::string filename);
+    [[nodiscard]] asset_move_result move(asset_guid guid, std::filesystem::path destination);
+    [[nodiscard]] asset_move_result rename(asset_guid guid, std::string filename);
 
-    template <class T> asset_load_handle<T> load(asset_load_request request)
+    template <class T> [[nodiscard]] asset_load_handle<T> load(asset_load_request request)
     {
         std::shared_ptr<jobs::cancellation_source> owned_cancellation;
         if (!request.cancellation.valid())
@@ -768,17 +771,17 @@ public:
         return asset_load_handle<T>(std::move(future), std::move(owned_cancellation), std::move(progress));
     }
 
-    jobs::job_handle prefetch(asset_load_request request);
-    asset_pin pin(asset_guid guid);
+    [[nodiscard]] jobs::job_handle prefetch(asset_load_request request);
+    [[nodiscard]] asset_pin pin(asset_guid guid);
     std::size_t evict_unused(asset_residency maximum_residency = asset_residency::device);
 
-    std::uint64_t subscribe(asset_event_callback callback);
+    [[nodiscard]] std::uint64_t subscribe(asset_event_callback callback);
     bool unsubscribe(std::uint64_t token);
-    std::vector<asset_event> events_since(std::uint64_t sequence) const;
+    [[nodiscard]] std::vector<asset_event> events_since(std::uint64_t sequence) const;
 
-    const asset_manager_config& config() const noexcept;
-    jobs::job_system& jobs() const noexcept;
-    static jobs::job_priority to_job_priority(asset_streaming_priority priority) noexcept;
+    [[nodiscard]] const asset_manager_config& config() const noexcept;
+    [[nodiscard]] jobs::job_system& jobs() const noexcept;
+    [[nodiscard]] static jobs::job_priority to_job_priority(asset_streaming_priority priority) noexcept;
 
 private:
     struct [[nodiscard]] untyped_load_result
@@ -793,11 +796,11 @@ private:
     std::unique_ptr<implementation> implementation_;
 };
 
-std::filesystem::path metadata_path_for(const std::filesystem::path& source_path);
+[[nodiscard]] std::filesystem::path metadata_path_for(const std::filesystem::path& source_path);
 [[nodiscard]] asset_metadata_result load_asset_metadata(const std::filesystem::path& path);
 [[nodiscard]] asset_status save_asset_metadata(const std::filesystem::path& path,
                                                const asset_source_metadata& metadata);
-std::string normalize_asset_path(const std::filesystem::path& path);
+[[nodiscard]] std::string normalize_asset_path(const std::filesystem::path& path);
 std::optional<std::pair<asset_type_id, asset_importer_id>>
 classify_asset_path(const std::filesystem::path& path) noexcept;
 

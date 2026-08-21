@@ -19,7 +19,7 @@ namespace arc::framework
 using runtime_service_id = ecs::runtime_service_id;
 using runtime_service_provider = ecs::runtime_service_provider;
 
-constexpr runtime_service_id make_runtime_service_id(const char* name) noexcept
+[[nodiscard]] constexpr runtime_service_id make_runtime_service_id(const char* name) noexcept
 {
     return {ecs::stable_hash_64(name)};
 }
@@ -56,17 +56,17 @@ class runtime_service
 {
 public:
     virtual ~runtime_service() = default;
-    virtual runtime_service_id id() const noexcept = 0;
-    virtual std::string_view name() const noexcept = 0;
-    virtual std::vector<runtime_service_id> dependencies() const
+    [[nodiscard]] virtual runtime_service_id id() const noexcept = 0;
+    [[nodiscard]] virtual std::string_view name() const noexcept = 0;
+    [[nodiscard]] virtual std::vector<runtime_service_id> dependencies() const
     {
         return {};
     }
-    virtual bool has_deterministic_state() const noexcept
+    [[nodiscard]] virtual bool has_deterministic_state() const noexcept
     {
         return false;
     }
-    virtual std::uint32_t snapshot_version() const noexcept
+    [[nodiscard]] virtual std::uint32_t snapshot_version() const noexcept
     {
         return 1;
     }
@@ -103,7 +103,7 @@ class runtime_service_context
 public:
     explicit runtime_service_context(runtime_service_registry& services) noexcept : services_(&services) {}
 
-    runtime_service_registry& services() const noexcept
+    [[nodiscard]] runtime_service_registry& services() const noexcept
     {
         return *services_;
     }
@@ -133,29 +133,29 @@ public:
 
     void start();
     void shutdown() noexcept;
-    bool started() const noexcept
+    [[nodiscard]] bool started() const noexcept
     {
         return started_;
     }
-    std::size_t size() const noexcept
+    [[nodiscard]] std::size_t size() const noexcept
     {
         return services_.size();
     }
 
-    void* find_service(runtime_service_id id) noexcept override;
-    const void* find_service(runtime_service_id id) const noexcept override;
+    [[nodiscard]] void* find_service(runtime_service_id id) noexcept override;
+    [[nodiscard]] const void* find_service(runtime_service_id id) const noexcept override;
     [[nodiscard]] runtime_service_capture_result capture_deterministic_state(std::uint64_t world) const;
     [[nodiscard]] runtime_service_status
     validate_deterministic_state(std::uint64_t world, const std::vector<runtime_service_snapshot>& snapshots) const;
     void restore_deterministic_state(std::uint64_t world,
                                      const std::vector<runtime_service_snapshot>& snapshots) noexcept;
 
-    template <class Service> Service* find(runtime_service_id id) noexcept
+    template <class Service> [[nodiscard]] Service* find(runtime_service_id id) noexcept
     {
         return static_cast<Service*>(find_service(id));
     }
 
-    template <class Service> const Service* find(runtime_service_id id) const noexcept
+    template <class Service> [[nodiscard]] const Service* find(runtime_service_id id) const noexcept
     {
         return static_cast<const Service*>(find_service(id));
     }

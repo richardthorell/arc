@@ -205,13 +205,13 @@ private:
 class cancellation_token
 {
 public:
-    cancellation_token() = default;
+    cancellation_token() noexcept = default;
 
-    bool valid() const noexcept;
-    bool stop_requested() const noexcept;
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] bool stop_requested() const noexcept;
 
 private:
-    explicit cancellation_token(std::shared_ptr<detail::cancellation_state> state);
+    explicit cancellation_token(std::shared_ptr<detail::cancellation_state> state) noexcept;
     std::shared_ptr<detail::cancellation_state> state_;
     friend class cancellation_source;
     friend class job_handle;
@@ -222,9 +222,9 @@ class cancellation_source
 public:
     cancellation_source();
 
-    cancellation_token token() const noexcept;
+    [[nodiscard]] cancellation_token token() const noexcept;
     bool request_cancel() noexcept;
-    bool stop_requested() const noexcept;
+    [[nodiscard]] bool stop_requested() const noexcept;
 
 private:
     std::shared_ptr<detail::cancellation_state> state_;
@@ -235,7 +235,7 @@ struct [[nodiscard]] job_wait_result
     job_status status{job_status::invalid};
     std::exception_ptr exception;
 
-    bool succeeded() const noexcept
+    [[nodiscard]] bool succeeded() const noexcept
     {
         return status == job_status::succeeded;
     }
@@ -246,29 +246,29 @@ class job_system;
 class job_handle
 {
 public:
-    job_handle() = default;
+    job_handle() noexcept = default;
 
     void wait() const;
-    job_wait_result wait_result() const noexcept;
-    bool valid() const noexcept;
-    bool ready() const;
-    job_status status() const noexcept;
-    cancellation_token cancellation() const noexcept;
+    [[nodiscard]] job_wait_result wait_result() const noexcept;
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] bool ready() const noexcept;
+    [[nodiscard]] job_status status() const noexcept;
+    [[nodiscard]] cancellation_token cancellation() const noexcept;
     bool request_cancel() const noexcept;
 
 #if defined(ARC_ENABLE_JOB_COROUTINES)
     struct awaiter
     {
         std::shared_ptr<detail::job_state> state;
-        bool await_ready() const noexcept;
+        [[nodiscard]] bool await_ready() const noexcept;
         void await_suspend(std::coroutine_handle<> continuation);
         void await_resume() const;
     };
-    awaiter operator co_await() const noexcept;
+    [[nodiscard]] awaiter operator co_await() const noexcept;
 #endif
 
 private:
-    explicit job_handle(std::shared_ptr<detail::job_state> state);
+    explicit job_handle(std::shared_ptr<detail::job_state> state) noexcept;
     std::shared_ptr<detail::job_state> state_;
     friend class job_system;
     friend struct job_descriptor;
@@ -327,7 +327,7 @@ struct job_system_config
     memory::memory_system* memory{};
 };
 
-template <class T> class job_future
+template <class T> class [[nodiscard]] job_future
 {
 private:
     struct value_state
@@ -337,26 +337,26 @@ private:
     };
 
 public:
-    job_future() = default;
+    job_future() noexcept = default;
 
-    bool valid() const noexcept
+    [[nodiscard]] bool valid() const noexcept
     {
         return handle_.valid();
     }
-    bool ready() const
+    [[nodiscard]] bool ready() const noexcept
     {
         return handle_.ready();
     }
-    job_status status() const noexcept
+    [[nodiscard]] job_status status() const noexcept
     {
         return handle_.status();
     }
-    const job_handle& handle() const noexcept
+    [[nodiscard]] const job_handle& handle() const noexcept
     {
         return handle_;
     }
 
-    T get() const
+    [[nodiscard]] T get() const
     {
         handle_.wait();
         std::lock_guard lock(value_->mutex);
@@ -400,25 +400,25 @@ private:
     friend class job_system;
 };
 
-template <> class job_future<void>
+template <> class [[nodiscard]] job_future<void>
 {
 public:
-    job_future() = default;
-    explicit job_future(job_handle handle) : handle_(std::move(handle)) {}
+    job_future() noexcept = default;
+    explicit job_future(job_handle handle) noexcept : handle_(std::move(handle)) {}
 
-    bool valid() const noexcept
+    [[nodiscard]] bool valid() const noexcept
     {
         return handle_.valid();
     }
-    bool ready() const
+    [[nodiscard]] bool ready() const noexcept
     {
         return handle_.ready();
     }
-    job_status status() const noexcept
+    [[nodiscard]] job_status status() const noexcept
     {
         return handle_.status();
     }
-    const job_handle& handle() const noexcept
+    [[nodiscard]] const job_handle& handle() const noexcept
     {
         return handle_;
     }
@@ -635,8 +635,8 @@ class job_system
 public:
     struct implementation;
 
-    static std::size_t default_worker_count() noexcept;
-    static job_system_config single_threaded_config() noexcept;
+    [[nodiscard]] static std::size_t default_worker_count() noexcept;
+    [[nodiscard]] static job_system_config single_threaded_config() noexcept;
 
     explicit job_system(job_system_config config = {});
     ~job_system();
@@ -644,12 +644,12 @@ public:
     job_system(const job_system&) = delete;
     job_system& operator=(const job_system&) = delete;
 
-    template <class Function> job_handle submit(Function&& function)
+    template <class Function> [[nodiscard]] job_handle submit(Function&& function)
     {
         return submit({}, std::forward<Function>(function));
     }
 
-    template <class Function> job_handle submit(job_descriptor descriptor, Function&& function)
+    template <class Function> [[nodiscard]] job_handle submit(job_descriptor descriptor, Function&& function)
     {
         return submit_erased(std::move(descriptor), detail::task_callable(std::forward<Function>(function)), false);
     }
@@ -676,7 +676,7 @@ public:
         (void)submit_erased(std::move(descriptor), detail::task_callable(std::forward<Function>(function)), true);
     }
 
-    template <class Function> auto submit_future(job_descriptor descriptor, Function&& function)
+    template <class Function> [[nodiscard]] auto submit_future(job_descriptor descriptor, Function&& function)
     {
         using result_type = std::invoke_result_t<std::decay_t<Function>>;
         if constexpr (std::is_void_v<result_type>)
@@ -698,7 +698,7 @@ public:
         }
     }
 
-    template <class Function> auto submit_future(Function&& function)
+    template <class Function> [[nodiscard]] auto submit_future(Function&& function)
     {
         return submit_future({}, std::forward<Function>(function));
     }
@@ -732,14 +732,14 @@ public:
     std::size_t pump_main_thread(std::size_t maximum_jobs = static_cast<std::size_t>(-1));
     std::size_t pump_render_thread(std::size_t maximum_jobs = static_cast<std::size_t>(-1));
     void register_main_thread() noexcept;
-    bool is_main_thread() const noexcept;
-    job_handle current_job() const noexcept;
+    [[nodiscard]] bool is_main_thread() const noexcept;
+    [[nodiscard]] job_handle current_job() const noexcept;
 
     void shutdown(job_shutdown_mode mode = job_shutdown_mode::drain);
-    std::size_t worker_count() const noexcept;
-    std::size_t io_worker_count() const noexcept;
-    bool run_inline() const noexcept;
-    job_system_snapshot snapshot(bool consume_events = false) const;
+    [[nodiscard]] std::size_t worker_count() const noexcept;
+    [[nodiscard]] std::size_t io_worker_count() const noexcept;
+    [[nodiscard]] bool run_inline() const noexcept;
+    [[nodiscard]] job_system_snapshot snapshot(bool consume_events = false) const;
 
 private:
     job_handle submit_erased(job_descriptor descriptor, detail::task_callable function, bool detached);
@@ -751,7 +751,7 @@ private:
     friend class job_handle;
 };
 
-template <class Function> job_handle submit(job_system& jobs, Function&& function)
+template <class Function> [[nodiscard]] job_handle submit(job_system& jobs, Function&& function)
 {
     return jobs.submit(std::forward<Function>(function));
 }

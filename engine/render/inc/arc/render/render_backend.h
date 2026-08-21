@@ -957,7 +957,7 @@ struct render_viewport_texture
     /**
      * @brief Return whether this texture can be shown by an editor UI.
      */
-    bool valid() const noexcept
+    [[nodiscard]] bool valid() const noexcept
     {
         return id != 0 && width > 0 && height > 0;
     }
@@ -974,12 +974,12 @@ public:
     /**
      * @brief Return the backend family.
      */
-    virtual render_backend_type type() const noexcept = 0;
+    [[nodiscard]] virtual render_backend_type type() const noexcept = 0;
 
     /**
      * @brief Return optional feature support.
      */
-    virtual const render_capabilities& capabilities() const noexcept = 0;
+    [[nodiscard]] virtual const render_capabilities& capabilities() const noexcept = 0;
 
     /**
      * @brief Apply the renderer's resolved feature and quality policy.
@@ -989,7 +989,8 @@ public:
     /**
      * @brief Submit one immutable frame packet and compiled graph.
      */
-    virtual render_submit_result submit(const render_frame_packet& packet, const compiled_render_graph& graph) = 0;
+    [[nodiscard]] virtual render_submit_result submit(const render_frame_packet& packet,
+                                                      const compiled_render_graph& graph) = 0;
 
     /**
      * @brief Present the latest submitted frame to the backend-owned surface.
@@ -1033,12 +1034,12 @@ public:
     /**
      * @brief Return an opaque texture identifier for editor display.
      */
-    virtual render_viewport_texture viewport_texture() const noexcept;
+    [[nodiscard]] virtual render_viewport_texture viewport_texture() const noexcept;
 
     /**
      * @brief Return the most recent backend frame profile.
      */
-    virtual render_backend_frame_profile last_frame_profile() const;
+    [[nodiscard]] virtual render_backend_frame_profile last_frame_profile() const;
 
     /**
      * @brief Request an async ObjectID readback at viewport pixel coordinates.
@@ -1048,7 +1049,7 @@ public:
     /**
      * @brief Return the latest async ObjectID readback result.
      */
-    virtual render_object_pick_result last_object_pick() const;
+    [[nodiscard]] virtual render_object_pick_result last_object_pick() const;
 
     /**
      * @brief Queue an asynchronous capture of coherent channels from one rendered frame.
@@ -1058,7 +1059,7 @@ public:
     /**
      * @brief Return the latest completed frame capture.
      */
-    virtual render_frame_capture_result last_frame_capture() const;
+    [[nodiscard]] virtual render_frame_capture_result last_frame_capture() const;
 };
 
 /** @brief Render-backend creation failure categories. */

@@ -289,7 +289,7 @@ shader_permutation_key make_shader_permutation_key(const material_descriptor& ma
 /**
  * @brief Return a stable hash for a shader permutation key.
  */
-std::size_t hash_shader_permutation_key(const shader_permutation_key& key) noexcept;
+[[nodiscard]] std::size_t hash_shader_permutation_key(const shader_permutation_key& key) noexcept;
 
 /** @brief Return the required color space for a material texture semantic. */
 constexpr texture_color_space required_color_space(texture_semantic semantic) noexcept
@@ -301,24 +301,26 @@ constexpr texture_color_space required_color_space(texture_semantic semantic) no
 }
 
 /** @brief Return whether a texture declaration matches its semantic. */
-constexpr bool valid_texture_color_space(texture_semantic semantic, texture_color_space color_space) noexcept
+[[nodiscard]] constexpr bool valid_texture_color_space(texture_semantic semantic,
+                                                       texture_color_space color_space) noexcept
 {
     return required_color_space(semantic) == color_space;
 }
 
-constexpr bool texture_semantic_accepts(texture_semantic semantic, texture_color_space color_space) noexcept
+[[nodiscard]] constexpr bool texture_semantic_accepts(texture_semantic semantic,
+                                                       texture_color_space color_space) noexcept
 {
     return valid_texture_color_space(semantic, color_space);
 }
 
-float srgb_to_linear(float value) noexcept;
-float linear_to_srgb(float value) noexcept;
+[[nodiscard]] float srgb_to_linear(float value) noexcept;
+[[nodiscard]] float linear_to_srgb(float value) noexcept;
 math::vector3f srgb_to_linear(const math::vector3f& value) noexcept;
 math::vector3f linear_to_srgb(const math::vector3f& value) noexcept;
 
 /** @brief CPU reference helpers used by validation and deterministic tests. */
-float ggx_distribution(float n_dot_h, float roughness) noexcept;
-float smith_ggx_correlated(float n_dot_v, float n_dot_l, float roughness) noexcept;
+[[nodiscard]] float ggx_distribution(float n_dot_h, float roughness) noexcept;
+[[nodiscard]] float smith_ggx_correlated(float n_dot_v, float n_dot_l, float roughness) noexcept;
 math::vector3f fresnel_schlick(float cos_theta, const math::vector3f& f0) noexcept;
 math::vector3f beer_lambert_attenuation(const math::vector3f& attenuation_color, float attenuation_distance,
                                         float thickness) noexcept;

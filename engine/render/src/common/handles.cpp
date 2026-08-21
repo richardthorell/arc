@@ -34,7 +34,7 @@ bool handle_pool::release(resource_handle handle)
     return true;
 }
 
-bool handle_pool::alive(resource_handle handle) const
+bool handle_pool::alive(resource_handle handle) const noexcept
 {
     return handle.valid() && handle.index < slots_.size() && slots_[handle.index].alive &&
            slots_[handle.index].generation == handle.generation;

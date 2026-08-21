@@ -445,7 +445,7 @@ struct render_event
     /**
      * @brief Return the event kind without exposing variant internals.
      */
-    render_event_type type() const noexcept;
+    [[nodiscard]] render_event_type type() const noexcept;
 };
 
 /**
@@ -467,12 +467,12 @@ public:
     /**
      * @brief Return buffered events.
      */
-    const std::vector<render_event>& events() const noexcept;
+    [[nodiscard]] const std::vector<render_event>& events() const noexcept;
 
     /**
      * @brief Return whether the buffer contains no events.
      */
-    bool empty() const noexcept;
+    [[nodiscard]] bool empty() const noexcept;
 
 private:
     std::vector<render_event> events_;
@@ -648,7 +648,7 @@ public:
     /**
      * @brief Return the number of pending producer buffers.
      */
-    std::size_t pending_buffer_count() const;
+    [[nodiscard]] std::size_t pending_buffer_count() const;
 
 private:
     mutable std::mutex mutex_;

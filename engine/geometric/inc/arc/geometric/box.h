@@ -51,28 +51,28 @@ using box3d = box<double, 3>;
 
 template <class T, std::size_t N>
 /// @brief Return the full side lengths of a box.
-constexpr auto size(const box<T, N>& value) noexcept
+[[nodiscard]] constexpr auto size(const box<T, N>& value) noexcept
 {
     return value.max - value.min;
 }
 
 template <class T, std::size_t N>
 /// @brief Return half side lengths of a box.
-constexpr auto extents(const box<T, N>& value) noexcept
+[[nodiscard]] constexpr auto extents(const box<T, N>& value) noexcept
 {
     return arc::math::mul(size(value), T{0.5});
 }
 
 template <class T, std::size_t N>
 /// @brief Return the center point of a box.
-constexpr auto center(const box<T, N>& value) noexcept
+[[nodiscard]] constexpr auto center(const box<T, N>& value) noexcept
 {
     return value.min + extents(value);
 }
 
 template <class T, class U, std::size_t N>
 /// @brief Return whether a point lies inside or on a box.
-constexpr bool contains(const box<T, N>& bounds, const point<U, N>& value) noexcept
+[[nodiscard]] constexpr bool contains(const box<T, N>& bounds, const point<U, N>& value) noexcept
 {
     for (std::size_t i = 0; i < N; ++i)
     {
@@ -83,7 +83,7 @@ constexpr bool contains(const box<T, N>& bounds, const point<U, N>& value) noexc
 
 template <class T, class U, std::size_t N>
 /// @brief Return whether two boxes overlap or touch.
-constexpr bool intersects(const box<T, N>& lhs, const box<U, N>& rhs) noexcept
+[[nodiscard]] constexpr bool intersects(const box<T, N>& lhs, const box<U, N>& rhs) noexcept
 {
     for (std::size_t i = 0; i < N; ++i)
     {
@@ -94,7 +94,7 @@ constexpr bool intersects(const box<T, N>& lhs, const box<U, N>& rhs) noexcept
 
 template <class T, class U, std::size_t N>
 /// @brief Clamp a point to the nearest point on or inside a box.
-constexpr auto closest_point(const box<T, N>& bounds, const point<U, N>& value) noexcept
+[[nodiscard]] constexpr auto closest_point(const box<T, N>& bounds, const point<U, N>& value) noexcept
 {
     using value_type = std::common_type_t<T, U>;
     point<value_type, N> result{};
@@ -110,7 +110,7 @@ constexpr auto closest_point(const box<T, N>& bounds, const point<U, N>& value) 
 
 template <class T, class U, std::size_t N>
 /// @brief Return a box expanded just enough to include a point.
-constexpr auto expand(const box<T, N>& bounds, const point<U, N>& value) noexcept
+[[nodiscard]] constexpr auto expand(const box<T, N>& bounds, const point<U, N>& value) noexcept
 {
     using value_type = std::common_type_t<T, U>;
     point<value_type, N> minimum{};
@@ -128,7 +128,7 @@ constexpr auto expand(const box<T, N>& bounds, const point<U, N>& value) noexcep
 
 template <class T, std::size_t N>
 /// @brief Return a box expanded uniformly in every direction by `amount`.
-constexpr auto expand(const box<T, N>& bounds, T amount) noexcept
+[[nodiscard]] constexpr auto expand(const box<T, N>& bounds, T amount) noexcept
 {
     arc::math::vector<T, N> offset(amount);
     return box<T, N>{bounds.min - offset, bounds.max + offset};

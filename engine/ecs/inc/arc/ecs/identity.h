@@ -21,14 +21,14 @@ static_assert(std::is_trivially_copyable_v<entity_guid>);
 
 struct entity_guid_hash
 {
-    std::size_t operator()(entity_guid value) const noexcept
+    [[nodiscard]] std::size_t operator()(entity_guid value) const noexcept
     {
         return core::uuid_hash<entity_guid_tag>{}(value);
     }
 };
 
-entity_guid generate_entity_guid() noexcept;
-std::string to_string(entity_guid value);
-std::optional<entity_guid> parse_entity_guid(std::string_view value) noexcept;
+[[nodiscard]] entity_guid generate_entity_guid() noexcept;
+[[nodiscard]] std::string to_string(entity_guid value);
+[[nodiscard]] std::optional<entity_guid> parse_entity_guid(std::string_view value) noexcept;
 
 } // namespace arc::ecs

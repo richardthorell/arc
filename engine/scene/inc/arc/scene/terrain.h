@@ -179,7 +179,7 @@ struct terrain_raycast_hit
     bool hit{};
 };
 
-bool terrain_heightfield_valid(const terrain_component& terrain) noexcept;
+[[nodiscard]] bool terrain_heightfield_valid(const terrain_component& terrain) noexcept;
 [[nodiscard]] bool terrain_resolution_supported(std::uint32_t resolution) noexcept;
 [[nodiscard]] terrain_memory_estimate estimate_terrain_memory(std::uint32_t resolution) noexcept;
 [[nodiscard]] terrain_authoring_result validate_terrain_creation(const terrain_creation_descriptor& descriptor) noexcept;
@@ -193,14 +193,17 @@ void generate_terrain_heightfield(terrain_component& terrain);
                                                                 const terrain_heightmap_import_settings& settings);
 [[nodiscard]] terrain_heightmap export_terrain_heightmap(const terrain_component& terrain,
                                                          const terrain_heightmap_export_settings& settings);
-float sample_terrain_height(const terrain_component& terrain, float local_x, float local_z) noexcept;
-math::vector3f sample_terrain_normal(const terrain_component& terrain, float local_x, float local_z) noexcept;
+[[nodiscard]] float sample_terrain_height(const terrain_component& terrain, float local_x, float local_z) noexcept;
+[[nodiscard]] math::vector3f sample_terrain_normal(const terrain_component& terrain, float local_x,
+                                                   float local_z) noexcept;
 terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math::vector3f& local_center,
                                          const terrain_brush_settings& settings, float delta_seconds = 1.0f / 60.0f);
-terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math::vector3f& local_origin,
-                                    const math::vector3f& local_direction) noexcept;
-terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const render::terrain_hierarchy& hierarchy,
-                                    const math::vector3f& local_origin,
-                                    const math::vector3f& local_direction) noexcept;
+[[nodiscard]] terrain_raycast_hit raycast_terrain(const terrain_component& terrain,
+                                                  const math::vector3f& local_origin,
+                                                  const math::vector3f& local_direction) noexcept;
+[[nodiscard]] terrain_raycast_hit raycast_terrain(const terrain_component& terrain,
+                                                  const render::terrain_hierarchy& hierarchy,
+                                                  const math::vector3f& local_origin,
+                                                  const math::vector3f& local_direction) noexcept;
 
 } // namespace arc::scene

@@ -63,21 +63,21 @@ using sphered = sphere<double>;
 
 template <class T, class U>
 /// @brief Return whether a 2D point lies inside or on a circle.
-constexpr bool contains(const circle<T>& shape, const point<U, 2>& value) noexcept
+[[nodiscard]] constexpr bool contains(const circle<T>& shape, const point<U, 2>& value) noexcept
 {
     return distance_squared(shape.center, value) <= shape.radius * shape.radius;
 }
 
 template <class T, class U>
 /// @brief Return whether a 3D point lies inside or on a sphere.
-constexpr bool contains(const sphere<T>& shape, const point<U, 3>& value) noexcept
+[[nodiscard]] constexpr bool contains(const sphere<T>& shape, const point<U, 3>& value) noexcept
 {
     return distance_squared(shape.center, value) <= shape.radius * shape.radius;
 }
 
 template <class T, class U>
 /// @brief Return whether two circles overlap or touch.
-constexpr bool intersects(const circle<T>& lhs, const circle<U>& rhs) noexcept
+[[nodiscard]] constexpr bool intersects(const circle<T>& lhs, const circle<U>& rhs) noexcept
 {
     const auto radius = lhs.radius + rhs.radius;
     return distance_squared(lhs.center, rhs.center) <= radius * radius;
@@ -85,7 +85,7 @@ constexpr bool intersects(const circle<T>& lhs, const circle<U>& rhs) noexcept
 
 template <class T, class U>
 /// @brief Return whether two spheres overlap or touch.
-constexpr bool intersects(const sphere<T>& lhs, const sphere<U>& rhs) noexcept
+[[nodiscard]] constexpr bool intersects(const sphere<T>& lhs, const sphere<U>& rhs) noexcept
 {
     const auto radius = lhs.radius + rhs.radius;
     return distance_squared(lhs.center, rhs.center) <= radius * radius;
@@ -93,7 +93,7 @@ constexpr bool intersects(const sphere<T>& lhs, const sphere<U>& rhs) noexcept
 
 template <class T, class U>
 /// @brief Return the closest point on the circle boundary to a 2D point.
-inline auto closest_point(const circle<T>& shape, const point<U, 2>& value) noexcept
+[[nodiscard]] inline auto closest_point(const circle<T>& shape, const point<U, 2>& value) noexcept
 {
     using value_type = std::common_type_t<T, U>;
     const auto direction = value - shape.center;
@@ -104,7 +104,7 @@ inline auto closest_point(const circle<T>& shape, const point<U, 2>& value) noex
 
 template <class T, class U>
 /// @brief Return the closest point on the sphere boundary to a 3D point.
-inline auto closest_point(const sphere<T>& shape, const point<U, 3>& value) noexcept
+[[nodiscard]] inline auto closest_point(const sphere<T>& shape, const point<U, 3>& value) noexcept
 {
     using value_type = std::common_type_t<T, U>;
     const auto direction = value - shape.center;

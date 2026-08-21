@@ -46,7 +46,8 @@ struct renderer_config
 /**
  * @brief Resolve project rendering policy against immutable adapter support.
  */
-resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities);
+[[nodiscard]] resolved_render_config resolve_render_config(const renderer_config& config,
+                                                           const render_capabilities& capabilities);
 
 /** @brief Resolve one requested AA mode against the active path, scale, and executable backend features. */
 [[nodiscard]] anti_aliasing_method resolve_anti_aliasing(anti_aliasing_method requested, render_path path,
@@ -92,9 +93,9 @@ class frame_budget_controller
 public:
     void reset(const render_quality_profile& profile, float target_frame_time_ms) noexcept;
     const frame_budget_settings& update(float gpu_frame_time_ms) noexcept;
-    const frame_budget_settings& settings() const noexcept;
-    frame_budget_change last_change() const noexcept;
-    float smoothed_frame_time_ms() const noexcept;
+    [[nodiscard]] const frame_budget_settings& settings() const noexcept;
+    [[nodiscard]] frame_budget_change last_change() const noexcept;
+    [[nodiscard]] float smoothed_frame_time_ms() const noexcept;
 
 private:
     float target_frame_time_ms_{default_target_frame_time_ms};
@@ -134,18 +135,18 @@ public:
     /**
      * @brief Return the active backend, if any.
      */
-    render_backend* backend() noexcept;
-    const render_backend* backend() const noexcept;
+    [[nodiscard]] render_backend* backend() noexcept;
+    [[nodiscard]] const render_backend* backend() const noexcept;
 
     /**
      * @brief Return the immutable renderer configuration.
      */
-    const renderer_config& config() const noexcept;
+    [[nodiscard]] const renderer_config& config() const noexcept;
 
     /**
      * @brief Return the concrete path and feature set selected for the backend.
      */
-    const resolved_render_config& resolved_config() const noexcept;
+    [[nodiscard]] const resolved_render_config& resolved_config() const noexcept;
 
     /**
      * @brief Resolve a per-view anti-aliasing request against the active backend.
@@ -157,7 +158,7 @@ public:
     /**
      * @brief Return the queue used by producers to submit render events.
      */
-    render_frame_queue& frame_queue() noexcept;
+    [[nodiscard]] render_frame_queue& frame_queue() noexcept;
 
     /**
      * @brief Create a renderer-owned mesh resource and enqueue its upload.
@@ -240,12 +241,12 @@ public:
     /**
      * @brief Return whether a mesh handle still references a live renderer mesh.
      */
-    bool mesh_alive(mesh_handle handle) const;
+    [[nodiscard]] bool mesh_alive(mesh_handle handle) const;
 
     /**
      * @brief Return retained CPU mesh data for tooling and backend-neutral queries.
      */
-    const mesh_data* mesh_data_for(mesh_handle handle) const;
+    [[nodiscard]] const mesh_data* mesh_data_for(mesh_handle handle) const;
 
     /** @brief Return the lighting representation generated for a static mesh. */
     [[nodiscard]] lighting_geometry_handle lighting_geometry_for(mesh_handle handle) const noexcept;
@@ -257,40 +258,40 @@ public:
     /**
      * @brief Return whether a virtual mesh handle still references a live renderer virtual mesh.
      */
-    bool virtual_mesh_alive(virtual_mesh_handle handle) const;
+    [[nodiscard]] bool virtual_mesh_alive(virtual_mesh_handle handle) const;
 
     /**
      * @brief Return CPU-side virtual mesh metadata needed for cluster extraction.
      */
-    const virtual_mesh_data* virtual_mesh_data_for(virtual_mesh_handle handle) const;
+    [[nodiscard]] const virtual_mesh_data* virtual_mesh_data_for(virtual_mesh_handle handle) const;
 
     /** @brief Current content generation used to reject stale asynchronous page completions. */
     [[nodiscard]] std::uint32_t virtual_mesh_content_generation(virtual_mesh_handle handle) const noexcept;
 
     /** @return Renderer-owned virtual-geometry residency authority. */
-    virtual_geometry_residency_manager& virtual_geometry_residency() noexcept;
+    [[nodiscard]] virtual_geometry_residency_manager& virtual_geometry_residency() noexcept;
     /** @return Read-only renderer-owned virtual-geometry residency authority. */
-    const virtual_geometry_residency_manager& virtual_geometry_residency() const noexcept;
+    [[nodiscard]] const virtual_geometry_residency_manager& virtual_geometry_residency() const noexcept;
 
     /** @return Renderer-owned Lighting Scene authority shared by all views of a world. */
-    lighting_scene& indirect_lighting_scene() noexcept;
+    [[nodiscard]] lighting_scene& indirect_lighting_scene() noexcept;
     /** @return Read-only renderer-owned Lighting Scene authority. */
-    const lighting_scene& indirect_lighting_scene() const noexcept;
+    [[nodiscard]] const lighting_scene& indirect_lighting_scene() const noexcept;
 
     /**
      * @brief Return whether a texture handle still references a live renderer texture.
      */
-    bool texture_alive(texture_handle handle) const;
+    [[nodiscard]] bool texture_alive(texture_handle handle) const;
 
     /**
      * @brief Return whether a material handle still references a live renderer material.
      */
-    bool material_alive(material_handle handle) const;
+    [[nodiscard]] bool material_alive(material_handle handle) const;
 
     /**
      * @brief Return whether an environment handle still references a live renderer environment.
      */
-    bool environment_alive(environment_handle handle) const;
+    [[nodiscard]] bool environment_alive(environment_handle handle) const;
 
     /**
      * @brief Resize the backend-owned viewport render target.
@@ -300,12 +301,12 @@ public:
     /**
      * @brief Return the current backend-owned viewport texture.
      */
-    render_viewport_texture viewport_texture() const noexcept;
+    [[nodiscard]] render_viewport_texture viewport_texture() const noexcept;
 
     /**
      * @brief Return the latest backend frame profile, if any.
      */
-    render_backend_frame_profile last_frame_profile() const;
+    [[nodiscard]] render_backend_frame_profile last_frame_profile() const;
 
     /**
      * @brief Request an async ObjectID readback at viewport pixel coordinates.
@@ -315,15 +316,15 @@ public:
     /**
      * @brief Return the latest async ObjectID readback result.
      */
-    render_object_pick_result last_object_pick() const;
+    [[nodiscard]] render_object_pick_result last_object_pick() const;
 
     void request_frame_capture(render_frame_capture_request request);
-    render_frame_capture_result last_frame_capture() const;
+    [[nodiscard]] render_frame_capture_result last_frame_capture() const;
 
     /**
      * @brief Build and submit one frame.
      */
-    render_submit_result render_frame(std::uint64_t frame_index, const render_graph& graph);
+    [[nodiscard]] render_submit_result render_frame(std::uint64_t frame_index, const render_graph& graph);
 
 private:
     struct temporal_view_state
@@ -376,7 +377,7 @@ public:
     /**
      * @brief Return the renderer service.
      */
-    renderer& service() noexcept;
+    [[nodiscard]] renderer& service() noexcept;
 
     std::string_view name() const override;
     void on_start(framework::module_context& context) override;

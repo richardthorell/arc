@@ -504,7 +504,10 @@ void affinity_worker_loop(job_system::implementation& implementation, job_affini
 
 job_cancelled::job_cancelled() : std::runtime_error("job was cancelled") {}
 
-cancellation_token::cancellation_token(std::shared_ptr<detail::cancellation_state> state) : state_(std::move(state)) {}
+cancellation_token::cancellation_token(std::shared_ptr<detail::cancellation_state> state) noexcept
+    : state_(std::move(state))
+{
+}
 
 bool cancellation_token::valid() const noexcept
 {
@@ -533,7 +536,7 @@ bool cancellation_source::stop_requested() const noexcept
     return state_->cancelled.load(std::memory_order_acquire);
 }
 
-job_handle::job_handle(std::shared_ptr<detail::job_state> state) : state_(std::move(state)) {}
+job_handle::job_handle(std::shared_ptr<detail::job_state> state) noexcept : state_(std::move(state)) {}
 
 void job_handle::wait() const
 {
@@ -553,7 +556,7 @@ bool job_handle::valid() const noexcept
     return static_cast<bool>(state_);
 }
 
-bool job_handle::ready() const
+bool job_handle::ready() const noexcept
 {
     return job_status_complete(status());
 }

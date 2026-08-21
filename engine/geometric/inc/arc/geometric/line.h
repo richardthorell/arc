@@ -97,21 +97,21 @@ using segment3f = segment<float, 3>;
 
 template <class T, std::size_t N>
 /// @brief Sample an infinite line at parameter `t`.
-constexpr auto point_at(const line<T, N>& value, T t) noexcept
+[[nodiscard]] constexpr auto point_at(const line<T, N>& value, T t) noexcept
 {
     return value.origin + arc::math::mul(value.direction, t);
 }
 
 template <class T, std::size_t N>
 /// @brief Sample a ray at parameter `t`.
-constexpr auto point_at(const ray<T, N>& value, T t) noexcept
+[[nodiscard]] constexpr auto point_at(const ray<T, N>& value, T t) noexcept
 {
     return value.origin + arc::math::mul(value.direction, t);
 }
 
 template <class T, std::size_t N>
 /// @brief Sample a segment at parameter `t`.
-constexpr auto point_at(const segment<T, N>& value, T t) noexcept
+[[nodiscard]] constexpr auto point_at(const segment<T, N>& value, T t) noexcept
 {
     return value.start + arc::math::mul(value.end - value.start, t);
 }

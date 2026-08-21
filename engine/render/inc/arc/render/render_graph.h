@@ -655,12 +655,12 @@ public:
     /**
      * @brief Find a declared resource by name.
      */
-    const render_graph_resource* find_resource(std::string_view name) const noexcept;
+    [[nodiscard]] const render_graph_resource* find_resource(std::string_view name) const noexcept;
 
     /**
      * @brief Return a declared resource by strong graph handle.
      */
-    const render_graph_resource* find_resource(render_graph_resource_handle handle) const noexcept;
+    [[nodiscard]] const render_graph_resource* find_resource(render_graph_resource_handle handle) const noexcept;
 
     /**
      * @brief Add a pass declaration and return its index.
@@ -680,12 +680,12 @@ public:
     /**
      * @brief Return declared passes.
      */
-    const std::vector<render_graph_pass>& passes() const noexcept;
+    [[nodiscard]] const std::vector<render_graph_pass>& passes() const noexcept;
 
     /**
      * @brief Return declared resources.
      */
-    const std::vector<render_graph_resource>& resources() const noexcept;
+    [[nodiscard]] const std::vector<render_graph_resource>& resources() const noexcept;
 
 private:
     std::vector<render_graph_resource> resources_;
@@ -700,6 +700,6 @@ render_graph make_clear_present_graph(std::string_view target_name);
 /**
  * @brief Return a stable display label for a typed format.
  */
-std::string_view render_format_name(render_format format) noexcept;
+[[nodiscard]] std::string_view render_format_name(render_format format) noexcept;
 
 } // namespace arc::render

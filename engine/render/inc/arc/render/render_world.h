@@ -543,7 +543,7 @@ view_frustum make_view_frustum(const math::matrix4f& view_projection);
 /**
  * @brief Return whether an axis-aligned box intersects a frustum.
  */
-bool intersects(const view_frustum& frustum, const geometric::box3f& bounds);
+[[nodiscard]] bool intersects(const view_frustum& frustum, const geometric::box3f& bounds);
 
 /**
  * @brief Build a material/mesh/depth sort key.

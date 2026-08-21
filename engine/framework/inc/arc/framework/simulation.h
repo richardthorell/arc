@@ -40,7 +40,7 @@ struct simulation_config
     bool allow_headless_time_controls{};
     runtime_world_role default_world_role{runtime_world_role::client};
 
-    double fixed_delta_seconds() const noexcept
+    [[nodiscard]] double fixed_delta_seconds() const noexcept
     {
         return fixed_tick_rate > 0.0 ? 1.0 / fixed_tick_rate : 1.0 / 60.0;
     }
@@ -53,7 +53,7 @@ struct simulation_tick
     double total_seconds{};
 };
 
-inline bool valid_simulation_config(const simulation_config& value) noexcept
+[[nodiscard]] inline bool valid_simulation_config(const simulation_config& value) noexcept
 {
     return std::isfinite(value.fixed_tick_rate) && value.fixed_tick_rate >= 1.0 && value.fixed_tick_rate <= 1000.0 &&
            std::isfinite(value.maximum_frame_delta_seconds) && value.maximum_frame_delta_seconds > 0.0 &&

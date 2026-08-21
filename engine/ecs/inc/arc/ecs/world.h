@@ -56,16 +56,17 @@ class component_pool_base
 {
 public:
     virtual ~component_pool_base() = default;
-    virtual component_type_id type() const noexcept = 0;
-    virtual const component_descriptor& descriptor() const noexcept = 0;
+    [[nodiscard]] virtual component_type_id type() const noexcept = 0;
+    [[nodiscard]] virtual const component_descriptor& descriptor() const noexcept = 0;
     virtual bool remove(entity value) = 0;
-    virtual bool contains(entity value) const noexcept = 0;
-    virtual std::span<const entity> entities() const noexcept = 0;
+    [[nodiscard]] virtual bool contains(entity value) const noexcept = 0;
+    [[nodiscard]] virtual std::span<const entity> entities() const noexcept = 0;
     virtual void ensure_entity_capacity(std::size_t size) = 0;
     virtual void mark(entity value, change_revision revision, std::uint64_t fields) = 0;
-    virtual component_change change(entity value) const noexcept = 0;
-    virtual std::span<const component_change> change_events() const noexcept = 0;
-    virtual std::unique_ptr<component_pool_base> clone(std::pmr::memory_resource* resource) const = 0;
+    [[nodiscard]] virtual component_change change(entity value) const noexcept = 0;
+    [[nodiscard]] virtual std::span<const component_change> change_events() const noexcept = 0;
+    [[nodiscard]] virtual std::unique_ptr<component_pool_base>
+    clone(std::pmr::memory_resource* resource) const = 0;
 };
 
 template <class T> class component_pool final : public component_pool_base
@@ -114,19 +115,19 @@ public:
         return {*component, true};
     }
 
-    T& get(entity value)
+    [[nodiscard]] T& get(entity value)
     {
         return *dense_[sparse_[value.index]];
     }
-    const T& get(entity value) const
+    [[nodiscard]] const T& get(entity value) const
     {
         return *dense_[sparse_[value.index]];
     }
-    T* try_get(entity value)
+    [[nodiscard]] T* try_get(entity value)
     {
         return contains(value) ? &get(value) : nullptr;
     }
-    const T* try_get(entity value) const
+    [[nodiscard]] const T* try_get(entity value) const
     {
         return contains(value) ? &get(value) : nullptr;
     }
@@ -159,22 +160,22 @@ public:
         return true;
     }
 
-    bool contains(entity value) const noexcept override
+    [[nodiscard]] bool contains(entity value) const noexcept override
     {
         return value.valid() && value.index < sparse_.size() && sparse_[value.index] != invalid_sparse &&
                entities_[sparse_[value.index]] == value;
     }
 
-    component_type_id type() const noexcept override
+    [[nodiscard]] component_type_id type() const noexcept override
     {
         return component_type<T>();
     }
-    const component_descriptor& descriptor() const noexcept override
+    [[nodiscard]] const component_descriptor& descriptor() const noexcept override
     {
         return component_metadata<T>();
     }
 
-    std::span<const entity> entities() const noexcept override
+    [[nodiscard]] std::span<const entity> entities() const noexcept override
     {
         return {entities_.data(), entities_.size()};
     }
@@ -193,19 +194,20 @@ public:
         change_events_.push_back({value, revision, fields});
     }
 
-    component_change change(entity value) const noexcept override
+    [[nodiscard]] component_change change(entity value) const noexcept override
     {
         if (!contains(value)) return {};
         const slot& metadata = *changes_[sparse_[value.index]];
         return {value, metadata.revision, metadata.fields};
     }
 
-    std::span<const component_change> change_events() const noexcept override
+    [[nodiscard]] std::span<const component_change> change_events() const noexcept override
     {
         return {change_events_.data(), change_events_.size()};
     }
 
-    std::unique_ptr<component_pool_base> clone(std::pmr::memory_resource* resource) const override
+    [[nodiscard]] std::unique_ptr<component_pool_base>
+    clone(std::pmr::memory_resource* resource) const override
     {
         auto result = std::make_unique<component_pool<T>>(resource);
         result->ensure_entity_capacity(sparse_.size());
@@ -285,7 +287,7 @@ template <class T> struct query_exclude
 
 struct query_signature_hash
 {
-    std::size_t operator()(const query_signature& value) const noexcept
+    [[nodiscard]] std::size_t operator()(const query_signature& value) const noexcept
     {
         std::size_t result = 1469598103934665603ull;
         const auto combine = [&result](component_type_id id)
@@ -318,7 +320,7 @@ public:
         using value_type = entity;
         using difference_type = std::ptrdiff_t;
 
-        entity operator*() const noexcept;
+        [[nodiscard]] entity operator*() const noexcept;
         iterator& operator++() noexcept;
         friend bool operator==(const iterator& lhs, const iterator& rhs) noexcept
         {
@@ -333,15 +335,15 @@ public:
         friend class query_entity_range;
     };
 
-    iterator begin() const noexcept
+    [[nodiscard]] iterator begin() const noexcept
     {
         return iterator(this, 0);
     }
-    iterator end() const noexcept
+    [[nodiscard]] iterator end() const noexcept
     {
         return iterator(this, source_.size());
     }
-    bool empty() const noexcept
+    [[nodiscard]] bool empty() const noexcept
     {
         return begin() == end();
     }
@@ -361,7 +363,7 @@ private:
 template <class... Components> class basic_view
 {
 public:
-    query_entity_range entities() const noexcept
+    [[nodiscard]] query_entity_range entities() const noexcept
     {
         return query_entity_range(*owner_, source_, signature_);
     }
@@ -385,7 +387,7 @@ public:
     class iterator
     {
     public:
-        component_change operator*() const noexcept
+        [[nodiscard]] component_change operator*() const noexcept
         {
             return events_[index_];
         }
@@ -417,11 +419,11 @@ public:
         friend class component_change_range;
     };
 
-    iterator begin() const noexcept
+    [[nodiscard]] iterator begin() const noexcept
     {
         return iterator(events_, since_, 0);
     }
-    iterator end() const noexcept
+    [[nodiscard]] iterator end() const noexcept
     {
         return iterator(events_, since_, events_.size());
     }
@@ -489,7 +491,7 @@ public:
         std::swap(flushing_commands_, other.flushing_commands_);
     }
 
-    entity create()
+    [[nodiscard]] entity create()
     {
         assert_structural_mutation_allowed();
         std::uint32_t index{};
@@ -529,30 +531,30 @@ public:
         return true;
     }
 
-    bool alive(entity value) const noexcept
+    [[nodiscard]] bool alive(entity value) const noexcept
     {
         return value.valid() && value.index < generations_.size() && alive_[value.index] &&
                generations_[value.index] == value.generation;
     }
 
-    std::size_t live_count() const noexcept
+    [[nodiscard]] std::size_t live_count() const noexcept
     {
         return live_count_;
     }
-    change_revision revision() const noexcept
+    [[nodiscard]] change_revision revision() const noexcept
     {
         return std::atomic_ref<const change_revision>(revision_).load(std::memory_order_acquire);
     }
-    memory::world_memory_context& memory() noexcept
+    [[nodiscard]] memory::world_memory_context& memory() noexcept
     {
         return *memory_;
     }
-    const memory::world_memory_context& memory() const noexcept
+    [[nodiscard]] const memory::world_memory_context& memory() const noexcept
     {
         return *memory_;
     }
 
-    std::vector<entity> entities_snapshot() const
+    [[nodiscard]] std::vector<entity> entities_snapshot() const
     {
         std::vector<entity> result;
         result.reserve(live_count_);
@@ -562,7 +564,7 @@ public:
     }
 
     /** Compatibility snapshot; hot paths should use prepared queries. */
-    std::vector<entity> entities() const
+    [[nodiscard]] std::vector<entity> entities() const
     {
         return entities_snapshot();
     }
@@ -578,7 +580,7 @@ public:
         return component;
     }
 
-    template <class T> T& get(entity value)
+    template <class T> [[nodiscard]] T& get(entity value)
     {
         T* component = try_get_untracked<T>(value);
         if (!component) throw std::out_of_range("component does not exist for entity");
@@ -586,38 +588,38 @@ public:
         return *component;
     }
 
-    template <class T> const T& get(entity value) const
+    template <class T> [[nodiscard]] const T& get(entity value) const
     {
         const T* component = try_get<T>(value);
         if (!component) throw std::out_of_range("component does not exist for entity");
         return *component;
     }
 
-    template <class T> T* try_get(entity value)
+    template <class T> [[nodiscard]] T* try_get(entity value)
     {
         T* component = try_get_untracked<T>(value);
         if (component) mark_dirty<T>(value);
         return component;
     }
 
-    template <class T> const T* try_get(entity value) const
+    template <class T> [[nodiscard]] const T* try_get(entity value) const
     {
         const auto* values = try_pool<T>();
         return values ? values->try_get(value) : nullptr;
     }
 
-    template <class T> bool has(entity value) const
+    template <class T> [[nodiscard]] bool has(entity value) const
     {
         return has(value, component_type<T>());
     }
 
-    bool has(entity value, component_type_id type) const noexcept
+    [[nodiscard]] bool has(entity value, component_type_id type) const noexcept
     {
         const auto found = pools_.find(type);
         return found != pools_.end() && found->second->contains(value);
     }
 
-    component_change component_change_for(entity value, component_type_id type) const noexcept
+    [[nodiscard]] component_change component_change_for(entity value, component_type_id type) const noexcept
     {
         const auto found = pools_.find(type);
         return found != pools_.end() ? found->second->change(value) : component_change{};
@@ -656,12 +658,12 @@ public:
         return true;
     }
 
-    template <class T> component_change_range<T> changes_since(change_cursor cursor) const noexcept
+    template <class T> [[nodiscard]] component_change_range<T> changes_since(change_cursor cursor) const noexcept
     {
         return component_change_range<T>(try_pool<T>(), cursor.revision);
     }
 
-    std::span<const structural_change> structural_changes() const noexcept
+    [[nodiscard]] std::span<const structural_change> structural_changes() const noexcept
     {
         return {structural_changes_.data(), structural_changes_.size()};
     }
@@ -696,7 +698,7 @@ public:
         query_cache_.emplace_back(std::move(entry));
     }
 
-    query_entity_range query(const query_signature& signature) const
+    [[nodiscard]] query_entity_range query(const query_signature& signature) const
     {
         const auto* cached = find_query(signature);
         return {*this, cached ? std::span<const entity>(cached->entities) : std::span<const entity>{},
@@ -708,14 +710,14 @@ public:
         prepare_query(access_signature<Specifications...>());
     }
 
-    template <class... Specifications> query_entity_range query() const
+    template <class... Specifications> [[nodiscard]] query_entity_range query() const
     {
         const query_signature& signature = access_signature<Specifications...>();
         if (const auto* cached = find_query(signature)) return {*this, cached->entities, &cached->signature};
         return {*this, {}, nullptr};
     }
 
-    template <class... Components> basic_view<Components...> view() const
+    template <class... Components> [[nodiscard]] basic_view<Components...> view() const
     {
         static_assert(sizeof...(Components) > 0);
         const query_signature& temporary = typed_signature<Components...>();
@@ -737,7 +739,7 @@ public:
         return {*this, driver ? driver->entities() : std::span<const entity>{}, &temporary};
     }
 
-    bool matches(entity value, const query_signature& signature) const noexcept
+    [[nodiscard]] bool matches(entity value, const query_signature& signature) const noexcept
     {
         if (!alive(value)) return false;
         for (const auto type : signature.required)
@@ -755,7 +757,7 @@ public:
     {
         if (structural_lock_depth_) --structural_lock_depth_;
     }
-    bool structural_mutation_locked() const noexcept
+    [[nodiscard]] bool structural_mutation_locked() const noexcept
     {
         return structural_lock_depth_ != 0;
     }

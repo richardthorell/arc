@@ -74,8 +74,8 @@ struct memory_tag
     friend constexpr bool operator==(memory_tag, memory_tag) noexcept = default;
 };
 
-memory_tag make_memory_tag(std::string_view name) noexcept;
-memory_tag current_memory_tag() noexcept;
+[[nodiscard]] memory_tag make_memory_tag(std::string_view name) noexcept;
+[[nodiscard]] memory_tag current_memory_tag() noexcept;
 
 class allocation_tag_scope
 {
@@ -234,15 +234,15 @@ public:
                     memory_domain domain = memory_domain::general) noexcept;
 
     void set_budget(memory_domain domain, memory_budget budget);
-    memory_budget budget(memory_domain domain) const noexcept;
-    memory_budget global_budget() const noexcept;
+    [[nodiscard]] memory_budget budget(memory_domain domain) const noexcept;
+    [[nodiscard]] memory_budget global_budget() const noexcept;
 
     std::uint64_t add_pressure_handler(memory_pressure_handler handler);
     bool remove_pressure_handler(std::uint64_t token);
 
-    memory_snapshot snapshot() const;
-    std::vector<memory_leak_record> leaks(std::uint64_t world_id = 0) const;
-    const memory_system_config& config() const noexcept;
+    [[nodiscard]] memory_snapshot snapshot() const;
+    [[nodiscard]] std::vector<memory_leak_record> leaks(std::uint64_t world_id = 0) const;
+    [[nodiscard]] const memory_system_config& config() const noexcept;
 
 private:
     struct implementation;
@@ -257,8 +257,8 @@ public:
     explicit system_memory_resource(memory_system& system, memory_domain domain = memory_domain::general,
                                     memory_tag tag = {}, std::uint64_t world_id = 0) noexcept;
 
-    memory_domain domain() const noexcept;
-    std::uint64_t world_id() const noexcept;
+    [[nodiscard]] memory_domain domain() const noexcept;
+    [[nodiscard]] std::uint64_t world_id() const noexcept;
 
 private:
     void* do_allocate(std::size_t bytes, std::size_t alignment) override;
@@ -280,8 +280,8 @@ public:
     explicit tracked_memory_resource(std::string category = "general",
                                      std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
 
-    std::string_view category() const noexcept;
-    memory_stats stats() const noexcept;
+    [[nodiscard]] std::string_view category() const noexcept;
+    [[nodiscard]] memory_stats stats() const noexcept;
     void reset_stats() noexcept;
 
 private:
@@ -301,7 +301,7 @@ private:
 };
 
 tracked_memory_resource& default_tracked_memory_resource();
-memory_stats default_memory_stats() noexcept;
+[[nodiscard]] memory_stats default_memory_stats() noexcept;
 
 struct arena_mark
 {
@@ -325,15 +325,16 @@ public:
     linear_arena(linear_arena&&) noexcept;
     linear_arena& operator=(linear_arena&&) noexcept;
 
-    void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] void* try_allocate(std::size_t bytes,
+                                     std::size_t alignment = alignof(std::max_align_t)) noexcept;
     void reset() noexcept;
-    arena_mark mark() const noexcept;
+    [[nodiscard]] arena_mark mark() const noexcept;
     bool rewind(arena_mark value) noexcept;
 
-    std::size_t used() const noexcept;
-    std::size_t capacity() const noexcept;
-    std::size_t peak_used() const noexcept;
-    std::uint64_t generation() const noexcept;
+    [[nodiscard]] std::size_t used() const noexcept;
+    [[nodiscard]] std::size_t capacity() const noexcept;
+    [[nodiscard]] std::size_t peak_used() const noexcept;
+    [[nodiscard]] std::uint64_t generation() const noexcept;
 
 private:
     struct block;
@@ -377,10 +378,11 @@ public:
     fixed_block_pool(const fixed_block_pool&) = delete;
     fixed_block_pool& operator=(const fixed_block_pool&) = delete;
 
-    void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] void* try_allocate(std::size_t bytes,
+                                     std::size_t alignment = alignof(std::max_align_t)) noexcept;
     void deallocate(void* pointer, std::size_t bytes) noexcept;
-    std::size_t pooled_bytes() const noexcept;
-    std::size_t outstanding_bytes() const noexcept;
+    [[nodiscard]] std::size_t pooled_bytes() const noexcept;
+    [[nodiscard]] std::size_t outstanding_bytes() const noexcept;
 
 private:
     struct implementation;
@@ -392,9 +394,9 @@ class network_packet_pool
 public:
     explicit network_packet_pool(std::pmr::memory_resource* upstream = std::pmr::get_default_resource());
 
-    void* try_allocate(std::size_t bytes) noexcept;
+    [[nodiscard]] void* try_allocate(std::size_t bytes) noexcept;
     void deallocate(void* pointer, std::size_t bytes) noexcept;
-    std::size_t outstanding_bytes() const noexcept;
+    [[nodiscard]] std::size_t outstanding_bytes() const noexcept;
 
 private:
     fixed_block_pool pool_;
@@ -407,10 +409,10 @@ public:
                                   memory_budget budget = {});
     ~world_memory_context();
 
-    std::uint64_t world_id() const noexcept;
-    std::pmr::memory_resource* world_resource() noexcept;
-    std::pmr::memory_resource* component_resource() noexcept;
-    std::vector<memory_leak_record> leaks() const;
+    [[nodiscard]] std::uint64_t world_id() const noexcept;
+    [[nodiscard]] std::pmr::memory_resource* world_resource() noexcept;
+    [[nodiscard]] std::pmr::memory_resource* component_resource() noexcept;
+    [[nodiscard]] std::vector<memory_leak_record> leaks() const;
 
 private:
     memory_system* system_{};
@@ -432,11 +434,12 @@ public:
     streaming_heap(const streaming_heap&) = delete;
     streaming_heap& operator=(const streaming_heap&) = delete;
 
-    void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
-    std::size_t capacity() const noexcept;
-    std::size_t used() const noexcept;
-    std::size_t peak_used() const noexcept;
-    std::size_t largest_free_block() const noexcept;
+    [[nodiscard]] void* try_allocate(std::size_t bytes,
+                                     std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] std::size_t capacity() const noexcept;
+    [[nodiscard]] std::size_t used() const noexcept;
+    [[nodiscard]] std::size_t peak_used() const noexcept;
+    [[nodiscard]] std::size_t largest_free_block() const noexcept;
 
 private:
     void* do_allocate(std::size_t bytes, std::size_t alignment) override;

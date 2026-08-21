@@ -135,7 +135,7 @@ public:
     class iterator
     {
     public:
-        entity operator*() const noexcept
+        [[nodiscard]] entity operator*() const noexcept
         {
             return current_;
         }
@@ -157,11 +157,11 @@ public:
         friend class child_range;
     };
 
-    iterator begin() const noexcept
+    [[nodiscard]] iterator begin() const noexcept
     {
         return {owner_, first_};
     }
-    iterator end() const noexcept
+    [[nodiscard]] iterator end() const noexcept
     {
         return {owner_, {}};
     }
@@ -173,13 +173,13 @@ private:
     friend child_range children(const world&, entity) noexcept;
 };
 
-inline child_range children(const world& owner, entity parent) noexcept
+[[nodiscard]] inline child_range children(const world& owner, entity parent) noexcept
 {
     const auto* links = owner.try_get<hierarchy_component>(parent);
     return {owner, links ? links->first_child : entity{}};
 }
 
-inline bool is_descendant(const world& owner, entity candidate, entity ancestor) noexcept
+[[nodiscard]] inline bool is_descendant(const world& owner, entity candidate, entity ancestor) noexcept
 {
     entity current = candidate;
     while (current.valid())

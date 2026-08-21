@@ -211,44 +211,47 @@ struct spot_shadow_cache_key
 /**
  * @brief Return deterministic cascade split depths.
  */
-std::array<float, directional_shadow_cascade_count> cascade_splits(float near_plane, float far_plane,
-                                                                   float split_lambda = 0.65f) noexcept;
+[[nodiscard]] std::array<float, directional_shadow_cascade_count>
+cascade_splits(float near_plane, float far_plane, float split_lambda = 0.65f) noexcept;
 
 /**
  * @brief Convert a color temperature in Kelvin to linear RGB approximation.
  */
-math::vector3f color_temperature_rgb(float kelvin) noexcept;
+[[nodiscard]] math::vector3f color_temperature_rgb(float kelvin) noexcept;
 
 /**
  * @brief Convert authored intensity into the renderer's unitless shading scale.
  */
-float light_intensity_scale(light_intensity_unit unit, float intensity, float range = 1.0f) noexcept;
+[[nodiscard]] float light_intensity_scale(light_intensity_unit unit, float intensity,
+                                          float range = 1.0f) noexcept;
 
 /** @brief Physically based inverse-square attenuation with a smooth authored cutoff. */
-float inverse_square_attenuation(float distance, float range, float source_radius = 0.01f) noexcept;
+[[nodiscard]] float inverse_square_attenuation(float distance, float range,
+                                               float source_radius = 0.01f) noexcept;
 
 /** @brief Solid angle of a cone with the supplied half angle in radians. */
-float cone_solid_angle(float half_angle_radians) noexcept;
+[[nodiscard]] float cone_solid_angle(float half_angle_radians) noexcept;
 
 /** @brief Convert EV100 into the multiplier applied to scene-linear radiance. */
-float exposure_multiplier(float ev100, float compensation_ev = 0.0f) noexcept;
+[[nodiscard]] float exposure_multiplier(float ev100, float compensation_ev = 0.0f) noexcept;
 
 /** @brief Advance one exposure value toward a metered target without overshoot. */
-exposure_state adapt_exposure(exposure_state current, const exposure_settings& settings, float metered_ev100,
-                              float delta_seconds, bool camera_cut = false) noexcept;
+[[nodiscard]] exposure_state adapt_exposure(exposure_state current, const exposure_settings& settings,
+                                            float metered_ev100, float delta_seconds,
+                                            bool camera_cut = false) noexcept;
 
 /**
  * @brief Estimate light importance for v1 capping/sorting.
  */
-float estimate_light_contribution(const directional_light_event& light) noexcept;
-float estimate_light_contribution(const point_light_event& light) noexcept;
-float estimate_light_contribution(const spot_light_event& light) noexcept;
-float estimate_light_contribution(const area_light_event& light) noexcept;
+[[nodiscard]] float estimate_light_contribution(const directional_light_event& light) noexcept;
+[[nodiscard]] float estimate_light_contribution(const point_light_event& light) noexcept;
+[[nodiscard]] float estimate_light_contribution(const spot_light_event& light) noexcept;
+[[nodiscard]] float estimate_light_contribution(const area_light_event& light) noexcept;
 
 /**
  * @brief Pack extracted render lights into capped GPU-ready arrays.
  */
-scene_lighting_data
+[[nodiscard]] scene_lighting_data
 pack_scene_lighting(const std::vector<directional_light_event>& directional,
                     const std::vector<point_light_event>& point, const std::vector<spot_light_event>& spot,
                     const environment_descriptor* environment = nullptr, std::uint32_t point_limit = max_point_lights,

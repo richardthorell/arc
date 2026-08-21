@@ -197,7 +197,7 @@ struct cache_statistics
     std::uint64_t evictions{};
     std::uint64_t avoided_processor_runs{};
     std::uint64_t local_bytes{};
-    double hit_rate() const noexcept;
+    [[nodiscard]] double hit_rate() const noexcept;
 };
 
 struct cache_cleanup_policy
@@ -301,8 +301,8 @@ public:
     derived_data_cache(const derived_data_cache&) = delete;
     derived_data_cache& operator=(const derived_data_cache&) = delete;
 
-    std::optional<cache_blob> get_blob(content_hash hash, cache_error& error);
-    std::optional<cache_action> get_action(asset_build_key key, cache_error& error);
+    [[nodiscard]] std::optional<cache_blob> get_blob(content_hash hash, cache_error& error);
+    [[nodiscard]] std::optional<cache_action> get_action(asset_build_key key, cache_error& error);
     bool put_blob(content_hash hash, std::span<const std::byte> bytes, cache_error& error);
     bool put_action(const cache_action& action, cache_error& error);
     bool pin(content_hash hash);
@@ -310,8 +310,8 @@ public:
     std::size_t verify(std::vector<std::string>* diagnostics = nullptr);
     std::uint64_t prune(bool force = false);
     void note_avoided_processor_run();
-    cache_statistics statistics() const;
-    const derived_data_cache_config& config() const noexcept;
+    [[nodiscard]] cache_statistics statistics() const;
+    [[nodiscard]] const derived_data_cache_config& config() const noexcept;
 
 private:
     struct implementation;
@@ -345,7 +345,7 @@ struct [[nodiscard]] asset_cook_result
     std::vector<cooked_artifact> artifacts;
     std::vector<asset_diagnostic> diagnostics;
     asset_error error;
-    bool succeeded() const noexcept
+    [[nodiscard]] bool succeeded() const noexcept
     {
         return !error && !artifacts.empty();
     }
@@ -366,9 +366,9 @@ class asset_cook_processor
 {
 public:
     virtual ~asset_cook_processor() = default;
-    virtual const asset_cook_processor_descriptor& descriptor() const noexcept = 0;
-    virtual std::string toolchain_fingerprint() const = 0;
-    virtual asset_cook_result cook(const asset_cook_context& context) = 0;
+    [[nodiscard]] virtual const asset_cook_processor_descriptor& descriptor() const noexcept = 0;
+    [[nodiscard]] virtual std::string toolchain_fingerprint() const = 0;
+    [[nodiscard]] virtual asset_cook_result cook(const asset_cook_context& context) = 0;
 };
 
 struct cook_manifest_artifact
@@ -413,7 +413,7 @@ struct [[nodiscard]] cook_result
     std::size_t cache_hits{};
     std::vector<asset_diagnostic> diagnostics;
     asset_error error;
-    bool succeeded() const noexcept
+    [[nodiscard]] bool succeeded() const noexcept
     {
         return !error;
     }
@@ -425,7 +425,7 @@ public:
     asset_cooker(asset_manager& assets, derived_data_cache& cache);
     ~asset_cooker();
     bool register_processor(std::unique_ptr<asset_cook_processor> processor);
-    cook_result cook(const cook_request& request);
+    [[nodiscard]] cook_result cook(const cook_request& request);
 
 private:
     struct implementation;

@@ -33,24 +33,24 @@ public:
     /**
      * @brief Return the shared engine job system.
      */
-    jobs::job_system& jobs() const noexcept;
+    [[nodiscard]] jobs::job_system& jobs() const noexcept;
 
     /**
      * @brief Return the shared diagnostics diagnostics::logger.
      */
-    diagnostics::logger& diagnostics() const noexcept;
+    [[nodiscard]] diagnostics::logger& diagnostics() const noexcept;
 
     /**
      * @brief Return the shared tracked memory resource.
      */
-    memory::tracked_memory_resource& memory() const noexcept;
+    [[nodiscard]] memory::tracked_memory_resource& memory() const noexcept;
 
     /**
      * @brief Return the engine memory service used for budgets, tags, and arenas.
      */
-    memory::memory_system& memory_service() const noexcept;
-    runtime_service_registry* services() const noexcept;
-    runtime_world_manager* worlds() const noexcept;
+    [[nodiscard]] memory::memory_system& memory_service() const noexcept;
+    [[nodiscard]] runtime_service_registry* services() const noexcept;
+    [[nodiscard]] runtime_world_manager* worlds() const noexcept;
 
 private:
     jobs::job_system* jobs_{};
@@ -72,12 +72,12 @@ public:
     /**
      * @brief Return the unique runtime name for this module.
      */
-    virtual std::string_view name() const = 0;
+    [[nodiscard]] virtual std::string_view name() const = 0;
 
     /**
      * @brief Return module names that must start before this module.
      */
-    virtual std::vector<std::string> dependencies() const;
+    [[nodiscard]] virtual std::vector<std::string> dependencies() const;
 
     /**
      * @brief Called once when the runtime starts modules.
@@ -125,17 +125,17 @@ public:
     /**
      * @brief Return the number of registered modules.
      */
-    std::size_t size() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept;
 
     /**
      * @brief Return whether no modules have been registered.
      */
-    bool empty() const noexcept;
+    [[nodiscard]] bool empty() const noexcept;
 
     /**
      * @brief Return all registered modules.
      */
-    const std::vector<std::unique_ptr<module>>& modules() const noexcept;
+    [[nodiscard]] const std::vector<std::unique_ptr<module>>& modules() const noexcept;
 
 private:
     std::vector<std::unique_ptr<module>> modules_;
@@ -150,12 +150,12 @@ public:
     /**
      * @brief Return the mutable module registry.
      */
-    module_registry& registry() noexcept;
+    [[nodiscard]] module_registry& registry() noexcept;
 
     /**
      * @brief Return the immutable module registry.
      */
-    const module_registry& registry() const noexcept;
+    [[nodiscard]] const module_registry& registry() const noexcept;
 
     /**
      * @brief Start modules in dependency order.
@@ -180,12 +180,12 @@ public:
     /**
      * @brief Return whether modules are currently started.
      */
-    bool started() const noexcept;
+    [[nodiscard]] bool started() const noexcept;
 
     /**
      * @brief Return module names in resolved dependency order.
      */
-    std::vector<std::string_view> start_order() const;
+    [[nodiscard]] std::vector<std::string_view> start_order() const;
 
 private:
     void resolve_order();

@@ -69,7 +69,7 @@ public:
     /**
      * @brief Return the minimum severity accepted by this logger.
      */
-    log_level min_level() const noexcept;
+    [[nodiscard]] log_level min_level() const noexcept;
 
     /**
      * @brief Add a sink that receives accepted records.
@@ -84,7 +84,7 @@ public:
     /**
      * @brief Return the current number of sinks.
      */
-    std::size_t sink_count() const;
+    [[nodiscard]] std::size_t sink_count() const;
 
     /**
      * @brief Write a fully-built record to all sinks if it passes filtering.
@@ -100,7 +100,7 @@ private:
 /**
  * @brief Return the process-wide default logger.
  */
-logger& default_logger();
+[[nodiscard]] logger& default_logger();
 
 /**
  * @brief Replace the active process-wide logger.
@@ -112,7 +112,7 @@ void set_logger(std::shared_ptr<logger> value);
 /**
  * @brief Return the active process-wide logger.
  */
-std::shared_ptr<logger> get_logger();
+[[nodiscard]] std::shared_ptr<logger> get_logger();
 
 /**
  * @brief Add a sink to the active process-wide logger.
@@ -133,7 +133,7 @@ void log(log_level level, std::string_view category, std::string_view message,
 /**
  * @brief Return a stable lowercase name for a log level.
  */
-std::string_view to_string(log_level level) noexcept;
+[[nodiscard]] std::string_view to_string(log_level level) noexcept;
 
 /**
  * @brief Log a trace message.

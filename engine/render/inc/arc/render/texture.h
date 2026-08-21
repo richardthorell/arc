@@ -57,6 +57,6 @@ jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_se
 /**
  * @brief Return whether an extension is accepted by the renderer texture loader.
  */
-bool is_supported_texture_asset(const std::filesystem::path& path);
+[[nodiscard]] bool is_supported_texture_asset(const std::filesystem::path& path);
 
 } // namespace arc::render

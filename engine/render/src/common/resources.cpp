@@ -42,7 +42,7 @@ bool descriptor_slot_pool::release(descriptor_slot slot)
     return true;
 }
 
-bool descriptor_slot_pool::alive(descriptor_slot slot) const
+bool descriptor_slot_pool::alive(descriptor_slot slot) const noexcept
 {
     if (!slot.valid() || slot.index >= slots_.size()) return false;
 

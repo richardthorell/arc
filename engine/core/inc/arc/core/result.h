@@ -16,14 +16,14 @@ template <class T, class E> class [[nodiscard]] result
 public:
     /// @brief Construct a successful result.
     /// @param value Value returned by the operation.
-    [[nodiscard]] static result success(T value)
+    [[nodiscard]] static result success(T value) noexcept(std::is_nothrow_move_constructible_v<T>)
     {
         return result(std::in_place_index<0>, std::move(value));
     }
 
     /// @brief Construct a failed result.
     /// @param error Error returned by the operation.
-    [[nodiscard]] static result failure(E error)
+    [[nodiscard]] static result failure(E error) noexcept(std::is_nothrow_move_constructible_v<E>)
     {
         return result(std::in_place_index<1>, std::move(error));
     }
@@ -90,7 +90,9 @@ public:
 
 private:
     template <std::size_t Index, class Value>
-    explicit result(std::in_place_index_t<Index> index, Value&& value) : storage_(index, std::forward<Value>(value))
+    explicit result(std::in_place_index_t<Index> index, Value&& value)
+        noexcept(std::is_nothrow_constructible_v<std::variant<T, E>, std::in_place_index_t<Index>, Value&&>)
+        : storage_(index, std::forward<Value>(value))
     {
     }
 
@@ -103,14 +105,14 @@ template <class E> class [[nodiscard]] result<void, E>
 {
 public:
     /// @brief Construct a successful status.
-    [[nodiscard]] static result success()
+    [[nodiscard]] static result success() noexcept
     {
         return result(std::in_place_index<0>);
     }
 
     /// @brief Construct a failed status.
     /// @param error Error returned by the operation.
-    [[nodiscard]] static result failure(E error)
+    [[nodiscard]] static result failure(E error) noexcept(std::is_nothrow_move_constructible_v<E>)
     {
         return result(std::in_place_index<1>, std::move(error));
     }
@@ -152,10 +154,12 @@ public:
     }
 
 private:
-    explicit result(std::in_place_index_t<0> index) : storage_(index) {}
+    explicit result(std::in_place_index_t<0> index) noexcept : storage_(index) {}
 
     template <class Value>
-    explicit result(std::in_place_index_t<1> index, Value&& value) : storage_(index, std::forward<Value>(value))
+    explicit result(std::in_place_index_t<1> index, Value&& value)
+        noexcept(std::is_nothrow_constructible_v<std::variant<std::monostate, E>, std::in_place_index_t<1>, Value&&>)
+        : storage_(index, std::forward<Value>(value))
     {
     }
 

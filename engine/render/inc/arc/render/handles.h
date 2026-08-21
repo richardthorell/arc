@@ -19,7 +19,7 @@ struct resource_handle
     /**
      * @brief Return whether this handle references a possible resource slot.
      */
-    constexpr bool valid() const noexcept
+    [[nodiscard]] constexpr bool valid() const noexcept
     {
         return index != invalid_index;
     }
@@ -54,12 +54,12 @@ public:
     /**
      * @brief Return whether a handle currently references a live slot.
      */
-    bool alive(resource_handle handle) const;
+    [[nodiscard]] bool alive(resource_handle handle) const noexcept;
 
     /**
      * @brief Return the number of live handles.
      */
-    std::uint32_t live_count() const noexcept;
+    [[nodiscard]] std::uint32_t live_count() const noexcept;
 
 private:
     struct slot
@@ -95,7 +95,7 @@ struct render_object_id
     /**
      * @brief Return whether this id can identify a scene object.
      */
-    constexpr bool valid() const noexcept
+    [[nodiscard]] constexpr bool valid() const noexcept
     {
         return index != resource_handle::invalid_index;
     }

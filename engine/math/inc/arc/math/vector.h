@@ -84,13 +84,13 @@ public:
     }
 
     /// @brief Access an element by zero-based index.
-    constexpr T& operator[](std::size_t index) noexcept
+    [[nodiscard]] constexpr T& operator[](std::size_t index) noexcept
     {
         return values_[index];
     }
 
     /// @brief Access an element by zero-based index.
-    constexpr const T& operator[](std::size_t index) const noexcept
+    [[nodiscard]] constexpr const T& operator[](std::size_t index) const noexcept
     {
         return values_[index];
     }
@@ -167,7 +167,7 @@ template <class A, class B, class C> struct expr_traits<vector_fma_expr<A, B, C>
 
 template <detail::vector_expression Expr>
 /// @brief Materialize a vector expression as a concrete `vector`.
-constexpr auto eval(const Expr& expr) noexcept
+[[nodiscard]] constexpr auto eval(const Expr& expr) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
     return vector<typename traits::value_type, traits::size>{expr};
@@ -176,7 +176,7 @@ constexpr auto eval(const Expr& expr) noexcept
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Build a lazy elementwise vector addition expression.
-constexpr auto add(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto add(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::vector_binary_expr<detail::add_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
@@ -184,7 +184,7 @@ constexpr auto add(Lhs&& lhs, Rhs&& rhs)
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Build a lazy elementwise vector subtraction expression.
-constexpr auto sub(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto sub(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::vector_binary_expr<detail::sub_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
@@ -192,7 +192,7 @@ constexpr auto sub(Lhs&& lhs, Rhs&& rhs)
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Build a lazy elementwise vector multiplication expression.
-constexpr auto mul(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto mul(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::vector_binary_expr<detail::mul_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
@@ -200,14 +200,14 @@ constexpr auto mul(Lhs&& lhs, Rhs&& rhs)
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Build a lazy elementwise vector division expression.
-constexpr auto div(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto div(Lhs&& lhs, Rhs&& rhs)
 {
     return detail::vector_binary_expr<detail::div_op, Lhs, Rhs>{std::forward<Lhs>(lhs), std::forward<Rhs>(rhs)};
 }
 
 template <detail::vector_expression Expr>
 /// @brief Build a lazy vector negation expression.
-constexpr auto neg(Expr&& expr)
+[[nodiscard]] constexpr auto neg(Expr&& expr)
 {
     return detail::vector_neg_expr<Expr>{std::forward<Expr>(expr)};
 }
@@ -215,7 +215,7 @@ constexpr auto neg(Expr&& expr)
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression adding a scalar to every vector element.
-constexpr auto add(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto add(Expr&& expr, Scalar scalar)
 {
     return detail::vector_scalar_expr<detail::add_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -223,7 +223,7 @@ constexpr auto add(Expr&& expr, Scalar scalar)
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression adding every vector element to a scalar.
-constexpr auto add(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto add(Scalar scalar, Expr&& expr)
 {
     return detail::vector_scalar_expr<detail::add_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -231,7 +231,7 @@ constexpr auto add(Scalar scalar, Expr&& expr)
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression subtracting a scalar from every vector element.
-constexpr auto sub(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto sub(Expr&& expr, Scalar scalar)
 {
     return detail::vector_scalar_expr<detail::sub_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -239,7 +239,7 @@ constexpr auto sub(Expr&& expr, Scalar scalar)
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression subtracting every vector element from a scalar.
-constexpr auto sub(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto sub(Scalar scalar, Expr&& expr)
 {
     return detail::vector_scalar_expr<detail::sub_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -247,7 +247,7 @@ constexpr auto sub(Scalar scalar, Expr&& expr)
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression multiplying every vector element by a scalar.
-constexpr auto mul(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto mul(Expr&& expr, Scalar scalar)
 {
     return detail::vector_scalar_expr<detail::mul_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -255,7 +255,7 @@ constexpr auto mul(Expr&& expr, Scalar scalar)
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression multiplying a scalar by every vector element.
-constexpr auto mul(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto mul(Scalar scalar, Expr&& expr)
 {
     return detail::vector_scalar_expr<detail::mul_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -263,7 +263,7 @@ constexpr auto mul(Scalar scalar, Expr&& expr)
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression dividing every vector element by a scalar.
-constexpr auto div(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto div(Expr&& expr, Scalar scalar)
 {
     return detail::vector_scalar_expr<detail::div_op, false, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -271,7 +271,7 @@ constexpr auto div(Expr&& expr, Scalar scalar)
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
 /// @brief Build a lazy expression dividing a scalar by every vector element.
-constexpr auto div(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto div(Scalar scalar, Expr&& expr)
 {
     return detail::vector_scalar_expr<detail::div_op, true, Scalar, Expr>{scalar, std::forward<Expr>(expr)};
 }
@@ -279,7 +279,7 @@ constexpr auto div(Scalar scalar, Expr&& expr)
 template <detail::vector_expression A, detail::vector_expression B, detail::vector_expression C>
     requires(detail::same_vector_dimensions<A, B> && detail::same_vector_dimensions<A, C>)
 /// @brief Build a lazy fused multiply-add expression equivalent to `a * b + c`.
-constexpr auto fma(A&& a, B&& b, C&& c)
+[[nodiscard]] constexpr auto fma(A&& a, B&& b, C&& c)
 {
     return detail::vector_fma_expr<A, B, C>{std::forward<A>(a), std::forward<B>(b), std::forward<C>(c)};
 }
@@ -287,7 +287,7 @@ constexpr auto fma(A&& a, B&& b, C&& c)
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Return the dot product of two vectors with the same size.
-constexpr auto dot(const Lhs& lhs, const Rhs& rhs) noexcept
+[[nodiscard]] constexpr auto dot(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     using lhs_traits = detail::expr_traits<std::remove_cvref_t<Lhs>>;
     using value_type = std::common_type_t<typename lhs_traits::value_type, detail::expr_value_t<Rhs>>;
@@ -300,14 +300,14 @@ constexpr auto dot(const Lhs& lhs, const Rhs& rhs) noexcept
 
 template <detail::vector_expression Expr>
 /// @brief Return the squared Euclidean length of a vector.
-constexpr auto length_squared(const Expr& expr) noexcept
+[[nodiscard]] constexpr auto length_squared(const Expr& expr) noexcept
 {
     return dot(expr, expr);
 }
 
 template <detail::vector_expression Expr>
 /// @brief Return the Euclidean length of a vector.
-inline auto length(const Expr& expr) noexcept
+[[nodiscard]] inline auto length(const Expr& expr) noexcept
 {
     using value_type = detail::expr_value_t<Expr>;
     return static_cast<value_type>(std::sqrt(length_squared(expr)));
@@ -315,7 +315,7 @@ inline auto length(const Expr& expr) noexcept
 
 template <detail::vector_expression Expr>
 /// @brief Return a normalized vector, or a scalar-filled fallback when length is zero.
-inline auto normalize(const Expr& expr, detail::expr_value_t<Expr> fallback = detail::expr_value_t<Expr>{}) noexcept
+[[nodiscard]] inline auto normalize(const Expr& expr, detail::expr_value_t<Expr> fallback = detail::expr_value_t<Expr>{}) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
     using value_type = typename traits::value_type;
@@ -338,7 +338,7 @@ inline auto normalize(const Expr& expr, detail::expr_value_t<Expr> fallback = de
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Return squared Euclidean distance between two vectors.
-constexpr auto distance_squared(const Lhs& lhs, const Rhs& rhs) noexcept
+[[nodiscard]] constexpr auto distance_squared(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     return length_squared(sub(lhs, rhs));
 }
@@ -346,7 +346,7 @@ constexpr auto distance_squared(const Lhs& lhs, const Rhs& rhs) noexcept
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Return Euclidean distance between two vectors.
-inline auto distance(const Lhs& lhs, const Rhs& rhs) noexcept
+[[nodiscard]] inline auto distance(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     using value_type = std::common_type_t<detail::expr_value_t<Lhs>, detail::expr_value_t<Rhs>>;
     return static_cast<value_type>(std::sqrt(distance_squared(lhs, rhs)));
@@ -355,7 +355,7 @@ inline auto distance(const Lhs& lhs, const Rhs& rhs) noexcept
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires(detail::same_vector_dimensions<Lhs, Rhs> && detail::expr_traits<std::remove_cvref_t<Lhs>>::size == 3)
 /// @brief Return the 3D cross product of two vectors.
-constexpr auto cross(const Lhs& lhs, const Rhs& rhs) noexcept
+[[nodiscard]] constexpr auto cross(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     using value_type = std::common_type_t<detail::expr_value_t<Lhs>, detail::expr_value_t<Rhs>>;
     return vector<value_type, 3>{static_cast<value_type>(lhs[1] * rhs[2] - lhs[2] * rhs[1]),
@@ -366,7 +366,7 @@ constexpr auto cross(const Lhs& lhs, const Rhs& rhs) noexcept
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires(detail::same_vector_dimensions<Lhs, Rhs> && detail::expr_traits<std::remove_cvref_t<Lhs>>::size == 2)
 /// @brief Return the scalar 2D cross product.
-constexpr auto cross2(const Lhs& lhs, const Rhs& rhs) noexcept
+[[nodiscard]] constexpr auto cross2(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     using value_type = std::common_type_t<detail::expr_value_t<Lhs>, detail::expr_value_t<Rhs>>;
     return static_cast<value_type>(lhs[0] * rhs[1] - lhs[1] * rhs[0]);
@@ -375,7 +375,7 @@ constexpr auto cross2(const Lhs& lhs, const Rhs& rhs) noexcept
 template <detail::vector_expression A, detail::vector_expression B, class T>
     requires(detail::same_vector_dimensions<A, B> && detail::scalar_for<T, detail::expr_value_t<A>>)
 /// @brief Linearly interpolate between two vectors by scalar `t`.
-constexpr auto lerp(A&& a, B&& b, T t)
+[[nodiscard]] constexpr auto lerp(A&& a, B&& b, T t)
 {
     return add(std::forward<A>(a), mul(sub(std::forward<B>(b), std::forward<A>(a)), t));
 }
@@ -383,7 +383,7 @@ constexpr auto lerp(A&& a, B&& b, T t)
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Return the elementwise minimum of two vectors.
-constexpr auto min(const Lhs& lhs, const Rhs& rhs) noexcept
+[[nodiscard]] constexpr auto min(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Lhs>>;
     using value_type = std::common_type_t<typename traits::value_type, detail::expr_value_t<Rhs>>;
@@ -401,7 +401,7 @@ constexpr auto min(const Lhs& lhs, const Rhs& rhs) noexcept
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
 /// @brief Return the elementwise maximum of two vectors.
-constexpr auto max(const Lhs& lhs, const Rhs& rhs) noexcept
+[[nodiscard]] constexpr auto max(const Lhs& lhs, const Rhs& rhs) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Lhs>>;
     using value_type = std::common_type_t<typename traits::value_type, detail::expr_value_t<Rhs>>;
@@ -419,7 +419,7 @@ constexpr auto max(const Lhs& lhs, const Rhs& rhs) noexcept
 template <detail::vector_expression Value, detail::vector_expression Min, detail::vector_expression Max>
     requires(detail::same_vector_dimensions<Value, Min> && detail::same_vector_dimensions<Value, Max>)
 /// @brief Clamp each vector element between matching minimum and maximum elements.
-constexpr auto clamp(const Value& value, const Min& minimum, const Max& maximum) noexcept
+[[nodiscard]] constexpr auto clamp(const Value& value, const Min& minimum, const Max& maximum) noexcept
 {
     return min(max(value, minimum), maximum);
 }
@@ -427,7 +427,7 @@ constexpr auto clamp(const Value& value, const Min& minimum, const Max& maximum)
 template <detail::vector_expression Value, detail::vector_expression Normal>
     requires detail::same_vector_dimensions<Value, Normal>
 /// @brief Reflect a vector around a normal.
-constexpr auto reflect(const Value& value, const Normal& normal)
+[[nodiscard]] constexpr auto reflect(const Value& value, const Normal& normal)
 {
     using value_type = std::common_type_t<detail::expr_value_t<Value>, detail::expr_value_t<Normal>>;
     return sub(value, mul(normal, static_cast<value_type>(2) * dot(value, normal)));
@@ -436,7 +436,7 @@ constexpr auto reflect(const Value& value, const Normal& normal)
 template <detail::vector_expression Value, detail::vector_expression Onto>
     requires detail::same_vector_dimensions<Value, Onto>
 /// @brief Project a vector onto another vector, returning zero when the target has zero length.
-constexpr auto project(const Value& value, const Onto& onto)
+[[nodiscard]] constexpr auto project(const Value& value, const Onto& onto)
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Value>>;
     using value_type = std::common_type_t<typename traits::value_type, detail::expr_value_t<Onto>>;
@@ -448,28 +448,28 @@ constexpr auto project(const Value& value, const Onto& onto)
 
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
-constexpr auto operator+(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto operator+(Lhs&& lhs, Rhs&& rhs)
 {
     return add(std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));
 }
 
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
-constexpr auto operator-(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto operator-(Lhs&& lhs, Rhs&& rhs)
 {
     return sub(std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));
 }
 
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
-constexpr auto operator*(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto operator*(Lhs&& lhs, Rhs&& rhs)
 {
     return mul(std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));
 }
 
 template <detail::vector_expression Lhs, detail::vector_expression Rhs>
     requires detail::same_vector_dimensions<Lhs, Rhs>
-constexpr auto operator/(Lhs&& lhs, Rhs&& rhs)
+[[nodiscard]] constexpr auto operator/(Lhs&& lhs, Rhs&& rhs)
 {
     return div(std::forward<Lhs>(lhs), std::forward<Rhs>(rhs));
 }
@@ -481,56 +481,56 @@ template <detail::vector_expression Expr> constexpr auto operator-(Expr&& expr)
 
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator+(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto operator+(Expr&& expr, Scalar scalar)
 {
     return add(std::forward<Expr>(expr), scalar);
 }
 
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator+(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto operator+(Scalar scalar, Expr&& expr)
 {
     return add(scalar, std::forward<Expr>(expr));
 }
 
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator-(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto operator-(Expr&& expr, Scalar scalar)
 {
     return sub(std::forward<Expr>(expr), scalar);
 }
 
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator-(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto operator-(Scalar scalar, Expr&& expr)
 {
     return sub(scalar, std::forward<Expr>(expr));
 }
 
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator*(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto operator*(Expr&& expr, Scalar scalar)
 {
     return mul(std::forward<Expr>(expr), scalar);
 }
 
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator*(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto operator*(Scalar scalar, Expr&& expr)
 {
     return mul(scalar, std::forward<Expr>(expr));
 }
 
 template <detail::vector_expression Expr, class Scalar>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator/(Expr&& expr, Scalar scalar)
+[[nodiscard]] constexpr auto operator/(Expr&& expr, Scalar scalar)
 {
     return div(std::forward<Expr>(expr), scalar);
 }
 
 template <class Scalar, detail::vector_expression Expr>
     requires detail::scalar_for<Scalar, detail::expr_value_t<Expr>>
-constexpr auto operator/(Scalar scalar, Expr&& expr)
+[[nodiscard]] constexpr auto operator/(Scalar scalar, Expr&& expr)
 {
     return div(scalar, std::forward<Expr>(expr));
 }

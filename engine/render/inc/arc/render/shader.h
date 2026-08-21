@@ -128,7 +128,7 @@ public:
     /**
      * @brief Return number of cached shader requests.
      */
-    std::size_t size() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept;
 
 private:
     struct cached_shader

@@ -56,25 +56,25 @@ public:
     }
 
     /// @brief Access a coordinate by zero-based index.
-    constexpr T& operator[](std::size_t index) noexcept
+    [[nodiscard]] constexpr T& operator[](std::size_t index) noexcept
     {
         return values_[index];
     }
 
     /// @brief Access a coordinate by zero-based index.
-    constexpr const T& operator[](std::size_t index) const noexcept
+    [[nodiscard]] constexpr const T& operator[](std::size_t index) const noexcept
     {
         return values_[index];
     }
 
     /// @brief Return the mutable backing vector.
-    constexpr vector_type& as_vector() noexcept
+    [[nodiscard]] constexpr vector_type& as_vector() noexcept
     {
         return values_;
     }
 
     /// @brief Return the immutable backing vector.
-    constexpr const vector_type& as_vector() const noexcept
+    [[nodiscard]] constexpr const vector_type& as_vector() const noexcept
     {
         return values_;
     }
@@ -96,7 +96,7 @@ using point3i = point<int, 3>;
 template <class T, std::size_t N, arc::math::detail::vector_expression Vec>
     requires(arc::math::detail::expr_traits<std::remove_cvref_t<Vec>>::size == N)
 /// @brief Move a point by a vector.
-constexpr auto add(const point<T, N>& lhs, const Vec& rhs) noexcept
+[[nodiscard]] constexpr auto add(const point<T, N>& lhs, const Vec& rhs) noexcept
 {
     using value_type = std::common_type_t<T, arc::math::detail::expr_value_t<Vec>>;
     return point<value_type, N>{arc::math::add(lhs.as_vector(), rhs)};
@@ -105,7 +105,7 @@ constexpr auto add(const point<T, N>& lhs, const Vec& rhs) noexcept
 template <arc::math::detail::vector_expression Vec, class T, std::size_t N>
     requires(arc::math::detail::expr_traits<std::remove_cvref_t<Vec>>::size == N)
 /// @brief Move a point by a vector.
-constexpr auto add(const Vec& lhs, const point<T, N>& rhs) noexcept
+[[nodiscard]] constexpr auto add(const Vec& lhs, const point<T, N>& rhs) noexcept
 {
     return add(rhs, lhs);
 }
@@ -113,7 +113,7 @@ constexpr auto add(const Vec& lhs, const point<T, N>& rhs) noexcept
 template <class T, std::size_t N, arc::math::detail::vector_expression Vec>
     requires(arc::math::detail::expr_traits<std::remove_cvref_t<Vec>>::size == N)
 /// @brief Move a point backward by a vector.
-constexpr auto sub(const point<T, N>& lhs, const Vec& rhs) noexcept
+[[nodiscard]] constexpr auto sub(const point<T, N>& lhs, const Vec& rhs) noexcept
 {
     using value_type = std::common_type_t<T, arc::math::detail::expr_value_t<Vec>>;
     return point<value_type, N>{arc::math::sub(lhs.as_vector(), rhs)};
@@ -121,7 +121,7 @@ constexpr auto sub(const point<T, N>& lhs, const Vec& rhs) noexcept
 
 template <class T, class U, std::size_t N>
 /// @brief Return the vector from `rhs` to `lhs`.
-constexpr auto sub(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
+[[nodiscard]] constexpr auto sub(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
 {
     using value_type = std::common_type_t<T, U>;
     arc::math::vector<value_type, N> result{};
@@ -132,41 +132,41 @@ constexpr auto sub(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
 
 template <class T, std::size_t N, arc::math::detail::vector_expression Vec>
     requires(arc::math::detail::expr_traits<std::remove_cvref_t<Vec>>::size == N)
-constexpr auto operator+(const point<T, N>& lhs, const Vec& rhs) noexcept
+[[nodiscard]] constexpr auto operator+(const point<T, N>& lhs, const Vec& rhs) noexcept
 {
     return add(lhs, rhs);
 }
 
 template <arc::math::detail::vector_expression Vec, class T, std::size_t N>
     requires(arc::math::detail::expr_traits<std::remove_cvref_t<Vec>>::size == N)
-constexpr auto operator+(const Vec& lhs, const point<T, N>& rhs) noexcept
+[[nodiscard]] constexpr auto operator+(const Vec& lhs, const point<T, N>& rhs) noexcept
 {
     return add(lhs, rhs);
 }
 
 template <class T, std::size_t N, arc::math::detail::vector_expression Vec>
     requires(arc::math::detail::expr_traits<std::remove_cvref_t<Vec>>::size == N)
-constexpr auto operator-(const point<T, N>& lhs, const Vec& rhs) noexcept
+[[nodiscard]] constexpr auto operator-(const point<T, N>& lhs, const Vec& rhs) noexcept
 {
     return sub(lhs, rhs);
 }
 
 template <class T, class U, std::size_t N>
-constexpr auto operator-(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
+[[nodiscard]] constexpr auto operator-(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
 {
     return sub(lhs, rhs);
 }
 
 template <class T, class U, std::size_t N>
 /// @brief Return the Euclidean distance between two points.
-inline auto distance(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
+[[nodiscard]] inline auto distance(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
 {
     return arc::math::distance(lhs.as_vector(), rhs.as_vector());
 }
 
 template <class T, class U, std::size_t N>
 /// @brief Return the squared Euclidean distance between two points.
-constexpr auto distance_squared(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
+[[nodiscard]] constexpr auto distance_squared(const point<T, N>& lhs, const point<U, N>& rhs) noexcept
 {
     return arc::math::distance_squared(lhs.as_vector(), rhs.as_vector());
 }

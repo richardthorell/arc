@@ -40,7 +40,7 @@ struct descriptor_slot
     /**
      * @brief Return whether this slot may reference a live descriptor.
      */
-    constexpr bool valid() const noexcept
+    [[nodiscard]] constexpr bool valid() const noexcept
     {
         return index != resource_handle::invalid_index;
     }
@@ -65,12 +65,12 @@ public:
     /**
      * @brief Return whether a slot is currently live.
      */
-    bool alive(descriptor_slot slot) const;
+    [[nodiscard]] bool alive(descriptor_slot slot) const noexcept;
 
     /**
      * @brief Return the number of live slots.
      */
-    std::uint32_t live_count() const noexcept;
+    [[nodiscard]] std::uint32_t live_count() const noexcept;
 
 private:
     struct slot_state
@@ -106,7 +106,7 @@ public:
     /**
      * @brief Return how many callbacks are waiting for retirement.
      */
-    std::size_t pending_count() const noexcept;
+    [[nodiscard]] std::size_t pending_count() const noexcept;
 
 private:
     struct pending_release
@@ -139,12 +139,12 @@ public:
     /**
      * @brief Return used bytes in this frame.
      */
-    std::size_t used() const noexcept;
+    [[nodiscard]] std::size_t used() const noexcept;
 
     /**
      * @brief Return total reserved bytes.
      */
-    std::size_t capacity() const noexcept;
+    [[nodiscard]] std::size_t capacity() const noexcept;
 
 private:
     arc::memory::linear_arena arena_;
@@ -156,7 +156,7 @@ struct upload_allocation
     std::size_t offset{};
     std::uint64_t frame{};
 
-    explicit operator bool() const noexcept
+    [[nodiscard]] explicit operator bool() const noexcept
     {
         return !bytes.empty();
     }
@@ -178,13 +178,14 @@ public:
     gpu_upload_arena& operator=(gpu_upload_arena&&) = delete;
 
     void begin_frame(std::uint64_t frame) noexcept;
-    upload_allocation try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] upload_allocation
+    try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
     std::size_t retire_completed(std::uint64_t completed_frame) noexcept;
 
-    std::size_t capacity() const noexcept;
-    std::size_t used() const noexcept;
-    std::size_t peak_used() const noexcept;
-    std::uint64_t current_frame() const noexcept;
+    [[nodiscard]] std::size_t capacity() const noexcept;
+    [[nodiscard]] std::size_t used() const noexcept;
+    [[nodiscard]] std::size_t peak_used() const noexcept;
+    [[nodiscard]] std::uint64_t current_frame() const noexcept;
 
 private:
     struct range
@@ -247,7 +248,7 @@ public:
     /**
      * @brief Return cached pipeline count.
      */
-    std::size_t size() const noexcept;
+    [[nodiscard]] std::size_t size() const noexcept;
 
 private:
     struct key_hash
