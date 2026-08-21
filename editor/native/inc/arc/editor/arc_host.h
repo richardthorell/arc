@@ -16,6 +16,7 @@ enum class gizmo_axis : std::uint8_t;
 
 struct editor_asset_state;
 struct editor_scene_state;
+struct viewport_surface_registry;
 
 class arc_host
 {
@@ -60,9 +61,11 @@ private:
     host_response execute_base(const host_command_envelope& command);
     host_response execute_base(host_command_payload command);
     host_response query_base(const host_query_envelope& query) const;
+    host_viewport_frame request_viewport_base(const host_viewport_request& request);
 
     struct state;
     std::unique_ptr<state> state_;
+    mutable std::unique_ptr<viewport_surface_registry> viewport_surfaces_;
 
     friend class in_process_host_session;
 };
@@ -93,6 +96,7 @@ private:
     // so the externally visible virtual entry points can add editor extensions.
     host_response execute_base(const host_command_envelope& command);
     host_response query_base(const host_query_envelope& query);
+    host_viewport_frame request_viewport_base(const host_viewport_request& request);
 
     std::shared_ptr<arc_host> host_;
 };

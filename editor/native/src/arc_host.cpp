@@ -38,6 +38,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -59,6 +60,104 @@ std::string primitive_mesh_uri(std::string_view name)
                    [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
     return std::string{primitive_mesh_uri_prefix} + token;
 }
+
+std::string normalized_viewport_id(std::string_view viewport_id)
+{
+    return viewport_id.empty() ? "viewport-1" : std::string{viewport_id};
+}
+} // namespace
+
+struct viewport_surface_registry
+{
+    struct surface_state
+    {
+        host_viewport_request options;
+        std::chrono::steady_clock::time_point last_request_time{};
+        double fps{};
+        double frame_time_ms{};
+        std::uint32_t draw_calls{};
+        std::uint64_t local_frame_index{};
+        bool submitted{};
+    };
+
+    viewport_surface_registry()
+    {
+        (void)ensure("viewport-1");
+    }
+
+    surface_state* find(std::string_view viewport_id)
+    {
+        const auto found = surfaces.find(normalized_viewport_id(viewport_id));
+        return found == surfaces.end() ? nullptr : &found->second;
+    }
+
+    const surface_state* find(std::string_view viewport_id) const
+    {
+        const auto found = surfaces.find(normalized_viewport_id(viewport_id));
+        return found == surfaces.end() ? nullptr : &found->second;
+    }
+
+    surface_state& ensure(std::string_view viewport_id)
+    {
+        const auto id = normalized_viewport_id(viewport_id);
+        auto [found, inserted] = surfaces.try_emplace(id);
+        if (inserted) found->second.options.viewport_id = id;
+        return found->second;
+    }
+
+    surface_state& primary()
+    {
+        return ensure("viewport-1");
+    }
+
+    std::unordered_map<std::string, surface_state> surfaces;
+    std::optional<std::string> pending_pick_surface;
+    std::uint64_t next_renderer_frame_index{};
+};
+
+namespace
+{
+template <class Variant>
+std::optional<std::string> viewport_id_from(const Variant& payload)
+{
+    return std::visit(
+        [](const auto& value) -> std::optional<std::string>
+        {
+            if constexpr (requires { value.viewport_id; })
+                return normalized_viewport_id(value.viewport_id);
+            else
+                return std::nullopt;
+        },
+        payload);
+}
+
+bool creates_viewport_surface(const host_command_payload& payload)
+{
+    return std::holds_alternative<host_viewport_attach_command>(payload) ||
+           std::holds_alternative<host_viewport_create_command>(payload);
+}
+
+template <class HostState>
+void activate_viewport_surface(HostState& host, const viewport_surface_registry::surface_state& surface)
+{
+    host.active_viewport_id = surface.options.viewport_id;
+    host.viewport_options = surface.options;
+    host.viewport_fps = surface.fps;
+    host.viewport_frame_ms = surface.frame_time_ms;
+    host.viewport_draw_calls = surface.draw_calls;
+    host.viewport_submitted = surface.submitted;
+}
+
+template <class HostState>
+void capture_viewport_surface(const HostState& host, viewport_surface_registry::surface_state& surface)
+{
+    const auto id = surface.options.viewport_id;
+    surface.options = host.viewport_options;
+    surface.options.viewport_id = id;
+    surface.frame_time_ms = host.viewport_frame_ms;
+    surface.draw_calls = host.viewport_draw_calls;
+    surface.submitted = host.viewport_submitted;
+}
 } // namespace
 } // namespace arc::editor
 
@@ -67,6 +166,7 @@ std::string primitive_mesh_uri(std::string_view name)
 // so public wrappers can extend the protocol without duplicating host logic.
 #define execute execute_base
 #define query(...) query_base(__VA_ARGS__)
+#define request_viewport request_viewport_base
 #define has_material \
     has_material = mesh_renderer.material.valid(); \
     snapshot.has_mesh = mesh_renderer.mesh.valid(); \
@@ -96,6 +196,7 @@ std::string primitive_mesh_uri(std::string_view name)
     snapshot.has_material
 #include "arc_host_base.inc"
 #undef has_material
+#undef request_viewport
 #undef query
 #undef execute
 
@@ -208,6 +309,28 @@ host_response arc_host::execute(host_command_payload command)
 
 host_response arc_host::execute(const host_command_envelope& command)
 {
+    if (!viewport_surfaces_) viewport_surfaces_ = std::make_unique<viewport_surface_registry>();
+    auto& surfaces = *viewport_surfaces_;
+    const auto viewport_id = viewport_id_from(command.payload);
+    viewport_surface_registry::surface_state* viewport_surface{};
+    if (viewport_id)
+    {
+        viewport_surface = creates_viewport_surface(command.payload) ? &surfaces.ensure(*viewport_id) : surfaces.find(*viewport_id);
+        if (!viewport_surface)
+        {
+            host_response response{.request_id = command.request_id, .succeeded = false, .error = "Viewport is not attached"};
+            response.scene_revision = state_->scene_revision;
+            response.world_epoch = state_->world_epoch;
+            response.frame_revision = state_->viewport_frame_index;
+            return response;
+        }
+    }
+    else
+    {
+        viewport_surface = &surfaces.primary();
+    }
+    activate_viewport_surface(*state_, *viewport_surface);
+
     const auto* material_command = std::get_if<host_set_entity_material_command>(&command.payload);
     const auto mesh_reference = material_command ? mesh_assignment_path(*material_command) : std::nullopt;
     const auto primitive_type = material_command ? primitive_assignment_type(*material_command) : std::nullopt;
@@ -215,6 +338,11 @@ host_response arc_host::execute(const host_command_envelope& command)
     if (!material_command || (!mesh_reference && !primitive_type && !parameter_assignment))
     {
         auto response = execute_base(command);
+        capture_viewport_surface(*state_, *viewport_surface);
+        if (response.succeeded && std::holds_alternative<host_viewport_pick_command>(command.payload))
+            surfaces.pending_pick_surface = viewport_surface->options.viewport_id;
+        if (std::holds_alternative<host_viewport_detach_command>(command.payload) && surfaces.pending_pick_surface == viewport_surface->options.viewport_id)
+            surfaces.pending_pick_surface.reset();
         if (response.succeeded && state_->project_open && should_synchronize_procedural_meshes(command.payload))
         {
             synchronize_procedural_mesh_components(state_->scene, *state_->renderer);
@@ -441,6 +569,21 @@ host_response arc_host::execute(const host_command_envelope& command)
 
 host_response arc_host::query(const host_query_envelope& query) const
 {
+    if (!viewport_surfaces_) viewport_surfaces_ = std::make_unique<viewport_surface_registry>();
+    auto& surfaces = *viewport_surfaces_;
+    const auto viewport_id = viewport_id_from(query.payload);
+    viewport_surface_registry::surface_state* viewport_surface =
+        viewport_id ? surfaces.find(*viewport_id) : &surfaces.primary();
+    if (!viewport_surface)
+    {
+        host_response response{.request_id = query.request_id, .succeeded = false, .error = "Viewport is not attached"};
+        response.scene_revision = state_->scene_revision;
+        response.world_epoch = state_->world_epoch;
+        response.frame_revision = state_->viewport_frame_index;
+        return response;
+    }
+    activate_viewport_surface(*state_, *viewport_surface);
+
     auto response = query_base(query);
     if (!response.succeeded) return response;
 
@@ -469,6 +612,15 @@ host_response arc_host::query(const host_query_envelope& query) const
     auto payload = nlohmann::json::parse(response.payload_json, nullptr, false);
     if (payload.is_discarded() || !payload.is_object()) return response;
 
+    payload["viewportId"] = viewport_surface->options.viewport_id;
+    payload["width"] = viewport_surface->options.width;
+    payload["height"] = viewport_surface->options.height;
+    payload["fps"] = viewport_surface->fps;
+    payload["frameTimeMs"] = viewport_surface->frame_time_ms;
+    payload["drawCalls"] = viewport_surface->draw_calls;
+    payload["frameIndex"] = viewport_surface->local_frame_index;
+    payload["submitted"] = viewport_surface->submitted;
+
     const auto stats = collect_viewport_render_stats(state_->scene, *state_->renderer);
     payload["viewportTelemetryVersion"] = viewport_render_stats_schema_version;
     payload["triangles"] = stats.triangles;
@@ -484,6 +636,46 @@ host_response arc_host::query(const host_query_envelope& query) const
     return response;
 }
 
+host_viewport_frame arc_host::request_viewport(const host_viewport_request& request)
+{
+    if (!viewport_surfaces_) viewport_surfaces_ = std::make_unique<viewport_surface_registry>();
+    auto& surfaces = *viewport_surfaces_;
+    const auto viewport_id = normalized_viewport_id(request.viewport_id);
+    auto* viewport_surface = surfaces.find(viewport_id);
+    if (!viewport_surface) return {.message = "Viewport render skipped: viewport is not attached"};
+
+    activate_viewport_surface(*state_, *viewport_surface);
+    host_viewport_request routed_request = request;
+    routed_request.viewport_id = viewport_id;
+    routed_request.frame_index = surfaces.next_renderer_frame_index++;
+
+    std::optional<state::pending_viewport_pick> suspended_pick;
+    if (state_->pending_pick && surfaces.pending_pick_surface && *surfaces.pending_pick_surface != viewport_id)
+    {
+        suspended_pick = std::move(state_->pending_pick);
+        state_->pending_pick.reset();
+    }
+
+    const auto request_time = std::chrono::steady_clock::now();
+    auto response = request_viewport_base(routed_request);
+
+    if (suspended_pick)
+        state_->pending_pick = std::move(suspended_pick);
+    else if (!state_->pending_pick && surfaces.pending_pick_surface == viewport_id)
+        surfaces.pending_pick_surface.reset();
+
+    capture_viewport_surface(*state_, *viewport_surface);
+    viewport_surface->local_frame_index = request.frame_index;
+    viewport_surface->options.frame_index = request.frame_index;
+    if (viewport_surface->last_request_time.time_since_epoch().count() != 0)
+    {
+        const double interval = std::chrono::duration<double>(request_time - viewport_surface->last_request_time).count();
+        if (interval > 0.0) viewport_surface->fps = 1.0 / interval;
+    }
+    viewport_surface->last_request_time = request_time;
+    return response;
+}
+
 host_response in_process_host_session::execute(const host_command_envelope& command)
 {
     return host_->execute(command);
@@ -492,6 +684,11 @@ host_response in_process_host_session::execute(const host_command_envelope& comm
 host_response in_process_host_session::query(const host_query_envelope& query)
 {
     return host_->query(query);
+}
+
+host_viewport_frame in_process_host_session::request_viewport(const host_viewport_request& request)
+{
+    return host_->request_viewport(request);
 }
 
 } // namespace arc::editor

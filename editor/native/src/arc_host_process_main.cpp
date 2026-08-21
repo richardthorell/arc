@@ -27,11 +27,13 @@
 #include <condition_variable>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -190,6 +192,10 @@ public:
     void attach(std::string viewport_id, std::uint64_t native_handle, std::int32_t x, std::int32_t y,
                 std::uint32_t width, std::uint32_t height)
     {
+        // Native-window presentation and shared-texture presentation require
+        // different Vulkan backend configurations. Preserve the native fallback
+        // as a single surface and restart cleanly if it replaces shared outputs.
+        if (running_.load() && shared_texture_) stop();
         {
             std::lock_guard lock(bounds_mutex_);
             parent_ = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(native_handle));
@@ -224,6 +230,7 @@ public:
             error = "Shared viewport consumer process is invalid";
             return false;
         }
+        const auto id = viewport_id.empty() ? std::string{"viewport-1"} : std::move(viewport_id);
         const bool renderer_running = running_.load();
         {
             std::lock_guard lock(bounds_mutex_);
@@ -232,20 +239,26 @@ public:
                 error = "A native viewport renderer is already active";
                 return false;
             }
-            viewport_id_ = viewport_id.empty() ? "viewport-1" : std::move(viewport_id);
-            width_ = std::max(1u, width);
-            height_ = std::max(1u, height);
-            consumer_process_id_ = static_cast<DWORD>(consumer_process_id);
+            auto [entry, inserted] = shared_surfaces_.try_emplace(id);
+            auto& surface = entry->second;
+            surface.viewport_id = id;
+            surface.consumer_process_id = static_cast<DWORD>(consumer_process_id);
+            surface.width = std::max(1u, width);
+            surface.height = std::max(1u, height);
+            surface.attached = true;
+            surface.visible = true;
+            surface.destroy_dirty = false;
+            if (inserted || !surface.output_created)
+                surface.create_dirty = true;
+            else
+            {
+                surface.resize_dirty = true;
+                surface.visibility_dirty = true;
+            }
             parent_ = nullptr;
             shared_texture_ = true;
             attached_ = true;
-            visible_ = true;
-            bounds_dirty_ = true;
-            if (renderer_running)
-            {
-                destroy_dirty_ = false;
-                recreate_dirty_ = true;
-            }
+            if (shared_surfaces_.size() == 1u || id == "viewport-1") activate_shared_surface_locked(surface);
         }
         if (renderer_running) return true;
         {
@@ -270,14 +283,20 @@ public:
     void release_frame(std::string viewport_id, std::uint64_t generation, std::uint64_t frame_id,
                        std::string consumer_handle)
     {
-        if (!consumer_handle.empty())
+        DWORD consumer_process_id{};
+        {
+            std::lock_guard lock(bounds_mutex_);
+            if (const auto found = shared_surfaces_.find(viewport_id); found != shared_surfaces_.end())
+                consumer_process_id = found->second.consumer_process_id;
+        }
+        if (!consumer_handle.empty() && consumer_process_id != 0)
         {
             std::uint64_t value{};
             const auto first = consumer_handle.starts_with("0x") ? consumer_handle.data() + 2 : consumer_handle.data();
             const auto last = consumer_handle.data() + consumer_handle.size();
             if (std::from_chars(first, last, value, 16).ec == std::errc{})
             {
-                HANDLE consumer = OpenProcess(PROCESS_DUP_HANDLE, FALSE, consumer_process_id_);
+                HANDLE consumer = OpenProcess(PROCESS_DUP_HANDLE, FALSE, consumer_process_id);
                 if (consumer != nullptr)
                 {
                     HANDLE local{};
@@ -296,6 +315,14 @@ public:
     void set_visible(std::string_view viewport_id, bool visible)
     {
         std::lock_guard lock(bounds_mutex_);
+        if (shared_texture_)
+        {
+            const auto found = shared_surfaces_.find(std::string{viewport_id});
+            if (found == shared_surfaces_.end()) return;
+            found->second.visible = visible;
+            found->second.visibility_dirty = true;
+            return;
+        }
         if (viewport_id != viewport_id_) return;
         visible_ = visible;
         visibility_dirty_ = true;
@@ -304,20 +331,33 @@ public:
     void pointer(const arc::editor::host_viewport_pointer_command& pointer)
     {
         std::lock_guard lock(bounds_mutex_);
-        if (pointer.viewport_id != viewport_id_) return;
+        if (shared_texture_)
+        {
+            const auto found = shared_surfaces_.find(pointer.viewport_id);
+            if (found == shared_surfaces_.end() || !found->second.attached) return;
+        }
+        else if (pointer.viewport_id != viewport_id_)
+            return;
         pending_pointer_inputs_.push_back(pointer);
     }
 
     void key(const arc::editor::host_viewport_key_command& key)
     {
         std::lock_guard lock(bounds_mutex_);
-        if (key.viewport_id != viewport_id_) return;
+        if (shared_texture_)
+        {
+            const auto found = shared_surfaces_.find(key.viewport_id);
+            if (found == shared_surfaces_.end() || !found->second.attached) return;
+        }
+        else if (key.viewport_id != viewport_id_)
+            return;
         pending_key_inputs_.push_back(key);
     }
 
 private:
     void process_pointer(const arc::editor::host_viewport_pointer_command& pointer)
     {
+        activate_interaction_surface(pointer.viewport_id);
         input_alt_ = pointer.alt;
         input_shift_ = pointer.shift;
         input_control_ = pointer.control;
@@ -339,6 +379,7 @@ private:
 
     void process_key(const arc::editor::host_viewport_key_command& key)
     {
+        activate_interaction_surface(key.viewport_id);
         input_alt_ = key.alt;
         input_shift_ = key.shift;
         input_control_ = key.control;
@@ -366,17 +407,49 @@ public:
     void detach(std::string_view viewport_id)
     {
         std::lock_guard lock(bounds_mutex_);
+        if (shared_texture_)
+        {
+            const auto found = shared_surfaces_.find(std::string{viewport_id});
+            if (found == shared_surfaces_.end()) return;
+            found->second.attached = false;
+            found->second.visible = false;
+            found->second.destroy_dirty = found->second.output_created;
+            found->second.create_dirty = false;
+            attached_ = std::any_of(shared_surfaces_.begin(), shared_surfaces_.end(),
+                                    [](const auto& entry) { return entry.second.attached; });
+            if (viewport_id_ == viewport_id)
+                for (auto& [id, surface] : shared_surfaces_)
+                    if (surface.attached)
+                    {
+                        activate_shared_surface_locked(surface);
+                        break;
+                    }
+            return;
+        }
         if (viewport_id != viewport_id_) return;
         attached_ = false;
         parent_ = nullptr;
         bounds_dirty_ = true;
-        destroy_dirty_ = shared_texture_;
         if (window_) ShowWindow(window_, SW_HIDE);
     }
 
-    void resize(std::int32_t x, std::int32_t y, std::uint32_t width, std::uint32_t height)
+    void resize(std::string_view viewport_id, std::int32_t x, std::int32_t y, std::uint32_t width,
+                std::uint32_t height)
     {
         std::lock_guard lock(bounds_mutex_);
+        if (shared_texture_)
+        {
+            const auto found = shared_surfaces_.find(std::string{viewport_id});
+            if (found == shared_surfaces_.end()) return;
+            auto& surface = found->second;
+            surface.width = std::max(1u, width);
+            surface.height = std::max(1u, height);
+            surface.resize_dirty = surface.output_created;
+            if (viewport_id_ == viewport_id) activate_shared_surface_locked(surface);
+            terrain_hover_dirty_ = true;
+            return;
+        }
+        if (viewport_id != viewport_id_) return;
         x_ = x;
         y_ = y;
         width_ = std::max(static_cast<std::uint32_t>(arc::editor::defaults::native_viewport_min_dimension), width);
@@ -497,6 +570,54 @@ private:
         std::uint32_t height{1};
     };
 
+    struct pending_release
+    {
+        std::string viewport_id;
+        std::uint64_t generation{};
+        std::uint64_t frame_id{};
+    };
+
+    struct shared_surface_state
+    {
+        std::string viewport_id;
+        DWORD consumer_process_id{};
+        std::uint32_t width{1};
+        std::uint32_t height{1};
+        bool attached{};
+        bool visible{true};
+        bool output_created{};
+        bool create_dirty{};
+        bool resize_dirty{};
+        bool visibility_dirty{};
+        bool destroy_dirty{};
+        std::uint64_t frame_index{};
+    };
+
+    struct shared_render_target
+    {
+        std::string viewport_id;
+        DWORD consumer_process_id{};
+        std::uint32_t width{1};
+        std::uint32_t height{1};
+        std::uint64_t frame_index{};
+    };
+
+    void activate_shared_surface_locked(const shared_surface_state& surface)
+    {
+        viewport_id_ = surface.viewport_id;
+        consumer_process_id_ = surface.consumer_process_id;
+        width_ = surface.width;
+        height_ = surface.height;
+    }
+
+    void activate_interaction_surface(std::string_view viewport_id)
+    {
+        if (!shared_texture_) return;
+        std::lock_guard lock(bounds_mutex_);
+        const auto found = shared_surfaces_.find(std::string{viewport_id});
+        if (found != shared_surfaces_.end() && found->second.attached) activate_shared_surface_locked(found->second);
+    }
+
     bounds current_bounds()
     {
         std::lock_guard lock(bounds_mutex_);
@@ -560,6 +681,43 @@ private:
                      SWP_SHOWWINDOW | SWP_NOACTIVATE);
     }
 
+    bool recover_backend_if_needed(const std::string& message)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (message != last_render_error_ || now - last_render_error_time_ >= std::chrono::seconds{5})
+        {
+            std::cerr << "arc_host_process native viewport render error: " << message << '\n';
+            last_render_error_ = message;
+            last_render_error_time_ = now;
+        }
+        const bool recreate_backend = message.find("backend recreation required") != std::string::npos;
+        if (!recreate_backend || now - last_backend_recovery_attempt_ < std::chrono::seconds{2}) return false;
+
+        last_backend_recovery_attempt_ = now;
+        {
+            std::lock_guard lock(host_mutex_);
+            backend_ = nullptr;
+            host_->renderer_service().set_backend(nullptr);
+        }
+        if (!create_backend())
+        {
+            running_ = false;
+            return true;
+        }
+        if (shared_texture_)
+        {
+            std::lock_guard lock(bounds_mutex_);
+            for (auto& [id, surface] : shared_surfaces_)
+            {
+                surface.output_created = false;
+                surface.create_dirty = surface.attached;
+                surface.resize_dirty = false;
+                surface.visibility_dirty = false;
+            }
+        }
+        return true;
+    }
+
     void render_once(const bounds& value)
     {
         if (!backend_) return;
@@ -572,57 +730,50 @@ private:
             host_->request_viewport(arc::editor::host_viewport_request{
                 .viewport_id = viewport_id_,
                 .frame_index = frame_index_++, .width = value.width, .height = value.height});
-            auto present = shared_texture_ ? backend_->present_viewport_output(viewport_id_)
-                                           : backend_->present_surface_frame(value.width, value.height);
+            auto present = backend_->present_surface_frame(value.width, value.height);
             rendered = present.has_value();
             if (!rendered) message = std::move(present.error().message);
         }
         if (rendered)
         {
             last_render_error_.clear();
-            if (shared_texture_) publish_ready_frame();
             return;
         }
         if (message.empty()) return;
-
-        const auto now = std::chrono::steady_clock::now();
-        if (message != last_render_error_ || now - last_render_error_time_ >= std::chrono::seconds{5})
-        {
-            std::cerr << "arc_host_process native viewport render error: " << message << '\n';
-            last_render_error_ = message;
-            last_render_error_time_ = now;
-        }
-
-        const bool recreate_backend = message.find("backend recreation required") != std::string::npos;
-        if (!recreate_backend || now - last_backend_recovery_attempt_ < std::chrono::seconds{2}) return;
-
-        last_backend_recovery_attempt_ = now;
-        {
-            std::lock_guard lock(host_mutex_);
-            backend_ = nullptr;
-            host_->renderer_service().set_backend(nullptr);
-        }
-        if (!create_backend())
-        {
-            // Stop retrying every render tick. A bounds/parent update or host
-            // restart can establish a new native surface.
-            running_ = false;
-        }
+        (void)recover_backend_if_needed(message);
     }
 
-    struct pending_release
+    void render_shared_once(const shared_render_target& target)
     {
-        std::string viewport_id;
-        std::uint64_t generation{};
-        std::uint64_t frame_id{};
-    };
+        if (!backend_) return;
+        bool rendered{};
+        std::string message;
+        {
+            std::lock_guard lock(host_mutex_);
+            host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
+                                                                       .frame_index = target.frame_index,
+                                                                       .width = target.width,
+                                                                       .height = target.height});
+            auto present = backend_->present_viewport_output(target.viewport_id);
+            rendered = present.has_value();
+            if (!rendered) message = std::move(present.error().message);
+        }
+        if (rendered)
+        {
+            last_render_error_.clear();
+            publish_ready_frame(target.viewport_id, target.consumer_process_id);
+            return;
+        }
+        if (message.empty()) return;
+        (void)recover_backend_if_needed(message);
+    }
 
-    void publish_ready_frame()
+    void publish_ready_frame(std::string_view viewport_id, DWORD consumer_process_id)
     {
-        const auto polled = backend_->poll_viewport_output(viewport_id_);
+        const auto polled = backend_->poll_viewport_output(viewport_id);
         if (!polled || !polled.value()) return;
         const auto& frame = *polled.value();
-        HANDLE consumer = OpenProcess(PROCESS_DUP_HANDLE, FALSE, consumer_process_id_);
+        HANDLE consumer = OpenProcess(PROCESS_DUP_HANDLE, FALSE, consumer_process_id);
         HANDLE duplicate{};
         const auto source = reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(frame.texture.payload));
         if (consumer == nullptr ||
@@ -1312,6 +1463,62 @@ private:
             arc::editor::host_command_envelope{.command_type = "viewport.cameraInput", .payload = routed_input});
     }
 
+    std::string update_shared_outputs(std::vector<shared_render_target>& render_targets)
+    {
+        std::lock_guard lock(bounds_mutex_);
+        std::string first_error;
+        for (const auto& release : pending_releases_)
+            if (backend_) backend_->release_viewport_frame(release.viewport_id, release.generation, release.frame_id);
+        pending_releases_.clear();
+
+        for (auto& [id, surface] : shared_surfaces_)
+        {
+            if (surface.destroy_dirty && backend_)
+            {
+                backend_->destroy_viewport_output(id);
+                surface.destroy_dirty = false;
+                surface.output_created = false;
+            }
+            if (surface.create_dirty && surface.attached && backend_)
+            {
+                const auto created = backend_->create_viewport_output({.id = id,
+                                                                        .type = arc::render::viewport_output_type::shared_texture,
+                                                                        .width = surface.width,
+                                                                        .height = surface.height,
+                                                                        .visible = surface.visible});
+                if (!created)
+                {
+                    if (first_error.empty()) first_error = created.error().message;
+                    surface.output_created = false;
+                }
+                else
+                    surface.output_created = true;
+                surface.create_dirty = false;
+            }
+            if (surface.resize_dirty && surface.output_created && backend_)
+            {
+                const auto resized = backend_->resize_viewport_output(id, surface.width, surface.height);
+                if (!resized && first_error.empty()) first_error = resized.error().message;
+                surface.resize_dirty = false;
+            }
+            if (surface.visibility_dirty && surface.output_created && backend_)
+            {
+                const auto visibility = backend_->set_viewport_output_visible(id, surface.visible);
+                if (!visibility && first_error.empty()) first_error = visibility.error().message;
+                surface.visibility_dirty = false;
+            }
+            if (surface.attached && surface.visible && surface.output_created)
+                render_targets.push_back({.viewport_id = id,
+                                          .consumer_process_id = surface.consumer_process_id,
+                                          .width = surface.width,
+                                          .height = surface.height,
+                                          .frame_index = surface.frame_index++});
+        }
+        attached_ = std::any_of(shared_surfaces_.begin(), shared_surfaces_.end(),
+                                [](const auto& entry) { return entry.second.attached; });
+        return first_error;
+    }
+
     void render_loop()
     {
         auto value = current_bounds();
@@ -1331,14 +1538,11 @@ private:
         }
         if (shared_texture_)
         {
-            const auto created = backend_->create_viewport_output({.id = viewport_id_,
-                                                                    .type = arc::render::viewport_output_type::shared_texture,
-                                                                    .width = value.width,
-                                                                    .height = value.height,
-                                                                    .visible = visible_});
-            if (!created)
+            std::vector<shared_render_target> initial_targets;
+            const auto setup_error = update_shared_outputs(initial_targets);
+            if (!setup_error.empty())
             {
-                signal_setup(created.error().message);
+                signal_setup(setup_error);
                 running_ = false;
             }
             if (!running_)
@@ -1356,6 +1560,7 @@ private:
             jobs_->pump_render_thread(32);
             std::vector<arc::editor::host_viewport_pointer_command> pointer_inputs;
             std::vector<arc::editor::host_viewport_key_command> key_inputs;
+            std::vector<shared_render_target> shared_targets;
             MSG message{};
             while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
             {
@@ -1364,6 +1569,18 @@ private:
                 DispatchMessageW(&message);
             }
 
+            if (shared_texture_)
+            {
+                {
+                    std::lock_guard lock(bounds_mutex_);
+                    pointer_inputs.swap(pending_pointer_inputs_);
+                    key_inputs.swap(pending_key_inputs_);
+                }
+                const auto update_error = update_shared_outputs(shared_targets);
+                if (!update_error.empty())
+                    std::cerr << "arc_host_process shared viewport output error: " << update_error << '\n';
+            }
+            else
             {
                 std::lock_guard lock(bounds_mutex_);
                 pointer_inputs.swap(pending_pointer_inputs_);
@@ -1374,39 +1591,13 @@ private:
                 pending_releases_.clear();
                 if (visibility_dirty_ && backend_)
                 {
-                    backend_->set_viewport_output_visible(viewport_id_, visible_);
                     visibility_dirty_ = false;
-                }
-                if (destroy_dirty_ && backend_)
-                {
-                    backend_->destroy_viewport_output(viewport_id_);
-                    destroy_dirty_ = false;
-                }
-                if (recreate_dirty_ && backend_)
-                {
-                    const auto recreated = backend_->create_viewport_output(
-                        {.id = viewport_id_,
-                         .type = arc::render::viewport_output_type::shared_texture,
-                         .width = width_,
-                         .height = height_,
-                         .visible = visible_});
-                    if (!recreated)
-                        std::cerr << "arc_host_process shared viewport recreation error: "
-                                  << recreated.error().message << '\n';
-                    recreate_dirty_ = false;
                 }
                 if (bounds_dirty_)
                 {
                     value = {.parent = parent_, .x = x_, .y = y_, .width = width_, .height = height_};
                     bounds_dirty_ = false;
-                    if (shared_texture_)
-                    {
-                        const auto resized = backend_->resize_viewport_output(viewport_id_, value.width, value.height);
-                        if (!resized) std::cerr << "arc_host_process shared viewport resize error: "
-                                                << resized.error().message << '\n';
-                    }
-                    else
-                        apply_bounds(value);
+                    apply_bounds(value);
                 }
             }
 
@@ -1421,14 +1612,27 @@ private:
                 continue;
             }
 
-            render_once(value);
+            if (shared_texture_)
+            {
+                update_terrain_hover();
+                for (const auto& target : shared_targets)
+                {
+                    if (!running_) break;
+                    render_shared_once(target);
+                }
+            }
+            else
+                render_once(value);
             std::this_thread::sleep_for(arc::editor::defaults::native_viewport_frame_interval);
         }
 
         {
             std::lock_guard lock(host_mutex_);
-            if (backend_ && shared_texture_) backend_->destroy_viewport_output(viewport_id_);
+            if (backend_ && shared_texture_)
+                for (const auto& [id, surface] : shared_surfaces_)
+                    if (surface.output_created) backend_->destroy_viewport_output(id);
             host_->renderer_service().set_backend(nullptr);
+            backend_ = nullptr;
         }
         if (window_)
         {
@@ -1467,9 +1671,8 @@ private:
     bool shared_texture_{};
     bool visible_{true};
     bool visibility_dirty_{};
-    bool destroy_dirty_{};
-    bool recreate_dirty_{};
     DWORD consumer_process_id_{};
+    std::unordered_map<std::string, shared_surface_state> shared_surfaces_;
     std::vector<pending_release> pending_releases_;
     std::vector<arc::editor::host_viewport_pointer_command> pending_pointer_inputs_;
     std::vector<arc::editor::host_viewport_key_command> pending_key_inputs_;
@@ -1567,7 +1770,7 @@ public:
 
     void key(const arc::editor::host_viewport_key_command&) {}
 
-    void resize(std::int32_t, std::int32_t, std::uint32_t, std::uint32_t) {}
+    void resize(std::string_view, std::int32_t, std::int32_t, std::uint32_t, std::uint32_t) {}
 
     void detach(std::string_view) {}
 
@@ -1701,7 +1904,7 @@ int main()
                     native_viewport.attach(attach->viewport_id, attach->native_handle, attach->x, attach->y,
                                            attach->width, attach->height);
                 else if (const auto* resize = std::get_if<arc::editor::host_viewport_resize_command>(&command.payload))
-                    native_viewport.resize(resize->x, resize->y, resize->width, resize->height);
+                    native_viewport.resize(resize->viewport_id, resize->x, resize->y, resize->width, resize->height);
                 else if (const auto* detach = std::get_if<arc::editor::host_viewport_detach_command>(&command.payload))
                     native_viewport.detach(detach->viewport_id);
                 else if (const auto* release =

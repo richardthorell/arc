@@ -41,7 +41,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   # camera snapshots by value. Keep GCC's copy diagnostic visible but non-fatal.
   target_compile_options(arc_editor_host_tests PRIVATE -Wno-error=range-loop-construct)
 endif()
-target_link_libraries(arc_editor_host_tests PRIVATE arc-editor-host Catch2::Catch2WithMain)
+target_link_libraries(arc_editor_host_tests PRIVATE arc-editor-host arc-third-party-json Catch2::Catch2WithMain)
 target_compile_definitions(arc_editor_host_tests PRIVATE "ARC_SOURCE_ROOT=\"${CMAKE_SOURCE_DIR}\"")
 target_compile_definitions(arc_editor_host_tests PRIVATE
   "ARC_TEST_GAME_MODULE_V1=\"$<TARGET_FILE:arc_test_game_module_v1>\""
