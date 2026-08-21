@@ -166,7 +166,9 @@ bool execute(sqlite3* database, const char* sql, std::string* error = nullptr)
 
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value)
 {
-    sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
+    // SQLITE_TRANSIENT is SQLite's documented sentinel for copying bound data.
+    sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()),
+                      SQLITE_TRANSIENT); // NOLINT(performance-no-int-to-ptr)
 }
 
 std::string column_text(sqlite3_stmt* statement, int column)
@@ -1330,7 +1332,7 @@ void asset_manager::on_start(framework::runtime_service_context&)
         if (implementation_->started) return;
         if (!implementation_->open_database(error))
         {
-            const auto original_error = error;
+            const auto& original_error = error;
             std::string rebuild_error;
             if (implementation_->rebuild_database(rebuild_error))
                 implementation_->events.push_back(
