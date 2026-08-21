@@ -585,7 +585,7 @@ struct render_graph_compile_options
 {
     std::uint64_t view_id{1};
     render_extent output_extent{};
-    render_extent render_extent{};
+    ::arc::render::render_extent render_extent{};
     std::uint64_t frame_index{};
     std::uint64_t world_epoch{};
     render_history_reset temporal_reset{render_history_reset::none};
