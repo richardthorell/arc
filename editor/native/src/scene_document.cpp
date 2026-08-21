@@ -648,7 +648,7 @@ bool validate_scene_for_save(const editor_scene_state& state, const std::filesys
     return true;
 }
 
-json component_version()
+[[nodiscard, maybe_unused]] json component_version()
 {
     return json{{"version", 1}};
 }
