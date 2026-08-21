@@ -29,7 +29,7 @@ describe('UiLab', () => {
     expect(screen.getByRole('textbox', { name: 'Entity notes' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Preview quality' })).toBeInTheDocument();
 
-    const componentRegion = screen.getByText('ECS component region').closest('.ui-lab-card');
+    const componentRegion = screen.getByText('ECS component region').closest<HTMLElement>('.ui-lab-card');
     expect(componentRegion).not.toBeNull();
     expect(within(componentRegion!).getByRole('textbox', { name: 'Name' })).toHaveClass('ui-text-input');
     expect(within(componentRegion!).getByRole('combobox', { name: 'Mobility' })).toHaveClass('ui-select-trigger');
@@ -65,7 +65,7 @@ describe('UiLab', () => {
   it('uses the shared context-menu surface for ECS enum choices', () => {
     render(<UiLab />);
 
-    const componentRegion = screen.getByText('ECS component region').closest('.ui-lab-card');
+    const componentRegion = screen.getByText('ECS component region').closest<HTMLElement>('.ui-lab-card');
     expect(componentRegion).not.toBeNull();
     const component = within(componentRegion!);
     fireEvent.click(component.getByRole('combobox', { name: 'Mobility' }));
@@ -79,7 +79,7 @@ describe('UiLab', () => {
     render(<UiLab />);
 
     expect(screen.queryByText('ECS')).not.toBeInTheDocument();
-    const actionCard = screen.getByText('Component actions').closest('.ui-lab-card');
+    const actionCard = screen.getByText('Component actions').closest<HTMLElement>('.ui-lab-card');
     expect(actionCard).not.toBeNull();
     const actions = within(actionCard!).getByRole('button', { name: 'ExampleComponent component actions' });
     expect(actions).toHaveClass('ui-icon-button');

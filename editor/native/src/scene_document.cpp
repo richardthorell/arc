@@ -232,7 +232,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                              name == "VirtualMeshRenderer" || name == "Vegetation" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight" ||
                              name == "PrefabInstance";
-    const bool supports_v3 = name == "Terrain" || name == "MeshRenderer" || name == "DirectionalLight" ||
+    const bool supports_v3 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight";
     const bool supports_v4 = name == "MeshRenderer";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
@@ -315,6 +315,9 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                 exposure["brightenSpeed"].get<double>() < 0.0 || exposure["darkenSpeed"].get<double>() < 0.0)
                 return fail("has invalid exposure settings");
         }
+        if (value.contains("antiAliasing") &&
+            (!value["antiAliasing"].is_number_unsigned() || value["antiAliasing"].get<std::uint32_t>() > 4u))
+            return fail("has an invalid anti-aliasing override");
         return true;
     }
     if (name == "MeshRenderer" || name == "VirtualMeshRenderer")
@@ -772,7 +775,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                    {"rotation", quaternion(component->rotation)},
                                    {"scale", vector3(component->scale)}};
     if (const auto* component = state.scene.try_get<scene::camera_component>(value))
-        components["Camera"] = {{"version", 2},
+        components["Camera"] = {{"version", 3},
                                 {"projection", static_cast<int>(component->projection)},
                                 {"fovY", component->fov_y_radians},
                                 {"near", component->near_plane},
@@ -788,7 +791,8 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                   {"minimumEV100", component->exposure.minimum_ev100},
                                   {"maximumEV100", component->exposure.maximum_ev100},
                                   {"brightenSpeed", component->exposure.brighten_speed},
-                                  {"darkenSpeed", component->exposure.darken_speed}}}};
+                                  {"darkenSpeed", component->exposure.darken_speed}}},
+                                {"antiAliasing", static_cast<int>(component->anti_aliasing)}};
     if (const auto* component = state.scene.try_get<scene::mesh_renderer_component>(value))
         components["MeshRenderer"] = {{"version", 4},
                                       {"visible", component->visible},
@@ -1380,6 +1384,11 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     camera.exposure.brighten_speed = exposure.value("brightenSpeed", camera.exposure.brighten_speed);
                     camera.exposure.darken_speed = exposure.value("darkenSpeed", camera.exposure.darken_speed);
                 }
+                camera.anti_aliasing = static_cast<render::camera_anti_aliasing_override>(
+                    value.value("antiAliasing", static_cast<int>(render::camera_anti_aliasing_override::inherit)));
+                if (camera.anti_aliasing < render::camera_anti_aliasing_override::inherit ||
+                    camera.anti_aliasing > render::camera_anti_aliasing_override::taau)
+                    throw std::runtime_error("invalid camera anti-aliasing override");
                 if (!(camera.near_plane > 0.0f && camera.far_plane > camera.near_plane))
                     throw std::runtime_error("invalid camera clip planes");
                 loaded.scene.emplace<scene::camera_component>(entity, camera);

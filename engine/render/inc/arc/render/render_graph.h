@@ -139,10 +139,12 @@ enum class builtin_render_pass : std::uint8_t
     lighting_variance,
     lighting_spatial_filter,
     indirect_lighting_composite,
+    velocity_dilation,
     reactive_mask,
     disocclusion_mask,
     temporal_antialiasing,
     temporal_upscale,
+    fxaa,
     spatial_sharpen,
     output_transform,
     debug_overlay,
@@ -248,6 +250,7 @@ enum class render_format : std::uint8_t
     rgba8_srgb,
     rgba16_float,
     rg16_float,
+    rg32_float,
     r8_unorm,
     r32_uint,
     r32_float,
@@ -270,8 +273,64 @@ enum class render_history_reset : std::uint32_t
     resize = 1u << 1u,
     render_scale_change = 1u << 2u,
     world_epoch_change = 1u << 3u,
-    debug_view_change = 1u << 4u
+    debug_view_change = 1u << 4u,
+    projection_change = 1u << 5u
 };
+
+/** @brief Min/max device-depth pair stored in ARC's shared hierarchical depth pyramid. */
+struct hzb_depth_range
+{
+    float nearest{1.0f};
+    float farthest{1.0f};
+};
+
+/** @brief Device-depth convention used by shared hierarchical depth resources. */
+enum class hzb_depth_convention : std::uint8_t
+{
+    /** Near depth is zero and far/clear depth is one. */
+    conventional_zero_to_one
+};
+
+/** @brief Backend-neutral description of a per-view min/max depth pyramid. */
+struct hzb_descriptor
+{
+    hzb_depth_convention convention{hzb_depth_convention::conventional_zero_to_one};
+    render_format format{render_format::rg32_float};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint32_t mip_count{};
+};
+
+/** @brief Runtime validity and generation state for a per-view HZB. */
+struct hzb_snapshot
+{
+    hzb_descriptor descriptor{};
+    std::uint64_t current_generation{};
+    std::uint64_t previous_generation{};
+    bool current_valid{};
+    bool previous_valid{};
+    std::string invalidation_reason;
+};
+
+/** @brief Return the complete mip count required for a depth pyramid of the supplied extent. */
+[[nodiscard]] constexpr std::uint32_t hzb_mip_count(std::uint32_t width, std::uint32_t height) noexcept
+{
+    std::uint32_t largest = width > height ? width : height;
+    std::uint32_t levels = largest == 0u ? 0u : 1u;
+    while (largest > 1u)
+    {
+        largest /= 2u;
+        ++levels;
+    }
+    return levels;
+}
+
+/** @brief Conservatively combine conventional-Z depth ranges for the next HZB mip. */
+[[nodiscard]] constexpr hzb_depth_range reduce_hzb_depth(hzb_depth_range a, hzb_depth_range b) noexcept
+{
+    return {.nearest = a.nearest < b.nearest ? a.nearest : b.nearest,
+            .farthest = a.farthest > b.farthest ? a.farthest : b.farthest};
+}
 
 [[nodiscard]] constexpr render_history_reset operator|(render_history_reset lhs, render_history_reset rhs) noexcept
 {
@@ -304,7 +363,8 @@ struct render_graph_resource_handle
 enum class render_extent_mode : std::uint8_t
 {
     absolute,
-    relative_to_view
+    relative_to_view,
+    relative_to_output
 };
 
 /**

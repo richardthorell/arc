@@ -140,6 +140,7 @@ describe('inspector host bindings', () => {
       maximumEV100: 20,
       brightenSpeed: 3,
       darkenSpeed: 1,
+      antiAliasing: 'inherit',
     };
 
     const aggregate = aggregateInspectorSnapshots(first, [first, second]);

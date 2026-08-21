@@ -534,7 +534,8 @@ host_camera_snapshot to_host_camera(const scene::camera_component& camera) noexc
             .minimum_ev100 = camera.exposure.minimum_ev100,
             .maximum_ev100 = camera.exposure.maximum_ev100,
             .brighten_speed = camera.exposure.brighten_speed,
-            .darken_speed = camera.exposure.darken_speed};
+            .darken_speed = camera.exposure.darken_speed,
+            .anti_aliasing = static_cast<host_camera_anti_aliasing>(camera.anti_aliasing)};
 }
 
 bool valid_camera(const host_camera_snapshot& camera) noexcept
@@ -580,7 +581,8 @@ scene::camera_component to_scene_camera(const host_camera_snapshot& camera) noex
                          .minimum_ev100 = camera.minimum_ev100,
                          .maximum_ev100 = camera.maximum_ev100,
                          .brighten_speed = camera.brighten_speed,
-                         .darken_speed = camera.darken_speed}};
+                         .darken_speed = camera.darken_speed},
+            .anti_aliasing = static_cast<render::camera_anti_aliasing_override>(camera.anti_aliasing)};
 }
 
 host_light_unit to_host_light_unit(render::light_intensity_unit unit) noexcept
@@ -848,6 +850,24 @@ render::render_mode to_render_mode(host_render_mode mode) noexcept
     return mode == host_render_mode::wireframe ? render::render_mode::wireframe : render::render_mode::shaded;
 }
 
+render::anti_aliasing_method to_render_anti_aliasing(host_camera_anti_aliasing method) noexcept
+{
+    switch (method)
+    {
+        case host_camera_anti_aliasing::disabled:
+            return render::anti_aliasing_method::disabled;
+        case host_camera_anti_aliasing::fxaa:
+            return render::anti_aliasing_method::fxaa;
+        case host_camera_anti_aliasing::taa:
+            return render::anti_aliasing_method::taa;
+        case host_camera_anti_aliasing::taau:
+            return render::anti_aliasing_method::taau;
+        case host_camera_anti_aliasing::inherit:
+            break;
+    }
+    return render::anti_aliasing_method::auto_select;
+}
+
 render::mesh_visualization_mode to_visualization(host_visualization_mode mode) noexcept
 {
     switch (mode)
@@ -930,6 +950,22 @@ render::mesh_visualization_mode to_visualization(host_visualization_mode mode) n
             return render::mesh_visualization_mode::terrain_triangle_density;
         case host_visualization_mode::terrain_bounds:
             return render::mesh_visualization_mode::terrain_bounds;
+        case host_visualization_mode::hzb_minimum_depth:
+            return render::mesh_visualization_mode::hzb_minimum_depth;
+        case host_visualization_mode::hzb_maximum_depth:
+            return render::mesh_visualization_mode::hzb_maximum_depth;
+        case host_visualization_mode::motion_vectors:
+            return render::mesh_visualization_mode::motion_vectors;
+        case host_visualization_mode::temporal_reactive_mask:
+            return render::mesh_visualization_mode::temporal_reactive_mask;
+        case host_visualization_mode::temporal_disocclusion:
+            return render::mesh_visualization_mode::temporal_disocclusion;
+        case host_visualization_mode::temporal_confidence:
+            return render::mesh_visualization_mode::temporal_confidence;
+        case host_visualization_mode::temporal_rejection:
+            return render::mesh_visualization_mode::temporal_rejection;
+        case host_visualization_mode::temporal_sample_weight:
+            return render::mesh_visualization_mode::temporal_sample_weight;
         case host_visualization_mode::standard:
             break;
     }
@@ -3518,6 +3554,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->viewport_options.grid = payload.grid;
                 state_->viewport_options.realtime = payload.realtime;
                 state_->viewport_options.camera_speed = payload.camera_speed;
+                state_->viewport_options.anti_aliasing = payload.anti_aliasing;
                 state_->viewport_options.environment = payload.environment;
                 return success();
             }
@@ -4361,6 +4398,16 @@ host_response arc_host::query(const host_query_envelope& query) const
                         ",\"grid\":" + std::string(state_->viewport_options.grid ? "true" : "false") +
                         ",\"realtime\":" + std::string(state_->viewport_options.realtime ? "true" : "false") +
                         ",\"cameraSpeed\":" + std::to_string(state_->viewport_options.camera_speed) +
+                        ",\"antiAliasing\":" +
+                        to_json_string(state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::disabled
+                                           ? "disabled"
+                                       : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::fxaa
+                                           ? "fxaa"
+                                       : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::taa
+                                           ? "taa"
+                                       : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::taau
+                                           ? "taau"
+                                           : "inherit") +
                         ",\"environment\":{\"sky\":" +
                         std::string(state_->viewport_options.environment.sky ? "true" : "false") +
                         ",\"fog\":" + std::string(state_->viewport_options.environment.fog ? "true" : "false") +
@@ -5117,9 +5164,26 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
         to_scene_visibility(state_->viewport_options.environment), delta_seconds, std::move(debug_overlay),
         state_->scene.camera_entity, &state_->scene.terrain_render_proxies);
 
+    auto view_config = state_->renderer->resolved_config();
+    auto requested_anti_aliasing = to_render_anti_aliasing(state_->viewport_options.anti_aliasing);
+    if (state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::inherit)
+    {
+        if (const auto* camera = state_->scene.scene.try_get<scene::camera_component>(state_->scene.camera_entity);
+            camera && camera->anti_aliasing != render::camera_anti_aliasing_override::inherit)
+            requested_anti_aliasing = static_cast<render::anti_aliasing_method>(camera->anti_aliasing);
+        else
+            requested_anti_aliasing = state_->renderer->config().anti_aliasing;
+    }
+    view_config.requested_anti_aliasing = requested_anti_aliasing;
+    view_config.anti_aliasing = state_->renderer->resolve_view_anti_aliasing(requested_anti_aliasing);
+    view_config.features.anti_aliasing = view_config.anti_aliasing;
+    view_config.features.fxaa = view_config.anti_aliasing == render::anti_aliasing_method::fxaa;
+    view_config.features.temporal_antialiasing = view_config.anti_aliasing == render::anti_aliasing_method::taa ||
+                                                 view_config.anti_aliasing == render::anti_aliasing_method::taau;
+    view_config.features.temporal_upscaling = view_config.anti_aliasing == render::anti_aliasing_method::taau;
     const auto submit_result = state_->renderer->render_frame(
-        request.frame_index, render::make_scene_draw_graph("viewport", state_->renderer->resolved_config(), true,
-                                                           state_->scene.last_render.environment));
+        request.frame_index,
+        render::make_scene_draw_graph("viewport", view_config, true, state_->scene.last_render.environment));
     const auto frame_end = std::chrono::steady_clock::now();
     state_->viewport_frame_ms = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)

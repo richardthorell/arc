@@ -806,7 +806,7 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
     REQUIRE(std::any_of(compiled.history_rotations.begin(), compiled.history_rotations.end(),
                         [](const auto& history) { return history.persistent_key == "view.temporal_color"; }));
     REQUIRE(std::any_of(compiled.history_rotations.begin(), compiled.history_rotations.end(),
-                        [](const auto& history) { return history.persistent_key == "view.visibility_hzb"; }));
+                        [](const auto& history) { return history.persistent_key == "view.depth_hzb"; }));
 }
 
 TEST_CASE("environment lighting graph schedules scalable IBL generation")
@@ -1187,6 +1187,8 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     capabilities.gpu_scene_indirect_count = true;
     capabilities.hzb_occlusion = true;
     capabilities.temporal_resolve = true;
+    capabilities.temporal_upscale = true;
+    capabilities.fxaa = true;
     capabilities.descriptor_indexing = true;
     capabilities.virtual_geometry_compute = true;
     capabilities.virtual_geometry_streaming = true;
@@ -1207,7 +1209,8 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.features.gpu_driven_rendering);
     REQUIRE(resolved.features.hzb_occlusion);
     REQUIRE(resolved.features.temporal_antialiasing);
-    REQUIRE(resolved.features.temporal_upscaling);
+    REQUIRE_FALSE(resolved.features.temporal_upscaling);
+    REQUIRE(resolved.anti_aliasing == anti_aliasing_method::taa);
     REQUIRE(resolved.features.async_compute);
     REQUIRE(resolved.features.virtual_geometry);
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
@@ -2451,6 +2454,47 @@ TEST_CASE("lighting geometry cooking is deterministic and produces hole-free pro
     REQUIRE(hit.source == arc::render::lighting_trace_source::software_distance_field);
     REQUIRE(hit.distance > 1.0f);
     REQUIRE(hit.distance < 3.0f);
+}
+
+TEST_CASE("HZB min max reduction is conservative for odd extents")
+{
+    using namespace arc::render;
+    REQUIRE(hzb_mip_count(1, 1) == 1);
+    REQUIRE(hzb_mip_count(7, 3) == 3);
+    REQUIRE(hzb_mip_count(1920, 1080) == 11);
+
+    const auto reduced = reduce_hzb_depth(reduce_hzb_depth({0.2f, 0.8f}, {0.1f, 0.7f}),
+                                          reduce_hzb_depth({0.4f, 0.9f}, {0.3f, 0.6f}));
+    REQUIRE(reduced.nearest == Catch::Approx(0.1f));
+    REQUIRE(reduced.farthest == Catch::Approx(0.9f));
+}
+
+TEST_CASE("anti aliasing policy resolves path aware auto and explicit fallbacks")
+{
+    using namespace arc::render;
+    render_capabilities capabilities{};
+    capabilities.fxaa = true;
+    capabilities.temporal_resolve = true;
+    capabilities.temporal_upscale = true;
+
+    REQUIRE(resolve_anti_aliasing(anti_aliasing_method::auto_select, render_path::forward_plus, 1.0f, capabilities) ==
+            anti_aliasing_method::fxaa);
+    REQUIRE(resolve_anti_aliasing(anti_aliasing_method::auto_select, render_path::deferred, 1.0f, capabilities) ==
+            anti_aliasing_method::taa);
+    REQUIRE(resolve_anti_aliasing(anti_aliasing_method::auto_select, render_path::deferred, 0.75f, capabilities) ==
+            anti_aliasing_method::taau);
+    REQUIRE(resolve_anti_aliasing(anti_aliasing_method::disabled, render_path::deferred, 0.5f, capabilities) ==
+            anti_aliasing_method::disabled);
+
+    capabilities.temporal_upscale = false;
+    REQUIRE(resolve_anti_aliasing(anti_aliasing_method::taau, render_path::deferred, 0.5f, capabilities) ==
+            anti_aliasing_method::taa);
+    capabilities.temporal_resolve = false;
+    REQUIRE(resolve_anti_aliasing(anti_aliasing_method::taa, render_path::deferred, 1.0f, capabilities) ==
+            anti_aliasing_method::fxaa);
+    capabilities.fxaa = false;
+    REQUIRE(resolve_anti_aliasing(anti_aliasing_method::auto_select, render_path::deferred, 1.0f, capabilities) ==
+            anti_aliasing_method::disabled);
 }
 
 TEST_CASE("terrain hierarchy is deterministic monotonic and incrementally updated")

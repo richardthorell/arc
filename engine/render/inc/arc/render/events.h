@@ -112,7 +112,15 @@ enum class mesh_visualization_mode : std::uint8_t
     terrain_geometric_error,
     terrain_culled_nodes,
     terrain_triangle_density,
-    terrain_bounds
+    terrain_bounds,
+    hzb_minimum_depth,
+    hzb_maximum_depth,
+    motion_vectors,
+    temporal_reactive_mask,
+    temporal_disocclusion,
+    temporal_confidence,
+    temporal_rejection,
+    temporal_sample_weight
 };
 
 /**

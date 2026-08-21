@@ -38,11 +38,34 @@ std::uint64_t renderer_resource_key(resource_handle handle) noexcept
 
 } // namespace
 
+anti_aliasing_method resolve_anti_aliasing(anti_aliasing_method requested, render_path path, float render_scale,
+                                           const render_capabilities& capabilities) noexcept
+{
+    auto desired = requested;
+    if (desired == anti_aliasing_method::auto_select)
+    {
+        if (path == render_path::forward_plus)
+            desired = anti_aliasing_method::fxaa;
+        else
+            desired = render_scale < 0.999f ? anti_aliasing_method::taau : anti_aliasing_method::taa;
+    }
+
+    if (desired == anti_aliasing_method::taau && capabilities.temporal_resolve && capabilities.temporal_upscale)
+        return desired;
+    if ((desired == anti_aliasing_method::taa || desired == anti_aliasing_method::taau) &&
+        capabilities.temporal_resolve)
+        return anti_aliasing_method::taa;
+    if (desired != anti_aliasing_method::disabled && capabilities.fxaa) return anti_aliasing_method::fxaa;
+    return anti_aliasing_method::disabled;
+}
+
 resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities)
 {
     resolved_render_config result{};
     result.requested_quality = config.quality;
     result.requested_path = config.path;
+    result.requested_anti_aliasing = config.anti_aliasing;
+    result.temporal = config.temporal;
 
     if (config.quality == render_quality_tier::auto_select)
     {
@@ -84,6 +107,11 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.path = profile.default_path;
     else
         result.path = config.path;
+    result.anti_aliasing = config.force_disable_temporal
+                               ? (config.anti_aliasing == anti_aliasing_method::disabled
+                                      ? anti_aliasing_method::disabled
+                                      : resolve_anti_aliasing(anti_aliasing_method::fxaa, result.path, 1.0f, capabilities))
+                               : resolve_anti_aliasing(config.anti_aliasing, result.path, 1.0f, capabilities);
     result.minimum_render_scale = config.enable_dynamic_resolution ? profile.minimum_render_scale : 1.0f;
     result.maximum_render_scale = profile.maximum_render_scale;
     result.max_point_lights = profile.max_point_lights;
@@ -162,9 +190,11 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                        .gpu_driven_rendering = gpu_driven,
                        .hzb_occlusion = gpu_driven && profile.prefer_hzb_occlusion && capabilities.storage_images &&
                                         capabilities.hzb_occlusion,
-                       .temporal_antialiasing = !config.force_disable_temporal && capabilities.temporal_resolve,
-                       .temporal_upscaling = !config.force_disable_temporal && capabilities.temporal_resolve &&
-                                             profile.prefer_temporal_upscaling,
+                       .fxaa = result.anti_aliasing == anti_aliasing_method::fxaa,
+                       .temporal_antialiasing = result.anti_aliasing == anti_aliasing_method::taa ||
+                                                result.anti_aliasing == anti_aliasing_method::taau,
+                       .temporal_upscaling = result.anti_aliasing == anti_aliasing_method::taau,
+                       .anti_aliasing = result.anti_aliasing,
                        .async_compute = optional_features && !config.force_disable_async_compute &&
                                         profile.prefer_async_compute && capabilities.dedicated_compute_queue,
                        .virtual_geometry = virtual_geometry_path != virtual_geometry_raster_path::unavailable,
@@ -202,8 +232,8 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
             "GPU-driven rendering requires an executable GPU Scene, compute, storage buffers, shader draw "
             "parameters, and indirect draws; "
             "using CPU visibility");
-    if (!capabilities.temporal_resolve && !config.force_disable_temporal)
-        result.fallback_reasons.push_back("temporal resolve is unavailable; using spatial presentation");
+    if (result.anti_aliasing != config.anti_aliasing && config.anti_aliasing != anti_aliasing_method::auto_select)
+        result.fallback_reasons.push_back("requested anti-aliasing is unavailable; using an executable fallback");
     if (config.force_disable_gpu_driven)
         result.fallback_reasons.push_back("GPU-driven rendering was disabled by renderer configuration");
     if (submission == gpu_submission_path::cpu_direct)
@@ -541,6 +571,13 @@ const renderer_config& renderer::config() const noexcept
 const resolved_render_config& renderer::resolved_config() const noexcept
 {
     return resolved_config_;
+}
+
+anti_aliasing_method renderer::resolve_view_anti_aliasing(anti_aliasing_method requested) const noexcept
+{
+    if (!backend_) return anti_aliasing_method::disabled;
+    return resolve_anti_aliasing(requested, resolved_config_.path, resolved_config_.render_scale,
+                                 backend_->capabilities());
 }
 
 render_frame_queue& renderer::frame_queue() noexcept
@@ -1133,6 +1170,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         return render_submit_result::failure(
             {render_submit_error_code::backend_unavailable, "no render backend attached"});
 
+    const bool temporal_graph = graph.find_resource("temporal_color_history") != nullptr;
     render_graph_compile_options graph_options{
         .frame_index = frame_index,
         .compute_queue_available = resolved_config_.features.async_compute,
@@ -1174,10 +1212,11 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             graph_view_initialized = true;
         }
 
-        if (resolved_config_.features.temporal_antialiasing && prepared->camera.render_width > 0 &&
+        if (temporal_graph && prepared->camera.render_width > 0 &&
             prepared->camera.render_height > 0)
         {
-            const auto sample = frame_index % 8u + 1u;
+            const auto sample_count = std::max<std::uint32_t>(config_.temporal.jitter_sample_count, 1u);
+            const auto sample = frame_index % sample_count + 1u;
             prepared->camera.jitter = {(halton(sample, 2u) - 0.5f) / static_cast<float>(prepared->camera.render_width),
                                        (halton(sample, 3u) - 0.5f) /
                                            static_cast<float>(prepared->camera.render_height)};
@@ -1319,6 +1358,17 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             const auto previous = frame_budget_.settings();
             const auto& budget = frame_budget_.update(gpu_frame_time_ms);
             resolved_config_.render_scale = budget.render_scale;
+            const auto effective_aa = config_.force_disable_temporal
+                                          ? resolve_anti_aliasing(anti_aliasing_method::fxaa, resolved_config_.path,
+                                                                  budget.render_scale, backend_->capabilities())
+                                          : resolve_anti_aliasing(config_.anti_aliasing, resolved_config_.path,
+                                                                  budget.render_scale, backend_->capabilities());
+            resolved_config_.anti_aliasing = effective_aa;
+            resolved_config_.features.anti_aliasing = effective_aa;
+            resolved_config_.features.fxaa = effective_aa == anti_aliasing_method::fxaa;
+            resolved_config_.features.temporal_antialiasing =
+                effective_aa == anti_aliasing_method::taa || effective_aa == anti_aliasing_method::taau;
+            resolved_config_.features.temporal_upscaling = effective_aa == anti_aliasing_method::taau;
             resolved_config_.geometry_error_threshold = budget.geometry_error_threshold;
             resolved_config_.shadow_resolution_scale = budget.shadow_resolution_scale;
             resolved_config_.volumetric_resolution_scale = budget.volumetric_resolution_scale;

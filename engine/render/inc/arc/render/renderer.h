@@ -28,6 +28,8 @@ struct renderer_config
     bool enable_validation{};
     render_quality_tier quality{render_quality_tier::auto_select};
     render_path path{render_path::auto_select};
+    anti_aliasing_method anti_aliasing{anti_aliasing_method::auto_select};
+    temporal_settings temporal{};
     std::uint32_t adapter_index{resource_handle::invalid_index};
     /** Zero selects the target defined by the resolved quality profile. */
     float target_frame_time_ms{};
@@ -45,6 +47,11 @@ struct renderer_config
  * @brief Resolve project rendering policy against immutable adapter support.
  */
 resolved_render_config resolve_render_config(const renderer_config& config, const render_capabilities& capabilities);
+
+/** @brief Resolve one requested AA mode against the active path, scale, and executable backend features. */
+[[nodiscard]] anti_aliasing_method resolve_anti_aliasing(anti_aliasing_method requested, render_path path,
+                                                         float render_scale,
+                                                         const render_capabilities& capabilities) noexcept;
 
 /**
  * @brief Per-frame quality controls emitted by the frame-budget controller.
@@ -139,6 +146,13 @@ public:
      * @brief Return the concrete path and feature set selected for the backend.
      */
     const resolved_render_config& resolved_config() const noexcept;
+
+    /**
+     * @brief Resolve a per-view anti-aliasing request against the active backend.
+     * @param requested Requested view policy.
+     * @return Executable method after capability fallback.
+     */
+    [[nodiscard]] anti_aliasing_method resolve_view_anti_aliasing(anti_aliasing_method requested) const noexcept;
 
     /**
      * @brief Return the queue used by producers to submit render events.

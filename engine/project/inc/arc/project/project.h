@@ -155,6 +155,7 @@ struct project_renderer_settings
     renderer_backend backend{renderer_backend::vulkan}; ///< Selected renderer backend.
     std::string api{"1.2"};                             ///< Minimum graphics API version.
     std::string quality{"standard"};                    ///< Initial quality profile.
+    std::string anti_aliasing{"auto"};                  ///< Project anti-aliasing policy.
 };
 
 /** @brief Inline cooker target profile stored in the project descriptor. */

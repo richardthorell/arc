@@ -3,6 +3,7 @@
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>
 #include <arc/render/lighting_scene.h>
+#include <arc/render/render_backend.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/ecs/entity.h>
 #include <arc/ecs/identity.h>
@@ -135,6 +136,7 @@ struct camera_component
     bool active{true};
     math::vector4f clear_color{0.10f, 0.22f, 0.34f, 1.0f};
     render::exposure_settings exposure{};
+    render::camera_anti_aliasing_override anti_aliasing{render::camera_anti_aliasing_override::inherit};
 };
 
 /**

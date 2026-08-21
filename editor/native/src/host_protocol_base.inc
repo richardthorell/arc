@@ -368,6 +368,16 @@ bool camera_value(std::string_view json, std::string_view key, host_camera_snaps
         out.exposure_metering = metering == "centerWeighted" ? host_exposure_metering_mode::center_weighted
                                                              : host_exposure_metering_mode::average;
     }
+    std::string anti_aliasing;
+    if (string_value(object, "antiAliasing", anti_aliasing))
+    {
+        if (anti_aliasing == "inherit") out.anti_aliasing = host_camera_anti_aliasing::inherit;
+        else if (anti_aliasing == "disabled") out.anti_aliasing = host_camera_anti_aliasing::disabled;
+        else if (anti_aliasing == "fxaa") out.anti_aliasing = host_camera_anti_aliasing::fxaa;
+        else if (anti_aliasing == "taa") out.anti_aliasing = host_camera_anti_aliasing::taa;
+        else if (anti_aliasing == "taau") out.anti_aliasing = host_camera_anti_aliasing::taau;
+        else return false;
+    }
     const auto optional_number = [&](std::string_view name, float& value)
     {
         if (object.find(std::string{"\""} + std::string{name} + "\"") == std::string_view::npos) return true;
@@ -895,6 +905,22 @@ const char* to_string(host_visualization_mode value) noexcept
             return "terrainTriangleDensity";
         case host_visualization_mode::terrain_bounds:
             return "terrainBounds";
+        case host_visualization_mode::hzb_minimum_depth:
+            return "hzbMinimumDepth";
+        case host_visualization_mode::hzb_maximum_depth:
+            return "hzbMaximumDepth";
+        case host_visualization_mode::motion_vectors:
+            return "motionVectors";
+        case host_visualization_mode::temporal_reactive_mask:
+            return "temporalReactiveMask";
+        case host_visualization_mode::temporal_disocclusion:
+            return "temporalDisocclusion";
+        case host_visualization_mode::temporal_confidence:
+            return "temporalConfidence";
+        case host_visualization_mode::temporal_rejection:
+            return "temporalRejection";
+        case host_visualization_mode::temporal_sample_weight:
+            return "temporalSampleWeight";
     }
     return "standard";
 }
@@ -1277,7 +1303,14 @@ std::string to_json(const host_camera_snapshot& camera)
                                                                                              : "average")
            << ",\"manualEV100\":" << camera.manual_ev100 << ",\"exposureCompensation\":" << camera.exposure_compensation
            << ",\"minimumEV100\":" << camera.minimum_ev100 << ",\"maximumEV100\":" << camera.maximum_ev100
-           << ",\"brightenSpeed\":" << camera.brighten_speed << ",\"darkenSpeed\":" << camera.darken_speed << '}';
+           << ",\"brightenSpeed\":" << camera.brighten_speed << ",\"darkenSpeed\":" << camera.darken_speed
+           << ",\"antiAliasing\":"
+           << quote(camera.anti_aliasing == host_camera_anti_aliasing::disabled ? "disabled"
+                    : camera.anti_aliasing == host_camera_anti_aliasing::fxaa   ? "fxaa"
+                    : camera.anti_aliasing == host_camera_anti_aliasing::taa    ? "taa"
+                    : camera.anti_aliasing == host_camera_anti_aliasing::taau   ? "taau"
+                                                                                : "inherit")
+           << '}';
     return stream.str();
 }
 
@@ -2822,11 +2855,23 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             {"terrainGeometricError", host_visualization_mode::terrain_geometric_error},
             {"terrainCulledNodes", host_visualization_mode::terrain_culled_nodes},
             {"terrainTriangleDensity", host_visualization_mode::terrain_triangle_density},
-            {"terrainBounds", host_visualization_mode::terrain_bounds}};
+            {"terrainBounds", host_visualization_mode::terrain_bounds},
+            {"hzbMinimumDepth", host_visualization_mode::hzb_minimum_depth},
+            {"hzbMaximumDepth", host_visualization_mode::hzb_maximum_depth},
+            {"motionVectors", host_visualization_mode::motion_vectors},
+            {"temporalReactiveMask", host_visualization_mode::temporal_reactive_mask},
+            {"temporalDisocclusion", host_visualization_mode::temporal_disocclusion},
+            {"temporalConfidence", host_visualization_mode::temporal_confidence},
+            {"temporalRejection", host_visualization_mode::temporal_rejection},
+            {"temporalSampleWeight", host_visualization_mode::temporal_sample_weight}};
         static constexpr std::pair<std::string_view, host_overlay_mode> overlays[]{
             {"none", host_overlay_mode::none},
             {"selectedWireframe", host_overlay_mode::selected_wireframe},
             {"allWireframe", host_overlay_mode::all_wireframe}};
+        static constexpr std::pair<std::string_view, host_camera_anti_aliasing> anti_aliasing_methods[]{
+            {"inherit", host_camera_anti_aliasing::inherit}, {"disabled", host_camera_anti_aliasing::disabled},
+            {"fxaa", host_camera_anti_aliasing::fxaa},       {"taa", host_camera_anti_aliasing::taa},
+            {"taau", host_camera_anti_aliasing::taau}};
         host_viewport_set_render_options_command command;
         string_value(payload, "viewportId", command.viewport_id);
         parse_enum(payload, "renderMode", render_modes, std::size(render_modes), command.render_mode);
@@ -2837,6 +2882,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         bool_value(payload, "realtime", command.realtime);
         number_value(payload, "cameraSpeed", command.camera_speed);
         command.camera_speed = std::clamp(command.camera_speed, 0.25f, 16.0f);
+        parse_enum(payload, "antiAliasing", anti_aliasing_methods, std::size(anti_aliasing_methods),
+                   command.anti_aliasing);
         parse_environment(payload, command.environment);
         envelope.payload = command;
     }

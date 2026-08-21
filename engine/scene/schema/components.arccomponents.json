@@ -191,7 +191,7 @@
                            "type":  "camera_component",
                            "id":  "a7c00000000000010000000000000007",
                            "display":  "Camera",
-                           "version":  2,
+                           "version":  3,
                            "customSerialization":  true,
                            "fields":  [
                                           {
@@ -277,6 +277,17 @@
                                               "kind":  "struct",
                                               "display":  "Exposure",
                                               "description":  "Authored Exposure value for Camera.",
+                                              "unit":  "none",
+                                              "constraints":  {
+
+                                                              }
+                                          },
+                                          {
+                                              "name":  "anti_aliasing",
+                                              "id":  "0000000000000009",
+                                              "kind":  "enum",
+                                              "display":  "Anti-Aliasing",
+                                              "description":  "Camera override of the project anti-aliasing policy.",
                                               "unit":  "none",
                                               "constraints":  {
 

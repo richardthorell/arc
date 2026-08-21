@@ -40,6 +40,7 @@ layout(std430, set = 0, binding = 2) buffer visibility_counter_buffer
     uint distance_rejected;
     uint reserved;
 } counters;
+layout(set = 0, binding = 3) uniform sampler2D hzb_generations[2];
 
 layout(push_constant) uniform visibility_constants
 {
@@ -49,6 +50,7 @@ layout(push_constant) uniform visibility_constants
     uint render_layer_mask;
     uint camera_cut;
     uint reserved;
+    vec4 hzb_parameters;
 } constants;
 
 bool intersects_frustum(vec3 minimum_bounds, vec3 maximum_bounds)
@@ -103,6 +105,25 @@ void main()
     {
         enabled = false;
         atomicAdd(counters.distance_rejected, 1u);
+    }
+    if (enabled && constants.hzb_parameters.w > 0.5)
+    {
+        float radius = max(length(instance.bounds_max.xyz - instance.bounds_min.xyz) * 0.5, 1.0e-4);
+        vec4 clip = constants.view_projection * vec4(center, 1.0);
+        vec2 uv = clip.xy / max(clip.w, 1.0e-5) * 0.5 + 0.5;
+        float depth = clip.z / max(clip.w, 1.0e-5);
+        float projected_radius = radius * max(constants.hzb_parameters.x, constants.hzb_parameters.y) /
+                                 max(abs(clip.w), 1.0e-4);
+        float mip = clamp(floor(log2(max(projected_radius, 1.0))), 0.0,
+                          max(constants.hzb_parameters.z - 1.0, 0.0));
+        float farthest_occluder = textureLod(hzb_generations[constants.reserved & 1u], uv, mip).g;
+        float conservative_near_depth = clamp(depth - radius / max(abs(clip.w), 1.0e-4), 0.0, 1.0);
+        bool inside_view = all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+        if (inside_view && conservative_near_depth > farthest_occluder + 1.0e-4)
+        {
+            enabled = false;
+            atomicAdd(counters.reserved, 1u);
+        }
     }
     if (enabled)
     {

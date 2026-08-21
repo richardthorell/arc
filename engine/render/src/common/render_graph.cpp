@@ -18,6 +18,7 @@ std::uint64_t format_bytes_per_pixel(render_format format) noexcept
     switch (format)
     {
         case render_format::rgba16_float:
+        case render_format::rg32_float:
             return 8;
         case render_format::rgba8_unorm:
         case render_format::rgba8_srgb:
@@ -139,16 +140,25 @@ render_graph_compile_result render_graph::compile(const render_graph_compile_opt
     std::vector<render_graph_resource> resolved_resources = resources_;
     for (auto& resource : resolved_resources)
     {
-        if (resource.extent_mode != render_extent_mode::relative_to_view) continue;
-        const auto base = options.render_extent.width != 0 && options.render_extent.height != 0
-                              ? options.render_extent
-                              : options.output_extent;
-        if (base.width == 0 || base.height == 0) continue;
-        resource.extent.width = std::max(
-            1u, static_cast<std::uint32_t>(std::ceil(static_cast<float>(base.width) * resource.width_scale)));
-        resource.extent.height = std::max(
-            1u, static_cast<std::uint32_t>(std::ceil(static_cast<float>(base.height) * resource.height_scale)));
-        resource.extent.depth = std::max(resource.extent.depth, 1u);
+        if (resource.extent_mode == render_extent_mode::relative_to_view ||
+            resource.extent_mode == render_extent_mode::relative_to_output)
+        {
+            const auto base = resource.extent_mode == render_extent_mode::relative_to_output
+                                  ? options.output_extent
+                                  : options.render_extent.width != 0 && options.render_extent.height != 0
+                                        ? options.render_extent
+                                        : options.output_extent;
+            if (base.width != 0 && base.height != 0)
+            {
+                resource.extent.width = std::max(
+                    1u, static_cast<std::uint32_t>(std::ceil(static_cast<float>(base.width) * resource.width_scale)));
+                resource.extent.height = std::max(
+                    1u, static_cast<std::uint32_t>(std::ceil(static_cast<float>(base.height) * resource.height_scale)));
+                resource.extent.depth = std::max(resource.extent.depth, 1u);
+            }
+        }
+        if (resource.mip_levels == 0u)
+            resource.mip_levels = hzb_mip_count(resource.extent.width, resource.extent.height);
     }
 
     const auto resolve_queue = [&](render_queue_type queue)
@@ -630,6 +640,8 @@ std::string_view render_format_name(render_format format) noexcept
             return "rgba16f";
         case render_format::rg16_float:
             return "rg16f";
+        case render_format::rg32_float:
+            return "rg32f";
         case render_format::r8_unorm:
             return "r8";
         case render_format::r32_uint:

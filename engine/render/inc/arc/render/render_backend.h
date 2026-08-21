@@ -49,6 +49,36 @@ enum class render_path : std::uint8_t
     deferred
 };
 
+/** @brief Anti-aliasing and temporal reconstruction policy requested for a rendered view. */
+enum class anti_aliasing_method : std::uint8_t
+{
+    auto_select,
+    disabled,
+    fxaa,
+    taa,
+    taau
+};
+
+/** @brief Camera-level override of the project anti-aliasing policy. */
+enum class camera_anti_aliasing_override : std::uint8_t
+{
+    inherit,
+    disabled,
+    fxaa,
+    taa,
+    taau
+};
+
+/** @brief Authored tuning shared by TAA and temporal upscaling. */
+struct temporal_settings
+{
+    float history_weight{0.9f};
+    float disocclusion_threshold{0.01f};
+    float reactive_response{1.0f};
+    float sharpening{0.2f};
+    std::uint8_t jitter_sample_count{8};
+};
+
 inline constexpr float default_target_frame_time_ms = 1000.0f / 60.0f;
 inline constexpr float dynamic_resolution_scale_step = 1.0f / 16.0f;
 inline constexpr float dynamic_resolution_over_budget_ratio = 1.04f;
@@ -243,6 +273,10 @@ struct render_capabilities
     bool hzb_occlusion{};
     /** @brief Backend can execute ARC's temporal resolve pipeline. */
     bool temporal_resolve{};
+    /** @brief Backend can resolve lower-resolution input into an output-resolution temporal history. */
+    bool temporal_upscale{};
+    /** @brief Backend can execute ARC's lightweight post-transform anti-aliasing path. */
+    bool fxaa{};
     /** @brief Backend can execute ARC's compute traversal and software cluster rasterizer. */
     bool virtual_geometry_compute{};
     /** @brief Backend can execute cluster rasterization with mesh shaders. */
@@ -289,8 +323,10 @@ struct render_feature_set
     bool draw_indirect_count{};
     bool gpu_driven_rendering{};
     bool hzb_occlusion{};
+    bool fxaa{};
     bool temporal_antialiasing{};
     bool temporal_upscaling{};
+    anti_aliasing_method anti_aliasing{anti_aliasing_method::disabled};
     bool async_compute{};
     bool virtual_geometry{};
     virtual_geometry_raster_path virtual_geometry_path{virtual_geometry_raster_path::unavailable};
@@ -322,6 +358,9 @@ struct resolved_render_config
     render_quality_tier quality{render_quality_tier::medium};
     render_path requested_path{render_path::auto_select};
     render_path path{render_path::deferred};
+    anti_aliasing_method requested_anti_aliasing{anti_aliasing_method::auto_select};
+    anti_aliasing_method anti_aliasing{anti_aliasing_method::disabled};
+    temporal_settings temporal{};
     render_feature_set features{};
     float target_frame_time_ms{default_target_frame_time_ms};
     float minimum_render_scale{standard_render_quality_profile.minimum_render_scale};
@@ -760,8 +799,13 @@ struct render_temporal_profile
 {
     bool enabled{};
     bool upscaling{};
+    bool fxaa{};
     bool history_valid{};
     bool camera_cut{};
+    anti_aliasing_method effective_method{anti_aliasing_method::disabled};
+    std::uint32_t hzb_mip_count{};
+    std::uint32_t rejected_history_samples{};
+    std::uint32_t accepted_history_samples{};
     math::vector2f jitter{};
     std::string reset_reason;
     std::string fallback_reason;

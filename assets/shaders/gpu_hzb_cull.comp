@@ -62,7 +62,7 @@ void main()
     float projected_radius = radius * max(constants.viewport_extent.x, constants.viewport_extent.y) /
                              max(abs(clip.w), 1.0e-4);
     float mip = clamp(floor(log2(max(projected_radius, 1.0))), 0.0, float(constants.hzb_mip_count - 1u));
-    float farthest_occluder = textureLod(previous_hzb, uv, mip).r;
+    float farthest_occluder = textureLod(previous_hzb, uv, mip).g;
     float depth_radius = radius / max(abs(clip.w), 1.0e-4);
     float conservative_near_depth = clamp(depth + (constants.reverse_z != 0u ? depth_radius : -depth_radius),
                                           0.0, 1.0);

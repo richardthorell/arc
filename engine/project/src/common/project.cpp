@@ -253,6 +253,7 @@ project_descriptor parse_v2(const json& source)
     result.renderer.backend = parse_renderer(renderer.value("backend", "vulkan"));
     result.renderer.api = renderer.value("api", result.renderer.backend == renderer_backend::none ? "" : "1.2");
     result.renderer.quality = renderer.value("quality", "standard");
+    result.renderer.anti_aliasing = renderer.value("antiAliasing", "auto");
 
     for (const auto& entry : source.value("cookProfiles", json::array()))
         result.cook_profiles.push_back({.id = entry.value("id", ""),
@@ -347,7 +348,8 @@ json descriptor_json(const project_descriptor& value)
             {"renderer",
              {{"backend", to_string(value.renderer.backend)},
               {"api", value.renderer.api},
-              {"quality", value.renderer.quality}}},
+              {"quality", value.renderer.quality},
+              {"antiAliasing", value.renderer.anti_aliasing}}},
             {"cookProfiles", std::move(cook_profiles)},
             {"package",
              {{"applicationName", value.package.application_name},

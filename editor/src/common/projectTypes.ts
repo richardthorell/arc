@@ -58,7 +58,7 @@ export type ArcProjectDescriptor = {
     cppStandard: number;
   };
   buildConfigurations: string[];
-  renderer: { backend: 'none' | 'vulkan'; api: string; quality: string };
+  renderer: { backend: 'none' | 'vulkan'; api: string; quality: string; antiAliasing?: string };
   cookProfiles: Array<{
     id: string;
     platform: string;

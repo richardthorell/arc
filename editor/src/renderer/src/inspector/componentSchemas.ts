@@ -266,6 +266,19 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       },
       { id: 'active', label: 'Active Camera', path: 'camera.active', type: 'boolean' },
       {
+        id: 'antiAliasing',
+        label: 'Anti-Aliasing',
+        path: 'camera.antiAliasing',
+        type: 'enum',
+        options: [
+          { value: 'inherit', label: 'Project Default' },
+          { value: 'disabled', label: 'Off' },
+          { value: 'fxaa', label: 'FXAA' },
+          { value: 'taa', label: 'TAA' },
+          { value: 'taau', label: 'TAAU' },
+        ],
+      },
+      {
         id: 'clearColor',
         label: 'Clear Color',
         path: 'camera.clearColor',

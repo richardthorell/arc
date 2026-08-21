@@ -212,6 +212,7 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
       backend: renderer.backend === 'none' ? 'none' : 'vulkan',
       api: stringValue(renderer.api, renderer.backend === 'none' ? '' : '1.2'),
       quality: stringValue(renderer.quality, 'standard'),
+      antiAliasing: stringValue(renderer.antiAliasing, 'auto'),
     },
     cookProfiles: Array.isArray(raw.cookProfiles)
       ? raw.cookProfiles.map((entry) => {

@@ -63,6 +63,7 @@ type ViewportRenderOptions = {
   grid: boolean;
   realtime: boolean;
   cameraSpeed: number;
+  antiAliasing: 'inherit' | 'disabled' | 'fxaa' | 'taa' | 'taau';
   environment: {
     sky: boolean;
     fog: boolean;
@@ -81,6 +82,7 @@ const defaultRenderOptions: ViewportRenderOptions = {
   grid: true,
   realtime: true,
   cameraSpeed: 4,
+  antiAliasing: 'inherit',
   environment: { sky: true, fog: true, terrain: true, water: true, vegetation: true, decals: true },
 };
 
@@ -629,6 +631,14 @@ export function ViewportPanel({
                 ['terrainCulledNodes', 'Terrain Culling'],
                 ['terrainTriangleDensity', 'Terrain Density'],
                 ['terrainBounds', 'Terrain Bounds'],
+                ['hzbMinimumDepth', 'HZB Minimum Depth'],
+                ['hzbMaximumDepth', 'HZB Maximum Depth'],
+                ['motionVectors', 'Motion Vectors'],
+                ['temporalReactiveMask', 'Reactive Mask'],
+                ['temporalDisocclusion', 'Disocclusion'],
+                ['temporalConfidence', 'History Confidence'],
+                ['temporalRejection', 'History Rejection'],
+                ['temporalSampleWeight', 'Temporal Weight'],
               ].map(([mode, label]) => (
                 <button
                   key={mode}
@@ -699,6 +709,27 @@ export function ViewportPanel({
               {[0.5, 1, 2, 4, 8, 16].map((speed) => (
                 <button key={speed} onClick={() => void updateRenderOptions({ cameraSpeed: speed })}>
                   {speed}x
+                </button>
+              ))}
+            </div>
+          </details>
+          <details className="arc-viewport-show-menu">
+            <summary>
+              AA {renderOptions.antiAliasing === 'inherit' ? 'Project/Camera' : renderOptions.antiAliasing.toUpperCase()}
+            </summary>
+            <div className="arc-viewport-show-popup viewport-aa-menu">
+              {([
+                ['inherit', 'Project / Camera Default'],
+                ['disabled', 'Off'],
+                ['fxaa', 'FXAA'],
+                ['taa', 'TAA'],
+                ['taau', 'TAAU'],
+              ] as const).map(([method, label]) => (
+                <button key={method} onClick={() => void updateRenderOptions({ antiAliasing: method })}>
+                  <span className="arc-viewport-menu-check">
+                    {renderOptions.antiAliasing === method ? '✓' : ''}
+                  </span>
+                  {label}
                 </button>
               ))}
             </div>

@@ -28,6 +28,7 @@ export type InspectorCamera = {
   maximumEV100: number;
   brightenSpeed: number;
   darkenSpeed: number;
+  antiAliasing: 'inherit' | 'disabled' | 'fxaa' | 'taa' | 'taau';
 };
 
 export type InspectorLight = {
@@ -202,6 +203,7 @@ const hostSelectedEntitySchema = z.object({
       maximumEV100: finiteNumber.default(20),
       brightenSpeed: finiteNumber.nonnegative().default(3),
       darkenSpeed: finiteNumber.nonnegative().default(1),
+      antiAliasing: z.enum(['inherit', 'disabled', 'fxaa', 'taa', 'taau']).default('inherit'),
     })
     .nullable(),
   light: z

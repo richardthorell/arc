@@ -7,7 +7,13 @@ layout(set = 0, binding = 1) uniform sampler2D previous_color;
 layout(set = 0, binding = 2) uniform sampler2D motion_vectors;
 layout(set = 0, binding = 3) uniform sampler2D reactive_mask;
 layout(set = 0, binding = 4) uniform sampler2D disocclusion_mask;
-layout(rgba16f, set = 0, binding = 5) uniform writeonly image2D resolved_color;
+layout(set = 0, binding = 5) uniform sampler2D current_depth;
+layout(set = 0, binding = 6) uniform sampler2D previous_moments;
+layout(set = 0, binding = 7) uniform sampler2D previous_confidence;
+layout(rgba16f, set = 0, binding = 8) uniform writeonly image2D resolved_color;
+layout(r32f, set = 0, binding = 9) uniform writeonly image2D resolved_depth;
+layout(rg16f, set = 0, binding = 10) uniform writeonly image2D resolved_moments;
+layout(r8, set = 0, binding = 11) uniform writeonly image2D resolved_confidence;
 
 layout(push_constant) uniform temporal_constants
 {
@@ -16,6 +22,18 @@ layout(push_constant) uniform temporal_constants
     uint history_valid;
     float base_history_weight;
 } constants;
+
+vec3 rgb_to_ycocg(vec3 value)
+{
+    return vec3(value.r * 0.25 + value.g * 0.5 + value.b * 0.25,
+                value.r * 0.5 - value.b * 0.5,
+                -value.r * 0.25 + value.g * 0.5 - value.b * 0.25);
+}
+
+vec3 ycocg_to_rgb(vec3 value)
+{
+    return vec3(value.x + value.y - value.z, value.x + value.z, value.x - value.y - value.z);
+}
 
 void main()
 {
@@ -35,16 +53,26 @@ void main()
     {
         for (int x = -1; x <= 1; ++x)
         {
-            vec3 sample_color = textureLod(current_color, uv + vec2(x, y) * texel, 0.0).rgb;
+            vec3 sample_color = rgb_to_ycocg(textureLod(current_color, uv + vec2(x, y) * texel, 0.0).rgb);
             minimum_color = min(minimum_color, sample_color);
             maximum_color = max(maximum_color, sample_color);
         }
     }
-    history = clamp(history, minimum_color, maximum_color);
+    history = ycocg_to_rgb(clamp(rgb_to_ycocg(history), minimum_color, maximum_color));
     float reactive = textureLod(reactive_mask, uv, 0.0).r;
     float disoccluded = textureLod(disocclusion_mask, uv, 0.0).r;
     float history_weight = constants.history_valid != 0u
                                ? constants.base_history_weight * (1.0 - reactive) * (1.0 - disoccluded)
                                : 0.0;
-    imageStore(resolved_color, pixel, vec4(mix(current, history, clamp(history_weight, 0.0, 0.98)), 1.0));
+    float previous_lock = textureLod(previous_confidence, previous_uv, 0.0).r;
+    history_weight *= mix(0.5, 1.0, previous_lock);
+    vec3 resolved = mix(current, history, clamp(history_weight, 0.0, 0.98));
+    float luminance = dot(resolved, vec3(0.2126, 0.7152, 0.0722));
+    vec2 old_moments = textureLod(previous_moments, previous_uv, 0.0).rg;
+    vec2 moments = mix(vec2(luminance, luminance * luminance), old_moments, history_weight);
+    float confidence = clamp(previous_lock + 1.0 / 16.0, 0.0, 1.0) * (1.0 - disoccluded);
+    imageStore(resolved_color, pixel, vec4(max(resolved, vec3(0.0)), 1.0));
+    imageStore(resolved_depth, pixel, vec4(textureLod(current_depth, uv, 0.0).r));
+    imageStore(resolved_moments, pixel, vec4(moments, 0.0, 0.0));
+    imageStore(resolved_confidence, pixel, vec4(confidence));
 }

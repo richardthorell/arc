@@ -1,0 +1,35 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D source_motion;
+layout(set = 0, binding = 1) uniform sampler2D source_depth;
+layout(rg16f, set = 0, binding = 2) uniform writeonly image2D dilated_motion;
+
+layout(push_constant) uniform velocity_dilation_constants
+{
+    ivec2 extent;
+} constants;
+
+void main()
+{
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (any(greaterThanEqual(pixel, constants.extent)))
+        return;
+    float closest_depth = 1.0;
+    vec2 velocity = vec2(0.0);
+    for (int y = -1; y <= 1; ++y)
+    {
+        for (int x = -1; x <= 1; ++x)
+        {
+            ivec2 sample_pixel = clamp(pixel + ivec2(x, y), ivec2(0), constants.extent - ivec2(1));
+            float depth = texelFetch(source_depth, sample_pixel, 0).r;
+            if (depth < closest_depth)
+            {
+                closest_depth = depth;
+                velocity = texelFetch(source_motion, sample_pixel, 0).xy;
+            }
+        }
+    }
+    imageStore(dilated_motion, pixel, vec4(velocity, 0.0, 0.0));
+}

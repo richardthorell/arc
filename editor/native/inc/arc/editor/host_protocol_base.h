@@ -253,7 +253,15 @@ enum class host_visualization_mode : std::uint8_t
     terrain_geometric_error,
     terrain_culled_nodes,
     terrain_triangle_density,
-    terrain_bounds
+    terrain_bounds,
+    hzb_minimum_depth,
+    hzb_maximum_depth,
+    motion_vectors,
+    temporal_reactive_mask,
+    temporal_disocclusion,
+    temporal_confidence,
+    temporal_rejection,
+    temporal_sample_weight
 };
 enum class host_indirect_lighting_method : std::uint8_t
 {
@@ -347,6 +355,15 @@ enum class host_exposure_metering_mode : std::uint8_t
     center_weighted
 };
 
+enum class host_camera_anti_aliasing : std::uint8_t
+{
+    inherit,
+    disabled,
+    fxaa,
+    taa,
+    taau
+};
+
 struct host_camera_snapshot
 {
     host_camera_projection projection{host_camera_projection::perspective};
@@ -364,6 +381,7 @@ struct host_camera_snapshot
     float maximum_ev100{20.0f};
     float brighten_speed{3.0f};
     float darken_speed{1.0f};
+    host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};
 
     friend constexpr bool operator==(const host_camera_snapshot&, const host_camera_snapshot&) noexcept = default;
 };
@@ -1256,6 +1274,7 @@ struct host_viewport_set_render_options_command
     bool grid{true};
     bool realtime{true};
     float camera_speed{4.0f};
+    host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};
     host_environment_visibility environment{};
 };
 
@@ -1524,6 +1543,7 @@ struct host_viewport_request
     bool grid{true};
     bool realtime{true};
     float camera_speed{4.0f};
+    host_camera_anti_aliasing anti_aliasing{host_camera_anti_aliasing::inherit};
     host_environment_visibility environment{};
 };
 

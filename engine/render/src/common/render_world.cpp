@@ -262,6 +262,29 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     render_graph_resource_handle virtual_visible_clusters{};
     render_graph_resource_handle virtual_shadow_clusters{};
     render_graph_resource_handle virtual_visibility{};
+
+    const bool needs_depth_pyramid = config.features.hzb_occlusion || config.screen_space_shadows ||
+                                     config.features.screen_space_gi || config.features.screen_space_reflections ||
+                                     config.features.software_gi || config.features.software_reflections ||
+                                     config.features.hardware_gi || config.features.hardware_reflections;
+    if (needs_depth_pyramid)
+    {
+        depth_pyramid = graph.add_resource(
+            {.name = "view_depth_pyramid",
+             .kind = render_resource_kind::color_texture,
+             .width_scale = config.render_scale,
+             .height_scale = config.render_scale,
+             .format = render_format::rg32_float,
+             .mip_levels = 0,
+             .persistent_key = "view.depth_hzb",
+             .history_length = 2,
+             .history_reset = render_history_reset::camera_cut | render_history_reset::resize |
+                              render_history_reset::render_scale_change | render_history_reset::world_epoch_change |
+                              render_history_reset::projection_change,
+             // This generation is consumed by next-frame occlusion even when
+             // no current-frame screen-space pass samples it.
+             .exported = true});
+    }
     render_graph_resource_handle virtual_encoded_depth{};
     const auto compute_queue = config.features.async_compute ? render_queue_type::compute : render_queue_type::graphics;
 
@@ -305,22 +328,6 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                  .kind = render_resource_kind::buffer,
                                                  .byte_size = sizeof(std::uint32_t),
                                                  .element_stride = sizeof(std::uint32_t)});
-        if (config.features.hzb_occlusion)
-        {
-            depth_pyramid =
-                graph.add_resource({.name = "visibility_depth_pyramid",
-                                    .kind = render_resource_kind::color_texture,
-                                    .width_scale = config.render_scale,
-                                    .height_scale = config.render_scale,
-                                    .format = render_format::r32_float,
-                                    .mip_levels = 12,
-                                    .persistent_key = "view.visibility_hzb",
-                                    .history_length = 2,
-                                    .history_reset = render_history_reset::camera_cut | render_history_reset::resize |
-                                                     render_history_reset::render_scale_change |
-                                                     render_history_reset::world_epoch_change});
-        }
-
         graph.add_pass({.name = "GPU Scene upload",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
@@ -850,7 +857,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .usage = render_resource_usage::depth_attachment,
                                 .write = true,
                                 .load_op = render_load_op::clear,
-                                .clear_depth = 0.0f}}});
+                                .clear_depth = 1.0f}}});
 
     if (virtual_visibility.valid())
     {
@@ -895,6 +902,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     render_graph_resource_handle lighting_normal{};
     render_graph_resource_handle lighting_material{};
     render_graph_resource_handle lighting_emissive{};
+    render_graph_resource_handle object_id{};
     if (config.path == render_path::forward_plus)
     {
         std::vector<render_resource_access> forward_reads{{.handle = depth,
@@ -966,7 +974,6 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         lighting_normal = normal;
         lighting_material = material;
         lighting_emissive = emissive;
-        render_graph_resource_handle object_id{};
         if (editor_view)
         {
             object_id = graph.add_resource({.name = "gbuffer_object_id",
@@ -1059,27 +1066,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         render_graph_resource_handle filtered_screen_shadow{};
         if (config.screen_space_shadows)
         {
-            auto screen_shadow_depth_pyramid = depth_pyramid;
-            if (!screen_shadow_depth_pyramid.valid())
-            {
-                screen_shadow_depth_pyramid = graph.add_resource({.name = "linear_depth_pyramid",
-                                                                  .kind = render_resource_kind::color_texture,
-                                                                  .width_scale = config.screen_space_shadow_scale,
-                                                                  .height_scale = config.screen_space_shadow_scale,
-                                                                  .format = render_format::r32_float,
-                                                                  .mip_levels = 10});
-                graph.add_pass({.name = "depth pyramid",
-                                .queue = compute_queue,
-                                .kind = render_pass_kind::compute,
-                                .builtin = builtin_render_pass::depth_pyramid,
-                                .reads = {{.handle = depth,
-                                           .kind = render_resource_kind::depth_texture,
-                                           .usage = render_resource_usage::sampled}},
-                                .writes = {{.handle = screen_shadow_depth_pyramid,
-                                            .kind = render_resource_kind::color_texture,
-                                            .usage = render_resource_usage::storage,
-                                            .write = true}}});
-            }
+            const auto screen_shadow_depth_pyramid = depth_pyramid;
             const auto screen_shadow = graph.add_resource({.name = "screen_space_shadow",
                                                            .kind = render_resource_kind::color_texture,
                                                            .width_scale = config.screen_space_shadow_scale,
@@ -1198,27 +1185,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                    execute_software_reflections || execute_hardware_gi || execute_hardware_reflections);
     if (indirect_enabled)
     {
-        auto lighting_hzb = depth_pyramid;
-        if (!lighting_hzb.valid())
-        {
-            lighting_hzb = graph.add_resource({.name = "lighting_depth_pyramid",
-                                               .kind = render_resource_kind::color_texture,
-                                               .width_scale = config.render_scale,
-                                               .height_scale = config.render_scale,
-                                               .format = render_format::r32_float,
-                                               .mip_levels = 12});
-            graph.add_pass({.name = "lighting depth pyramid",
-                            .queue = compute_queue,
-                            .kind = render_pass_kind::compute,
-                            .builtin = builtin_render_pass::depth_pyramid,
-                            .reads = {{.handle = depth,
-                                       .kind = render_resource_kind::depth_texture,
-                                       .usage = render_resource_usage::sampled}},
-                            .writes = {{.handle = lighting_hzb,
-                                        .kind = render_resource_kind::color_texture,
-                                        .usage = render_resource_usage::storage,
-                                        .write = true}}});
-        }
+        const auto lighting_hzb = depth_pyramid;
 
         render_graph_resource_handle surface_material_cache{};
         render_graph_resource_handle surface_radiance_cache{};
@@ -1582,6 +1549,11 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
     auto resolved_scene_color = scene_color;
     if (config.features.temporal_antialiasing)
     {
+        const auto dilated_motion = graph.add_resource({.name = "temporal_dilated_motion",
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .width_scale = config.render_scale,
+                                                        .height_scale = config.render_scale,
+                                                        .format = render_format::rg16_float});
         const auto reactive_mask = graph.add_resource({.name = "temporal_reactive_mask",
                                                        .kind = render_resource_kind::color_texture,
                                                        .width_scale = config.render_scale,
@@ -1592,23 +1564,52 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                            .width_scale = config.render_scale,
                                                            .height_scale = config.render_scale,
                                                            .format = render_format::r8_unorm});
-        const auto color_history = graph.add_resource(
-            {.name = "temporal_color_history",
-             .kind = render_resource_kind::color_texture,
-             .format = render_format::rgba16_float,
-             .persistent_key = "view.temporal_color",
-             .history_length = 2,
-             .history_reset = render_history_reset::camera_cut | render_history_reset::resize |
-                              render_history_reset::render_scale_change | render_history_reset::world_epoch_change |
-                              render_history_reset::debug_view_change});
-        const auto depth_history = graph.add_resource(
-            {.name = "temporal_depth_history",
-             .kind = render_resource_kind::color_texture,
-             .format = render_format::r32_float,
-             .persistent_key = "view.temporal_depth",
-             .history_length = 2,
-             .history_reset = render_history_reset::camera_cut | render_history_reset::resize |
-                              render_history_reset::render_scale_change | render_history_reset::world_epoch_change});
+        const auto history_reset = render_history_reset::camera_cut | render_history_reset::resize |
+                                   render_history_reset::render_scale_change |
+                                   render_history_reset::world_epoch_change | render_history_reset::debug_view_change |
+                                   render_history_reset::projection_change;
+        const auto color_history = graph.add_resource({.name = "temporal_color_history",
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .extent_mode = render_extent_mode::relative_to_output,
+                                                        .format = render_format::rgba16_float,
+                                                        .persistent_key = "view.temporal_color",
+                                                        .history_length = 2,
+                                                        .history_reset = history_reset});
+        const auto depth_history = graph.add_resource({.name = "temporal_depth_history",
+                                                        .kind = render_resource_kind::color_texture,
+                                                        .extent_mode = render_extent_mode::relative_to_output,
+                                                        .format = render_format::r32_float,
+                                                        .persistent_key = "view.temporal_depth",
+                                                        .history_length = 2,
+                                                        .history_reset = history_reset});
+        const auto moments_history = graph.add_resource({.name = "temporal_moments_history",
+                                                          .kind = render_resource_kind::color_texture,
+                                                          .extent_mode = render_extent_mode::relative_to_output,
+                                                          .format = render_format::rg16_float,
+                                                          .persistent_key = "view.temporal_moments",
+                                                          .history_length = 2,
+                                                          .history_reset = history_reset});
+        const auto confidence_history = graph.add_resource({.name = "temporal_confidence_history",
+                                                             .kind = render_resource_kind::color_texture,
+                                                             .extent_mode = render_extent_mode::relative_to_output,
+                                                             .format = render_format::r8_unorm,
+                                                             .persistent_key = "view.temporal_confidence",
+                                                             .history_length = 2,
+                                                             .history_reset = history_reset});
+        graph.add_pass({.name = "temporal velocity dilation",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::velocity_dilation,
+                        .reads = {{.handle = motion,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = depth,
+                                   .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = dilated_motion,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true}}});
         graph.add_pass({.name = "temporal reactive mask",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
@@ -1616,27 +1617,37 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                         .reads = {{.handle = scene_color,
                                    .kind = render_resource_kind::color_texture,
                                    .usage = render_resource_usage::sampled},
-                                  {.handle = motion,
+                                  {.handle = dilated_motion,
                                    .kind = render_resource_kind::color_texture,
                                    .usage = render_resource_usage::sampled}},
                         .writes = {{.handle = reactive_mask,
                                     .kind = render_resource_kind::color_texture,
                                     .usage = render_resource_usage::storage,
                                     .write = true}}});
+        std::vector<render_resource_access> disocclusion_reads{
+            {.handle = depth,
+             .kind = render_resource_kind::depth_texture,
+             .usage = render_resource_usage::sampled},
+            {.handle = dilated_motion,
+             .kind = render_resource_kind::color_texture,
+             .usage = render_resource_usage::sampled},
+            {.handle = depth_history,
+             .kind = render_resource_kind::color_texture,
+             .usage = render_resource_usage::sampled,
+             .history = render_history_access::previous}};
+        if (lighting_normal.valid())
+            disocclusion_reads.push_back({.handle = lighting_normal,
+                                          .kind = render_resource_kind::color_texture,
+                                          .usage = render_resource_usage::sampled});
+        if (object_id.valid())
+            disocclusion_reads.push_back({.handle = object_id,
+                                          .kind = render_resource_kind::color_texture,
+                                          .usage = render_resource_usage::sampled});
         graph.add_pass({.name = "temporal disocclusion",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
                         .builtin = builtin_render_pass::disocclusion_mask,
-                        .reads = {{.handle = depth,
-                                   .kind = render_resource_kind::depth_texture,
-                                   .usage = render_resource_usage::sampled},
-                                  {.handle = motion,
-                                   .kind = render_resource_kind::color_texture,
-                                   .usage = render_resource_usage::sampled},
-                                  {.handle = depth_history,
-                                   .kind = render_resource_kind::color_texture,
-                                   .usage = render_resource_usage::sampled,
-                                   .history = render_history_access::previous}},
+                        .reads = std::move(disocclusion_reads),
                         .writes = {{.handle = disocclusion_mask,
                                     .kind = render_resource_kind::color_texture,
                                     .usage = render_resource_usage::storage,
@@ -1652,7 +1663,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                   {.handle = depth,
                                    .kind = render_resource_kind::depth_texture,
                                    .usage = render_resource_usage::sampled},
-                                  {.handle = motion,
+                                  {.handle = dilated_motion,
                                    .kind = render_resource_kind::color_texture,
                                    .usage = render_resource_usage::sampled},
                                   {.handle = reactive_mask,
@@ -1664,6 +1675,14 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                   {.handle = color_history,
                                    .kind = render_resource_kind::color_texture,
                                    .usage = render_resource_usage::sampled,
+                                   .history = render_history_access::previous},
+                                  {.handle = moments_history,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled,
+                                   .history = render_history_access::previous},
+                                  {.handle = confidence_history,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled,
                                    .history = render_history_access::previous}},
                         .writes = {{.handle = color_history,
                                     .kind = render_resource_kind::color_texture,
@@ -1672,12 +1691,21 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                    {.handle = depth_history,
                                     .kind = render_resource_kind::color_texture,
                                     .usage = render_resource_usage::storage,
+                                    .write = true},
+                                   {.handle = moments_history,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
+                                    .write = true},
+                                   {.handle = confidence_history,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::storage,
                                     .write = true}}});
         resolved_scene_color = color_history;
-        if (config.features.temporal_upscaling)
+        if (config.temporal.sharpening > 0.0f)
         {
             const auto sharpened = graph.add_resource({.name = "temporal_sharpened",
                                                        .kind = render_resource_kind::color_texture,
+                                                       .extent_mode = render_extent_mode::relative_to_output,
                                                        .format = render_format::rgba16_float});
             graph.add_pass({.name = "temporal sharpen",
                             .queue = compute_queue,
@@ -1721,6 +1749,12 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                 .kind = render_resource_kind::buffer,
                                 .usage = render_resource_usage::storage_buffer,
                                 .write = true}}});
+    auto presentation_target = viewport;
+    if (config.features.fxaa)
+        presentation_target = graph.add_resource({.name = "presentation_linear_ldr",
+                                                  .kind = render_resource_kind::color_texture,
+                                                  .extent_mode = render_extent_mode::relative_to_output,
+                                                  .format = render_format::rgba8_unorm});
     graph.add_pass({.name = "output transform",
                     .kind = render_pass_kind::present,
                     .builtin = builtin_render_pass::output_transform,
@@ -1730,11 +1764,25 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                               {.handle = exposure,
                                .kind = render_resource_kind::buffer,
                                .usage = render_resource_usage::storage_buffer}},
-                    .writes = {{.handle = viewport,
+                    .writes = {{.handle = presentation_target,
                                 .kind = render_resource_kind::color_texture,
                                 .usage = render_resource_usage::color_attachment,
                                 .write = true,
                                 .load_op = render_load_op::clear}}});
+    if (config.features.fxaa)
+    {
+        graph.add_pass({.name = "fast approximate antialiasing",
+                        .kind = render_pass_kind::post_process,
+                        .builtin = builtin_render_pass::fxaa,
+                        .reads = {{.handle = presentation_target,
+                                   .kind = render_resource_kind::color_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = viewport,
+                                    .kind = render_resource_kind::color_texture,
+                                    .usage = render_resource_usage::color_attachment,
+                                    .write = true,
+                                    .load_op = render_load_op::clear}}});
+    }
     if (editor_view)
     {
         graph.add_pass({.name = "editor overlay",

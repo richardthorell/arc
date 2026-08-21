@@ -239,8 +239,9 @@ struct alignas(16) gpu_visibility_push_constants
     std::uint32_t render_layer_mask{~0u};
     std::uint32_t camera_cut{};
     std::uint32_t reserved{};
+    float hzb_parameters[4]{};
 };
-static_assert(sizeof(gpu_visibility_push_constants) == 96);
+static_assert(sizeof(gpu_visibility_push_constants) == 112);
 
 inline constexpr VkDeviceSize indexed_indirect_command_stride = sizeof(VkDrawIndexedIndirectCommand);
 
@@ -267,6 +268,7 @@ static_assert(sizeof(deferred_push_constants) == 128);
 struct output_transform_push_constants
 {
     float exposure_output[4]{1.0f, 0.0f, 0.0f, 0.0f};
+    float post_process[4]{};
 };
 
 struct histogram_push_constants
@@ -306,11 +308,55 @@ struct graph_image
     VkImage image{};
     VmaAllocation allocation{};
     VkImageView view{};
+    std::vector<VkImageView> mip_views;
     VkFormat format{};
     VkImageAspectFlags aspect{};
     VkImageLayout layout{VK_IMAGE_LAYOUT_UNDEFINED};
     std::uint32_t width{};
     std::uint32_t height{};
+    std::uint32_t mip_levels{1};
+};
+
+struct hzb_reduce_push_constants
+{
+    std::int32_t destination_width{};
+    std::int32_t destination_height{};
+    std::int32_t source_width{};
+    std::int32_t source_height{};
+    std::int32_t source_mip{-1};
+};
+
+struct temporal_mask_push_constants
+{
+    std::int32_t width{};
+    std::int32_t height{};
+    std::uint32_t history_valid{};
+    float disocclusion_threshold{0.01f};
+    float reactive_response{1.0f};
+};
+
+struct velocity_dilation_push_constants
+{
+    std::int32_t width{};
+    std::int32_t height{};
+};
+
+struct temporal_resolve_push_constants
+{
+    std::int32_t output_width{};
+    std::int32_t output_height{};
+    float input_width{};
+    float input_height{};
+    std::uint32_t history_valid{};
+    float history_weight{0.9f};
+};
+
+struct sharpen_push_constants
+{
+    std::int32_t output_width{};
+    std::int32_t output_height{};
+    float strength{0.2f};
+    float clamp_strength{0.25f};
 };
 
 class vulkan_render_backend final : public render_backend
@@ -372,6 +418,8 @@ public:
     {
         shutdown_surface_presenter();
         if (device_ != VK_NULL_HANDLE) vkDeviceWaitIdle(device_);
+        destroy_temporal_resources();
+        destroy_hzb_resources();
         destroy_mesh_pipeline();
         destroy_shadow_resources();
         destroy_local_shadow_resources();
@@ -449,6 +497,7 @@ public:
         last_profile_.frame_index = packet.frame_index;
         last_profile_.gpu_scene = {};
         last_profile_.temporal = {};
+        temporal_output_view_ = VK_NULL_HANDLE;
         last_profile_.terrain = {};
         upload_frame_ = packet.frame_index;
         upload_batch_failed_ = false;
@@ -3738,6 +3787,8 @@ private:
         if (!resolved_config_.features.gpu_driven_rendering || gpu_scene_capacity_ == 0 ||
             gpu_scene_buffer_.buffer == VK_NULL_HANDLE)
             return false;
+        const bool hzb_resources_available = resolved_config_.features.hzb_occlusion &&
+                                             ensure_hzb_resources(viewport_width_, viewport_height_);
 
         if (gpu_visibility_capacity_ < gpu_scene_capacity_ || gpu_visibility_commands_.buffer == VK_NULL_HANDLE)
         {
@@ -3774,14 +3825,15 @@ private:
 
         if (gpu_visibility_descriptor_set_layout_ == VK_NULL_HANDLE)
         {
-            std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
-            for (std::uint32_t index = 0; index < bindings.size(); ++index)
+            std::array<VkDescriptorSetLayoutBinding, 4> bindings{};
+            for (std::uint32_t index = 0; index < 3; ++index)
             {
                 bindings[index].binding = index;
                 bindings[index].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
                 bindings[index].descriptorCount = 1;
                 bindings[index].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
             }
+            bindings[3] = {3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
             VkDescriptorSetLayoutCreateInfo layout{};
             layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
@@ -3797,12 +3849,13 @@ private:
         {
             VkDescriptorPool replacement_pool{};
             VkDescriptorSet replacement_set{};
-            VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3};
+            const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+                                        VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2}};
             VkDescriptorPoolCreateInfo pool{};
             pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
             pool.maxSets = 1;
-            pool.poolSizeCount = 1;
-            pool.pPoolSizes = &pool_size;
+            pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+            pool.pPoolSizes = pool_sizes.data();
             if (vkCreateDescriptorPool(device_, &pool, nullptr, &replacement_pool) != VK_SUCCESS) return false;
             VkDescriptorSetAllocateInfo allocate{};
             allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -3829,6 +3882,18 @@ private:
                 writes[index].pBufferInfo = &buffers[index];
             }
             vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+            const VkDescriptorImageInfo fallback_hzb{white_sampler_, white_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            std::array<VkDescriptorImageInfo, 2> hzb_images{fallback_hzb, fallback_hzb};
+            if (hzb_resources_available)
+                for (std::size_t index = 0; index < hzb_images.size(); ++index)
+                    hzb_images[index] = {hzb_sampler_, hzb_history_[index].view, VK_IMAGE_LAYOUT_GENERAL};
+            VkWriteDescriptorSet hzb_write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            hzb_write.dstSet = replacement_set;
+            hzb_write.dstBinding = 3;
+            hzb_write.descriptorCount = static_cast<std::uint32_t>(hzb_images.size());
+            hzb_write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            hzb_write.pImageInfo = hzb_images.data();
+            vkUpdateDescriptorSets(device_, 1, &hzb_write, 0, nullptr);
             const auto retired_pool = gpu_visibility_descriptor_pool_;
             gpu_visibility_descriptor_pool_ = replacement_pool;
             gpu_visibility_descriptor_set_ = replacement_set;
@@ -3906,6 +3971,21 @@ private:
         constants.camera_position_and_error[3] = resolved_config_.geometry_error_threshold;
         constants.instance_capacity = gpu_scene_capacity_;
         constants.camera_cut = frame_camera_.camera_cut ? 1u : 0u;
+        const bool hzb_available = resolved_config_.features.hzb_occlusion &&
+                                   ensure_hzb_resources(viewport_width_, viewport_height_) &&
+                                   hzb_history_valid_ && !frame_camera_.camera_cut;
+        if (hzb_available)
+        {
+            const auto previous_generation = static_cast<std::uint32_t>(
+                (last_profile_.frame_index + hzb_history_.size() - 1u) % hzb_history_.size());
+            auto& previous_hzb = hzb_history_[previous_generation];
+            transition_graph_image(command_buffer, previous_hzb, VK_IMAGE_LAYOUT_GENERAL);
+            constants.reserved = previous_generation;
+        }
+        constants.hzb_parameters[0] = static_cast<float>(viewport_width_);
+        constants.hzb_parameters[1] = static_cast<float>(viewport_height_);
+        constants.hzb_parameters[2] = static_cast<float>(hzb_mip_count_);
+        constants.hzb_parameters[3] = hzb_available ? 1.0f : 0.0f;
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpu_visibility_pipeline_);
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpu_visibility_pipeline_layout_, 0, 1,
                                 &gpu_visibility_descriptor_set_, 0, nullptr);
@@ -6056,7 +6136,10 @@ private:
 
         if (output_transform_pipeline_ != VK_NULL_HANDLE)
         {
-            VkDescriptorImageInfo image{viewport_sampler_, scene_color_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            VkDescriptorImageInfo image{viewport_sampler_,
+                                        temporal_output_view_ != VK_NULL_HANDLE ? temporal_output_view_
+                                                                               : scene_color_.view,
+                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
             VkWriteDescriptorSet write{};
             write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             write.dstSet = output_transform_descriptor_set_;
@@ -6104,7 +6187,9 @@ private:
         allocate.pSetLayouts = &output_transform_descriptor_set_layout_;
         if (vkAllocateDescriptorSets(device_, &allocate, &output_transform_descriptor_set_) != VK_SUCCESS) return false;
 
-        VkDescriptorImageInfo image{viewport_sampler_, scene_color_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkDescriptorImageInfo image{viewport_sampler_,
+                                    temporal_output_view_ != VK_NULL_HANDLE ? temporal_output_view_ : scene_color_.view,
+                                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkDescriptorBufferInfo exposure_buffer_info{exposure_buffer_.buffer, 0, exposure_buffer_bytes};
         std::array<VkWriteDescriptorSet, 2> writes{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -6433,6 +6518,9 @@ private:
 
     void destroy_graph_image(graph_image& image) noexcept
     {
+        for (const auto view : image.mip_views)
+            if (view != VK_NULL_HANDLE) vkDestroyImageView(device_, view, nullptr);
+        image.mip_views.clear();
         if (image.view != VK_NULL_HANDLE)
         {
             vkDestroyImageView(device_, image.view, nullptr);
@@ -6447,13 +6535,14 @@ private:
         image.layout = VK_IMAGE_LAYOUT_UNDEFINED;
         image.width = 0;
         image.height = 0;
+        image.mip_levels = 1;
     }
 
     bool ensure_graph_image(graph_image& target, std::uint32_t width, std::uint32_t height, VkFormat format,
-                            VkImageUsageFlags usage, VkImageAspectFlags aspect)
+                            VkImageUsageFlags usage, VkImageAspectFlags aspect, std::uint32_t mip_levels = 1)
     {
         if (target.image != VK_NULL_HANDLE && target.format == format && target.aspect == aspect &&
-            target.width == width && target.height == height)
+            target.width == width && target.height == height && target.mip_levels == mip_levels)
             return true;
 
         destroy_graph_image(target);
@@ -6463,7 +6552,7 @@ private:
         image.imageType = VK_IMAGE_TYPE_2D;
         image.format = format;
         image.extent = {width, height, 1};
-        image.mipLevels = 1;
+        image.mipLevels = mip_levels;
         image.arrayLayers = 1;
         image.samples = VK_SAMPLE_COUNT_1_BIT;
         image.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -6480,7 +6569,7 @@ private:
         view.viewType = VK_IMAGE_VIEW_TYPE_2D;
         view.format = format;
         view.subresourceRange.aspectMask = aspect;
-        view.subresourceRange.levelCount = 1;
+        view.subresourceRange.levelCount = mip_levels;
         view.subresourceRange.layerCount = 1;
         if (vkCreateImageView(device_, &view, nullptr, &target.view) != VK_SUCCESS)
         {
@@ -6488,11 +6577,27 @@ private:
             return false;
         }
 
+        if (mip_levels > 1)
+        {
+            target.mip_views.resize(mip_levels);
+            view.subresourceRange.levelCount = 1;
+            for (std::uint32_t mip = 0; mip < mip_levels; ++mip)
+            {
+                view.subresourceRange.baseMipLevel = mip;
+                if (vkCreateImageView(device_, &view, nullptr, &target.mip_views[mip]) != VK_SUCCESS)
+                {
+                    destroy_graph_image(target);
+                    return false;
+                }
+            }
+        }
+
         target.format = format;
         target.aspect = aspect;
         target.layout = VK_IMAGE_LAYOUT_UNDEFINED;
         target.width = width;
         target.height = height;
+        target.mip_levels = mip_levels;
         return true;
     }
 
@@ -6508,7 +6613,7 @@ private:
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.image = image.image;
         barrier.subresourceRange.aspectMask = image.aspect;
-        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.levelCount = image.mip_levels;
         barrier.subresourceRange.layerCount = 1;
 
         VkPipelineStageFlags src_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -6532,6 +6637,11 @@ private:
             // overwriting scene_color while the histogram still reads it.
             src_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         }
+        else if (image.layout == VK_IMAGE_LAYOUT_GENERAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            src_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        }
 
         if (new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
         {
@@ -6547,6 +6657,11 @@ private:
         {
             barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
             dst_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        }
+        else if (new_layout == VK_IMAGE_LAYOUT_GENERAL)
+        {
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            dst_stage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         }
 
         vkCmdPipelineBarrier(command_buffer, src_stage, dst_stage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
@@ -6575,6 +6690,590 @@ private:
                                            VK_IMAGE_ASPECT_COLOR_BIT);
         if (ok) update_gbuffer_descriptor_set();
         return ok;
+    }
+
+    void destroy_hzb_resources() noexcept
+    {
+        for (auto& image : hzb_history_) destroy_graph_image(image);
+        hzb_descriptor_sets_.clear();
+        if (hzb_pipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, hzb_pipeline_, nullptr);
+        if (hzb_pipeline_layout_ != VK_NULL_HANDLE) vkDestroyPipelineLayout(device_, hzb_pipeline_layout_, nullptr);
+        if (hzb_descriptor_pool_ != VK_NULL_HANDLE) vkDestroyDescriptorPool(device_, hzb_descriptor_pool_, nullptr);
+        if (hzb_descriptor_set_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, hzb_descriptor_set_layout_, nullptr);
+        if (hzb_sampler_ != VK_NULL_HANDLE) vkDestroySampler(device_, hzb_sampler_, nullptr);
+        hzb_pipeline_ = VK_NULL_HANDLE;
+        hzb_pipeline_layout_ = VK_NULL_HANDLE;
+        hzb_descriptor_pool_ = VK_NULL_HANDLE;
+        hzb_descriptor_set_layout_ = VK_NULL_HANDLE;
+        hzb_sampler_ = VK_NULL_HANDLE;
+        hzb_mip_count_ = 0;
+        hzb_history_valid_ = false;
+    }
+
+    bool ensure_hzb_resources(std::uint32_t width, std::uint32_t height)
+    {
+        if (!capabilities_.hzb_occlusion || viewport_depth_view_ == VK_NULL_HANDLE) return false;
+        const auto mip_count = hzb_mip_count(width, height);
+        const bool extent_changed = hzb_mip_count_ != mip_count || hzb_history_[0].width != width ||
+                                    hzb_history_[0].height != height;
+
+        if (hzb_sampler_ == VK_NULL_HANDLE)
+        {
+            VkSamplerCreateInfo sampler{};
+            sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            sampler.magFilter = VK_FILTER_NEAREST;
+            sampler.minFilter = VK_FILTER_NEAREST;
+            sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+            sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+            sampler.maxLod = static_cast<float>(mip_count);
+            if (vkCreateSampler(device_, &sampler, nullptr, &hzb_sampler_) != VK_SUCCESS) return false;
+        }
+
+        if (hzb_descriptor_set_layout_ == VK_NULL_HANDLE)
+        {
+            const std::array bindings{
+                VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+                                             VK_SHADER_STAGE_COMPUTE_BIT, nullptr},
+                VkDescriptorSetLayoutBinding{1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT,
+                                             nullptr}};
+            VkDescriptorSetLayoutCreateInfo layout{};
+            layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+            layout.pBindings = bindings.data();
+            if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &hzb_descriptor_set_layout_) != VK_SUCCESS)
+                return false;
+        }
+
+        if (hzb_pipeline_ == VK_NULL_HANDLE)
+        {
+            const auto shader =
+                create_shader_module(builtin::depth_pyramid_comp_spv, std::size(builtin::depth_pyramid_comp_spv));
+            if (shader == VK_NULL_HANDLE) return false;
+            VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(hzb_reduce_push_constants)};
+            VkPipelineLayoutCreateInfo layout{};
+            layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+            layout.setLayoutCount = 1;
+            layout.pSetLayouts = &hzb_descriptor_set_layout_;
+            layout.pushConstantRangeCount = 1;
+            layout.pPushConstantRanges = &push;
+            if (vkCreatePipelineLayout(device_, &layout, nullptr, &hzb_pipeline_layout_) != VK_SUCCESS)
+            {
+                vkDestroyShaderModule(device_, shader, nullptr);
+                return false;
+            }
+            VkComputePipelineCreateInfo pipeline{};
+            pipeline.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+            pipeline.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+            pipeline.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            pipeline.stage.module = shader;
+            pipeline.stage.pName = "main";
+            pipeline.layout = hzb_pipeline_layout_;
+            const auto result =
+                vkCreateComputePipelines(device_, vk_pipeline_cache_, 1, &pipeline, nullptr, &hzb_pipeline_);
+            vkDestroyShaderModule(device_, shader, nullptr);
+            if (result != VK_SUCCESS) return false;
+        }
+
+        if (!extent_changed && hzb_descriptor_pool_ != VK_NULL_HANDLE) return true;
+        for (auto& image : hzb_history_) destroy_graph_image(image);
+        if (hzb_descriptor_pool_ != VK_NULL_HANDLE)
+        {
+            vkDestroyDescriptorPool(device_, hzb_descriptor_pool_, nullptr);
+            hzb_descriptor_pool_ = VK_NULL_HANDLE;
+        }
+        hzb_descriptor_sets_.clear();
+        const auto usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        for (auto& image : hzb_history_)
+            if (!ensure_graph_image(image, width, height, VK_FORMAT_R32G32_SFLOAT, usage,
+                                    VK_IMAGE_ASPECT_COLOR_BIT, mip_count))
+                return false;
+
+        const std::uint32_t set_count = mip_count * static_cast<std::uint32_t>(hzb_history_.size());
+        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, set_count},
+                                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, set_count}};
+        VkDescriptorPoolCreateInfo pool{};
+        pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool.maxSets = set_count;
+        pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+        pool.pPoolSizes = pool_sizes.data();
+        if (vkCreateDescriptorPool(device_, &pool, nullptr, &hzb_descriptor_pool_) != VK_SUCCESS) return false;
+        hzb_descriptor_sets_.resize(set_count);
+        std::vector<VkDescriptorSetLayout> layouts(set_count, hzb_descriptor_set_layout_);
+        VkDescriptorSetAllocateInfo allocate{};
+        allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocate.descriptorPool = hzb_descriptor_pool_;
+        allocate.descriptorSetCount = set_count;
+        allocate.pSetLayouts = layouts.data();
+        if (vkAllocateDescriptorSets(device_, &allocate, hzb_descriptor_sets_.data()) != VK_SUCCESS) return false;
+
+        for (std::uint32_t generation = 0; generation < hzb_history_.size(); ++generation)
+        {
+            auto& image = hzb_history_[generation];
+            for (std::uint32_t mip = 0; mip < mip_count; ++mip)
+            {
+                const auto index = generation * mip_count + mip;
+                const VkDescriptorImageInfo source{
+                    hzb_sampler_, mip == 0 ? viewport_depth_view_ : image.view,
+                    mip == 0 ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL};
+                const VkDescriptorImageInfo destination{VK_NULL_HANDLE, image.mip_views[mip], VK_IMAGE_LAYOUT_GENERAL};
+                std::array writes{VkWriteDescriptorSet{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET},
+                                  VkWriteDescriptorSet{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET}};
+                writes[0].dstSet = hzb_descriptor_sets_[index];
+                writes[0].dstBinding = 0;
+                writes[0].descriptorCount = 1;
+                writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                writes[0].pImageInfo = &source;
+                writes[1].dstSet = hzb_descriptor_sets_[index];
+                writes[1].dstBinding = 1;
+                writes[1].descriptorCount = 1;
+                writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                writes[1].pImageInfo = &destination;
+                vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+            }
+        }
+        hzb_mip_count_ = mip_count;
+        hzb_history_valid_ = false;
+        gpu_visibility_descriptors_dirty_ = true;
+        return true;
+    }
+
+    void dispatch_hzb(VkCommandBuffer command_buffer)
+    {
+        if (!ensure_hzb_resources(viewport_width_, viewport_height_))
+        {
+            last_profile_.gpu_scene.fallback_reason = "HZB resources are unavailable; occlusion is disabled";
+            return;
+        }
+        transition_depth(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        const auto generation = static_cast<std::uint32_t>(last_profile_.frame_index % hzb_history_.size());
+        auto& image = hzb_history_[generation];
+        transition_graph_image(command_buffer, image, VK_IMAGE_LAYOUT_GENERAL);
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, hzb_pipeline_);
+        for (std::uint32_t mip = 0; mip < hzb_mip_count_; ++mip)
+        {
+            const std::uint32_t destination_width = std::max(1u, viewport_width_ >> mip);
+            const std::uint32_t destination_height = std::max(1u, viewport_height_ >> mip);
+            const std::uint32_t source_width = mip == 0 ? viewport_width_ : std::max(1u, viewport_width_ >> (mip - 1u));
+            const std::uint32_t source_height =
+                mip == 0 ? viewport_height_ : std::max(1u, viewport_height_ >> (mip - 1u));
+            const hzb_reduce_push_constants constants{static_cast<std::int32_t>(destination_width),
+                                                       static_cast<std::int32_t>(destination_height),
+                                                       static_cast<std::int32_t>(source_width),
+                                                       static_cast<std::int32_t>(source_height),
+                                                       mip == 0 ? -1 : static_cast<std::int32_t>(mip - 1u)};
+            const auto set = hzb_descriptor_sets_[generation * hzb_mip_count_ + mip];
+            vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, hzb_pipeline_layout_, 0, 1, &set,
+                                    0, nullptr);
+            vkCmdPushConstants(command_buffer, hzb_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(constants), &constants);
+            vkCmdDispatch(command_buffer, (destination_width + 7u) / 8u, (destination_height + 7u) / 8u, 1u);
+            if (mip + 1u < hzb_mip_count_)
+            {
+                VkImageMemoryBarrier barrier{};
+                barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+                barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+                barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+                barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+                barrier.image = image.image;
+                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                barrier.subresourceRange.baseMipLevel = mip;
+                barrier.subresourceRange.levelCount = 1;
+                barrier.subresourceRange.layerCount = 1;
+                vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+            }
+        }
+        hzb_history_valid_ = !frame_camera_.camera_cut;
+        last_profile_.gpu_scene.history_valid = hzb_history_valid_;
+        last_profile_.temporal.hzb_mip_count = hzb_mip_count_;
+    }
+
+    void destroy_temporal_resources() noexcept
+    {
+        for (auto& image : temporal_dilated_motion_) destroy_graph_image(image);
+        for (auto& image : temporal_reactive_) destroy_graph_image(image);
+        for (auto& image : temporal_disocclusion_) destroy_graph_image(image);
+        for (auto& image : temporal_color_history_) destroy_graph_image(image);
+        for (auto& image : temporal_depth_history_) destroy_graph_image(image);
+        for (auto& image : temporal_moments_history_) destroy_graph_image(image);
+        for (auto& image : temporal_confidence_history_) destroy_graph_image(image);
+        for (auto& image : temporal_sharpened_) destroy_graph_image(image);
+        if (temporal_descriptor_pool_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, temporal_descriptor_pool_, nullptr);
+        if (temporal_mask_pipeline_ != VK_NULL_HANDLE) vkDestroyPipeline(device_, temporal_mask_pipeline_, nullptr);
+        if (temporal_velocity_pipeline_ != VK_NULL_HANDLE)
+            vkDestroyPipeline(device_, temporal_velocity_pipeline_, nullptr);
+        if (temporal_resolve_pipeline_ != VK_NULL_HANDLE)
+            vkDestroyPipeline(device_, temporal_resolve_pipeline_, nullptr);
+        if (temporal_sharpen_pipeline_ != VK_NULL_HANDLE)
+            vkDestroyPipeline(device_, temporal_sharpen_pipeline_, nullptr);
+        if (temporal_mask_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, temporal_mask_pipeline_layout_, nullptr);
+        if (temporal_velocity_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, temporal_velocity_pipeline_layout_, nullptr);
+        if (temporal_resolve_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, temporal_resolve_pipeline_layout_, nullptr);
+        if (temporal_sharpen_pipeline_layout_ != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, temporal_sharpen_pipeline_layout_, nullptr);
+        if (temporal_mask_descriptor_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, temporal_mask_descriptor_layout_, nullptr);
+        if (temporal_velocity_descriptor_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, temporal_velocity_descriptor_layout_, nullptr);
+        if (temporal_resolve_descriptor_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, temporal_resolve_descriptor_layout_, nullptr);
+        if (temporal_sharpen_descriptor_layout_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, temporal_sharpen_descriptor_layout_, nullptr);
+        temporal_descriptor_pool_ = VK_NULL_HANDLE;
+        temporal_mask_pipeline_ = VK_NULL_HANDLE;
+        temporal_velocity_pipeline_ = VK_NULL_HANDLE;
+        temporal_resolve_pipeline_ = VK_NULL_HANDLE;
+        temporal_sharpen_pipeline_ = VK_NULL_HANDLE;
+        temporal_mask_pipeline_layout_ = VK_NULL_HANDLE;
+        temporal_velocity_pipeline_layout_ = VK_NULL_HANDLE;
+        temporal_resolve_pipeline_layout_ = VK_NULL_HANDLE;
+        temporal_sharpen_pipeline_layout_ = VK_NULL_HANDLE;
+        temporal_mask_descriptor_layout_ = VK_NULL_HANDLE;
+        temporal_velocity_descriptor_layout_ = VK_NULL_HANDLE;
+        temporal_resolve_descriptor_layout_ = VK_NULL_HANDLE;
+        temporal_sharpen_descriptor_layout_ = VK_NULL_HANDLE;
+        temporal_mask_sets_ = {};
+        temporal_velocity_sets_ = {};
+        temporal_resolve_sets_ = {};
+        temporal_sharpen_sets_ = {};
+        temporal_input_width_ = temporal_input_height_ = temporal_output_width_ = temporal_output_height_ = 0;
+        temporal_history_valid_ = false;
+        temporal_resources_initialized_ = false;
+        temporal_output_view_ = VK_NULL_HANDLE;
+    }
+
+    bool create_temporal_pipeline(const std::uint32_t* code, std::size_t code_words, VkDescriptorSetLayout set_layout,
+                                  std::uint32_t push_size, VkPipelineLayout& pipeline_layout,
+                                  VkPipeline& pipeline)
+    {
+        const auto shader = create_shader_module(code, code_words);
+        if (shader == VK_NULL_HANDLE) return false;
+        VkPushConstantRange push{VK_SHADER_STAGE_COMPUTE_BIT, 0, push_size};
+        VkPipelineLayoutCreateInfo layout{};
+        layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        layout.setLayoutCount = 1;
+        layout.pSetLayouts = &set_layout;
+        layout.pushConstantRangeCount = 1;
+        layout.pPushConstantRanges = &push;
+        if (vkCreatePipelineLayout(device_, &layout, nullptr, &pipeline_layout) != VK_SUCCESS)
+        {
+            vkDestroyShaderModule(device_, shader, nullptr);
+            return false;
+        }
+        VkComputePipelineCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+        info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        info.stage.module = shader;
+        info.stage.pName = "main";
+        info.layout = pipeline_layout;
+        const auto result = vkCreateComputePipelines(device_, vk_pipeline_cache_, 1, &info, nullptr, &pipeline);
+        vkDestroyShaderModule(device_, shader, nullptr);
+        return result == VK_SUCCESS;
+    }
+
+    bool ensure_temporal_pipelines()
+    {
+        if (temporal_resolve_pipeline_ != VK_NULL_HANDLE) return true;
+        const auto make_layout = [&](std::uint32_t sampled_count, std::uint32_t storage_count,
+                                     VkDescriptorSetLayout& result)
+        {
+            std::vector<VkDescriptorSetLayoutBinding> bindings(sampled_count + storage_count);
+            for (std::uint32_t binding = 0; binding < bindings.size(); ++binding)
+            {
+                bindings[binding].binding = binding;
+                bindings[binding].descriptorType =
+                    binding < sampled_count ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                            : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                bindings[binding].descriptorCount = 1;
+                bindings[binding].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+            }
+            VkDescriptorSetLayoutCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            info.bindingCount = static_cast<std::uint32_t>(bindings.size());
+            info.pBindings = bindings.data();
+            return vkCreateDescriptorSetLayout(device_, &info, nullptr, &result) == VK_SUCCESS;
+        };
+        if (!make_layout(2, 1, temporal_velocity_descriptor_layout_) ||
+            !make_layout(4, 2, temporal_mask_descriptor_layout_) ||
+            !make_layout(8, 4, temporal_resolve_descriptor_layout_) ||
+            !make_layout(1, 1, temporal_sharpen_descriptor_layout_))
+            return false;
+        return create_temporal_pipeline(builtin::velocity_dilation_comp_spv,
+                                        std::size(builtin::velocity_dilation_comp_spv),
+                                        temporal_velocity_descriptor_layout_, sizeof(velocity_dilation_push_constants),
+                                        temporal_velocity_pipeline_layout_, temporal_velocity_pipeline_) &&
+               create_temporal_pipeline(builtin::temporal_masks_comp_spv,
+                                        std::size(builtin::temporal_masks_comp_spv),
+                                        temporal_mask_descriptor_layout_, sizeof(temporal_mask_push_constants),
+                                        temporal_mask_pipeline_layout_, temporal_mask_pipeline_) &&
+               create_temporal_pipeline(builtin::temporal_resolve_comp_spv,
+                                        std::size(builtin::temporal_resolve_comp_spv),
+                                        temporal_resolve_descriptor_layout_, sizeof(temporal_resolve_push_constants),
+                                        temporal_resolve_pipeline_layout_, temporal_resolve_pipeline_) &&
+               create_temporal_pipeline(builtin::spatial_sharpen_comp_spv,
+                                        std::size(builtin::spatial_sharpen_comp_spv),
+                                        temporal_sharpen_descriptor_layout_, sizeof(sharpen_push_constants),
+                                        temporal_sharpen_pipeline_layout_, temporal_sharpen_pipeline_);
+    }
+
+    bool ensure_temporal_resources(std::uint32_t input_width, std::uint32_t input_height,
+                                   std::uint32_t output_width, std::uint32_t output_height)
+    {
+        if (!capabilities_.temporal_resolve || !ensure_temporal_pipelines()) return false;
+        if (temporal_descriptor_pool_ != VK_NULL_HANDLE && temporal_input_width_ == input_width &&
+            temporal_input_height_ == input_height && temporal_output_width_ == output_width &&
+            temporal_output_height_ == output_height)
+            return true;
+
+        for (auto& image : temporal_dilated_motion_) destroy_graph_image(image);
+        for (auto& image : temporal_reactive_) destroy_graph_image(image);
+        for (auto& image : temporal_disocclusion_) destroy_graph_image(image);
+        for (auto& image : temporal_color_history_) destroy_graph_image(image);
+        for (auto& image : temporal_depth_history_) destroy_graph_image(image);
+        for (auto& image : temporal_moments_history_) destroy_graph_image(image);
+        for (auto& image : temporal_confidence_history_) destroy_graph_image(image);
+        for (auto& image : temporal_sharpened_) destroy_graph_image(image);
+        if (temporal_descriptor_pool_ != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, temporal_descriptor_pool_, nullptr);
+        temporal_descriptor_pool_ = VK_NULL_HANDLE;
+        const auto usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        for (std::uint32_t generation = 0; generation < 2; ++generation)
+        {
+            if (!ensure_graph_image(temporal_dilated_motion_[generation], input_width, input_height,
+                                    VK_FORMAT_R16G16_SFLOAT, usage, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                !ensure_graph_image(temporal_reactive_[generation], input_width, input_height, VK_FORMAT_R8_UNORM,
+                                    usage, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                !ensure_graph_image(temporal_disocclusion_[generation], input_width, input_height,
+                                    VK_FORMAT_R8_UNORM, usage, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                !ensure_graph_image(temporal_color_history_[generation], output_width, output_height,
+                                    VK_FORMAT_R16G16B16A16_SFLOAT, usage, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                !ensure_graph_image(temporal_depth_history_[generation], output_width, output_height,
+                                    VK_FORMAT_R32_SFLOAT, usage, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                !ensure_graph_image(temporal_moments_history_[generation], output_width, output_height,
+                                    VK_FORMAT_R16G16_SFLOAT, usage, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                !ensure_graph_image(temporal_confidence_history_[generation], output_width, output_height,
+                                    VK_FORMAT_R8_UNORM, usage, VK_IMAGE_ASPECT_COLOR_BIT) ||
+                !ensure_graph_image(temporal_sharpened_[generation], output_width, output_height,
+                                    VK_FORMAT_R16G16B16A16_SFLOAT, usage, VK_IMAGE_ASPECT_COLOR_BIT))
+                return false;
+        }
+        const std::array pool_sizes{VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 30},
+                                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 16}};
+        VkDescriptorPoolCreateInfo pool{};
+        pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool.maxSets = 8;
+        pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+        pool.pPoolSizes = pool_sizes.data();
+        if (vkCreateDescriptorPool(device_, &pool, nullptr, &temporal_descriptor_pool_) != VK_SUCCESS) return false;
+        const std::array layouts{temporal_velocity_descriptor_layout_, temporal_mask_descriptor_layout_,
+                                 temporal_resolve_descriptor_layout_,  temporal_sharpen_descriptor_layout_,
+                                 temporal_velocity_descriptor_layout_, temporal_mask_descriptor_layout_,
+                                 temporal_resolve_descriptor_layout_,  temporal_sharpen_descriptor_layout_};
+        std::array<VkDescriptorSet, 8> sets{};
+        VkDescriptorSetAllocateInfo allocate{};
+        allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocate.descriptorPool = temporal_descriptor_pool_;
+        allocate.descriptorSetCount = static_cast<std::uint32_t>(sets.size());
+        allocate.pSetLayouts = layouts.data();
+        if (vkAllocateDescriptorSets(device_, &allocate, sets.data()) != VK_SUCCESS) return false;
+        for (std::uint32_t generation = 0; generation < 2; ++generation)
+        {
+            temporal_velocity_sets_[generation] = sets[generation * 4];
+            temporal_mask_sets_[generation] = sets[generation * 4 + 1];
+            temporal_resolve_sets_[generation] = sets[generation * 4 + 2];
+            temporal_sharpen_sets_[generation] = sets[generation * 4 + 3];
+        }
+        temporal_input_width_ = input_width;
+        temporal_input_height_ = input_height;
+        temporal_output_width_ = output_width;
+        temporal_output_height_ = output_height;
+        temporal_history_valid_ = false;
+        temporal_resources_initialized_ = false;
+        return true;
+    }
+
+    void update_temporal_descriptors(std::uint32_t generation)
+    {
+        const auto previous = (generation + 1u) % 2u;
+        const auto sampled = [&](VkImageView view, VkImageLayout layout)
+        { return VkDescriptorImageInfo{viewport_sampler_, view, layout}; };
+        const auto storage = [](VkImageView view) { return VkDescriptorImageInfo{VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_GENERAL}; };
+
+        const std::array velocity_images{sampled(gbuffer_motion_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+                                         sampled(viewport_depth_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+                                         storage(temporal_dilated_motion_[generation].view)};
+        const std::array mask_images{sampled(scene_color_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+                                     sampled(viewport_depth_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+                                     sampled(temporal_depth_history_[previous].view,
+                                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+                                     sampled(temporal_dilated_motion_[generation].view, VK_IMAGE_LAYOUT_GENERAL),
+                                     storage(temporal_reactive_[generation].view),
+                                     storage(temporal_disocclusion_[generation].view)};
+        const std::array resolve_images{
+            sampled(scene_color_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            sampled(temporal_color_history_[previous].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            sampled(temporal_dilated_motion_[generation].view, VK_IMAGE_LAYOUT_GENERAL),
+            sampled(temporal_reactive_[generation].view, VK_IMAGE_LAYOUT_GENERAL),
+            sampled(temporal_disocclusion_[generation].view, VK_IMAGE_LAYOUT_GENERAL),
+            sampled(viewport_depth_view_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            sampled(temporal_moments_history_[previous].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            sampled(temporal_confidence_history_[previous].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            storage(temporal_color_history_[generation].view), storage(temporal_depth_history_[generation].view),
+            storage(temporal_moments_history_[generation].view),
+            storage(temporal_confidence_history_[generation].view)};
+        const std::array sharpen_images{
+            sampled(temporal_color_history_[generation].view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL),
+            storage(temporal_sharpened_[generation].view)};
+        const auto write_images = [&](VkDescriptorSet set, const auto& images, std::uint32_t sampled_count)
+        {
+            std::vector<VkWriteDescriptorSet> writes(images.size());
+            for (std::uint32_t binding = 0; binding < images.size(); ++binding)
+            {
+                writes[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[binding].dstSet = set;
+                writes[binding].dstBinding = binding;
+                writes[binding].descriptorCount = 1;
+                writes[binding].descriptorType = binding < sampled_count ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                                                         : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+                writes[binding].pImageInfo = &images[binding];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        };
+        write_images(temporal_velocity_sets_[generation], velocity_images, 2);
+        write_images(temporal_mask_sets_[generation], mask_images, 4);
+        write_images(temporal_resolve_sets_[generation], resolve_images, 8);
+        write_images(temporal_sharpen_sets_[generation], sharpen_images, 1);
+    }
+
+    void prepare_temporal_images(VkCommandBuffer command_buffer, std::uint32_t generation)
+    {
+        const auto previous = (generation + 1u) % 2u;
+        transition_graph_image(command_buffer, scene_color_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_graph_image(command_buffer, gbuffer_motion_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_depth(command_buffer, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_graph_image(command_buffer, temporal_dilated_motion_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, temporal_color_history_[previous],
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_graph_image(command_buffer, temporal_depth_history_[previous],
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_graph_image(command_buffer, temporal_moments_history_[previous],
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_graph_image(command_buffer, temporal_confidence_history_[previous],
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transition_graph_image(command_buffer, temporal_reactive_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, temporal_disocclusion_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, temporal_color_history_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, temporal_depth_history_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, temporal_moments_history_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, temporal_confidence_history_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        transition_graph_image(command_buffer, temporal_sharpened_[generation], VK_IMAGE_LAYOUT_GENERAL);
+    }
+
+    void dispatch_velocity_dilation(VkCommandBuffer command_buffer)
+    {
+        if (!ensure_temporal_resources(viewport_width_, viewport_height_, output_viewport_width_,
+                                       output_viewport_height_))
+            return;
+        const auto generation = static_cast<std::uint32_t>(last_profile_.frame_index % 2u);
+        prepare_temporal_images(command_buffer, generation);
+        update_temporal_descriptors(generation);
+        const velocity_dilation_push_constants constants{static_cast<std::int32_t>(viewport_width_),
+                                                          static_cast<std::int32_t>(viewport_height_)};
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_velocity_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_velocity_pipeline_layout_, 0,
+                                1, &temporal_velocity_sets_[generation], 0, nullptr);
+        vkCmdPushConstants(command_buffer, temporal_velocity_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(constants), &constants);
+        vkCmdDispatch(command_buffer, (viewport_width_ + 7u) / 8u, (viewport_height_ + 7u) / 8u, 1u);
+        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT,
+                                VK_ACCESS_SHADER_READ_BIT};
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+    }
+
+    void dispatch_temporal_masks(VkCommandBuffer command_buffer)
+    {
+        if (!ensure_temporal_resources(viewport_width_, viewport_height_, output_viewport_width_,
+                                       output_viewport_height_))
+            return;
+        const auto generation = static_cast<std::uint32_t>(last_profile_.frame_index % 2u);
+        prepare_temporal_images(command_buffer, generation);
+        update_temporal_descriptors(generation);
+        const temporal_mask_push_constants constants{static_cast<std::int32_t>(viewport_width_),
+                                                       static_cast<std::int32_t>(viewport_height_),
+                                                       temporal_history_valid_ && frame_camera_.history_valid ? 1u : 0u,
+                                                       resolved_config_.temporal.disocclusion_threshold,
+                                                       resolved_config_.temporal.reactive_response};
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_mask_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_mask_pipeline_layout_, 0, 1,
+                                &temporal_mask_sets_[generation], 0, nullptr);
+        vkCmdPushConstants(command_buffer, temporal_mask_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(constants), &constants);
+        vkCmdDispatch(command_buffer, (viewport_width_ + 7u) / 8u, (viewport_height_ + 7u) / 8u, 1u);
+        VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT,
+                                VK_ACCESS_SHADER_READ_BIT};
+        vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+    }
+
+    void dispatch_temporal_resolve(VkCommandBuffer command_buffer)
+    {
+        const auto generation = static_cast<std::uint32_t>(last_profile_.frame_index % 2u);
+        if (temporal_resolve_pipeline_ == VK_NULL_HANDLE || temporal_resolve_sets_[generation] == VK_NULL_HANDLE)
+            return;
+        const temporal_resolve_push_constants constants{
+            static_cast<std::int32_t>(output_viewport_width_), static_cast<std::int32_t>(output_viewport_height_),
+            static_cast<float>(viewport_width_), static_cast<float>(viewport_height_),
+            temporal_history_valid_ && frame_camera_.history_valid ? 1u : 0u,
+            resolved_config_.temporal.history_weight};
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_resolve_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_resolve_pipeline_layout_, 0,
+                                1, &temporal_resolve_sets_[generation], 0, nullptr);
+        vkCmdPushConstants(command_buffer, temporal_resolve_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(constants), &constants);
+        vkCmdDispatch(command_buffer, (output_viewport_width_ + 7u) / 8u, (output_viewport_height_ + 7u) / 8u, 1u);
+        transition_graph_image(command_buffer, temporal_color_history_[generation],
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        temporal_output_view_ = temporal_color_history_[generation].view;
+        temporal_history_valid_ = true;
+        last_profile_.temporal.enabled = true;
+        last_profile_.temporal.upscaling = viewport_width_ != output_viewport_width_ ||
+                                            viewport_height_ != output_viewport_height_;
+        last_profile_.temporal.effective_method = last_profile_.temporal.upscaling
+                                                      ? anti_aliasing_method::taau
+                                                      : anti_aliasing_method::taa;
+        last_profile_.temporal.history_valid = frame_camera_.history_valid && !frame_camera_.camera_cut;
+    }
+
+    void dispatch_temporal_sharpen(VkCommandBuffer command_buffer)
+    {
+        const auto generation = static_cast<std::uint32_t>(last_profile_.frame_index % 2u);
+        if (temporal_sharpen_pipeline_ == VK_NULL_HANDLE || temporal_sharpen_sets_[generation] == VK_NULL_HANDLE)
+            return;
+        transition_graph_image(command_buffer, temporal_sharpened_[generation], VK_IMAGE_LAYOUT_GENERAL);
+        const sharpen_push_constants constants{static_cast<std::int32_t>(output_viewport_width_),
+                                                 static_cast<std::int32_t>(output_viewport_height_),
+                                                 resolved_config_.temporal.sharpening, 0.25f};
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_sharpen_pipeline_);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporal_sharpen_pipeline_layout_, 0,
+                                1, &temporal_sharpen_sets_[generation], 0, nullptr);
+        vkCmdPushConstants(command_buffer, temporal_sharpen_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(constants), &constants);
+        vkCmdDispatch(command_buffer, (output_viewport_width_ + 7u) / 8u, (output_viewport_height_ + 7u) / 8u, 1u);
+        transition_graph_image(command_buffer, temporal_sharpened_[generation],
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        temporal_output_view_ = temporal_sharpened_[generation].view;
     }
 
     void ensure_viewport(std::uint32_t width, std::uint32_t height)
@@ -6858,6 +7557,9 @@ private:
         bool point_shadows_executed{};
         bool spot_shadows_executed{};
         bool gpu_visibility_executed{};
+        frame_fxaa_enabled_ = std::any_of(last_profile_.graph.passes.begin(), last_profile_.graph.passes.end(),
+                                          [](const auto& pass)
+                                          { return pass.builtin == builtin_render_pass::fxaa; });
 
         for (const auto& pass : last_profile_.graph.passes)
         {
@@ -6893,6 +7595,32 @@ private:
                         gpu_visibility_executed = true;
                     }
                     break;
+                case builtin_render_pass::depth_prepass:
+                    if (!scene_executed)
+                    {
+                        // The current Vulkan raster path records depth and material outputs
+                        // together. Starting it at the graph's depth boundary makes the
+                        // produced depth available to the following HZB pass.
+                        render_viewport(command_buffer, true, false);
+                        scene_executed = true;
+                    }
+                    break;
+                case builtin_render_pass::depth_pyramid:
+                    dispatch_hzb(command_buffer);
+                    break;
+                case builtin_render_pass::velocity_dilation:
+                    dispatch_velocity_dilation(command_buffer);
+                    break;
+                case builtin_render_pass::reactive_mask:
+                    dispatch_temporal_masks(command_buffer);
+                    break;
+                case builtin_render_pass::temporal_antialiasing:
+                case builtin_render_pass::temporal_upscale:
+                    dispatch_temporal_resolve(command_buffer);
+                    break;
+                case builtin_render_pass::spatial_sharpen:
+                    dispatch_temporal_sharpen(command_buffer);
+                    break;
                 case builtin_render_pass::gbuffer:
                 case builtin_render_pass::forward_opaque:
                     if (!scene_executed)
@@ -6902,6 +7630,13 @@ private:
                     }
                     break;
                 case builtin_render_pass::output_transform:
+                    // FXAA is folded into output conversion so it can filter
+                    // tone-mapped linear color immediately before the single
+                    // sRGB conversion. Its graph pass remains the execution
+                    // boundary for this fused implementation.
+                    if (frame_fxaa_enabled_) break;
+                    [[fallthrough]];
+                case builtin_render_pass::fxaa:
                     if (!viewport_executed)
                     {
                         if (!scene_executed)
@@ -8286,6 +9021,9 @@ private:
                                    : !frame_virtual_draws_.empty() ? frame_virtual_draws_.front().draw.visualization
                                                                    : mesh_visualization_mode::standard;
         output_constants.exposure_output[3] = visualization == mesh_visualization_mode::standard ? 0.0f : 1.0f;
+        output_constants.post_process[0] = frame_fxaa_enabled_ ? 1.0f : 0.0f;
+        output_constants.post_process[1] = 1.0f / static_cast<float>(std::max(viewport_width_, 1u));
+        output_constants.post_process[2] = 1.0f / static_cast<float>(std::max(viewport_height_, 1u));
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, output_transform_pipeline_);
         vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, output_transform_pipeline_layout_, 0,
                                 1, &output_transform_descriptor_set_, 0, nullptr);
@@ -8372,6 +9110,7 @@ private:
     render_camera frame_camera_;
     bool frame_camera_valid_{};
     bool frame_shadows_enabled_{true};
+    bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
     gpu_buffer gpu_scene_buffer_;
     std::vector<gpu_scene_storage_instance> gpu_scene_mirror_;
@@ -8484,6 +9223,47 @@ private:
     graph_image gbuffer_motion_{};
     graph_image gbuffer_object_id_{};
     graph_image selection_mask_{};
+    std::array<graph_image, 2> hzb_history_{};
+    VkSampler hzb_sampler_{};
+    VkDescriptorSetLayout hzb_descriptor_set_layout_{};
+    VkDescriptorPool hzb_descriptor_pool_{};
+    std::vector<VkDescriptorSet> hzb_descriptor_sets_;
+    VkPipelineLayout hzb_pipeline_layout_{};
+    VkPipeline hzb_pipeline_{};
+    std::uint32_t hzb_mip_count_{};
+    bool hzb_history_valid_{};
+    std::array<graph_image, 2> temporal_dilated_motion_{};
+    std::array<graph_image, 2> temporal_reactive_{};
+    std::array<graph_image, 2> temporal_disocclusion_{};
+    std::array<graph_image, 2> temporal_color_history_{};
+    std::array<graph_image, 2> temporal_depth_history_{};
+    std::array<graph_image, 2> temporal_moments_history_{};
+    std::array<graph_image, 2> temporal_confidence_history_{};
+    std::array<graph_image, 2> temporal_sharpened_{};
+    VkDescriptorSetLayout temporal_velocity_descriptor_layout_{};
+    VkDescriptorSetLayout temporal_mask_descriptor_layout_{};
+    VkDescriptorSetLayout temporal_resolve_descriptor_layout_{};
+    VkDescriptorSetLayout temporal_sharpen_descriptor_layout_{};
+    VkDescriptorPool temporal_descriptor_pool_{};
+    std::array<VkDescriptorSet, 2> temporal_velocity_sets_{};
+    std::array<VkDescriptorSet, 2> temporal_mask_sets_{};
+    std::array<VkDescriptorSet, 2> temporal_resolve_sets_{};
+    std::array<VkDescriptorSet, 2> temporal_sharpen_sets_{};
+    VkPipelineLayout temporal_velocity_pipeline_layout_{};
+    VkPipelineLayout temporal_mask_pipeline_layout_{};
+    VkPipelineLayout temporal_resolve_pipeline_layout_{};
+    VkPipelineLayout temporal_sharpen_pipeline_layout_{};
+    VkPipeline temporal_velocity_pipeline_{};
+    VkPipeline temporal_mask_pipeline_{};
+    VkPipeline temporal_resolve_pipeline_{};
+    VkPipeline temporal_sharpen_pipeline_{};
+    std::uint32_t temporal_input_width_{};
+    std::uint32_t temporal_input_height_{};
+    std::uint32_t temporal_output_width_{};
+    std::uint32_t temporal_output_height_{};
+    bool temporal_history_valid_{};
+    bool temporal_resources_initialized_{};
+    VkImageView temporal_output_view_{};
     std::uint32_t viewport_width_{};
     std::uint32_t viewport_height_{};
     std::uint32_t output_viewport_width_{};
@@ -8673,6 +9453,27 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.shader_draw_parameters = properties.apiVersion >= VK_API_VERSION_1_1;
     capabilities.gpu_scene_indirect =
         capabilities.compute_shaders && capabilities.storage_buffers && capabilities.draw_indirect;
+    VkFormatProperties hzb_format{};
+    vkGetPhysicalDeviceFormatProperties(physical_device, VK_FORMAT_R32G32_SFLOAT, &hzb_format);
+    const auto required_hzb_features = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+    capabilities.hzb_occlusion = capabilities.compute_shaders && capabilities.storage_images &&
+                                 (hzb_format.optimalTilingFeatures & required_hzb_features) == required_hzb_features;
+    const auto supports_storage_sampled = [&](VkFormat format)
+    {
+        VkFormatProperties format_properties{};
+        vkGetPhysicalDeviceFormatProperties(physical_device, format, &format_properties);
+        const auto required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+        return (format_properties.optimalTilingFeatures & required) == required;
+    };
+    capabilities.temporal_resolve = capabilities.compute_shaders && capabilities.storage_images &&
+                                    supports_storage_sampled(VK_FORMAT_R16G16B16A16_SFLOAT) &&
+                                    supports_storage_sampled(VK_FORMAT_R16G16_SFLOAT) &&
+                                    supports_storage_sampled(VK_FORMAT_R32_SFLOAT) &&
+                                    supports_storage_sampled(VK_FORMAT_R8_UNORM);
+    capabilities.temporal_upscale = capabilities.temporal_resolve;
+    // FXAA is implemented as the final linear-LDR stage fused into the output
+    // transform and selected by the executable graph's FXAA pass.
+    capabilities.fxaa = true;
     capabilities.virtual_geometry_compute = false;
     capabilities.virtual_geometry_mesh_shader = false;
     capabilities.virtual_geometry_streaming = false;

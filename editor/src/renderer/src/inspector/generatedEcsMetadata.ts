@@ -239,7 +239,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.camera_component",
     "displayName": "Camera",
     "description": "Reflected scene data for the Camera component.",
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "fields": [
       {
         "id": "0000000000000001",
@@ -358,6 +358,20 @@ export const generatedEcsComponents = [
         "unit": "none",
         "constraints": {},
         "kind": "struct",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000009",
+        "name": "anti_aliasing",
+        "displayName": "Anti-Aliasing",
+        "description": "Camera override of the project anti-aliasing policy.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "enum",
         "flags": [
           "serialized",
           "editable",

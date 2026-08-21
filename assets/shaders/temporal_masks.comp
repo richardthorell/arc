@@ -13,6 +13,8 @@ layout(push_constant) uniform temporal_mask_constants
 {
     ivec2 extent;
     uint history_valid;
+    float disocclusion_threshold;
+    float reactive_response;
 } constants;
 
 void main()
@@ -22,12 +24,14 @@ void main()
         return;
     vec2 uv = (vec2(pixel) + 0.5) / vec2(constants.extent);
     vec3 color = texelFetch(current_color, pixel, 0).rgb;
-    float reactive = clamp((max(max(color.r, color.g), color.b) - 1.0) * 0.25, 0.0, 1.0);
+    float reactive = clamp((max(max(color.r, color.g), color.b) - 1.0) * 0.25 * constants.reactive_response,
+                           0.0, 1.0);
     vec2 previous_uv = uv - texelFetch(motion_vectors, pixel, 0).xy;
     float current_z = texelFetch(current_depth, pixel, 0).r;
     float previous_z = textureLod(previous_depth, previous_uv, 0.0).r;
     float disoccluded = constants.history_valid == 0u || any(lessThan(previous_uv, vec2(0.0))) ||
-                                any(greaterThan(previous_uv, vec2(1.0))) || abs(current_z - previous_z) > 0.01
+                                any(greaterThan(previous_uv, vec2(1.0))) ||
+                                abs(current_z - previous_z) > constants.disocclusion_threshold
                             ? 1.0
                             : 0.0;
     imageStore(reactive_mask, pixel, vec4(reactive));
