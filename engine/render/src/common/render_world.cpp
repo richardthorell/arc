@@ -1569,33 +1569,33 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                    render_history_reset::world_epoch_change | render_history_reset::debug_view_change |
                                    render_history_reset::projection_change;
         const auto color_history = graph.add_resource({.name = "temporal_color_history",
-                                                        .kind = render_resource_kind::color_texture,
-                                                        .extent_mode = render_extent_mode::relative_to_output,
-                                                        .format = render_format::rgba16_float,
-                                                        .persistent_key = "view.temporal_color",
-                                                        .history_length = 2,
-                                                        .history_reset = history_reset});
+                                                       .kind = render_resource_kind::color_texture,
+                                                       .extent_mode = render_extent_mode::relative_to_output,
+                                                       .format = render_format::rgba16_float,
+                                                       .persistent_key = "view.temporal_color",
+                                                       .history_length = 2,
+                                                       .history_reset = history_reset});
         const auto depth_history = graph.add_resource({.name = "temporal_depth_history",
-                                                        .kind = render_resource_kind::color_texture,
-                                                        .extent_mode = render_extent_mode::relative_to_output,
-                                                        .format = render_format::r32_float,
-                                                        .persistent_key = "view.temporal_depth",
-                                                        .history_length = 2,
-                                                        .history_reset = history_reset});
+                                                       .kind = render_resource_kind::color_texture,
+                                                       .extent_mode = render_extent_mode::relative_to_output,
+                                                       .format = render_format::r32_float,
+                                                       .persistent_key = "view.temporal_depth",
+                                                       .history_length = 2,
+                                                       .history_reset = history_reset});
         const auto moments_history = graph.add_resource({.name = "temporal_moments_history",
-                                                          .kind = render_resource_kind::color_texture,
-                                                          .extent_mode = render_extent_mode::relative_to_output,
-                                                          .format = render_format::rg16_float,
-                                                          .persistent_key = "view.temporal_moments",
-                                                          .history_length = 2,
-                                                          .history_reset = history_reset});
+                                                         .kind = render_resource_kind::color_texture,
+                                                         .extent_mode = render_extent_mode::relative_to_output,
+                                                         .format = render_format::rg16_float,
+                                                         .persistent_key = "view.temporal_moments",
+                                                         .history_length = 2,
+                                                         .history_reset = history_reset});
         const auto confidence_history = graph.add_resource({.name = "temporal_confidence_history",
-                                                             .kind = render_resource_kind::color_texture,
-                                                             .extent_mode = render_extent_mode::relative_to_output,
-                                                             .format = render_format::r8_unorm,
-                                                             .persistent_key = "view.temporal_confidence",
-                                                             .history_length = 2,
-                                                             .history_reset = history_reset});
+                                                            .kind = render_resource_kind::color_texture,
+                                                            .extent_mode = render_extent_mode::relative_to_output,
+                                                            .format = render_format::r8_unorm,
+                                                            .persistent_key = "view.temporal_confidence",
+                                                            .history_length = 2,
+                                                            .history_reset = history_reset});
         graph.add_pass({.name = "temporal velocity dilation",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
@@ -1625,9 +1625,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .usage = render_resource_usage::storage,
                                     .write = true}}});
         std::vector<render_resource_access> disocclusion_reads{
-            {.handle = depth,
-             .kind = render_resource_kind::depth_texture,
-             .usage = render_resource_usage::sampled},
+            {.handle = depth, .kind = render_resource_kind::depth_texture, .usage = render_resource_usage::sampled},
             {.handle = dilated_motion,
              .kind = render_resource_kind::color_texture,
              .usage = render_resource_usage::sampled},

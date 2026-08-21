@@ -40,21 +40,14 @@ button.ui-tab {
 button.ui-tab:hover:not(:disabled) {
   color: var(--arc-color-text-strong);
   border-color: var(--arc-color-border-subtle);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 68%),
-    var(--arc-color-bg-active);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 68%), var(--arc-color-bg-active);
 }
 
 button.ui-tab.ui-tab.is-active {
   color: var(--arc-color-text-strong);
   border-color: var(--arc-color-border);
   background:
-    linear-gradient(
-      180deg,
-      rgba(47, 129, 247, 0.24) 0%,
-      rgba(47, 129, 247, 0.11) 52%,
-      rgba(47, 129, 247, 0.035) 100%
-    ),
+    linear-gradient(180deg, rgba(47, 129, 247, 0.24) 0%, rgba(47, 129, 247, 0.11) 52%, rgba(47, 129, 247, 0.035) 100%),
     var(--arc-color-bg-panel-raised);
   box-shadow:
     inset 0 -2px 0 var(--arc-color-accent),
@@ -145,9 +138,7 @@ span.ui-tab-shell > button.ui-tab {
 span.ui-tab-shell:hover:not(.is-disabled) {
   color: var(--arc-color-text-strong);
   border-color: var(--arc-color-border-subtle);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 68%),
-    var(--arc-color-bg-active);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 68%), var(--arc-color-bg-active);
 }
 
 span.ui-tab-shell:hover:not(.is-disabled) > button.ui-tab {
@@ -159,12 +150,7 @@ span.ui-tab-shell.ui-tab-shell.is-active {
   color: var(--arc-color-text-strong);
   border-color: var(--arc-color-border);
   background:
-    linear-gradient(
-      180deg,
-      rgba(47, 129, 247, 0.24) 0%,
-      rgba(47, 129, 247, 0.11) 52%,
-      rgba(47, 129, 247, 0.035) 100%
-    ),
+    linear-gradient(180deg, rgba(47, 129, 247, 0.24) 0%, rgba(47, 129, 247, 0.11) 52%, rgba(47, 129, 247, 0.035) 100%),
     var(--arc-color-bg-panel-raised);
   box-shadow:
     inset 0 -2px 0 var(--arc-color-accent),

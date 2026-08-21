@@ -113,13 +113,10 @@ export const syncSingletonEditorDocumentInStore = (kind: EditorDocumentKind, doc
 export const activateEditorDocumentInStore = (documentId: string) =>
   publish(activateEditorDocument(sharedState, documentId));
 
-export const closeEditorDocumentInStore = (documentId: string) =>
-  publish(closeEditorDocument(sharedState, documentId));
+export const closeEditorDocumentInStore = (documentId: string) => publish(closeEditorDocument(sharedState, documentId));
 
-export const updateEditorDocumentInStore = (
-  documentId: string,
-  patch: Partial<Omit<EditorDocument, 'id' | 'kind'>>,
-) => publish(updateEditorDocument(sharedState, documentId, patch));
+export const updateEditorDocumentInStore = (documentId: string, patch: Partial<Omit<EditorDocument, 'id' | 'kind'>>) =>
+  publish(updateEditorDocument(sharedState, documentId, patch));
 
 export const resetEditorDocuments = () => publish(emptyEditorDocumentsState);
 

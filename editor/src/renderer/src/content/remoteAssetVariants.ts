@@ -1,4 +1,8 @@
-import type { ArcAssetDownloadFile, ArcAssetDownloadManifest, ArcRemoteAssetKind } from '../../../common/assetSourceTypes';
+import type {
+  ArcAssetDownloadFile,
+  ArcAssetDownloadManifest,
+  ArcRemoteAssetKind,
+} from '../../../common/assetSourceTypes';
 
 const knownFormats = new Set(['hdr', 'exr', 'jpg', 'jpeg', 'png', 'blend', 'gltf', 'glb', 'fbx', 'usd', 'usdz']);
 const formatFamilies: Partial<Record<ArcRemoteAssetKind, ReadonlySet<string>>> = {
@@ -29,9 +33,7 @@ const resolutionValue = (value: string): number => {
 
 export const manifestResolutions = (manifest: ArcAssetDownloadManifest): string[] =>
   Array.from(
-    new Set(
-      manifest.files.flatMap((file) => segments(file).filter((segment) => /^\d+(?:\.\d+)?k$/i.test(segment))),
-    ),
+    new Set(manifest.files.flatMap((file) => segments(file).filter((segment) => /^\d+(?:\.\d+)?k$/i.test(segment)))),
   ).sort((left, right) => resolutionValue(left) - resolutionValue(right));
 
 export const manifestFormats = (manifest: ArcAssetDownloadManifest, kind?: ArcRemoteAssetKind): string[] => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Plus, Search, Trash2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -156,29 +156,38 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   const [box, setBox] = useState<{ start: [number, number]; current: [number, number] } | null>(null);
   const [addMenu, setAddMenu] = useState<{ screen: [number, number]; graph: [number, number] } | null>(null);
   const [nodeSearch, setNodeSearch] = useState('');
-  const viewport = graph.viewport ?? { x: 40, y: 40, zoom: 1 };
+  const viewport = useMemo(() => graph.viewport ?? { x: 40, y: 40, zoom: 1 }, [graph.viewport]);
 
   useEffect(() => {
     setSelectedNodes((current) => new Set([...current].filter((id) => graph.nodes.some((node) => node.id === id))));
   }, [graph.nodes]);
 
-  const mutate = (updater: (draft: MaterialGraph) => void, recordHistory = true) => {
-    if (document.readOnly) return;
-    const next = cloneMaterialGraph(graph);
-    updater(next);
-    replaceMaterialGraph(document, next, { recordHistory });
-  };
+  const mutate = useCallback(
+    (updater: (draft: MaterialGraph) => void, recordHistory = true) => {
+      if (document.readOnly) return;
+      const next = cloneMaterialGraph(graph);
+      updater(next);
+      replaceMaterialGraph(document, next, { recordHistory });
+    },
+    [document, graph],
+  );
 
-  const graphPoint = (clientX: number, clientY: number): [number, number] => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return [0, 0];
-    return [(clientX - rect.left - viewport.x) / viewport.zoom, (clientY - rect.top - viewport.y) / viewport.zoom];
-  };
+  const graphPoint = useCallback(
+    (clientX: number, clientY: number): [number, number] => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return [0, 0];
+      return [(clientX - rect.left - viewport.x) / viewport.zoom, (clientY - rect.top - viewport.y) / viewport.zoom];
+    },
+    [viewport.x, viewport.y, viewport.zoom],
+  );
 
-  const updateViewport = (patch: Partial<typeof viewport>, recordHistory = false) =>
-    mutate((next) => {
-      next.viewport = { ...viewport, ...patch };
-    }, recordHistory);
+  const updateViewport = useCallback(
+    (patch: Partial<typeof viewport>, recordHistory = false) =>
+      mutate((next) => {
+        next.viewport = { ...viewport, ...patch };
+      }, recordHistory),
+    [mutate, viewport],
+  );
 
   useEffect(() => {
     if (!drag && !pan && !box) return;
@@ -243,7 +252,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     };
     // Graph/viewport deliberately remain current while the active gesture is
     // driven by the latest render.
-  }, [drag, pan, box, graph, viewport.x, viewport.y, viewport.zoom]);
+  }, [box, document, drag, graph, graphPoint, mutate, pan, updateViewport, viewport.x, viewport.y, viewport.zoom]);
 
   const deleteSelected = () => {
     if (document.readOnly || selectedNodes.size === 0) return;

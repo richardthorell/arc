@@ -78,9 +78,9 @@ export type InspectorMeshRenderer = {
 
 export type InspectorTerrain = {
   enabled: boolean;
-    size: number;
-    minimumElevation?: number;
-    maximumElevation?: number;
+  size: number;
+  minimumElevation?: number;
+  maximumElevation?: number;
   resolution: number;
   chunkQuads: number;
   patchQuads: number;
@@ -90,17 +90,17 @@ export type InspectorTerrain = {
   castShadows: boolean;
   shadowLodBias: number;
   maximumShadowDistance: number;
-    contentRevision: number;
-    materialGuid?: string;
-    materialPath?: string;
-    hierarchyNodes?: number;
-    hierarchyDepth?: number;
-    sourcePatches?: number;
-    visiblePatches?: number;
-    renderedTriangles?: number;
-    cpuMemoryBytes?: number;
-    gpuMemoryBytes?: number;
-    uploadedBytes?: number;
+  contentRevision: number;
+  materialGuid?: string;
+  materialPath?: string;
+  hierarchyNodes?: number;
+  hierarchyDepth?: number;
+  sourcePatches?: number;
+  visiblePatches?: number;
+  renderedTriangles?: number;
+  cpuMemoryBytes?: number;
+  gpuMemoryBytes?: number;
+  uploadedBytes?: number;
   brushTool: 'sculpt' | 'smooth' | 'flatten' | 'paint';
   brushRadius: number;
   brushStrength: number;
@@ -295,12 +295,16 @@ const hostSelectedEntitySchema = z.object({
       prefabPath: z.string(),
       overrideCount: z.number().int().nonnegative(),
       sourceMissing: z.boolean(),
-      overrides: z.array(z.object({
-        sourceEntity: z.string(),
-        componentId: z.string(),
-        fieldId: z.number().int().nonnegative(),
-        kind: z.string(),
-      })).default([]),
+      overrides: z
+        .array(
+          z.object({
+            sourceEntity: z.string(),
+            componentId: z.string(),
+            fieldId: z.number().int().nonnegative(),
+            kind: z.string(),
+          }),
+        )
+        .default([]),
     })
     .nullable()
     .default(null),

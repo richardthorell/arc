@@ -55,7 +55,11 @@ export function UiTab({
   }
 
   return (
-    <span className={['ui-tab-shell', active ? 'is-active active' : '', disabled ? 'is-disabled' : ''].filter(Boolean).join(' ')}>
+    <span
+      className={['ui-tab-shell', active ? 'is-active active' : '', disabled ? 'is-disabled' : '']
+        .filter(Boolean)
+        .join(' ')}
+    >
       <button className={classes} disabled={disabled} {...props}>
         {contents}
       </button>

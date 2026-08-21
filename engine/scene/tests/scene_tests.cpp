@@ -963,7 +963,7 @@ TEST_CASE("terrain heightfields generate deterministic normalized resource data"
         REQUIRE(static_cast<unsigned>(weights[0]) + weights[1] + weights[2] + weights[3] == 255u);
 
     const auto hierarchy = arc::render::build_terrain_hierarchy(first.heights, 257u, first.size, first.size,
-                                                                 {.patch_quads = first.patch_quads});
+                                                                {.patch_quads = first.patch_quads});
     REQUIRE(hierarchy.root < hierarchy.nodes.size());
     REQUIRE(hierarchy.leaf_count == 64u);
     REQUIRE(hierarchy.nodes[hierarchy.root].samples.max_x == 256u);
@@ -1036,16 +1036,16 @@ TEST_CASE("terrain generators are deterministic and flat creation remains explic
     first.subdivisions = 256;
     arc::scene::terrain_component second = first;
     const arc::scene::terrain_generation_descriptor generated{.generator_id = "arc.terrain.domain_warped.v1",
-                                                               .seed = 42,
-                                                               .minimum_elevation = -4.0f,
-                                                               .maximum_elevation = 36.0f};
+                                                              .seed = 42,
+                                                              .minimum_elevation = -4.0f,
+                                                              .maximum_elevation = 36.0f};
     REQUIRE(arc::scene::generate_terrain(first, generated).succeeded);
     REQUIRE(arc::scene::generate_terrain(second, generated).succeeded);
     REQUIRE(first.heights == second.heights);
     REQUIRE(first.layer_weights == second.layer_weights);
-    REQUIRE(arc::scene::generate_terrain(first, {.generator_id = "arc.terrain.flat.v1",
-                                                 .minimum_elevation = 3.0f,
-                                                 .maximum_elevation = 9.0f}).succeeded);
+    REQUIRE(arc::scene::generate_terrain(
+                first, {.generator_id = "arc.terrain.flat.v1", .minimum_elevation = 3.0f, .maximum_elevation = 9.0f})
+                .succeeded);
     REQUIRE(std::all_of(first.heights.begin(), first.heights.end(), [](float value) { return value == 3.0f; }));
 }
 
@@ -1056,13 +1056,12 @@ TEST_CASE("terrain heightmap import preserves 16 bit range and resamples normali
     heightmap.height = 2;
     heightmap.samples = {0, 16384, 32768, 32768, 49152, 65535};
     arc::scene::terrain_component terrain;
-    REQUIRE(arc::scene::import_terrain_heightmap(
-                terrain, heightmap,
-                {.target_resolution = 257,
-                 .physical_size = 80.0f,
-                 .minimum_elevation = -10.0f,
-                 .maximum_elevation = 30.0f,
-                 .normalize_source_range = false})
+    REQUIRE(arc::scene::import_terrain_heightmap(terrain, heightmap,
+                                                 {.target_resolution = 257,
+                                                  .physical_size = 80.0f,
+                                                  .minimum_elevation = -10.0f,
+                                                  .maximum_elevation = 30.0f,
+                                                  .normalize_source_range = false})
                 .succeeded);
     REQUIRE(terrain.heights.size() == 257u * 257u);
     REQUIRE(*std::min_element(terrain.heights.begin(), terrain.heights.end()) == Catch::Approx(-10.0f).margin(0.02f));
@@ -1072,8 +1071,8 @@ TEST_CASE("terrain heightmap import preserves 16 bit range and resamples normali
     REQUIRE(terrain.size == 160.0f);
     for (const auto& weights : terrain.layer_weights)
         REQUIRE(std::accumulate(weights.begin(), weights.end(), 0u) == 255u);
-    const auto exported = arc::scene::export_terrain_heightmap(
-        terrain, {.minimum_elevation = -10.0f, .maximum_elevation = 30.0f});
+    const auto exported =
+        arc::scene::export_terrain_heightmap(terrain, {.minimum_elevation = -10.0f, .maximum_elevation = 30.0f});
     REQUIRE(exported.width == 513);
     REQUIRE(exported.samples.size() == terrain.heights.size());
 }
@@ -1083,14 +1082,15 @@ TEST_CASE("terrain hierarchy raycast matches exact source raycast")
     arc::scene::terrain_component terrain;
     terrain.size = 32.0f;
     terrain.subdivisions = 256;
-    REQUIRE(arc::scene::generate_terrain(
-                terrain, {.generator_id = "arc.terrain.domain_warped.v1", .seed = 7,
-                          .minimum_elevation = 0.0f, .maximum_elevation = 12.0f}).succeeded);
-    const auto hierarchy = arc::render::build_terrain_hierarchy(
-        terrain.heights, 257, terrain.size, terrain.size, {.patch_quads = 32});
+    REQUIRE(arc::scene::generate_terrain(terrain, {.generator_id = "arc.terrain.domain_warped.v1",
+                                                   .seed = 7,
+                                                   .minimum_elevation = 0.0f,
+                                                   .maximum_elevation = 12.0f})
+                .succeeded);
+    const auto hierarchy =
+        arc::render::build_terrain_hierarchy(terrain.heights, 257, terrain.size, terrain.size, {.patch_quads = 32});
     const auto exact = arc::scene::raycast_terrain(terrain, {3.0f, 50.0f, -2.0f}, {0.0f, -1.0f, 0.0f});
-    const auto accelerated = arc::scene::raycast_terrain(
-        terrain, hierarchy, {3.0f, 50.0f, -2.0f}, {0.0f, -1.0f, 0.0f});
+    const auto accelerated = arc::scene::raycast_terrain(terrain, hierarchy, {3.0f, 50.0f, -2.0f}, {0.0f, -1.0f, 0.0f});
     REQUIRE(accelerated.hit == exact.hit);
     REQUIRE(accelerated.distance == Catch::Approx(exact.distance).margin(0.001f));
 }

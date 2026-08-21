@@ -14,7 +14,8 @@ TEST_CASE("editor camera wheel zoom stops before crossing the focused pivot")
     const auto initial_from_focus = arc::math::sub(before.position, focus);
     const float orbit_distance = camera.distance();
 
-    for (int index = 0; index < 256; ++index) camera.zoom(1.0f);
+    for (int index = 0; index < 256; ++index)
+        camera.zoom(1.0f);
 
     arc::scene::transform_component zoomed_in;
     camera.apply_to(zoomed_in);
@@ -34,7 +35,8 @@ TEST_CASE("editor camera wheel zoom can immediately reverse away from the focus 
     arc::editor::editor_camera_controller camera;
     camera.focus({0.0f, 0.0f, 0.0f}, 2.0f);
 
-    for (int index = 0; index < 256; ++index) camera.zoom(1.0f);
+    for (int index = 0; index < 256; ++index)
+        camera.zoom(1.0f);
     arc::scene::transform_component at_clamp;
     camera.apply_to(at_clamp);
     const float near_distance = arc::math::length(arc::math::sub(at_clamp.position, camera.focus_point()));
@@ -61,7 +63,8 @@ TEST_CASE("editor camera wheel focus clamp follows the geometric direction")
 
     // Negative wheel motion now travels toward the focus. It must be clamped
     // on the current side rather than being allowed to pass through the pivot.
-    for (int index = 0; index < 256; ++index) camera.zoom(-1.0f);
+    for (int index = 0; index < 256; ++index)
+        camera.zoom(-1.0f);
     arc::scene::transform_component after;
     camera.apply_to(after);
     const float projected = arc::math::dot(arc::math::sub(focus, after.position), forward);

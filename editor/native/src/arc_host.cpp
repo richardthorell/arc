@@ -117,8 +117,7 @@ struct viewport_surface_registry
 
 namespace
 {
-template <class Variant>
-std::optional<std::string> viewport_id_from(const Variant& payload)
+template <class Variant> std::optional<std::string> viewport_id_from(const Variant& payload)
 {
     return std::visit(
         [](const auto& value) -> std::optional<std::string>
@@ -167,32 +166,32 @@ void capture_viewport_surface(const HostState& host, viewport_surface_registry::
 #define execute execute_base
 #define query(...) query_base(__VA_ARGS__)
 #define request_viewport request_viewport_base
-#define has_material \
-    has_material = mesh_renderer.material.valid(); \
-    snapshot.has_mesh = mesh_renderer.mesh.valid(); \
-    if (const auto* arc_mesh_binding = find_asset_binding(state, entity_guid_of(state, entity)); arc_mesh_binding) \
-    { \
-        if (arc_mesh_binding->source_kind == "primitive" && !arc_mesh_binding->subresource.empty()) \
-        { \
-            snapshot.asset_backed_mesh = false; \
-            snapshot.mesh_name = arc_mesh_binding->subresource; \
-            snapshot.mesh_path = arc::editor::primitive_mesh_uri(arc_mesh_binding->subresource); \
-        } \
-        else \
-        { \
-            snapshot.asset_backed_mesh = \
-                arc_mesh_binding->source.guid.valid() || !arc_mesh_binding->source.path_hint.empty(); \
-            if (!arc_mesh_binding->source.path_hint.empty()) \
-            { \
-                auto arc_mesh_path = std::filesystem::path{arc_mesh_binding->source.path_hint}; \
-                if (arc_mesh_path.is_absolute()) arc_mesh_path = arc_mesh_path.lexically_relative(project_root); \
-                snapshot.mesh_path = arc::assets::normalize_asset_path(arc_mesh_path); \
-            } \
-            snapshot.mesh_name = !arc_mesh_binding->subresource.empty() \
-                                     ? arc_mesh_binding->subresource \
-                                     : std::filesystem::path{snapshot.mesh_path}.stem().string(); \
-        } \
-    } \
+#define has_material                                                                                                   \
+    has_material = mesh_renderer.material.valid();                                                                     \
+    snapshot.has_mesh = mesh_renderer.mesh.valid();                                                                    \
+    if (const auto* arc_mesh_binding = find_asset_binding(state, entity_guid_of(state, entity)); arc_mesh_binding)     \
+    {                                                                                                                  \
+        if (arc_mesh_binding->source_kind == "primitive" && !arc_mesh_binding->subresource.empty())                    \
+        {                                                                                                              \
+            snapshot.asset_backed_mesh = false;                                                                        \
+            snapshot.mesh_name = arc_mesh_binding->subresource;                                                        \
+            snapshot.mesh_path = arc::editor::primitive_mesh_uri(arc_mesh_binding->subresource);                       \
+        }                                                                                                              \
+        else                                                                                                           \
+        {                                                                                                              \
+            snapshot.asset_backed_mesh =                                                                               \
+                arc_mesh_binding->source.guid.valid() || !arc_mesh_binding->source.path_hint.empty();                  \
+            if (!arc_mesh_binding->source.path_hint.empty())                                                           \
+            {                                                                                                          \
+                auto arc_mesh_path = std::filesystem::path{arc_mesh_binding->source.path_hint};                        \
+                if (arc_mesh_path.is_absolute()) arc_mesh_path = arc_mesh_path.lexically_relative(project_root);       \
+                snapshot.mesh_path = arc::assets::normalize_asset_path(arc_mesh_path);                                 \
+            }                                                                                                          \
+            snapshot.mesh_name = !arc_mesh_binding->subresource.empty()                                                \
+                                     ? arc_mesh_binding->subresource                                                   \
+                                     : std::filesystem::path{snapshot.mesh_path}.stem().string();                      \
+        }                                                                                                              \
+    }                                                                                                                  \
     snapshot.has_material
 #include "arc_host_base.inc"
 #undef has_material
@@ -225,8 +224,8 @@ std::optional<editor_primitive_type> primitive_assignment_type(const host_set_en
     return procedural_mesh_type_from_token(encoded.substr(primitive_assignment_prefix.size()));
 }
 
-std::optional<primitive_parameter_assignment> primitive_parameter_assignment_from(
-    const host_set_entity_material_command& command)
+std::optional<primitive_parameter_assignment>
+primitive_parameter_assignment_from(const host_set_entity_material_command& command)
 {
     const std::string encoded = command.path.generic_string();
     if (!encoded.starts_with(primitive_parameter_prefix)) return std::nullopt;
@@ -315,10 +314,12 @@ host_response arc_host::execute(const host_command_envelope& command)
     viewport_surface_registry::surface_state* viewport_surface{};
     if (viewport_id)
     {
-        viewport_surface = creates_viewport_surface(command.payload) ? &surfaces.ensure(*viewport_id) : surfaces.find(*viewport_id);
+        viewport_surface =
+            creates_viewport_surface(command.payload) ? &surfaces.ensure(*viewport_id) : surfaces.find(*viewport_id);
         if (!viewport_surface)
         {
-            host_response response{.request_id = command.request_id, .succeeded = false, .error = "Viewport is not attached"};
+            host_response response{
+                .request_id = command.request_id, .succeeded = false, .error = "Viewport is not attached"};
             response.scene_revision = state_->scene_revision;
             response.world_epoch = state_->world_epoch;
             response.frame_revision = state_->viewport_frame_index;
@@ -334,14 +335,16 @@ host_response arc_host::execute(const host_command_envelope& command)
     const auto* material_command = std::get_if<host_set_entity_material_command>(&command.payload);
     const auto mesh_reference = material_command ? mesh_assignment_path(*material_command) : std::nullopt;
     const auto primitive_type = material_command ? primitive_assignment_type(*material_command) : std::nullopt;
-    const auto parameter_assignment = material_command ? primitive_parameter_assignment_from(*material_command) : std::nullopt;
+    const auto parameter_assignment =
+        material_command ? primitive_parameter_assignment_from(*material_command) : std::nullopt;
     if (!material_command || (!mesh_reference && !primitive_type && !parameter_assignment))
     {
         auto response = execute_base(command);
         capture_viewport_surface(*state_, *viewport_surface);
         if (response.succeeded && std::holds_alternative<host_viewport_pick_command>(command.payload))
             surfaces.pending_pick_surface = viewport_surface->options.viewport_id;
-        if (std::holds_alternative<host_viewport_detach_command>(command.payload) && surfaces.pending_pick_surface == viewport_surface->options.viewport_id)
+        if (std::holds_alternative<host_viewport_detach_command>(command.payload) &&
+            surfaces.pending_pick_surface == viewport_surface->options.viewport_id)
             surfaces.pending_pick_surface.reset();
         if (response.succeeded && state_->project_open && should_synchronize_procedural_meshes(command.payload))
         {
@@ -386,15 +389,17 @@ host_response arc_host::execute(const host_command_envelope& command)
             auto* component = ensure_procedural_mesh_component(state_->scene, target);
             if (!component) return fail("Procedural mesh parameters are only available for procedural meshes", target);
             auto validation = *component;
-            if (!set_procedural_mesh_parameter(validation, parameter_assignment->parameter, parameter_assignment->value))
-                return fail("The selected procedural mesh does not support parameter '" + parameter_assignment->parameter +
-                                "'",
+            if (!set_procedural_mesh_parameter(validation, parameter_assignment->parameter,
+                                               parameter_assignment->value))
+                return fail("The selected procedural mesh does not support parameter '" +
+                                parameter_assignment->parameter + "'",
                             target);
         }
 
         if (command.edit && command.edit->phase == host_edit_phase::cancel)
         {
-            if (!state_->history.cancel(command.edit->id, state_->scene)) return fail("Edit transaction is not active", entity);
+            if (!state_->history.cancel(command.edit->id, state_->scene))
+                return fail("Edit transaction is not active", entity);
             synchronize_procedural_mesh_components(state_->scene, *state_->renderer);
             ++state_->scene_revision;
             return response_with_revisions({.request_id = command.request_id, .succeeded = true});
@@ -416,7 +421,8 @@ host_response arc_host::execute(const host_command_envelope& command)
         {
             auto* component = ensure_procedural_mesh_component(state_->scene, target);
             if (!component ||
-                !set_procedural_mesh_parameter(*component, parameter_assignment->parameter, parameter_assignment->value) ||
+                !set_procedural_mesh_parameter(*component, parameter_assignment->parameter,
+                                               parameter_assignment->value) ||
                 !regenerate_procedural_mesh(state_->scene, *state_->renderer, target))
             {
                 if (command.edit)
@@ -435,7 +441,8 @@ host_response arc_host::execute(const host_command_envelope& command)
 
         if (!command.edit)
             state_->history.record("Edit Procedural Mesh", std::move(*before), state_->scene);
-        else if (command.edit->phase == host_edit_phase::commit && !state_->history.commit(command.edit->id, state_->scene))
+        else if (command.edit->phase == host_edit_phase::commit &&
+                 !state_->history.commit(command.edit->id, state_->scene))
             return fail("Could not commit procedural mesh edit transaction", entity);
 
         ++state_->scene_revision;
@@ -598,7 +605,8 @@ host_response arc_host::query(const host_query_envelope& query) const
                 if (const auto* procedural =
                         std::as_const(state_->scene.scene).try_get<procedural_mesh_component>(entity))
                 {
-                    auto procedural_json = nlohmann::json::parse(procedural_mesh_snapshot_json(*procedural), nullptr, false);
+                    auto procedural_json =
+                        nlohmann::json::parse(procedural_mesh_snapshot_json(*procedural), nullptr, false);
                     if (!procedural_json.is_discarded()) payload["proceduralMesh"] = std::move(procedural_json);
                 }
             }
@@ -669,7 +677,8 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     viewport_surface->options.frame_index = request.frame_index;
     if (viewport_surface->last_request_time.time_since_epoch().count() != 0)
     {
-        const double interval = std::chrono::duration<double>(request_time - viewport_surface->last_request_time).count();
+        const double interval =
+            std::chrono::duration<double>(request_time - viewport_surface->last_request_time).count();
         if (interval > 0.0) viewport_surface->fps = 1.0 / interval;
     }
     viewport_surface->last_request_time = request_time;

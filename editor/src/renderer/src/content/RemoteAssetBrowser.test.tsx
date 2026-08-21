@@ -23,14 +23,26 @@ beforeEach(() => {
   search.mockReset().mockResolvedValue({
     source,
     total: 1,
-    assets: [{
-      id: 'rock', sourceId: 'polyhaven', name: 'Granite Rock', description: 'A scanned rock.', kind: 'model',
-      category: 'Nature/Rocks', tags: ['rock'], thumbnailUrl: 'https://cdn.example/rock.jpg', license: 'CC0',
-      attribution: 'Powered by Poly Haven', metadata: {},
-    }],
+    assets: [
+      {
+        id: 'rock',
+        sourceId: 'polyhaven',
+        name: 'Granite Rock',
+        description: 'A scanned rock.',
+        kind: 'model',
+        category: 'Nature/Rocks',
+        tags: ['rock'],
+        thumbnailUrl: 'https://cdn.example/rock.jpg',
+        license: 'CC0',
+        attribution: 'Powered by Poly Haven',
+        metadata: {},
+      },
+    ],
   });
   manifest.mockReset().mockResolvedValue({
-    sourceId: 'polyhaven', assetId: 'rock', files: [
+    sourceId: 'polyhaven',
+    assetId: 'rock',
+    files: [
       { logicalPath: 'gltf/2k/gltf', url: 'https://cdn.example/rock.gltf', sizeBytes: 10 },
       { logicalPath: 'gltf/2k/gltf/include/0', url: 'https://cdn.example/rock_diff.png', sizeBytes: 20 },
       { logicalPath: 'blend/2k/blend', url: 'https://cdn.example/rock.blend', sizeBytes: 40 },
@@ -44,7 +56,12 @@ beforeEach(() => {
       importedFiles: ['rock.gltf', 'rock_diff.png'],
       cacheHits: 0,
       downloadedFiles: 2,
-      provenance: { sourceId: 'polyhaven', sourceAssetId: 'rock', importedAt: new Date().toISOString(), license: 'CC0' },
+      provenance: {
+        sourceId: 'polyhaven',
+        sourceAssetId: 'rock',
+        importedAt: new Date().toISOString(),
+        license: 'CC0',
+      },
     };
   });
   Object.defineProperty(window, 'arc', {

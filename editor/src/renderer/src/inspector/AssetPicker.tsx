@@ -121,12 +121,7 @@ function PrimitiveMeshIcon({ kind }: { kind: PrimitiveMeshKind }) {
         <>
           <circle {...common} cx="32" cy="32" r="21" />
           <ellipse cx="32" cy="32" rx="10" ry="21" fill="none" stroke="#8fc8ff" opacity="0.72" />
-          <path
-            d="M12 32h40M17 21c9 5 21 5 30 0M17 43c9-5 21-5 30 0"
-            fill="none"
-            stroke="#8fc8ff"
-            opacity="0.58"
-          />
+          <path d="M12 32h40M17 21c9 5 21 5 30 0M17 43c9-5 21-5 30 0" fill="none" stroke="#8fc8ff" opacity="0.58" />
         </>
       )}
       {kind === 'cylinder' && (
@@ -145,12 +140,7 @@ function PrimitiveMeshIcon({ kind }: { kind: PrimitiveMeshKind }) {
       {kind === 'capsule' && (
         <>
           <path {...common} d="M18 23a14 14 0 0 1 28 0v18a14 14 0 0 1-28 0z" />
-          <path
-            d="M18 23c5 4 23 4 28 0M18 41c5-4 23-4 28 0"
-            fill="none"
-            stroke="#8fc8ff"
-            opacity="0.62"
-          />
+          <path d="M18 23c5 4 23 4 28 0M18 41c5-4 23-4 28 0" fill="none" stroke="#8fc8ff" opacity="0.62" />
         </>
       )}
       {kind === 'plane' && (

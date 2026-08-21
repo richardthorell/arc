@@ -315,7 +315,8 @@ template <detail::vector_expression Expr>
 
 template <detail::vector_expression Expr>
 /// @brief Return a normalized vector, or a scalar-filled fallback when length is zero.
-[[nodiscard]] inline auto normalize(const Expr& expr, detail::expr_value_t<Expr> fallback = detail::expr_value_t<Expr>{}) noexcept
+[[nodiscard]] inline auto normalize(const Expr& expr,
+                                    detail::expr_value_t<Expr> fallback = detail::expr_value_t<Expr>{}) noexcept
 {
     using traits = detail::expr_traits<std::remove_cvref_t<Expr>>;
     using value_type = typename traits::value_type;

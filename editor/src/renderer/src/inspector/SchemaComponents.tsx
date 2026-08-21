@@ -15,12 +15,60 @@ const primitiveParameterPrefix = '__arc_primitive_parameter__/';
 const primitiveMeshUriPrefix = 'arc://primitive/';
 const meshAssetExtensions = ['.glb', '.gltf', '.fbx'] as const;
 const proceduralMeshAssets: ReadonlyArray<AssetPickerItem> = [
-  { id: 'arc-primitive-plane', name: 'Plane', path: `${primitiveMeshUriPrefix}plane`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
-  { id: 'arc-primitive-cube', name: 'Cube', path: `${primitiveMeshUriPrefix}cube`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
-  { id: 'arc-primitive-sphere', name: 'Sphere', path: `${primitiveMeshUriPrefix}sphere`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
-  { id: 'arc-primitive-cylinder', name: 'Cylinder', path: `${primitiveMeshUriPrefix}cylinder`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
-  { id: 'arc-primitive-cone', name: 'Cone', path: `${primitiveMeshUriPrefix}cone`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
-  { id: 'arc-primitive-capsule', name: 'Capsule', path: `${primitiveMeshUriPrefix}capsule`, kind: 'mesh', status: 'ready', scope: 'procedural', readOnly: true },
+  {
+    id: 'arc-primitive-plane',
+    name: 'Plane',
+    path: `${primitiveMeshUriPrefix}plane`,
+    kind: 'mesh',
+    status: 'ready',
+    scope: 'procedural',
+    readOnly: true,
+  },
+  {
+    id: 'arc-primitive-cube',
+    name: 'Cube',
+    path: `${primitiveMeshUriPrefix}cube`,
+    kind: 'mesh',
+    status: 'ready',
+    scope: 'procedural',
+    readOnly: true,
+  },
+  {
+    id: 'arc-primitive-sphere',
+    name: 'Sphere',
+    path: `${primitiveMeshUriPrefix}sphere`,
+    kind: 'mesh',
+    status: 'ready',
+    scope: 'procedural',
+    readOnly: true,
+  },
+  {
+    id: 'arc-primitive-cylinder',
+    name: 'Cylinder',
+    path: `${primitiveMeshUriPrefix}cylinder`,
+    kind: 'mesh',
+    status: 'ready',
+    scope: 'procedural',
+    readOnly: true,
+  },
+  {
+    id: 'arc-primitive-cone',
+    name: 'Cone',
+    path: `${primitiveMeshUriPrefix}cone`,
+    kind: 'mesh',
+    status: 'ready',
+    scope: 'procedural',
+    readOnly: true,
+  },
+  {
+    id: 'arc-primitive-capsule',
+    name: 'Capsule',
+    path: `${primitiveMeshUriPrefix}capsule`,
+    kind: 'mesh',
+    status: 'ready',
+    scope: 'procedural',
+    readOnly: true,
+  },
 ];
 
 export function SchemaComponentCard<TContext extends object>({
@@ -155,11 +203,7 @@ export function SchemaComponentCard<TContext extends object>({
             <ProceduralMeshControls
               mesh={proceduralMesh}
               onValue={(parameter, value, settled) =>
-                onValue(
-                  'meshRenderer.materialPath',
-                  `${primitiveParameterPrefix}${parameter}/${value}`,
-                  settled,
-                )
+                onValue('meshRenderer.materialPath', `${primitiveParameterPrefix}${parameter}/${value}`, settled)
               }
             />
           )}

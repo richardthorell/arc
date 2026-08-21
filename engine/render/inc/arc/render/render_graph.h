@@ -26,8 +26,7 @@ struct render_pass_payload
     static constexpr std::size_t capacity = 64;
 
     /** @brief Copy a small trivially-copyable value into inline pass storage. */
-    template <typename T>
-    [[nodiscard]] static render_pass_payload from(const T& value) noexcept
+    template <typename T> [[nodiscard]] static render_pass_payload from(const T& value) noexcept
     {
         static_assert(std::is_trivially_copyable_v<T>);
         static_assert(sizeof(T) <= capacity);
@@ -38,8 +37,7 @@ struct render_pass_payload
     }
 
     /** @brief Read a copied payload value, returning an empty value on a size mismatch. */
-    template <typename T>
-    [[nodiscard]] T get() const noexcept
+    template <typename T> [[nodiscard]] T get() const noexcept
     {
         static_assert(std::is_trivially_copyable_v<T>);
         T result{};
@@ -208,14 +206,12 @@ enum class render_pipeline_stage : std::uint32_t
     all_commands = 0xffffffffu
 };
 
-[[nodiscard]] constexpr render_pipeline_stage operator|(render_pipeline_stage lhs,
-                                                         render_pipeline_stage rhs) noexcept
+[[nodiscard]] constexpr render_pipeline_stage operator|(render_pipeline_stage lhs, render_pipeline_stage rhs) noexcept
 {
     return static_cast<render_pipeline_stage>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
 }
 
-[[nodiscard]] constexpr render_pipeline_stage operator&(render_pipeline_stage lhs,
-                                                         render_pipeline_stage rhs) noexcept
+[[nodiscard]] constexpr render_pipeline_stage operator&(render_pipeline_stage lhs, render_pipeline_stage rhs) noexcept
 {
     return static_cast<render_pipeline_stage>(static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
 }
@@ -586,15 +582,15 @@ struct render_graph_compile_options
     std::uint64_t view_id{1};
     render_extent output_extent{};
 #if defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 14
-#    pragma GCC diagnostic push
+#pragma GCC diagnostic push
 // GCC 14 diagnoses this intentionally symmetric type/member spelling as
 // -Wchanges-meaning. Keep the stable public field name without weakening the
 // warning for any other declaration in this header.
-#    pragma GCC diagnostic ignored "-Wchanges-meaning"
+#pragma GCC diagnostic ignored "-Wchanges-meaning"
 #endif
     render_extent render_extent{};
 #if defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 14
-#    pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
 #endif
     std::uint64_t frame_index{};
     std::uint64_t world_epoch{};

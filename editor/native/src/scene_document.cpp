@@ -232,8 +232,9 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                              name == "VirtualMeshRenderer" || name == "Vegetation" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight" ||
                              name == "PrefabInstance";
-    const bool supports_v3 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" || name == "DirectionalLight" ||
-                             name == "PointLight" || name == "SpotLight" || name == "AreaLight";
+    const bool supports_v3 = name == "Terrain" || name == "Camera" || name == "MeshRenderer" ||
+                             name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
+                             name == "AreaLight";
     const bool supports_v4 = name == "MeshRenderer";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
         !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u))

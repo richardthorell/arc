@@ -224,8 +224,7 @@ public:
 
     void set_snapshot_budget(std::size_t bytes) noexcept;
     [[nodiscard]] world_snapshot_result capture_snapshot(runtime_world_id world, simulation_tick_id tick,
-                                                         double simulation_time_seconds = 0.0,
-                                                         std::string label = {},
+                                                         double simulation_time_seconds = 0.0, std::string label = {},
                                                          runtime_service_registry* services = nullptr);
     [[nodiscard]] world_snapshot_result restore_snapshot(world_snapshot_id snapshot,
                                                          runtime_service_registry* services = nullptr);

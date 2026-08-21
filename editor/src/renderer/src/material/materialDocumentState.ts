@@ -373,7 +373,7 @@ export const useMaterialDocumentState = (document: EditorDocument) => {
   useEffect(() => subscribe(document.id, () => forceUpdate((value) => value + 1)), [document.id]);
   useEffect(() => {
     void loadMaterialDocument(document);
-  }, [document.id, document.path]);
+  }, [document]);
 
   return states.get(document.id) ?? state;
 };

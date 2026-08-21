@@ -16,7 +16,8 @@ export class AssetSourceRegistry {
   }
 
   register(source: ArcAssetSourceAdapter): void {
-    if (this.sources.has(source.descriptor.id)) throw new Error(`Asset source '${source.descriptor.id}' is already registered`);
+    if (this.sources.has(source.descriptor.id))
+      throw new Error(`Asset source '${source.descriptor.id}' is already registered`);
     this.sources.set(source.descriptor.id, source);
   }
 
@@ -44,6 +45,4 @@ export class AssetSourceRegistry {
 }
 
 export const createDefaultAssetSourceRegistry = (appVersion: string): AssetSourceRegistry =>
-  new AssetSourceRegistry([
-    new PolyHavenAssetSource({ userAgent: `ARC-Editor/${appVersion || 'dev'}` }),
-  ]);
+  new AssetSourceRegistry([new PolyHavenAssetSource({ userAgent: `ARC-Editor/${appVersion || 'dev'}` })]);

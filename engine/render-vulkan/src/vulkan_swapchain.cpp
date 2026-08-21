@@ -18,8 +18,7 @@ VkSurfaceFormatKHR select_surface_format(VkPhysicalDevice physical_device, VkSur
         return {};
 
     std::vector<VkSurfaceFormatKHR> formats(count);
-    if (vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats.data()) != VK_SUCCESS)
-        return {};
+    if (vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &count, formats.data()) != VK_SUCCESS) return {};
 
     if (formats.size() == 1 && formats.front().format == VK_FORMAT_UNDEFINED && !preferred_formats.empty())
         return {preferred_formats.front(), VK_COLORSPACE_SRGB_NONLINEAR_KHR};
@@ -32,11 +31,11 @@ VkSurfaceFormatKHR select_surface_format(VkPhysicalDevice physical_device, VkSur
     return formats.front();
 }
 
-VkPresentModeKHR select_present_mode(VkPhysicalDevice physical_device, VkSurfaceKHR surface,
-                                     VkPresentModeKHR preferred)
+VkPresentModeKHR select_present_mode(VkPhysicalDevice physical_device, VkSurfaceKHR surface, VkPresentModeKHR preferred)
 {
     std::uint32_t count{};
-    if (vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr) != VK_SUCCESS || count == 0)
+    if (vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &count, nullptr) != VK_SUCCESS ||
+        count == 0)
         return VK_PRESENT_MODE_FIFO_KHR;
 
     std::vector<VkPresentModeKHR> modes(count);
@@ -49,10 +48,9 @@ VkPresentModeKHR select_present_mode(VkPhysicalDevice physical_device, VkSurface
 
 VkCompositeAlphaFlagBitsKHR select_composite_alpha(VkCompositeAlphaFlagsKHR supported) noexcept
 {
-    constexpr VkCompositeAlphaFlagBitsKHR candidates[]{VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-                                                        VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
-                                                        VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
-                                                        VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR};
+    constexpr VkCompositeAlphaFlagBitsKHR candidates[]{
+        VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+        VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR};
     for (const auto candidate : candidates)
         if ((supported & candidate) != 0) return candidate;
     return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -161,7 +159,8 @@ bool vulkan_swapchain::create_or_resize(VkPhysicalDevice physical_device, VkDevi
     }
 
     std::uint32_t selected_image_count = std::max(minimum_image_count, capabilities.minImageCount);
-    if (capabilities.maxImageCount != 0) selected_image_count = std::min(selected_image_count, capabilities.maxImageCount);
+    if (capabilities.maxImageCount != 0)
+        selected_image_count = std::min(selected_image_count, capabilities.maxImageCount);
 
     VkSwapchainCreateInfoKHR create{};
     create.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;

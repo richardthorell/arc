@@ -33,7 +33,10 @@ const decorateStatsToggle = (button: HTMLButtonElement) => {
   button.dataset.viewportStatsToggle = 'true';
   button.title = 'Toggle viewport statistics';
   button.setAttribute('aria-label', 'Toggle viewport statistics');
-  button.setAttribute('aria-pressed', button.closest('.arc-viewport-shell')?.classList.contains('show-stats') ? 'true' : 'false');
+  button.setAttribute(
+    'aria-pressed',
+    button.closest('.arc-viewport-shell')?.classList.contains('show-stats') ? 'true' : 'false',
+  );
 };
 
 const compactCount = (value: number | undefined) => {
@@ -47,8 +50,7 @@ const compactCount = (value: number | undefined) => {
 const compactMemoryBytes = (bytes: number | undefined) => {
   if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return '—';
   const memory = Math.max(0, bytes);
-  if (memory >= 1024 ** 3)
-    return `${(memory / 1024 ** 3).toFixed(2).replace(/0$/, '').replace(/\.0$/, '')} GB`;
+  if (memory >= 1024 ** 3) return `${(memory / 1024 ** 3).toFixed(2).replace(/0$/, '').replace(/\.0$/, '')} GB`;
   return `${Math.round(memory / mebibyte)} MB`;
 };
 

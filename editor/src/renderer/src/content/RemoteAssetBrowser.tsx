@@ -195,7 +195,9 @@ export function RemoteAssetBrowser({ source }: Props) {
                 )}
               </span>
               <span className="content-asset-name">{asset.name}</span>
-              <small>{asset.kind} · {asset.category || 'uncategorized'}</small>
+              <small>
+                {asset.kind} · {asset.category || 'uncategorized'}
+              </small>
             </button>
           ))}
           {!loading && !error && (result?.assets.length ?? 0) === 0 && (
@@ -207,7 +209,9 @@ export function RemoteAssetBrowser({ source }: Props) {
         <aside className="content-asset-details remote-asset-details">
           {selected.thumbnailUrl && <img className="remote-detail-image" src={selected.thumbnailUrl} alt="" />}
           <strong>{selected.name}</strong>
-          <span>{selected.kind} · {selected.category}</span>
+          <span>
+            {selected.kind} · {selected.category}
+          </span>
           {selected.description && <p>{selected.description}</p>}
           <span>{selected.license}</span>
           {selected.attribution && <small>{selected.attribution}</small>}
@@ -223,7 +227,9 @@ export function RemoteAssetBrowser({ source }: Props) {
                     value={resolution}
                     onChange={(event) => setResolution(event.target.value)}
                   >
-                    {resolutions.map((value) => <option key={value}>{value}</option>)}
+                    {resolutions.map((value) => (
+                      <option key={value}>{value}</option>
+                    ))}
                   </select>
                 </label>
               )}
@@ -235,7 +241,9 @@ export function RemoteAssetBrowser({ source }: Props) {
                     value={format}
                     onChange={(event) => setFormat(event.target.value)}
                   >
-                    {formats.map((value) => <option key={value}>{value}</option>)}
+                    {formats.map((value) => (
+                      <option key={value}>{value}</option>
+                    ))}
                   </select>
                 </label>
               )}

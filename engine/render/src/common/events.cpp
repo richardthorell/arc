@@ -99,8 +99,7 @@ void render_event_writer::virtual_mesh_destroy(virtual_mesh_handle handle)
 }
 
 void render_event_writer::terrain_upload(terrain_handle handle,
-                                         std::shared_ptr<const terrain_resource_descriptor> terrain,
-                                         std::string label)
+                                         std::shared_ptr<const terrain_resource_descriptor> terrain, std::string label)
 {
     push({.payload = terrain_upload_event{handle, std::move(terrain), std::move(label)}});
 }

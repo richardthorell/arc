@@ -19,8 +19,8 @@ bool overlaps(const terrain_sample_region& a, const terrain_sample_region& b) no
     return a.min_x <= b.max_x && b.min_x <= a.max_x && a.min_z <= b.max_z && b.min_z <= a.max_z;
 }
 
-void calculate_node(terrain_hierarchy_node& node, std::span<const float> heights, std::uint32_t resolution,
-                    float width, float depth, float inherited_error)
+void calculate_node(terrain_hierarchy_node& node, std::span<const float> heights, std::uint32_t resolution, float width,
+                    float depth, float inherited_error)
 {
     float minimum = std::numeric_limits<float>::max();
     float maximum = std::numeric_limits<float>::lowest();
@@ -63,20 +63,22 @@ std::uint32_t build_node(terrain_hierarchy& hierarchy, std::span<const float> he
     hierarchy.nodes.push_back({.samples = region, .depth = depth_level});
     const auto quads_x = region.max_x - region.min_x;
     const auto quads_z = region.max_z - region.min_z;
-    const bool depth_limited = settings.maximum_hierarchy_depth != 0u && depth_level >= settings.maximum_hierarchy_depth;
+    const bool depth_limited =
+        settings.maximum_hierarchy_depth != 0u && depth_level >= settings.maximum_hierarchy_depth;
     if (!depth_limited && (quads_x > settings.patch_quads || quads_z > settings.patch_quads))
     {
         const auto mid_x = region.min_x + quads_x / 2u;
         const auto mid_z = region.min_z + quads_z / 2u;
-        const std::array<terrain_sample_region, 4> regions{{
-            {region.min_x, region.min_z, mid_x, mid_z}, {mid_x, region.min_z, region.max_x, mid_z},
-            {region.min_x, mid_z, mid_x, region.max_z}, {mid_x, mid_z, region.max_x, region.max_z}}};
+        const std::array<terrain_sample_region, 4> regions{{{region.min_x, region.min_z, mid_x, mid_z},
+                                                            {mid_x, region.min_z, region.max_x, mid_z},
+                                                            {region.min_x, mid_z, mid_x, region.max_z},
+                                                            {mid_x, mid_z, region.max_x, region.max_z}}};
         float child_error{};
         for (std::size_t child = 0; child < regions.size(); ++child)
         {
             if (regions[child].min_x == regions[child].max_x || regions[child].min_z == regions[child].max_z) continue;
-            const auto child_index = build_node(hierarchy, heights, resolution, width, depth, regions[child],
-                                                depth_level + 1u, settings);
+            const auto child_index =
+                build_node(hierarchy, heights, resolution, width, depth, regions[child], depth_level + 1u, settings);
             hierarchy.nodes[index].children[child] = child_index;
             child_error = std::max(child_error, hierarchy.nodes[child_index].geometric_error);
         }
@@ -95,8 +97,7 @@ geometric::box3f transform_bounds(const geometric::box3f& local, const math::mat
 {
     auto corner = [&](std::uint32_t value)
     {
-        return math::vector3f{(value & 1u) ? local.max[0] : local.min[0],
-                              (value & 2u) ? local.max[1] : local.min[1],
+        return math::vector3f{(value & 1u) ? local.max[0] : local.min[0], (value & 2u) ? local.max[1] : local.min[1],
                               (value & 4u) ? local.max[2] : local.min[2]};
     };
     auto point = math::transform_point(model, corner(0));
@@ -120,8 +121,8 @@ bool adjacent(const terrain_sample_region& a, const terrain_sample_region& b) no
 }
 } // namespace
 
-terrain_hierarchy build_terrain_hierarchy(std::span<const float> heights, std::uint32_t sample_resolution,
-                                          float width, float depth, const terrain_lod_settings& input_settings)
+terrain_hierarchy build_terrain_hierarchy(std::span<const float> heights, std::uint32_t sample_resolution, float width,
+                                          float depth, const terrain_lod_settings& input_settings)
 {
     terrain_hierarchy result;
     if (sample_resolution < 2u || heights.size() != static_cast<std::size_t>(sample_resolution) * sample_resolution ||
@@ -158,9 +159,9 @@ bool update_terrain_hierarchy(terrain_hierarchy& hierarchy, std::span<const floa
 }
 
 terrain_selection_result select_terrain_patches(terrain_handle terrain, const terrain_hierarchy& hierarchy,
-                                                 const math::matrix4f& model, const render_camera& camera,
-                                                 float geometry_error_threshold, float terrain_error_bias,
-                                                 terrain_selection_scratch* scratch)
+                                                const math::matrix4f& model, const render_camera& camera,
+                                                float geometry_error_threshold, float terrain_error_bias,
+                                                terrain_selection_scratch* scratch)
 {
     terrain_selection_result result;
     result.statistics.hierarchy_nodes = static_cast<std::uint32_t>(hierarchy.nodes.size());
@@ -188,20 +189,18 @@ terrain_selection_result select_terrain_patches(terrain_handle terrain, const te
             continue;
         }
         const float distance = std::max(distance_to_box(camera.position, world_bounds), camera.near_plane);
-        const float projected = node.geometric_error * scale * projection_scale * terrain_error_bias /
-                                (perspective ? distance : 1.0f);
+        const float projected =
+            node.geometric_error * scale * projection_scale * terrain_error_bias / (perspective ? distance : 1.0f);
         float split_threshold = std::max(geometry_error_threshold, 0.01f);
         if (scratch)
         {
-            const bool was_selected =
-                std::find(scratch->previous_nodes.begin(), scratch->previous_nodes.end(), index) !=
-                scratch->previous_nodes.end();
+            const bool was_selected = std::find(scratch->previous_nodes.begin(), scratch->previous_nodes.end(),
+                                                index) != scratch->previous_nodes.end();
             bool child_was_selected{};
             for (const auto child : node.children)
-                child_was_selected |=
-                    child != invalid_terrain_node &&
-                    std::find(scratch->previous_nodes.begin(), scratch->previous_nodes.end(), child) !=
-                        scratch->previous_nodes.end();
+                child_was_selected |= child != invalid_terrain_node &&
+                                      std::find(scratch->previous_nodes.begin(), scratch->previous_nodes.end(),
+                                                child) != scratch->previous_nodes.end();
             if (was_selected)
                 split_threshold *= 1.1f;
             else if (child_was_selected)
@@ -233,8 +232,8 @@ terrain_selection_result select_terrain_patches(terrain_handle terrain, const te
                 result.patches.erase(result.patches.begin() + static_cast<std::ptrdiff_t>(coarse));
                 for (const auto child : node.children)
                     if (child != invalid_terrain_node)
-                        result.patches.push_back({terrain, child, hierarchy.nodes[child].samples,
-                                                  hierarchy.nodes[child].depth, 0u, 0.0f});
+                        result.patches.push_back(
+                            {terrain, child, hierarchy.nodes[child].samples, hierarchy.nodes[child].depth, 0u, 0.0f});
                 changed = true;
                 break;
             }
@@ -269,7 +268,8 @@ terrain_selection_result select_terrain_patches(terrain_handle terrain, const te
     {
         scratch->previous_nodes.clear();
         scratch->previous_nodes.reserve(result.patches.size());
-        for (const auto& patch : result.patches) scratch->previous_nodes.push_back(patch.node_index);
+        for (const auto& patch : result.patches)
+            scratch->previous_nodes.push_back(patch.node_index);
     }
     return result;
 }
@@ -291,7 +291,7 @@ std::vector<std::uint32_t> make_terrain_patch_indices(std::uint32_t patch_quads,
     for (std::uint32_t z = 0; z < patch_quads; ++z)
         for (std::uint32_t x = 0; x < patch_quads; ++x)
         {
-            const std::array<std::uint32_t, 6> indices{remap(x, z), remap(x + 1u, z), remap(x + 1u, z + 1u),
+            const std::array<std::uint32_t, 6> indices{remap(x, z), remap(x + 1u, z),      remap(x + 1u, z + 1u),
                                                        remap(x, z), remap(x + 1u, z + 1u), remap(x, z + 1u)};
             for (std::size_t triangle = 0; triangle < 6; triangle += 3)
                 if (indices[triangle] != indices[triangle + 1] && indices[triangle + 1] != indices[triangle + 2] &&

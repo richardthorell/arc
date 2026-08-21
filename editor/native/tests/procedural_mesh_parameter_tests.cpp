@@ -42,10 +42,10 @@ TEST_CASE("native host edits procedural mesh parameters with history and persist
     auto host = manager.acquire(std::move(renderer));
 
     REQUIRE(host->open_project({.name = "Procedural Mesh Parameters"}, {}).succeeded);
-    REQUIRE(host
-                ->execute({.request_id = 1,
-                           .payload = arc::editor::host_create_entity_command{
-                               .kind = arc::editor::host_create_entity_kind::sphere}})
+    REQUIRE(host->execute(
+                    {.request_id = 1,
+                     .payload =
+                         arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::sphere}})
                 .succeeded);
 
     const auto initial = host->selected_entity_snapshot();
@@ -55,11 +55,10 @@ TEST_CASE("native host edits procedural mesh parameters with history and persist
     REQUIRE(std::holds_alternative<arc::editor::sphere_mesh_parameters>(initial_component->parameters));
     CHECK(std::get<arc::editor::sphere_mesh_parameters>(initial_component->parameters).segments == 32);
 
-    REQUIRE(host
-                ->execute({.request_id = 2,
-                           .payload = arc::editor::host_set_entity_material_command{
-                               .entity = initial.entity,
-                               .path = "__arc_primitive_parameter__/segments/64"}})
+    REQUIRE(host->execute({.request_id = 2,
+                           .payload =
+                               arc::editor::host_set_entity_material_command{
+                                   .entity = initial.entity, .path = "__arc_primitive_parameter__/segments/64"}})
                 .succeeded);
 
     auto* edited_component = host->scene_state().scene.try_get<arc::editor::procedural_mesh_component>(entity);
@@ -72,9 +71,9 @@ TEST_CASE("native host edits procedural mesh parameters with history and persist
     CHECK(query.payload_json.find("\"segments\":64") != std::string::npos);
 
     const auto guid = arc::editor::entity_guid_of(host->scene_state(), entity);
-    const auto persisted = std::find_if(
-        host->scene_state().unknown_component_records.begin(), host->scene_state().unknown_component_records.end(),
-        [guid](const auto& record) { return record.first == guid; });
+    const auto persisted = std::find_if(host->scene_state().unknown_component_records.begin(),
+                                        host->scene_state().unknown_component_records.end(),
+                                        [guid](const auto& record) { return record.first == guid; });
     REQUIRE(persisted != host->scene_state().unknown_component_records.end());
     CHECK(persisted->second.find("ProceduralMesh") != std::string::npos);
     CHECK(persisted->second.find("\"segments\":64") != std::string::npos);

@@ -308,7 +308,7 @@ constexpr texture_color_space required_color_space(texture_semantic semantic) no
 }
 
 [[nodiscard]] constexpr bool texture_semantic_accepts(texture_semantic semantic,
-                                                       texture_color_space color_space) noexcept
+                                                      texture_color_space color_space) noexcept
 {
     return valid_texture_color_space(semantic, color_space);
 }

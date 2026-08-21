@@ -77,11 +77,7 @@ const httpClient = (url: URL): typeof http | typeof https => {
   throw new Error('Remote asset URL must use HTTP(S)');
 };
 
-const requestJson = async (
-  url: string,
-  headers: Record<string, string>,
-  redirects = 0,
-): Promise<unknown> => {
+const requestJson = async (url: string, headers: Record<string, string>, redirects = 0): Promise<unknown> => {
   if (redirects > 5) throw new Error('Asset source metadata request exceeded redirect limit');
   const parsed = new URL(url);
   const client = httpClient(parsed);
@@ -243,7 +239,9 @@ export const createAssetSourceBridge = (invoke: Invoke) => {
       onProgress?.({ phase: 'resolving', completedFiles: 0, totalFiles: 0, completedBytes: 0 });
       const manifest = await source.registry.getDownloadManifest(request.sourceId, request.assetId);
       const requestedPaths = new Set(request.logicalPaths);
-      const selected = manifest.files.filter((file) => requestedPaths.size === 0 || requestedPaths.has(file.logicalPath));
+      const selected = manifest.files.filter(
+        (file) => requestedPaths.size === 0 || requestedPaths.has(file.logicalPath),
+      );
       if (selected.length === 0) throw new Error('The selected remote asset variant has no files');
 
       const roots = await projectRoots();

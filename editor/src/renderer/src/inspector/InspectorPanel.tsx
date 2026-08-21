@@ -513,23 +513,53 @@ export function InspectorPanel({
       <div className="inspector-component-list">
         {draft.prefab && (
           <section className="prefab-override-strip">
-            <div><strong>Prefab Instance</strong><span>{draft.prefab.overrideCount} override{draft.prefab.overrideCount === 1 ? '' : 's'}</span></div>
+            <div>
+              <strong>Prefab Instance</strong>
+              <span>
+                {draft.prefab.overrideCount} override{draft.prefab.overrideCount === 1 ? '' : 's'}
+              </span>
+            </div>
             {draft.prefab.sourceMissing && <b>Source missing</b>}
             <details>
               <summary>Overrides</summary>
               <div className="prefab-override-list">
                 {draft.prefab.overrides.map((override) => (
                   <div key={`${override.sourceEntity}:${override.componentId}:${override.fieldId}:${override.kind}`}>
-                    <span><b>{override.kind}</b><code>{override.componentId}</code><small>Field {override.fieldId}</small></span>
-                    <button onClick={() => void command('prefab.revertOverride', { entity: draft.entity, ...override }).then(refresh)}>Revert</button>
+                    <span>
+                      <b>{override.kind}</b>
+                      <code>{override.componentId}</code>
+                      <small>Field {override.fieldId}</small>
+                    </span>
+                    <button
+                      onClick={() =>
+                        void command('prefab.revertOverride', { entity: draft.entity, ...override }).then(refresh)
+                      }
+                    >
+                      Revert
+                    </button>
                   </div>
                 ))}
                 {!draft.prefab.overrides.length && <small>No authored overrides.</small>}
               </div>
             </details>
-            <button aria-label="Apply all prefab overrides" onClick={() => void command('prefab.apply', { entity: draft.entity }).then(refresh)}>Apply All</button>
-            <button aria-label="Revert all prefab overrides" onClick={() => void command('prefab.revert', { entity: draft.entity }).then(refresh)}>Revert All</button>
-            <button aria-label="Unpack prefab from override strip" onClick={() => void command('prefab.unpack', { entity: draft.entity }).then(refresh)}>Unpack</button>
+            <button
+              aria-label="Apply all prefab overrides"
+              onClick={() => void command('prefab.apply', { entity: draft.entity }).then(refresh)}
+            >
+              Apply All
+            </button>
+            <button
+              aria-label="Revert all prefab overrides"
+              onClick={() => void command('prefab.revert', { entity: draft.entity }).then(refresh)}
+            >
+              Revert All
+            </button>
+            <button
+              aria-label="Unpack prefab from override strip"
+              onClick={() => void command('prefab.unpack', { entity: draft.entity }).then(refresh)}
+            >
+              Unpack
+            </button>
           </section>
         )}
         {schemas.map((schema) => (

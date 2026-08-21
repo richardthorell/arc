@@ -57,31 +57,92 @@ export function CreateTerrainDialog({
     <div className="modal-backdrop" role="presentation">
       <section aria-label="Create terrain" aria-modal="true" className="terrain-create-dialog" role="dialog">
         <header>
-          <span><Mountain size={18} /> Create Terrain</span>
-          <button aria-label="Close" onClick={onClose}><X size={16} /></button>
+          <span>
+            <Mountain size={18} /> Create Terrain
+          </span>
+          <button aria-label="Close" onClick={onClose}>
+            <X size={16} />
+          </button>
         </header>
         <div className="terrain-create-fields">
-          <label>Source<select value={source} onChange={(event) => setSource(event.target.value as typeof source)}>
-            <option value="flat">Flat</option><option value="procedural">Domain Warped</option>
-          </select></label>
-          <label>Physical Size (m)<input type="number" min={1} max={262144} value={size} onChange={(event) => setSize(Number(event.target.value))} /></label>
-          <label>Minimum Elevation (m)<input type="number" value={minimumElevation} onChange={(event) => setMinimumElevation(Number(event.target.value))} /></label>
-          <label>Maximum Elevation (m)<input type="number" value={maximumElevation} onChange={(event) => setMaximumElevation(Number(event.target.value))} /></label>
-          <label>Resolution<select value={resolution} onChange={(event) => setResolution(Number(event.target.value) as typeof resolution)}>
-            {resolutions.map((value) => <option key={value} value={value}>{value} x {value}</option>)}
-          </select></label>
-          <label>Patch Topology<select value={patchQuads} onChange={(event) => setPatchQuads(Number(event.target.value))}>
-            {[16, 32, 64].map((value) => <option key={value} value={value}>{value} quads</option>)}
-          </select></label>
-          {source === 'procedural' && <label>Seed<input type="number" min={0} value={seed} onChange={(event) => setSeed(Number(event.target.value))} /></label>}
+          <label>
+            Source
+            <select value={source} onChange={(event) => setSource(event.target.value as typeof source)}>
+              <option value="flat">Flat</option>
+              <option value="procedural">Domain Warped</option>
+            </select>
+          </label>
+          <label>
+            Physical Size (m)
+            <input
+              type="number"
+              min={1}
+              max={262144}
+              value={size}
+              onChange={(event) => setSize(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Minimum Elevation (m)
+            <input
+              type="number"
+              value={minimumElevation}
+              onChange={(event) => setMinimumElevation(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Maximum Elevation (m)
+            <input
+              type="number"
+              value={maximumElevation}
+              onChange={(event) => setMaximumElevation(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Resolution
+            <select
+              value={resolution}
+              onChange={(event) => setResolution(Number(event.target.value) as typeof resolution)}
+            >
+              {resolutions.map((value) => (
+                <option key={value} value={value}>
+                  {value} x {value}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Patch Topology
+            <select value={patchQuads} onChange={(event) => setPatchQuads(Number(event.target.value))}>
+              {[16, 32, 64].map((value) => (
+                <option key={value} value={value}>
+                  {value} quads
+                </option>
+              ))}
+            </select>
+          </label>
+          {source === 'procedural' && (
+            <label>
+              Seed
+              <input type="number" min={0} value={seed} onChange={(event) => setSeed(Number(event.target.value))} />
+            </label>
+          )}
         </div>
         <div className="terrain-memory-estimate">
-          <span>CPU {estimate.cpu.toFixed(1)} MiB</span><span>GPU {estimate.gpu.toFixed(1)} MiB</span>
+          <span>CPU {estimate.cpu.toFixed(1)} MiB</span>
+          <span>GPU {estimate.gpu.toFixed(1)} MiB</span>
           <span>Undo {estimate.history.toFixed(1)} MiB</span>
         </div>
-        {estimate.history > 64 && <p className="terrain-operation-warning">This terrain exceeds the 64 MiB undo budget and will be rejected.</p>}
+        {estimate.history > 64 && (
+          <p className="terrain-operation-warning">This terrain exceeds the 64 MiB undo budget and will be rejected.</p>
+        )}
         {error && <p className="command-error">{error}</p>}
-        <footer><button onClick={onClose}>Cancel</button><button disabled={busy || estimate.history > 64} onClick={() => void create()}>{busy ? 'Creating...' : 'Create Terrain'}</button></footer>
+        <footer>
+          <button onClick={onClose}>Cancel</button>
+          <button disabled={busy || estimate.history > 64} onClick={() => void create()}>
+            {busy ? 'Creating...' : 'Create Terrain'}
+          </button>
+        </footer>
       </section>
     </div>
   );

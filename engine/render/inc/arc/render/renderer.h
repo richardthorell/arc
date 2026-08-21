@@ -150,7 +150,8 @@ public:
 
     /**
      * @brief Resolve a per-view anti-aliasing request against the active backend.
-     * @param requested Requested view policy.
+     * @param requested
+     * Requested view policy.
      * @return Executable method after capability fallback.
      */
     [[nodiscard]] anti_aliasing_method resolve_view_anti_aliasing(anti_aliasing_method requested) const noexcept;

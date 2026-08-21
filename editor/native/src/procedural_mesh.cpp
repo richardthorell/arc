@@ -137,8 +137,7 @@ render::mesh_data make_plane(const plane_mesh_parameters& source)
         for (std::uint32_t x = 0; x <= segments_x; ++x)
         {
             const float u = static_cast<float>(x) / static_cast<float>(segments_x);
-            mesh.vertices.push_back(
-                make_vertex({-half_width + width * u, 0.0f, pz}, {0.0f, 1.0f, 0.0f}, u, v));
+            mesh.vertices.push_back(make_vertex({-half_width + width * u, 0.0f, pz}, {0.0f, 1.0f, 0.0f}, u, v));
         }
     }
     for (std::uint32_t z = 0; z < segments_z; ++z)
@@ -167,14 +166,11 @@ render::mesh_data make_cube(const cube_mesh_parameters& source)
     render::mesh_data mesh;
     mesh.name = "Cube";
     append_grid_face(mesh, {-x, -y, z}, {x, -y, z}, {-x, y, z}, {0.0f, 0.0f, 1.0f}, segments_x, segments_y);
-    append_grid_face(mesh, {x, -y, -z}, {-x, -y, -z}, {x, y, -z}, {0.0f, 0.0f, -1.0f}, segments_x,
-                     segments_y);
-    append_grid_face(mesh, {-x, -y, -z}, {-x, -y, z}, {-x, y, -z}, {-1.0f, 0.0f, 0.0f}, segments_z,
-                     segments_y);
+    append_grid_face(mesh, {x, -y, -z}, {-x, -y, -z}, {x, y, -z}, {0.0f, 0.0f, -1.0f}, segments_x, segments_y);
+    append_grid_face(mesh, {-x, -y, -z}, {-x, -y, z}, {-x, y, -z}, {-1.0f, 0.0f, 0.0f}, segments_z, segments_y);
     append_grid_face(mesh, {x, -y, z}, {x, -y, -z}, {x, y, z}, {1.0f, 0.0f, 0.0f}, segments_z, segments_y);
     append_grid_face(mesh, {-x, y, z}, {x, y, z}, {-x, y, -z}, {0.0f, 1.0f, 0.0f}, segments_x, segments_z);
-    append_grid_face(mesh, {-x, -y, -z}, {x, -y, -z}, {-x, -y, z}, {0.0f, -1.0f, 0.0f}, segments_x,
-                     segments_z);
+    append_grid_face(mesh, {-x, -y, -z}, {x, -y, -z}, {-x, -y, z}, {0.0f, -1.0f, 0.0f}, segments_x, segments_z);
     return mesh;
 }
 
@@ -329,15 +325,17 @@ render::mesh_data make_capsule(const capsule_mesh_parameters& source)
     for (std::size_t ring_index = 0; ring_index < rings.size(); ++ring_index)
     {
         const auto& current = rings[ring_index];
-        const float v = rings.size() > 1u ? static_cast<float>(ring_index) / static_cast<float>(rings.size() - 1u) : 0.0f;
+        const float v =
+            rings.size() > 1u ? static_cast<float>(ring_index) / static_cast<float>(rings.size() - 1u) : 0.0f;
         for (std::uint32_t segment = 0; segment <= radial_segments; ++segment)
         {
             const float u = static_cast<float>(segment) / static_cast<float>(radial_segments);
             const float theta = u * math::tau<float>;
             const float nx = std::cos(theta) * current.radial;
             const float nz = std::sin(theta) * current.radial;
-            mesh.vertices.push_back(make_vertex({nx * radius, current.center_y + current.normal_y * radius, nz * radius},
-                                                {nx, current.normal_y, nz}, u, v));
+            mesh.vertices.push_back(
+                make_vertex({nx * radius, current.center_y + current.normal_y * radius, nz * radius},
+                            {nx, current.normal_y, nz}, u, v));
         }
     }
     for (std::size_t ring_index = 0; ring_index + 1u < rings.size(); ++ring_index)
@@ -387,15 +385,13 @@ json parameter_json(const procedural_mesh_parameters& parameters)
                         {"segmentsX", value.segments_x},
                         {"segmentsZ", value.segments_z}};
             else if constexpr (std::is_same_v<type, cube_mesh_parameters>)
-                return {{"width", value.width},
-                        {"height", value.height},
-                        {"depth", value.depth},
-                        {"segmentsX", value.segments_x},
-                        {"segmentsY", value.segments_y},
-                        {"segmentsZ", value.segments_z}};
+                return {{"width", value.width},          {"height", value.height},
+                        {"depth", value.depth},          {"segmentsX", value.segments_x},
+                        {"segmentsY", value.segments_y}, {"segmentsZ", value.segments_z}};
             else if constexpr (std::is_same_v<type, sphere_mesh_parameters>)
                 return {{"radius", value.radius}, {"segments", value.segments}, {"rings", value.rings}};
-            else if constexpr (std::is_same_v<type, cylinder_mesh_parameters> || std::is_same_v<type, cone_mesh_parameters>)
+            else if constexpr (std::is_same_v<type, cylinder_mesh_parameters> ||
+                               std::is_same_v<type, cone_mesh_parameters>)
                 return {{"radius", value.radius},
                         {"height", value.height},
                         {"radialSegments", value.radial_segments},
@@ -420,9 +416,8 @@ std::optional<procedural_mesh_parameters> deserialize_parameters(const json& ser
     const auto& values = serialized.contains("parameters") && serialized["parameters"].is_object()
                              ? serialized["parameters"]
                              : serialized;
-    for (const std::string_view name : {"width", "height", "depth", "radius", "segmentsX", "segmentsY",
-                                        "segmentsZ", "segments", "rings", "radialSegments", "hemisphereRings",
-                                        "heightSegments"})
+    for (const std::string_view name : {"width", "height", "depth", "radius", "segmentsX", "segmentsY", "segmentsZ",
+                                        "segments", "rings", "radialSegments", "hemisphereRings", "heightSegments"})
     {
         const auto found = values.find(std::string{name});
         if (found != values.end() && found->is_number())

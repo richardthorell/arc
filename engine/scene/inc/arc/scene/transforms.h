@@ -49,13 +49,12 @@ namespace arc::scene
 /**
  * @brief Build a right-handed orthographic projection with Vulkan 0..1 depth.
  */
-[[nodiscard]] math::matrix4f orthographic_rh_zo(float height, float aspect, float near_plane,
-                                                float far_plane) noexcept;
+[[nodiscard]] math::matrix4f orthographic_rh_zo(float height, float aspect, float near_plane, float far_plane) noexcept;
 
 /**
  * @brief Build the active camera view-projection matrix for a viewport aspect.
  */
-[[nodiscard]] math::matrix4f view_projection(const camera_component& camera,
-                                             const transform_component& transform, float aspect) noexcept;
+[[nodiscard]] math::matrix4f view_projection(const camera_component& camera, const transform_component& transform,
+                                             float aspect) noexcept;
 
 } // namespace arc::scene

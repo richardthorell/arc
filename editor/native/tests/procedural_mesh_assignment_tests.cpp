@@ -13,10 +13,10 @@ TEST_CASE("native host exposes and reassigns procedural primitive meshes")
     auto host = manager.acquire(std::move(renderer));
 
     REQUIRE(host->open_project({.name = "Procedural Mesh Picker"}, {}).succeeded);
-    REQUIRE(host
-                ->execute({.request_id = 1,
-                           .payload = arc::editor::host_create_entity_command{
-                               .kind = arc::editor::host_create_entity_kind::sphere}})
+    REQUIRE(host->execute(
+                    {.request_id = 1,
+                     .payload =
+                         arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::sphere}})
                 .succeeded);
 
     const auto initial = host->selected_entity_snapshot();
@@ -26,10 +26,9 @@ TEST_CASE("native host exposes and reassigns procedural primitive meshes")
     CHECK(initial.mesh_renderer->mesh_name == "Sphere");
     CHECK(initial.mesh_renderer->mesh_path == "arc://primitive/sphere");
 
-    REQUIRE(host
-                ->execute({.request_id = 2,
-                           .payload = arc::editor::host_set_entity_material_command{
-                               .entity = initial.entity, .path = "__arc_primitive__/cube"}})
+    REQUIRE(host->execute({.request_id = 2,
+                           .payload = arc::editor::host_set_entity_material_command{.entity = initial.entity,
+                                                                                    .path = "__arc_primitive__/cube"}})
                 .succeeded);
 
     const auto assigned = host->selected_entity_snapshot();

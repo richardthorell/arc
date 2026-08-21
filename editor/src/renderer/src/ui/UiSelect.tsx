@@ -18,14 +18,7 @@ type UiSelectProps = {
   disabled?: boolean;
 };
 
-export function UiSelect({
-  value,
-  options,
-  onValueChange,
-  ariaLabel,
-  className,
-  disabled = false,
-}: UiSelectProps) {
+export function UiSelect({ value, options, onValueChange, ariaLabel, className, disabled = false }: UiSelectProps) {
   const [open, setOpen] = useState(false);
   const selectedIndex = Math.max(
     0,

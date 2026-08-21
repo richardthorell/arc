@@ -1160,8 +1160,8 @@ scene_import_result load_fbx_scene_asset(const std::filesystem::path& path, cons
                         &node->geometry_to_node, ufbx_get_vertex_vec3(&mesh->vertex_position, ix));
                     ufbx_vec3 normal{};
                     if (mesh->vertex_normal.exists)
-                        normal = ufbx_transform_direction(&normal_to_node,
-                                                          ufbx_get_vertex_vec3(&mesh->vertex_normal, ix));
+                        normal =
+                            ufbx_transform_direction(&normal_to_node, ufbx_get_vertex_vec3(&mesh->vertex_normal, ix));
                     else
                         normal.y = 1.0;
                     const ufbx_vec2 uv =

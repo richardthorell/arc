@@ -211,8 +211,8 @@ struct spot_shadow_cache_key
 /**
  * @brief Return deterministic cascade split depths.
  */
-[[nodiscard]] std::array<float, directional_shadow_cascade_count>
-cascade_splits(float near_plane, float far_plane, float split_lambda = 0.65f) noexcept;
+[[nodiscard]] std::array<float, directional_shadow_cascade_count> cascade_splits(float near_plane, float far_plane,
+                                                                                 float split_lambda = 0.65f) noexcept;
 
 /**
  * @brief Convert a color temperature in Kelvin to linear RGB approximation.
@@ -222,12 +222,10 @@ cascade_splits(float near_plane, float far_plane, float split_lambda = 0.65f) no
 /**
  * @brief Convert authored intensity into the renderer's unitless shading scale.
  */
-[[nodiscard]] float light_intensity_scale(light_intensity_unit unit, float intensity,
-                                          float range = 1.0f) noexcept;
+[[nodiscard]] float light_intensity_scale(light_intensity_unit unit, float intensity, float range = 1.0f) noexcept;
 
 /** @brief Physically based inverse-square attenuation with a smooth authored cutoff. */
-[[nodiscard]] float inverse_square_attenuation(float distance, float range,
-                                               float source_radius = 0.01f) noexcept;
+[[nodiscard]] float inverse_square_attenuation(float distance, float range, float source_radius = 0.01f) noexcept;
 
 /** @brief Solid angle of a cone with the supplied half angle in radians. */
 [[nodiscard]] float cone_solid_angle(float half_angle_radians) noexcept;
@@ -237,8 +235,7 @@ cascade_splits(float near_plane, float far_plane, float split_lambda = 0.65f) no
 
 /** @brief Advance one exposure value toward a metered target without overshoot. */
 [[nodiscard]] exposure_state adapt_exposure(exposure_state current, const exposure_settings& settings,
-                                            float metered_ev100, float delta_seconds,
-                                            bool camera_cut = false) noexcept;
+                                            float metered_ev100, float delta_seconds, bool camera_cut = false) noexcept;
 
 /**
  * @brief Estimate light importance for v1 capping/sorting.

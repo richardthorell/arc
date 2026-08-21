@@ -73,9 +73,10 @@ function parseProceduralMesh(value: unknown): InspectorProceduralMesh | null {
 export function parseSelectedEntitySnapshot(value: unknown): InspectorEntitySnapshot {
   const parsed = parseBaseSelectedEntitySnapshot(value) as BaseInspectorEntitySnapshot;
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
-  const rawMeshRenderer = raw?.meshRenderer && typeof raw.meshRenderer === 'object'
-    ? (raw.meshRenderer as Record<string, unknown>)
-    : undefined;
+  const rawMeshRenderer =
+    raw?.meshRenderer && typeof raw.meshRenderer === 'object'
+      ? (raw.meshRenderer as Record<string, unknown>)
+      : undefined;
 
   return {
     ...parsed,

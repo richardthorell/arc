@@ -217,9 +217,7 @@ export function ContentBrowserPanel({
       className={`content-create-menu ${context ? 'context' : ''}`}
       role="menu"
       aria-label="Create asset"
-      {...(context && createContextMenu
-        ? { style: { left: createContextMenu.x, top: createContextMenu.y } }
-        : {})}
+      {...(context && createContextMenu ? { style: { left: createContextMenu.x, top: createContextMenu.y } } : {})}
     >
       <button role="menuitem" onClick={() => beginCreate('material', targetFolder)}>
         <span className="content-create-type-icon material" aria-hidden="true" />
@@ -229,7 +227,9 @@ export function ContentBrowserPanel({
         </span>
       </button>
       <button role="menuitem" onClick={() => beginCreate('shader', targetFolder)}>
-        <span className="content-create-type-icon shader" aria-hidden="true">{'</>'}</span>
+        <span className="content-create-type-icon shader" aria-hidden="true">
+          {'</>'}
+        </span>
         <span>
           <strong>Shader</strong>
           <small>GLSL source asset</small>

@@ -17,8 +17,7 @@ struct terrain_heightmap_io_result
 
 /** @brief Decode a 16-bit grayscale PNG or headerless little-endian R16 file. */
 [[nodiscard]] terrain_heightmap_io_result load_terrain_heightmap(const std::filesystem::path& path,
-                                                                 std::uint32_t raw_width,
-                                                                 std::uint32_t raw_height,
+                                                                 std::uint32_t raw_width, std::uint32_t raw_height,
                                                                  scene::terrain_heightmap& output);
 
 /** @brief Atomically encode a 16-bit grayscale PNG or R16 file and its elevation metadata. */

@@ -420,15 +420,50 @@
   background: linear-gradient(180deg, #1b3850, #172733);
 }
 
-.prefab-override-strip > div { display: grid; }
-.prefab-override-strip span { color: #9fb8ca; font-size: 11px; }
-.prefab-override-strip > b { color: #e3a94c; }
-.prefab-override-strip button { min-height: 25px; border: 1px solid #3a5870; border-radius: 3px; color: #d5e3ed; background: #162532; }
-.prefab-override-strip details { grid-column: 1 / -1; }
-.prefab-override-list { display: grid; gap: 3px; padding-top: 5px; }
-.prefab-override-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 4px 5px; background: #111c25; }
-.prefab-override-list span { display: flex; align-items: center; gap: 7px; overflow: hidden; }
-.prefab-override-list code { overflow: hidden; color: #72b6e5; text-overflow: ellipsis; }
+.prefab-override-strip > div {
+  display: grid;
+}
+.prefab-override-strip span {
+  color: #9fb8ca;
+  font-size: 11px;
+}
+.prefab-override-strip > b {
+  color: #e3a94c;
+}
+.prefab-override-strip button {
+  min-height: 25px;
+  border: 1px solid #3a5870;
+  border-radius: 3px;
+  color: #d5e3ed;
+  background: #162532;
+}
+.prefab-override-strip details {
+  grid-column: 1 / -1;
+}
+.prefab-override-list {
+  display: grid;
+  gap: 3px;
+  padding-top: 5px;
+}
+.prefab-override-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 5px;
+  background: #111c25;
+}
+.prefab-override-list span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+}
+.prefab-override-list code {
+  overflow: hidden;
+  color: #72b6e5;
+  text-overflow: ellipsis;
+}
 
 .inspector-component-card {
   min-width: 0;

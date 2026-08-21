@@ -62,7 +62,7 @@ terrain_heightmap_io_result write_atomic(const std::filesystem::path& path, std:
 } // namespace
 
 terrain_heightmap_io_result load_terrain_heightmap(const std::filesystem::path& path, std::uint32_t raw_width,
-                                                    std::uint32_t raw_height, scene::terrain_heightmap& output)
+                                                   std::uint32_t raw_height, scene::terrain_heightmap& output)
 {
     const auto bytes = read_bytes(path);
     if (bytes.empty()) return {false, "heightmap file could not be read"};
@@ -106,7 +106,7 @@ terrain_heightmap_io_result load_terrain_heightmap(const std::filesystem::path& 
 }
 
 terrain_heightmap_io_result save_terrain_heightmap(const std::filesystem::path& path,
-                                                    const scene::terrain_heightmap& heightmap)
+                                                   const scene::terrain_heightmap& heightmap)
 {
     if (heightmap.width < 2u || heightmap.height < 2u ||
         heightmap.samples.size() != static_cast<std::size_t>(heightmap.width) * heightmap.height)
@@ -141,10 +141,10 @@ terrain_heightmap_io_result save_terrain_heightmap(const std::filesystem::path& 
     if (!heightmap.encoded_minimum_elevation || !heightmap.encoded_maximum_elevation) return {true, {}};
     const auto metadata_path = path.string() + ".arcmeta.json";
     const auto metadata = std::string{"{\n  \"format\": \"arc.terrain.heightmap\",\n  \"width\": "} +
-                          std::to_string(heightmap.width) + ",\n  \"height\": " +
-                          std::to_string(heightmap.height) + ",\n  \"minimumElevation\": " +
-                          std::to_string(*heightmap.encoded_minimum_elevation) +
-                          ",\n  \"maximumElevation\": " + std::to_string(*heightmap.encoded_maximum_elevation) + "\n}\n";
+                          std::to_string(heightmap.width) + ",\n  \"height\": " + std::to_string(heightmap.height) +
+                          ",\n  \"minimumElevation\": " + std::to_string(*heightmap.encoded_minimum_elevation) +
+                          ",\n  \"maximumElevation\": " + std::to_string(*heightmap.encoded_maximum_elevation) +
+                          "\n}\n";
     return write_atomic(metadata_path, std::as_bytes(std::span(metadata.data(), metadata.size())));
 }
 

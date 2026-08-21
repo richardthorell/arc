@@ -17,9 +17,17 @@ describe('CreateTerrainDialog', () => {
     expect(screen.getByLabelText('Create terrain')).toHaveTextContent('CPU 0.5 MiB');
     fireEvent.click(screen.getByRole('button', { name: 'Create Terrain' }));
 
-    await waitFor(() => expect(command).toHaveBeenCalledWith('terrain.create', expect.objectContaining({
-      source: 'flat', resolution: 257, patchQuads: 32, size: 180,
-    })));
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'terrain.create',
+        expect.objectContaining({
+          source: 'flat',
+          resolution: 257,
+          patchQuads: 32,
+          size: 180,
+        }),
+      ),
+    );
     expect(created).toHaveBeenCalledOnce();
   });
 
