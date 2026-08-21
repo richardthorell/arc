@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set Up Node 22.12
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
@@ -77,4 +77,4 @@ jobs:
           npm test
       - name: Static Analysis
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
-        run: run-clang-tidy-18 -p out/build/analysis -quiet -source-filter='.*/(engine|editor/native|samples|tools)/.*'
+        run: run-clang-tidy-18 -p out/build/analysis -quiet '.*/(engine|editor/native|samples|tools)/.*'
