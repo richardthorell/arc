@@ -25,8 +25,8 @@ TEST_CASE("native material graph lowering is deterministic and preserves stable 
     REQUIRE(first.value().parameters.size() == 1);
     REQUIRE(first.value().parameters.front().id == arc::render::make_shader_parameter_id("base-color-stable"));
     REQUIRE(first.value().generated_line_nodes.size() == 1);
-    const auto field = "arc_param_" +
-                       std::to_string(arc::render::make_shader_parameter_id("base-color-stable").representation());
+    const auto field =
+        "arc_param_" + std::to_string(arc::render::make_shader_parameter_id("base-color-stable").representation());
     REQUIRE(first.value().source.find("arcMaterialParameters." + field) != std::string::npos);
     const auto mapped_line = first.value().generated_line_nodes.begin()->first;
     std::size_t cursor{};

@@ -44,9 +44,8 @@ enum class material_render_path : std::uint8_t
 };
 
 /** @brief Runtime value accepted by a reflected material parameter. */
-using material_parameter_value =
-    std::variant<bool, std::int32_t, std::uint32_t, float, math::vector2f, math::vector3f, math::vector4f,
-                 math::matrix4x4f, resource_handle>;
+using material_parameter_value = std::variant<bool, std::int32_t, std::uint32_t, float, math::vector2f, math::vector3f,
+                                              math::vector4f, math::matrix4x4f, resource_handle>;
 
 /** @brief Stable material parameter value overriding a shader default. */
 struct material_parameter_override

@@ -64,11 +64,16 @@ std::uint32_t parameter_size(shader_parameter_type type)
 {
     switch (type)
     {
-        case shader_parameter_type::float2: return 8;
-        case shader_parameter_type::float3: return 12;
-        case shader_parameter_type::float4: return 16;
-        case shader_parameter_type::texture_2d: return 4;
-        default: return 4;
+        case shader_parameter_type::float2:
+            return 8;
+        case shader_parameter_type::float3:
+            return 12;
+        case shader_parameter_type::float4:
+            return 16;
+        case shader_parameter_type::texture_2d:
+            return 4;
+        default:
+            return 4;
     }
 }
 
@@ -76,10 +81,14 @@ std::string_view slang_parameter_type(shader_parameter_type type)
 {
     switch (type)
     {
-        case shader_parameter_type::float2: return "float2";
-        case shader_parameter_type::float3: return "float3";
-        case shader_parameter_type::float4: return "float4";
-        default: return "float";
+        case shader_parameter_type::float2:
+            return "float2";
+        case shader_parameter_type::float3:
+            return "float3";
+        case shader_parameter_type::float4:
+            return "float4";
+        default:
+            return "float";
     }
 }
 } // namespace
@@ -125,8 +134,8 @@ material_graph_lowering_result lower_material_graph_json(std::string_view graph_
                  .message = "material graph contains an invalid or multiply-connected input"});
     }
 
-    const auto output = std::ranges::find_if(nodes, [](const auto& entry)
-                                             { return entry.second.value("type", "") == "output"; });
+    const auto output =
+        std::ranges::find_if(nodes, [](const auto& entry) { return entry.second.value("type", "") == "output"; });
     if (output == nodes.end())
         return material_graph_lowering_result::failure(
             {.code = shader_compile_error_code::validation_failed, .message = "material graph has no output node"});
@@ -155,12 +164,18 @@ material_graph_lowering_result lower_material_graph_json(std::string_view graph_
         };
 
         std::string expression;
-        if (type == "constant") expression = number(values.value("value", json{}), 0.5f);
-        else if (type == "vector2") expression = vector_value(values.value("value", json::array()), 2);
-        else if (type == "vector3") expression = vector_value(values.value("value", json::array()), 3);
-        else if (type == "vector4") expression = vector_value(values.value("value", json::array()), 4, 1.0f);
-        else if (type == "texCoord") expression = "input.uv";
-        else if (type == "time") expression = "arcFrame.timeSeconds";
+        if (type == "constant")
+            expression = number(values.value("value", json{}), 0.5f);
+        else if (type == "vector2")
+            expression = vector_value(values.value("value", json::array()), 2);
+        else if (type == "vector3")
+            expression = vector_value(values.value("value", json::array()), 3);
+        else if (type == "vector4")
+            expression = vector_value(values.value("value", json::array()), 4, 1.0f);
+        else if (type == "texCoord")
+            expression = "input.uv";
+        else if (type == "time")
+            expression = "arcFrame.timeSeconds";
         else if (type == "textureSample")
         {
             const auto sample = "arcMaterialTextures[" + std::to_string(texture_index++) +
@@ -168,9 +183,10 @@ material_graph_lowering_result lower_material_graph_json(std::string_view graph_
             expression = pin == "rgb" ? sample + ".rgb" : pin == "rgba" ? sample : sample + '.' + pin;
         }
         else if (type == "normalMap")
-            expression = "normalize(lerp(float3(0.0,0.0,1.0)," + input("texture", "float3(0.5,0.5,1.0)") +
-                         "*2.0-1.0," + number(values.value("strength", json{}), 1.0f) + "))";
-        else if (type == "saturate") expression = "saturate(" + input("value", "0.0") + ')';
+            expression = "normalize(lerp(float3(0.0,0.0,1.0)," + input("texture", "float3(0.5,0.5,1.0)") + "*2.0-1.0," +
+                         number(values.value("strength", json{}), 1.0f) + "))";
+        else if (type == "saturate")
+            expression = "saturate(" + input("value", "0.0") + ')';
         else if (type == "clamp")
             expression = "clamp(" + input("value", "0.0") + ',' + input("min", number(values.value("min", json{}))) +
                          ',' + input("max", number(values.value("max", json{}), 1.0f)) + ')';
@@ -252,7 +268,7 @@ material_graph_lowering_result lower_material_graph_json(std::string_view graph_
         const auto body_first_line = static_cast<std::uint32_t>(14 + parameter_fields.size());
         for (std::size_t index = 0; index < generated_nodes.size(); ++index)
             lowered.generated_line_nodes.emplace(body_first_line + static_cast<std::uint32_t>(index),
-                                                  generated_nodes[index]);
+                                                 generated_nodes[index]);
     }
     catch (const std::exception& error)
     {
@@ -260,8 +276,8 @@ material_graph_lowering_result lower_material_graph_json(std::string_view graph_
             {.code = shader_compile_error_code::validation_failed, .message = error.what()});
     }
 
-    std::ranges::sort(lowered.parameters, {}, [](const shader_parameter_descriptor& value)
-                      { return value.id.representation(); });
+    std::ranges::sort(lowered.parameters, {},
+                      [](const shader_parameter_descriptor& value) { return value.id.representation(); });
     return material_graph_lowering_result::success(std::move(lowered));
 }
 

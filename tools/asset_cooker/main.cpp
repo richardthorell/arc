@@ -559,7 +559,10 @@ public:
         descriptor_.input_types = {asset_types::material};
     }
 
-    const asset_cook_processor_descriptor& descriptor() const noexcept override { return descriptor_; }
+    const asset_cook_processor_descriptor& descriptor() const noexcept override
+    {
+        return descriptor_;
+    }
     std::string toolchain_fingerprint() const override
     {
         return "arc.material-cooker/2;arc-material-graph/1;" + std::string(compiler_.fingerprint());
@@ -567,7 +570,8 @@ public:
 
     asset_cook_result cook(const asset_cook_context& context) override
     {
-        const std::string source(reinterpret_cast<const char*>(context.source.bytes.data()), context.source.bytes.size());
+        const std::string source(reinterpret_cast<const char*>(context.source.bytes.data()),
+                                 context.source.bytes.size());
         const auto document = nlohmann::json::parse(source, nullptr, false);
         if (document.is_discarded() || !document.is_object())
             return {.error = {.code = asset_error_code::import_failed,
@@ -610,8 +614,8 @@ public:
             {
                 std::string message = compiled.error().message;
                 for (const auto& diagnostic : compiled.error().diagnostics)
-                    message += "\n" + diagnostic.location.path + ":" + std::to_string(diagnostic.location.line) +
-                               ":" + std::to_string(diagnostic.location.column) + ": " + diagnostic.message;
+                    message += "\n" + diagnostic.location.path + ":" + std::to_string(diagnostic.location.line) + ":" +
+                               std::to_string(diagnostic.location.column) + ": " + diagnostic.message;
                 return {.error = {.code = asset_error_code::import_failed,
                                   .guid = context.asset.guid,
                                   .path = context.source.source_path,
@@ -619,11 +623,10 @@ public:
             }
             parameters = std::move(lowered).value().parameters;
             for (const auto& [line, node] : request.generated_line_nodes)
-                compiled.value().source_map.push_back(
-                    {.generated_line = line,
-                     .source = {.path = context.source.source_path.generic_string(),
-                                .line = line,
-                                .graph_node_id = node}});
+                compiled.value().source_map.push_back({.generated_line = line,
+                                                       .source = {.path = context.source.source_path.generic_string(),
+                                                                  .line = line,
+                                                                  .graph_node_id = node}});
             std::ranges::sort(compiled.value().source_map, {}, &render::shader_source_map_entry::generated_line);
             compiled.value().reflection.parameters = parameters;
             std::uint32_t offset{};

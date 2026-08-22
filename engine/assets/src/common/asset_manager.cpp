@@ -195,10 +195,10 @@ asset_reference dependency_from_path(const asset_import_context& context, std::s
             (void)component;
             mounted_root = mounted_root.parent_path();
         }
-        const auto resolved = context.metadata.type == asset_types::material ||
-                                      context.metadata.type == asset_types::material_instance
-                                  ? mounted_root / authored
-                                  : context.source_path.parent_path() / authored;
+        const auto resolved =
+            context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_instance
+                ? mounted_root / authored
+                : context.source_path.parent_path() / authored;
         const auto relative_to_mount = resolved.lexically_normal().lexically_relative(mounted_root);
         if (relative_to_mount.empty() || relative_to_mount.native().starts_with(std::filesystem::path("..").native()))
             return {};
@@ -356,9 +356,9 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
                                                             std::vector<std::string>{".arcprefab"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::material, asset_types::material,
                                                             "ARC Material", std::vector<std::string>{".arcmat"}));
-    result.push_back(std::make_unique<source_blob_importer>(
-        importer_ids::material_instance, asset_types::material_instance, "ARC Material Instance",
-        std::vector<std::string>{".arcmatinst"}));
+    result.push_back(std::make_unique<source_blob_importer>(importer_ids::material_instance,
+                                                            asset_types::material_instance, "ARC Material Instance",
+                                                            std::vector<std::string>{".arcmatinst"}));
     result.push_back(std::make_unique<source_blob_importer>(
         importer_ids::shader, asset_types::shader, "ARC Shader",
         std::vector<std::string>{".slang", ".glsl", ".vert", ".frag", ".comp", ".hlsl", ".inc"}));
