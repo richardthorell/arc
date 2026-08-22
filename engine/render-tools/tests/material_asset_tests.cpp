@@ -1,7 +1,6 @@
 #include <arc/render_tools/material_asset.h>
 
 #include <catch2/catch_test_macros.hpp>
-#include <nlohmann/json.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -49,12 +48,10 @@ TEST_CASE("material authoring schema migrates historical versions without droppi
     REQUIRE(result.value().migrated);
     REQUIRE(result.value().shader_path == "Shaders/custom.slang");
     REQUIRE_FALSE(result.value().graph_json.empty());
-
-    const auto canonical = nlohmann::json::parse(result.value().canonical_json);
-    REQUIRE(canonical["version"] == 4);
-    REQUIRE(canonical["name"] == "Legacy Material");
-    REQUIRE(canonical["futureEditorMetadata"]["keep"] == true);
-    REQUIRE(canonical["graph"]["version"] == 1);
+    REQUIRE(result.value().canonical_json.find("\"version\":4") != std::string::npos);
+    REQUIRE(result.value().canonical_json.find("\"name\":\"Legacy Material\"") != std::string::npos);
+    REQUIRE(result.value().canonical_json.find("\"futureEditorMetadata\":{\"keep\":true}") != std::string::npos);
+    REQUIRE(result.value().graph_json.find("\"version\":1") != std::string::npos);
 }
 
 TEST_CASE("material authoring schema accepts current version and rejects future versions")
