@@ -314,10 +314,7 @@ export function TexturePicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
 }
 
 export function MaterialPicker(
-  props: Omit<
-    AssetPickerProps,
-    'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew' | 'onOpen'
-  >,
+  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew' | 'onOpen'>,
 ) {
   const openMaterial = (asset: AssetPickerItem) => {
     if (asset.kind !== 'material' || asset.scope === 'procedural') return;

@@ -31,14 +31,7 @@ describe('MaterialPicker editor action', () => {
       scope: 'project' as const,
     };
 
-    render(
-      <MaterialPicker
-        assets={[material]}
-        label="Material"
-        value={material.path}
-        onChange={() => undefined}
-      />,
-    );
+    render(<MaterialPicker assets={[material]} label="Material" value={material.path} onChange={() => undefined} />);
 
     const openButton = screen.getByRole('button', { name: 'Open New Material in Material Editor' });
     expect(openButton).toHaveAttribute('title', 'Open in Material Editor');
