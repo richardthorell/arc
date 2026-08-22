@@ -34,6 +34,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build ccache
+      - name: Set Up Slang 2026.14.1
+        uses: ./.github/actions/setup-slang
       - name: Restore Compiler Cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -115,6 +117,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build
+      - name: Set Up Slang 2026.14.1
+        uses: ./.github/actions/setup-slang
       - name: Configure
         run: >
           cmake -S . -B out/build/asan -G Ninja
@@ -145,6 +149,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang-18 ninja-build
+      - name: Set Up Slang 2026.14.1
+        uses: ./.github/actions/setup-slang
       - name: Configure
         run: >
           cmake -S . -B out/build/tsan -G Ninja
