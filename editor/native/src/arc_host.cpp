@@ -52,6 +52,21 @@ constexpr std::string_view mesh_assignment_prefix = "__arc_mesh__/";
 constexpr std::string_view primitive_assignment_prefix = "__arc_primitive__/";
 constexpr std::string_view primitive_parameter_prefix = "__arc_primitive_parameter__/";
 constexpr std::string_view primitive_mesh_uri_prefix = "arc://primitive/";
+constexpr std::string_view material_preview_viewport_prefix = "asset-preview-material-";
+constexpr std::string_view shader_preview_viewport_prefix = "asset-preview-shader-";
+
+enum class asset_preview_kind : std::uint8_t
+{
+    none,
+    material,
+    shader
+};
+
+struct asset_preview_identity
+{
+    asset_preview_kind kind{asset_preview_kind::none};
+    assets::asset_guid guid{};
+};
 
 std::string primitive_mesh_uri(std::string_view name)
 {
@@ -64,6 +79,43 @@ std::string primitive_mesh_uri(std::string_view name)
 std::string normalized_viewport_id(std::string_view viewport_id)
 {
     return viewport_id.empty() ? "viewport-1" : std::string{viewport_id};
+}
+
+asset_preview_identity asset_preview_from_viewport_id(std::string_view viewport_id)
+{
+    asset_preview_identity result;
+    std::string_view guid_text;
+    if (viewport_id.starts_with(material_preview_viewport_prefix))
+    {
+        result.kind = asset_preview_kind::material;
+        guid_text = viewport_id.substr(material_preview_viewport_prefix.size());
+    }
+    else if (viewport_id.starts_with(shader_preview_viewport_prefix))
+    {
+        result.kind = asset_preview_kind::shader;
+        guid_text = viewport_id.substr(shader_preview_viewport_prefix.size());
+    }
+    else
+    {
+        return result;
+    }
+
+    if (const auto guid = assets::parse_asset_guid(guid_text)) result.guid = *guid;
+    return result;
+}
+
+const char* asset_preview_kind_name(asset_preview_kind kind) noexcept
+{
+    switch (kind)
+    {
+        case asset_preview_kind::material:
+            return "material";
+        case asset_preview_kind::shader:
+            return "shader";
+        case asset_preview_kind::none:
+            break;
+    }
+    return "none";
 }
 } // namespace
 
@@ -78,6 +130,16 @@ struct viewport_surface_registry
         std::uint32_t draw_calls{};
         std::uint64_t local_frame_index{};
         bool submitted{};
+
+        asset_preview_kind preview_kind{asset_preview_kind::none};
+        assets::asset_guid preview_guid{};
+        std::unique_ptr<editor_scene_state> preview_scene;
+        editor_camera_controller preview_camera;
+        ecs::entity preview_entity{};
+        render::mesh_handle preview_mesh{};
+        assets::asset_handle<render::material_handle> preview_material;
+        std::uint64_t preview_material_generation{};
+        std::string preview_error;
     };
 
     viewport_surface_registry()
@@ -101,7 +163,27 @@ struct viewport_surface_registry
     {
         const auto id = normalized_viewport_id(viewport_id);
         auto [found, inserted] = surfaces.try_emplace(id);
-        if (inserted) found->second.options.viewport_id = id;
+        if (inserted)
+        {
+            auto& surface = found->second;
+            surface.options.viewport_id = id;
+            const auto preview = asset_preview_from_viewport_id(id);
+            surface.preview_kind = preview.kind;
+            surface.preview_guid = preview.guid;
+            if (surface.preview_kind != asset_preview_kind::none)
+            {
+                surface.options.overlay = host_overlay_mode::none;
+                surface.options.grid = false;
+                surface.options.shadows = true;
+                surface.options.realtime = true;
+                surface.options.environment.sky = true;
+                surface.options.environment.fog = false;
+                surface.options.environment.terrain = false;
+                surface.options.environment.water = false;
+                surface.options.environment.vegetation = false;
+                surface.options.environment.decals = false;
+            }
+        }
         return found->second;
     }
 
@@ -299,6 +381,164 @@ geometric::box3f assigned_mesh_bounds(const render::mesh_data& mesh)
     }
     return geometric::box3f{geometric::point3f{minimum}, geometric::point3f{maximum}};
 }
+
+template <class HostState>
+bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::surface_state& surface)
+{
+    if (surface.preview_kind != asset_preview_kind::material || !surface.preview_scene) return true;
+    if (!surface.preview_guid.valid())
+    {
+        surface.preview_error = "Material preview viewport has an invalid asset GUID";
+        return false;
+    }
+    if (!host.asset_registry)
+    {
+        surface.preview_error = "Material preview is waiting for the project asset registry";
+        return false;
+    }
+
+    if (!surface.preview_material.valid())
+    {
+        assets::asset_load_request request;
+        request.reference.guid = surface.preview_guid;
+        request.reference.expected_type = assets::asset_types::material;
+        request.priority = assets::asset_streaming_priority::high;
+        request.residency = assets::asset_residency::device;
+        request.allow_fallback = true;
+        auto loaded = host.asset_registry->template load<render::material_handle>(std::move(request)).get();
+        if (!loaded.asset.valid())
+        {
+            surface.preview_error = loaded.error.message.empty() ? "Material preview asset could not be loaded"
+                                                                 : loaded.error.message;
+            return false;
+        }
+        surface.preview_material = std::move(loaded.asset);
+        surface.preview_material_generation = 0;
+    }
+
+    const auto generation = surface.preview_material.generation();
+    if (generation == surface.preview_material_generation) return true;
+    const auto* material = surface.preview_material.get();
+    if (!material || !material->valid())
+    {
+        surface.preview_error = "Material preview resolved to an invalid renderer material";
+        return false;
+    }
+    auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
+    if (!mesh_renderer)
+    {
+        surface.preview_error = "Material preview sphere has no mesh renderer";
+        return false;
+    }
+    mesh_renderer->material = *material;
+    surface.preview_material_generation = generation;
+    surface.preview_error = surface.preview_material.using_fallback()
+                                ? "Material preview is using the renderer error material"
+                                : std::string{};
+    return true;
+}
+
+template <class HostState>
+bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surface_state& surface)
+{
+    if (surface.preview_kind == asset_preview_kind::none) return true;
+    if (surface.preview_scene) return refresh_asset_preview_material(host, surface);
+    if (!host.renderer)
+    {
+        surface.preview_error = "Asset preview renderer is unavailable";
+        return false;
+    }
+
+    auto preview = std::make_unique<editor_scene_state>(create_blank_scene(*host.renderer, false, nullptr));
+    preview->scene_name = std::string{"Asset Preview: "} + asset_preview_kind_name(surface.preview_kind);
+    preview->primitive_material = host.scene.primitive_material.valid() ? host.scene.primitive_material
+                                                                       : host.scene.default_material;
+    const auto sphere = add_primitive_to_scene(*preview, *host.renderer, editor_primitive_type::sphere);
+    if (!preview->scene.alive(sphere))
+    {
+        surface.preview_error = "Renderer could not create the asset preview sphere";
+        return false;
+    }
+    if (auto* name = preview->scene.try_get<scene::name_component>(sphere)) name->value = "Asset Preview Sphere";
+    clear_selection(preview->scene, preview->selected_entity);
+
+    surface.preview_camera = {};
+    (void)surface.preview_camera.place({1.65f, 0.55f, 2.25f}, {0.0f, 0.0f, 0.0f});
+    if (auto* camera_transform = preview->scene.try_get<scene::transform_component>(preview->camera_entity))
+        surface.preview_camera.apply_to(*camera_transform);
+
+    surface.preview_entity = sphere;
+    if (const auto* mesh_renderer = std::as_const(preview->scene).try_get<scene::mesh_renderer_component>(sphere))
+        surface.preview_mesh = mesh_renderer->mesh;
+    surface.preview_scene = std::move(preview);
+
+    if (surface.preview_kind == asset_preview_kind::shader)
+    {
+        if (!surface.preview_guid.valid())
+            surface.preview_error = "Shader preview viewport has an invalid asset GUID";
+        else if (host.asset_registry)
+        {
+            const auto shader = host.asset_registry->find(surface.preview_guid);
+            if (!shader || shader->type != assets::asset_types::shader)
+                surface.preview_error = "Shader preview asset is not registered as a shader";
+            else
+                surface.preview_error.clear();
+        }
+        return true;
+    }
+    return refresh_asset_preview_material(host, surface);
+}
+
+template <class HostState>
+class asset_preview_scene_scope
+{
+public:
+    asset_preview_scene_scope(HostState& host, viewport_surface_registry::surface_state& surface)
+        : host_(host), surface_(surface)
+    {
+        if (!surface_.preview_scene) return;
+        std::swap(host_.scene, *surface_.preview_scene);
+        std::swap(host_.camera_controller, surface_.preview_camera);
+        active_ = true;
+    }
+
+    ~asset_preview_scene_scope()
+    {
+        if (!active_) return;
+        std::swap(host_.camera_controller, surface_.preview_camera);
+        std::swap(host_.scene, *surface_.preview_scene);
+    }
+
+    asset_preview_scene_scope(const asset_preview_scene_scope&) = delete;
+    asset_preview_scene_scope& operator=(const asset_preview_scene_scope&) = delete;
+
+private:
+    HostState& host_;
+    viewport_surface_registry::surface_state& surface_;
+    bool active_{};
+};
+
+void cleanup_asset_preview_surface(viewport_surface_registry::surface_state& surface, render::renderer& renderer)
+{
+    if (!surface.preview_scene) return;
+    surface.preview_scene->terrain_render_proxies.clear(renderer);
+    if (surface.preview_mesh.valid()) (void)renderer.destroy_mesh(surface.preview_mesh);
+    if (surface.preview_scene->environment_lighting_resource.valid())
+        (void)renderer.destroy_environment(surface.preview_scene->environment_lighting_resource);
+    surface.preview_scene.reset();
+    surface.preview_entity = {};
+    surface.preview_mesh = {};
+    surface.preview_material = {};
+    surface.preview_material_generation = 0;
+}
+
+void reset_asset_preview_scenes(viewport_surface_registry& surfaces, render::renderer& renderer)
+{
+    for (auto& [_, surface] : surfaces.surfaces)
+    {
+        if (surface.preview_kind != asset_preview_kind::none) cleanup_asset_preview_surface(surface, renderer);
+    }
+}
 } // namespace
 
 host_response arc_host::execute(host_command_payload command)
@@ -330,6 +570,8 @@ host_response arc_host::execute(const host_command_envelope& command)
     {
         viewport_surface = &surfaces.primary();
     }
+    if (viewport_surface->preview_kind != asset_preview_kind::none)
+        (void)ensure_asset_preview_scene(*state_, *viewport_surface);
     activate_viewport_surface(*state_, *viewport_surface);
 
     const auto* material_command = std::get_if<host_set_entity_material_command>(&command.payload);
@@ -339,7 +581,11 @@ host_response arc_host::execute(const host_command_envelope& command)
         material_command ? primitive_parameter_assignment_from(*material_command) : std::nullopt;
     if (!material_command || (!mesh_reference && !primitive_type && !parameter_assignment))
     {
-        auto response = execute_base(command);
+        host_response response;
+        {
+            asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
+            response = execute_base(command);
+        }
         capture_viewport_surface(*state_, *viewport_surface);
         if (response.succeeded && std::holds_alternative<host_viewport_pick_command>(command.payload))
             surfaces.pending_pick_surface = viewport_surface->options.viewport_id;
@@ -351,6 +597,16 @@ host_response arc_host::execute(const host_command_envelope& command)
             synchronize_procedural_mesh_components(state_->scene, *state_->renderer);
             if (primitive_create_command(command.payload) && state_->scene.scene.alive(state_->scene.selected_entity))
                 persist_procedural_mesh_component(state_->scene, state_->scene.selected_entity);
+        }
+        if (response.succeeded && (std::holds_alternative<host_open_project_command>(command.payload) ||
+                                   std::holds_alternative<host_close_project_command>(command.payload)))
+            reset_asset_preview_scenes(surfaces, *state_->renderer);
+        if (response.succeeded && std::holds_alternative<host_viewport_detach_command>(command.payload) &&
+            viewport_surface->preview_kind != asset_preview_kind::none)
+        {
+            const auto detached_id = viewport_surface->options.viewport_id;
+            cleanup_asset_preview_surface(*viewport_surface, *state_->renderer);
+            surfaces.surfaces.erase(detached_id);
         }
         return response;
     }
@@ -589,9 +845,15 @@ host_response arc_host::query(const host_query_envelope& query) const
         response.frame_revision = state_->viewport_frame_index;
         return response;
     }
+    if (viewport_surface->preview_kind != asset_preview_kind::none)
+        (void)ensure_asset_preview_scene(*state_, *viewport_surface);
     activate_viewport_surface(*state_, *viewport_surface);
 
-    auto response = query_base(query);
+    host_response response;
+    {
+        asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
+        response = query_base(query);
+    }
     if (!response.succeeded) return response;
 
     if (std::holds_alternative<host_selected_entity_query>(query.payload))
@@ -599,11 +861,11 @@ host_response arc_host::query(const host_query_envelope& query) const
         auto payload = nlohmann::json::parse(response.payload_json, nullptr, false);
         if (!payload.is_discarded() && payload.is_object())
         {
-            const auto entity = state_->scene.selected_entity;
-            if (state_->scene.scene.alive(entity))
+            const auto& query_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
+            const auto entity = query_scene.selected_entity;
+            if (query_scene.scene.alive(entity))
             {
-                if (const auto* procedural =
-                        std::as_const(state_->scene.scene).try_get<procedural_mesh_component>(entity))
+                if (const auto* procedural = std::as_const(query_scene.scene).try_get<procedural_mesh_component>(entity))
                 {
                     auto procedural_json =
                         nlohmann::json::parse(procedural_mesh_snapshot_json(*procedural), nullptr, false);
@@ -628,8 +890,15 @@ host_response arc_host::query(const host_query_envelope& query) const
     payload["drawCalls"] = viewport_surface->draw_calls;
     payload["frameIndex"] = viewport_surface->local_frame_index;
     payload["submitted"] = viewport_surface->submitted;
+    if (viewport_surface->preview_kind != asset_preview_kind::none)
+    {
+        payload["assetPreviewKind"] = asset_preview_kind_name(viewport_surface->preview_kind);
+        payload["assetPreviewGuid"] = assets::to_string(viewport_surface->preview_guid);
+        if (!viewport_surface->preview_error.empty()) payload["assetPreviewError"] = viewport_surface->preview_error;
+    }
 
-    const auto stats = collect_viewport_render_stats(state_->scene, *state_->renderer);
+    const auto& telemetry_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
+    const auto stats = collect_viewport_render_stats(telemetry_scene, *state_->renderer);
     payload["viewportTelemetryVersion"] = viewport_render_stats_schema_version;
     payload["triangles"] = stats.triangles;
     payload["verticesComplete"] = stats.vertices_complete;
@@ -652,6 +921,11 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     auto* viewport_surface = surfaces.find(viewport_id);
     if (!viewport_surface) return {.message = "Viewport render skipped: viewport is not attached"};
 
+    if (viewport_surface->preview_kind != asset_preview_kind::none &&
+        !ensure_asset_preview_scene(*state_, *viewport_surface) && !viewport_surface->preview_scene)
+        return {.message = viewport_surface->preview_error.empty() ? "Asset preview scene is unavailable"
+                                                                   : viewport_surface->preview_error};
+
     activate_viewport_surface(*state_, *viewport_surface);
     host_viewport_request routed_request = request;
     routed_request.viewport_id = viewport_id;
@@ -665,7 +939,11 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     }
 
     const auto request_time = std::chrono::steady_clock::now();
-    auto response = request_viewport_base(routed_request);
+    host_viewport_frame response;
+    {
+        asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
+        response = request_viewport_base(routed_request);
+    }
 
     if (suspended_pick)
         state_->pending_pick = std::move(suspended_pick);
