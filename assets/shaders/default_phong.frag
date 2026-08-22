@@ -88,75 +88,75 @@ vec3 apply_height_fog(vec3 color)
     return mix(color, fog_color, fog_amount);
 }
 
-vec3 material_normal(arc_material_inputs input)
+vec3 material_normal(arc_material_inputs material_input)
 {
-    vec3 n = normalize(input.normal_ws);
+    vec3 n = normalize(material_input.normal_ws);
     if (!has_texture(4.0))
         return n;
 
-    vec3 t = normalize(input.tangent_ws.xyz);
+    vec3 t = normalize(material_input.tangent_ws.xyz);
     t = normalize(t - n * dot(n, t));
-    vec3 b = normalize(cross(n, t) * input.tangent_ws.w);
-    vec3 mapped = texture(normal_texture, input.uv0).xyz * 2.0 - vec3(1.0);
+    vec3 b = normalize(cross(n, t) * material_input.tangent_ws.w);
+    vec3 mapped = texture(normal_texture, material_input.uv0).xyz * 2.0 - vec3(1.0);
     mapped.xy *= constants.material_params.x;
     return normalize(mat3(t, b, n) * mapped);
 }
 
-vec3 material_clear_coat_normal(arc_material_inputs input, vec3 fallback)
+vec3 material_clear_coat_normal(arc_material_inputs material_input, vec3 fallback)
 {
     if (!has_advanced_texture(4.0))
         return fallback;
-    vec3 t = normalize(input.tangent_ws.xyz);
+    vec3 t = normalize(material_input.tangent_ws.xyz);
     t = normalize(t - fallback * dot(fallback, t));
-    vec3 b = normalize(cross(fallback, t) * input.tangent_ws.w);
-    vec3 mapped = texture(clear_coat_normal_texture, input.uv0).xyz * 2.0 - vec3(1.0);
+    vec3 b = normalize(cross(fallback, t) * material_input.tangent_ws.w);
+    vec3 mapped = texture(clear_coat_normal_texture, material_input.uv0).xyz * 2.0 - vec3(1.0);
     return normalize(mat3(t, b, fallback) * mapped);
 }
 
-arc_material_surface arc_evaluate_legacy_material(arc_material_inputs input)
+arc_material_surface arc_evaluate_legacy_material(arc_material_inputs material_input)
 {
-    arc_material_surface material = arc_default_material_surface(input);
-    vec4 sampled_base = has_texture(1.0) ? texture(base_texture, input.uv0) : vec4(1.0);
-    vec4 material_color = sampled_base * input.vertex_color * constants.base_color;
-    vec4 mr = has_texture(2.0) ? texture(metallic_roughness_texture, input.uv0) : vec4(1.0);
+    arc_material_surface material = arc_default_material_surface(material_input);
+    vec4 sampled_base = has_texture(1.0) ? texture(base_texture, material_input.uv0) : vec4(1.0);
+    vec4 material_color = sampled_base * material_input.vertex_color * constants.base_color;
+    vec4 mr = has_texture(2.0) ? texture(metallic_roughness_texture, material_input.uv0) : vec4(1.0);
 
     material.base_color = material_color.rgb;
     material.opacity = material_color.a;
     material.alpha_cutoff = constants.visualization.w;
-    material.normal_ws = material_normal(input);
-    material.clear_coat_normal_ws = material_clear_coat_normal(input, material.normal_ws);
-    material.tangent_ws = input.tangent_ws.xyz;
+    material.normal_ws = material_normal(material_input);
+    material.clear_coat_normal_ws = material_clear_coat_normal(material_input, material.normal_ws);
+    material.tangent_ws = material_input.tangent_ws.xyz;
     material.roughness = clamp(constants.visualization.z * mr.g, 0.04, 1.0);
     material.metallic = clamp(constants.visualization.y * mr.b, 0.0, 1.0);
     material.ambient_occlusion = has_texture(8.0)
-        ? mix(1.0, texture(occlusion_texture, input.uv0).r, constants.material_params.y)
+        ? mix(1.0, texture(occlusion_texture, material_input.uv0).r, constants.material_params.y)
         : 1.0;
     material.emissive_radiance = has_texture(16.0)
-        ? texture(emissive_texture, input.uv0).rgb *
+        ? texture(emissive_texture, material_input.uv0).rgb *
             material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w
         : material_parameters.emissive_factor.rgb * material_parameters.emissive_factor.w;
     material.clear_coat = material_parameters.material_lobes.x *
-        (has_advanced_texture(1.0) ? texture(clear_coat_texture, input.uv0).r : 1.0);
+        (has_advanced_texture(1.0) ? texture(clear_coat_texture, material_input.uv0).r : 1.0);
     material.clear_coat_roughness = material_parameters.material_lobes.y *
-        (has_advanced_texture(2.0) ? texture(clear_coat_roughness_texture, input.uv0).g : 1.0);
+        (has_advanced_texture(2.0) ? texture(clear_coat_roughness_texture, material_input.uv0).g : 1.0);
     material.anisotropy = material_parameters.material_lobes.z *
-        (has_advanced_texture(8.0) ? texture(anisotropy_texture, input.uv0).b : 1.0);
+        (has_advanced_texture(8.0) ? texture(anisotropy_texture, material_input.uv0).b : 1.0);
     material.transmission = material_parameters.material_lobes.w *
-        (has_advanced_texture(64.0) ? texture(transmission_texture, input.uv0).r : 1.0);
+        (has_advanced_texture(64.0) ? texture(transmission_texture, material_input.uv0).r : 1.0);
     material.index_of_refraction = material_parameters.volume_params.y;
     material.thickness = material_parameters.volume_params.z *
-        (has_advanced_texture(32.0) ? texture(thickness_texture, input.uv0).r : 1.0);
+        (has_advanced_texture(32.0) ? texture(thickness_texture, material_input.uv0).r : 1.0);
     material.attenuation_color = material_parameters.attenuation_color.rgb;
     material.attenuation_distance = material_parameters.volume_params.w;
     material.subsurface_color = material_parameters.subsurface_color_factor.rgb;
     material.subsurface = material_parameters.subsurface_color_factor.w *
-        (has_advanced_texture(16.0) ? texture(subsurface_texture, input.uv0).r : 1.0);
+        (has_advanced_texture(16.0) ? texture(subsurface_texture, material_input.uv0).r : 1.0);
     return material;
 }
 
-arc_material_surface arc_evaluate_material(arc_material_inputs input)
+arc_material_surface arc_evaluate_material(arc_material_inputs material_input)
 {
-    return arc_evaluate_legacy_material(input);
+    return arc_evaluate_legacy_material(material_input);
 }
 
 void main()
