@@ -87,6 +87,31 @@ bool read_parameter(package_reader& reader, shader_parameter_descriptor& paramet
     return parameter.id.valid();
 }
 
+material_domain authored_domain(const json& document)
+{
+    const auto domain = document.value("domain", std::string{"surface"});
+    return domain == "terrain" ? material_domain::terrain : material_domain::surface;
+}
+
+material_shading_model authored_shading_model(const json& document)
+{
+    const auto model = document.value("shadingModel", std::string{"standard"});
+    if (model == "skin") return material_shading_model::skin;
+    if (model == "transmission") return material_shading_model::transmission;
+    if (model == "unlit") return material_shading_model::unlit;
+    if (model == "customLit" || model == "custom_lit") return material_shading_model::custom_lit;
+    return material_shading_model::standard;
+}
+
+material_alpha_mode authored_alpha_mode(const json& document)
+{
+    auto mode = document.value("blendMode", std::string{});
+    if (mode.empty()) mode = document.value("alphaMode", std::string{"opaque"});
+    if (mode == "masked" || mode == "mask") return material_alpha_mode::masked;
+    if (mode == "blend" || mode == "transparent") return material_alpha_mode::blend;
+    return material_alpha_mode::opaque;
+}
+
 } // namespace
 
 material_authoring_result parse_material_authoring_json(std::string_view source)
@@ -130,13 +155,22 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
         shader_path = document["shaderPath"].get<std::string>();
     }
 
+    const auto domain = authored_domain(document);
+    const auto shading_model = authored_shading_model(document);
+    const auto alpha_mode = authored_alpha_mode(document);
+    const bool double_sided = document.value("doubleSided", false);
+
     document["version"] = material_authoring_version;
     return material_authoring_result::success({.source_version = source_version,
                                                .version = material_authoring_version,
                                                .migrated = !has_version || source_version != material_authoring_version,
                                                .canonical_json = document.dump(),
                                                .graph_json = std::move(graph_json),
-                                               .shader_path = std::move(shader_path)});
+                                               .shader_path = std::move(shader_path),
+                                               .domain = domain,
+                                               .shading_model = shading_model,
+                                               .alpha_mode = alpha_mode,
+                                               .double_sided = double_sided});
 }
 
 std::vector<std::byte> serialize_material_package_v2(const material_package_v2& package)
@@ -196,15 +230,16 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
         return material_package_v3_result::failure(
             {.code = material_asset_error_code::unsupported_version,
              .message = "Material package uses an unsupported pass contract or Material ABI"});
-    if (!package.compiled.package.valid())
-        return material_package_v3_result::failure(
-            {.code = material_asset_error_code::corrupt_package,
-             .message = "Material package contains an invalid shader package ID"});
 
     std::uint32_t pass_count{};
     if (!reader.value(pass_count) || pass_count > 32u)
         return material_package_v3_result::failure(
             {.code = material_asset_error_code::corrupt_package, .message = "Material package pass table is invalid"});
+    if (pass_count != 0 && !package.compiled.package.valid())
+        return material_package_v3_result::failure(
+            {.code = material_asset_error_code::corrupt_package,
+             .message = "Compiled material passes require a valid shader package ID"});
+
     package.compiled.passes.reserve(pass_count);
     for (std::uint32_t index = 0; index < pass_count; ++index)
     {
