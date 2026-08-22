@@ -10,6 +10,7 @@ const writeText = vi.fn().mockResolvedValue(undefined);
 afterEach(cleanup);
 beforeEach(() => {
   writeText.mockClear();
+  localStorage.clear();
   Object.defineProperty(window, 'arc', {
     configurable: true,
     value: {
@@ -52,6 +53,26 @@ const project = {
       kind: 'texture' as const,
       status: 'stale' as const,
     },
+    {
+      id: 'engine-sky-texture',
+      guid: 'engine-sky-texture-guid',
+      name: 'Engine Sky Texture',
+      path: 'Engine/Environment/Textures/sky.ktx',
+      scope: 'builtin' as const,
+      readOnly: true,
+      kind: 'texture' as const,
+      status: 'ready' as const,
+    },
+    {
+      id: 'engine-material-texture',
+      guid: 'engine-material-texture-guid',
+      name: 'Engine Material Texture',
+      path: 'Engine/Materials/Textures/default.ktx',
+      scope: 'builtin' as const,
+      readOnly: true,
+      kind: 'texture' as const,
+      status: 'ready' as const,
+    },
   ],
 };
 
@@ -76,17 +97,57 @@ describe('ContentBrowserPanel', () => {
     expect(view.getByText('Hero Rock')).toBeInTheDocument();
     expect(view.queryByText('Sky')).not.toBeInTheDocument();
     const transfer = { setData: vi.fn(), effectAllowed: '' };
-    fireEvent.dragStart(view.getByText('Hero Rock').closest('button')!, { dataTransfer: transfer });
+    fireEvent.dragStart(view.getByText('Hero Rock').closest('.content-asset')!, { dataTransfer: transfer });
     expect(transfer.setData).toHaveBeenCalledWith('application/x-arc-asset', expect.stringContaining('rock-guid'));
   });
 
   it('supports folder navigation and list view', () => {
     const view = renderBrowser();
-    fireEvent.click(view.getByRole('button', { name: 'Props' }));
+    const propsFolder = view.getByRole('button', { name: 'Props' });
+    expect(propsFolder).toHaveClass('ui-tree-row');
+    expect(propsFolder.querySelector('.entity-icon-folder')).toBeInTheDocument();
+
+    fireEvent.click(propsFolder);
     expect(view.getByText('Hero Rock')).toBeInTheDocument();
     expect(view.queryByText('Sky')).not.toBeInTheDocument();
     fireEvent.click(view.getByLabelText('List view'));
     expect(view.getByRole('listbox')).toHaveClass('list');
+  });
+
+  it('shows starred assets in the top-level Favorites folder', () => {
+    localStorage.setItem('arc.content.favorites', JSON.stringify(['rock-guid']));
+    const view = renderBrowser();
+
+    fireEvent.click(view.getByRole('button', { name: 'Favorites' }));
+
+    expect(view.getByText('Hero Rock')).toBeInTheDocument();
+    expect(view.queryByText('Sky')).not.toBeInTheDocument();
+    expect(view.queryByText('Engine Sky Texture')).not.toBeInTheDocument();
+  });
+
+  it('renders engine folders as a nested tree without flattening duplicate leaf names', () => {
+    const view = renderBrowser();
+    fireEvent.click(view.getByRole('button', { name: 'Engine' }));
+
+    const environmentFolders = view.getAllByRole('button', { name: 'Environment' });
+    const engineEnvironment = environmentFolders.find((button) => button.hasAttribute('aria-expanded'));
+    expect(engineEnvironment).toBeDefined();
+    expect(view.getByRole('button', { name: 'Materials' })).toBeInTheDocument();
+    expect(view.queryByRole('button', { name: 'Textures' })).not.toBeInTheDocument();
+
+    fireEvent.click(engineEnvironment!);
+    const environmentTextures = view.getByRole('button', { name: 'Textures' });
+    fireEvent.click(environmentTextures);
+    expect(view.getByText('Engine Sky Texture')).toBeInTheDocument();
+    expect(view.queryByText('Engine Material Texture')).not.toBeInTheDocument();
+
+    fireEvent.click(view.getByRole('button', { name: 'Materials' }));
+    const textureFolders = view.getAllByRole('button', { name: 'Textures' });
+    expect(textureFolders).toHaveLength(2);
+
+    fireEvent.click(textureFolders[1]);
+    expect(view.getByText('Engine Material Texture')).toBeInTheDocument();
+    expect(view.queryByText('Engine Sky Texture')).not.toBeInTheDocument();
   });
 
   it('creates a PBR material in the active Content folder', async () => {
