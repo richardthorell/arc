@@ -72,6 +72,18 @@ struct material_function_pin
     friend auto operator<=>(const material_function_pin&, const material_function_pin&) = default;
 };
 
+/** @brief Validated public metadata for one reusable Material/Shader Function asset. */
+struct material_function_descriptor
+{
+    std::string name;
+    std::string description;
+    std::vector<material_function_pin> inputs;
+    std::vector<material_function_pin> outputs;
+    bool shader_backed{};
+
+    friend auto operator<=>(const material_function_descriptor&, const material_function_descriptor&) = default;
+};
+
 /** @brief Authored reusable function source supplied to the native Material Graph compiler. */
 struct material_function_source
 {
@@ -192,7 +204,7 @@ struct material_shader_source
 
 using material_graph_compile_result = core::result<material_graph_compilation, shader_compile_error>;
 using material_shader_codegen_result = core::result<material_shader_source, shader_compile_error>;
-using material_function_validation_result = core::result<std::vector<material_function_pin>, shader_compile_error>;
+using material_function_validation_result = core::result<material_function_descriptor, shader_compile_error>;
 
 /**
  * @brief Validate and normalize authored material graph JSON into native IR and descriptor data.
@@ -212,7 +224,7 @@ using material_function_validation_result = core::result<std::vector<material_fu
 [[nodiscard]] material_graph_compile_result
 compile_material_graph_json(std::string_view graph_json, std::span<const material_function_source> functions);
 
-/** @brief Validate one first-class Material/Shader Function document and return its public signature. */
+/** @brief Validate one first-class Material/Shader Function document and return its public descriptor. */
 [[nodiscard]] material_function_validation_result validate_material_function_json(std::string_view function_json,
                                                                                    std::string_view source_path = {});
 
