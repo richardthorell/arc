@@ -432,8 +432,14 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
     }
     mesh_renderer->material = *material;
     surface.preview_material_generation = generation;
-    surface.preview_error = surface.preview_material.using_fallback() ? "Material preview is using the renderer error material"
-                                                                      : std::string{};
+    if (surface.preview_material.using_fallback())
+    {
+        surface.preview_error = "Material preview is using the renderer error material";
+    }
+    else
+    {
+        surface.preview_error.clear();
+    }
     return true;
 }
 
@@ -458,14 +464,18 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
         surface.preview_error = "Renderer could not create the asset preview sphere";
         return false;
     }
-    if (auto* name = preview->scene.template try_get<scene::name_component>(sphere)) name->value = "Asset Preview Sphere";
+    if (auto* name = preview->scene.template try_get<scene::name_component>(sphere))
+    {
+        name->value = "Asset Preview Sphere";
+    }
     clear_selection(preview->scene, preview->selected_entity);
 
     surface.preview_camera = {};
     (void)surface.preview_camera.place({1.65f, 0.55f, 2.25f}, {0.0f, 0.0f, 0.0f});
-    if (auto* camera_transform =
-            preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
+    if (auto* camera_transform = preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
+    {
         surface.preview_camera.apply_to(*camera_transform);
+    }
 
     surface.preview_entity = sphere;
     if (const auto* mesh_renderer =
@@ -866,7 +876,8 @@ host_response arc_host::query(const host_query_envelope& query) const
             const auto entity = query_scene.selected_entity;
             if (query_scene.scene.alive(entity))
             {
-                if (const auto* procedural = std::as_const(query_scene.scene).try_get<procedural_mesh_component>(entity))
+                const auto& const_query_scene = std::as_const(query_scene.scene);
+                if (const auto* procedural = const_query_scene.try_get<procedural_mesh_component>(entity))
                 {
                     auto procedural_json =
                         nlohmann::json::parse(procedural_mesh_snapshot_json(*procedural), nullptr, false);
