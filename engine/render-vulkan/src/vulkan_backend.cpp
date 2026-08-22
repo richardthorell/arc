@@ -8130,8 +8130,7 @@ private:
             const float z = draw.model(2, 3) - frame_camera_.position[2];
             return x * x + y * y + z * z <= draw.maximum_shadow_distance * draw.maximum_shadow_distance;
         };
-        const auto is_static_caster = [&](const draw_mesh_event& draw)
-        {
+        const auto is_static_caster = [&](const draw_mesh_event& draw) {
             return draw.casts_shadows && within_shadow_distance(draw) &&
                    draw.mobility == render_mobility::static_object;
         };
