@@ -95,7 +95,8 @@ TEST_CASE("native material graph compiler emits deterministic backend-neutral IR
     REQUIRE(tint->default_value.size() == 12);
     std::array<float, 3> tint_default{};
     std::memcpy(tint_default.data(), tint->default_value.data(), tint->default_value.size());
-    REQUIRE(tint_default == std::array<float, 3>{0.2f, 0.4f, 0.8f});
+    constexpr std::array<float, 3> expected_tint{0.2f, 0.4f, 0.8f};
+    REQUIRE(tint_default == expected_tint);
 
     const auto* base_color = find_output(descriptor, arc::render::tools::material_surface_output::base_color);
     REQUIRE(base_color != nullptr);
