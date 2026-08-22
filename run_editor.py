@@ -122,15 +122,84 @@ def slang_cache_root(repo_root):
     return os.path.join(repo_root, "out", "toolchains", "slang", SLANG_VERSION, host)
 
 
+def remove_partial_download(destination):
+    try:
+        if os.path.exists(destination):
+            os.remove(destination)
+    except OSError:
+        pass
+
+
+def download_with_curl(url, destination):
+    curl = find_executable("curl")
+    if curl is None:
+        return False
+    try:
+        subprocess.check_call(
+            [curl, "--fail", "--location", "--retry", "3", "--output", destination, url]
+        )
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        remove_partial_download(destination)
+        return False
+
+
+def powershell_literal(value):
+    return "'{}'".format(value.replace("'", "''"))
+
+
+def download_with_powershell(url, destination):
+    if platform.system() != "Windows":
+        return False
+    powershell = find_executable("powershell")
+    if powershell is None:
+        return False
+    command = (
+        "$ProgressPreference='SilentlyContinue'; "
+        "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
+        "Invoke-WebRequest -UseBasicParsing -Uri {} -OutFile {}"
+    ).format(powershell_literal(url), powershell_literal(destination))
+    try:
+        subprocess.check_call(
+            [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
+        )
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        remove_partial_download(destination)
+        return False
+
+
+def download_with_python(url, destination):
+    try:
+        response = urlopen(url)
+        try:
+            with open(destination, "wb") as output:
+                shutil.copyfileobj(response, output)
+        finally:
+            response.close()
+        return True
+    except Exception:
+        remove_partial_download(destination)
+        return False
+
+
 def download_file(url, destination):
     print("Downloading {}".format(url))
     sys.stdout.flush()
-    response = urlopen(url)
-    try:
-        with open(destination, "wb") as output:
-            shutil.copyfileobj(response, output)
-    finally:
-        response.close()
+
+    # Prefer native HTTPS clients so old Python runtimes do not depend on their
+    # bundled OpenSSL being new enough to negotiate with GitHub. This matters
+    # for legacy toolchain Pythons such as Emscripten's Python 2.7.5.
+    if download_with_curl(url, destination):
+        return
+    if download_with_powershell(url, destination):
+        return
+    if download_with_python(url, destination):
+        return
+
+    raise RuntimeError(
+        "failed to download the pinned Slang toolchain; install curl or use a Python runtime with modern TLS support"
+    )
 
 
 def extract_slang_archive(archive, destination):
