@@ -248,8 +248,8 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
         std::uint64_t entry_point{};
         if (!reader.value(binding.pass) || !reader.value(permutation) || !reader.value(entry_point) ||
             !reader.raw(binding.build_hash.bytes))
-            return material_package_v3_result::failure(
-                {.code = material_asset_error_code::corrupt_package, .message = "Material package pass entry is invalid"});
+            return material_package_v3_result::failure({.code = material_asset_error_code::corrupt_package,
+                                                        .message = "Material package pass entry is invalid"});
         binding.permutation = {permutation};
         binding.entry_point = {entry_point};
         if (!binding.permutation.valid() || !binding.entry_point.valid() ||

@@ -43,9 +43,9 @@ TEST_CASE("material pass eligibility follows alpha and render routing")
 
     material.alpha_mode = arc::render::material_alpha_mode::masked;
     REQUIRE(arc::render::material_pass_evaluates_surface(arc::render::material_pass::depth,
-                                                          arc::render::material_alpha_mode::masked));
+                                                         arc::render::material_alpha_mode::masked));
     REQUIRE(arc::render::material_pass_evaluates_surface(arc::render::material_pass::shadow,
-                                                          arc::render::material_alpha_mode::masked));
+                                                         arc::render::material_alpha_mode::masked));
 
     material.alpha_mode = arc::render::material_alpha_mode::blend;
     REQUIRE_FALSE(arc::render::material_supports_pass(material, arc::render::material_pass::depth));
@@ -90,8 +90,7 @@ TEST_CASE("compiled material selector falls back per pass without breaking legac
     REQUIRE(compare.compare);
 
     material.pipeline = arc::render::material_pipeline::legacy;
-    const auto legacy =
-        arc::render::resolve_material_pipeline(material, arc::render::material_pass::gbuffer, &program);
+    const auto legacy = arc::render::resolve_material_pipeline(material, arc::render::material_pass::gbuffer, &program);
     REQUIRE(legacy.use_legacy);
     REQUIRE_FALSE(legacy.use_compiled);
     REQUIRE_FALSE(legacy.compare);

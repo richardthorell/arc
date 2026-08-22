@@ -36,8 +36,8 @@ struct material_pass_permutation_key
     bool evaluates_material{};
     bool writes_motion{};
 
-    friend bool operator==(const material_pass_permutation_key&, const material_pass_permutation_key&) noexcept =
-        default;
+    friend bool operator==(const material_pass_permutation_key&,
+                           const material_pass_permutation_key&) noexcept = default;
 };
 
 /** @brief One compiled shader permutation that implements a material render pass. */
@@ -81,15 +81,16 @@ struct material_pipeline_resolution
 
 /** @brief Build the complete backend-neutral permutation key for one material/pass combination. */
 [[nodiscard]] material_pass_permutation_key make_material_pass_permutation_key(const material_descriptor& material,
-                                                                                material_pass pass,
-                                                                                std::uint8_t debug_view = 0,
-                                                                                bool wireframe = false) noexcept;
+                                                                               material_pass pass,
+                                                                               std::uint8_t debug_view = 0,
+                                                                               bool wireframe = false) noexcept;
 
 /** @brief Return a stable cross-process hash for a material-pass permutation key. */
 [[nodiscard]] std::uint64_t hash_material_pass_permutation_key(const material_pass_permutation_key& key) noexcept;
 
 /** @brief Return the stable shader permutation ID associated with a material-pass key. */
-[[nodiscard]] shader_permutation_id make_material_pass_permutation_id(const material_pass_permutation_key& key) noexcept;
+[[nodiscard]] shader_permutation_id
+make_material_pass_permutation_id(const material_pass_permutation_key& key) noexcept;
 
 /** @brief Find the compiled binding for one pass, if the material implementation provides it. */
 [[nodiscard]] const material_pass_binding* find_material_pass_binding(const material_compiled_program& program,
@@ -100,8 +101,8 @@ struct material_pipeline_resolution
  *
  * Missing compiled pass data always falls back to the legacy renderer so migration remains safe.
  */
-[[nodiscard]] material_pipeline_resolution resolve_material_pipeline(const material_descriptor& material,
-                                                                      material_pass pass,
-                                                                      const material_compiled_program* compiled) noexcept;
+[[nodiscard]] material_pipeline_resolution
+resolve_material_pipeline(const material_descriptor& material, material_pass pass,
+                          const material_compiled_program* compiled) noexcept;
 
 } // namespace arc::render

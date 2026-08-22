@@ -16,9 +16,9 @@ namespace arc::tools
 namespace
 {
 
-constexpr std::array material_passes{render::material_pass::depth,     render::material_pass::shadow,
-                                     render::material_pass::gbuffer,   render::material_pass::forward,
-                                     render::material_pass::motion,    render::material_pass::object_id,
+constexpr std::array material_passes{render::material_pass::depth,    render::material_pass::shadow,
+                                     render::material_pass::gbuffer,  render::material_pass::forward,
+                                     render::material_pass::motion,   render::material_pass::object_id,
                                      render::material_pass::selection};
 
 std::string_view pass_name(render::material_pass pass) noexcept
@@ -129,7 +129,8 @@ public:
             {
                 if (!render::material_supports_pass(pass_material, pass)) continue;
 
-                auto generated = render::tools::generate_material_pass_slang(compiled_graph.value(), pass_material, pass);
+                auto generated =
+                    render::tools::generate_material_pass_slang(compiled_graph.value(), pass_material, pass);
                 if (!generated)
                     return {.error = {.code = assets::asset_error_code::import_failed,
                                       .guid = context.asset.guid,
@@ -151,8 +152,7 @@ public:
                                         : render::shader_optimization::development,
                     .required_passes = {pass},
                     .generated_line_nodes = generated.value().generated_line_nodes,
-                    .generate_debug_information =
-                        context.target.configuration != assets::cook_configuration::shipping};
+                    .generate_debug_information = context.target.configuration != assets::cook_configuration::shipping};
                 auto compiled = cache_.compile_or_get(compiler_, request);
                 if (!compiled)
                     return {.error = {.code = assets::asset_error_code::import_failed,
@@ -177,12 +177,11 @@ public:
                                           .entry_point = entry_point,
                                           .build_hash = compiled.value().build_hash});
 
-                render::shader_package package{
-                    .id = program.package,
-                    .generation = {std::max<std::uint64_t>(context.asset.generation, 1)},
-                    .target = render::shader_target::spirv,
-                    .permutation = generated.value().permutation,
-                    .compiled = std::move(compiled).value()};
+                render::shader_package package{.id = program.package,
+                                               .generation = {std::max<std::uint64_t>(context.asset.generation, 1)},
+                                               .target = render::shader_target::spirv,
+                                               .permutation = generated.value().permutation,
+                                               .compiled = std::move(compiled).value()};
                 auto bytes = render::serialize_shader_package(package);
                 if (!bytes)
                     return {.error = {.code = assets::asset_error_code::import_failed,
@@ -197,10 +196,10 @@ public:
             }
         }
 
-        auto material_bytes = render::tools::serialize_material_package_v3(
-            {.compiled = std::move(program),
-             .parameters = std::move(parameters),
-             .canonical_document_json = authored.value().canonical_json});
+        auto material_bytes =
+            render::tools::serialize_material_package_v3({.compiled = std::move(program),
+                                                          .parameters = std::move(parameters),
+                                                          .canonical_document_json = authored.value().canonical_json});
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatc",
                              .schema = descriptor_.schema,

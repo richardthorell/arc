@@ -40,8 +40,9 @@ using material_pass_codegen_result = core::result<material_pass_shader_source, s
  * alpha clipping, G-buffer packing, motion-vector output, object IDs, and selection output. The same
  * composition contract is intentionally reusable by handwritten Material Shaders in Stage 9.
  */
-[[nodiscard]] material_pass_codegen_result generate_material_pass_slang(
-    const material_graph_compilation& compilation, const material_descriptor& material, material_pass pass,
-    std::uint8_t debug_view = 0, bool wireframe = false);
+[[nodiscard]] material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
+                                                                        const material_descriptor& material,
+                                                                        material_pass pass, std::uint8_t debug_view = 0,
+                                                                        bool wireframe = false);
 
 } // namespace arc::render::tools

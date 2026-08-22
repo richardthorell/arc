@@ -142,10 +142,10 @@ const material_pass_binding* find_material_pass_binding(const material_compiled_
 material_pipeline_resolution resolve_material_pipeline(const material_descriptor& material, material_pass pass,
                                                        const material_compiled_program* compiled) noexcept
 {
-    const bool compiled_contract_valid =
-        compiled != nullptr && compiled->contract_version == material_pass_contract_version &&
-        compiled->material_abi == material_abi_version && compiled->package.valid() &&
-        find_material_pass_binding(*compiled, pass) != nullptr;
+    const bool compiled_contract_valid = compiled != nullptr &&
+                                         compiled->contract_version == material_pass_contract_version &&
+                                         compiled->material_abi == material_abi_version && compiled->package.valid() &&
+                                         find_material_pass_binding(*compiled, pass) != nullptr;
 
     switch (material.pipeline)
     {

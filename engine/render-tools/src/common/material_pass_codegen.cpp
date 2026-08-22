@@ -77,15 +77,16 @@ void append_gbuffer(std::ostringstream& source, const material_descriptor& mater
               "[shader(\"fragment\")] ArcMaterialGBufferOutput main(ArcMaterialPassInput passInput)\n"
               "{\n";
     append_surface_evaluation(source, material.alpha_mode);
-    source << "    ArcMaterialGBufferOutput output;\n"
-              "    output.albedo = float4(surface.baseColor, surface.opacity);\n"
-              "    output.normalAo = float4(normalize(surface.normalWS) * 0.5 + 0.5, surface.ambientOcclusion);\n"
-              "    output.material = float4(saturate(surface.metallic), clamp(surface.roughness, 0.04, 1.0), 1.0, 0.0);\n"
-              "    output.emissive = float4(surface.emissiveRadiance, 1.0);\n"
-              "    output.motion = arcMaterialMotion(passInput);\n"
-              "    output.objectId = passInput.objectId;\n"
-              "    return output;\n"
-              "}\n";
+    source
+        << "    ArcMaterialGBufferOutput output;\n"
+           "    output.albedo = float4(surface.baseColor, surface.opacity);\n"
+           "    output.normalAo = float4(normalize(surface.normalWS) * 0.5 + 0.5, surface.ambientOcclusion);\n"
+           "    output.material = float4(saturate(surface.metallic), clamp(surface.roughness, 0.04, 1.0), 1.0, 0.0);\n"
+           "    output.emissive = float4(surface.emissiveRadiance, 1.0);\n"
+           "    output.motion = arcMaterialMotion(passInput);\n"
+           "    output.objectId = passInput.objectId;\n"
+           "    return output;\n"
+           "}\n";
 }
 
 void append_forward(std::ostringstream& source, const material_descriptor& material)
@@ -125,8 +126,8 @@ void append_selection(std::ostringstream& source)
 } // namespace
 
 material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
-                                                           const material_descriptor& material, material_pass pass,
-                                                           std::uint8_t debug_view, bool wireframe)
+                                                          const material_descriptor& material, material_pass pass,
+                                                          std::uint8_t debug_view, bool wireframe)
 {
     if (!material_supports_pass(material, pass))
         return material_pass_codegen_result::failure(
@@ -180,12 +181,13 @@ material_pass_codegen_result generate_material_pass_slang(const material_graph_c
     }
 
     const auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe);
-    return material_pass_codegen_result::success({.pass = pass,
-                                                  .permutation = make_material_pass_permutation_id(key),
-                                                  .source = std::move(pass_source).str(),
-                                                  .generated_line_nodes = std::move(evaluator_source.generated_line_nodes),
-                                                  .parameters = std::move(evaluator_source.parameters),
-                                                  .diagnostics = std::move(evaluator_source.diagnostics)});
+    return material_pass_codegen_result::success(
+        {.pass = pass,
+         .permutation = make_material_pass_permutation_id(key),
+         .source = std::move(pass_source).str(),
+         .generated_line_nodes = std::move(evaluator_source.generated_line_nodes),
+         .parameters = std::move(evaluator_source.parameters),
+         .diagnostics = std::move(evaluator_source.diagnostics)});
 }
 
 } // namespace arc::render::tools

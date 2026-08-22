@@ -38,12 +38,12 @@ TEST_CASE("Material IR composes deterministic engine-owned pass shaders")
     arc::render::material_descriptor material;
     material.alpha_mode = arc::render::material_alpha_mode::masked;
 
-    const auto first = arc::render::tools::generate_material_pass_slang(
-        compilation.value(), material, arc::render::material_pass::gbuffer);
-    const auto second = arc::render::tools::generate_material_pass_slang(
-        compilation.value(), material, arc::render::material_pass::gbuffer);
-    const auto shadow = arc::render::tools::generate_material_pass_slang(
-        compilation.value(), material, arc::render::material_pass::shadow);
+    const auto first = arc::render::tools::generate_material_pass_slang(compilation.value(), material,
+                                                                        arc::render::material_pass::gbuffer);
+    const auto second = arc::render::tools::generate_material_pass_slang(compilation.value(), material,
+                                                                         arc::render::material_pass::gbuffer);
+    const auto shadow = arc::render::tools::generate_material_pass_slang(compilation.value(), material,
+                                                                         arc::render::material_pass::shadow);
 
     REQUIRE(first);
     REQUIRE(second);
@@ -69,8 +69,8 @@ TEST_CASE("opaque depth composition skips unnecessary material evaluation")
     REQUIRE(compilation);
 
     arc::render::material_descriptor material;
-    const auto depth = arc::render::tools::generate_material_pass_slang(
-        compilation.value(), material, arc::render::material_pass::depth);
+    const auto depth = arc::render::tools::generate_material_pass_slang(compilation.value(), material,
+                                                                        arc::render::material_pass::depth);
     REQUIRE(depth);
 
     const auto main_position = depth.value().source.rfind("[shader(\"fragment\")] void main");
@@ -92,9 +92,9 @@ TEST_CASE("compiled material pass shaders compile with pinned Slang")
 
     arc::render::material_descriptor material;
     material.alpha_mode = arc::render::material_alpha_mode::masked;
-    constexpr std::array passes{arc::render::material_pass::depth, arc::render::material_pass::shadow,
-                                arc::render::material_pass::gbuffer, arc::render::material_pass::forward,
-                                arc::render::material_pass::motion, arc::render::material_pass::object_id,
+    constexpr std::array passes{arc::render::material_pass::depth,    arc::render::material_pass::shadow,
+                                arc::render::material_pass::gbuffer,  arc::render::material_pass::forward,
+                                arc::render::material_pass::motion,   arc::render::material_pass::object_id,
                                 arc::render::material_pass::selection};
 
     for (const auto pass : passes)
@@ -102,18 +102,17 @@ TEST_CASE("compiled material pass shaders compile with pinned Slang")
         const auto generated = arc::render::tools::generate_material_pass_slang(compilation.value(), material, pass);
         REQUIRE(generated);
 
-        arc::render::shader_compile_request request{
-            .source_path = "material_pass_test.generated.slang",
-            .source_override = generated.value().source,
-            .entry_point = generated.value().entry_point,
-            .profile = "spirv_1_5",
-            .library_version = "arc-material-pass/1",
-            .domain = arc::render::shader_domain::surface,
-            .stage = arc::render::shader_stage::fragment,
-            .target = arc::render::shader_target::spirv,
-            .optimization = arc::render::shader_optimization::development,
-            .required_passes = {pass},
-            .generated_line_nodes = generated.value().generated_line_nodes};
+        arc::render::shader_compile_request request{.source_path = "material_pass_test.generated.slang",
+                                                    .source_override = generated.value().source,
+                                                    .entry_point = generated.value().entry_point,
+                                                    .profile = "spirv_1_5",
+                                                    .library_version = "arc-material-pass/1",
+                                                    .domain = arc::render::shader_domain::surface,
+                                                    .stage = arc::render::shader_stage::fragment,
+                                                    .target = arc::render::shader_target::spirv,
+                                                    .optimization = arc::render::shader_optimization::development,
+                                                    .required_passes = {pass},
+                                                    .generated_line_nodes = generated.value().generated_line_nodes};
         const auto result = compiler.compile(request);
         if (!result)
         {
