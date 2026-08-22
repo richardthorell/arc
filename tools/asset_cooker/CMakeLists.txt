@@ -1,5 +1,6 @@
 add_executable(arc-cook
     main.cpp
+    material_processor.cpp
 )
 arc_configure_first_party_target(arc-cook)
 
