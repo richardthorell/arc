@@ -1,0 +1,46 @@
+name: Format Material IR PR
+
+on:
+  push:
+    branches:
+      - feature/material-ir-native-compiler-pr4
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/material-ir-native-compiler-pr4
+          fetch-depth: 0
+      - name: Install clang-format 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Format PR 4 native files
+        run: |
+          clang-format-18 -i \
+            engine/render-tools/inc/arc/render_tools/material_graph.h \
+            engine/render-tools/inc/arc/render_tools/render_tools.h \
+            engine/render-tools/src/common/material_graph_ir.cpp \
+            engine/render-tools/tests/material_graph_ir_tests.cpp
+      - name: Commit formatted files
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Files are already formatted.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add engine/render-tools/inc/arc/render_tools/material_graph.h \
+                  engine/render-tools/inc/arc/render_tools/render_tools.h \
+                  engine/render-tools/src/common/material_graph_ir.cpp \
+                  engine/render-tools/tests/material_graph_ir_tests.cpp
+          git commit -m 'style: format material IR compiler'
+          git push origin HEAD:feature/material-ir-native-compiler-pr4
