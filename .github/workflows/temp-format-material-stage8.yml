@@ -1,0 +1,48 @@
+name: Temporary Format Material Stage 8
+
+on:
+  push:
+    branches:
+      - feature/material-pass-integration
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/material-pass-integration
+      - name: Install clang-format 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Format Stage 8 native files
+        run: |
+          clang-format-18 -i \
+            engine/render/inc/arc/render/material_pass.h \
+            engine/render/inc/arc/render/render.h \
+            engine/render/src/common/material_pass.cpp \
+            engine/render/tests/material_pass_tests.cpp \
+            engine/render-tools/inc/arc/render_tools/material_asset.h \
+            engine/render-tools/inc/arc/render_tools/material_pass_codegen.h \
+            engine/render-tools/inc/arc/render_tools/render_tools.h \
+            engine/render-tools/src/common/material_asset.cpp \
+            engine/render-tools/src/common/material_pass_codegen.cpp \
+            engine/render-tools/tests/material_asset_tests.cpp \
+            engine/render-tools/tests/material_pass_codegen_tests.cpp \
+            tools/asset_cooker/material_processor.cpp
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add engine/render engine/render-tools tools/asset_cooker
+          git commit -m 'style: format Stage 8 material pass integration'
+          git push origin HEAD:feature/material-pass-integration
