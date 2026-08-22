@@ -2,6 +2,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
+#include <filesystem>
+#include <fstream>
+
 TEST_CASE("native material graph lowering is deterministic and preserves stable parameters")
 {
     constexpr std::string_view graph = R"({
@@ -53,4 +57,64 @@ TEST_CASE("native material graph lowering rejects cycles")
     const auto result = arc::render::tools::lower_material_graph_json(graph);
     REQUIRE_FALSE(result);
     REQUIRE(result.error().code == arc::render::shader_compile_error_code::validation_failed);
+}
+
+TEST_CASE("Slang compiler reports unavailable toolchains without throwing")
+{
+    const auto missing = std::filesystem::temp_directory_path() / "arc-definitely-missing-slangc";
+    arc::render::tools::slang_shader_compiler compiler({.executable = missing, .require_pinned_version = false});
+
+    REQUIRE_FALSE(compiler.available());
+    REQUIRE(compiler.fingerprint() == "slang/unavailable");
+
+    const auto result = compiler.compile({.source_path = "missing.slang",
+                                          .entry_point = "main",
+                                          .profile = "spirv_1_5",
+                                          .domain = arc::render::shader_domain::surface,
+                                          .stage = arc::render::shader_stage::fragment,
+                                          .target = arc::render::shader_target::spirv});
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().code == arc::render::shader_compile_error_code::compiler_unavailable);
+}
+
+TEST_CASE("Slang compiler produces SPIR-V when the pinned toolchain is available")
+{
+    arc::render::tools::slang_shader_compiler compiler;
+    if (!compiler.available())
+    {
+        SUCCEED("Pinned slangc is optional for this unit test environment");
+        return;
+    }
+
+    const auto source = std::filesystem::temp_directory_path() / "arc_shader_compiler_test.slang";
+    {
+        std::ofstream file(source);
+        file << "[shader(\"fragment\")] float4 main() : SV_Target { return float4(1, 0, 0, 1); }";
+    }
+
+    arc::render::shader_compile_request request{.source_path = source.string(),
+                                                .entry_point = "main",
+                                                .profile = "spirv_1_5",
+                                                .domain = arc::render::shader_domain::surface,
+                                                .stage = arc::render::shader_stage::fragment,
+                                                .target = arc::render::shader_target::spirv,
+                                                .optimization = arc::render::shader_optimization::development};
+
+    auto result = compiler.compile(request);
+    if (!result) INFO(result.error().message);
+    REQUIRE(result);
+
+    const auto& output = result.value();
+    REQUIRE(output.bytecode.size() >= 4);
+    REQUIRE(output.bytecode.size() % sizeof(std::uint32_t) == 0);
+    REQUIRE(output.bytecode[0] == 0x03u);
+    REQUIRE(output.bytecode[1] == 0x02u);
+    REQUIRE(output.bytecode[2] == 0x23u);
+    REQUIRE(output.bytecode[3] == 0x07u);
+    REQUIRE(output.reflection.entry_points.size() == 1);
+    REQUIRE(output.reflection.entry_points.front().name == "main");
+    REQUIRE(output.reflection.entry_points.front().stage == arc::render::shader_stage::fragment);
+    REQUIRE(compiler.fingerprint().starts_with("slang/"));
+
+    std::filesystem::remove(source);
 }
