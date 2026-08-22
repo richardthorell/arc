@@ -4,8 +4,6 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 struct gpu_scene_instance
 {
-    mat4 model;
-    mat4 previous_model;
     vec4 bounds_min;
     vec4 bounds_max;
     uvec4 geometry;
@@ -106,7 +104,8 @@ void main()
         enabled = false;
         atomicAdd(counters.distance_rejected, 1u);
     }
-    if (enabled && constants.hzb_parameters.w > 0.5)
+    bool recently_changed = (instance.material_flags.w & (1u << 5u)) != 0u;
+    if (enabled && !recently_changed && constants.hzb_parameters.w > 0.5)
     {
         float radius = max(length(instance.bounds_max.xyz - instance.bounds_min.xyz) * 0.5, 1.0e-4);
         vec4 clip = constants.view_projection * vec4(center, 1.0);

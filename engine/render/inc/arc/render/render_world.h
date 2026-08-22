@@ -320,6 +320,8 @@ struct world_environment_data
  */
 struct terrain_render_data
 {
+    /** Persistent GPU Scene slot assigned during renderer synchronization. */
+    gpu_scene_instance_handle gpu_scene_instance{};
     terrain_handle terrain{};
     render_object_id object_id{};
     material_handle material{};
@@ -524,6 +526,8 @@ struct render_world_prepare_options
     bool enable_instancing{true};
     bool enable_indirect_draws{true};
     bool gpu_driven{};
+    /** Build the allocating CPU reference output for validation of a GPU-driven view. */
+    bool retain_cpu_reference{};
     std::uint32_t render_layer_mask{0xffffffffu};
 };
 
@@ -551,7 +555,7 @@ view_frustum make_view_frustum(const math::matrix4f& view_projection);
 std::uint64_t make_render_sort_key(scene_render_pass pass, material_handle material, mesh_handle mesh, float depth);
 
 /**
- * @brief Cull, sort, batch, and generate backend-neutral indirect draw commands.
+ * @brief Prepare CPU fallback draws, or clear them for an authoritative GPU-driven view.
  */
 void prepare_render_world(render_world_packet& packet, const render_world_prepare_options& options = {});
 

@@ -218,10 +218,15 @@ struct mesh_push_constants
 };
 static_assert(sizeof(mesh_push_constants) == 256);
 
-struct alignas(16) gpu_scene_storage_instance
+struct alignas(16) gpu_scene_transform_record
 {
     float model[16]{};
     float previous_model[16]{};
+};
+static_assert(sizeof(gpu_scene_transform_record) == 128);
+
+struct alignas(16) gpu_scene_visibility_record
+{
     float bounds_min[4]{};
     float bounds_max[4]{};
     std::uint32_t geometry[4]{};
@@ -229,7 +234,13 @@ struct alignas(16) gpu_scene_storage_instance
     std::uint32_t draw_metadata[4]{};
     float distance_error[4]{};
 };
-static_assert(sizeof(gpu_scene_storage_instance) == 224);
+static_assert(sizeof(gpu_scene_visibility_record) == 96);
+
+struct packed_gpu_scene_instance
+{
+    gpu_scene_transform_record transform;
+    gpu_scene_visibility_record visibility;
+};
 
 struct alignas(16) gpu_visibility_push_constants
 {
@@ -434,7 +445,8 @@ public:
             destroy_buffer(buffer.vertices);
         destroy_buffer(light_buffer_);
         destroy_buffer(exposure_buffer_);
-        destroy_buffer(gpu_scene_buffer_);
+        destroy_buffer(gpu_scene_visibility_buffer_);
+        destroy_buffer(gpu_scene_transform_buffer_);
         destroy_gpu_visibility_resources();
 #if ARC_VULKAN_SHARED_VIEWPORT
         destroy_all_shared_viewports();
@@ -1719,6 +1731,9 @@ private:
             profile.frustum_rejected =
                 static_cast<std::uint32_t>(packet.culled_item_count + packet.culled_virtual_cluster_count);
             profile.indirect_commands = static_cast<std::uint32_t>(packet.items.size() + packet.virtual_items.size());
+            if (resolved_config_.features.gpu_binding_model == gpu_resource_binding_model::classic)
+                profile.cpu_submissions += static_cast<std::uint32_t>(
+                    packet.items.size() + packet.virtual_items.size() + packet.visible_terrain_patches.size());
         }
     }
 
@@ -3625,79 +3640,120 @@ private:
         }
     }
 
-    gpu_scene_storage_instance pack_gpu_scene_instance(const gpu_scene_instance& source) const
+    packed_gpu_scene_instance pack_gpu_scene_instance(const gpu_scene_instance& source) const
     {
-        gpu_scene_storage_instance result{};
-        std::copy(source.model.data(), source.model.data() + 16, result.model);
-        std::copy(source.previous_model.data(), source.previous_model.data() + 16, result.previous_model);
+        packed_gpu_scene_instance result{};
+        std::copy(source.model.data(), source.model.data() + 16, result.transform.model);
+        std::copy(source.previous_model.data(), source.previous_model.data() + 16, result.transform.previous_model);
         for (std::uint32_t component = 0; component < 3; ++component)
         {
-            result.bounds_min[component] = source.world_bounds.min[component];
-            result.bounds_max[component] = source.world_bounds.max[component];
+            result.visibility.bounds_min[component] = source.world_bounds.min[component];
+            result.visibility.bounds_max[component] = source.world_bounds.max[component];
         }
-        const auto geometry = source.geometry_kind == gpu_scene_geometry_kind::mesh ? source.mesh : source.virtual_mesh;
-        result.geometry[0] = geometry.index;
-        result.geometry[1] = geometry.generation;
-        result.geometry[2] = source.submesh_or_cluster;
-        result.geometry[3] = static_cast<std::uint32_t>(source.geometry_kind);
-        result.material_flags[0] = source.material.index;
-        result.material_flags[1] = source.material.generation;
-        result.material_flags[2] = source.render_layer_mask;
-        result.material_flags[3] = source.flags;
-        if (source.geometry_kind == gpu_scene_geometry_kind::mesh)
+        resource_handle geometry{};
+        switch (source.geometry_kind)
+        {
+            case gpu_scene_geometry_kind::mesh:
+            case gpu_scene_geometry_kind::skinned_mesh:
+                geometry = source.mesh;
+                break;
+            case gpu_scene_geometry_kind::terrain:
+                geometry = source.terrain;
+                break;
+            case gpu_scene_geometry_kind::virtual_mesh:
+                geometry = source.virtual_mesh;
+                break;
+        }
+        result.visibility.geometry[0] = geometry.index;
+        result.visibility.geometry[1] = geometry.generation;
+        result.visibility.geometry[2] = source.submesh_or_cluster;
+        result.visibility.geometry[3] = static_cast<std::uint32_t>(source.geometry_kind);
+        result.visibility.material_flags[0] = source.material.index;
+        result.visibility.material_flags[1] = source.material.generation;
+        result.visibility.material_flags[2] = source.render_layer_mask;
+        result.visibility.material_flags[3] = static_cast<std::uint32_t>(source.flags);
+        if (source.geometry_kind == gpu_scene_geometry_kind::mesh ||
+            source.geometry_kind == gpu_scene_geometry_kind::skinned_mesh)
         {
             const auto found = meshes_.find(resource_key(source.mesh));
-            if (found != meshes_.end()) result.draw_metadata[0] = found->second.index_count;
+            if (found != meshes_.end()) result.visibility.draw_metadata[0] = found->second.index_count;
         }
-        else
+        else if (source.geometry_kind == gpu_scene_geometry_kind::virtual_mesh)
         {
             const auto found = virtual_meshes_.find(resource_key(source.virtual_mesh));
             if (found != virtual_meshes_.end() && source.submesh_or_cluster < found->second.clusters.size())
             {
                 const auto& cluster = found->second.clusters[source.submesh_or_cluster];
-                result.draw_metadata[0] = cluster.index_count;
-                result.draw_metadata[1] = cluster.first_index;
+                result.visibility.draw_metadata[0] = cluster.index_count;
+                result.visibility.draw_metadata[1] = cluster.first_index;
             }
         }
-        result.distance_error[0] = source.maximum_draw_distance;
-        result.distance_error[1] = source.geometry_error_scale;
+        result.visibility.distance_error[0] = source.maximum_draw_distance;
+        result.visibility.distance_error[1] = source.geometry_error_scale;
         return result;
     }
 
     bool ensure_gpu_scene_buffer(std::uint32_t required_capacity)
     {
-        if (required_capacity <= gpu_scene_capacity_ && gpu_scene_buffer_.buffer != VK_NULL_HANDLE) return true;
+        if (required_capacity <= gpu_scene_capacity_ && gpu_scene_visibility_buffer_.buffer != VK_NULL_HANDLE &&
+            gpu_scene_transform_buffer_.buffer != VK_NULL_HANDLE)
+            return true;
         const std::uint32_t new_capacity = std::max(256u, std::bit_ceil(std::max(required_capacity, 1u)));
-        gpu_buffer replacement{};
-        const VkDeviceSize bytes = static_cast<VkDeviceSize>(new_capacity) * sizeof(gpu_scene_storage_instance);
-        if (!create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                           VMA_MEMORY_USAGE_CPU_TO_GPU, replacement))
-            return false;
-
-        auto retired = gpu_scene_buffer_;
-        const auto retired_capacity = gpu_scene_capacity_;
-        gpu_scene_buffer_ = replacement;
-        gpu_scene_capacity_ = new_capacity;
-        gpu_scene_mirror_.resize(new_capacity);
-        gpu_visibility_descriptors_dirty_ = true;
-
-        void* mapped{};
-        if (vmaMapMemory(allocator_, gpu_scene_buffer_.allocation, &mapped) != VK_SUCCESS)
+        gpu_buffer replacement_visibility{};
+        gpu_buffer replacement_transforms{};
+        const auto visibility_bytes = static_cast<VkDeviceSize>(new_capacity) * sizeof(gpu_scene_visibility_record);
+        const auto transform_bytes = static_cast<VkDeviceSize>(new_capacity) * sizeof(gpu_scene_transform_record);
+        if (!create_buffer(visibility_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, replacement_visibility) ||
+            !create_buffer(transform_bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, replacement_transforms))
         {
-            destroy_buffer(gpu_scene_buffer_);
-            gpu_scene_buffer_ = retired;
-            gpu_scene_capacity_ = retired_capacity;
+            destroy_buffer(replacement_visibility);
+            destroy_buffer(replacement_transforms);
             return false;
         }
-        const auto byte_count =
-            static_cast<VkDeviceSize>(gpu_scene_mirror_.size()) * sizeof(gpu_scene_storage_instance);
-        std::memcpy(mapped, gpu_scene_mirror_.data(), static_cast<std::size_t>(byte_count));
-        vmaFlushAllocation(allocator_, gpu_scene_buffer_.allocation, 0, byte_count);
-        vmaUnmapMemory(allocator_, gpu_scene_buffer_.allocation);
-        if (retired.buffer != VK_NULL_HANDLE)
+
+        auto retired_visibility = gpu_scene_visibility_buffer_;
+        auto retired_transforms = gpu_scene_transform_buffer_;
+        const auto retired_capacity = gpu_scene_capacity_;
+        gpu_scene_visibility_buffer_ = replacement_visibility;
+        gpu_scene_transform_buffer_ = replacement_transforms;
+        gpu_scene_capacity_ = new_capacity;
+        gpu_scene_visibility_mirror_.resize(new_capacity);
+        gpu_scene_transform_mirror_.resize(new_capacity);
+        gpu_visibility_descriptors_dirty_ = true;
+
+        const auto upload_mirror = [&](gpu_buffer& destination, const auto& mirror) -> bool
+        {
+            void* mapped{};
+            if (vmaMapMemory(allocator_, destination.allocation, &mapped) != VK_SUCCESS) return false;
+            const auto byte_count =
+                static_cast<VkDeviceSize>(mirror.size()) * sizeof(typename std::decay_t<decltype(mirror)>::value_type);
+            std::memcpy(mapped, mirror.data(), static_cast<std::size_t>(byte_count));
+            vmaFlushAllocation(allocator_, destination.allocation, 0, byte_count);
+            vmaUnmapMemory(allocator_, destination.allocation);
+            return true;
+        };
+        if (!upload_mirror(gpu_scene_visibility_buffer_, gpu_scene_visibility_mirror_) ||
+            !upload_mirror(gpu_scene_transform_buffer_, gpu_scene_transform_mirror_))
+        {
+            auto failed_visibility = gpu_scene_visibility_buffer_;
+            auto failed_transforms = gpu_scene_transform_buffer_;
+            gpu_scene_visibility_buffer_ = retired_visibility;
+            gpu_scene_transform_buffer_ = retired_transforms;
+            gpu_scene_capacity_ = retired_capacity;
+            destroy_buffer(failed_visibility);
+            destroy_buffer(failed_transforms);
+            return false;
+        }
+        if (retired_visibility.buffer != VK_NULL_HANDLE || retired_transforms.buffer != VK_NULL_HANDLE)
         {
             deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
-                                     [this, retired]() mutable { destroy_buffer(retired); });
+                                     [this, retired_visibility, retired_transforms]() mutable
+                                     {
+                                         destroy_buffer(retired_visibility);
+                                         destroy_buffer(retired_transforms);
+                                     });
         }
         return true;
     }
@@ -3710,8 +3766,14 @@ private:
         profile.enabled = true;
         profile.hzb_occlusion = resolved_config_.features.hzb_occlusion;
         profile.submission = resolved_config_.features.submission;
+        profile.binding_model = resolved_config_.features.gpu_binding_model;
         profile.capacity = batch.capacity;
         profile.active_instances = batch.active_instance_count;
+        profile.geometry_table_entries =
+            static_cast<std::uint32_t>(meshes_.size() + virtual_meshes_.size() + terrains_.size());
+        profile.material_table_entries = static_cast<std::uint32_t>(materials_.size());
+        profile.texture_table_entries = static_cast<std::uint32_t>(textures_.size());
+        profile.uploaded_ranges += static_cast<std::uint32_t>(batch.dirty_ranges.size());
         if (!ensure_gpu_scene_buffer(batch.capacity))
         {
             profile.fallback_reason = "GPU Scene buffer allocation failed; using CPU draw submission";
@@ -3719,44 +3781,63 @@ private:
         }
 
         bool reset{};
-        std::size_t first_dirty = gpu_scene_mirror_.size();
-        std::size_t last_dirty{};
         for (const auto& update : batch.updates)
         {
             if (update.kind == gpu_scene_update_kind::reset)
             {
                 reset = true;
             }
-            else if (update.handle.index < gpu_scene_mirror_.size())
+            else if (update.handle.index < gpu_scene_visibility_mirror_.size())
             {
                 if (update.kind == gpu_scene_update_kind::upsert)
                 {
-                    gpu_scene_mirror_[update.handle.index] = pack_gpu_scene_instance(update.instance);
+                    const auto packed = pack_gpu_scene_instance(update.instance);
+                    gpu_scene_visibility_mirror_[update.handle.index] = packed.visibility;
+                    gpu_scene_transform_mirror_[update.handle.index] = packed.transform;
                     ++profile.uploaded_instances;
                 }
                 else
                 {
-                    gpu_scene_mirror_[update.handle.index] = {};
+                    gpu_scene_visibility_mirror_[update.handle.index] = {};
+                    gpu_scene_transform_mirror_[update.handle.index] = {};
                     ++profile.destroyed_instances;
                 }
-                first_dirty = std::min(first_dirty, static_cast<std::size_t>(update.handle.index));
-                last_dirty = std::max(last_dirty, static_cast<std::size_t>(update.handle.index + 1u));
             }
         }
 
-        if (first_dirty >= last_dirty) return;
-        void* mapped{};
-        if (vmaMapMemory(allocator_, gpu_scene_buffer_.allocation, &mapped) != VK_SUCCESS)
+        if (batch.dirty_ranges.empty()) return;
+        void* mapped_visibility{};
+        void* mapped_transforms{};
+        const auto visibility_map_result =
+            vmaMapMemory(allocator_, gpu_scene_visibility_buffer_.allocation, &mapped_visibility);
+        const auto transform_map_result =
+            vmaMapMemory(allocator_, gpu_scene_transform_buffer_.allocation, &mapped_transforms);
+        if (visibility_map_result != VK_SUCCESS || transform_map_result != VK_SUCCESS)
         {
+            if (visibility_map_result == VK_SUCCESS)
+                vmaUnmapMemory(allocator_, gpu_scene_visibility_buffer_.allocation);
+            if (transform_map_result == VK_SUCCESS) vmaUnmapMemory(allocator_, gpu_scene_transform_buffer_.allocation);
             profile.fallback_reason = "GPU Scene buffer mapping failed; retaining the previous generation";
             return;
         }
-        const auto byte_offset = first_dirty * sizeof(gpu_scene_storage_instance);
-        const auto byte_count = (last_dirty - first_dirty) * sizeof(gpu_scene_storage_instance);
-        std::memcpy(static_cast<std::byte*>(mapped) + byte_offset, gpu_scene_mirror_.data() + first_dirty, byte_count);
-        vmaFlushAllocation(allocator_, gpu_scene_buffer_.allocation, byte_offset, byte_count);
-        vmaUnmapMemory(allocator_, gpu_scene_buffer_.allocation);
-        profile.uploaded_bytes += byte_count;
+        for (const auto& range : batch.dirty_ranges)
+        {
+            if (range.count == 0u || range.end() > gpu_scene_visibility_mirror_.size()) continue;
+            const auto visibility_offset = static_cast<VkDeviceSize>(range.first) * sizeof(gpu_scene_visibility_record);
+            const auto visibility_bytes = static_cast<VkDeviceSize>(range.count) * sizeof(gpu_scene_visibility_record);
+            const auto transform_offset = static_cast<VkDeviceSize>(range.first) * sizeof(gpu_scene_transform_record);
+            const auto transform_bytes = static_cast<VkDeviceSize>(range.count) * sizeof(gpu_scene_transform_record);
+            std::memcpy(static_cast<std::byte*>(mapped_visibility) + visibility_offset,
+                        gpu_scene_visibility_mirror_.data() + range.first, static_cast<std::size_t>(visibility_bytes));
+            std::memcpy(static_cast<std::byte*>(mapped_transforms) + transform_offset,
+                        gpu_scene_transform_mirror_.data() + range.first, static_cast<std::size_t>(transform_bytes));
+            vmaFlushAllocation(allocator_, gpu_scene_visibility_buffer_.allocation, visibility_offset,
+                               visibility_bytes);
+            vmaFlushAllocation(allocator_, gpu_scene_transform_buffer_.allocation, transform_offset, transform_bytes);
+            profile.uploaded_bytes += visibility_bytes + transform_bytes;
+        }
+        vmaUnmapMemory(allocator_, gpu_scene_visibility_buffer_.allocation);
+        vmaUnmapMemory(allocator_, gpu_scene_transform_buffer_.allocation);
         if (reset) profile.history_valid = false;
     }
 
@@ -3783,7 +3864,7 @@ private:
     bool ensure_gpu_visibility_resources()
     {
         if (!resolved_config_.features.gpu_driven_rendering || gpu_scene_capacity_ == 0 ||
-            gpu_scene_buffer_.buffer == VK_NULL_HANDLE)
+            gpu_scene_visibility_buffer_.buffer == VK_NULL_HANDLE)
             return false;
         const bool hzb_resources_available =
             resolved_config_.features.hzb_occlusion && ensure_hzb_resources(viewport_width_, viewport_height_);
@@ -3866,7 +3947,7 @@ private:
                 return false;
             }
             std::array<VkDescriptorBufferInfo, 3> buffers{
-                VkDescriptorBufferInfo{gpu_scene_buffer_.buffer, 0, VK_WHOLE_SIZE},
+                VkDescriptorBufferInfo{gpu_scene_visibility_buffer_.buffer, 0, VK_WHOLE_SIZE},
                 VkDescriptorBufferInfo{gpu_visibility_commands_.buffer, 0, VK_WHOLE_SIZE},
                 VkDescriptorBufferInfo{gpu_visibility_counters_.buffer, 0, VK_WHOLE_SIZE}};
             std::array<VkWriteDescriptorSet, 3> writes{};
@@ -3952,7 +4033,7 @@ private:
         input_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
         input_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         input_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        input_barrier.buffer = gpu_scene_buffer_.buffer;
+        input_barrier.buffer = gpu_scene_visibility_buffer_.buffer;
         input_barrier.size = VK_WHOLE_SIZE;
         VkBufferMemoryBarrier counter_barrier = input_barrier;
         counter_barrier.buffer = gpu_visibility_counters_.buffer;
@@ -8049,7 +8130,8 @@ private:
             const float z = draw.model(2, 3) - frame_camera_.position[2];
             return x * x + y * y + z * z <= draw.maximum_shadow_distance * draw.maximum_shadow_distance;
         };
-        const auto is_static_caster = [&](const draw_mesh_event& draw) {
+        const auto is_static_caster = [&](const draw_mesh_event& draw)
+        {
             return draw.casts_shadows && within_shadow_distance(draw) &&
                    draw.mobility == render_mobility::static_object;
         };
@@ -9110,8 +9192,10 @@ private:
     bool frame_shadows_enabled_{true};
     bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
-    gpu_buffer gpu_scene_buffer_;
-    std::vector<gpu_scene_storage_instance> gpu_scene_mirror_;
+    gpu_buffer gpu_scene_visibility_buffer_;
+    gpu_buffer gpu_scene_transform_buffer_;
+    std::vector<gpu_scene_visibility_record> gpu_scene_visibility_mirror_;
+    std::vector<gpu_scene_transform_record> gpu_scene_transform_mirror_;
     std::uint32_t gpu_scene_capacity_{};
     gpu_buffer gpu_visibility_commands_;
     gpu_buffer gpu_visibility_counters_;
@@ -9378,11 +9462,14 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
 
     VkPhysicalDeviceDriverProperties driver_properties{};
     driver_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+    VkPhysicalDeviceDescriptorIndexingProperties descriptor_indexing_properties{};
+    descriptor_indexing_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES;
     if (vulkan12_or_newer)
     {
         VkPhysicalDeviceProperties2 properties2{};
         properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
         properties2.pNext = &driver_properties;
+        driver_properties.pNext = &descriptor_indexing_properties;
         vkGetPhysicalDeviceProperties2(physical_device, &properties2);
     }
 
@@ -9479,7 +9566,29 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.synchronization2 = synchronization2.synchronization2 == VK_TRUE;
     capabilities.timeline_semaphores = vulkan12.timelineSemaphore == VK_TRUE;
     capabilities.dynamic_rendering = dynamic_rendering.dynamicRendering == VK_TRUE;
-    capabilities.descriptor_indexing = vulkan12.descriptorIndexing == VK_TRUE;
+    constexpr std::uint32_t minimum_bindless_sampled_images = 4096u;
+    constexpr std::uint32_t minimum_bindless_samplers = 256u;
+    const bool complete_descriptor_indexing =
+        vulkan12.descriptorIndexing == VK_TRUE && vulkan12.shaderSampledImageArrayNonUniformIndexing == VK_TRUE &&
+        vulkan12.runtimeDescriptorArray == VK_TRUE && vulkan12.descriptorBindingPartiallyBound == VK_TRUE &&
+        vulkan12.descriptorBindingVariableDescriptorCount == VK_TRUE &&
+        vulkan12.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE &&
+        descriptor_indexing_properties.maxDescriptorSetUpdateAfterBindSampledImages >=
+            minimum_bindless_sampled_images &&
+        descriptor_indexing_properties.maxPerStageDescriptorUpdateAfterBindSampledImages >=
+            minimum_bindless_sampled_images &&
+        descriptor_indexing_properties.maxDescriptorSetUpdateAfterBindSamplers >= minimum_bindless_samplers;
+    capabilities.descriptor_indexing = complete_descriptor_indexing;
+    capabilities.bindless_sampled_images = complete_descriptor_indexing;
+    capabilities.bindless_samplers = complete_descriptor_indexing;
+    // These executable facts remain false until the shared heap/material-table
+    // graphics pipelines replace ARC's classic per-resource bindings.
+    capabilities.bindless_material_tables = false;
+    capabilities.bindless_geometry_tables = false;
+    capabilities.gpu_visibility_compaction = false;
+    capabilities.gpu_transparent_sorting = false;
+    capabilities.gpu_skinning = false;
+    capabilities.gpu_terrain_traversal = false;
     capabilities.descriptor_buffer = descriptor_buffer.descriptorBuffer == VK_TRUE;
     capabilities.mesh_shaders = mesh_shader.meshShader == VK_TRUE;
     // Capability facts describe executable ARC paths. Ray-query acceleration structures and
@@ -9695,8 +9804,13 @@ render_backend_create_result create_vulkan_backend(const vulkan_backend_config& 
     vulkan12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     vulkan12.timelineSemaphore =
         enable_optional_features && selected_capabilities.timeline_semaphores ? VK_TRUE : VK_FALSE;
-    vulkan12.descriptorIndexing =
-        enable_optional_features && selected_capabilities.descriptor_indexing ? VK_TRUE : VK_FALSE;
+    const auto enable_descriptor_indexing = enable_optional_features && selected_capabilities.descriptor_indexing;
+    vulkan12.descriptorIndexing = enable_descriptor_indexing ? VK_TRUE : VK_FALSE;
+    vulkan12.shaderSampledImageArrayNonUniformIndexing = enable_descriptor_indexing ? VK_TRUE : VK_FALSE;
+    vulkan12.runtimeDescriptorArray = enable_descriptor_indexing ? VK_TRUE : VK_FALSE;
+    vulkan12.descriptorBindingPartiallyBound = enable_descriptor_indexing ? VK_TRUE : VK_FALSE;
+    vulkan12.descriptorBindingVariableDescriptorCount = enable_descriptor_indexing ? VK_TRUE : VK_FALSE;
+    vulkan12.descriptorBindingSampledImageUpdateAfterBind = enable_descriptor_indexing ? VK_TRUE : VK_FALSE;
 
     VkPhysicalDeviceSynchronization2Features synchronization2{};
     synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;

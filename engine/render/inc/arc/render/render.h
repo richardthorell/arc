@@ -10,6 +10,7 @@
  */
 
 #include <arc/render/events.h>
+#include <arc/render/gpu_driven.h>
 #include <arc/render/gpu_scene.h>
 #include <arc/render/handles.h>
 #include <arc/render/lighting.h>

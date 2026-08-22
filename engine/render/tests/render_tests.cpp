@@ -786,7 +786,10 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
     REQUIRE(contains(builtin_render_pass::gpu_scene_upload));
     REQUIRE(contains(builtin_render_pass::gpu_frustum_distance_cull));
     REQUIRE(contains(builtin_render_pass::gpu_hzb_occlusion_cull));
+    REQUIRE(contains(builtin_render_pass::gpu_lod_selection));
+    REQUIRE(contains(builtin_render_pass::gpu_draw_bin_scatter));
     REQUIRE(contains(builtin_render_pass::gpu_indirect_command_generation));
+    REQUIRE(contains(builtin_render_pass::gpu_visibility_overflow));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_hierarchy_traversal));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_page_requests));
     REQUIRE(contains(builtin_render_pass::virtual_geometry_cluster_binning));
@@ -1057,6 +1060,7 @@ TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
     const auto initial = scene.synchronize(packet, 1);
     REQUIRE(initial.active_instance_count == 1);
     REQUIRE(initial.updates.size() == 2); // epoch reset followed by first upload
+    REQUIRE(initial.dirty_ranges == std::vector<gpu_table_dirty_range>{{.first = 0, .count = 1}});
     const auto handle = initial.updates.back().handle;
     REQUIRE(handle.valid());
     REQUIRE(scene.find(handle) != nullptr);
@@ -1071,17 +1075,63 @@ TEST_CASE("GPU Scene keeps stable slots and emits precise incremental updates")
     REQUIRE(update.updates[0].instance.previous_model(0, 3) == Catch::Approx(0.0f));
     const auto second_view = scene.synchronize(packet, 2);
     REQUIRE(second_view.updates.empty());
+    REQUIRE(contains(scene.find(handle)->flags, gpu_scene_instance_flag::recently_changed));
+
+    const auto settled = scene.synchronize(packet, 3);
+    REQUIRE(settled.updates.size() == 1);
+    REQUIRE(settled.updates[0].dirty == (gpu_scene_dirty::transform | gpu_scene_dirty::flags));
+    REQUIRE_FALSE(contains(settled.updates[0].instance.flags, gpu_scene_instance_flag::recently_changed));
 
     packet.items.clear();
-    const auto removed = scene.synchronize(packet, 3);
+    const auto removed = scene.synchronize(packet, 4);
     REQUIRE(removed.active_instance_count == 0);
     REQUIRE(removed.updates.size() == 1);
     REQUIRE(removed.updates[0].kind == gpu_scene_update_kind::destroy);
     REQUIRE(removed.updates[0].handle == handle);
     REQUIRE(scene.find(handle) == nullptr);
+
+    packet.items.push_back({.mesh = {.index = 1, .generation = 1}, .object_id = {.index = 42, .generation = 1}});
+    const auto before_retirement = scene.synchronize(packet, 5);
+    const auto temporary_handle = before_retirement.updates.back().handle;
+    REQUIRE(temporary_handle.index != handle.index);
+    packet.items.clear();
+    static_cast<void>(scene.synchronize(packet, 6));
+    packet.items.push_back({.mesh = {.index = 1, .generation = 1}, .object_id = {.index = 43, .generation = 1}});
+    const auto after_retirement = scene.synchronize(packet, 8);
+    const auto recycled_handle = after_retirement.updates.back().handle;
+    REQUIRE(recycled_handle.index == handle.index);
+    REQUIRE(recycled_handle.generation != handle.generation);
 }
 
-TEST_CASE("GPU-driven preparation retains the CPU visibility reference fallback")
+TEST_CASE("GPU Scene represents skinned meshes and terrain without CPU patch expansion")
+{
+    using namespace arc::render;
+    render_world_packet packet;
+    packet.gpu_scene_world_id = 9;
+    packet.world_epoch = 1;
+    packet.items.push_back({.mesh = {.index = 2, .generation = 3},
+                            .object_id = {.index = 10, .generation = 1},
+                            .skin_matrices = {.index = 5, .generation = 1},
+                            .skin_joint_count = 72});
+    packet.terrains.push_back({.terrain = {.index = 8, .generation = 2}, .object_id = {.index = 11, .generation = 1}});
+
+    gpu_scene scene;
+    const auto update = scene.synchronize(packet, 1);
+    REQUIRE(update.active_instance_count == 2);
+    REQUIRE(packet.items[0].gpu_scene_instance.valid());
+    REQUIRE(packet.terrains[0].gpu_scene_instance.valid());
+    const auto* skinned = scene.find(packet.items[0].gpu_scene_instance);
+    const auto* terrain = scene.find(packet.terrains[0].gpu_scene_instance);
+    REQUIRE(skinned != nullptr);
+    REQUIRE(skinned->geometry_kind == gpu_scene_geometry_kind::skinned_mesh);
+    REQUIRE(skinned->skin_palette == buffer_handle{.index = 5, .generation = 1});
+    REQUIRE(skinned->skin_joint_count == 72);
+    REQUIRE(terrain != nullptr);
+    REQUIRE(terrain->geometry_kind == gpu_scene_geometry_kind::terrain);
+    REQUIRE(terrain->terrain == terrain_handle{.index = 8, .generation = 2});
+}
+
+TEST_CASE("GPU-driven preparation skips allocating CPU visibility unless validation requests it")
 {
     arc::render::render_world_packet packet;
     packet.camera.view_projection = arc::math::identity<float, 4>();
@@ -1089,7 +1139,25 @@ TEST_CASE("GPU-driven preparation retains the CPU visibility reference fallback"
                             .world_bounds = arc::geometric::box3f{arc::geometric::point3f{-0.5f, -0.5f, -0.5f},
                                                                   arc::geometric::point3f{0.5f, 0.5f, 0.5f}}});
     arc::render::prepare_render_world(packet, {.gpu_driven = true});
+    REQUIRE(packet.visible_items.empty());
+    arc::render::prepare_render_world(packet, {.gpu_driven = true, .retain_cpu_reference = true});
     REQUIRE(packet.visible_items == std::vector<std::uint32_t>{0});
+}
+
+TEST_CASE("GPU table dirty ranges are sorted coalesced and duplicate free")
+{
+    const std::array indices{9u, 2u, 3u, 9u, 4u, 12u};
+    const auto ranges = arc::render::coalesce_gpu_table_dirty_ranges(indices);
+    REQUIRE(ranges == std::vector<arc::render::gpu_table_dirty_range>{
+                          {.first = 2, .count = 3}, {.first = 9, .count = 1}, {.first = 12, .count = 1}});
+}
+
+TEST_CASE("GPU transparent keys preserve bin then back-to-front depth and stable ties")
+{
+    using arc::render::make_gpu_transparent_sort_key;
+    REQUIRE(make_gpu_transparent_sort_key(0.9f, 2u, 4u) < make_gpu_transparent_sort_key(0.1f, 2u, 4u));
+    REQUIRE(make_gpu_transparent_sort_key(0.5f, 2u, 4u) < make_gpu_transparent_sort_key(0.5f, 3u, 1u));
+    REQUIRE(make_gpu_transparent_sort_key(0.5f, 2u, 4u) < make_gpu_transparent_sort_key(0.5f, 2u, 5u));
 }
 
 TEST_CASE("renderer submits committed packets to attached backend")
@@ -1206,6 +1274,8 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     auto resolved = resolve_render_config(config, capabilities);
     REQUIRE(resolved.quality == render_quality_tier::ultra);
     REQUIRE(resolved.features.gpu_driven_rendering);
+    REQUIRE(resolved.features.gpu_binding_model == gpu_resource_binding_model::classic);
+    REQUIRE_FALSE(resolved.features.gpu_visibility_compaction);
     REQUIRE(resolved.features.hzb_occlusion);
     REQUIRE(resolved.features.temporal_antialiasing);
     REQUIRE_FALSE(resolved.features.temporal_upscaling);
@@ -1226,6 +1296,21 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.indirect_lighting_path == lighting_trace_path::hybrid_hardware);
     REQUIRE(resolved.lighting_scene_gpu_budget_bytes == 768ull * 1024ull * 1024ull);
     REQUIRE(resolved.features.submission == gpu_submission_path::indirect_count);
+
+    capabilities.gpu_visibility_compaction = true;
+    capabilities.bindless_sampled_images = true;
+    capabilities.bindless_samplers = true;
+    capabilities.bindless_material_tables = true;
+    capabilities.bindless_geometry_tables = true;
+    capabilities.gpu_transparent_sorting = true;
+    capabilities.gpu_skinning = true;
+    capabilities.gpu_terrain_traversal = true;
+    resolved = resolve_render_config(config, capabilities);
+    REQUIRE(resolved.features.gpu_binding_model == gpu_resource_binding_model::bindless);
+    REQUIRE(resolved.features.gpu_visibility_compaction);
+    REQUIRE(resolved.features.gpu_transparent_sorting);
+    REQUIRE(resolved.features.gpu_skinning);
+    REQUIRE(resolved.features.gpu_terrain_traversal);
 
     config.force_disable_gpu_driven = true;
     config.force_disable_temporal = true;

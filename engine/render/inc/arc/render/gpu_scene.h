@@ -3,6 +3,7 @@
 #include <arc/geometric/box.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
+#include <arc/render/gpu_driven.h>
 #include <arc/render/handles.h>
 #include <arc/render/virtual_mesh.h>
 
@@ -21,9 +22,51 @@ enum class gpu_scene_geometry_kind : std::uint8_t
 {
     /** Ordinary indexed mesh. */
     mesh,
+    /** Indexed mesh deformed through a skin palette. */
+    skinned_mesh,
+    /** Heightfield terrain traversed as shared patches. */
+    terrain,
     /** One virtual mesh instance whose hierarchy is traversed by the GPU. */
     virtual_mesh
 };
+
+/** @brief Backend-neutral flags stored with one GPU Scene instance. */
+enum class gpu_scene_instance_flag : std::uint32_t
+{
+    /** No rendering or visibility flags. */
+    none = 0,
+    /** Instance participates in ordinary visible-view rendering. */
+    visible = 1u << 0u,
+    /** Instance is part of the editor selection. */
+    selected = 1u << 1u,
+    /** Instance requires ordered transparent submission. */
+    transparent = 1u << 2u,
+    /** Instance participates in shadow-view visibility. */
+    casts_shadows = 1u << 3u,
+    /** Instance accepts lighting from shadow maps. */
+    receives_shadows = 1u << 4u,
+    /** Occlusion remains conservative until previous-frame state settles. */
+    recently_changed = 1u << 5u,
+    /** Material uses alpha-tested masking. */
+    masked = 1u << 6u,
+    /** Material uses transmissive ordered rendering. */
+    transmission = 1u << 7u,
+    /** Geometry disables back-face culling. */
+    double_sided = 1u << 8u
+};
+
+/** @brief Combine GPU Scene instance flags. */
+[[nodiscard]] constexpr gpu_scene_instance_flag operator|(gpu_scene_instance_flag lhs,
+                                                          gpu_scene_instance_flag rhs) noexcept
+{
+    return static_cast<gpu_scene_instance_flag>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+/** @brief Return whether a GPU Scene flag set contains a requested flag. */
+[[nodiscard]] constexpr bool contains(gpu_scene_instance_flag value, gpu_scene_instance_flag requested) noexcept
+{
+    return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(requested)) != 0u;
+}
 
 /** @brief Stable generational index into renderer-owned GPU Scene storage. */
 struct gpu_scene_instance_handle
@@ -55,8 +98,14 @@ struct gpu_scene_instance
     mesh_handle mesh{};
     /** Virtual mesh reference when @ref geometry_kind is `virtual_mesh`. */
     virtual_mesh_handle virtual_mesh{};
+    /** Terrain reference when @ref geometry_kind is `terrain`. */
+    terrain_handle terrain{};
     /** Material referenced by the instance. */
     material_handle material{};
+    /** Optional joint-matrix buffer used by skinned geometry. */
+    buffer_handle skin_palette{};
+    /** Number of matrices addressable through @ref skin_palette. */
+    std::uint32_t skin_joint_count{};
     /** Stable per-frame ObjectID used by editor picking. */
     render_object_id object_id{};
     /** Mesh subresource or virtual hierarchy root. */
@@ -64,7 +113,7 @@ struct gpu_scene_instance
     /** View layer visibility mask. */
     std::uint32_t render_layer_mask{1u};
     /** Backend-neutral packed visibility and rendering flags. */
-    std::uint32_t flags{};
+    gpu_scene_instance_flag flags{gpu_scene_instance_flag::none};
     /** Maximum camera distance in metres; zero disables distance culling. */
     float maximum_draw_distance{};
     /** Authored multiplier applied to geometry error thresholds. */
@@ -118,6 +167,8 @@ struct gpu_scene_update_batch
     std::uint32_t active_instance_count{};
     std::uint32_t capacity{};
     std::vector<gpu_scene_update> updates;
+    /** Sorted non-overlapping slot ranges touched by @ref updates. */
+    std::vector<gpu_table_dirty_range> dirty_ranges;
 };
 
 /** @brief CPU-side authority that assigns stable slots and emits dirty GPU Scene ranges. */
@@ -168,10 +219,18 @@ private:
     };
 
     [[nodiscard]] gpu_scene_instance_handle allocate_slot();
-    void destroy_slot(std::uint32_t index, gpu_scene_update_batch& batch);
+    void destroy_slot(std::uint32_t index, std::uint64_t frame_index, gpu_scene_update_batch& batch);
+    void release_retired_slots(std::uint64_t frame_index);
+
+    struct retired_slot
+    {
+        std::uint32_t index{};
+        std::uint64_t reuse_after_frame{};
+    };
 
     std::vector<slot> slots_;
     std::vector<std::uint32_t> free_slots_;
+    std::vector<retired_slot> retired_slots_;
     std::unordered_map<instance_key, std::uint32_t, instance_key_hash> lookup_;
     std::unordered_map<std::uint64_t, std::uint64_t> world_epochs_;
     std::uint32_t active_instance_count_{};

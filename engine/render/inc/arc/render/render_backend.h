@@ -2,6 +2,7 @@
 
 #include <arc/core/core.h>
 #include <arc/render/events.h>
+#include <arc/render/gpu_driven.h>
 #include <arc/render/render_graph.h>
 #include <arc/render/lighting_scene.h>
 #include <arc/render/virtual_mesh.h>
@@ -267,8 +268,24 @@ struct render_capabilities
     bool shader_draw_parameters{};
     /** @brief Backend has an executable GPU Scene visibility and indirect draw pipeline. */
     bool gpu_scene_indirect{};
+    /** @brief Backend compacts visible records instead of retaining one command per scene slot. */
+    bool gpu_visibility_compaction{};
     /** @brief GPU Scene bins can be submitted with a GPU-generated draw count. */
     bool gpu_scene_indirect_count{};
+    /** @brief Backend can GPU-sort blended records using stable depth keys. */
+    bool gpu_transparent_sorting{};
+    /** @brief Backend can skin visible geometry into frame-local GPU storage. */
+    bool gpu_skinning{};
+    /** @brief Backend can traverse terrain hierarchy data for each view. */
+    bool gpu_terrain_traversal{};
+    /** @brief Backend exposes a stable non-uniformly indexed sampled-image table. */
+    bool bindless_sampled_images{};
+    /** @brief Backend exposes stable sampler slots independently from sampled images. */
+    bool bindless_samplers{};
+    /** @brief Backend can fetch materials through a GPU-visible structured table. */
+    bool bindless_material_tables{};
+    /** @brief Backend can draw conventional geometry from shared GPU heaps and tables. */
+    bool bindless_geometry_tables{};
     /** @brief Backend can build and sample a cross-frame hierarchical depth buffer. */
     bool hzb_occlusion{};
     /** @brief Backend can execute ARC's temporal resolve pipeline. */
@@ -322,6 +339,16 @@ struct render_feature_set
     bool draw_indirect{};
     bool draw_indirect_count{};
     bool gpu_driven_rendering{};
+    /** Resource-binding model selected for GPU Scene rasterization. */
+    gpu_resource_binding_model gpu_binding_model{gpu_resource_binding_model::classic};
+    /** GPU compaction and bounded pipeline-bin generation are executable. */
+    bool gpu_visibility_compaction{};
+    /** Stable GPU radix sorting is executable for ordered materials. */
+    bool gpu_transparent_sorting{};
+    /** Visible-only compute skinning is executable. */
+    bool gpu_skinning{};
+    /** Terrain hierarchy traversal is executable on the GPU. */
+    bool gpu_terrain_traversal{};
     bool hzb_occlusion{};
     bool fxaa{};
     bool temporal_antialiasing{};
@@ -434,12 +461,37 @@ public:
     /** @brief Dispatch backend-neutral compute work for the active pass. */
     virtual void dispatch(std::uint32_t, std::uint32_t, std::uint32_t) {}
 
+    /** @brief Bind a renderer-owned pipeline for subsequent graph commands. */
+    virtual void bind_pipeline(pipeline_handle) {}
+
+    /** @brief Bind one stable GPU resource-table generation. */
+    virtual void bind_resource_table(gpu_resource_table_kind, std::uint32_t) {}
+
+    /** @brief Fill a graph-owned buffer range with a repeated 32-bit value. */
+    virtual void fill_buffer(render_graph_resource_handle, std::uint64_t, std::uint64_t, std::uint32_t) {}
+
+    /** @brief Copy bytes between graph-owned buffers. */
+    virtual void copy_buffer(render_graph_resource_handle, std::uint64_t, render_graph_resource_handle, std::uint64_t,
+                             std::uint64_t)
+    {
+    }
+
+    /** @brief Dispatch compute work from a graph-owned indirect command. */
+    virtual void dispatch_indirect(render_graph_resource_handle, std::uint64_t) {}
+
     /** @brief Draw a fixed-capacity indexed indirect command buffer. */
     virtual void draw_indexed_indirect(render_graph_resource_handle, std::uint64_t, std::uint32_t, std::uint32_t) {}
 
     /** @brief Draw an indexed indirect buffer using a GPU-generated count. */
     virtual void draw_indexed_indirect_count(render_graph_resource_handle, std::uint64_t, render_graph_resource_handle,
                                              std::uint64_t, std::uint32_t, std::uint32_t)
+    {
+    }
+
+    /** @brief Dispatch mesh tasks using a GPU-generated command count when supported. */
+    virtual void draw_mesh_tasks_indirect_count(render_graph_resource_handle, std::uint64_t,
+                                                render_graph_resource_handle, std::uint64_t, std::uint32_t,
+                                                std::uint32_t)
     {
     }
 };
@@ -734,20 +786,59 @@ struct render_shadow_profile
 /** @brief Persistent GPU Scene and visibility work executed for one frame. */
 struct render_gpu_scene_profile
 {
+    /** Whether the submitted frame synchronized a GPU Scene. */
     bool enabled{};
+    /** Whether previous-frame HZB occlusion was selected. */
     bool hzb_occlusion{};
+    /** Whether the previous visibility history was safe to consume. */
     bool history_valid{};
+    /** Submission path resolved for the frame. */
     gpu_submission_path submission{gpu_submission_path::cpu_direct};
+    /** Resource-table binding model resolved for the frame. */
+    gpu_resource_binding_model binding_model{gpu_resource_binding_model::classic};
+    /** Allocated persistent instance slots. */
     std::uint32_t capacity{};
+    /** Live persistent instance slots. */
     std::uint32_t active_instances{};
+    /** Instance records uploaded during the frame. */
     std::uint32_t uploaded_instances{};
+    /** Coalesced sparse table ranges uploaded during the frame. */
+    std::uint32_t uploaded_ranges{};
+    /** Tombstoned instance records uploaded during the frame. */
     std::uint32_t destroyed_instances{};
+    /** Total bytes uploaded into persistent GPU tables. */
     std::uint64_t uploaded_bytes{};
+    /** Live entries in the geometry metadata table. */
+    std::uint32_t geometry_table_entries{};
+    /** Live entries in the material table. */
+    std::uint32_t material_table_entries{};
+    /** Occupied bindless sampled-image slots. */
+    std::uint32_t texture_table_entries{};
+    /** Occupied bindless sampler slots. */
+    std::uint32_t sampler_table_entries{};
+    /** Instances rejected by view-frustum tests. */
     std::uint32_t frustum_rejected{};
+    /** Instances rejected by authored distance limits. */
     std::uint32_t distance_rejected{};
+    /** Instances conservatively rejected by HZB. */
     std::uint32_t occlusion_rejected{};
+    /** Compacted records surviving visibility. */
     std::uint32_t visible_instances{};
+    /** Pipeline bins with at least one generated command. */
+    std::uint32_t active_pipeline_bins{};
+    /** Generated indirect indexed or mesh-task commands. */
     std::uint32_t indirect_commands{};
+    /** Records processed by transparent sorting. */
+    std::uint32_t transparent_records{};
+    /** Records routed through the correctness fallback. */
+    std::uint32_t overflow_records{};
+    /** CPU draw submissions recorded by the selected fallback. */
+    std::uint32_t cpu_submissions{};
+    /** GPU transparent sorting time in milliseconds. */
+    double transparent_sort_milliseconds{};
+    /** GPU visible-only skinning time in milliseconds. */
+    double skinning_milliseconds{};
+    /** Human-readable reason for selecting a lower execution path. */
     std::string fallback_reason;
 };
 

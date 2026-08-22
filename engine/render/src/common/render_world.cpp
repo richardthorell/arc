@@ -12,7 +12,7 @@ namespace
 {
 
 constexpr std::uint32_t maximum_gpu_scene_instances = 1u << 20u;
-constexpr std::uint32_t maximum_gpu_draw_bins = 4096u;
+constexpr std::uint32_t maximum_gpu_draw_bins = default_gpu_pipeline_bin_capacity;
 constexpr std::uint32_t gpu_scene_instance_stride = 224u;
 constexpr std::uint32_t indirect_command_stride = 20u;
 
@@ -89,11 +89,10 @@ void prepare_render_world(render_world_packet& packet, const render_world_prepar
     packet.culled_item_count = 0;
     packet.culled_virtual_cluster_count = 0;
 
-    // Keep the reference visibility output even for GPU-driven views. Backends
-    // with indirect execution ignore these lists, while limited backends can
-    // fall back without re-extracting the scene or changing its representation.
-    // The reference output is also used to validate GPU culling in tests and
-    // development captures.
+    // GPU-driven production views deliberately avoid rebuilding allocating CPU
+    // visibility/sort/batch vectors. Tests and diagnostic captures may request
+    // the deterministic reference explicitly without changing runtime policy.
+    if (options.gpu_driven && !options.retain_cpu_reference) return;
 
     const auto frustum = make_view_frustum(packet.camera.view_projection);
     for (std::uint32_t index = 0; index < packet.items.size(); ++index)
@@ -307,6 +306,16 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
              .kind = render_resource_kind::buffer,
              .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * sizeof(std::uint32_t),
              .element_stride = sizeof(std::uint32_t)});
+        const auto gpu_draw_records = graph.add_resource(
+            {.name = "gpu_draw_records",
+             .kind = render_resource_kind::buffer,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * sizeof(gpu_draw_record),
+             .element_stride = sizeof(gpu_draw_record)});
+        const auto gpu_compacted_draw_records = graph.add_resource(
+            {.name = "gpu_compacted_draw_records",
+             .kind = render_resource_kind::buffer,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * sizeof(gpu_draw_record),
+             .element_stride = sizeof(gpu_draw_record)});
         const auto visibility_counters = graph.add_resource({.name = "gpu_visibility_counters",
                                                              .kind = render_resource_kind::buffer,
                                                              .byte_size = 64,
@@ -319,14 +328,28 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                           .kind = render_resource_kind::buffer,
                                                           .byte_size = maximum_gpu_draw_bins * sizeof(std::uint32_t),
                                                           .element_stride = sizeof(std::uint32_t)});
+        const auto draw_bin_cursors = graph.add_resource({.name = "gpu_draw_bin_cursors",
+                                                          .kind = render_resource_kind::buffer,
+                                                          .byte_size = maximum_gpu_draw_bins * sizeof(std::uint32_t),
+                                                          .element_stride = sizeof(std::uint32_t)});
+        const auto transparent_sort_scratch = graph.add_resource(
+            {.name = "gpu_transparent_sort_scratch",
+             .kind = render_resource_kind::buffer,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * sizeof(gpu_draw_record),
+             .element_stride = sizeof(gpu_draw_record)});
+        const auto visibility_overflow = graph.add_resource({.name = "gpu_visibility_overflow",
+                                                             .kind = render_resource_kind::buffer,
+                                                             .byte_size = 16u,
+                                                             .element_stride = sizeof(std::uint32_t),
+                                                             .exported = true});
         gpu_indirect_commands = graph.add_resource(
             {.name = "gpu_indirect_commands",
              .kind = render_resource_kind::buffer,
-             .byte_size = static_cast<std::uint64_t>(maximum_gpu_draw_bins) * indirect_command_stride,
+             .byte_size = static_cast<std::uint64_t>(maximum_gpu_scene_instances) * indirect_command_stride,
              .element_stride = indirect_command_stride});
         gpu_indirect_count = graph.add_resource({.name = "gpu_indirect_count",
                                                  .kind = render_resource_kind::buffer,
-                                                 .byte_size = sizeof(std::uint32_t),
+                                                 .byte_size = maximum_gpu_draw_bins * sizeof(std::uint32_t),
                                                  .element_stride = sizeof(std::uint32_t)});
         graph.add_pass({.name = "GPU Scene upload",
                         .queue = compute_queue,
@@ -349,6 +372,14 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .usage = render_resource_usage::storage_buffer,
                                     .write = true},
                                    {.handle = gpu_indirect_count,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = draw_bin_cursors,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = visibility_overflow,
                                     .kind = render_resource_kind::buffer,
                                     .usage = render_resource_usage::storage_buffer,
                                     .write = true}}});
@@ -403,11 +434,61 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                         .usage = render_resource_usage::storage_buffer,
                                         .write = true}}});
         }
+        graph.add_pass({.name = "GPU LOD selection",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_lod_selection,
+                        .reads = {{.handle = gpu_visible_instances,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer},
+                                  {.handle = gpu_scene_instances,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = gpu_draw_records,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = visibility_overflow,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        if (config.features.gpu_skinning)
+        {
+            graph.add_pass({.name = "GPU visible geometry skinning",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::gpu_skinning,
+                            .reads = {{.handle = gpu_draw_records,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer}},
+                            .writes = {{.handle = gpu_draw_records,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true}}});
+        }
+        if (config.features.gpu_terrain_traversal)
+        {
+            graph.add_pass({.name = "GPU terrain hierarchy traversal",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::gpu_terrain_traversal,
+                            .reads = {{.handle = gpu_scene_instances,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer}},
+                            .writes = {{.handle = gpu_draw_records,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true},
+                                       {.handle = visibility_overflow,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true}}});
+        }
         graph.add_pass({.name = "GPU draw-bin count",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
                         .builtin = builtin_render_pass::gpu_draw_bin_count,
-                        .reads = {{.handle = gpu_visible_instances,
+                        .reads = {{.handle = gpu_draw_records,
                                    .kind = render_resource_kind::buffer,
                                    .usage = render_resource_usage::storage_buffer},
                                   {.handle = gpu_scene_instances,
@@ -428,6 +509,42 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .kind = render_resource_kind::buffer,
                                     .usage = render_resource_usage::storage_buffer,
                                     .write = true}}});
+        graph.add_pass({.name = "GPU draw-bin scatter",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_draw_bin_scatter,
+                        .reads = {{.handle = gpu_draw_records,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer},
+                                  {.handle = draw_bin_offsets,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = draw_bin_cursors,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = gpu_compacted_draw_records,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        if (config.features.gpu_transparent_sorting)
+        {
+            graph.add_pass({.name = "GPU transparent radix sort",
+                            .queue = compute_queue,
+                            .kind = render_pass_kind::compute,
+                            .builtin = builtin_render_pass::gpu_transparent_sort,
+                            .reads = {{.handle = gpu_compacted_draw_records,
+                                       .kind = render_resource_kind::buffer,
+                                       .usage = render_resource_usage::storage_buffer}},
+                            .writes = {{.handle = transparent_sort_scratch,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true},
+                                       {.handle = gpu_compacted_draw_records,
+                                        .kind = render_resource_kind::buffer,
+                                        .usage = render_resource_usage::storage_buffer,
+                                        .write = true}}});
+        }
         graph.add_pass({.name = "GPU indirect command generation",
                         .queue = compute_queue,
                         .kind = render_pass_kind::compute,
@@ -438,7 +555,7 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                   {.handle = draw_bin_offsets,
                                    .kind = render_resource_kind::buffer,
                                    .usage = render_resource_usage::storage_buffer},
-                                  {.handle = gpu_visible_instances,
+                                  {.handle = gpu_compacted_draw_records,
                                    .kind = render_resource_kind::buffer,
                                    .usage = render_resource_usage::storage_buffer}},
                         .writes = {{.handle = gpu_indirect_commands,
@@ -446,6 +563,17 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .usage = render_resource_usage::indirect_buffer,
                                     .write = true},
                                    {.handle = gpu_indirect_count,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "GPU visibility overflow resolution",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::gpu_visibility_overflow,
+                        .reads = {{.handle = visibility_overflow,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = visibility_overflow,
                                     .kind = render_resource_kind::buffer,
                                     .usage = render_resource_usage::storage_buffer,
                                     .write = true}}});

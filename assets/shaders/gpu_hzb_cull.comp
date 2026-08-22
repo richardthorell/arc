@@ -10,8 +10,6 @@ layout(std430, set = 0, binding = 1) readonly buffer candidate_buffer
 
 struct gpu_scene_instance
 {
-    mat4 model;
-    mat4 previous_model;
     vec4 bounds_min;
     vec4 bounds_max;
     uvec4 geometry;
@@ -69,7 +67,8 @@ void main()
     bool depth_occluded = constants.reverse_z != 0u
                               ? farthest_occluder > conservative_near_depth + 1.0e-4
                               : farthest_occluder < conservative_near_depth - 1.0e-4;
-    bool occluded = constants.history_valid != 0u && all(greaterThanEqual(uv, vec2(0.0))) &&
+    bool recently_changed = (instance.material_flags.w & (1u << 5u)) != 0u;
+    bool occluded = !recently_changed && constants.history_valid != 0u && all(greaterThanEqual(uv, vec2(0.0))) &&
                     all(lessThanEqual(uv, vec2(1.0))) && depth_occluded;
     if (occluded)
     {

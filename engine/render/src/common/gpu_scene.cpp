@@ -10,12 +10,6 @@ namespace arc::render
 namespace
 {
 
-constexpr std::uint32_t gpu_scene_flag_visible = 1u << 0u;
-constexpr std::uint32_t gpu_scene_flag_selected = 1u << 1u;
-constexpr std::uint32_t gpu_scene_flag_transparent = 1u << 2u;
-constexpr std::uint32_t gpu_scene_flag_casts_shadows = 1u << 3u;
-constexpr std::uint32_t gpu_scene_flag_receives_shadows = 1u << 4u;
-
 template <class T> void hash_combine(std::size_t& seed, const T& value) noexcept
 {
     seed ^= std::hash<T>{}(value) + 0x9e3779b9u + (seed << 6u) + (seed >> 2u);
@@ -56,6 +50,8 @@ gpu_scene_dirty changed_fields(const gpu_scene_instance& previous, const gpu_sce
         previous.geometry_error_scale != current.geometry_error_scale)
         dirty = dirty | gpu_scene_dirty::bounds;
     if (previous.mesh != current.mesh || previous.virtual_mesh != current.virtual_mesh ||
+        previous.terrain != current.terrain || previous.skin_palette != current.skin_palette ||
+        previous.skin_joint_count != current.skin_joint_count ||
         previous.submesh_or_cluster != current.submesh_or_cluster || previous.geometry_kind != current.geometry_kind)
         dirty = dirty | gpu_scene_dirty::geometry;
     if (previous.material != current.material) dirty = dirty | gpu_scene_dirty::material;
@@ -65,12 +61,16 @@ gpu_scene_dirty changed_fields(const gpu_scene_instance& previous, const gpu_sce
     return dirty;
 }
 
-std::uint32_t instance_flags(bool visible, bool selected, bool transparent, bool casts_shadows,
-                             bool receives_shadows) noexcept
+gpu_scene_instance_flag instance_flags(bool visible, bool selected, bool transparent, bool casts_shadows,
+                                       bool receives_shadows) noexcept
 {
-    return (visible ? gpu_scene_flag_visible : 0u) | (selected ? gpu_scene_flag_selected : 0u) |
-           (transparent ? gpu_scene_flag_transparent : 0u) | (casts_shadows ? gpu_scene_flag_casts_shadows : 0u) |
-           (receives_shadows ? gpu_scene_flag_receives_shadows : 0u);
+    auto result = gpu_scene_instance_flag::none;
+    if (visible) result = result | gpu_scene_instance_flag::visible;
+    if (selected) result = result | gpu_scene_instance_flag::selected;
+    if (transparent) result = result | gpu_scene_instance_flag::transparent;
+    if (casts_shadows) result = result | gpu_scene_instance_flag::casts_shadows;
+    if (receives_shadows) result = result | gpu_scene_instance_flag::receives_shadows;
+    return result;
 }
 
 } // namespace
@@ -105,7 +105,7 @@ gpu_scene_instance_handle gpu_scene::allocate_slot()
     return {.index = index, .generation = target.generation};
 }
 
-void gpu_scene::destroy_slot(std::uint32_t index, gpu_scene_update_batch& batch)
+void gpu_scene::destroy_slot(std::uint32_t index, std::uint64_t frame_index, gpu_scene_update_batch& batch)
 {
     auto& target = slots_[index];
     if (!target.alive) return;
@@ -116,14 +116,26 @@ void gpu_scene::destroy_slot(std::uint32_t index, gpu_scene_update_batch& batch)
     target.alive = false;
     ++target.generation;
     if (target.generation == 0) target.generation = 1;
-    free_slots_.push_back(index);
+    retired_slots_.push_back(
+        {.index = index, .reuse_after_frame = frame_index + default_gpu_table_slot_reuse_delay_frames});
     --active_instance_count_;
+}
+
+void gpu_scene::release_retired_slots(std::uint64_t frame_index)
+{
+    const auto still_retired =
+        std::stable_partition(retired_slots_.begin(), retired_slots_.end(),
+                              [frame_index](const retired_slot& slot) { return slot.reuse_after_frame > frame_index; });
+    for (auto iterator = still_retired; iterator != retired_slots_.end(); ++iterator)
+        free_slots_.push_back(iterator->index);
+    retired_slots_.erase(still_retired, retired_slots_.end());
 }
 
 gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::uint64_t frame_index)
 {
     gpu_scene_update_batch batch{
         .frame_index = frame_index, .world_id = packet.gpu_scene_world_id, .world_epoch = packet.world_epoch};
+    release_retired_slots(frame_index);
     const auto previous_epoch = world_epochs_.find(packet.gpu_scene_world_id);
     if (previous_epoch == world_epochs_.end() || previous_epoch->second != packet.world_epoch)
     {
@@ -131,7 +143,7 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
         for (std::uint32_t index = 0; index < slots_.size(); ++index)
         {
             if (slots_[index].alive && slots_[index].key.world_id == packet.gpu_scene_world_id)
-                destroy_slot(index, batch);
+                destroy_slot(index, frame_index, batch);
         }
         world_epochs_[packet.gpu_scene_world_id] = packet.world_epoch;
     }
@@ -151,12 +163,25 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
         {
             auto& existing = slots_[found->second];
             handle = {.index = found->second, .generation = existing.generation};
+            const bool current_transform_changed = !matrices_equal(existing.instance.model, instance.model);
             instance.previous_model =
                 existing.last_seen_frame == frame_index ? existing.instance.previous_model : existing.instance.model;
             dirty = changed_fields(existing.instance, instance);
+            const auto spatial_dirty =
+                static_cast<std::uint32_t>(dirty) & (static_cast<std::uint32_t>(gpu_scene_dirty::bounds) |
+                                                     static_cast<std::uint32_t>(gpu_scene_dirty::geometry));
+            if (current_transform_changed || spatial_dirty != 0u ||
+                (existing.last_seen_frame == frame_index &&
+                 contains(existing.instance.flags, gpu_scene_instance_flag::recently_changed)))
+                instance.flags = instance.flags | gpu_scene_instance_flag::recently_changed;
+            dirty = changed_fields(existing.instance, instance);
         }
 
-        if (is_new) instance.previous_model = instance.model;
+        if (is_new)
+        {
+            instance.previous_model = instance.model;
+            instance.flags = instance.flags | gpu_scene_instance_flag::recently_changed;
+        }
 
         auto& target = slots_[handle.index];
         target.key = key;
@@ -173,15 +198,19 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
 
     for (auto& item : packet.items)
     {
+        const auto geometry_kind =
+            item.skin_matrices.valid() ? gpu_scene_geometry_kind::skinned_mesh : gpu_scene_geometry_kind::mesh;
         const instance_key key{.world_id = packet.gpu_scene_world_id,
                                .object_id = item.object_id,
-                               .geometry_kind = gpu_scene_geometry_kind::mesh,
+                               .geometry_kind = geometry_kind,
                                .submesh_or_cluster = item.submesh};
         upsert(key, {.model = item.model,
                      .previous_model = item.previous_model,
                      .world_bounds = item.world_bounds,
                      .mesh = item.mesh,
                      .material = item.material,
+                     .skin_palette = item.skin_matrices,
+                     .skin_joint_count = item.skin_joint_count,
                      .object_id = item.object_id,
                      .submesh_or_cluster = item.submesh,
                      .render_layer_mask = item.render_layer_mask,
@@ -189,7 +218,26 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
                                              item.receives_shadows),
                      .maximum_draw_distance = item.maximum_draw_distance,
                      .geometry_error_scale = item.geometry_error_scale,
-                     .geometry_kind = gpu_scene_geometry_kind::mesh});
+                     .geometry_kind = geometry_kind});
+        item.gpu_scene_instance = {.index = lookup_.at(key), .generation = slots_[lookup_.at(key)].generation};
+    }
+
+    for (auto& item : packet.terrains)
+    {
+        const instance_key key{.world_id = packet.gpu_scene_world_id,
+                               .object_id = item.object_id,
+                               .geometry_kind = gpu_scene_geometry_kind::terrain,
+                               .submesh_or_cluster = 0u};
+        upsert(key, {.model = item.model,
+                     .previous_model = item.previous_model,
+                     .world_bounds = item.world_bounds,
+                     .terrain = item.terrain,
+                     .material = item.material,
+                     .object_id = item.object_id,
+                     .render_layer_mask = item.render_layer_mask,
+                     .flags = instance_flags(true, item.selected, false, item.cast_shadows, item.receive_shadows),
+                     .geometry_error_scale = 1.0f,
+                     .geometry_kind = gpu_scene_geometry_kind::terrain});
         item.gpu_scene_instance = {.index = lookup_.at(key), .generation = slots_[lookup_.at(key)].generation};
     }
     for (auto& item : packet.virtual_items)
@@ -219,11 +267,17 @@ gpu_scene_update_batch gpu_scene::synchronize(render_world_packet& packet, std::
         const auto& candidate = slots_[index];
         if (candidate.alive && candidate.key.world_id == packet.gpu_scene_world_id &&
             candidate.last_seen_frame != frame_index)
-            destroy_slot(index, batch);
+            destroy_slot(index, frame_index, batch);
     }
 
     batch.active_instance_count = active_instance_count_;
     batch.capacity = static_cast<std::uint32_t>(slots_.size());
+    std::vector<std::uint32_t> dirty_slots;
+    dirty_slots.reserve(batch.updates.size());
+    for (const auto& update : batch.updates)
+        if (update.kind != gpu_scene_update_kind::reset && update.handle.valid())
+            dirty_slots.push_back(update.handle.index);
+    batch.dirty_ranges = coalesce_gpu_table_dirty_ranges(dirty_slots);
     return batch;
 }
 
@@ -231,6 +285,7 @@ void gpu_scene::reset()
 {
     slots_.clear();
     free_slots_.clear();
+    retired_slots_.clear();
     lookup_.clear();
     world_epochs_.clear();
     active_instance_count_ = 0;

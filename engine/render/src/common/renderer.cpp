@@ -149,6 +149,9 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                      capabilities.gpu_scene_indirect;
     const bool gpu_driven =
         optional_features && !config.force_disable_gpu_driven && profile.prefer_gpu_driven && gpu_scene_supported;
+    const bool bindless_gpu_scene = gpu_driven && capabilities.gpu_visibility_compaction &&
+                                    capabilities.bindless_sampled_images && capabilities.bindless_samplers &&
+                                    capabilities.bindless_material_tables && capabilities.bindless_geometry_tables;
     const bool virtual_geometry_quality =
         result.quality == render_quality_tier::high || result.quality == render_quality_tier::ultra;
     const bool virtual_geometry_common = optional_features && virtual_geometry_quality && gpu_driven &&
@@ -189,6 +192,12 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                        .draw_indirect = capabilities.draw_indirect,
                        .draw_indirect_count = optional_features && capabilities.draw_indirect_count,
                        .gpu_driven_rendering = gpu_driven,
+                       .gpu_binding_model = bindless_gpu_scene ? gpu_resource_binding_model::bindless
+                                                               : gpu_resource_binding_model::classic,
+                       .gpu_visibility_compaction = bindless_gpu_scene,
+                       .gpu_transparent_sorting = bindless_gpu_scene && capabilities.gpu_transparent_sorting,
+                       .gpu_skinning = bindless_gpu_scene && capabilities.gpu_skinning,
+                       .gpu_terrain_traversal = bindless_gpu_scene && capabilities.gpu_terrain_traversal,
                        .hzb_occlusion = gpu_driven && profile.prefer_hzb_occlusion && capabilities.storage_images &&
                                         capabilities.hzb_occlusion,
                        .fxaa = result.anti_aliasing == anti_aliasing_method::fxaa,
@@ -233,6 +242,10 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
             "GPU-driven rendering requires an executable GPU Scene, compute, storage buffers, shader draw "
             "parameters, and indirect draws; "
             "using CPU visibility");
+    else if (gpu_driven && !bindless_gpu_scene)
+        result.fallback_reasons.push_back(
+            "full GPU multi-draw requires visibility compaction and bindless geometry, material, texture, and "
+            "sampler tables; using classic GPU visibility");
     if (result.anti_aliasing != config.anti_aliasing && config.anti_aliasing != anti_aliasing_method::auto_select)
         result.fallback_reasons.push_back("requested anti-aliasing is unavailable; using an executable fallback");
     if (config.force_disable_gpu_driven)
@@ -1236,35 +1249,38 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             1u, static_cast<std::uint32_t>(std::round(terrain_camera.output_width * resolved_config_.render_scale)));
         terrain_camera.render_height = std::max(
             1u, static_cast<std::uint32_t>(std::round(terrain_camera.output_height * resolved_config_.render_scale)));
-        for (std::uint32_t terrain_index = 0; terrain_index < prepared->terrains.size(); ++terrain_index)
+        if (!resolved_config_.features.gpu_terrain_traversal)
         {
-            const auto& submission = prepared->terrains[terrain_index];
-            if ((submission.render_layer_mask & 0xffffffffu) == 0u) continue;
-            const auto* resource = terrain_data_for(submission.terrain);
-            if (!resource) continue;
-            auto selection = select_terrain_patches(
-                submission.terrain, resource->hierarchy, submission.model, terrain_camera,
-                resolved_config_.geometry_error_threshold, resource->lod.geometric_error_multiplier,
-                &terrain_selection_scratch_[renderer_resource_key(submission.terrain)]);
-            prepared->terrain_statistics.hierarchy_nodes += selection.statistics.hierarchy_nodes;
-            prepared->terrain_statistics.selected_patches += selection.statistics.selected_patches;
-            prepared->terrain_statistics.culled_nodes += selection.statistics.culled_nodes;
-            prepared->terrain_statistics.rendered_triangles += selection.statistics.rendered_triangles;
-            for (std::size_t lod = 0; lod < prepared->terrain_statistics.patches_per_lod.size(); ++lod)
-                prepared->terrain_statistics.patches_per_lod[lod] += selection.statistics.patches_per_lod[lod];
-            prepared->visible_terrain_patches.reserve(prepared->visible_terrain_patches.size() +
-                                                      selection.patches.size());
-            for (const auto& patch : selection.patches)
-                prepared->visible_terrain_patches.push_back({.terrain = patch.terrain,
-                                                             .terrain_index = terrain_index,
-                                                             .hierarchy_node = patch.node_index,
-                                                             .sample_min_x = patch.samples.min_x,
-                                                             .sample_min_z = patch.samples.min_z,
-                                                             .sample_max_x = patch.samples.max_x,
-                                                             .sample_max_z = patch.samples.max_z,
-                                                             .lod = patch.lod,
-                                                             .stitch_mask = patch.stitch_mask,
-                                                             .projected_error = patch.projected_error});
+            for (std::uint32_t terrain_index = 0; terrain_index < prepared->terrains.size(); ++terrain_index)
+            {
+                const auto& submission = prepared->terrains[terrain_index];
+                if ((submission.render_layer_mask & 0xffffffffu) == 0u) continue;
+                const auto* resource = terrain_data_for(submission.terrain);
+                if (!resource) continue;
+                auto selection = select_terrain_patches(
+                    submission.terrain, resource->hierarchy, submission.model, terrain_camera,
+                    resolved_config_.geometry_error_threshold, resource->lod.geometric_error_multiplier,
+                    &terrain_selection_scratch_[renderer_resource_key(submission.terrain)]);
+                prepared->terrain_statistics.hierarchy_nodes += selection.statistics.hierarchy_nodes;
+                prepared->terrain_statistics.selected_patches += selection.statistics.selected_patches;
+                prepared->terrain_statistics.culled_nodes += selection.statistics.culled_nodes;
+                prepared->terrain_statistics.rendered_triangles += selection.statistics.rendered_triangles;
+                for (std::size_t lod = 0; lod < prepared->terrain_statistics.patches_per_lod.size(); ++lod)
+                    prepared->terrain_statistics.patches_per_lod[lod] += selection.statistics.patches_per_lod[lod];
+                prepared->visible_terrain_patches.reserve(prepared->visible_terrain_patches.size() +
+                                                          selection.patches.size());
+                for (const auto& patch : selection.patches)
+                    prepared->visible_terrain_patches.push_back({.terrain = patch.terrain,
+                                                                 .terrain_index = terrain_index,
+                                                                 .hierarchy_node = patch.node_index,
+                                                                 .sample_min_x = patch.samples.min_x,
+                                                                 .sample_min_z = patch.samples.min_z,
+                                                                 .sample_max_x = patch.samples.max_x,
+                                                                 .sample_max_z = patch.samples.max_z,
+                                                                 .lod = patch.lod,
+                                                                 .stitch_mask = patch.stitch_mask,
+                                                                 .projected_error = patch.projected_error});
+            }
         }
 
         previous = {.view_projection = prepared->camera.view_projection,
