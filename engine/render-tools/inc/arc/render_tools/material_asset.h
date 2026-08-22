@@ -48,9 +48,10 @@ struct material_asset_error
  * @brief Canonical authored material document consumed by cooking tools.
  *
  * ARC accepts historical authored versions and normalizes them to
- * @ref material_authoring_version without dropping unknown fields. The graph
- * and shader path are extracted for tools that need them while canonical_json
- * remains the authoritative migrated document persisted into cooked packages.
+ * @ref material_authoring_version without dropping unknown fields. The graph,
+ * shader path, and pass-routing properties are extracted for tools while
+ * canonical_json remains the authoritative migrated document persisted into
+ * cooked packages.
  */
 struct material_authoring_document
 {
@@ -60,6 +61,10 @@ struct material_authoring_document
     std::string canonical_json;
     std::string graph_json;
     std::string shader_path;
+    material_domain domain{material_domain::surface};
+    material_shading_model shading_model{material_shading_model::standard};
+    material_alpha_mode alpha_mode{material_alpha_mode::opaque};
+    bool double_sided{};
 };
 
 using material_authoring_result = core::result<material_authoring_document, material_asset_error>;
