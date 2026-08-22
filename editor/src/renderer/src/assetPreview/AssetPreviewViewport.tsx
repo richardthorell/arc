@@ -184,7 +184,8 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
 
   const finishPointer = (event: PointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.pointerId === event.pointerId) dragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
