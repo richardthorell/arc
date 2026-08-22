@@ -69,6 +69,64 @@ std::string_view slang_parameter_type(shader_parameter_type type)
     }
 }
 
+enum class material_expression_type : std::uint8_t
+{
+    scalar = 1,
+    vector2 = 2,
+    vector3 = 3,
+    vector4 = 4
+};
+
+material_expression_type expression_type(shader_parameter_type type)
+{
+    switch (type)
+    {
+        case shader_parameter_type::float2:
+            return material_expression_type::vector2;
+        case shader_parameter_type::float3:
+            return material_expression_type::vector3;
+        case shader_parameter_type::float4:
+            return material_expression_type::vector4;
+        default:
+            return material_expression_type::scalar;
+    }
+}
+
+material_expression_type expression_type(std::uint8_t components)
+{
+    switch (components)
+    {
+        case 2:
+            return material_expression_type::vector2;
+        case 3:
+            return material_expression_type::vector3;
+        case 4:
+            return material_expression_type::vector4;
+        default:
+            return material_expression_type::scalar;
+    }
+}
+
+std::string_view slang_expression_type(material_expression_type type)
+{
+    switch (type)
+    {
+        case material_expression_type::vector2:
+            return "float2";
+        case material_expression_type::vector3:
+            return "float3";
+        case material_expression_type::vector4:
+            return "float4";
+        default:
+            return "float";
+    }
+}
+
+material_expression_type widest(material_expression_type lhs, material_expression_type rhs)
+{
+    return static_cast<material_expression_type>(std::max(static_cast<std::uint8_t>(lhs), static_cast<std::uint8_t>(rhs)));
+}
+
 struct generated_statement
 {
     std::string text;
@@ -126,6 +184,82 @@ private:
         return emit(found->second->source_node, found->second->source_pin);
     }
 
+    material_expression_type input_type(const std::string& node_id, std::string_view pin,
+                                        material_expression_type fallback)
+    {
+        const auto found = inputs_.find({node_id, std::string(pin)});
+        if (found == inputs_.end()) return fallback;
+        return infer_type(found->second->source_node, found->second->source_pin);
+    }
+
+    material_expression_type infer_type(const std::string& node_id, const std::string& pin)
+    {
+        const auto key = std::pair{node_id, pin};
+        if (const auto found = expression_types_.find(key); found != expression_types_.end()) return found->second;
+        if (!type_visiting_.insert(key).second)
+            throw std::runtime_error("material IR contains a type cycle during code generation");
+
+        const auto found_node = nodes_.find(node_id);
+        if (found_node == nodes_.end()) throw std::runtime_error("material IR references a missing node: " + node_id);
+        const auto& node = *found_node->second;
+
+        material_expression_type type = material_expression_type::scalar;
+        if (node.exposed_parameter && node.kind != material_ir_node_kind::texture_sample)
+        {
+            const auto parameter = parameter_types_.find(node.parameter_id.representation());
+            if (parameter == parameter_types_.end())
+                throw std::runtime_error("material IR exposed parameter is missing descriptor metadata: " + node.id);
+            type = expression_type(parameter->second);
+        }
+        else
+        {
+            switch (node.kind)
+            {
+                case material_ir_node_kind::constant:
+                case material_ir_node_kind::vector2:
+                case material_ir_node_kind::vector3:
+                case material_ir_node_kind::vector4:
+                    type = expression_type(node.literal.components);
+                    break;
+                case material_ir_node_kind::tex_coord:
+                    type = material_expression_type::vector2;
+                    break;
+                case material_ir_node_kind::time:
+                    type = material_expression_type::scalar;
+                    break;
+                case material_ir_node_kind::texture_sample:
+                    type = pin == "rgba"   ? material_expression_type::vector4
+                           : pin == "rgb" ? material_expression_type::vector3
+                                          : material_expression_type::scalar;
+                    break;
+                case material_ir_node_kind::normal_map:
+                    type = material_expression_type::vector3;
+                    break;
+                case material_ir_node_kind::saturate:
+                case material_ir_node_kind::clamp:
+                    type = input_type(node.id, "value", material_expression_type::scalar);
+                    break;
+                case material_ir_node_kind::lerp:
+                    type = widest(input_type(node.id, "a", material_expression_type::scalar),
+                                  input_type(node.id, "b", material_expression_type::scalar));
+                    break;
+                case material_ir_node_kind::add:
+                case material_ir_node_kind::subtract:
+                case material_ir_node_kind::multiply:
+                case material_ir_node_kind::divide:
+                    type = widest(input_type(node.id, "a", material_expression_type::scalar),
+                                  input_type(node.id, "b", material_expression_type::scalar));
+                    break;
+                case material_ir_node_kind::output:
+                    throw std::runtime_error("material output nodes cannot be emitted as expressions");
+            }
+        }
+
+        type_visiting_.erase(key);
+        expression_types_.emplace(key, type);
+        return type;
+    }
+
     std::string emit(const std::string& node_id, const std::string& pin)
     {
         const auto key = std::pair{node_id, pin};
@@ -136,6 +270,7 @@ private:
         const auto found_node = nodes_.find(node_id);
         if (found_node == nodes_.end()) throw std::runtime_error("material IR references a missing node: " + node_id);
         const auto& node = *found_node->second;
+        const auto type = infer_type(node_id, pin);
 
         std::string expression;
         switch (node.kind)
@@ -195,14 +330,12 @@ private:
         }
 
         if (node.exposed_parameter && node.kind != material_ir_node_kind::texture_sample)
-        {
-            if (!parameter_types_.contains(node.parameter_id.representation()))
-                throw std::runtime_error("material IR exposed parameter is missing descriptor metadata: " + node.id);
             expression = "arcMaterialParameters." + parameter_field(node.parameter_id);
-        }
 
         const auto variable = "arc_node_" + sanitize(node.id) + '_' + sanitize(pin);
-        statements_.push_back({.text = "    auto " + variable + " = " + expression + ';', .node_id = node.id});
+        statements_.push_back({.text = "    " + std::string(slang_expression_type(type)) + ' ' + variable + " = " +
+                                       expression + ';',
+                               .node_id = node.id});
         visiting_.erase(key);
         expressions_.emplace(key, variable);
         return variable;
@@ -214,7 +347,9 @@ private:
     std::map<std::string, std::uint32_t> texture_slots_;
     std::map<std::uint64_t, shader_parameter_type> parameter_types_;
     std::map<std::pair<std::string, std::string>, std::string> expressions_;
+    std::map<std::pair<std::string, std::string>, material_expression_type> expression_types_;
     std::set<std::pair<std::string, std::string>> visiting_;
+    std::set<std::pair<std::string, std::string>> type_visiting_;
     std::vector<generated_statement> statements_;
 };
 
