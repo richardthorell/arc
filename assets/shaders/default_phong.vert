@@ -33,7 +33,7 @@ void main()
     mat3 normal_matrix = transpose(inverse(mat3(constants.model)));
     out_normal = normal_matrix * in_normal;
     out_world_position = world_position.xyz;
-    out_color = in_color * constants.base_color;
+    out_color = in_color;
     out_texcoord = in_texcoord;
     out_view_depth = length(constants.camera_position.xyz - world_position.xyz);
     out_tangent = vec4(mat3(constants.model) * in_tangent.xyz, in_tangent.w);
