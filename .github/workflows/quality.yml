@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - name: Set Up Node 22.12
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
@@ -83,4 +85,70 @@ jobs:
           npm test
       - name: Static Analysis
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
-        run: run-clang-tidy-18 -p out/build/analysis -quiet '.*/(engine|editor/native|samples|tools)/.*'
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            run-clang-tidy-18 -p out/build/analysis -quiet '.*/(engine|editor/native|samples|tools)/.*'
+            exit 0
+          fi
+
+          tidy_regex=$(python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          root = Path.cwd().resolve()
+          changed = set(
+              subprocess.check_output(
+                  [
+                      "git",
+                      "diff",
+                      "--name-only",
+                      "--diff-filter=ACMR",
+                      os.environ["BASE_SHA"],
+                      os.environ["HEAD_SHA"],
+                  ],
+                  text=True,
+              ).splitlines()
+          )
+
+          compile_database = json.loads(
+              Path("out/build/analysis/compile_commands.json").read_text(encoding="utf-8")
+          )
+          native_roots = ("engine/", "editor/native/", "samples/", "tools/")
+          selected = set()
+
+          for entry in compile_database:
+              source = Path(entry["file"])
+              if not source.is_absolute():
+                  source = Path(entry["directory"]) / source
+              source = source.resolve()
+
+              try:
+                  relative = source.relative_to(root).as_posix()
+              except ValueError:
+                  continue
+
+              if relative in changed and relative.startswith(native_roots):
+                  selected.add(source.as_posix())
+
+          for source in sorted(selected):
+              print(source, file=os.sys.stderr)
+
+          print("|".join(re.escape(source) for source in sorted(selected)))
+          PY
+          )
+
+          if [[ -z "$tidy_regex" ]]; then
+            echo "No changed native translation units are present in the compile database; skipping clang-tidy."
+            exit 0
+          fi
+
+          echo "Running clang-tidy on changed PR translation units:"
+          run-clang-tidy-18 -p out/build/analysis -quiet "$tidy_regex"
