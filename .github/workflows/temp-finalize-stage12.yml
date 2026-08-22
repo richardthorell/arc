@@ -25,11 +25,8 @@ jobs:
 
           path = Path("engine/render-tools/src/common/material_function.cpp")
           text = path.read_text()
-          old = '''            if (!output_signature.contains(pin))
-                          validation_error(concatenate({"Material Function call '", call_id, "' references unknown output '", pin, "'"}));'''
-          new = '''            if (!output_signature.contains(pin))
-                          return graph_expand_result::failure(validation_error(
-                              concatenate({"Material Function call '", call_id, "' references unknown output '", pin, "'"})));'''
+          old = '                validation_error(concatenate({"Material Function call \'", call_id, "\' references unknown output \'", pin, "\'"})));'
+          new = '                return graph_expand_result::failure(validation_error(concatenate({"Material Function call \'", call_id, "\' references unknown output \'", pin, "\'"})));'
           if text.count(old) != 1:
               raise RuntimeError(f"expected one invalid-output rewrite, found {text.count(old)}")
           path.write_text(text.replace(old, new, 1))
