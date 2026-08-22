@@ -184,11 +184,12 @@ export const compileShaderDocument = async (document: EditorDocument): Promise<b
   setState(document.id, { compiling: true, diagnostics: [] });
   try {
     const extension = current.path.split('.').pop()?.toLocaleLowerCase();
-    const stage = extension === 'vert'
-      ? 'vertex'
-      : extension === 'comp' || /\[shader\s*\(\s*["']compute["']\s*\)\]/i.test(current.source)
-        ? 'compute'
-        : 'fragment';
+    const stage =
+      extension === 'vert'
+        ? 'vertex'
+        : extension === 'comp' || /\[shader\s*\(\s*["']compute["']\s*\)\]/i.test(current.source)
+          ? 'compute'
+          : 'fragment';
     const response = (await window.arc.host.command('shader.compile', {
       path: current.path,
       source: current.source,
