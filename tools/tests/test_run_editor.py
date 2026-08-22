@@ -108,7 +108,7 @@ class EditorSlangBootstrapTests(unittest.TestCase):
         os.close(descriptor)
         self.addCleanup(lambda: os.path.exists(destination) and os.remove(destination))
 
-        def executable(name: str) -> str | None:
+        def executable(name):
             return "powershell" if name == "powershell" else None
 
         with mock.patch.object(run_editor.platform, "system", return_value="Windows"), mock.patch.object(
