@@ -63,19 +63,66 @@ class EditorSlangBootstrapTests(unittest.TestCase):
             self.assertEqual(run_editor.resolve_slangc(str(REPO_ROOT)), cached)
             provision.assert_not_called()
 
-    def test_download_file_uses_compatibility_url_opener(self) -> None:
+    def test_download_file_prefers_curl_over_python_tls(self) -> None:
+        descriptor, destination = tempfile.mkstemp()
+        os.close(descriptor)
+        self.addCleanup(lambda: os.path.exists(destination) and os.remove(destination))
+
+        with mock.patch.object(run_editor, "find_executable", return_value="curl"), mock.patch.object(
+            run_editor.subprocess, "check_call"
+        ) as check_call, mock.patch.object(run_editor, "urlopen") as opener:
+            run_editor.download_file("https://example.invalid/slang.zip", destination)
+
+        check_call.assert_called_once_with(
+            [
+                "curl",
+                "--fail",
+                "--location",
+                "--retry",
+                "3",
+                "--output",
+                destination,
+                "https://example.invalid/slang.zip",
+            ]
+        )
+        opener.assert_not_called()
+
+    def test_download_file_falls_back_to_compatibility_url_opener(self) -> None:
         response = io.BytesIO(b"slang archive")
         descriptor, destination = tempfile.mkstemp()
         os.close(descriptor)
         self.addCleanup(lambda: os.path.exists(destination) and os.remove(destination))
 
-        with mock.patch.object(run_editor, "urlopen", return_value=response) as opener:
+        with mock.patch.object(run_editor, "find_executable", return_value=None), mock.patch.object(
+            run_editor.platform, "system", return_value="Linux"
+        ), mock.patch.object(run_editor, "urlopen", return_value=response) as opener:
             run_editor.download_file("https://example.invalid/slang.zip", destination)
 
         opener.assert_called_once_with("https://example.invalid/slang.zip")
         with open(destination, "rb") as downloaded:
             self.assertEqual(downloaded.read(), b"slang archive")
         self.assertTrue(response.closed)
+
+    def test_windows_download_falls_back_to_powershell_with_tls12(self) -> None:
+        descriptor, destination = tempfile.mkstemp()
+        os.close(descriptor)
+        self.addCleanup(lambda: os.path.exists(destination) and os.remove(destination))
+
+        def executable(name):
+            return "powershell" if name == "powershell" else None
+
+        with mock.patch.object(run_editor.platform, "system", return_value="Windows"), mock.patch.object(
+            run_editor, "find_executable", side_effect=executable
+        ), mock.patch.object(run_editor.subprocess, "check_call") as check_call, mock.patch.object(
+            run_editor, "urlopen"
+        ) as opener:
+            run_editor.download_file("https://example.invalid/slang.zip", destination)
+
+        command = check_call.call_args.args[0]
+        self.assertEqual(command[0], "powershell")
+        self.assertIn("Tls12", command[-1])
+        self.assertIn("Invoke-WebRequest", command[-1])
+        opener.assert_not_called()
 
     def test_exposes_slang_to_editor_and_native_child_processes(self) -> None:
         environment = {"PATH": os.pathsep.join(["existing", "tools"])}
