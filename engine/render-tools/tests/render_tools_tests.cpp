@@ -36,7 +36,7 @@ TEST_CASE("native material graph lowering is deterministic and preserves stable 
     std::size_t cursor{};
     for (std::uint32_t line = 1; line < mapped_line; ++line)
         cursor = first.value().source.find('\n', cursor) + 1;
-    REQUIRE(first.value().source.substr(cursor).starts_with("    auto arc_node_base_color_stable_value"));
+    REQUIRE(first.value().source.substr(cursor).starts_with("    float3 arc_node_base_color_stable_value"));
 }
 
 TEST_CASE("native material graph lowering rejects cycles")
