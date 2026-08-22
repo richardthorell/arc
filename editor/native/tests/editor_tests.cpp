@@ -2849,7 +2849,7 @@ TEST_CASE("editor material assets tolerate missing and future fields")
     REQUIRE_FALSE(arc::editor::is_material_asset_path(root / "mesh.glb"));
 }
 
-TEST_CASE("terrain material version two migrates to version three with fixed layer descriptors")
+TEST_CASE("terrain material version two migrates to current version with fixed layer descriptors")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc_editor_terrain_material_tests";
     std::filesystem::create_directories(root / "materials");
@@ -2874,7 +2874,7 @@ TEST_CASE("terrain material version two migrates to version three with fixed lay
     REQUIRE(arc::editor::save_material_asset(asset, root, message));
     arc::editor::material_asset loaded;
     REQUIRE(arc::editor::load_material_asset(asset.path, root, loaded, message));
-    REQUIRE(loaded.version == 3);
+    REQUIRE(loaded.version == arc::editor::make_default_material_asset().version);
     REQUIRE(loaded.material.domain == arc::render::material_domain::terrain);
     REQUIRE(loaded.material.terrain_layers[0].name == "Grass");
     REQUIRE(loaded.material.terrain_layers[0].world_scale == Catch::Approx(2.75f));
@@ -2888,7 +2888,7 @@ TEST_CASE("terrain material version two migrates to version three with fixed lay
     REQUIRE(loaded.terrain_layers[0].packed_aorh == "textures/terrain/grass/aorh.png");
 }
 
-TEST_CASE("material version three round trips advanced PBR lobes and validates ranges")
+TEST_CASE("current material version round trips advanced PBR lobes and validates ranges")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc_editor_pbr_material_tests";
     std::filesystem::create_directories(root / "materials");
@@ -2913,7 +2913,7 @@ TEST_CASE("material version three round trips advanced PBR lobes and validates r
     REQUIRE(arc::editor::save_material_asset(asset, root, message));
     arc::editor::material_asset loaded;
     REQUIRE(arc::editor::load_material_asset(asset.path, root, loaded, message));
-    REQUIRE(loaded.version == 3);
+    REQUIRE(loaded.version == arc::editor::make_default_material_asset().version);
     REQUIRE(loaded.material.shading_model == arc::render::material_shading_model::transmission);
     REQUIRE(loaded.material.clear_coat_factor == Catch::Approx(0.65f));
     REQUIRE(loaded.material.anisotropy_factor == Catch::Approx(0.72f));
