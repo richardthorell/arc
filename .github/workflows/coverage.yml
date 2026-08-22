@@ -39,7 +39,7 @@ jobs:
           tar -xzf "$archive" -C "$root"
           slangc="$(find "$root" -type f -name slangc -print -quit)"
           test -n "$slangc"
-          version_output="$("$slangc" -version)"
+          version_output="$("$slangc" -version 2>&1)"
           printf '%s\n' "$version_output"
           grep -Eq '(^|[^0-9.])2026\.14\.1([^0-9.]|$)' <<<"$version_output"
           echo "ARC_SLANGC_EXECUTABLE=$slangc" >> "$GITHUB_ENV"
