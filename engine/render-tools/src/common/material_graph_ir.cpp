@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <map>
 #include <optional>
 #include <set>
@@ -17,6 +18,18 @@ namespace arc::render::tools
 namespace
 {
 using json = nlohmann::json;
+
+std::string concatenate(std::initializer_list<std::string_view> parts)
+{
+    std::size_t size{};
+    for (const auto part : parts)
+        size += part.size();
+    std::string result;
+    result.reserve(size);
+    for (const auto part : parts)
+        result.append(part);
+    return result;
+}
 
 std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
 {
@@ -344,13 +357,15 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
             !function_has_pin(source_node.function_outputs, source_pin))
             return material_graph_compile_result::failure(
                 {.code = shader_compile_error_code::validation_failed,
-                 .message = "Material Function call '" + source + "' has no output pin '" + source_pin + "'"});
+                 .message =
+                     concatenate({"Material Function call '", source, "' has no output pin '", source_pin, "'"})});
         const auto& target_node = normalized_nodes.at(target);
         if (target_node.kind == material_ir_node_kind::function_call &&
             !function_has_pin(target_node.function_inputs, target_pin))
             return material_graph_compile_result::failure(
                 {.code = shader_compile_error_code::validation_failed,
-                 .message = "Material Function call '" + target + "' has no input pin '" + target_pin + "'"});
+                 .message =
+                     concatenate({"Material Function call '", target, "' has no input pin '", target_pin, "'"})});
 
         connections.push_back(
             {.source_node = source, .source_pin = source_pin, .target_node = target, .target_pin = target_pin});

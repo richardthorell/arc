@@ -61,7 +61,7 @@ std::string compile_error_message(const render::shader_compile_error& error)
     return message;
 }
 
-std::string normalized_path(std::filesystem::path path)
+std::string normalized_path(const std::filesystem::path& path)
 {
     auto text = path.lexically_normal().generic_string();
     while (text.starts_with("./"))
@@ -148,7 +148,7 @@ std::vector<std::string> nested_function_paths(std::string_view source)
     return paths;
 }
 
-std::filesystem::path assets_root_for(std::filesystem::path source_path)
+std::filesystem::path assets_root_for(const std::filesystem::path& source_path)
 {
     auto current = source_path.parent_path();
     while (!current.empty())
@@ -206,8 +206,15 @@ function_source_result material_function_sources(const assets::asset_cook_contex
             if (functions.contains(nested_key) || pending.contains(nested_key)) continue;
             auto nested_source = read_text_file(nested_path);
             if (!nested_source)
-                return function_source_result::failure("Material Function '" + nested + "' referenced by '" + key +
-                                                       "' could not be loaded: " + nested_source.error());
+            {
+                std::string message = "Material Function '";
+                message.append(nested);
+                message.append("' referenced by '");
+                message.append(key);
+                message.append("' could not be loaded: ");
+                message.append(nested_source.error());
+                return function_source_result::failure(std::move(message));
+            }
             if (!render::tools::is_material_function_json(nested_source.value()))
                 return function_source_result::failure("Material Function dependency is not a function document: " +
                                                        nested_key);

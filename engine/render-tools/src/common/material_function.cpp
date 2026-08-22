@@ -3,6 +3,8 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cstddef>
+#include <initializer_list>
 #include <map>
 #include <optional>
 #include <set>
@@ -36,6 +38,18 @@ using graph_expand_result = core::result<json, shader_compile_error>;
 shader_compile_error validation_error(std::string message)
 {
     return {.code = shader_compile_error_code::validation_failed, .message = std::move(message)};
+}
+
+std::string concatenate(std::initializer_list<std::string_view> parts)
+{
+    std::size_t size{};
+    for (const auto part : parts)
+        size += part.size();
+    std::string result;
+    result.reserve(size);
+    for (const auto part : parts)
+        result.append(part);
+    return result;
 }
 
 std::string normalize_path(std::string_view path)
@@ -192,7 +206,7 @@ function_parse_result parse_function(std::string_view source, std::string_view s
             const auto input = values.value("input", "");
             if (!input_ids.contains(input))
                 return function_parse_result::failure(
-                    validation_error(label + " references unknown function input '" + input + "'"));
+                    validation_error(concatenate({label, " references unknown function input '", input, "'"})));
         }
         const auto parameter = node.value("parameter", json::object());
         if (parameter.value("exposed", false))
@@ -215,7 +229,7 @@ function_parse_result parse_function(std::string_view source, std::string_view s
         if (target_node != function.graph["nodes"].end() && target_node->value("type", "") == "functionOutput" &&
             !output_ids.contains(target_pin))
             return function_parse_result::failure(
-                validation_error(label + " writes unknown function output '" + target_pin + "'"));
+                validation_error(concatenate({label, " writes unknown function output '", target_pin, "'"})));
     }
 
     return function_parse_result::success(std::move(function));
@@ -330,8 +344,8 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         {
             const auto pin = connection["to"].value("pin", "");
             if (!input_signature.contains(pin) || external_inputs.contains(pin))
-                return graph_expand_result::failure(validation_error(
-                    "Material Function call '" + call_id + "' has an invalid or duplicate input '" + pin + "'"));
+                return graph_expand_result::failure(validation_error(concatenate(
+                    {"Material Function call '", call_id, "' has an invalid or duplicate input '", pin, "'"})));
             external_inputs.emplace(
                 pin, endpoint{connection["from"].value("nodeId", ""), connection["from"].value("pin", "")});
         }
@@ -339,8 +353,7 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         {
             const auto pin = connection["from"].value("pin", "");
             if (!output_signature.contains(pin))
-                return graph_expand_result::failure(validation_error("Material Function call '" + call_id +
-                                                                     "' references unknown output '" + pin + "'"));
+                validation_error(concatenate({"Material Function call '", call_id, "' references unknown output '", pin, "'"})));
             external_outputs.push_back(connection);
         }
         else
@@ -367,7 +380,7 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         const auto type = node.value("type", "");
         if (type == "functionInput" || type == "functionOutput") continue;
         auto clone = node;
-        clone["id"] = call_id + "::" + node.value("id", "");
+        clone["id"] = concatenate({call_id, "::", node.value("id", "")});
         added_nodes.push_back(std::move(clone));
     }
 
@@ -384,9 +397,9 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
             return endpoint_result::success(existing->second);
         const auto signature = input_signature.find(boundary->second);
         if (signature == input_signature.end() || !signature->second.has_default)
-            return endpoint_result::failure(validation_error("Material Function call '" + call_id +
-                                                             "' is missing required input '" + boundary->second + "'"));
-        const auto id = call_id + "::default::" + boundary->second;
+            return endpoint_result::failure(validation_error(concatenate(
+                {"Material Function call '", call_id, "' is missing required input '", boundary->second, "'"})));
+        const auto id = concatenate({call_id, "::default::", boundary->second});
         added_nodes.push_back(default_node(id, signature->second));
         const endpoint value{id, "value"};
         default_sources.emplace(boundary->second, value);
@@ -399,7 +412,7 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         if (function_inputs.contains(node)) return input_source(node);
         if (node == function_output)
             return endpoint_result::failure(validation_error("Function Output cannot be used as a graph source"));
-        return endpoint_result::success({call_id + "::" + node, from.value("pin", "")});
+        return endpoint_result::success({concatenate({call_id, "::", node}), from.value("pin", "")});
     };
 
     std::map<std::string, endpoint> function_outputs;
@@ -415,14 +428,15 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         {
             const auto pin = connection["to"].value("pin", "");
             if (!output_signature.contains(pin) || !function_outputs.emplace(pin, source.value()).second)
-                return graph_expand_result::failure(
-                    validation_error("Material Function has an invalid or multiply-connected output '" + pin + "'"));
+                return graph_expand_result::failure(validation_error(
+                    concatenate({"Material Function has an invalid or multiply-connected output '", pin, "'"})));
             continue;
         }
 
         retained_connections.push_back(
             json{{"from", json{{"nodeId", source.value().node}, {"pin", source.value().pin}}},
-                 {"to", json{{"nodeId", call_id + "::" + target_node}, {"pin", connection["to"].value("pin", "")}}}});
+                 {"to", json{{"nodeId", concatenate({call_id, "::", target_node})},
+                             {"pin", connection["to"].value("pin", "")}}}});
     }
 
     for (const auto& connection : external_outputs)
@@ -430,8 +444,8 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         const auto pin = connection["from"].value("pin", "");
         const auto output = function_outputs.find(pin);
         if (output == function_outputs.end())
-            return graph_expand_result::failure(
-                validation_error("Material Function call '" + call_id + "' uses unconnected output '" + pin + "'"));
+            return graph_expand_result::failure(validation_error(
+                concatenate({"Material Function call '", call_id, "' uses unconnected output '", pin, "'"})));
         auto rewritten = connection;
         rewritten["from"]["nodeId"] = output->second.node;
         rewritten["from"]["pin"] = output->second.pin;
