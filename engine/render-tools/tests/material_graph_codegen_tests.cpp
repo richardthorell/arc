@@ -50,8 +50,10 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
     REQUIRE(source.find("surface.ambientOcclusion") != std::string::npos);
     REQUIRE(source.find("surface.emissiveRadiance") != std::string::npos);
     REQUIRE(source.find("arcFrame.timeSeconds") != std::string::npos);
-    REQUIRE(source.find("auto arc_node_a_texture_rgb = arcMaterialTextures[0].Sample") != std::string::npos);
-    REQUIRE(source.find("auto arc_node_z_texture_rgb = arcMaterialTextures[1].Sample") != std::string::npos);
+    REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcMaterialTextures[0].Sample") != std::string::npos);
+    REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcMaterialTextures[1].Sample") != std::string::npos);
+    REQUIRE(source.find("float3 arc_node_tinted_result =") != std::string::npos);
+    REQUIRE(source.find("float arc_node_clock_time = arcFrame.timeSeconds") != std::string::npos);
     REQUIRE(source.find("input.uv0") != std::string::npos);
 
     REQUIRE(first.value().parameters.size() == compilation.value().descriptor.parameters.size());
