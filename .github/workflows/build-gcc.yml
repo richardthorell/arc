@@ -34,6 +34,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-14 g++-14 ninja-build ccache
+      - name: Set Up Slang 2026.14.1
+        uses: ./.github/actions/setup-slang
       - name: Set Up Vulkan SDK 1.4.350.0
         uses: ./.github/actions/setup-vulkan
       - name: Restore Compiler Cache
