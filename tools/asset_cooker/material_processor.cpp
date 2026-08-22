@@ -3,9 +3,11 @@
 #include <arc/render_tools/render_tools.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -13,6 +15,44 @@ namespace arc::tools
 {
 namespace
 {
+
+constexpr std::array material_passes{render::material_pass::depth,     render::material_pass::shadow,
+                                     render::material_pass::gbuffer,   render::material_pass::forward,
+                                     render::material_pass::motion,    render::material_pass::object_id,
+                                     render::material_pass::selection};
+
+std::string_view pass_name(render::material_pass pass) noexcept
+{
+    switch (pass)
+    {
+        case render::material_pass::depth:
+            return "depth";
+        case render::material_pass::shadow:
+            return "shadow";
+        case render::material_pass::gbuffer:
+            return "gbuffer";
+        case render::material_pass::forward:
+            return "forward";
+        case render::material_pass::motion:
+            return "motion";
+        case render::material_pass::object_id:
+            return "object-id";
+        case render::material_pass::selection:
+            return "selection";
+        case render::material_pass::ray_hit:
+            return "ray-hit";
+    }
+    return "unknown";
+}
+
+std::string compile_error_message(const render::shader_compile_error& error)
+{
+    std::string message = error.message;
+    for (const auto& diagnostic : error.diagnostics)
+        message += "\n" + diagnostic.location.path + ":" + std::to_string(diagnostic.location.line) + ":" +
+                   std::to_string(diagnostic.location.column) + ": " + diagnostic.message;
+    return message;
+}
 
 class material_processor final : public assets::asset_cook_processor
 {
@@ -22,7 +62,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 4;
+        descriptor_.version = 5;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
@@ -34,8 +74,8 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/4;arc-material-package/2;arc-material-authoring/4;arc-material-ir/1;"
-               "arc-material-codegen/1;" +
+        return "arc.material-cooker/5;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
+               "arc-material-codegen/1;arc-material-pass-contract/1;arc-material-pass-codegen/1;" +
                std::string(compiler_.fingerprint());
     }
 
@@ -60,8 +100,7 @@ public:
                  .message = "Migrated authored material schema v" + std::to_string(authored.value().source_version) +
                             " to v" + std::to_string(render::tools::material_authoring_version) + " during cook"});
 
-        render::shader_package_id package_id{};
-        render::shader_permutation_id permutation{};
+        render::material_compiled_program program;
         std::vector<render::shader_parameter_descriptor> parameters;
         if (!authored.value().graph_json.empty())
         {
@@ -72,84 +111,96 @@ public:
                                   .path = context.source.source_path,
                                   .message = compiled_graph.error().message}};
 
-            auto generated = render::tools::generate_material_slang(compiled_graph.value());
-            if (!generated)
-                return {.error = {.code = assets::asset_error_code::import_failed,
-                                  .guid = context.asset.guid,
-                                  .path = context.source.source_path,
-                                  .message = generated.error().message}};
-
-            render::shader_compile_request request{
-                .source_path = context.source.source_path.string() + ".generated.slang",
-                .source_override = generated.value().source,
-                .entry_point = "main",
-                .profile = "spirv_1_5",
-                .domain = render::shader_domain::surface,
-                .stage = render::shader_stage::fragment,
-                .target = render::shader_target::spirv,
-                .optimization = context.target.configuration == assets::cook_configuration::shipping
-                                    ? render::shader_optimization::performance
-                                    : render::shader_optimization::development,
-                .required_passes = {render::material_pass::depth, render::material_pass::shadow,
-                                    render::material_pass::gbuffer, render::material_pass::forward,
-                                    render::material_pass::motion, render::material_pass::object_id,
-                                    render::material_pass::selection},
-                .generated_line_nodes = generated.value().generated_line_nodes,
-                .generate_debug_information = context.target.configuration != assets::cook_configuration::shipping};
-            auto compiled = cache_.compile_or_get(compiler_, request);
-            if (!compiled)
-            {
-                std::string message = compiled.error().message;
-                for (const auto& diagnostic : compiled.error().diagnostics)
-                    message += "\n" + diagnostic.location.path + ":" + std::to_string(diagnostic.location.line) + ":" +
-                               std::to_string(diagnostic.location.column) + ": " + diagnostic.message;
-                return {.error = {.code = assets::asset_error_code::import_failed,
-                                  .guid = context.asset.guid,
-                                  .path = context.source.source_path,
-                                  .message = std::move(message)}};
-            }
-
-            parameters = generated.value().parameters;
-            std::uint32_t offset{};
+            parameters = compiled_graph.value().descriptor.parameters;
+            std::uint32_t parameter_block_size{};
             for (auto& parameter : parameters)
             {
-                parameter.offset = offset;
-                offset += (parameter.size + 15u) & ~15u;
+                parameter.offset = parameter_block_size;
+                parameter_block_size += (parameter.size + 15u) & ~15u;
             }
-            for (const auto& [line, node] : request.generated_line_nodes)
-                compiled.value().source_map.push_back({.generated_line = line,
-                                                       .source = {.path = context.source.source_path.generic_string(),
-                                                                  .line = line,
-                                                                  .graph_node_id = node}});
-            std::ranges::sort(compiled.value().source_map, {}, &render::shader_source_map_entry::generated_line);
-            compiled.value().reflection.parameters = parameters;
-            compiled.value().reflection.parameter_block_size = offset;
 
-            package_id = {.high = context.asset.guid.high, .low = context.asset.guid.low};
-            permutation = {1};
-            render::shader_package package{.id = package_id,
-                                           .generation = {std::max<std::uint64_t>(context.asset.generation, 1)},
-                                           .target = render::shader_target::spirv,
-                                           .permutation = permutation,
-                                           .compiled = std::move(compiled).value()};
-            auto bytes = render::serialize_shader_package(package);
-            if (!bytes)
-                return {.error = {.code = assets::asset_error_code::import_failed,
-                                  .guid = context.asset.guid,
-                                  .path = context.source.source_path,
-                                  .message = bytes.error().message}};
-            artifacts.push_back({.name = context.source.source_path.stem().string(),
-                                 .extension = ".arcshader",
-                                 .schema = assets::artifact_schemas::shader,
-                                 .schema_version = render::shader_package::current_version,
-                                 .bytes = std::move(bytes).value()});
+            const render::material_descriptor pass_material{.domain = authored.value().domain,
+                                                            .shading_model = authored.value().shading_model,
+                                                            .alpha_mode = authored.value().alpha_mode,
+                                                            .double_sided = authored.value().double_sided};
+            program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
+
+            for (const auto pass : material_passes)
+            {
+                if (!render::material_supports_pass(pass_material, pass)) continue;
+
+                auto generated = render::tools::generate_material_pass_slang(compiled_graph.value(), pass_material, pass);
+                if (!generated)
+                    return {.error = {.code = assets::asset_error_code::import_failed,
+                                      .guid = context.asset.guid,
+                                      .path = context.source.source_path,
+                                      .message = generated.error().message}};
+
+                const std::string pass_label{pass_name(pass)};
+                render::shader_compile_request request{
+                    .source_path = context.source.source_path.string() + "." + pass_label + ".generated.slang",
+                    .source_override = generated.value().source,
+                    .entry_point = generated.value().entry_point,
+                    .profile = "spirv_1_5",
+                    .library_version = "arc-material-pass/1",
+                    .domain = render::shader_domain::surface,
+                    .stage = render::shader_stage::fragment,
+                    .target = render::shader_target::spirv,
+                    .optimization = context.target.configuration == assets::cook_configuration::shipping
+                                        ? render::shader_optimization::performance
+                                        : render::shader_optimization::development,
+                    .required_passes = {pass},
+                    .generated_line_nodes = generated.value().generated_line_nodes,
+                    .generate_debug_information =
+                        context.target.configuration != assets::cook_configuration::shipping};
+                auto compiled = cache_.compile_or_get(compiler_, request);
+                if (!compiled)
+                    return {.error = {.code = assets::asset_error_code::import_failed,
+                                      .guid = context.asset.guid,
+                                      .path = context.source.source_path,
+                                      .message = compile_error_message(compiled.error())}};
+
+                for (const auto& [line, node] : request.generated_line_nodes)
+                    compiled.value().source_map.push_back(
+                        {.generated_line = line,
+                         .source = {.path = context.source.source_path.generic_string(),
+                                    .line = line,
+                                    .graph_node_id = node}});
+                std::ranges::sort(compiled.value().source_map, {}, &render::shader_source_map_entry::generated_line);
+                compiled.value().reflection.parameters = parameters;
+                compiled.value().reflection.parameter_block_size = parameter_block_size;
+
+                const auto entry_point =
+                    render::make_shader_entry_point_id(request.entry_point, render::shader_stage::fragment);
+                program.passes.push_back({.pass = pass,
+                                          .permutation = generated.value().permutation,
+                                          .entry_point = entry_point,
+                                          .build_hash = compiled.value().build_hash});
+
+                render::shader_package package{
+                    .id = program.package,
+                    .generation = {std::max<std::uint64_t>(context.asset.generation, 1)},
+                    .target = render::shader_target::spirv,
+                    .permutation = generated.value().permutation,
+                    .compiled = std::move(compiled).value()};
+                auto bytes = render::serialize_shader_package(package);
+                if (!bytes)
+                    return {.error = {.code = assets::asset_error_code::import_failed,
+                                      .guid = context.asset.guid,
+                                      .path = context.source.source_path,
+                                      .message = bytes.error().message}};
+                artifacts.push_back({.name = context.source.source_path.stem().string() + "." + pass_label,
+                                     .extension = ".arcshader",
+                                     .schema = assets::artifact_schemas::shader,
+                                     .schema_version = render::shader_package::current_version,
+                                     .bytes = std::move(bytes).value()});
+            }
         }
 
-        auto material_bytes =
-            render::tools::serialize_material_package_v2({.shader_package = package_id,
-                                                          .permutation = permutation,
-                                                          .parameters = parameters,
-                                                          .canonical_document_json = authored.value().canonical_json});
+        auto material_bytes = render::tools::serialize_material_package_v3(
+            {.compiled = std::move(program),
+             .parameters = std::move(parameters),
+             .canonical_document_json = authored.value().canonical_json});
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatc",
                              .schema = descriptor_.schema,
