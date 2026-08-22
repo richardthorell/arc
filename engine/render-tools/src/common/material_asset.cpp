@@ -38,9 +38,8 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
     if (has_version)
     {
         if (!document["version"].is_number_integer())
-            return material_authoring_result::failure(
-                {.code = material_asset_error_code::invalid_document,
-                 .message = "Material document version must be an integer"});
+            return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
+                                                       .message = "Material document version must be an integer"});
         const auto authored_version = document["version"].get<std::int64_t>();
         if (authored_version < 1 || authored_version > static_cast<std::int64_t>(material_authoring_version))
             return material_authoring_result::failure(
@@ -53,9 +52,8 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
     if (document.contains("graph"))
     {
         if (!document["graph"].is_object())
-            return material_authoring_result::failure(
-                {.code = material_asset_error_code::invalid_document,
-                 .message = "Material document graph must be an object"});
+            return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
+                                                       .message = "Material document graph must be an object"});
         graph_json = document["graph"].dump();
     }
 
@@ -63,9 +61,8 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
     if (document.contains("shaderPath"))
     {
         if (!document["shaderPath"].is_string())
-            return material_authoring_result::failure(
-                {.code = material_asset_error_code::invalid_document,
-                 .message = "Material document shaderPath must be a string"});
+            return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
+                                                       .message = "Material document shaderPath must be a string"});
         shader_path = document["shaderPath"].get<std::string>();
     }
 

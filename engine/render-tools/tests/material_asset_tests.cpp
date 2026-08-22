@@ -75,8 +75,7 @@ TEST_CASE("material authoring schema validates typed migration fields")
     REQUIRE_FALSE(invalid_graph);
     REQUIRE(invalid_graph.error().code == arc::render::tools::material_asset_error_code::invalid_document);
 
-    const auto invalid_shader =
-        arc::render::tools::parse_material_authoring_json(R"({"version":2,"shaderPath":42})");
+    const auto invalid_shader = arc::render::tools::parse_material_authoring_json(R"({"version":2,"shaderPath":42})");
     REQUIRE_FALSE(invalid_shader);
     REQUIRE(invalid_shader.error().code == arc::render::tools::material_asset_error_code::invalid_document);
 }

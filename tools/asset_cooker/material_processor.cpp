@@ -53,13 +53,12 @@ public:
         std::vector<assets::cooked_artifact> artifacts;
         std::vector<assets::asset_diagnostic> diagnostics;
         if (authored.value().migrated)
-            diagnostics.push_back({.severity = assets::asset_diagnostic_severity::information,
-                                   .guid = context.asset.guid,
-                                   .category = "material.schema",
-                                   .message = "Migrated authored material schema v" +
-                                              std::to_string(authored.value().source_version) + " to v" +
-                                              std::to_string(render::tools::material_authoring_version) +
-                                              " during cook"});
+            diagnostics.push_back(
+                {.severity = assets::asset_diagnostic_severity::information,
+                 .guid = context.asset.guid,
+                 .category = "material.schema",
+                 .message = "Migrated authored material schema v" + std::to_string(authored.value().source_version) +
+                            " to v" + std::to_string(render::tools::material_authoring_version) + " during cook"});
 
         render::shader_package_id package_id{};
         render::shader_permutation_id permutation{};
@@ -146,11 +145,11 @@ public:
                                  .bytes = std::move(bytes).value()});
         }
 
-        auto material_bytes = render::tools::serialize_material_package_v2(
-            {.shader_package = package_id,
-             .permutation = permutation,
-             .parameters = parameters,
-             .canonical_document_json = authored.value().canonical_json});
+        auto material_bytes =
+            render::tools::serialize_material_package_v2({.shader_package = package_id,
+                                                          .permutation = permutation,
+                                                          .parameters = parameters,
+                                                          .canonical_document_json = authored.value().canonical_json});
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatc",
                              .schema = descriptor_.schema,
