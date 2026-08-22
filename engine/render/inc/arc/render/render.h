@@ -17,6 +17,7 @@
 #include <arc/render/lighting_scene.h>
 #include <arc/render/material.h>
 #include <arc/render/material_abi.h>
+#include <arc/render/material_pass.h>
 #include <arc/render/mesh.h>
 #include <arc/render/primitives.h>
 #include <arc/render/render_backend.h>
