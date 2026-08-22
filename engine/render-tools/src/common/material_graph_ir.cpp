@@ -191,8 +191,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
     for (const auto& authored_node : document["nodes"])
     {
         if (!authored_node.is_object())
-            return material_graph_compile_result::failure(
-                {.code = shader_compile_error_code::validation_failed, .message = "material graph contains an invalid node"});
+            return material_graph_compile_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                           .message = "material graph contains an invalid node"});
 
         const auto id = authored_node.value("id", "");
         const auto type = authored_node.value("type", "");
@@ -202,9 +202,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                 {.code = shader_compile_error_code::validation_failed,
                  .message = "material graph contains a missing or duplicate stable node ID"});
         if (!kind)
-            return material_graph_compile_result::failure(
-                {.code = shader_compile_error_code::validation_failed,
-                 .message = "unsupported material graph node type: " + type});
+            return material_graph_compile_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                           .message = "unsupported material graph node type: " + type});
         if (*kind == material_ir_node_kind::output)
         {
             if (!output_node.empty())
@@ -239,9 +238,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
     {
         if (!edge.is_object() || !edge.contains("from") || !edge["from"].is_object() || !edge.contains("to") ||
             !edge["to"].is_object())
-            return material_graph_compile_result::failure(
-                {.code = shader_compile_error_code::validation_failed,
-                 .message = "material graph contains an invalid connection"});
+            return material_graph_compile_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                           .message = "material graph contains an invalid connection"});
 
         const auto source = edge["from"].value("nodeId", "");
         const auto source_pin = edge["from"].value("pin", "");
@@ -254,10 +252,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                 {.code = shader_compile_error_code::validation_failed,
                  .message = "material graph contains an invalid or multiply-connected input"});
 
-        connections.push_back({.source_node = source,
-                               .source_pin = source_pin,
-                               .target_node = target,
-                               .target_pin = target_pin});
+        connections.push_back(
+            {.source_node = source, .source_pin = source_pin, .target_node = target, .target_pin = target_pin});
         adjacency[source].push_back(target);
     }
 
@@ -269,11 +265,9 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         static_cast<void>(id);
         compilation.ir.nodes.push_back(std::move(node));
     }
-    std::ranges::sort(connections, {}, [](const material_ir_connection& connection)
-                      {
-                          return std::tuple{connection.target_node,
-                                            connection.target_pin,
-                                            connection.source_node,
+    std::ranges::sort(connections, {},
+                      [](const material_ir_connection& connection) {
+                          return std::tuple{connection.target_node, connection.target_pin, connection.source_node,
                                             connection.source_pin};
                       });
     compilation.ir.connections = std::move(connections);
@@ -316,14 +310,11 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                 compilation.descriptor.requirements.uses_texture_sampling = true;
                 if (!inputs.contains({node.id, "uv"})) compilation.descriptor.requirements.uses_uv0 = true;
                 const auto slot = static_cast<std::uint32_t>(compilation.descriptor.textures.size());
-                compilation.descriptor.textures.push_back({.node_id = node.id,
-                                                           .slot = slot,
-                                                           .parameter_id = node.exposed_parameter
-                                                                               ? node.parameter_id
-                                                                               : shader_parameter_id{},
-                                                           .parameter_name = node.exposed_parameter
-                                                                                 ? node.parameter_name
-                                                                                 : std::string{}});
+                compilation.descriptor.textures.push_back(
+                    {.node_id = node.id,
+                     .slot = slot,
+                     .parameter_id = node.exposed_parameter ? node.parameter_id : shader_parameter_id{},
+                     .parameter_name = node.exposed_parameter ? node.parameter_name : std::string{}});
                 break;
             }
             case material_ir_node_kind::normal_map:
@@ -334,8 +325,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         }
     }
 
-    std::ranges::sort(compilation.descriptor.parameters, {}, [](const shader_parameter_descriptor& parameter)
-                      { return parameter.id.representation(); });
+    std::ranges::sort(compilation.descriptor.parameters, {},
+                      [](const shader_parameter_descriptor& parameter) { return parameter.id.representation(); });
 
     compilation.descriptor.outputs.reserve(surface_outputs.size());
     for (const auto& [semantic, pin] : surface_outputs)

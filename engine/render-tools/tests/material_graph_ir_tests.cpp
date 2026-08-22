@@ -8,18 +8,17 @@
 
 namespace
 {
-const arc::render::tools::material_surface_output_binding* find_output(
-    const arc::render::tools::material_graph_descriptor& descriptor,
-    arc::render::tools::material_surface_output output)
+const arc::render::tools::material_surface_output_binding*
+find_output(const arc::render::tools::material_graph_descriptor& descriptor,
+            arc::render::tools::material_surface_output output)
 {
     for (const auto& binding : descriptor.outputs)
         if (binding.output == output) return &binding;
     return nullptr;
 }
 
-const arc::render::shader_parameter_descriptor* find_parameter(
-    const arc::render::tools::material_graph_descriptor& descriptor,
-    std::string_view name)
+const arc::render::shader_parameter_descriptor*
+find_parameter(const arc::render::tools::material_graph_descriptor& descriptor, std::string_view name)
 {
     for (const auto& parameter : descriptor.parameters)
         if (parameter.name == name) return &parameter;
