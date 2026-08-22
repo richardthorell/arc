@@ -6,10 +6,12 @@
  */
 
 #include <arc/core/result.h>
+#include <arc/render/material_pass.h>
 #include <arc/render/shader.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -20,19 +22,22 @@ namespace arc::render::tools
 /** Current authored material document version used by the editor and cooker. */
 inline constexpr std::uint32_t material_authoring_version = 4;
 /** Current cooked ARC material package schema version. */
-inline constexpr std::uint32_t material_package_version = 2;
-/** Stable signature of the version-2 cooked material payload. */
-inline constexpr std::string_view material_package_signature = "ARC_MATERIAL_2";
+inline constexpr std::uint32_t material_package_version = 3;
+/** Stable signature of the legacy version-2 cooked material payload. */
+inline constexpr std::string_view material_package_v2_signature = "ARC_MATERIAL_2";
+/** Stable signature of the version-3 pass-aware cooked material payload. */
+inline constexpr std::string_view material_package_signature = "ARC_MATERIAL_3";
 
-/** Failure category produced while reading an authored material document. */
+/** Failure category produced while reading an authored or cooked material document. */
 enum class material_asset_error_code : std::uint8_t
 {
     malformed_json,
     unsupported_version,
-    invalid_document
+    invalid_document,
+    corrupt_package
 };
 
-/** Structured authored-material schema error. */
+/** Structured material schema error. */
 struct material_asset_error
 {
     material_asset_error_code code{material_asset_error_code::invalid_document};
@@ -62,7 +67,7 @@ using material_authoring_result = core::result<material_authoring_document, mate
 /** Parse versions 1-4 and migrate them in memory to the canonical authored material schema. */
 [[nodiscard]] material_authoring_result parse_material_authoring_json(std::string_view source);
 
-/** Data stored by the stable ARC_MATERIAL_2 cooked package envelope. */
+/** Data stored by the legacy ARC_MATERIAL_2 cooked package envelope. */
 struct material_package_v2
 {
     shader_package_id shader_package{};
@@ -71,13 +76,23 @@ struct material_package_v2
     std::string canonical_document_json;
 };
 
-/**
- * @brief Serialize the version-2 material package without changing its existing byte layout.
- *
- * Keeping this operation in render-tools makes the package contract explicit
- * while preserving compatibility with material artifacts cooked before the
- * dedicated material processor was extracted.
- */
+/** Data stored by the pass-aware ARC_MATERIAL_3 cooked package envelope. */
+struct material_package_v3
+{
+    material_compiled_program compiled;
+    std::vector<shader_parameter_descriptor> parameters;
+    std::string canonical_document_json;
+};
+
+using material_package_v3_result = core::result<material_package_v3, material_asset_error>;
+
+/** Serialize the legacy version-2 material package without changing its byte layout. */
 [[nodiscard]] std::vector<std::byte> serialize_material_package_v2(const material_package_v2& package);
+
+/** Serialize deterministic pass-aware ARC_MATERIAL_3 bytes. */
+[[nodiscard]] std::vector<std::byte> serialize_material_package_v3(const material_package_v3& package);
+
+/** Decode and validate deterministic ARC_MATERIAL_3 bytes. */
+[[nodiscard]] material_package_v3_result deserialize_material_package_v3(std::span<const std::byte> bytes);
 
 } // namespace arc::render::tools
