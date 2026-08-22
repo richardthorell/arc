@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -81,8 +80,11 @@ private:
 bool read_parameter(package_reader& reader, shader_parameter_descriptor& parameter)
 {
     std::uint64_t id{};
-    return reader.value(id) && reader.string(parameter.name) && reader.value(parameter.type) &&
-           reader.value(parameter.offset) && reader.value(parameter.size) && (parameter.id = {id}, true);
+    if (!reader.value(id) || !reader.string(parameter.name) || !reader.value(parameter.type) ||
+        !reader.value(parameter.offset) || !reader.value(parameter.size))
+        return false;
+    parameter.id = {id};
+    return parameter.id.valid();
 }
 
 } // namespace
@@ -194,6 +196,10 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
         return material_package_v3_result::failure(
             {.code = material_asset_error_code::unsupported_version,
              .message = "Material package uses an unsupported pass contract or Material ABI"});
+    if (!package.compiled.package.valid())
+        return material_package_v3_result::failure(
+            {.code = material_asset_error_code::corrupt_package,
+             .message = "Material package contains an invalid shader package ID"});
 
     std::uint32_t pass_count{};
     if (!reader.value(pass_count) || pass_count > 32u)
