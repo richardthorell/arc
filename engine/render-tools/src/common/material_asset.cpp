@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <type_traits>
+#include <utility>
 
 namespace arc::render::tools
 {
@@ -49,20 +50,20 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
     }
 
     std::string graph_json;
-    if (document.contains("graph"))
+    if (document.contains("graph") && !document["graph"].is_null())
     {
         if (!document["graph"].is_object())
             return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
-                                                       .message = "Material document graph must be an object"});
+                                                       .message = "Material document graph must be an object or null"});
         graph_json = document["graph"].dump();
     }
 
     std::string shader_path;
-    if (document.contains("shaderPath"))
+    if (document.contains("shaderPath") && !document["shaderPath"].is_null())
     {
         if (!document["shaderPath"].is_string())
             return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
-                                                       .message = "Material document shaderPath must be a string"});
+                                                       .message = "Material document shaderPath must be a string or null"});
         shader_path = document["shaderPath"].get<std::string>();
     }
 
