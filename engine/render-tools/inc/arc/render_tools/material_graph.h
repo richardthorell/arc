@@ -204,7 +204,7 @@ struct material_shader_source
 
 using material_graph_compile_result = core::result<material_graph_compilation, shader_compile_error>;
 using material_shader_codegen_result = core::result<material_shader_source, shader_compile_error>;
-using material_function_validation_result = core::result<material_function_descriptor, shader_compile_error>;
+using material_function_validation_result = core::result<std::vector<material_function_pin>, shader_compile_error>;
 
 /**
  * @brief Validate and normalize authored material graph JSON into native IR and descriptor data.
@@ -224,7 +224,7 @@ using material_function_validation_result = core::result<material_function_descr
 [[nodiscard]] material_graph_compile_result
 compile_material_graph_json(std::string_view graph_json, std::span<const material_function_source> functions);
 
-/** @brief Validate one first-class Material/Shader Function document and return its public descriptor. */
+/** @brief Validate one first-class Material/Shader Function document and return its public pins. */
 [[nodiscard]] material_function_validation_result validate_material_function_json(std::string_view function_json,
                                                                                    std::string_view source_path = {});
 
