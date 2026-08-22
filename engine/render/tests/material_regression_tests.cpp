@@ -3,7 +3,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-TEST_CASE("material descriptor compatibility defaults remain stable")
+TEST_CASE("material descriptor production defaults remain stable")
 {
     const arc::render::material_descriptor material;
 
@@ -11,7 +11,7 @@ TEST_CASE("material descriptor compatibility defaults remain stable")
     REQUIRE(material.name.empty());
     REQUIRE(material.domain == arc::render::material_domain::surface);
     REQUIRE(material.shading_model == arc::render::material_shading_model::standard);
-    REQUIRE(material.pipeline == arc::render::material_pipeline::legacy);
+    REQUIRE(material.pipeline == arc::render::material_pipeline::compiled);
 
     REQUIRE(material.base_color[0] == Catch::Approx(1.0f));
     REQUIRE(material.base_color[1] == Catch::Approx(1.0f));
@@ -77,7 +77,7 @@ TEST_CASE("material descriptor compatibility defaults remain stable")
     }
 }
 
-TEST_CASE("representative advanced material preserves the legacy permutation contract")
+TEST_CASE("representative advanced material preserves the shader permutation contract")
 {
     arc::render::material_descriptor material;
     material.domain = arc::render::material_domain::surface;
@@ -130,20 +130,20 @@ TEST_CASE("representative advanced material preserves the legacy permutation con
     REQUIRE(key.parallax);
 }
 
-TEST_CASE("material migration selector is opt in and does not change legacy permutations")
+TEST_CASE("material implementation selection does not change shader permutations")
 {
     arc::render::material_descriptor material;
     material.normal_texture = {.index = 1, .generation = 1};
     material.clear_coat_factor = 0.5f;
 
-    REQUIRE(material.pipeline == arc::render::material_pipeline::legacy);
-    const auto legacy_key = arc::render::make_shader_permutation_key(material);
-
-    material.pipeline = arc::render::material_pipeline::compiled;
     REQUIRE(material.pipeline == arc::render::material_pipeline::compiled);
-    REQUIRE(arc::render::make_shader_permutation_key(material) == legacy_key);
+    const auto compiled_key = arc::render::make_shader_permutation_key(material);
+
+    material.pipeline = arc::render::material_pipeline::legacy;
+    REQUIRE(material.pipeline == arc::render::material_pipeline::legacy);
+    REQUIRE(arc::render::make_shader_permutation_key(material) == compiled_key);
 
     material.pipeline = arc::render::material_pipeline::compare;
     REQUIRE(material.pipeline == arc::render::material_pipeline::compare);
-    REQUIRE(arc::render::make_shader_permutation_key(material) == legacy_key);
+    REQUIRE(arc::render::make_shader_permutation_key(material) == compiled_key);
 }

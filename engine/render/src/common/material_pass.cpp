@@ -152,11 +152,11 @@ material_pipeline_resolution resolve_material_pipeline(const material_descriptor
         case material_pipeline::legacy:
             return {.use_legacy = true};
         case material_pipeline::compiled:
-            return {.use_legacy = !compiled_contract_valid, .use_compiled = compiled_contract_valid};
+            return {.use_compiled = compiled_contract_valid};
         case material_pipeline::compare:
             return {.use_legacy = true, .use_compiled = compiled_contract_valid, .compare = compiled_contract_valid};
     }
-    return {.use_legacy = true};
+    return {};
 }
 
 } // namespace arc::render
