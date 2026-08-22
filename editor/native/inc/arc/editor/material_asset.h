@@ -39,7 +39,7 @@ struct terrain_layer_texture_paths
 
 struct material_asset
 {
-    int version{3};
+    int version{4};
     std::filesystem::path path;
     std::string name{"New Material"};
     std::string shader{"arc/default_phong"};

@@ -1,13 +1,18 @@
 #pragma once
 
+#include <arc/core/result.h>
 #include <arc/render/handles.h>
+#include <arc/render/shader.h>
+#include <arc/math/matrix.h>
 #include <arc/math/vector.h>
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace arc::render
@@ -26,7 +31,29 @@ enum class material_shading_model : std::uint8_t
 {
     standard,
     skin,
-    transmission
+    transmission,
+    unlit,
+    custom_lit
+};
+
+/** @brief Renderer path selected after validating a material contract. */
+enum class material_render_path : std::uint8_t
+{
+    deferred,
+    clustered_forward
+};
+
+/** @brief Runtime value accepted by a reflected material parameter. */
+using material_parameter_value =
+    std::variant<bool, std::int32_t, std::uint32_t, float, math::vector2f, math::vector3f, math::vector4f,
+                 math::matrix4x4f, resource_handle>;
+
+/** @brief Stable material parameter value overriding a shader default. */
+struct material_parameter_override
+{
+    shader_parameter_id id{};
+    std::string name;
+    material_parameter_value value{0.0f};
 };
 
 /**
@@ -200,6 +227,10 @@ struct material_descriptor
     std::string name;
     material_domain domain{material_domain::surface};
     material_shading_model shading_model{material_shading_model::standard};
+    material_render_path render_path{material_render_path::deferred};
+    shader_package_id shader_package{};
+    shader_permutation_id shader_permutation{};
+    bool deferred_compatible{true};
 
     math::vector4f base_color = math::vector4f::one;
     float metallic{};
@@ -246,8 +277,51 @@ struct material_descriptor
     material_displacement_mode displacement_mode{material_displacement_mode::none};
 
     resource_handle material_graph{};
+    std::vector<material_parameter_override> parameters;
     std::array<terrain_layer_descriptor, 4> terrain_layers{};
 };
+
+/** @brief Runtime material definition produced from an authored `.arcmat`. */
+struct material_definition_descriptor
+{
+    material_descriptor material;
+    std::vector<shader_static_switch> static_switches;
+    std::vector<shader_parameter_descriptor> parameter_layout;
+};
+
+/** @brief Lightweight parameter-only material instance produced from `.arcmatinst`. */
+struct material_instance_descriptor
+{
+    material_handle parent{};
+    std::string name;
+    std::vector<material_parameter_override> overrides;
+};
+
+/** @brief Material-instance resolution failure categories. */
+enum class material_instance_error_code : std::uint8_t
+{
+    invalid_parent,
+    duplicate_override,
+    unknown_parameter,
+    incompatible_type
+};
+
+/** @brief Structured failure while applying instance overrides. */
+struct material_instance_error
+{
+    material_instance_error_code code{material_instance_error_code::unknown_parameter};
+    shader_parameter_id parameter{};
+    std::string message;
+};
+
+using material_instance_result = core::result<material_descriptor, material_instance_error>;
+
+/** @brief Resolve parameter-only overrides without changing the shader permutation. */
+[[nodiscard]] material_instance_result resolve_material_instance(const material_definition_descriptor& definition,
+                                                                 const material_instance_descriptor& instance);
+
+/** @brief Resolve deferred versus clustered-forward routing for a material. */
+[[nodiscard]] material_render_path resolve_material_render_path(const material_descriptor& material) noexcept;
 
 /**
  * @brief Compact shader permutation key for material and debug variants.

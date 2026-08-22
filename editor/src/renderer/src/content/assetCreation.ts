@@ -48,7 +48,7 @@ const defaultMaterialAsset = (name: string): MaterialAssetJson => {
     alphaCutoff: 0.5,
   };
   return {
-    version: 3,
+    version: 4,
     name,
     shader: 'arc/default_phong',
     domain: 'surface',
@@ -78,18 +78,18 @@ const defaultMaterialAsset = (name: string): MaterialAssetJson => {
 
 const shaderTemplateSource = (template: ShaderAssetTemplate) => {
   if (template === 'compute') {
-    return `#version 450\n\nlayout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;\n\nvoid main()\n{\n    // Compute shader entry point.\n}\n`;
+    return `[shader("compute")]\n[numthreads(8, 8, 1)]\nvoid main(uint3 dispatchThreadId : SV_DispatchThreadID)\n{\n    // Add backend-neutral compute work here.\n}\n`;
   }
   if (template === 'unlit') {
-    return `#version 450\n\nlayout(location = 0) in vec3 in_normal;\nlayout(location = 1) in vec3 in_world_position;\nlayout(location = 2) in vec4 in_color;\nlayout(location = 3) in vec2 in_texcoord;\n\nlayout(location = 0) out vec4 out_color;\n\nvoid main()\n{\n    out_color = in_color;\n}\n`;
+    return `struct SurfaceInput { float4 color : COLOR0; };\n\n[shader("fragment")]\nfloat4 main(SurfaceInput input) : SV_Target\n{\n    return input.color;\n}\n`;
   }
   if (template === 'post-process') {
-    return `#version 450\n\nlayout(set = 0, binding = 0) uniform sampler2D source_color;\nlayout(location = 0) in vec2 in_texcoord;\nlayout(location = 0) out vec4 out_color;\n\nvoid main()\n{\n    out_color = texture(source_color, in_texcoord);\n}\n`;
+    return `Texture2D<float4> sourceColor;\nSamplerState sourceSampler;\n\nstruct PostInput { float2 uv : TEXCOORD0; };\n\n[shader("fragment")]\nfloat4 main(PostInput input) : SV_Target\n{\n    return sourceColor.Sample(sourceSampler, input.uv);\n}\n`;
   }
   if (template === 'empty') {
-    return `#version 450\n\nlayout(location = 0) out vec4 out_color;\n\nvoid main()\n{\n    out_color = vec4(1.0, 0.0, 1.0, 1.0);\n}\n`;
+    return `[shader("fragment")]\nfloat4 main() : SV_Target\n{\n    return float4(1.0, 0.0, 1.0, 1.0);\n}\n`;
   }
-  return `#version 450\n\nlayout(location = 0) in vec3 in_normal;\nlayout(location = 1) in vec3 in_world_position;\nlayout(location = 2) in vec4 in_color;\nlayout(location = 3) in vec2 in_texcoord;\n\nlayout(location = 0) out vec4 out_color;\n\nvoid main()\n{\n    vec3 normal = normalize(in_normal);\n    vec3 light_direction = normalize(vec3(0.4, 0.8, 0.3));\n    float diffuse = max(dot(normal, light_direction), 0.0);\n    vec3 lighting = vec3(0.12) + vec3(0.88) * diffuse;\n    out_color = vec4(in_color.rgb * lighting, in_color.a);\n}\n`;
+  return `struct SurfaceInput\n{\n    float3 normalWS : TEXCOORD0;\n    float4 color : COLOR0;\n};\n\n[shader("fragment")]\nfloat4 main(SurfaceInput input) : SV_Target\n{\n    float3 normal = normalize(input.normalWS);\n    float3 lightDirection = normalize(float3(0.4, 0.8, 0.3));\n    float diffuse = max(dot(normal, lightDirection), 0.0);\n    float3 lighting = float3(0.12) + float3(0.88) * diffuse;\n    return float4(input.color.rgb * lighting, input.color.a);\n}\n`;
 };
 
 export const buildAssetCreation = (
@@ -98,7 +98,7 @@ export const buildAssetCreation = (
 ): AssetCreationDefinition => {
   const name = cleanAssetName(request.name);
   const folder = request.folder || projectAssetRootPath(project);
-  const extension = request.kind === 'material' ? 'arcmat' : request.template === 'compute' ? 'comp' : 'frag';
+  const extension = request.kind === 'material' ? 'arcmat' : 'slang';
   const path = joinPath(folder, `${name}.${extension}`);
   const contents =
     request.kind === 'material'

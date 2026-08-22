@@ -4249,10 +4249,7 @@ private:
     {
         const auto material = materials_.find(resource_key(draw.material));
         if (material == materials_.end()) return false;
-        const auto& desc = material->second.data;
-        return desc.shading_model != material_shading_model::standard || desc.clear_coat_factor > 0.0f ||
-               std::abs(desc.anisotropy_factor) > 0.0001f || desc.transmission_factor > 0.0f ||
-               desc.subsurface_factor > 0.0f;
+        return material->second.data.render_path == material_render_path::clustered_forward;
     }
 
     mesh_push_constants build_mesh_constants(const draw_mesh_event& draw) const

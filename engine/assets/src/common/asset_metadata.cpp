@@ -201,6 +201,8 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arcscene") return std::pair{asset_types::scene, importer_ids::scene};
     if (extension == ".arcprefab") return std::pair{asset_types::prefab, importer_ids::prefab};
     if (extension == ".arcmat") return std::pair{asset_types::material, importer_ids::material};
+    if (extension == ".arcmatinst")
+        return std::pair{asset_types::material_instance, importer_ids::material_instance};
     if (extension == ".slang" || extension == ".glsl" || extension == ".vert" || extension == ".frag" ||
         extension == ".comp" || extension == ".hlsl" || extension == ".inc")
         return std::pair{asset_types::shader, importer_ids::shader};

@@ -37,6 +37,10 @@ add_subdirectory(persistence)
 add_subdirectory(project)
 add_subdirectory(render)
 
+if(ARC_BUILD_ASSET_COOKER OR ARC_BUILD_EDITOR)
+    add_subdirectory(render-tools)
+endif()
+
 if(ARC_BUILD_RENDER_VULKAN)
     add_subdirectory(render-vulkan)
 endif()

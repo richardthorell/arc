@@ -44,7 +44,6 @@ target_link_libraries(arc-render-vulkan
     PRIVATE
         arc-third-party-volk
         arc-third-party-vma
-        arc-third-party-slang
         arc-third-party-stb
 )
 

@@ -110,7 +110,7 @@ const updateDirtyState = (document: EditorDocument, graph: MaterialGraph, confir
 
 const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => ({
   ...asset,
-  version: Math.max(3, typeof asset.version === 'number' ? asset.version : 3),
+  version: Math.max(4, typeof asset.version === 'number' ? asset.version : 4),
   name: asset.name ?? document.title.replace(/\.arcmat$/i, ''),
   shader: asset.shader ?? 'arc/default_phong',
   domain: asset.domain ?? 'surface',
@@ -255,14 +255,43 @@ export const compileMaterialDocument = async (document: EditorDocument): Promise
   setState(document.id, { compiling: true, message: '' });
   const compilation = compileMaterialGraph(current.graph);
   const errors = compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-  setState(document.id, {
-    compilation,
-    compiling: false,
-    message: errors.length
-      ? `${errors.length} material graph error${errors.length === 1 ? '' : 's'}`
-      : `Material IR compiled · ${compilation.ir.expressions.length} expressions · ${compilation.ir.parameters.length} parameters`,
-  });
-  return compilation.succeeded;
+  if (errors.length || !compilation.succeeded) {
+    setState(document.id, {
+      compilation,
+      compiling: false,
+      message: `${errors.length} material graph error${errors.length === 1 ? '' : 's'}`,
+    });
+    return false;
+  }
+  try {
+    const response = (await window.arc.host.command('shader.compile', {
+      path: `${document.path ?? document.title}.generated.slang`,
+      source: JSON.stringify(current.graph),
+      entryPoint: 'main',
+      stage: 'fragment',
+      domain: 'materialGraph',
+    })) as HostResponse<{
+      succeeded: boolean;
+      message: string;
+      diagnostics: Array<{ message: string; graphNode?: string }>;
+    }>;
+    const native = response.payload;
+    setState(document.id, {
+      compilation,
+      compiling: false,
+      message: native?.succeeded
+        ? `Native Slang compiled · ${compilation.ir.expressions.length} expressions · ${compilation.ir.parameters.length} parameters`
+        : native?.message || response.error || native?.diagnostics?.[0]?.message || 'Native material compilation failed',
+    });
+    return response.succeeded && native?.succeeded === true;
+  } catch (error) {
+    setState(document.id, {
+      compilation,
+      compiling: false,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 };
 
 const serializedMaterial = (

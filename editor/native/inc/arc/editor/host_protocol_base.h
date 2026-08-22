@@ -866,6 +866,14 @@ struct host_asset_reimport_command
 {
     std::string guid;
 };
+struct host_shader_compile_command
+{
+    std::filesystem::path path;
+    std::string source;
+    std::string entry_point{"main"};
+    std::string stage{"fragment"};
+    std::string domain{"surface"};
+};
 struct host_asset_cancel_import_command
 {
     std::string guid;
@@ -1378,7 +1386,8 @@ struct host_viewport_capture_command
 using host_command_payload = std::variant<
     host_open_project_command, host_close_project_command, host_reload_project_module_command, host_open_scene_command,
     host_new_scene_command, host_save_scene_command, host_save_scene_as_command, host_autosave_scene_command,
-    host_open_recovery_scene_command, host_asset_reimport_command, host_asset_cancel_import_command,
+    host_open_recovery_scene_command, host_asset_reimport_command, host_shader_compile_command,
+    host_asset_cancel_import_command,
     host_asset_move_command, host_asset_rename_command, host_create_entity_command, host_delete_entity_command,
     host_duplicate_entity_command, host_create_prefab_command, host_instantiate_prefab_command,
     host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,

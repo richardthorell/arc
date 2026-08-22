@@ -1050,6 +1050,8 @@ std::string command_type(const host_command_payload& payload)
                 return "scene.openRecovery";
             else if constexpr (std::is_same_v<type, host_asset_reimport_command>)
                 return "asset.reimport";
+            else if constexpr (std::is_same_v<type, host_shader_compile_command>)
+                return "shader.compile";
             else if constexpr (std::is_same_v<type, host_asset_cancel_import_command>)
                 return "asset.cancelImport";
             else if constexpr (std::is_same_v<type, host_asset_move_command>)
@@ -1504,6 +1506,10 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_asset_reimport_command> ||
                                std::is_same_v<type, host_asset_cancel_import_command>)
                 return "{\"guid\":" + quote(payload.guid) + '}';
+            else if constexpr (std::is_same_v<type, host_shader_compile_command>)
+                return "{\"path\":" + quote(payload.path.generic_string()) + ",\"source\":" +
+                       quote(payload.source) + ",\"entryPoint\":" + quote(payload.entry_point) +
+                       ",\"stage\":" + quote(payload.stage) + ",\"domain\":" + quote(payload.domain) + '}';
             else if constexpr (std::is_same_v<type, host_asset_move_command>)
                 return "{\"guid\":" + quote(payload.guid) + ",\"path\":" + quote(payload.path.generic_string()) + '}';
             else if constexpr (std::is_same_v<type, host_asset_rename_command>)
@@ -2179,6 +2185,22 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             envelope.payload = host_asset_reimport_command{.guid = std::move(guid)};
         else
             envelope.payload = host_asset_cancel_import_command{.guid = std::move(guid)};
+    }
+    else if (type == "shader.compile")
+    {
+        host_shader_compile_command command;
+        std::string path;
+        if (!string_value(payload, "path", path) || path.empty() ||
+            !string_value(payload, "source", command.source))
+        {
+            error = "Shader compile requires a path and source buffer";
+            return false;
+        }
+        command.path = std::move(path);
+        string_value(payload, "entryPoint", command.entry_point);
+        string_value(payload, "stage", command.stage);
+        string_value(payload, "domain", command.domain);
+        envelope.payload = std::move(command);
     }
     else if (type == "asset.move")
     {

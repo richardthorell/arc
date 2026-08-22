@@ -2059,6 +2059,96 @@ host_response arc_host::execute(const host_command_envelope& command)
                                    ",\"path\":" + to_json_string(result.current_path.generic_string()) + '}');
                 }
             }
+            else if constexpr (std::is_same_v<command_type, host_shader_compile_command>)
+            {
+                if (!state_->project_open) return fail("Cannot compile a shader before a project is open");
+                const auto source_path = resolve_project_document(state_->project.root, payload.path, false);
+                if (!source_path) return fail("Shader source path must remain inside the open project");
+                const auto stage = payload.stage == "vertex"    ? render::shader_stage::vertex
+                                   : payload.stage == "compute" ? render::shader_stage::compute
+                                                                 : render::shader_stage::fragment;
+                const auto domain = payload.domain == "compute" ? render::shader_domain::compute
+                                    : payload.domain == "postProcess" ? render::shader_domain::post_process
+                                                                        : render::shader_domain::surface;
+                std::string source = payload.source;
+                std::unordered_map<std::uint32_t, std::string> graph_line_nodes;
+                std::vector<render::shader_parameter_descriptor> graph_parameters;
+                if (payload.domain == "materialGraph")
+                {
+                    auto lowered = render::tools::lower_material_graph_json(payload.source);
+                    if (!lowered)
+                    {
+                        nlohmann::json response{{"succeeded", false},
+                                                {"message", lowered.error().message},
+                                                {"diagnostics", nlohmann::json::array()}};
+                        return success(response.dump());
+                    }
+                    source = std::move(lowered.value().source);
+                    graph_line_nodes = std::move(lowered.value().generated_line_nodes);
+                    graph_parameters = std::move(lowered.value().parameters);
+                }
+                render::tools::slang_shader_compiler compiler;
+                render::shader_library_cache cache;
+                render::shader_compile_request request{
+                    .source_path = source_path->generic_string(),
+                    .source_override = std::move(source),
+                    .entry_point = payload.entry_point.empty() ? "main" : payload.entry_point,
+                    .profile = "spirv_1_5",
+                    .domain = domain,
+                    .stage = stage,
+                    .target = render::shader_target::spirv,
+                    .optimization = render::shader_optimization::development,
+                    .include_directories = {source_path->parent_path()},
+                    .generated_line_nodes = std::move(graph_line_nodes),
+                    .generate_debug_information = true};
+                auto compiled = cache.compile_or_get(compiler, request);
+                nlohmann::json response;
+                response["compiler"] = compiler.fingerprint();
+                response["entryPoint"] = request.entry_point;
+                response["target"] = "spirv-vulkan1.2";
+                response["diagnostics"] = nlohmann::json::array();
+                const auto append_diagnostics = [&](const auto& diagnostics)
+                {
+                    for (const auto& diagnostic : diagnostics)
+                        response["diagnostics"].push_back(
+                            {{"severity", diagnostic.severity == render::shader_diagnostic_severity::error
+                                              ? "error"
+                                              : diagnostic.severity == render::shader_diagnostic_severity::warning
+                                                  ? "warning"
+                                                  : "information"},
+                             {"code", diagnostic.code},
+                             {"message", diagnostic.message},
+                             {"path", diagnostic.location.path},
+                             {"line", diagnostic.location.line},
+                             {"column", diagnostic.location.column},
+                             {"graphNode", diagnostic.location.graph_node_id}});
+                };
+                if (!compiled)
+                {
+                    append_diagnostics(compiled.error().diagnostics);
+                    response["succeeded"] = false;
+                    response["message"] = compiled.error().message;
+                    return success(response.dump());
+                }
+                append_diagnostics(compiled.value().diagnostics);
+                if (!graph_parameters.empty()) compiled.value().reflection.parameters = std::move(graph_parameters);
+                response["succeeded"] = true;
+                response["message"] = "Transient shader generation compiled";
+                response["bytecodeBytes"] = compiled.value().bytecode.size();
+                response["parameters"] = nlohmann::json::array();
+                for (const auto& parameter : compiled.value().reflection.parameters)
+                    response["parameters"].push_back({{"id", parameter.id.representation()},
+                                                       {"name", parameter.name},
+                                                       {"offset", parameter.offset},
+                                                       {"size", parameter.size}});
+                response["resources"] = nlohmann::json::array();
+                for (const auto& resource : compiled.value().reflection.resources)
+                    response["resources"].push_back({{"name", resource.name},
+                                                      {"set", resource.set},
+                                                      {"binding", resource.binding},
+                                                      {"count", resource.count}});
+                return success(response.dump());
+            }
             else if constexpr (std::is_same_v<command_type, host_runtime_resume_command>)
             {
                 state_->simulation.resume();

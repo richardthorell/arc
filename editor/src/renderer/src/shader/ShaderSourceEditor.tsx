@@ -32,14 +32,14 @@ export function ShaderEditorActions({ document }: { document: EditorDocument }) 
         <Save size={13} /> Save
       </UiButton>
       <UiButton
-        disabled={state.compiling || state.loading || document.readOnly || !document.assetGuid}
+        disabled={state.compiling || state.loading || document.readOnly || !state.path}
         onClick={() => void compileShaderDocument(document)}
         variant="toolbar"
       >
         <Play size={13} /> Compile
       </UiButton>
       <UiButton
-        disabled={state.compiling || state.loading || document.readOnly || !dirty || !document.assetGuid}
+        disabled={state.compiling || state.loading || document.readOnly || !dirty || !state.path}
         onClick={() => void saveAndCompileShaderDocument(document)}
         variant="primary"
       >
@@ -132,6 +132,23 @@ export function ShaderSourceEditor({
                 <option value="spirv">SPIR-V · Vulkan 1.2</option>
               </select>
             </label>
+            <h3>Reflection</h3>
+            {state.reflection ? (
+              <>
+                <p>{state.reflection.compiler} · {state.reflection.bytecodeBytes} bytes</p>
+                {state.reflection.parameters.map((parameter) => (
+                  <button key={parameter.id} type="button">
+                    {parameter.name} · {parameter.offset}:{parameter.size}
+                  </button>
+                ))}
+                {state.reflection.resources.map((resource) => (
+                  <button key={`${resource.set}:${resource.binding}:${resource.name}`} type="button">
+                    {resource.name} · set {resource.set}, binding {resource.binding}
+                  </button>
+                ))}
+                {!state.reflection.parameters.length && !state.reflection.resources.length && <p>No reflected bindings.</p>}
+              </>
+            ) : <p>Compile to inspect reflected bindings.</p>}
           </section>
         </aside>
       </div>
@@ -139,6 +156,22 @@ export function ShaderSourceEditor({
         <div className={state.message.toLocaleLowerCase().includes('failed') ? 'tool-error' : 'tool-message'}>
           <AlertCircle size={13} /> {state.message}
         </div>
+      )}
+      {state.diagnostics.length > 0 && (
+        <section className="shader-diagnostics" aria-label="Shader compiler diagnostics">
+          {state.diagnostics.map((diagnostic, index) => (
+            <button
+              key={`${diagnostic.path}:${diagnostic.line}:${diagnostic.column}:${index}`}
+              type="button"
+              className={`shader-diagnostic ${diagnostic.severity}`}
+              title={diagnostic.graphNode ? `Material graph node ${diagnostic.graphNode}` : undefined}
+            >
+              <strong>{diagnostic.severity}</strong>{' '}
+              {diagnostic.path ? `${diagnostic.path}:${diagnostic.line ?? 0}:${diagnostic.column ?? 0}: ` : ''}
+              {diagnostic.message}
+            </button>
+          ))}
+        </section>
       )}
     </section>
   );

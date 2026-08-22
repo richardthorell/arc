@@ -17,6 +17,27 @@ export type ShaderDocumentState = {
   compiling: boolean;
   loading: boolean;
   loaded: boolean;
+  diagnostics: ShaderCompileDiagnostic[];
+  reflection: ShaderCompileReflection | null;
+};
+
+export type ShaderCompileDiagnostic = {
+  severity: 'information' | 'warning' | 'error';
+  code?: string;
+  message: string;
+  path?: string;
+  line?: number;
+  column?: number;
+  graphNode?: string;
+};
+
+export type ShaderCompileReflection = {
+  compiler: string;
+  target: string;
+  entryPoint: string;
+  bytecodeBytes: number;
+  parameters: Array<{ id: number; name: string; offset: number; size: number }>;
+  resources: Array<{ name: string; set: number; binding: number; count: number }>;
 };
 
 const states = new Map<string, ShaderDocumentState>();
@@ -35,6 +56,8 @@ const initialState = (document: EditorDocument): ShaderDocumentState => ({
   compiling: false,
   loading: false,
   loaded: false,
+  diagnostics: [],
+  reflection: null,
 });
 
 const emit = (documentId: string) => {
@@ -158,20 +181,32 @@ export const compileShaderDocument = async (document: EditorDocument): Promise<b
     setState(document.id, { message: 'Built-in shaders are read-only and cannot be recompiled from the editor' });
     return false;
   }
-  const guid = document.assetGuid ?? current.guid;
-  if (!guid) {
-    setState(document.id, { message: 'This shader has no registered asset GUID and cannot be compiled' });
-    return false;
-  }
-
-  setState(document.id, { compiling: true });
+  setState(document.id, { compiling: true, diagnostics: [] });
   try {
-    const response = (await window.arc.host.command('asset.reimport', { guid })) as HostResponse;
+    const extension = current.path.split('.').pop()?.toLocaleLowerCase();
+    const stage = extension === 'vert'
+      ? 'vertex'
+      : extension === 'comp' || /\[shader\s*\(\s*["']compute["']\s*\)\]/i.test(current.source)
+        ? 'compute'
+        : 'fragment';
+    const response = (await window.arc.host.command('shader.compile', {
+      path: current.path,
+      source: current.source,
+      entryPoint: 'main',
+      stage,
+      domain: stage === 'compute' ? 'compute' : 'surface',
+    })) as HostResponse<
+      ShaderCompileReflection & { succeeded: boolean; message: string; diagnostics: ShaderCompileDiagnostic[] }
+    >;
+    const result = response.payload;
+    const succeeded = response.succeeded && result?.succeeded === true;
     setState(document.id, {
       compiling: false,
-      message: response.succeeded ? 'Shader compilation queued' : response.error || 'Shader compilation failed',
+      diagnostics: result?.diagnostics ?? [],
+      reflection: succeeded && result ? result : current.reflection,
+      message: result?.message ?? response.error ?? 'Shader compilation failed',
     });
-    return response.succeeded;
+    return succeeded;
   } catch (error) {
     setState(document.id, {
       compiling: false,
@@ -184,7 +219,7 @@ export const compileShaderDocument = async (document: EditorDocument): Promise<b
 export const saveAndCompileShaderDocument = async (document: EditorDocument): Promise<boolean> => {
   if (!(await saveShaderDocument(document))) return false;
   const compiled = await compileShaderDocument(document);
-  if (compiled) setState(document.id, { message: 'Shader saved and compilation queued' });
+  if (compiled) setState(document.id, { message: 'Shader saved and transient generation compiled' });
   return compiled;
 };
 

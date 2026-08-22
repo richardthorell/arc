@@ -20,6 +20,7 @@
 #include <arc/framework/framework.h>
 #include <arc/project/project.h>
 #include <arc/render/render.h>
+#include <arc/render_tools/render_tools.h>
 #include <arc/scene/scene.h>
 
 #include <algorithm>

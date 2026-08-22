@@ -36,6 +36,28 @@
   background: #121b21;
 }
 
+.shader-diagnostics {
+  display: grid;
+  gap: 2px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 6px;
+  border-top: 1px solid var(--border-muted);
+  background: var(--surface-deep);
+}
+
+.shader-diagnostic {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  text-align: left;
+  font: inherit;
+}
+
+.shader-diagnostic.error strong { color: var(--danger); }
+.shader-diagnostic.warning strong { color: var(--warning); }
+
 .shader-side-panel .shader-preview,
 .shader-side-panel .shader-include-tree {
   min-height: 0;

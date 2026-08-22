@@ -82,6 +82,10 @@ std::string shading_model_to_string(render::material_shading_model model)
 {
     switch (model)
     {
+        case render::material_shading_model::unlit:
+            return "unlit";
+        case render::material_shading_model::custom_lit:
+            return "customLit";
         case render::material_shading_model::skin:
             return "skin";
         case render::material_shading_model::transmission:
@@ -95,6 +99,8 @@ std::string shading_model_to_string(render::material_shading_model model)
 render::material_shading_model shading_model_from_string(std::string value)
 {
     value = lowercase(std::move(value));
+    if (value == "unlit") return render::material_shading_model::unlit;
+    if (value == "customlit" || value == "custom_lit") return render::material_shading_model::custom_lit;
     if (value == "skin") return render::material_shading_model::skin;
     if (value == "transmission" || value == "glass") return render::material_shading_model::transmission;
     return render::material_shading_model::standard;
@@ -367,7 +373,7 @@ bool save_material_asset(const material_asset& asset, const std::filesystem::pat
     { stream << "    \"" << key << "\": \"" << escape_json(value) << "\"" << (comma ? "," : "") << "\n"; };
 
     stream << "{\n";
-    stream << "  \"version\": " << std::max(asset.version, 3) << ",\n";
+    stream << "  \"version\": " << std::max(asset.version, 4) << ",\n";
     stream << "  \"name\": \"" << escape_json(asset.name) << "\",\n";
     stream << "  \"shader\": \"" << escape_json(asset.shader) << "\",\n";
     stream << "  \"domain\": \"" << escape_json(asset.domain) << "\",\n";

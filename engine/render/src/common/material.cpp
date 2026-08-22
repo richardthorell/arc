@@ -3,9 +3,100 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <unordered_set>
 
 namespace arc::render
 {
+namespace
+{
+
+bool parameter_type_matches(shader_parameter_type expected, const material_parameter_value& value) noexcept
+{
+    switch (expected)
+    {
+        case shader_parameter_type::boolean:
+            return std::holds_alternative<bool>(value);
+        case shader_parameter_type::int32:
+            return std::holds_alternative<std::int32_t>(value);
+        case shader_parameter_type::uint32:
+            return std::holds_alternative<std::uint32_t>(value);
+        case shader_parameter_type::float32:
+            return std::holds_alternative<float>(value);
+        case shader_parameter_type::float2:
+            return std::holds_alternative<math::vector2f>(value);
+        case shader_parameter_type::float3:
+            return std::holds_alternative<math::vector3f>(value);
+        case shader_parameter_type::float4:
+            return std::holds_alternative<math::vector4f>(value);
+        case shader_parameter_type::matrix4x4:
+            return std::holds_alternative<math::matrix4x4f>(value);
+        case shader_parameter_type::texture_2d:
+        case shader_parameter_type::texture_cube:
+        case shader_parameter_type::sampler:
+            return std::holds_alternative<resource_handle>(value);
+    }
+    return false;
+}
+
+} // namespace
+
+material_render_path resolve_material_render_path(const material_descriptor& material) noexcept
+{
+    if (!material.deferred_compatible || material.shading_model != material_shading_model::standard ||
+        material.alpha_mode == material_alpha_mode::blend || material.clear_coat_factor > 0.0f ||
+        material.sheen_factor > 0.0f || material.transmission_factor > 0.0f || material.subsurface_factor > 0.0f ||
+        material.anisotropy_factor != 0.0f || material.parallax_height_scale != 0.0f ||
+        material.displacement_mode != material_displacement_mode::none)
+        return material_render_path::clustered_forward;
+    return material_render_path::deferred;
+}
+
+material_instance_result resolve_material_instance(const material_definition_descriptor& definition,
+                                                   const material_instance_descriptor& instance)
+{
+    if (!instance.parent.valid())
+        return material_instance_result::failure(
+            {.code = material_instance_error_code::invalid_parent, .message = "material instance parent is invalid"});
+
+    std::unordered_set<std::uint64_t> seen;
+    material_descriptor result = definition.material;
+    if (!instance.name.empty()) result.name = instance.name;
+    for (const auto& override_value : instance.overrides)
+    {
+        if (!override_value.id.valid())
+            return material_instance_result::failure(
+                {.code = material_instance_error_code::unknown_parameter,
+                 .parameter = override_value.id,
+                 .message = "material instance override has an invalid stable ID"});
+        if (!seen.insert(override_value.id.value).second)
+            return material_instance_result::failure(
+                {.code = material_instance_error_code::duplicate_override,
+                 .parameter = override_value.id,
+                 .message = "material instance contains a duplicate parameter override"});
+
+        const auto layout = std::ranges::find(definition.parameter_layout, override_value.id,
+                                              &shader_parameter_descriptor::id);
+        if (layout == definition.parameter_layout.end())
+            return material_instance_result::failure(
+                {.code = material_instance_error_code::unknown_parameter,
+                 .parameter = override_value.id,
+                 .message = "material instance references a parameter absent from its parent"});
+        if (!parameter_type_matches(layout->type, override_value.value))
+            return material_instance_result::failure(
+                {.code = material_instance_error_code::incompatible_type,
+                 .parameter = override_value.id,
+                 .message = "material instance override type does not match its parent layout"});
+
+        const auto existing =
+            std::ranges::find(result.parameters, override_value.id, &material_parameter_override::id);
+        if (existing == result.parameters.end())
+            result.parameters.push_back(override_value);
+        else
+            *existing = override_value;
+    }
+    result.render_path = resolve_material_render_path(result);
+    return material_instance_result::success(std::move(result));
+}
 
 shader_permutation_key make_shader_permutation_key(const material_descriptor& material, std::uint8_t debug_view,
                                                    bool wireframe) noexcept

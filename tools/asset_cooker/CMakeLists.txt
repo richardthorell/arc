@@ -10,6 +10,7 @@ target_link_libraries(arc-cook
         arc-persistence
         arc-project
         arc-render
+        arc-render-tools
         arc-scene
         arc-third-party-json
 )

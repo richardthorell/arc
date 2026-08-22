@@ -972,6 +972,7 @@ material_handle renderer::create_material(material_descriptor material)
 {
     const material_handle handle = material_handles_.allocate();
     material.handle = handle;
+    material.render_path = resolve_material_render_path(material);
     auto shared_material = std::make_shared<material_descriptor>(std::move(material));
 
     render_event_buffer buffer;
@@ -986,6 +987,7 @@ bool renderer::update_material(material_handle handle, material_descriptor mater
     if (!material_handles_.alive(handle)) return false;
 
     material.handle = handle;
+    material.render_path = resolve_material_render_path(material);
     auto shared_material = std::make_shared<material_descriptor>(std::move(material));
 
     render_event_buffer buffer;

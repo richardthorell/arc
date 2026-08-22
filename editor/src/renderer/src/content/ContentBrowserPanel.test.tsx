@@ -107,7 +107,7 @@ describe('ContentBrowserPanel', () => {
     expect(asset.graph.connections).toHaveLength(3);
   });
 
-  it('creates a compute shader with the native .comp extension', async () => {
+  it('creates a compute shader with the native .slang extension', async () => {
     const view = renderBrowser();
     fireEvent.click(view.getByRole('button', { name: /Create/ }));
     fireEvent.click(view.getByRole('menuitem', { name: /Shader/ }));
@@ -116,8 +116,8 @@ describe('ContentBrowserPanel', () => {
     fireEvent.click(view.getByRole('button', { name: 'Create Shader' }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toBe('Content/Cull Tiles.comp');
-    expect(writeText.mock.calls[0][1]).toContain('layout(local_size_x = 8');
+    expect(writeText.mock.calls[0][0]).toBe('Content/Cull Tiles.slang');
+    expect(writeText.mock.calls[0][1]).toContain('[numthreads(8, 8, 1)]');
   });
 
   it('offers creation from the empty-space context menu', () => {
