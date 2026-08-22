@@ -49,7 +49,11 @@ type FolderTreeNode = {
   children: FolderTreeNode[];
 };
 
-const cleanPath = (path: string) => path.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+const cleanPath = (path: string) =>
+  path
+    .replaceAll('\\', '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\/|\/$/g, '');
 const parentFolder = (path: string) => cleanPath(path).split('/').slice(0, -1).join('/');
 const assetPayload = (asset: AssetItem) =>
   JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path });
