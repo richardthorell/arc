@@ -83,72 +83,28 @@ jobs:
           npm run lint
           npm run typecheck
           npm test
-      - name: Static Analysis
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
+      - name: Static Analysis (PR Changes)
+        if: ${{ github.event_name == 'pull_request' && inputs.run_native }}
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [[ "$EVENT_NAME" != "pull_request" ]]; then
-            run-clang-tidy-18 -p out/build/analysis -quiet '.*/(engine|editor/native|samples|tools)/.*'
+          mapfile -t changed_native_files < <(
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" |
+              grep -E '^(engine|editor/native|samples|tools)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inl|ixx|cppm)$' || true
+          )
+
+          if (( ${#changed_native_files[@]} == 0 )); then
+            echo "No changed native files; skipping clang-tidy."
             exit 0
           fi
 
-          tidy_regex=$(python3 - <<'PY'
-          import json
-          import os
-          import re
-          import subprocess
-          from pathlib import Path
+          tidy_regex=$(printf '%s\n' "${changed_native_files[@]}" |
+            python3 -c 'import re, sys; print("|".join(re.escape(line.strip()) + "$" for line in sys.stdin if line.strip()))')
 
-          root = Path.cwd().resolve()
-          changed = set(
-              subprocess.check_output(
-                  [
-                      "git",
-                      "diff",
-                      "--name-only",
-                      "--diff-filter=ACMR",
-                      os.environ["BASE_SHA"],
-                      os.environ["HEAD_SHA"],
-                  ],
-                  text=True,
-              ).splitlines()
-          )
-
-          compile_database = json.loads(
-              Path("out/build/analysis/compile_commands.json").read_text(encoding="utf-8")
-          )
-          native_roots = ("engine/", "editor/native/", "samples/", "tools/")
-          selected = set()
-
-          for entry in compile_database:
-              source = Path(entry["file"])
-              if not source.is_absolute():
-                  source = Path(entry["directory"]) / source
-              source = source.resolve()
-
-              try:
-                  relative = source.relative_to(root).as_posix()
-              except ValueError:
-                  continue
-
-              if relative in changed and relative.startswith(native_roots):
-                  selected.add(source.as_posix())
-
-          for source in sorted(selected):
-              print(source, file=os.sys.stderr)
-
-          print("|".join(re.escape(source) for source in sorted(selected)))
-          PY
-          )
-
-          if [[ -z "$tidy_regex" ]]; then
-            echo "No changed native translation units are present in the compile database; skipping clang-tidy."
-            exit 0
-          fi
-
-          echo "Running clang-tidy on changed PR translation units:"
+          printf 'Running clang-tidy for changed native files:\n - %s\n' "${changed_native_files[@]}"
           run-clang-tidy-18 -p out/build/analysis -quiet "$tidy_regex"
+      - name: Static Analysis (Full Repository)
+        if: ${{ github.event_name != 'pull_request' }}
+        run: run-clang-tidy-18 -p out/build/analysis -quiet '.*/(engine|editor/native|samples|tools)/.*'
