@@ -2,11 +2,15 @@
 
 #include <arc/render_tools/render_tools.h>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <fstream>
+#include <map>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -17,6 +21,7 @@ namespace arc::tools
 {
 namespace
 {
+using json = nlohmann::json;
 
 constexpr std::array material_passes{render::material_pass::depth,    render::material_pass::shadow,
                                      render::material_pass::gbuffer,  render::material_pass::forward,
@@ -74,6 +79,18 @@ bool path_matches(std::filesystem::path dependency, std::string_view authored)
            dependency_text[dependency_text.size() - authored_text.size() - 1] == '/';
 }
 
+core::result<std::string, std::string> read_text_file(const std::filesystem::path& path)
+{
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+        return core::result<std::string, std::string>::failure("source could not be opened: " + path.generic_string());
+    std::ostringstream source;
+    source << input.rdbuf();
+    if (!input.eof() && input.fail())
+        return core::result<std::string, std::string>::failure("source could not be read: " + path.generic_string());
+    return core::result<std::string, std::string>::success(std::move(source).str());
+}
+
 const assets::asset_snapshot* find_material_shader_dependency(const assets::asset_cook_context& context,
                                                               std::string_view shader_path)
 {
@@ -94,17 +111,119 @@ core::result<std::string, std::string> read_material_shader(const assets::asset_
     if (!dependency)
         return core::result<std::string, std::string>::failure("Material Shader '" + std::string(shader_path) +
                                                                "' is not a registered shader dependency");
+    return read_text_file(dependency->source_path);
+}
 
-    std::ifstream input(dependency->source_path, std::ios::binary);
-    if (!input)
-        return core::result<std::string, std::string>::failure("Material Shader source could not be opened: " +
-                                                               dependency->source_path.generic_string());
-    std::ostringstream source;
-    source << input.rdbuf();
-    if (!input.eof() && input.fail())
-        return core::result<std::string, std::string>::failure("Material Shader source could not be read: " +
-                                                               dependency->source_path.generic_string());
-    return core::result<std::string, std::string>::success(std::move(source).str());
+std::vector<std::string> nested_function_paths(std::string_view source)
+{
+    const auto document = json::parse(source, nullptr, false);
+    if (document.is_discarded()) return {};
+
+    std::vector<std::string> paths;
+    const auto visit = [&](const auto& self, const json& value) -> void
+    {
+        if (value.is_object())
+        {
+            if (value.value("type", "") == "functionCall")
+            {
+                const auto values = value.value("values", json::object());
+                const auto path = values.value("path", "");
+                if (!path.empty()) paths.push_back(path);
+            }
+            for (const auto& [key, child] : value.items())
+            {
+                static_cast<void>(key);
+                self(self, child);
+            }
+        }
+        else if (value.is_array())
+        {
+            for (const auto& child : value)
+                self(self, child);
+        }
+    };
+    visit(visit, document);
+    std::ranges::sort(paths);
+    paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
+    return paths;
+}
+
+std::filesystem::path assets_root_for(std::filesystem::path source_path)
+{
+    auto current = source_path.parent_path();
+    while (!current.empty())
+    {
+        if (current.filename() == "assets") return current;
+        const auto parent = current.parent_path();
+        if (parent == current) break;
+        current = parent;
+    }
+    return {};
+}
+
+std::filesystem::path resolve_function_path(const std::filesystem::path& owner, std::string_view authored)
+{
+    const std::filesystem::path authored_path(authored);
+    if (authored_path.is_absolute()) return authored_path.lexically_normal();
+    const auto text = normalized_path(authored_path);
+    if (text.starts_with("assets/"))
+    {
+        const auto root = assets_root_for(owner);
+        if (!root.empty()) return (root.parent_path() / authored_path).lexically_normal();
+    }
+    return (owner.parent_path() / authored_path).lexically_normal();
+}
+
+using function_source_result =
+    core::result<std::vector<render::tools::material_function_source>, std::string>;
+
+function_source_result material_function_sources(const assets::asset_cook_context& context)
+{
+    std::map<std::string, std::pair<std::filesystem::path, std::string>> pending;
+    for (const auto& dependency : context.dependencies)
+    {
+        if (dependency.type != assets::asset_types::material) continue;
+        auto source = read_text_file(dependency.source_path);
+        if (!source) return function_source_result::failure(source.error());
+        if (!render::tools::is_material_function_json(source.value())) continue;
+        pending.emplace(normalized_path(dependency.source_path),
+                        std::pair{dependency.source_path, std::move(source).value()});
+    }
+
+    std::map<std::string, render::tools::material_function_source> functions;
+    while (!pending.empty())
+    {
+        auto entry = pending.extract(pending.begin());
+        auto path = std::move(entry.mapped().first);
+        auto source = std::move(entry.mapped().second);
+        const auto key = normalized_path(path);
+        if (functions.contains(key)) continue;
+        functions.emplace(key, render::tools::material_function_source{.path = key, .source = source});
+
+        for (const auto& nested : nested_function_paths(source))
+        {
+            const auto nested_path = resolve_function_path(path, nested);
+            const auto nested_key = normalized_path(nested_path);
+            if (functions.contains(nested_key) || pending.contains(nested_key)) continue;
+            auto nested_source = read_text_file(nested_path);
+            if (!nested_source)
+                return function_source_result::failure("Material Function '" + nested + "' referenced by '" + key +
+                                                       "' could not be loaded: " + nested_source.error());
+            if (!render::tools::is_material_function_json(nested_source.value()))
+                return function_source_result::failure("Material Function dependency is not a function document: " +
+                                                       nested_key);
+            pending.emplace(nested_key, std::pair{nested_path, std::move(nested_source).value()});
+        }
+    }
+
+    std::vector<render::tools::material_function_source> result;
+    result.reserve(functions.size());
+    for (auto& [path, source] : functions)
+    {
+        static_cast<void>(path);
+        result.push_back(std::move(source));
+    }
+    return function_source_result::success(std::move(result));
 }
 
 bool same_parameter_layout(const std::vector<render::shader_parameter_descriptor>& lhs,
@@ -126,7 +245,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 6;
+        descriptor_.version = 7;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
@@ -138,9 +257,9 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/6;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
-               "arc-material-codegen/1;arc-material-pass-contract/1;arc-material-pass-codegen/2;"
-               "arc-custom-material-shader/1;" +
+        return "arc.material-cooker/7;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
+               "arc-material-codegen/2;arc-material-function/1;arc-material-pass-contract/1;"
+               "arc-material-pass-codegen/2;arc-custom-material-shader/1;" +
                std::string(compiler_.fingerprint());
     }
 
@@ -148,6 +267,28 @@ public:
     {
         const std::string source(reinterpret_cast<const char*>(context.source.bytes.data()),
                                  context.source.bytes.size());
+
+        if (render::tools::is_material_function_json(source))
+        {
+            auto validated =
+                render::tools::validate_material_function_json(source, context.source.source_path.generic_string());
+            if (!validated)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = context.source.source_path,
+                                  .message = validated.error().message}};
+            return {.artifacts = {{.name = context.source.source_path.stem().string(),
+                                   .extension = ".arcmatfnc",
+                                   .schema = descriptor_.schema,
+                                   .schema_version = render::tools::material_function_version,
+                                   .bytes = context.source.bytes}},
+                    .diagnostics = {{.severity = assets::asset_diagnostic_severity::information,
+                                     .guid = context.asset.guid,
+                                     .category = "material.function",
+                                     .message = "Validated Material/Shader Function v" +
+                                                std::to_string(render::tools::material_function_version)}}};
+        }
+
         auto authored = render::tools::parse_material_authoring_json(source);
         if (!authored)
             return {.error = {.code = assets::asset_error_code::import_failed,
@@ -180,7 +321,14 @@ public:
 
         if (!authored.value().graph_json.empty())
         {
-            auto compiled_graph = render::tools::compile_material_graph_json(authored.value().graph_json);
+            auto functions = material_function_sources(context);
+            if (!functions)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = context.source.source_path,
+                                  .message = functions.error()}};
+            auto compiled_graph =
+                render::tools::compile_material_graph_json(authored.value().graph_json, functions.value());
             if (!compiled_graph)
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
