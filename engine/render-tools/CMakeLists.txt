@@ -11,6 +11,7 @@ target_sources(arc-render-tools PRIVATE
     src/common/material_graph_codegen.cpp
     src/common/material_graph_compiler.cpp
     src/common/material_graph_ir.cpp
+    src/common/material_pass_codegen.cpp
 )
 target_compile_definitions(arc-render-tools PRIVATE ARC_PINNED_SLANG_VERSION="2026.14.1")
 
