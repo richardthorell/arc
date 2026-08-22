@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --write src/renderer/src/content/ContentBrowserPanel.tsx && git diff -- src/renderer/src/content/ContentBrowserPanel.tsx && exit 1"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
