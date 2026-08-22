@@ -14,8 +14,12 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.request
 import zipfile
+
+try:
+    from urllib.request import urlopen
+except ImportError:
+    from urllib2 import urlopen
 
 
 DEFAULT_BUILD_DIR = "out/build/editor-vulkan"
@@ -121,8 +125,12 @@ def slang_cache_root(repo_root):
 def download_file(url, destination):
     print("Downloading {}".format(url))
     sys.stdout.flush()
-    with urllib.request.urlopen(url) as response, open(destination, "wb") as output:
-        shutil.copyfileobj(response, output)
+    response = urlopen(url)
+    try:
+        with open(destination, "wb") as output:
+            shutil.copyfileobj(response, output)
+    finally:
+        response.close()
 
 
 def extract_slang_archive(archive, destination):
