@@ -110,12 +110,14 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
     const auto result = compiler.compile(request);
     if (!result)
     {
-        INFO(result.error().message);
+        std::string failure = result.error().message;
         for (const auto& diagnostic : result.error().diagnostics)
-            INFO(diagnostic.location.path << ':' << diagnostic.location.line << ':' << diagnostic.location.column << ' '
-                                          << diagnostic.message);
+        {
+            failure += "\n" + diagnostic.location.path + ':' + std::to_string(diagnostic.location.line) + ':' +
+                       std::to_string(diagnostic.location.column) + ' ' + diagnostic.message;
+        }
+        FAIL(failure);
     }
-    REQUIRE(result);
     REQUIRE_FALSE(result.value().bytecode.empty());
 }
 
