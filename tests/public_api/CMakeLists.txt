@@ -38,6 +38,9 @@ set(ARC_PUBLIC_UMBRELLA_HEADERS
     arc/math/math.h
     arc/simd/simd.h
     arc/core/core.h)
+if(TARGET arc-render-tools)
+    list(PREPEND ARC_PUBLIC_UMBRELLA_HEADERS arc/render_tools/render_tools.h)
+endif()
 if(TARGET arc-render-vulkan)
     list(PREPEND ARC_PUBLIC_UMBRELLA_HEADERS arc/render/vulkan/vulkan_backend.h)
 endif()
@@ -63,7 +66,7 @@ target_compile_features(arc-public-header-tests PRIVATE cxx_std_20)
 foreach(target
     arc-core arc-simd arc-math arc-geometric arc-diagnostics arc-jobs arc-memory
     arc-io arc-framework arc-assets arc-input arc-ecs arc-persistence arc-project arc-render
-    arc-render-vulkan arc-scene)
+    arc-render-tools arc-render-vulkan arc-scene)
     if(TARGET ${target})
         target_link_libraries(arc-public-header-tests PRIVATE ${target})
     endif()
