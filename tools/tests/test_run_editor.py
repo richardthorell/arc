@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import os
 import pathlib
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -60,6 +62,20 @@ class EditorSlangBootstrapTests(unittest.TestCase):
         ), mock.patch.object(run_editor, "provision_slang") as provision:
             self.assertEqual(run_editor.resolve_slangc(str(REPO_ROOT)), cached)
             provision.assert_not_called()
+
+    def test_download_file_uses_compatibility_url_opener(self) -> None:
+        response = io.BytesIO(b"slang archive")
+        descriptor, destination = tempfile.mkstemp()
+        os.close(descriptor)
+        self.addCleanup(lambda: os.path.exists(destination) and os.remove(destination))
+
+        with mock.patch.object(run_editor, "urlopen", return_value=response) as opener:
+            run_editor.download_file("https://example.invalid/slang.zip", destination)
+
+        opener.assert_called_once_with("https://example.invalid/slang.zip")
+        with open(destination, "rb") as downloaded:
+            self.assertEqual(downloaded.read(), b"slang archive")
+        self.assertTrue(response.closed)
 
     def test_exposes_slang_to_editor_and_native_child_processes(self) -> None:
         environment = {"PATH": os.pathsep.join(["existing", "tools"])}
