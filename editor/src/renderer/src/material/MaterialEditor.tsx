@@ -1,5 +1,6 @@
-import { AlertCircle, CheckCircle2, Circle, Lock, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Lock, RefreshCw } from 'lucide-react';
 
+import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
 import { replaceMaterialGraph, refreshMaterialPreview, useMaterialDocumentState } from './materialDocumentState';
@@ -39,12 +40,10 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
       <MaterialGraphEditor document={document} graph={state.graph} />
 
       <aside className="material-editor-sidebar">
-        <section className="material-preview-panel">
-          <header>
-            <div>
-              <strong>Material Preview</strong>
-              <span>ARC native material preview</span>
-            </div>
+        <AssetPreviewPanel
+          title="Material Preview"
+          subtitle="Compiled asset thumbnail"
+          actions={
             <button
               aria-label="Refresh material preview"
               disabled={state.previewLoading}
@@ -52,24 +51,23 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             >
               <RefreshCw className={state.previewLoading ? 'spinning' : ''} size={14} />
             </button>
-          </header>
-          <div className="material-preview-stage">
-            {state.previewDataUrl ? (
-              <img alt={`${document.title} material preview`} src={state.previewDataUrl} />
-            ) : (
-              <div className="material-preview-placeholder">
-                <Circle size={88} />
-                <span>{state.previewLoading ? 'Rendering preview…' : 'Save & Compile to render preview'}</span>
-              </div>
-            )}
-          </div>
-          <footer>
-            <span>Mesh</span>
-            <strong>Sphere</strong>
-            <span>Environment</span>
-            <strong>Studio</strong>
-          </footer>
-        </section>
+          }
+          metadata={[
+            { label: 'Mesh', value: 'Sphere' },
+            { label: 'Environment', value: 'Studio' },
+          ]}
+        >
+          {state.previewDataUrl ? (
+            <img alt={`${document.title} material preview`} src={state.previewDataUrl} />
+          ) : (
+            <AssetPreviewPlaceholder
+              label={state.previewLoading ? 'Rendering preview…' : 'Material preview'}
+              description={
+                state.previewLoading ? 'Generating the latest thumbnail.' : 'Save & Compile to render preview.'
+              }
+            />
+          )}
+        </AssetPreviewPanel>
 
         <section className="material-parameters-panel">
           <header>

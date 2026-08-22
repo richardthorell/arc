@@ -1,5 +1,6 @@
 import { AlertCircle, FileCode2, Play, RefreshCw, Save } from 'lucide-react';
 
+import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton } from '../ui';
 import { ShaderCodeEditor } from './ShaderCodeEditor';
@@ -99,11 +100,16 @@ export function ShaderSourceEditor({
           />
         </div>
         <aside className="shader-side-panel">
-          <section className="shader-preview">
-            <h3>Live preview</h3>
-            <div className="shader-preview-sphere" />
-            <p>Production PBR preview uses the last successfully published shader generation.</p>
-          </section>
+          <AssetPreviewPanel
+            title="Shader Preview"
+            subtitle="Preview surface"
+            metadata={[
+              { label: 'Mesh', value: 'Sphere' },
+              { label: 'Environment', value: 'Studio' },
+            ]}
+          >
+            <AssetPreviewPlaceholder label="Shader preview" description="Native viewport integration pending." />
+          </AssetPreviewPanel>
           <section className="shader-include-tree">
             <h3>Include closure</h3>
             <button type="button">{document.path}</button>
