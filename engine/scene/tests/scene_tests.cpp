@@ -1119,6 +1119,21 @@ TEST_CASE("generated scene metadata provides ordinary persistence field codecs")
         REQUIRE(destination.rotation[component] == Catch::Approx(source.rotation[component]));
 }
 
+TEST_CASE("camera persistence migrations cover every schema version")
+{
+    arc::persistence::schema_migration_registry migrations;
+    REQUIRE(arc::scene::register_persistence_migrations(migrations));
+
+    arc::persistence::archive_component_record camera;
+    camera.type = arc::ecs::component_metadata<arc::scene::camera_component>().id;
+    camera.schema_version = 1;
+
+    const auto target_version = arc::ecs::component_metadata<arc::scene::camera_component>().schema_version;
+    REQUIRE(target_version == 3);
+    REQUIRE(migrations.migrate(camera, target_version));
+    REQUIRE(camera.schema_version == target_version);
+}
+
 TEST_CASE("world environment owns validated indirect lighting settings")
 {
     arc::ecs::world world;

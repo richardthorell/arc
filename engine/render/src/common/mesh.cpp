@@ -667,7 +667,8 @@ std::filesystem::path default_import_directory(const std::filesystem::path& sour
     return root / "imported" / sanitize_asset_name(source.stem().string(), "scene");
 }
 
-std::filesystem::path asset_relative_path(const std::filesystem::path& asset_root, const std::filesystem::path& path)
+[[maybe_unused]] std::filesystem::path asset_relative_path(const std::filesystem::path& asset_root,
+                                                           const std::filesystem::path& path)
 {
     std::error_code ec;
     const auto relative = std::filesystem::relative(path, asset_root, ec);
@@ -682,7 +683,7 @@ bool report_progress(const scene_import_progress_callback& callback, scene_impor
     return callback({.stage = stage, .progress = progress, .message = std::move(message)});
 }
 
-bool is_cancelled(const scene_import_options& options)
+[[maybe_unused]] bool is_cancelled(const scene_import_options& options)
 {
     return options.cancel_requested && options.cancel_requested->load();
 }
@@ -701,7 +702,8 @@ const char* blend_mode_name(material_alpha_mode mode) noexcept
     return "opaque";
 }
 
-bool write_material_asset(const std::filesystem::path& path, const material_import& imported, std::string& diagnostic)
+[[maybe_unused]] bool write_material_asset(const std::filesystem::path& path, const material_import& imported,
+                                           std::string& diagnostic)
 {
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);

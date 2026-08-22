@@ -74,6 +74,7 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
         !registry.register_component(ecs::component_metadata<terrain_component>().id, 1, 2, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<terrain_component>().id, 2, 3, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<camera_component>().id, 1, 2, component_upgrade) ||
+        !registry.register_component(ecs::component_metadata<camera_component>().id, 2, 3, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 1, 2, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 2, 3, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 3, 4, component_upgrade) ||
