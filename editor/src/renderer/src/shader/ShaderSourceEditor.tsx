@@ -146,7 +146,9 @@ export function ShaderSourceEditor({
             <h3>Reflection</h3>
             {state.reflection ? (
               <>
-                <p>{state.reflection.compiler} · {state.reflection.bytecodeBytes} bytes</p>
+                <p>
+                  {state.reflection.compiler} · {state.reflection.bytecodeBytes} bytes
+                </p>
                 {state.reflection.parameters.map((parameter) => (
                   <button key={parameter.id} type="button">
                     {parameter.name} · {parameter.offset}:{parameter.size}
@@ -157,9 +159,13 @@ export function ShaderSourceEditor({
                     {resource.name} · set {resource.set}, binding {resource.binding}
                   </button>
                 ))}
-                {!state.reflection.parameters.length && !state.reflection.resources.length && <p>No reflected bindings.</p>}
+                {!state.reflection.parameters.length && !state.reflection.resources.length && (
+                  <p>No reflected bindings.</p>
+                )}
               </>
-            ) : <p>Compile to inspect reflected bindings.</p>}
+            ) : (
+              <p>Compile to inspect reflected bindings.</p>
+            )}
           </section>
         </aside>
       </div>
