@@ -12,8 +12,6 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <vector>
 
 namespace arc::render::tools
 {
@@ -28,22 +26,16 @@ struct slang_compiler_config
     bool require_pinned_version{true};
 };
 
-/** @brief Native material-graph lowering output consumed by Slang compilation. */
-struct material_graph_lowering
-{
-    std::string source;
-    std::unordered_map<std::uint32_t, std::string> generated_line_nodes;
-    std::vector<shader_parameter_descriptor> parameters;
-    std::vector<shader_diagnostic> diagnostics;
-};
-
-using material_graph_lowering_result = core::result<material_graph_lowering, shader_compile_error>;
+/** @brief Compatibility name for Material IR generated shader source. */
+using material_graph_lowering = material_shader_source;
+using material_graph_lowering_result = material_shader_codegen_result;
 
 /**
- * @brief Validate and deterministically lower an ARC material graph to Slang.
+ * @brief Validate and deterministically lower authored ARC material graph JSON to Slang.
  *
- * The JSON representation remains private to tools. Stable graph node and
- * parameter IDs are copied into generated source maps and reflection metadata.
+ * This compatibility entry point is now strictly `JSON -> Material IR -> Slang`. It remains for
+ * editor/tool callers while the native compiler API is adopted directly; there is no independent
+ * JSON-to-shader implementation behind it.
  */
 [[nodiscard]] material_graph_lowering_result lower_material_graph_json(std::string_view graph_json);
 

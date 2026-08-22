@@ -22,7 +22,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 3;
+        descriptor_.version = 4;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
@@ -34,8 +34,8 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/3;arc-material-package/2;arc-material-authoring/4;arc-material-ir/1;"
-               "arc-material-graph/1;" +
+        return "arc.material-cooker/4;arc-material-package/2;arc-material-authoring/4;arc-material-ir/1;"
+               "arc-material-codegen/1;" +
                std::string(compiler_.fingerprint());
     }
 
@@ -72,16 +72,16 @@ public:
                                   .path = context.source.source_path,
                                   .message = compiled_graph.error().message}};
 
-            auto lowered = render::tools::lower_material_graph_json(authored.value().graph_json);
-            if (!lowered)
+            auto generated = render::tools::generate_material_slang(compiled_graph.value());
+            if (!generated)
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
                                   .path = context.source.source_path,
-                                  .message = lowered.error().message}};
+                                  .message = generated.error().message}};
 
             render::shader_compile_request request{
                 .source_path = context.source.source_path.string() + ".generated.slang",
-                .source_override = lowered.value().source,
+                .source_override = generated.value().source,
                 .entry_point = "main",
                 .profile = "spirv_1_5",
                 .domain = render::shader_domain::surface,
@@ -94,7 +94,7 @@ public:
                                     render::material_pass::gbuffer, render::material_pass::forward,
                                     render::material_pass::motion, render::material_pass::object_id,
                                     render::material_pass::selection},
-                .generated_line_nodes = lowered.value().generated_line_nodes,
+                .generated_line_nodes = generated.value().generated_line_nodes,
                 .generate_debug_information = context.target.configuration != assets::cook_configuration::shipping};
             auto compiled = cache_.compile_or_get(compiler_, request);
             if (!compiled)
@@ -109,7 +109,7 @@ public:
                                   .message = std::move(message)}};
             }
 
-            parameters = compiled_graph.value().descriptor.parameters;
+            parameters = generated.value().parameters;
             std::uint32_t offset{};
             for (auto& parameter : parameters)
             {

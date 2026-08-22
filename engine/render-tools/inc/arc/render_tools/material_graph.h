@@ -2,7 +2,7 @@
 
 /**
  * @file arc/render_tools/material_graph.h
- * @brief Backend-neutral native material graph IR and descriptor compiler.
+ * @brief Backend-neutral native material graph IR, descriptor compiler, and shader code generation.
  */
 
 #include <arc/render/material_abi.h>
@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace arc::render::tools
@@ -20,6 +21,9 @@ namespace arc::render::tools
 
 /** @brief Version of the native material graph IR emitted by ARC tooling. */
 inline constexpr std::uint32_t material_ir_version = 1;
+
+/** @brief Version of the deterministic Material IR to Slang generator. */
+inline constexpr std::uint32_t material_shader_codegen_version = 1;
 
 /** @brief Operation represented by one normalized material IR node. */
 enum class material_ir_node_kind : std::uint8_t
@@ -78,7 +82,7 @@ struct material_ir_connection
     friend auto operator<=>(const material_ir_connection&, const material_ir_connection&) = default;
 };
 
-/** @brief Backend-neutral material graph representation used by later code-generation stages. */
+/** @brief Backend-neutral material graph representation used by shader code-generation stages. */
 struct material_ir
 {
     std::uint32_t version{material_ir_version};
@@ -145,14 +149,33 @@ struct material_graph_compilation
     std::vector<shader_diagnostic> diagnostics;
 };
 
+/** @brief Deterministic generated Slang source implementing the Material ABI v1 evaluator. */
+struct material_shader_source
+{
+    std::string source;
+    std::unordered_map<std::uint32_t, std::string> generated_line_nodes;
+    std::vector<shader_parameter_descriptor> parameters;
+    std::vector<shader_diagnostic> diagnostics;
+};
+
 using material_graph_compile_result = core::result<material_graph_compilation, shader_compile_error>;
+using material_shader_codegen_result = core::result<material_shader_source, shader_compile_error>;
 
 /**
  * @brief Validate and normalize authored material graph JSON into native IR and descriptor data.
  *
- * This stage is backend-neutral and intentionally does not emit Slang or alter the current
- * graph-to-shader lowering path. Shader code generation consumes this IR in a later migration step.
+ * JSON is an authoring boundary only. Shader generation consumes the resulting native IR so
+ * descriptor data and generated shader behavior share one normalized source of truth.
  */
 [[nodiscard]] material_graph_compile_result compile_material_graph_json(std::string_view graph_json);
+
+/**
+ * @brief Deterministically generate Slang from validated native Material IR.
+ *
+ * The generated source implements `arc_evaluate_material(ArcSurfaceInput)` against Material ABI v1.
+ * A minimal fragment entry point is included only so the current cooker can compile and reflect the
+ * material package before render-pass composition is introduced in the next migration stage.
+ */
+[[nodiscard]] material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation);
 
 } // namespace arc::render::tools
