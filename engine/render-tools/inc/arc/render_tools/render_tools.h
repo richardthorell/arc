@@ -6,12 +6,13 @@
  */
 
 #include <arc/render/shader.h>
+#include <arc/render_tools/material_graph.h>
 
 #include <filesystem>
-#include <unordered_map>
-#include <vector>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace arc::render::tools
 {
