@@ -353,7 +353,8 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         {
             const auto pin = connection["from"].value("pin", "");
             if (!output_signature.contains(pin))
-                validation_error(concatenate({"Material Function call '", call_id, "' references unknown output '", pin, "'"})));
+                return graph_expand_result::failure(validation_error(
+                    concatenate({"Material Function call '", call_id, "' references unknown output '", pin, "'"})));
             external_outputs.push_back(connection);
         }
         else

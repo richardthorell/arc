@@ -71,7 +71,7 @@ std::string normalized_path(const std::filesystem::path& path)
 
 bool path_matches(std::filesystem::path dependency, std::string_view authored)
 {
-    auto dependency_text = normalized_path(std::move(dependency));
+    auto dependency_text = normalized_path(dependency);
     auto authored_text = normalized_path(std::filesystem::path(authored));
     if (authored_text.starts_with("assets/")) authored_text.erase(0, 7);
     if (dependency_text == authored_text) return true;
