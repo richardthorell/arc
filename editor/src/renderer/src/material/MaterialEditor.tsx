@@ -62,7 +62,9 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           ) : (
             <AssetPreviewPlaceholder
               label={state.previewLoading ? 'Rendering preview…' : 'Material preview'}
-              description={state.previewLoading ? 'Generating the latest thumbnail.' : 'Save & Compile to render preview.'}
+              description={
+                state.previewLoading ? 'Generating the latest thumbnail.' : 'Save & Compile to render preview.'
+              }
             />
           )}
         </AssetPreviewPanel>

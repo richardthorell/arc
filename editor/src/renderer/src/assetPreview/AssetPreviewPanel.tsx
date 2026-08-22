@@ -36,13 +36,7 @@ export function AssetPreviewPlaceholder({
   );
 }
 
-export function AssetPreviewPanel({
-  title,
-  subtitle,
-  actions,
-  children,
-  metadata = [],
-}: AssetPreviewPanelProps) {
+export function AssetPreviewPanel({ title, subtitle, actions, children, metadata = [] }: AssetPreviewPanelProps) {
   return (
     <section className="asset-preview-panel" aria-label={title}>
       <header className="asset-preview-header">

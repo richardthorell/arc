@@ -108,10 +108,7 @@ export function ShaderSourceEditor({
               { label: 'Environment', value: 'Studio' },
             ]}
           >
-            <AssetPreviewPlaceholder
-              label="Shader preview"
-              description="Native viewport integration pending."
-            />
+            <AssetPreviewPlaceholder label="Shader preview" description="Native viewport integration pending." />
           </AssetPreviewPanel>
           <section className="shader-include-tree">
             <h3>Include closure</h3>
