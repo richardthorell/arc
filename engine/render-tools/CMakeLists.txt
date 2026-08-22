@@ -6,7 +6,10 @@ arc_add_module(
 )
 
 target_link_libraries(arc-render-tools PRIVATE "$<BUILD_INTERFACE:arc-third-party-json>")
-target_sources(arc-render-tools PRIVATE src/common/material_graph_compiler.cpp)
+target_sources(arc-render-tools PRIVATE
+    src/common/material_graph_compiler.cpp
+    src/common/material_graph_ir.cpp
+)
 target_compile_definitions(arc-render-tools PRIVATE ARC_PINNED_SLANG_VERSION="2026.14.1")
 
 set(ARC_SLANGC_EXECUTABLE "" CACHE FILEPATH
