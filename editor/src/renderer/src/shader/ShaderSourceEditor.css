@@ -55,8 +55,12 @@
   font: inherit;
 }
 
-.shader-diagnostic.error strong { color: var(--danger); }
-.shader-diagnostic.warning strong { color: var(--warning); }
+.shader-diagnostic.error strong {
+  color: var(--danger);
+}
+.shader-diagnostic.warning strong {
+  color: var(--warning);
+}
 
 .shader-side-panel .shader-preview,
 .shader-side-panel .shader-include-tree {

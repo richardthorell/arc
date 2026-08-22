@@ -201,10 +201,15 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arcscene") return std::pair{asset_types::scene, importer_ids::scene};
     if (extension == ".arcprefab") return std::pair{asset_types::prefab, importer_ids::prefab};
     if (extension == ".arcmat") return std::pair{asset_types::material, importer_ids::material};
-    if (extension == ".arcmatinst")
-        return std::pair{asset_types::material_instance, importer_ids::material_instance};
+    if (extension == ".arcmatinst") return std::pair{asset_types::material_instance, importer_ids::material_instance};
+    const bool shader_include =
+        extension == ".inc" || std::any_of(path.begin(), path.end(), [](const auto& component)
+                                           { return component == std::filesystem::path("include"); });
+    if (shader_include &&
+        (extension == ".slang" || extension == ".glsl" || extension == ".hlsl" || extension == ".inc"))
+        return std::pair{asset_types::binary_blob, importer_ids::binary};
     if (extension == ".slang" || extension == ".glsl" || extension == ".vert" || extension == ".frag" ||
-        extension == ".comp" || extension == ".hlsl" || extension == ".inc")
+        extension == ".comp" || extension == ".hlsl")
         return std::pair{asset_types::shader, importer_ids::shader};
     if (extension == ".hdr" || extension == ".exr")
         return std::pair{asset_types::environment, importer_ids::environment};

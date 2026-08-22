@@ -34,6 +34,15 @@ std::string path_key(const std::filesystem::path& value)
     return path_key(normalize_asset_path(value));
 }
 
+bool is_shader_include_path(const std::filesystem::path& path)
+{
+    const auto extension = path.extension().string();
+    if (extension == ".inc") return true;
+    if (extension != ".slang" && extension != ".glsl" && extension != ".hlsl") return false;
+    return std::any_of(path.begin(), path.end(),
+                       [](const auto& component) { return component == std::filesystem::path("include"); });
+}
+
 bool path_within(const std::filesystem::path& root, const std::filesystem::path& candidate)
 {
     const auto normalized_root = std::filesystem::absolute(root).lexically_normal();
@@ -195,10 +204,10 @@ asset_reference dependency_from_path(const asset_import_context& context, std::s
             (void)component;
             mounted_root = mounted_root.parent_path();
         }
-        const auto resolved = context.metadata.type == asset_types::material ||
-                                      context.metadata.type == asset_types::material_instance
-                                  ? mounted_root / authored
-                                  : context.source_path.parent_path() / authored;
+        const auto resolved =
+            context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_instance
+                ? mounted_root / authored
+                : context.source_path.parent_path() / authored;
         const auto relative_to_mount = resolved.lexically_normal().lexically_relative(mounted_root);
         if (relative_to_mount.empty() || relative_to_mount.native().starts_with(std::filesystem::path("..").native()))
             return {};
@@ -285,7 +294,7 @@ void collect_shader_dependencies(const asset_import_context& context, std::vecto
         if (end == std::string::npos) break;
         append_dependency(output,
                           dependency_from_path(context, std::string_view(source).substr(quote + 1, end - quote - 1),
-                                               asset_types::shader));
+                                               asset_types::binary_blob));
         cursor = end + 1;
     }
 }
@@ -338,7 +347,7 @@ public:
                                                         nullptr, false);
             if (!document.is_discarded()) collect_json_dependencies(document, context, result.dependencies);
         }
-        else if (context.metadata.type == asset_types::shader)
+        else if (context.metadata.type == asset_types::shader || is_shader_include_path(context.source_path))
             collect_shader_dependencies(context, result.dependencies);
         return result;
     }
@@ -356,9 +365,9 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
                                                             std::vector<std::string>{".arcprefab"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::material, asset_types::material,
                                                             "ARC Material", std::vector<std::string>{".arcmat"}));
-    result.push_back(std::make_unique<source_blob_importer>(
-        importer_ids::material_instance, asset_types::material_instance, "ARC Material Instance",
-        std::vector<std::string>{".arcmatinst"}));
+    result.push_back(std::make_unique<source_blob_importer>(importer_ids::material_instance,
+                                                            asset_types::material_instance, "ARC Material Instance",
+                                                            std::vector<std::string>{".arcmatinst"}));
     result.push_back(std::make_unique<source_blob_importer>(
         importer_ids::shader, asset_types::shader, "ARC Shader",
         std::vector<std::string>{".slang", ".glsl", ".vert", ".frag", ".comp", ".hlsl", ".inc"}));

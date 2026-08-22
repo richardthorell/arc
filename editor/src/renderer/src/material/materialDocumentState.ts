@@ -281,7 +281,10 @@ export const compileMaterialDocument = async (document: EditorDocument): Promise
       compiling: false,
       message: native?.succeeded
         ? `Native Slang compiled · ${compilation.ir.expressions.length} expressions · ${compilation.ir.parameters.length} parameters`
-        : native?.message || response.error || native?.diagnostics?.[0]?.message || 'Native material compilation failed',
+        : native?.message ||
+          response.error ||
+          native?.diagnostics?.[0]?.message ||
+          'Native material compilation failed',
     });
     return response.succeeded && native?.succeeded === true;
   } catch (error) {

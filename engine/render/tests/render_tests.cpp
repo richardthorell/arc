@@ -1936,14 +1936,17 @@ public:
         ++count;
         return arc::render::shader_compile_result::success(
             {.bytecode = {std::uint8_t(count)},
-             .reflection = {.entry_points = {{.id = arc::render::make_shader_entry_point_id(request.entry_point,
-                                                                                             request.stage),
-                                               .name = request.entry_point,
-                                               .stage = request.stage,
-                                               .profile = request.profile}}}});
+             .reflection = {
+                 .entry_points = {{.id = arc::render::make_shader_entry_point_id(request.entry_point, request.stage),
+                                   .name = request.entry_point,
+                                   .stage = request.stage,
+                                   .profile = request.profile}}}});
     }
 
-    std::string_view fingerprint() const noexcept override { return "arc.test-compiler/1"; }
+    std::string_view fingerprint() const noexcept override
+    {
+        return "arc.test-compiler/1";
+    }
 
     int count{};
 };
@@ -2113,9 +2116,9 @@ TEST_CASE("shader package publication preserves last good generations")
     REQUIRE(library.retired_count() == 1);
     REQUIRE(library.find(first.id, first.permutation)->generation == second.generation);
 
-    library.report_failure(first.id, first.permutation,
-                           {.code = arc::render::shader_compile_error_code::compilation_failed,
-                            .message = "transient edit failed"});
+    library.report_failure(
+        first.id, first.permutation,
+        {.code = arc::render::shader_compile_error_code::compilation_failed, .message = "transient edit failed"});
     REQUIRE(library.snapshot(first.id, first.permutation)->last_error.has_value());
     REQUIRE(library.find(first.id, first.permutation)->generation == second.generation);
 
@@ -2131,10 +2134,8 @@ TEST_CASE("material instances validate stable parameter overrides without changi
     const auto tint = arc::render::make_shader_parameter_id("tint");
     arc::render::material_definition_descriptor definition{
         .material = {.name = "Base", .shader_permutation = {99}},
-        .parameter_layout = {{.id = tint,
-                              .name = "tint",
-                              .type = arc::render::shader_parameter_type::float3,
-                              .size = 12}}};
+        .parameter_layout = {
+            {.id = tint, .name = "tint", .type = arc::render::shader_parameter_type::float3, .size = 12}}};
     arc::render::material_instance_descriptor instance{
         .parent = {.index = 1, .generation = 1},
         .name = "Blue",

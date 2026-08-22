@@ -137,8 +137,8 @@ process_result run_process(const std::filesystem::path& executable, const std::v
     posix_spawn_file_actions_t actions;
     if (posix_spawn_file_actions_init(&actions) != 0) return {};
     const auto output_text = output_path.string();
-    if (posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, output_text.c_str(),
-                                         O_WRONLY | O_CREAT | O_TRUNC, 0600) != 0 ||
+    if (posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, output_text.c_str(), O_WRONLY | O_CREAT | O_TRUNC,
+                                         0600) != 0 ||
         posix_spawn_file_actions_adddup2(&actions, STDOUT_FILENO, STDERR_FILENO) != 0)
     {
         posix_spawn_file_actions_destroy(&actions);
@@ -259,8 +259,8 @@ std::string stage_name(shader_stage stage)
 
 std::vector<shader_diagnostic> parse_diagnostics(std::string_view text, const shader_compile_request& request)
 {
-    static const std::regex pattern{R"(^(.+?)[(:](\d+)(?:[,)]|:)(\d+)?[:)]?\s*:?\s*(warning|error|note)?\s*:?[ ]*(.*)$)",
-                                    std::regex::icase};
+    static const std::regex pattern{
+        R"(^(.+?)[(:](\d+)(?:[,)]|:)(\d+)?[:)]?\s*:?\s*(warning|error|note)?\s*:?[ ]*(.*)$)", std::regex::icase};
     std::vector<shader_diagnostic> result;
     std::istringstream lines{std::string(text)};
     std::string line;
@@ -300,8 +300,7 @@ shader_resource_kind resource_kind(std::string_view kind)
     if (normalized.find("storage") != std::string::npos || normalized.find("rw") != std::string::npos)
         return shader_resource_kind::read_write_buffer;
     if (normalized.find("structured") != std::string::npos) return shader_resource_kind::structured_buffer;
-    if (normalized.find("acceleration") != std::string::npos)
-        return shader_resource_kind::acceleration_structure;
+    if (normalized.find("acceleration") != std::string::npos) return shader_resource_kind::acceleration_structure;
     return shader_resource_kind::constant_buffer;
 }
 
@@ -317,7 +316,8 @@ std::string reflected_kind(const nlohmann::json& value)
 shader_parameter_type reflected_parameter_type(const nlohmann::json& type)
 {
     auto kind = reflected_kind(type);
-    std::ranges::transform(kind, kind.begin(), [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    std::ranges::transform(kind, kind.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
     const auto columns = type.is_object() ? type.value("columnCount", type.value("elementCount", 1u)) : 1u;
     if (kind.find("bool") != std::string::npos) return shader_parameter_type::boolean;
     if (kind.find("uint") != std::string::npos) return shader_parameter_type::uint32;
@@ -336,11 +336,16 @@ std::uint32_t reflected_size(shader_parameter_type type)
 {
     switch (type)
     {
-        case shader_parameter_type::float2: return 8;
-        case shader_parameter_type::float3: return 12;
-        case shader_parameter_type::float4: return 16;
-        case shader_parameter_type::matrix4x4: return 64;
-        default: return 4;
+        case shader_parameter_type::float2:
+            return 8;
+        case shader_parameter_type::float3:
+            return 12;
+        case shader_parameter_type::float4:
+            return 16;
+        case shader_parameter_type::matrix4x4:
+            return 64;
+        default:
+            return 4;
     }
 }
 
@@ -360,8 +365,7 @@ void append_reflected_fields(const nlohmann::json& fields, shader_reflection& re
         if (field.contains("binding") && field["binding"].is_object())
             parameter.offset = field["binding"].value("offset", parameter.offset);
         parameter.size = field.value("size", reflected_size(parameter.type));
-        reflection.parameter_block_size = std::max(reflection.parameter_block_size,
-                                                   parameter.offset + parameter.size);
+        reflection.parameter_block_size = std::max(reflection.parameter_block_size, parameter.offset + parameter.size);
         reflection.parameters.push_back(std::move(parameter));
     }
 }
@@ -445,8 +449,8 @@ slang_shader_compiler::slang_shader_compiler(slang_compiler_config config) : con
         return;
     }
     const auto version = run_process(config_.executable, {"-version"}, temporary.path / "version.txt");
-    available_ = version.exit_code == 0 &&
-                 (!config_.require_pinned_version || reports_pinned_slang_version(version.output));
+    available_ =
+        version.exit_code == 0 && (!config_.require_pinned_version || reports_pinned_slang_version(version.output));
     fingerprint_ = available_ ? "slang/" + std::string(pinned_slang_version) : "slang/version-mismatch";
 }
 
@@ -463,8 +467,8 @@ shader_compile_result slang_shader_compiler::compile(const shader_compile_reques
             {.code = shader_compile_error_code::invalid_request,
              .source_path = request.source_path,
              .message = "the initial ARC Slang adapter requires a source, entry point, and SPIR-V target"});
-    const auto source_for_validation = request.source_override.empty() ? read_text(request.source_path)
-                                                                       : request.source_override;
+    const auto source_for_validation =
+        request.source_override.empty() ? read_text(request.source_path) : request.source_override;
     if (source_for_validation.find("[[vk::") != std::string::npos ||
         source_for_validation.find("__spirv_") != std::string::npos)
         return shader_compile_result::failure(
@@ -474,10 +478,9 @@ shader_compile_result slang_shader_compiler::compile(const shader_compile_reques
 
     temporary_directory temporary{make_temporary_directory()};
     if (temporary.path.empty())
-        return shader_compile_result::failure(
-            {.code = shader_compile_error_code::compilation_failed,
-             .source_path = request.source_path,
-             .message = "could not create shader compiler staging directory"});
+        return shader_compile_result::failure({.code = shader_compile_error_code::compilation_failed,
+                                               .source_path = request.source_path,
+                                               .message = "could not create shader compiler staging directory"});
 
     auto source_path = std::filesystem::path(request.source_path);
     if (!request.source_override.empty())
@@ -486,10 +489,9 @@ shader_compile_result slang_shader_compiler::compile(const shader_compile_reques
         std::ofstream source(source_path, std::ios::binary);
         source.write(request.source_override.data(), static_cast<std::streamsize>(request.source_override.size()));
         if (!source)
-            return shader_compile_result::failure(
-                {.code = shader_compile_error_code::source_unavailable,
-                 .source_path = request.source_path,
-                 .message = "could not stage the transient shader source"});
+            return shader_compile_result::failure({.code = shader_compile_error_code::source_unavailable,
+                                                   .source_path = request.source_path,
+                                                   .message = "could not stage the transient shader source"});
     }
 
     const auto output_path = temporary.path / "shader.spv";
@@ -508,9 +510,9 @@ shader_compile_result slang_shader_compiler::compile(const shader_compile_reques
                                        reflection_path.string(),
                                        "-o",
                                        output_path.string()};
-    arguments.push_back(request.optimization == shader_optimization::disabled
-                            ? "-O0"
-                            : request.optimization == shader_optimization::performance ? "-O3" : "-O1");
+    arguments.push_back(request.optimization == shader_optimization::disabled      ? "-O0"
+                        : request.optimization == shader_optimization::performance ? "-O3"
+                                                                                   : "-O1");
     if (request.generate_debug_information) arguments.push_back("-g");
     for (const auto& directory : request.include_directories)
     {
@@ -531,19 +533,17 @@ shader_compile_result slang_shader_compiler::compile(const shader_compile_reques
     const auto process = run_process(config_.executable, arguments, diagnostics_path);
     auto diagnostics = parse_diagnostics(process.output, request);
     if (process.exit_code != 0)
-        return shader_compile_result::failure(
-            {.code = shader_compile_error_code::compilation_failed,
-             .source_path = request.source_path,
-             .message = "Slang rejected the shader source",
-             .diagnostics = std::move(diagnostics)});
+        return shader_compile_result::failure({.code = shader_compile_error_code::compilation_failed,
+                                               .source_path = request.source_path,
+                                               .message = "Slang rejected the shader source",
+                                               .diagnostics = std::move(diagnostics)});
 
     auto bytecode = read_bytes(output_path);
     if (bytecode.empty())
-        return shader_compile_result::failure(
-            {.code = shader_compile_error_code::compilation_failed,
-             .source_path = request.source_path,
-             .message = "Slang completed without producing SPIR-V",
-             .diagnostics = std::move(diagnostics)});
+        return shader_compile_result::failure({.code = shader_compile_error_code::compilation_failed,
+                                               .source_path = request.source_path,
+                                               .message = "Slang completed without producing SPIR-V",
+                                               .diagnostics = std::move(diagnostics)});
 
     auto reflection = parse_reflection(reflection_path, request);
     const auto entry_id = make_shader_entry_point_id(request.entry_point, request.stage);

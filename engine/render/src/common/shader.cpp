@@ -146,8 +146,7 @@ std::optional<std::string> read_text(const std::filesystem::path& path)
 }
 
 std::optional<std::filesystem::path> resolve_include(const std::filesystem::path& including_file,
-                                                     std::string_view include,
-                                                     const shader_compile_request& request)
+                                                     std::string_view include, const shader_compile_request& request)
 {
     std::error_code error;
     auto candidate = (including_file.parent_path() / include).lexically_normal();
@@ -168,8 +167,8 @@ std::vector<std::string> includes_in(std::string_view source)
     while (cursor < source.size())
     {
         const auto line_end = source.find('\n', cursor);
-        const auto line = source.substr(cursor, line_end == std::string_view::npos ? source.size() - cursor
-                                                                                  : line_end - cursor);
+        const auto line =
+            source.substr(cursor, line_end == std::string_view::npos ? source.size() - cursor : line_end - cursor);
         const auto directive = line.find("#include");
         if (directive != std::string_view::npos)
         {
@@ -194,16 +193,16 @@ std::vector<std::string> imports_in(std::string_view source)
     while (cursor < source.size())
     {
         const auto line_end = source.find('\n', cursor);
-        auto line = source.substr(cursor, line_end == std::string_view::npos ? source.size() - cursor
-                                                                            : line_end - cursor);
+        auto line =
+            source.substr(cursor, line_end == std::string_view::npos ? source.size() - cursor : line_end - cursor);
         const auto first = line.find_first_not_of(" \t");
         if (first != std::string_view::npos && line.substr(first).starts_with("import "))
         {
             const auto begin = line.find_first_not_of(" \t", first + 7);
             const auto end = begin == std::string_view::npos ? begin : line.find_first_of("; \t\r", begin);
             if (begin != std::string_view::npos && end != begin)
-                result.emplace_back(line.substr(begin, end == std::string_view::npos ? line.size() - begin
-                                                                                     : end - begin));
+                result.emplace_back(
+                    line.substr(begin, end == std::string_view::npos ? line.size() - begin : end - begin));
         }
         if (line_end == std::string_view::npos) break;
         cursor = line_end + 1;
@@ -212,8 +211,7 @@ std::vector<std::string> imports_in(std::string_view source)
 }
 
 std::optional<std::filesystem::path> resolve_import(const std::filesystem::path& importing_file,
-                                                     std::string_view module,
-                                                     const shader_compile_request& request)
+                                                    std::string_view module, const shader_compile_request& request)
 {
     std::array<std::string, 3> names{std::string(module), std::string(module), std::string(module)};
     std::ranges::replace(names[1], '.', '/');
@@ -250,8 +248,7 @@ collect_dependencies(const shader_compile_request& request)
     const std::filesystem::path root = std::filesystem::path(request.source_path).lexically_normal();
 
     const auto visit = [&](const auto& self, const std::filesystem::path& path,
-                           const std::optional<std::string>& override_source)
-        -> std::optional<shader_compile_error>
+                           const std::optional<std::string>& override_source) -> std::optional<shader_compile_error>
     {
         const auto normalized = path.lexically_normal();
         if (active.contains(normalized))
@@ -287,8 +284,7 @@ collect_dependencies(const shader_compile_request& request)
         }
         active.erase(normalized);
         visited.insert(normalized);
-        dependencies.push_back(
-            {.path = normalized.generic_string(), .content_hash = hash_text(*source)});
+        dependencies.push_back({.path = normalized.generic_string(), .content_hash = hash_text(*source)});
         return std::nullopt;
     };
 
@@ -301,13 +297,11 @@ collect_dependencies(const shader_compile_request& request)
     return core::result<std::vector<shader_dependency>, shader_compile_error>::success(std::move(dependencies));
 }
 
-shader_content_hash request_hash(const shader_compile_request& request,
-                                 std::span<const shader_dependency> dependencies,
+shader_content_hash request_hash(const shader_compile_request& request, std::span<const shader_dependency> dependencies,
                                  std::string_view compiler_fingerprint) noexcept
 {
     sha256 hash;
-    const auto append_number = [&](auto value)
-    { hash.update(std::as_bytes(std::span(&value, 1))); };
+    const auto append_number = [&](auto value) { hash.update(std::as_bytes(std::span(&value, 1))); };
     hash.update("ARC_SHADER_BUILD_2");
     hash.update(request.source_path);
     hash.update(request.entry_point);
@@ -337,9 +331,8 @@ shader_content_hash request_hash(const shader_compile_request& request,
 std::string shader_cache_key(const shader_compile_request& request)
 {
     std::ostringstream key;
-    key << request.source_path << '|' << request.entry_point << '|' << request.profile << '|'
-        << request.library_version << '|'
-        << static_cast<int>(request.domain) << '|' << static_cast<int>(request.stage) << '|'
+    key << request.source_path << '|' << request.entry_point << '|' << request.profile << '|' << request.library_version
+        << '|' << static_cast<int>(request.domain) << '|' << static_cast<int>(request.stage) << '|'
         << static_cast<int>(request.target);
     for (const auto& define : request.defines)
         key << '|' << define;
@@ -351,7 +344,8 @@ std::string shader_cache_key(const shader_compile_request& request)
 class binary_writer
 {
 public:
-    template <class T> void value(T value)
+    template <class T>
+    void value(T value)
         requires(std::is_integral_v<T> || std::is_enum_v<T>)
     {
         if constexpr (std::is_enum_v<T>)
@@ -388,7 +382,8 @@ class binary_reader
 public:
     explicit binary_reader(std::span<const std::byte> bytes) : bytes_(bytes) {}
 
-    template <class T> bool value(T& output)
+    template <class T>
+    bool value(T& output)
         requires(std::is_integral_v<T> || std::is_enum_v<T>)
     {
         if constexpr (std::is_enum_v<T>)
@@ -403,8 +398,7 @@ public:
             if (remaining() < sizeof(T)) return false;
             T converted{};
             for (std::size_t index = 0; index < sizeof(T); ++index)
-                converted |= static_cast<T>(std::to_integer<unsigned char>(bytes_[cursor_ + index]))
-                             << (index * 8u);
+                converted |= static_cast<T>(std::to_integer<unsigned char>(bytes_[cursor_ + index])) << (index * 8u);
             cursor_ += sizeof(T);
             output = converted;
             return true;
@@ -438,7 +432,10 @@ public:
         return true;
     }
 
-    [[nodiscard]] std::size_t remaining() const noexcept { return bytes_.size() - cursor_; }
+    [[nodiscard]] std::size_t remaining() const noexcept
+    {
+        return bytes_.size() - cursor_;
+    }
 
 private:
     std::span<const std::byte> bytes_;
@@ -503,10 +500,9 @@ shader_package_bytes_result serialize_shader_package(const shader_package& packa
         return shader_package_bytes_result::failure(
             {.code = shader_compile_error_code::validation_failed, .message = "shader package table exceeds limits"});
     if (std::ranges::any_of(package.compiled.diagnostics, [](const shader_diagnostic& diagnostic)
-                           { return diagnostic.include_stack.size() > maximum_package_entries; }))
-        return shader_package_bytes_result::failure(
-            {.code = shader_compile_error_code::validation_failed,
-             .message = "shader diagnostic include stack exceeds limits"});
+                            { return diagnostic.include_stack.size() > maximum_package_entries; }))
+        return shader_package_bytes_result::failure({.code = shader_compile_error_code::validation_failed,
+                                                     .message = "shader diagnostic include stack exceeds limits"});
 
     binary_writer writer;
     writer.string(package_magic);
@@ -516,7 +512,8 @@ shader_package_bytes_result serialize_shader_package(const shader_package& packa
     writer.value(package.generation.value);
     writer.value(package.target);
     writer.value(package.permutation.value);
-    writer.bytes.insert(writer.bytes.end(), package.compiled.build_hash.bytes.begin(), package.compiled.build_hash.bytes.end());
+    writer.bytes.insert(writer.bytes.end(), package.compiled.build_hash.bytes.begin(),
+                        package.compiled.build_hash.bytes.end());
     writer.string(package.compiled.compiler_fingerprint);
     writer.raw(std::as_bytes(std::span(package.compiled.bytecode)));
 
@@ -568,7 +565,8 @@ shader_package_bytes_result serialize_shader_package(const shader_package& packa
     for (const auto& dependency : package.compiled.dependencies)
     {
         writer.string(dependency.path);
-        writer.bytes.insert(writer.bytes.end(), dependency.content_hash.bytes.begin(), dependency.content_hash.bytes.end());
+        writer.bytes.insert(writer.bytes.end(), dependency.content_hash.bytes.begin(),
+                            dependency.content_hash.bytes.end());
     }
     const auto write_location = [&](const shader_source_location& location)
     {
@@ -639,7 +637,8 @@ shader_package_result deserialize_shader_package(std::span<const std::byte> byte
             !reader.string(entry.profile))
             return shader_package_result::failure(corrupt_package("truncated entry-point table"));
         for (auto& size : entry.thread_group_size)
-            if (!reader.value(size)) return shader_package_result::failure(corrupt_package("truncated thread-group size"));
+            if (!reader.value(size))
+                return shader_package_result::failure(corrupt_package("truncated thread-group size"));
     }
     if (!read_count(count)) return shader_package_result::failure(corrupt_package("invalid parameter count"));
     reflection.parameters.resize(count);
@@ -679,8 +678,10 @@ shader_package_result deserialize_shader_package(std::span<const std::byte> byte
             return shader_package_result::failure(corrupt_package("truncated dependency table"));
 
     const auto read_location = [&](shader_source_location& location)
-    { return reader.string(location.path) && reader.value(location.line) && reader.value(location.column) &&
-             reader.string(location.graph_node_id); };
+    {
+        return reader.string(location.path) && reader.value(location.line) && reader.value(location.column) &&
+               reader.string(location.graph_node_id);
+    };
     if (!read_count(count)) return shader_package_result::failure(corrupt_package("invalid source-map count"));
     package.compiled.source_map.resize(count);
     for (auto& mapping : package.compiled.source_map)
@@ -693,8 +694,7 @@ shader_package_result deserialize_shader_package(std::span<const std::byte> byte
         std::uint32_t include_count{};
         std::uint8_t has_permutation{};
         if (!reader.value(diagnostic.severity) || !reader.string(diagnostic.code) ||
-            !reader.string(diagnostic.message) || !read_location(diagnostic.location) ||
-            !read_count(include_count))
+            !reader.string(diagnostic.message) || !read_location(diagnostic.location) || !read_count(include_count))
             return shader_package_result::failure(corrupt_package("truncated diagnostic table"));
         diagnostic.include_stack.resize(include_count);
         for (auto& location : diagnostic.include_stack)
@@ -711,8 +711,8 @@ shader_package_result deserialize_shader_package(std::span<const std::byte> byte
         }
     }
 
-    if (reader.remaining() != 0 || !package.id.valid() || !package.generation.valid() ||
-        !package.permutation.valid() || package.compiled.bytecode.empty() || package.compiled.build_hash.empty())
+    if (reader.remaining() != 0 || !package.id.valid() || !package.generation.valid() || !package.permutation.valid() ||
+        package.compiled.bytecode.empty() || package.compiled.build_hash.empty())
         return shader_package_result::failure(corrupt_package("shader package validation failed"));
     return shader_package_result::success(std::move(package));
 }
@@ -810,7 +810,7 @@ std::optional<shader_package> shader_package_library::find(shader_package_id id,
 }
 
 std::optional<shader_package_snapshot> shader_package_library::snapshot(shader_package_id id,
-                                                                         shader_permutation_id permutation) const
+                                                                        shader_permutation_id permutation) const
 {
     std::shared_lock lock{mutex_};
     const auto found = active_.find(key(id, permutation));

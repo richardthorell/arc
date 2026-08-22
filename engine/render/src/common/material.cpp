@@ -74,8 +74,8 @@ material_instance_result resolve_material_instance(const material_definition_des
                  .parameter = override_value.id,
                  .message = "material instance contains a duplicate parameter override"});
 
-        const auto layout = std::ranges::find(definition.parameter_layout, override_value.id,
-                                              &shader_parameter_descriptor::id);
+        const auto layout =
+            std::ranges::find(definition.parameter_layout, override_value.id, &shader_parameter_descriptor::id);
         if (layout == definition.parameter_layout.end())
             return material_instance_result::failure(
                 {.code = material_instance_error_code::unknown_parameter,
@@ -87,8 +87,7 @@ material_instance_result resolve_material_instance(const material_definition_des
                  .parameter = override_value.id,
                  .message = "material instance override type does not match its parent layout"});
 
-        const auto existing =
-            std::ranges::find(result.parameters, override_value.id, &material_parameter_override::id);
+        const auto existing = std::ranges::find(result.parameters, override_value.id, &material_parameter_override::id);
         if (existing == result.parameters.end())
             result.parameters.push_back(override_value);
         else

@@ -307,7 +307,7 @@ using shader_package_bytes_result = core::result<std::vector<std::byte>, shader_
 [[nodiscard]] shader_parameter_id make_shader_parameter_id(std::string_view stable_name) noexcept;
 /** @brief Return a deterministic ID for an entry point and stage. */
 [[nodiscard]] shader_entry_point_id make_shader_entry_point_id(std::string_view stable_name,
-                                                                shader_stage stage) noexcept;
+                                                               shader_stage stage) noexcept;
 /** @brief Return lowercase hexadecimal text for a shader content hash. */
 [[nodiscard]] std::string to_string(const shader_content_hash& hash);
 
@@ -382,8 +382,7 @@ class shader_package_library
 public:
     [[nodiscard]] shader_publication_status publish(shader_package package, std::uint64_t retire_after_frame);
     void report_failure(shader_package_id id, shader_permutation_id permutation, shader_compile_error error);
-    [[nodiscard]] std::optional<shader_package> find(shader_package_id id,
-                                                     shader_permutation_id permutation) const;
+    [[nodiscard]] std::optional<shader_package> find(shader_package_id id, shader_permutation_id permutation) const;
     [[nodiscard]] std::optional<shader_package_snapshot> snapshot(shader_package_id id,
                                                                   shader_permutation_id permutation) const;
     void collect(std::uint64_t completed_frame);
