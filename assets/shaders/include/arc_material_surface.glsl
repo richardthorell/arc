@@ -44,15 +44,15 @@ struct arc_material_surface
     float subsurface;
 };
 
-arc_material_surface arc_default_material_surface(arc_material_inputs input)
+arc_material_surface arc_default_material_surface(arc_material_inputs material_input)
 {
     arc_material_surface surface;
     surface.base_color = vec3(0.8);
     surface.metallic = 0.0;
     surface.roughness = 0.6;
-    surface.normal_ws = normalize(input.normal_ws);
+    surface.normal_ws = normalize(material_input.normal_ws);
     surface.clear_coat_normal_ws = surface.normal_ws;
-    surface.tangent_ws = input.tangent_ws.xyz;
+    surface.tangent_ws = material_input.tangent_ws.xyz;
     surface.ambient_occlusion = 1.0;
     surface.emissive_radiance = vec3(0.0);
     surface.opacity = 1.0;
