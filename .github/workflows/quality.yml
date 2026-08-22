@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - name: Set Up Node 22.12
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
@@ -81,6 +83,29 @@ jobs:
           npm run lint
           npm run typecheck
           npm test
-      - name: Static Analysis
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
+      - name: Static Analysis (PR Changes)
+        if: ${{ github.event_name == 'pull_request' && inputs.run_native }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mapfile -t changed_native_files < <(
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" |
+              grep -E '^(engine|editor/native|samples|tools)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inl|ixx|cppm)$' || true
+          )
+
+          if (( ${#changed_native_files[@]} == 0 )); then
+            echo "No changed native files; skipping clang-tidy."
+            exit 0
+          fi
+
+          tidy_regex=$(printf '%s\n' "${changed_native_files[@]}" |
+            python3 -c 'import re, sys; print("|".join(re.escape(line.strip()) + "$" for line in sys.stdin if line.strip()))')
+
+          echo 'Running clang-tidy for changed native files:'
+          printf ' - %s\n' "${changed_native_files[@]}"
+          run-clang-tidy-18 -p out/build/analysis -quiet "$tidy_regex"
+      - name: Static Analysis (Full Repository)
+        if: ${{ github.event_name != 'pull_request' }}
         run: run-clang-tidy-18 -p out/build/analysis -quiet '.*/(engine|editor/native|samples|tools)/.*'
