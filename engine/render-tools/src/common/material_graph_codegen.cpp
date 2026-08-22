@@ -124,7 +124,8 @@ std::string_view slang_expression_type(material_expression_type type)
 
 material_expression_type widest(material_expression_type lhs, material_expression_type rhs)
 {
-    return static_cast<material_expression_type>(std::max(static_cast<std::uint8_t>(lhs), static_cast<std::uint8_t>(rhs)));
+    return static_cast<material_expression_type>(
+        std::max(static_cast<std::uint8_t>(lhs), static_cast<std::uint8_t>(rhs)));
 }
 
 struct generated_statement
@@ -228,7 +229,7 @@ private:
                     type = material_expression_type::scalar;
                     break;
                 case material_ir_node_kind::texture_sample:
-                    type = pin == "rgba"   ? material_expression_type::vector4
+                    type = pin == "rgba"  ? material_expression_type::vector4
                            : pin == "rgb" ? material_expression_type::vector3
                                           : material_expression_type::scalar;
                     break;
@@ -333,9 +334,9 @@ private:
             expression = "arcMaterialParameters." + parameter_field(node.parameter_id);
 
         const auto variable = "arc_node_" + sanitize(node.id) + '_' + sanitize(pin);
-        statements_.push_back({.text = "    " + std::string(slang_expression_type(type)) + ' ' + variable + " = " +
-                                       expression + ';',
-                               .node_id = node.id});
+        statements_.push_back(
+            {.text = "    " + std::string(slang_expression_type(type)) + ' ' + variable + " = " + expression + ';',
+             .node_id = node.id});
         visiting_.erase(key);
         expressions_.emplace(key, variable);
         return variable;
