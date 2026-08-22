@@ -1,9 +1,10 @@
-import { AlertCircle, CheckCircle2, Lock, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Lock } from 'lucide-react';
 
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
+import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
-import { replaceMaterialGraph, refreshMaterialPreview, useMaterialDocumentState } from './materialDocumentState';
+import { replaceMaterialGraph, useMaterialDocumentState } from './materialDocumentState';
 import { cloneMaterialGraph, type MaterialGraphNode } from './materialGraphTypes';
 import './materialEditor.css';
 import './materialWorkspace.css';
@@ -21,6 +22,14 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   const state = useMaterialDocumentState(document);
   const errors = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
   const warnings = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning');
+  const fallbackPreview = state.previewDataUrl ? (
+    <img alt={`${document.title} material preview`} src={state.previewDataUrl} />
+  ) : (
+    <AssetPreviewPlaceholder
+      label={state.previewLoading ? 'Rendering preview…' : 'Material preview'}
+      description={state.previewLoading ? 'Generating the fallback thumbnail.' : 'Save & Compile to render preview.'}
+    />
+  );
 
   const setParameterComponent = (nodeId: string, component: number, value: number) => {
     const next = cloneMaterialGraph(state.graph);
@@ -42,31 +51,18 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
       <aside className="material-editor-sidebar">
         <AssetPreviewPanel
           title="Material Preview"
-          subtitle="Compiled asset thumbnail"
-          actions={
-            <button
-              aria-label="Refresh material preview"
-              disabled={state.previewLoading}
-              onClick={() => void refreshMaterialPreview(document)}
-            >
-              <RefreshCw className={state.previewLoading ? 'spinning' : ''} size={14} />
-            </button>
-          }
+          subtitle="Native renderer"
           metadata={[
             { label: 'Mesh', value: 'Sphere' },
             { label: 'Environment', value: 'Studio' },
           ]}
         >
-          {state.previewDataUrl ? (
-            <img alt={`${document.title} material preview`} src={state.previewDataUrl} />
-          ) : (
-            <AssetPreviewPlaceholder
-              label={state.previewLoading ? 'Rendering preview…' : 'Material preview'}
-              description={
-                state.previewLoading ? 'Generating the latest thumbnail.' : 'Save & Compile to render preview.'
-              }
-            />
-          )}
+          <AssetPreviewViewport
+            kind="material"
+            assetGuid={document.assetGuid}
+            label={`${document.title} material preview viewport`}
+            fallback={fallbackPreview}
+          />
         </AssetPreviewPanel>
 
         <section className="material-parameters-panel">
