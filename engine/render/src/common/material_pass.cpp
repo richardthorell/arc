@@ -21,10 +21,10 @@ void hash_byte(std::uint64_t& hash, std::uint8_t value) noexcept
 template <class T> void hash_integral(std::uint64_t& hash, T value) noexcept
 {
     using unsigned_type = std::make_unsigned_t<T>;
-    auto bits = static_cast<unsigned_type>(value);
+    auto bits = static_cast<std::uint64_t>(static_cast<unsigned_type>(value));
     for (std::size_t index = 0; index < sizeof(unsigned_type); ++index)
     {
-        hash_byte(hash, static_cast<std::uint8_t>(bits & static_cast<unsigned_type>(0xffu)));
+        hash_byte(hash, static_cast<std::uint8_t>(bits & 0xffu));
         bits >>= 8u;
     }
 }
