@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/material-shader-functions
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -73,7 +76,6 @@ jobs:
                   out.append(indent + 'concatenate({"Material Function call \'", call_id, "\' has an invalid or duplicate input \'", pin, "\'"})));')
                   hits.add("duplicate-input")
               elif 'validation_error("Material Function call \'" + call_id +' in line and 'references unknown output' not in line:
-                  # This is the first of the two lines for the unknown-output diagnostic.
                   out.append(indent + 'validation_error(concatenate({"Material Function call \'", call_id, "\' references unknown output \'", pin, "\'"})));')
                   skip = 1
                   hits.add("unknown-call-output")
@@ -81,9 +83,9 @@ jobs:
                   out.append(indent + 'concatenate({"Material Function call \'", call_id, "\' uses unconnected output \'", pin, "\'"})));')
                   hits.add("unconnected-output")
               else:
-                  out.append(line.replace('call_id + "::" + target_node', 'concatenate({call_id, "::", target_node})'))
                   if 'call_id + "::" + target_node' in line:
                       hits.add("target-node")
+                  out.append(line.replace('call_id + "::" + target_node', 'concatenate({call_id, "::", target_node})'))
           expected = {"unknown-input", "unknown-function-output", "duplicate-input", "unknown-call-output", "target-node", "unconnected-output"}
           if hits != expected:
               raise RuntimeError(f"material_function replacements mismatch: got {sorted(hits)}, expected {sorted(expected)}")
