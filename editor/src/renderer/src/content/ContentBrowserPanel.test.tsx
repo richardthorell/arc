@@ -97,7 +97,7 @@ describe('ContentBrowserPanel', () => {
     expect(view.getByText('Hero Rock')).toBeInTheDocument();
     expect(view.queryByText('Sky')).not.toBeInTheDocument();
     const transfer = { setData: vi.fn(), effectAllowed: '' };
-    fireEvent.dragStart(view.getByText('Hero Rock').closest('button')!, { dataTransfer: transfer });
+    fireEvent.dragStart(view.getByText('Hero Rock').closest('.content-asset')!, { dataTransfer: transfer });
     expect(transfer.setData).toHaveBeenCalledWith('application/x-arc-asset', expect.stringContaining('rock-guid'));
   });
 
@@ -129,11 +129,13 @@ describe('ContentBrowserPanel', () => {
     const view = renderBrowser();
     fireEvent.click(view.getByRole('button', { name: 'Engine' }));
 
-    expect(view.getByRole('button', { name: 'Environment' })).toBeInTheDocument();
+    const environmentFolders = view.getAllByRole('button', { name: 'Environment' });
+    const engineEnvironment = environmentFolders.find((button) => button.hasAttribute('aria-expanded'));
+    expect(engineEnvironment).toBeDefined();
     expect(view.getByRole('button', { name: 'Materials' })).toBeInTheDocument();
     expect(view.queryByRole('button', { name: 'Textures' })).not.toBeInTheDocument();
 
-    fireEvent.click(view.getByRole('button', { name: 'Environment' }));
+    fireEvent.click(engineEnvironment!);
     const environmentTextures = view.getByRole('button', { name: 'Textures' });
     fireEvent.click(environmentTextures);
     expect(view.getByText('Engine Sky Texture')).toBeInTheDocument();
