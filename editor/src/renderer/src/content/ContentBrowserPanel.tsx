@@ -57,11 +57,7 @@ const normalizedPath = (path: string) => cleanPath(path).toLocaleLowerCase();
 const favoriteId = (asset: AssetItem) => asset.guid ?? asset.path;
 const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;
 
-const relativeFolderPath = (
-  assetPath: string,
-  source: LocalBrowserSource,
-  projectRootName: string,
-) => {
+const relativeFolderPath = (assetPath: string, source: LocalBrowserSource, projectRootName: string) => {
   const segments = parentFolder(assetPath).split('/').filter(Boolean);
   if (segments.length === 0) return '';
 
@@ -239,15 +235,9 @@ export function ContentBrowserPanel({
   }, [creating]);
 
   const assets = useMemo(() => project?.assets ?? [], [project?.assets]);
-  const projectAssets = useMemo(
-    () => assets.filter((asset) => (asset.scope ?? 'project') === 'project'),
-    [assets],
-  );
+  const projectAssets = useMemo(() => assets.filter((asset) => (asset.scope ?? 'project') === 'project'), [assets]);
   const builtinAssets = useMemo(() => assets.filter((asset) => asset.scope === 'builtin'), [assets]);
-  const favoriteAssets = useMemo(
-    () => assets.filter((asset) => favorites.has(favoriteId(asset))),
-    [assets, favorites],
-  );
+  const favoriteAssets = useMemo(() => assets.filter((asset) => favorites.has(favoriteId(asset))), [assets, favorites]);
   const contentRoot = project ? projectAssetRootPath(project) : 'Content';
   const contentRootName = cleanPath(contentRoot).split('/').at(-1) || 'Content';
   const projectFolders = useMemo(
@@ -650,10 +640,7 @@ export function ContentBrowserPanel({
               role="listbox"
               aria-multiselectable="true"
               onContextMenu={(event) => {
-                if (
-                  browserSource === 'project' &&
-                  !(event.target as HTMLElement).closest('.content-asset')
-                ) {
+                if (browserSource === 'project' && !(event.target as HTMLElement).closest('.content-asset')) {
                   openProjectContextCreate(event, folder);
                 }
               }}
