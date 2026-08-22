@@ -35,15 +35,16 @@ type WorkspaceDockProps = {
   requestedViewportCount?: 1 | 2 | 3 | 4;
 };
 
-// v6 widens the Level Design bottom dock beneath both Hierarchy and Viewport.
-// Bumping the key ensures existing v5 snapshots adopt the new default geometry
-// instead of silently restoring the previous full-height Hierarchy layout.
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v6.${projectKey}.${name}`;
+// v7 adopts more viewport-focused Level Design proportions: a shorter utility
+// dock and a narrower Inspector. The new key makes existing v6 snapshots pick
+// up these defaults instead of restoring the older split sizes.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v7.${projectKey}.${name}`;
 const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) =>
   storageKey(projectKey, `editor-${kind}`);
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
-const defaultBottomPanelHeight = 250;
+const defaultBottomPanelHeight = 220;
+const defaultInspectorPanelWidth = 360;
 
 const initialSidebarPanel = (): SidebarPanelId => {
   try {
@@ -94,6 +95,7 @@ const addPanel = (
   referencePanel?: WorkbenchPanelId,
   direction?: 'left' | 'right' | 'above' | 'below' | 'within',
   initialHeight?: number,
+  initialWidth?: number,
 ) => {
   if (isSidebarPanel(panel)) return;
   const descriptor = panelRegistry[panel];
@@ -105,6 +107,7 @@ const addPanel = (
     minimumWidth: descriptor.minimumWidth,
     minimumHeight: descriptor.minimumHeight,
     initialHeight,
+    initialWidth,
     inactive: Boolean(referencePanel && direction === 'within'),
     ...(referencePanel ? { position: { referencePanel, direction } } : {}),
   });
@@ -137,7 +140,7 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
   // group is then split from the viewport column, and Hierarchy is attached to
   // the remaining upper viewport region. That makes the bottom group span both
   // Hierarchy and Viewport while leaving Inspector independent on the right.
-  addPanel(api, 'inspector', 'viewport', 'right');
+  addPanel(api, 'inspector', 'viewport', 'right', undefined, defaultInspectorPanelWidth);
   addPanel(api, 'lighting', 'inspector', 'within');
   addPanel(api, 'worldSettings', 'inspector', 'within');
   addPanel(api, 'contentBrowser', 'viewport', 'below', defaultBottomPanelHeight);
