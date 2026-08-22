@@ -34,6 +34,15 @@ std::string path_key(const std::filesystem::path& value)
     return path_key(normalize_asset_path(value));
 }
 
+bool is_shader_include_path(const std::filesystem::path& path)
+{
+    const auto extension = path.extension().string();
+    if (extension == ".inc") return true;
+    if (extension != ".slang" && extension != ".glsl" && extension != ".hlsl") return false;
+    return std::any_of(path.begin(), path.end(),
+                       [](const auto& component) { return component == std::filesystem::path("include"); });
+}
+
 bool path_within(const std::filesystem::path& root, const std::filesystem::path& candidate)
 {
     const auto normalized_root = std::filesystem::absolute(root).lexically_normal();
@@ -285,7 +294,7 @@ void collect_shader_dependencies(const asset_import_context& context, std::vecto
         if (end == std::string::npos) break;
         append_dependency(output,
                           dependency_from_path(context, std::string_view(source).substr(quote + 1, end - quote - 1),
-                                               asset_types::shader));
+                                               asset_types::binary_blob));
         cursor = end + 1;
     }
 }
@@ -338,7 +347,7 @@ public:
                                                         nullptr, false);
             if (!document.is_discarded()) collect_json_dependencies(document, context, result.dependencies);
         }
-        else if (context.metadata.type == asset_types::shader)
+        else if (context.metadata.type == asset_types::shader || is_shader_include_path(context.source_path))
             collect_shader_dependencies(context, result.dependencies);
         return result;
     }

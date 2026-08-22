@@ -2,9 +2,9 @@
   "format": "arc.asset-meta",
   "formatVersion": 1,
   "guid": "a896dd93-a8ac-41df-85dd-acbdd7ef10ce",
-  "importer": "a7ca55e7-0000-0002-0000-000000000004",
+  "importer": "a7ca55e7-0000-0002-0000-000000000009",
   "settings": {},
   "settingsVersion": 1,
   "subassets": [],
-  "type": "a7ca55e7-0000-0001-0000-000000000004"
+  "type": "a7ca55e7-0000-0001-0000-000000000009"
 }

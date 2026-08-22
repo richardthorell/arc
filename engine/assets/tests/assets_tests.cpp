@@ -563,3 +563,23 @@ TEST_CASE("read-only source roots mount built-in assets without allowing source 
     std::error_code cleanup_error;
     std::filesystem::remove_all(builtin_root, cleanup_error);
 }
+
+TEST_CASE("shader include paths classify as source dependencies")
+{
+    using namespace arc::assets;
+
+    const auto include = classify_asset_path("assets/shaders/include/arc_math.glsl");
+    REQUIRE(include.has_value());
+    CHECK(include->first == asset_types::binary_blob);
+    CHECK(include->second == importer_ids::binary);
+
+    const auto inc = classify_asset_path("assets/shaders/common.inc");
+    REQUIRE(inc.has_value());
+    CHECK(inc->first == asset_types::binary_blob);
+    CHECK(inc->second == importer_ids::binary);
+
+    const auto entry = classify_asset_path("assets/shaders/default_phong.frag");
+    REQUIRE(entry.has_value());
+    CHECK(entry->first == asset_types::shader);
+    CHECK(entry->second == importer_ids::shader);
+}
