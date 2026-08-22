@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search, Star } from 'lucide-react';
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
 import { openAssetEditorDocument } from '../editors/editorRegistry';
-import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
+import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
+import { UiTreeRow } from '../ui';
 import {
   buildAssetCreation,
   projectAssetRootPath,
@@ -41,11 +42,139 @@ type Props = {
 
 type CreateKind = 'material' | 'shader';
 type CreateContextMenu = { x: number; y: number; folder: string };
+type LocalBrowserSource = 'project' | 'builtin';
+type FolderTreeNode = {
+  name: string;
+  path: string;
+  children: FolderTreeNode[];
+};
 
-const parentFolder = (path: string) => path.replaceAll('\\', '/').split('/').slice(0, -1).join('/');
+const cleanPath = (path: string) => path.replaceAll('\\', '/').replace(/\/+/g, '/').replace(/^\/|\/$/g, '');
+const parentFolder = (path: string) => cleanPath(path).split('/').slice(0, -1).join('/');
 const assetPayload = (asset: AssetItem) =>
   JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path });
-const normalizedPath = (path: string) => path.replaceAll('\\', '/').toLocaleLowerCase();
+const normalizedPath = (path: string) => cleanPath(path).toLocaleLowerCase();
+const favoriteId = (asset: AssetItem) => asset.guid ?? asset.path;
+const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;
+
+const relativeFolderPath = (
+  assetPath: string,
+  source: LocalBrowserSource,
+  projectRootName: string,
+) => {
+  const segments = parentFolder(assetPath).split('/').filter(Boolean);
+  if (segments.length === 0) return '';
+
+  const aliases = new Set(
+    (source === 'project' ? [projectRootName, 'Content'] : ['Engine', 'Builtin'])
+      .filter(Boolean)
+      .map((value) => value.toLocaleLowerCase()),
+  );
+  const rootIndex = segments.findIndex((segment) => aliases.has(segment.replace(/:$/, '').toLocaleLowerCase()));
+  return (rootIndex >= 0 ? segments.slice(rootIndex + 1) : segments).join('/');
+};
+
+export const buildContentFolderTree = (
+  assets: AssetItem[],
+  source: LocalBrowserSource,
+  projectRootName = 'Content',
+): FolderTreeNode[] => {
+  const roots: FolderTreeNode[] = [];
+  const nodes = new Map<string, FolderTreeNode>();
+
+  for (const asset of assets) {
+    const folder = relativeFolderPath(asset.path, source, projectRootName);
+    if (!folder) continue;
+
+    let currentPath = '';
+    let parent: FolderTreeNode | null = null;
+    for (const segment of folder.split('/').filter(Boolean)) {
+      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+      const key = normalizedPath(currentPath);
+      let node = nodes.get(key);
+      if (!node) {
+        node = { name: segment, path: currentPath, children: [] };
+        nodes.set(key, node);
+        if (parent) parent.children.push(node);
+        else roots.push(node);
+      }
+      parent = node;
+    }
+  }
+
+  const sortNodes = (items: FolderTreeNode[]) => {
+    items.sort((left, right) => left.name.localeCompare(right.name));
+    items.forEach((item) => sortNodes(item.children));
+  };
+  sortNodes(roots);
+  return roots;
+};
+
+function FolderTreeRows({
+  nodes,
+  source,
+  depth,
+  browserSource,
+  folder,
+  expandedFolders,
+  onSelect,
+  onContextMenu,
+}: {
+  nodes: FolderTreeNode[];
+  source: LocalBrowserSource;
+  depth: number;
+  browserSource: string;
+  folder: string;
+  expandedFolders: ReadonlySet<string>;
+  onSelect: (source: LocalBrowserSource, path: string, hasChildren: boolean) => void;
+  onContextMenu?: (event: React.MouseEvent, path: string) => void;
+}) {
+  return (
+    <>
+      {nodes.map((node) => {
+        const hasChildren = node.children.length > 0;
+        const expanded = expandedFolders.has(folderKey(source, node.path));
+        const selected = browserSource === source && normalizedPath(folder) === normalizedPath(node.path);
+        return (
+          <Fragment key={`${source}:${normalizedPath(node.path)}`}>
+            <UiTreeRow
+              depth={depth}
+              selected={selected}
+              className={`content-tree-row ${selected ? 'active' : ''}`}
+              aria-expanded={hasChildren ? expanded : undefined}
+              onClick={() => onSelect(source, node.path, hasChildren)}
+              onContextMenu={(event) => onContextMenu?.(event, node.path)}
+            >
+              {hasChildren ? (
+                expanded ? (
+                  <ChevronDown size={13} aria-hidden="true" />
+                ) : (
+                  <ChevronRight size={13} aria-hidden="true" />
+                )
+              ) : (
+                <span aria-hidden="true" style={{ width: 13 }} />
+              )}
+              <Folder className="entity-icon entity-icon-folder" size={14} aria-hidden="true" />
+              <span>{node.name}</span>
+            </UiTreeRow>
+            {hasChildren && expanded && (
+              <FolderTreeRows
+                nodes={node.children}
+                source={source}
+                depth={depth + 1}
+                browserSource={browserSource}
+                folder={folder}
+                expandedFolders={expandedFolders}
+                onSelect={onSelect}
+                onContextMenu={onContextMenu}
+              />
+            )}
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
 
 export function ContentBrowserPanel({
   project,
@@ -64,6 +193,7 @@ export function ContentBrowserPanel({
   const [sort, setSort] = useState<'name' | 'type' | 'state'>('name');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [browserSource, setBrowserSource] = useState('project');
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set([folderKey('project', '')]));
   const [onlineSources, setOnlineSources] = useState<ArcAssetSourceDescriptor[]>([]);
   const [selection, setSelection] = useState<Set<string>>(() => new Set(selectedAssetId ? [selectedAssetId] : []));
   const [favorites, setFavorites] = useState<Set<string>>(() => {
@@ -109,22 +239,46 @@ export function ContentBrowserPanel({
   }, [creating]);
 
   const assets = useMemo(() => project?.assets ?? [], [project?.assets]);
-  const localScope = browserSource === 'builtin' ? 'builtin' : 'project';
-  const scopedAssets = useMemo(
-    () => assets.filter((asset) => (asset.scope ?? 'project') === localScope),
-    [assets, localScope],
+  const projectAssets = useMemo(
+    () => assets.filter((asset) => (asset.scope ?? 'project') === 'project'),
+    [assets],
   );
-  const folders = useMemo(
-    () => Array.from(new Set(scopedAssets.map((asset) => parentFolder(asset.path)).filter(Boolean))).sort(),
-    [scopedAssets],
+  const builtinAssets = useMemo(() => assets.filter((asset) => asset.scope === 'builtin'), [assets]);
+  const favoriteAssets = useMemo(
+    () => assets.filter((asset) => favorites.has(favoriteId(asset))),
+    [assets, favorites],
   );
+  const contentRoot = project ? projectAssetRootPath(project) : 'Content';
+  const contentRootName = cleanPath(contentRoot).split('/').at(-1) || 'Content';
+  const projectFolders = useMemo(
+    () => buildContentFolderTree(projectAssets, 'project', contentRootName),
+    [contentRootName, projectAssets],
+  );
+  const builtinFolders = useMemo(
+    () => buildContentFolderTree(builtinAssets, 'builtin', contentRootName),
+    [builtinAssets, contentRootName],
+  );
+  const scopedAssets = useMemo(() => {
+    if (browserSource === 'favorites') return favoriteAssets;
+    if (browserSource === 'builtin') return builtinAssets;
+    if (browserSource === 'project') return projectAssets;
+    return [];
+  }, [browserSource, builtinAssets, favoriteAssets, projectAssets]);
   const filtered = useMemo(
     () =>
       scopedAssets
         .filter((asset) => {
-          const assetFolder = parentFolder(asset.path);
+          const source: LocalBrowserSource = browserSource === 'builtin' ? 'builtin' : 'project';
+          const assetFolder = relativeFolderPath(asset.path, source, contentRootName);
+          const assetFolderNormalized = normalizedPath(assetFolder);
+          const folderNormalized = normalizedPath(folder);
+          const inFolder =
+            browserSource === 'favorites' ||
+            !folderNormalized ||
+            assetFolderNormalized === folderNormalized ||
+            assetFolderNormalized.startsWith(`${folderNormalized}/`);
           return (
-            (!folder || assetFolder === folder || assetFolder.startsWith(`${folder}/`)) &&
+            inFolder &&
             (kind === 'all' || asset.kind === kind) &&
             (state === 'all' || asset.status === state) &&
             (!search || `${asset.name} ${asset.path} ${asset.guid ?? ''}`.toLowerCase().includes(search.toLowerCase()))
@@ -135,13 +289,15 @@ export function ContentBrowserPanel({
           const b = sort === 'name' ? right.name : sort === 'type' ? right.kind : right.status;
           return a.localeCompare(b);
         }),
-    [folder, kind, scopedAssets, search, sort, state],
+    [browserSource, contentRootName, folder, kind, scopedAssets, search, sort, state],
   );
   const selected = scopedAssets.find((asset) => asset.id === selectedAssetId) ?? null;
   const activeOnlineSource = onlineSources.find((source) => source.id === browserSource) ?? null;
-  const crumbs = folder ? folder.split('/') : [];
-  const contentRoot = project ? projectAssetRootPath(project) : 'Content';
-  const creationFolder = browserSource === 'project' ? folder : contentRoot;
+  const crumbs = browserSource === 'favorites' || !folder ? [] : folder.split('/');
+  const sourceTitle = browserSource === 'builtin' ? 'Engine' : browserSource === 'favorites' ? 'Favorites' : 'Content';
+  const projectFolderPath = (relativePath: string) =>
+    relativePath ? `${contentRoot}/${cleanPath(relativePath)}` : contentRoot;
+  const creationFolder = browserSource === 'project' ? projectFolderPath(folder) : contentRoot;
 
   const select = (asset: AssetItem, additive: boolean) => {
     setSelection((current) => {
@@ -155,7 +311,7 @@ export function ContentBrowserPanel({
   const toggleFavorite = (asset: AssetItem) => {
     setFavorites((current) => {
       const next = new Set(current);
-      const id = asset.guid ?? asset.path;
+      const id = favoriteId(asset);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       localStorage.setItem('arc.content.favorites', JSON.stringify([...next]));
@@ -168,6 +324,38 @@ export function ContentBrowserPanel({
     if (asset.kind === 'prefab') onInstantiatePrefab(asset.path);
   };
 
+  const selectTreeFolder = (source: LocalBrowserSource, path: string, hasChildren: boolean) => {
+    const wasSelected = browserSource === source && normalizedPath(folder) === normalizedPath(path);
+    setBrowserSource(source);
+    setFolder(path);
+    if (!hasChildren) return;
+
+    const key = folderKey(source, path);
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      if (wasSelected && next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const selectSourceRoot = (source: LocalBrowserSource, hasChildren: boolean) =>
+    selectTreeFolder(source, '', hasChildren);
+
+  const navigateFolder = (source: LocalBrowserSource, path: string) => {
+    setBrowserSource(source);
+    setFolder(path);
+    setExpandedFolders((current) => {
+      const next = new Set(current);
+      next.add(folderKey(source, ''));
+      const parts = path.split('/').filter(Boolean);
+      for (let index = 1; index < parts.length; index += 1) {
+        next.add(folderKey(source, parts.slice(0, index).join('/')));
+      }
+      return next;
+    });
+  };
+
   const beginCreate = (nextKind: CreateKind, targetFolder = creationFolder) => {
     setCreateMenuOpen(false);
     setCreateContextMenu(null);
@@ -178,12 +366,15 @@ export function ContentBrowserPanel({
     setCreateError('');
   };
 
-  const openContextCreate = (event: React.MouseEvent, targetFolder = folder) => {
-    if (browserSource !== 'project') return;
+  const openProjectContextCreate = (event: React.MouseEvent, targetFolder = '') => {
     event.preventDefault();
     event.stopPropagation();
     setCreateMenuOpen(false);
-    setCreateContextMenu({ x: event.clientX, y: event.clientY, folder: targetFolder });
+    setCreateContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      folder: projectFolderPath(targetFolder),
+    });
   };
 
   const createAsset = async () => {
@@ -238,6 +429,9 @@ export function ContentBrowserPanel({
     </div>
   );
 
+  const projectRootExpanded = expandedFolders.has(folderKey('project', ''));
+  const builtinRootExpanded = expandedFolders.has(folderKey('builtin', ''));
+
   return (
     <section
       className="content-browser-v2"
@@ -247,52 +441,98 @@ export function ContentBrowserPanel({
         if (!activeOnlineSource && event.dataTransfer.files.length > 0) onCommand('file.importScene');
       }}
     >
-      <aside className="content-folder-tree">
-        <button
-          className={browserSource === 'project' && !folder ? 'active' : ''}
+      <aside className="content-folder-tree" role="tree" aria-label="Content folders">
+        <UiTreeRow
+          selected={browserSource === 'favorites'}
+          className={`content-tree-row ${browserSource === 'favorites' ? 'active' : ''}`}
           onClick={() => {
-            setBrowserSource('project');
-            setFolder('');
-          }}
-          onContextMenu={(event) => openContextCreate(event, '')}
-        >
-          <Folder size={14} />
-          Content
-        </button>
-        <button
-          className={browserSource === 'builtin' && !folder ? 'active' : ''}
-          onClick={() => {
-            setBrowserSource('builtin');
+            setBrowserSource('favorites');
             setFolder('');
           }}
         >
-          <Lock size={14} />
-          Engine
-        </button>
-        {(browserSource === 'project' || browserSource === 'builtin') &&
-          folders.map((path) => (
-            <button
-              className={folder === path ? 'active' : ''}
-              key={path}
-              onClick={() => setFolder(path)}
-              onContextMenu={(event) => browserSource === 'project' && openContextCreate(event, path)}
-              style={{ paddingLeft: `${12 + path.split('/').length * 10}px` }}
-            >
-              <Folder size={13} />
-              {path.split('/').at(-1)}
-            </button>
-          ))}
+          <span aria-hidden="true" style={{ width: 13 }} />
+          <Star className="entity-icon entity-icon-light" size={14} fill="currentColor" aria-hidden="true" />
+          <span>Favorites</span>
+        </UiTreeRow>
+        <UiTreeRow
+          selected={browserSource === 'project' && !folder}
+          className={`content-tree-row ${browserSource === 'project' && !folder ? 'active' : ''}`}
+          aria-expanded={projectFolders.length > 0 ? projectRootExpanded : undefined}
+          onClick={() => selectSourceRoot('project', projectFolders.length > 0)}
+          onContextMenu={(event) => openProjectContextCreate(event, '')}
+        >
+          {projectFolders.length > 0 ? (
+            projectRootExpanded ? (
+              <ChevronDown size={13} aria-hidden="true" />
+            ) : (
+              <ChevronRight size={13} aria-hidden="true" />
+            )
+          ) : (
+            <span aria-hidden="true" style={{ width: 13 }} />
+          )}
+          <Folder className="entity-icon entity-icon-folder" size={14} aria-hidden="true" />
+          <span>Content</span>
+        </UiTreeRow>
+        {projectRootExpanded && (
+          <FolderTreeRows
+            nodes={projectFolders}
+            source="project"
+            depth={1}
+            browserSource={browserSource}
+            folder={folder}
+            expandedFolders={expandedFolders}
+            onSelect={selectTreeFolder}
+            onContextMenu={openProjectContextCreate}
+          />
+        )}
+        <UiTreeRow
+          selected={browserSource === 'builtin' && !folder}
+          className={`content-tree-row ${browserSource === 'builtin' && !folder ? 'active' : ''}`}
+          aria-expanded={builtinFolders.length > 0 ? builtinRootExpanded : undefined}
+          onClick={() => selectSourceRoot('builtin', builtinFolders.length > 0)}
+        >
+          {builtinFolders.length > 0 ? (
+            builtinRootExpanded ? (
+              <ChevronDown size={13} aria-hidden="true" />
+            ) : (
+              <ChevronRight size={13} aria-hidden="true" />
+            )
+          ) : (
+            <span aria-hidden="true" style={{ width: 13 }} />
+          )}
+          <Lock className="entity-icon" size={14} aria-hidden="true" />
+          <span>Engine</span>
+        </UiTreeRow>
+        {builtinRootExpanded && (
+          <FolderTreeRows
+            nodes={builtinFolders}
+            source="builtin"
+            depth={1}
+            browserSource={browserSource}
+            folder={folder}
+            expandedFolders={expandedFolders}
+            onSelect={selectTreeFolder}
+          />
+        )}
         {onlineSources.length > 0 && <div className="content-source-heading">Sources</div>}
-        {onlineSources.map((source) => (
-          <button
-            className={`content-source-button ${browserSource === source.id ? 'active' : ''}`}
-            key={source.id}
-            onClick={() => setBrowserSource(source.id)}
-          >
-            <Globe2 size={13} />
-            {source.displayName}
-          </button>
-        ))}
+        {onlineSources.map((source) => {
+          const selectedSource = browserSource === source.id;
+          return (
+            <UiTreeRow
+              selected={selectedSource}
+              className={`content-source-button ${selectedSource ? 'active' : ''}`}
+              key={source.id}
+              onClick={() => {
+                setBrowserSource(source.id);
+                setFolder('');
+              }}
+            >
+              <span aria-hidden="true" style={{ width: 13 }} />
+              <Globe2 size={13} aria-hidden="true" />
+              <span>{source.displayName}</span>
+            </UiTreeRow>
+          );
+        })}
       </aside>
       {activeOnlineSource ? (
         <RemoteAssetBrowser source={activeOnlineSource} />
@@ -318,11 +558,28 @@ export function ContentBrowserPanel({
                 Import
               </button>
               <nav>
-                <button onClick={() => setFolder('')}>{browserSource === 'builtin' ? 'Engine' : 'Content'}</button>
+                <button
+                  onClick={() => {
+                    if (browserSource === 'project' || browserSource === 'builtin') {
+                      navigateFolder(browserSource, '');
+                    }
+                  }}
+                >
+                  {sourceTitle}
+                </button>
                 {crumbs.map((crumb, index) => (
                   <span key={`${crumb}-${index}`}>
                     <ChevronRight size={12} />
-                    <button onClick={() => setFolder(crumbs.slice(0, index + 1).join('/'))}>{crumb}</button>
+                    <button
+                      onClick={() =>
+                        navigateFolder(
+                          browserSource === 'builtin' ? 'builtin' : 'project',
+                          crumbs.slice(0, index + 1).join('/'),
+                        )
+                      }
+                    >
+                      {crumb}
+                    </button>
                   </span>
                 ))}
               </nav>
@@ -393,7 +650,12 @@ export function ContentBrowserPanel({
               role="listbox"
               aria-multiselectable="true"
               onContextMenu={(event) => {
-                if (!(event.target as HTMLElement).closest('.content-asset')) openContextCreate(event);
+                if (
+                  browserSource === 'project' &&
+                  !(event.target as HTMLElement).closest('.content-asset')
+                ) {
+                  openProjectContextCreate(event, folder);
+                }
               }}
             >
               {filtered.map((asset) => (
@@ -420,7 +682,7 @@ export function ContentBrowserPanel({
                   <span className="content-asset-actions" onClick={(event) => event.stopPropagation()}>
                     <button
                       aria-label="Favorite"
-                      className={favorites.has(asset.guid ?? asset.path) ? 'active' : ''}
+                      className={favorites.has(favoriteId(asset)) ? 'active' : ''}
                       onClick={() => toggleFavorite(asset)}
                     >
                       <Star size={12} />
@@ -431,7 +693,13 @@ export function ContentBrowserPanel({
                   </span>
                 </button>
               ))}
-              {filtered.length === 0 && <div className="content-empty">No assets match this folder and filter.</div>}
+              {filtered.length === 0 && (
+                <div className="content-empty">
+                  {browserSource === 'favorites'
+                    ? 'No favorite assets yet. Star an asset to add it here.'
+                    : 'No assets match this folder and filter.'}
+                </div>
+              )}
             </div>
           </div>
           {selected && (
