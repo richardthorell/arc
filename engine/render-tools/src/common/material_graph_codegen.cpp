@@ -226,7 +226,8 @@ public:
             {
                 const auto& existing = *found->second;
                 if (existing.function_entry_point != node.function_entry_point ||
-                    existing.function_source != node.function_source || existing.function_inputs != node.function_inputs ||
+                    existing.function_source != node.function_source ||
+                    existing.function_inputs != node.function_inputs ||
                     existing.function_outputs != node.function_outputs)
                     throw std::runtime_error("Material Function path resolves to inconsistent shader definitions: " +
                                              node.function_path);
@@ -335,10 +336,12 @@ private:
                     break;
                 case material_ir_node_kind::function_call:
                 {
-                    const auto output = std::ranges::find_if(
-                        node.function_outputs, [&pin](const material_function_pin& candidate) { return candidate.id == pin; });
+                    const auto output =
+                        std::ranges::find_if(node.function_outputs, [&pin](const material_function_pin& candidate)
+                                             { return candidate.id == pin; });
                     if (output == node.function_outputs.end())
-                        throw std::runtime_error("Material Function call references an unknown output: " + node.id + "." + pin);
+                        throw std::runtime_error("Material Function call references an unknown output: " + node.id +
+                                                 "." + pin);
                     type = expression_type(output->type);
                     break;
                 }
@@ -359,8 +362,9 @@ private:
             for (const auto& output : node.function_outputs)
             {
                 const auto variable = function_output_variable(node, output.id);
-                statements_.push_back({.text = "    " + std::string(slang_parameter_type(output.type)) + ' ' + variable + ';',
-                                       .node_id = node.id});
+                statements_.push_back(
+                    {.text = "    " + std::string(slang_parameter_type(output.type)) + ' ' + variable + ';',
+                     .node_id = node.id});
                 expressions_.emplace(std::pair{node.id, output.id}, variable);
                 expression_types_.emplace(std::pair{node.id, output.id}, expression_type(output.type));
             }
@@ -393,7 +397,8 @@ private:
 
         const auto found = expressions_.find({node.id, requested_pin});
         if (found == expressions_.end())
-            throw std::runtime_error("Material Function call references an unknown output: " + node.id + "." + requested_pin);
+            throw std::runtime_error("Material Function call references an unknown output: " + node.id + "." +
+                                     requested_pin);
         return found->second;
     }
 

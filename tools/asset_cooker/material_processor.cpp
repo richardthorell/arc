@@ -174,8 +174,7 @@ std::filesystem::path resolve_function_path(const std::filesystem::path& owner, 
     return (owner.parent_path() / authored_path).lexically_normal();
 }
 
-using function_source_result =
-    core::result<std::vector<render::tools::material_function_source>, std::string>;
+using function_source_result = core::result<std::vector<render::tools::material_function_source>, std::string>;
 
 function_source_result material_function_sources(const assets::asset_cook_context& context)
 {

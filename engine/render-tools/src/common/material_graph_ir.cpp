@@ -98,7 +98,8 @@ bool parse_function_pins(const json& authored, bool allow_defaults, std::vector<
         parsed.has_default = pin.value("hasDefault", false);
         if (parsed.has_default)
         {
-            if (!allow_defaults || !pin.contains("default") || !parse_function_default(pin["default"], *type, parsed.default_value))
+            if (!allow_defaults || !pin.contains("default") ||
+                !parse_function_default(pin["default"], *type, parsed.default_value))
                 return false;
         }
         output.push_back(std::move(parsed));
@@ -387,7 +388,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                 if (!inputs.contains({node.id, pin.id}) && !pin.has_default)
                     return material_graph_compile_result::failure(
                         {.code = shader_compile_error_code::validation_failed,
-                         .message = "Material Function call '" + node.id + "' is missing required input '" + pin.id + "'"});
+                         .message =
+                             "Material Function call '" + node.id + "' is missing required input '" + pin.id + "'"});
         }
 
         if (node.exposed_parameter)

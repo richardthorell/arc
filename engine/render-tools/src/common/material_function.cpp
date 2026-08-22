@@ -97,7 +97,8 @@ function_parse_result parse_function(std::string_view source, std::string_view s
     const std::string label = path.empty() ? std::string{"material function"} : path;
     if (document.is_discarded() || !document.is_object() || document.value("kind", "") != "materialFunction" ||
         document.value("version", 0) != static_cast<int>(material_function_version))
-        return function_parse_result::failure(validation_error(label + " is not a valid Material Function v1 document"));
+        return function_parse_result::failure(
+            validation_error(label + " is not a valid Material Function v1 document"));
 
     parsed_material_function function;
     function.path = path;
@@ -178,7 +179,8 @@ function_parse_result parse_function(std::string_view source, std::string_view s
     std::size_t output_nodes{};
     for (const auto& node : function.graph["nodes"])
     {
-        if (!node.is_object()) return function_parse_result::failure(validation_error(label + " contains an invalid node"));
+        if (!node.is_object())
+            return function_parse_result::failure(validation_error(label + " contains an invalid node"));
         const auto type = node.value("type", "");
         if (type == "output")
             return function_parse_result::failure(
@@ -198,7 +200,8 @@ function_parse_result parse_function(std::string_view source, std::string_view s
                 validation_error(label + " contains an exposed parameter; expose it as a function input instead"));
     }
     if (output_nodes != 1)
-        return function_parse_result::failure(validation_error(label + " must contain exactly one Function Output node"));
+        return function_parse_result::failure(
+            validation_error(label + " must contain exactly one Function Output node"));
 
     for (const auto& connection : function.graph["connections"])
     {
@@ -207,8 +210,8 @@ function_parse_result parse_function(std::string_view source, std::string_view s
             return function_parse_result::failure(validation_error(label + " contains an invalid graph connection"));
         const auto target = connection["to"].value("nodeId", "");
         const auto target_pin = connection["to"].value("pin", "");
-        const auto target_node = std::ranges::find_if(function.graph["nodes"], [&](const json& node)
-                                                      { return node.value("id", "") == target; });
+        const auto target_node = std::ranges::find_if(function.graph["nodes"],
+                                                      [&](const json& node) { return node.value("id", "") == target; });
         if (target_node != function.graph["nodes"].end() && target_node->value("type", "") == "functionOutput" &&
             !output_ids.contains(target_pin))
             return function_parse_result::failure(
@@ -327,17 +330,17 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         {
             const auto pin = connection["to"].value("pin", "");
             if (!input_signature.contains(pin) || external_inputs.contains(pin))
-                return graph_expand_result::failure(
-                    validation_error("Material Function call '" + call_id + "' has an invalid or duplicate input '" + pin + "'"));
-            external_inputs.emplace(pin, endpoint{connection["from"].value("nodeId", ""),
-                                                  connection["from"].value("pin", "")});
+                return graph_expand_result::failure(validation_error(
+                    "Material Function call '" + call_id + "' has an invalid or duplicate input '" + pin + "'"));
+            external_inputs.emplace(
+                pin, endpoint{connection["from"].value("nodeId", ""), connection["from"].value("pin", "")});
         }
         else if (from_node == call_id)
         {
             const auto pin = connection["from"].value("pin", "");
             if (!output_signature.contains(pin))
-                return graph_expand_result::failure(
-                    validation_error("Material Function call '" + call_id + "' references unknown output '" + pin + "'"));
+                return graph_expand_result::failure(validation_error("Material Function call '" + call_id +
+                                                                     "' references unknown output '" + pin + "'"));
             external_outputs.push_back(connection);
         }
         else
@@ -373,7 +376,8 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
     {
         const auto boundary = function_inputs.find(std::string(boundary_node));
         if (boundary == function_inputs.end())
-            return endpoint_result::failure(validation_error("Material Function contains an invalid Function Input node"));
+            return endpoint_result::failure(
+                validation_error("Material Function contains an invalid Function Input node"));
         if (const auto external = external_inputs.find(boundary->second); external != external_inputs.end())
             return endpoint_result::success(external->second);
         if (const auto existing = default_sources.find(boundary->second); existing != default_sources.end())
@@ -381,7 +385,7 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         const auto signature = input_signature.find(boundary->second);
         if (signature == input_signature.end() || !signature->second.has_default)
             return endpoint_result::failure(validation_error("Material Function call '" + call_id +
-                                                              "' is missing required input '" + boundary->second + "'"));
+                                                             "' is missing required input '" + boundary->second + "'"));
         const auto id = call_id + "::default::" + boundary->second;
         added_nodes.push_back(default_node(id, signature->second));
         const endpoint value{id, "value"};
@@ -426,8 +430,8 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         const auto pin = connection["from"].value("pin", "");
         const auto output = function_outputs.find(pin);
         if (output == function_outputs.end())
-            return graph_expand_result::failure(validation_error("Material Function call '" + call_id +
-                                                                  "' uses unconnected output '" + pin + "'"));
+            return graph_expand_result::failure(
+                validation_error("Material Function call '" + call_id + "' uses unconnected output '" + pin + "'"));
         auto rewritten = connection;
         rewritten["from"]["nodeId"] = output->second.node;
         rewritten["from"]["pin"] = output->second.pin;
@@ -447,14 +451,15 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
 graph_expand_result expand_graph(json graph, const std::map<std::string, parsed_material_function>& functions,
                                  std::vector<std::string>& stack)
 {
-    if (!graph.is_object() || graph.value("version", 0) != 1 || !graph.contains("nodes") || !graph["nodes"].is_array() ||
-        !graph.contains("connections") || !graph["connections"].is_array())
+    if (!graph.is_object() || graph.value("version", 0) != 1 || !graph.contains("nodes") ||
+        !graph["nodes"].is_array() || !graph.contains("connections") || !graph["connections"].is_array())
         return graph_expand_result::failure(validation_error("material graph JSON is malformed"));
 
     for (;;)
     {
-        const auto call = std::ranges::find_if(graph["nodes"], [](const json& node)
-                                               { return node.is_object() && node.value("type", "") == "functionCall"; });
+        const auto call =
+            std::ranges::find_if(graph["nodes"], [](const json& node)
+                                 { return node.is_object() && node.value("type", "") == "functionCall"; });
         if (call == graph["nodes"].end()) break;
 
         const auto id = call->value("id", "");
@@ -464,7 +469,8 @@ graph_expand_result expand_graph(json graph, const std::map<std::string, parsed_
             return graph_expand_result::failure(validation_error("Material Function call has no stable id or path"));
         const auto* function = find_function(functions, path);
         if (!function)
-            return graph_expand_result::failure(validation_error("Material Function '" + path + "' is missing or ambiguous"));
+            return graph_expand_result::failure(
+                validation_error("Material Function '" + path + "' is missing or ambiguous"));
 
         if (!function->shader_backed)
         {
@@ -477,10 +483,10 @@ graph_expand_result expand_graph(json graph, const std::map<std::string, parsed_
         auto replacement = *call;
         replacement["type"] = "shaderFunctionCall";
         replacement["values"] = json{{"path", function->path.empty() ? normalize_path(path) : function->path},
-                                      {"entryPoint", function->entry_point},
-                                      {"source", function->shader_source},
-                                      {"inputs", json::array()},
-                                      {"outputs", json::array()}};
+                                     {"entryPoint", function->entry_point},
+                                     {"source", function->shader_source},
+                                     {"inputs", json::array()},
+                                     {"outputs", json::array()}};
         for (const auto& pin : function->inputs)
             replacement["values"]["inputs"].push_back(pin_json(pin));
         for (const auto& pin : function->outputs)
@@ -518,7 +524,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         if (!parsed) return material_graph_compile_result::failure(parsed.error());
         auto function = std::move(parsed).value();
         if (function.path.empty())
-            return material_graph_compile_result::failure(validation_error("Material Function source path cannot be empty"));
+            return material_graph_compile_result::failure(
+                validation_error("Material Function source path cannot be empty"));
         if (!functions.emplace(function.path, std::move(function)).second)
             return material_graph_compile_result::failure(
                 validation_error("duplicate Material Function source path: " + normalize_path(source.path)));

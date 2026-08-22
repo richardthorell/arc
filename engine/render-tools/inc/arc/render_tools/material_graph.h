@@ -226,7 +226,7 @@ compile_material_graph_json(std::string_view graph_json, std::span<const materia
 
 /** @brief Validate one first-class Material/Shader Function document and return its public pins. */
 [[nodiscard]] material_function_validation_result validate_material_function_json(std::string_view function_json,
-                                                                                   std::string_view source_path = {});
+                                                                                  std::string_view source_path = {});
 
 /** @brief Return true when the authored JSON document identifies itself as a reusable material function. */
 [[nodiscard]] bool is_material_function_json(std::string_view source) noexcept;
