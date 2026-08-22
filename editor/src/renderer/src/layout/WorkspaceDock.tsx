@@ -35,14 +35,15 @@ type WorkspaceDockProps = {
   requestedViewportCount?: 1 | 2 | 3 | 4;
 };
 
-// v5 restores Hierarchy as the default left-side Level Design panel after the
-// global utility rail stopped owning it. Document-owned workspace snapshots use
-// the same version so existing Level layouts can migrate without being lost.
-const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v5.${projectKey}.${name}`;
+// v6 widens the Level Design bottom dock beneath both Hierarchy and Viewport.
+// Bumping the key ensures existing v5 snapshots adopt the new default geometry
+// instead of silently restoring the previous full-height Hierarchy layout.
+const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v6.${projectKey}.${name}`;
 const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) =>
   storageKey(projectKey, `editor-${kind}`);
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
+const defaultBottomPanelHeight = 250;
 
 const initialSidebarPanel = (): SidebarPanelId => {
   try {
@@ -92,6 +93,7 @@ const addPanel = (
   panel: WorkbenchPanelId,
   referencePanel?: WorkbenchPanelId,
   direction?: 'left' | 'right' | 'above' | 'below' | 'within',
+  initialHeight?: number,
 ) => {
   if (isSidebarPanel(panel)) return;
   const descriptor = panelRegistry[panel];
@@ -102,6 +104,7 @@ const addPanel = (
     title: descriptor.title,
     minimumWidth: descriptor.minimumWidth,
     minimumHeight: descriptor.minimumHeight,
+    initialHeight,
     inactive: Boolean(referencePanel && direction === 'within'),
     ...(referencePanel ? { position: { referencePanel, direction } } : {}),
   });
@@ -130,16 +133,17 @@ const createLayout = (api: DockviewApi, name: WorkspaceLayoutName) => {
     return;
   }
 
-  // Hierarchy is a Level Editor/workspace panel, not a global utility. Keep it
-  // open on the left in the default Level Design layout just as it was before
-  // the utility rail was introduced.
-  addPanel(api, 'hierarchy', 'viewport', 'left');
+  // Build the right column first so Inspector remains full-height. The bottom
+  // group is then split from the viewport column, and Hierarchy is attached to
+  // the remaining upper viewport region. That makes the bottom group span both
+  // Hierarchy and Viewport while leaving Inspector independent on the right.
   addPanel(api, 'inspector', 'viewport', 'right');
   addPanel(api, 'lighting', 'inspector', 'within');
   addPanel(api, 'worldSettings', 'inspector', 'within');
-  addPanel(api, 'contentBrowser', 'viewport', 'below');
+  addPanel(api, 'contentBrowser', 'viewport', 'below', defaultBottomPanelHeight);
   addPanel(api, 'console', 'contentBrowser', 'within');
   addPanel(api, 'buildOutput', 'contentBrowser', 'within');
+  addPanel(api, 'hierarchy', 'viewport', 'left');
 };
 
 const createEditorWorkspace = (api: DockviewApi, kind: EditorDocumentKind) => {
