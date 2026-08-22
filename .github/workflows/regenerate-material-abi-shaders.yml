@@ -1,0 +1,43 @@
+name: Regenerate Material ABI Shaders
+
+on:
+  push:
+    branches:
+      - feature/material-abi-v1-legacy-bridge
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feature/material-abi-v1-legacy-bridge
+          fetch-depth: 0
+      - name: Set Up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
+      - name: Regenerate Built-in Shaders
+        run: |
+          python3 tools/compile_builtin_shaders.py \
+            --source-root assets/shaders \
+            --output-dir out/generated/material-abi-shaders \
+            --header engine/render-vulkan/src/builtin_shaders.h \
+            --glslc glslc \
+            --spirv-val spirv-val \
+            --write
+      - name: Commit Generated Header
+        shell: bash
+        run: |
+          if git diff --quiet -- engine/render-vulkan/src/builtin_shaders.h; then
+            echo 'Built-in shader header is already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add engine/render-vulkan/src/builtin_shaders.h
+          git commit -m 'shader: regenerate built-in SPIR-V for material ABI'
+          git push origin HEAD:feature/material-abi-v1-legacy-bridge
