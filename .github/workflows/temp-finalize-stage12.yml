@@ -1,0 +1,60 @@
+name: Temp Finalize Stage 12
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feature/material-shader-functions
+          fetch-depth: 0
+
+      - name: Fix automated rewrite regression
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("engine/render-tools/src/common/material_function.cpp")
+          text = path.read_text()
+          old = '''            if (!output_signature.contains(pin))
+                          validation_error(concatenate({"Material Function call '", call_id, "' references unknown output '", pin, "'"}));'''
+          new = '''            if (!output_signature.contains(pin))
+                          return graph_expand_result::failure(validation_error(
+                              concatenate({"Material Function call '", call_id, "' references unknown output '", pin, "'"})));'''
+          if text.count(old) != 1:
+              raise RuntimeError(f"expected one invalid-output rewrite, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path("tools/asset_cooker/material_processor.cpp")
+          text = path.read_text()
+          old = "auto dependency_text = normalized_path(std::move(dependency));"
+          new = "auto dependency_text = normalized_path(dependency);"
+          if text.count(old) != 1:
+              raise RuntimeError(f"expected one redundant move, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          clang-format-18 -i \
+            engine/render-tools/src/common/material_function.cpp \
+            tools/asset_cooker/material_processor.cpp
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            engine/render-tools/src/common/material_function.cpp \
+            tools/asset_cooker/material_processor.cpp
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: preserve material function validation"
+            git push origin HEAD:feature/material-shader-functions
+          fi
