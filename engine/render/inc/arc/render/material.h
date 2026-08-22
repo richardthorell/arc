@@ -218,10 +218,10 @@ enum class material_displacement_mode : std::uint8_t
 };
 
 /**
- * @brief Temporary implementation selector used while compiled materials replace the legacy descriptor path.
+ * @brief Material implementation selector retained while the legacy path is deprecated.
  *
- * Existing materials default to @ref legacy. The selector intentionally does not alter rendering by itself; later
- * migration stages use it to opt individual materials into the compiled path or compare both implementations.
+ * Compiled Material ABI programs are the production default. @ref legacy remains available as an explicit
+ * compatibility/debugging mode and @ref compare executes both implementations when compiled pass data is valid.
  */
 enum class material_pipeline : std::uint8_t
 {
@@ -292,8 +292,8 @@ struct material_descriptor
     std::vector<material_parameter_override> parameters;
     std::array<terrain_layer_descriptor, 4> terrain_layers{};
 
-    /** @brief Migration-only path selection. Defaults to the current renderer behavior. */
-    material_pipeline pipeline{material_pipeline::legacy};
+    /** @brief Material implementation selection. Compiled Material ABI programs are the production default. */
+    material_pipeline pipeline{material_pipeline::compiled};
 };
 
 /** @brief Runtime material definition produced from an authored `.arcmat`. */

@@ -54,8 +54,8 @@ struct material_pass_binding
 /**
  * @brief Runtime binding table for one compiled material implementation.
  *
- * Stage 8 graph-generated materials populate this table. Stage 9 custom material shaders can
- * produce the same contract without requiring renderer changes.
+ * Graph-generated and handwritten Material Shaders produce the same contract so the renderer does not depend on the
+ * implementation source.
  */
 struct material_compiled_program
 {
@@ -65,10 +65,10 @@ struct material_compiled_program
     std::vector<material_pass_binding> passes;
 };
 
-/** @brief Result of applying the migration selector to one render pass. */
+/** @brief Result of applying the material implementation selector to one render pass. */
 struct material_pipeline_resolution
 {
-    bool use_legacy{true};
+    bool use_legacy{};
     bool use_compiled{};
     bool compare{};
 };
@@ -99,7 +99,9 @@ make_material_pass_permutation_id(const material_pass_permutation_key& key) noex
 /**
  * @brief Resolve legacy/compiled/compare behavior for one pass.
  *
- * Missing compiled pass data always falls back to the legacy renderer so migration remains safe.
+ * Compiled mode never silently falls back to the legacy renderer. Missing or incompatible compiled pass data resolves
+ * to no implementation so the caller can surface an error/fallback material. Legacy remains explicitly selectable,
+ * while compare always runs legacy and adds compiled execution only when the compiled contract is valid.
  */
 [[nodiscard]] material_pipeline_resolution
 resolve_material_pipeline(const material_descriptor& material, material_pass pass,
