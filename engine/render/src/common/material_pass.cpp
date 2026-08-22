@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <type_traits>
 
 namespace arc::render
 {
@@ -128,7 +129,7 @@ std::uint64_t hash_material_pass_permutation_key(const material_pass_permutation
 shader_permutation_id make_material_pass_permutation_id(const material_pass_permutation_key& key) noexcept
 {
     const auto hash = hash_material_pass_permutation_key(key);
-    return {hash == 0 ? 1 : hash};
+    return {hash == 0 ? std::uint64_t{1} : hash};
 }
 
 const material_pass_binding* find_material_pass_binding(const material_compiled_program& program,
