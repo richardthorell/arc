@@ -408,8 +408,8 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
         auto loaded = host.asset_registry->template load<render::material_handle>(std::move(request)).get();
         if (!loaded.asset.valid())
         {
-            surface.preview_error = loaded.error.message.empty() ? "Material preview asset could not be loaded"
-                                                                 : loaded.error.message;
+            surface.preview_error =
+                loaded.error.message.empty() ? "Material preview asset could not be loaded" : loaded.error.message;
             return false;
         }
         surface.preview_material = std::move(loaded.asset);
@@ -432,9 +432,8 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
     }
     mesh_renderer->material = *material;
     surface.preview_material_generation = generation;
-    surface.preview_error = surface.preview_material.using_fallback()
-                                ? "Material preview is using the renderer error material"
-                                : std::string{};
+    surface.preview_error = surface.preview_material.using_fallback() ? "Material preview is using the renderer error material"
+                                                                      : std::string{};
     return true;
 }
 
@@ -451,24 +450,26 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
 
     auto preview = std::make_unique<editor_scene_state>(create_blank_scene(*host.renderer, false, nullptr));
     preview->scene_name = std::string{"Asset Preview: "} + asset_preview_kind_name(surface.preview_kind);
-    preview->primitive_material = host.scene.primitive_material.valid() ? host.scene.primitive_material
-                                                                       : host.scene.default_material;
+    preview->primitive_material =
+        host.scene.primitive_material.valid() ? host.scene.primitive_material : host.scene.default_material;
     const auto sphere = add_primitive_to_scene(*preview, *host.renderer, editor_primitive_type::sphere);
     if (!preview->scene.alive(sphere))
     {
         surface.preview_error = "Renderer could not create the asset preview sphere";
         return false;
     }
-    if (auto* name = preview->scene.try_get<scene::name_component>(sphere)) name->value = "Asset Preview Sphere";
+    if (auto* name = preview->scene.template try_get<scene::name_component>(sphere)) name->value = "Asset Preview Sphere";
     clear_selection(preview->scene, preview->selected_entity);
 
     surface.preview_camera = {};
     (void)surface.preview_camera.place({1.65f, 0.55f, 2.25f}, {0.0f, 0.0f, 0.0f});
-    if (auto* camera_transform = preview->scene.try_get<scene::transform_component>(preview->camera_entity))
+    if (auto* camera_transform =
+            preview->scene.template try_get<scene::transform_component>(preview->camera_entity))
         surface.preview_camera.apply_to(*camera_transform);
 
     surface.preview_entity = sphere;
-    if (const auto* mesh_renderer = std::as_const(preview->scene).try_get<scene::mesh_renderer_component>(sphere))
+    if (const auto* mesh_renderer =
+            std::as_const(preview->scene).template try_get<scene::mesh_renderer_component>(sphere))
         surface.preview_mesh = mesh_renderer->mesh;
     surface.preview_scene = std::move(preview);
 
@@ -489,8 +490,7 @@ bool ensure_asset_preview_scene(HostState& host, viewport_surface_registry::surf
     return refresh_asset_preview_material(host, surface);
 }
 
-template <class HostState>
-class asset_preview_scene_scope
+template <class HostState> class asset_preview_scene_scope
 {
 public:
     asset_preview_scene_scope(HostState& host, viewport_surface_registry::surface_state& surface)
@@ -861,7 +861,8 @@ host_response arc_host::query(const host_query_envelope& query) const
         auto payload = nlohmann::json::parse(response.payload_json, nullptr, false);
         if (!payload.is_discarded() && payload.is_object())
         {
-            const auto& query_scene = viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
+            const auto& query_scene =
+                viewport_surface->preview_scene ? *viewport_surface->preview_scene : state_->scene;
             const auto entity = query_scene.selected_entity;
             if (query_scene.scene.alive(entity))
             {
