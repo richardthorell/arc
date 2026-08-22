@@ -62,8 +62,9 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
     if (document.contains("shaderPath") && !document["shaderPath"].is_null())
     {
         if (!document["shaderPath"].is_string())
-            return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
-                                                       .message = "Material document shaderPath must be a string or null"});
+            return material_authoring_result::failure(
+                {.code = material_asset_error_code::invalid_document,
+                 .message = "Material document shaderPath must be a string or null"});
         shader_path = document["shaderPath"].get<std::string>();
     }
 
