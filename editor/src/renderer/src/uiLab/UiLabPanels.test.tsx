@@ -14,6 +14,7 @@ beforeEach(() => {
   Object.defineProperty(window, 'arc', {
     configurable: true,
     value: {
+      getStartupState: vi.fn().mockResolvedValue({ engineHostConnected: false, viewportMode: 'streamed' }),
       assetSources: { list: vi.fn().mockResolvedValue([]) },
       projects: {
         readText: vi.fn().mockResolvedValue({
