@@ -56,9 +56,15 @@ const descriptor: ArcAssetSourceDescriptor = {
 };
 
 const asString = (value: unknown): string => (typeof value === 'string' ? value : '');
-const asNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 const asStringArray = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim()).filter(Boolean) : [];
+  Array.isArray(value)
+    ? value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    : [];
 
 const assetKind = (value: unknown): ArcRemoteAssetKind => {
   if (value === 0) return 'hdri';
@@ -112,7 +118,11 @@ const validateCatalog = (value: unknown): PolyHavenCatalog => {
   return value as PolyHavenCatalog;
 };
 
-const flattenFiles = (value: unknown, path: string[] = [], output: ArcAssetDownloadFile[] = []): ArcAssetDownloadFile[] => {
+const flattenFiles = (
+  value: unknown,
+  path: string[] = [],
+  output: ArcAssetDownloadFile[] = [],
+): ArcAssetDownloadFile[] => {
   if (Array.isArray(value)) {
     value.forEach((entry, index) => flattenFiles(entry, [...path, String(index)], output));
     return output;
@@ -127,11 +137,7 @@ const flattenFiles = (value: unknown, path: string[] = [], output: ArcAssetDownl
       logicalPath: path.join('/'),
       url: value.url,
       sizeBytes: size,
-      checksum: sha256
-        ? { algorithm: 'sha256', value: sha256 }
-        : md5
-          ? { algorithm: 'md5', value: md5 }
-          : undefined,
+      checksum: sha256 ? { algorithm: 'sha256', value: sha256 } : md5 ? { algorithm: 'md5', value: md5 } : undefined,
     });
   }
 
@@ -184,7 +190,9 @@ export class PolyHavenAssetSource implements ArcAssetSourceAdapter {
       .filter((asset) => kinds.size === 0 || kinds.has(asset.kind))
       .filter((asset) => {
         if (!needle) return true;
-        return `${asset.name} ${asset.description} ${asset.category} ${asset.tags.join(' ')}`.toLocaleLowerCase().includes(needle);
+        return `${asset.name} ${asset.description} ${asset.category} ${asset.tags.join(' ')}`
+          .toLocaleLowerCase()
+          .includes(needle);
       })
       .sort((left, right) => left.name.localeCompare(right.name));
 

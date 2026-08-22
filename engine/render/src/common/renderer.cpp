@@ -107,11 +107,12 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.path = profile.default_path;
     else
         result.path = config.path;
-    result.anti_aliasing = config.force_disable_temporal
-                               ? (config.anti_aliasing == anti_aliasing_method::disabled
-                                      ? anti_aliasing_method::disabled
-                                      : resolve_anti_aliasing(anti_aliasing_method::fxaa, result.path, 1.0f, capabilities))
-                               : resolve_anti_aliasing(config.anti_aliasing, result.path, 1.0f, capabilities);
+    result.anti_aliasing =
+        config.force_disable_temporal
+            ? (config.anti_aliasing == anti_aliasing_method::disabled
+                   ? anti_aliasing_method::disabled
+                   : resolve_anti_aliasing(anti_aliasing_method::fxaa, result.path, 1.0f, capabilities))
+            : resolve_anti_aliasing(config.anti_aliasing, result.path, 1.0f, capabilities);
     result.minimum_render_scale = config.enable_dynamic_resolution ? profile.minimum_render_scale : 1.0f;
     result.maximum_render_scale = profile.maximum_render_scale;
     result.max_point_lights = profile.max_point_lights;
@@ -802,15 +803,16 @@ bool renderer::update_terrain_heights(terrain_handle handle, terrain_height_regi
     const auto found = terrain_data_.find(key);
     if (found == terrain_data_.end()) return false;
     auto replacement = std::make_shared<terrain_resource_descriptor>(*found->second);
-    if (update.region.max_x >= replacement->sample_resolution || update.region.max_z >= replacement->sample_resolution ||
-        update.row_stride < update.region.width() ||
+    if (update.region.max_x >= replacement->sample_resolution ||
+        update.region.max_z >= replacement->sample_resolution || update.row_stride < update.region.width() ||
         update.values.size() < static_cast<std::size_t>(update.row_stride) * update.region.height())
         return false;
     for (std::uint32_t z = 0; z < update.region.height(); ++z)
         std::copy_n(update.values.begin() + static_cast<std::ptrdiff_t>(z * update.row_stride), update.region.width(),
-                    replacement->heights.begin() + static_cast<std::ptrdiff_t>(
-                        static_cast<std::size_t>(update.region.min_z + z) * replacement->sample_resolution +
-                        update.region.min_x));
+                    replacement->heights.begin() +
+                        static_cast<std::ptrdiff_t>(static_cast<std::size_t>(update.region.min_z + z) *
+                                                        replacement->sample_resolution +
+                                                    update.region.min_x));
     update_terrain_hierarchy(replacement->hierarchy, replacement->heights, replacement->sample_resolution,
                              replacement->width, replacement->depth, update.region, replacement->lod);
     replacement->local_bounds = replacement->hierarchy.nodes[replacement->hierarchy.root].local_bounds;
@@ -819,8 +821,8 @@ bool renderer::update_terrain_heights(terrain_handle handle, terrain_height_regi
     auto& snapshot = terrain_snapshots_[key];
     snapshot.local_bounds = replacement->local_bounds;
     snapshot.content_revision = update.content_revision;
-    snapshot.uploaded_height_bytes += static_cast<std::uint64_t>(update.region.width()) * update.region.height() *
-                                      sizeof(float);
+    snapshot.uploaded_height_bytes +=
+        static_cast<std::uint64_t>(update.region.width()) * update.region.height() * sizeof(float);
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.terrain_height_update(handle, std::make_shared<terrain_height_region_update>(std::move(update)));
@@ -835,21 +837,22 @@ bool renderer::update_terrain_weights(terrain_handle handle, terrain_weight_regi
     const auto found = terrain_data_.find(key);
     if (found == terrain_data_.end()) return false;
     auto replacement = std::make_shared<terrain_resource_descriptor>(*found->second);
-    if (update.region.max_x >= replacement->sample_resolution || update.region.max_z >= replacement->sample_resolution ||
-        update.row_stride < update.region.width() ||
+    if (update.region.max_x >= replacement->sample_resolution ||
+        update.region.max_z >= replacement->sample_resolution || update.row_stride < update.region.width() ||
         update.values.size() < static_cast<std::size_t>(update.row_stride) * update.region.height())
         return false;
     for (std::uint32_t z = 0; z < update.region.height(); ++z)
         std::copy_n(update.values.begin() + static_cast<std::ptrdiff_t>(z * update.row_stride), update.region.width(),
-                    replacement->weights.begin() + static_cast<std::ptrdiff_t>(
-                        static_cast<std::size_t>(update.region.min_z + z) * replacement->sample_resolution +
-                        update.region.min_x));
+                    replacement->weights.begin() +
+                        static_cast<std::ptrdiff_t>(static_cast<std::size_t>(update.region.min_z + z) *
+                                                        replacement->sample_resolution +
+                                                    update.region.min_x));
     replacement->content_revision = update.content_revision;
     terrain_data_[key] = replacement;
     auto& snapshot = terrain_snapshots_[key];
     snapshot.content_revision = update.content_revision;
-    snapshot.uploaded_weight_bytes += static_cast<std::uint64_t>(update.region.width()) * update.region.height() *
-                                      sizeof(replacement->weights[0]);
+    snapshot.uploaded_weight_bytes +=
+        static_cast<std::uint64_t>(update.region.width()) * update.region.height() * sizeof(replacement->weights[0]);
     render_event_buffer buffer;
     render_event_writer writer(buffer);
     writer.terrain_weight_update(handle, std::make_shared<terrain_weight_region_update>(std::move(update)));
@@ -871,7 +874,10 @@ bool renderer::destroy_terrain(terrain_handle handle)
     return true;
 }
 
-bool renderer::terrain_alive(terrain_handle handle) const noexcept { return terrain_handles_.alive(handle); }
+bool renderer::terrain_alive(terrain_handle handle) const noexcept
+{
+    return terrain_handles_.alive(handle);
+}
 
 const terrain_resource_descriptor* renderer::terrain_data_for(terrain_handle handle) const noexcept
 {
@@ -1171,10 +1177,9 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             {render_submit_error_code::backend_unavailable, "no render backend attached"});
 
     const bool temporal_graph = graph.find_resource("temporal_color_history") != nullptr;
-    render_graph_compile_options graph_options{
-        .frame_index = frame_index,
-        .compute_queue_available = resolved_config_.features.async_compute,
-        .transfer_queue_available = backend_->capabilities().transfer_queue};
+    render_graph_compile_options graph_options{.frame_index = frame_index,
+                                               .compute_queue_available = resolved_config_.features.async_compute,
+                                               .transfer_queue_available = backend_->capabilities().transfer_queue};
     bool graph_view_initialized{};
     std::vector<std::shared_ptr<const gpu_scene_update_batch>> gpu_scene_updates;
     std::vector<std::shared_ptr<const lighting_scene_update_batch>> lighting_scene_updates;
@@ -1198,10 +1203,8 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         if (!graph_view_initialized)
         {
             graph_options.view_id = prepared->render_view_id;
-            graph_options.output_extent = {
-                prepared->camera.output_width, prepared->camera.output_height, 1u};
-            graph_options.render_extent = {
-                prepared->camera.render_width, prepared->camera.render_height, 1u};
+            graph_options.output_extent = {prepared->camera.output_width, prepared->camera.output_height, 1u};
+            graph_options.render_extent = {prepared->camera.render_width, prepared->camera.render_height, 1u};
             graph_options.world_epoch = prepared->world_epoch;
             if (prepared->camera.camera_cut)
                 graph_options.temporal_reset = graph_options.temporal_reset | render_history_reset::camera_cut;
@@ -1212,8 +1215,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             graph_view_initialized = true;
         }
 
-        if (temporal_graph && prepared->camera.render_width > 0 &&
-            prepared->camera.render_height > 0)
+        if (temporal_graph && prepared->camera.render_width > 0 && prepared->camera.render_height > 0)
         {
             const auto sample_count = std::max<std::uint32_t>(config_.temporal.jitter_sample_count, 1u);
             const auto sample = frame_index % sample_count + 1u;
@@ -1230,10 +1232,10 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         prepared->visible_terrain_patches.clear();
         prepared->terrain_statistics = {};
         render_camera terrain_camera = prepared->camera;
-        terrain_camera.render_width = std::max(1u, static_cast<std::uint32_t>(
-                                                       std::round(terrain_camera.output_width * resolved_config_.render_scale)));
-        terrain_camera.render_height = std::max(1u, static_cast<std::uint32_t>(
-                                                        std::round(terrain_camera.output_height * resolved_config_.render_scale)));
+        terrain_camera.render_width = std::max(
+            1u, static_cast<std::uint32_t>(std::round(terrain_camera.output_width * resolved_config_.render_scale)));
+        terrain_camera.render_height = std::max(
+            1u, static_cast<std::uint32_t>(std::round(terrain_camera.output_height * resolved_config_.render_scale)));
         for (std::uint32_t terrain_index = 0; terrain_index < prepared->terrains.size(); ++terrain_index)
         {
             const auto& submission = prepared->terrains[terrain_index];
@@ -1254,15 +1256,15 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
                                                       selection.patches.size());
             for (const auto& patch : selection.patches)
                 prepared->visible_terrain_patches.push_back({.terrain = patch.terrain,
-                                                              .terrain_index = terrain_index,
-                                                              .hierarchy_node = patch.node_index,
-                                                              .sample_min_x = patch.samples.min_x,
-                                                              .sample_min_z = patch.samples.min_z,
-                                                              .sample_max_x = patch.samples.max_x,
-                                                              .sample_max_z = patch.samples.max_z,
-                                                              .lod = patch.lod,
-                                                              .stitch_mask = patch.stitch_mask,
-                                                              .projected_error = patch.projected_error});
+                                                             .terrain_index = terrain_index,
+                                                             .hierarchy_node = patch.node_index,
+                                                             .sample_min_x = patch.samples.min_x,
+                                                             .sample_min_z = patch.samples.min_z,
+                                                             .sample_max_x = patch.samples.max_x,
+                                                             .sample_max_z = patch.samples.max_z,
+                                                             .lod = patch.lod,
+                                                             .stitch_mask = patch.stitch_mask,
+                                                             .projected_error = patch.projected_error});
         }
 
         previous = {.view_projection = prepared->camera.view_projection,

@@ -38,9 +38,18 @@ struct terrain_sample_region
     std::uint32_t max_x{};
     std::uint32_t max_z{};
 
-    [[nodiscard]] constexpr bool valid() const noexcept { return min_x <= max_x && min_z <= max_z; }
-    [[nodiscard]] constexpr std::uint32_t width() const noexcept { return max_x - min_x + 1u; }
-    [[nodiscard]] constexpr std::uint32_t height() const noexcept { return max_z - min_z + 1u; }
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        return min_x <= max_x && min_z <= max_z;
+    }
+    [[nodiscard]] constexpr std::uint32_t width() const noexcept
+    {
+        return max_x - min_x + 1u;
+    }
+    [[nodiscard]] constexpr std::uint32_t height() const noexcept
+    {
+        return max_z - min_z + 1u;
+    }
 };
 
 /** @brief One deterministic node in a flat terrain quadtree. */
@@ -55,7 +64,10 @@ struct terrain_hierarchy_node
     std::array<std::uint32_t, 4> children{invalid_terrain_node, invalid_terrain_node, invalid_terrain_node,
                                           invalid_terrain_node};
 
-    [[nodiscard]] constexpr bool leaf() const noexcept { return children[0] == invalid_terrain_node; }
+    [[nodiscard]] constexpr bool leaf() const noexcept
+    {
+        return children[0] == invalid_terrain_node;
+    }
 };
 
 /** @brief CPU hierarchy retained by a terrain render resource. */
@@ -162,8 +174,8 @@ struct terrain_selection_scratch
  * @param settings Authored hierarchy and patch policy.
  * @return Flat hierarchy, or an empty hierarchy when the input is invalid.
  */
-[[nodiscard]] terrain_hierarchy build_terrain_hierarchy(std::span<const float> heights,
-                                                        std::uint32_t sample_resolution, float width, float depth,
+[[nodiscard]] terrain_hierarchy build_terrain_hierarchy(std::span<const float> heights, std::uint32_t sample_resolution,
+                                                        float width, float depth,
                                                         const terrain_lod_settings& settings = {});
 
 /**
@@ -178,13 +190,10 @@ bool update_terrain_hierarchy(terrain_hierarchy& hierarchy, std::span<const floa
  * @brief Select and balance visible terrain patches using projected geometric error.
  * @param scratch Optional view-owned storage retaining traversal history; not shared between threads.
  */
-[[nodiscard]] terrain_selection_result select_terrain_patches(terrain_handle terrain,
-                                                              const terrain_hierarchy& hierarchy,
-                                                              const math::matrix4f& model,
-                                                              const render_camera& camera,
-                                                              float geometry_error_threshold,
-                                                              float terrain_error_bias = 1.0f,
-                                                              terrain_selection_scratch* scratch = nullptr);
+[[nodiscard]] terrain_selection_result
+select_terrain_patches(terrain_handle terrain, const terrain_hierarchy& hierarchy, const math::matrix4f& model,
+                       const render_camera& camera, float geometry_error_threshold, float terrain_error_bias = 1.0f,
+                       terrain_selection_scratch* scratch = nullptr);
 
 /**
  * @brief Build one shared grid index variant.
@@ -193,6 +202,6 @@ bool update_terrain_hierarchy(terrain_hierarchy& hierarchy, std::span<const floa
  * @return Triangle-list indices with degenerate edge triangles removed.
  */
 [[nodiscard]] std::vector<std::uint32_t> make_terrain_patch_indices(std::uint32_t patch_quads,
-                                                                   std::uint8_t stitch_mask);
+                                                                    std::uint8_t stitch_mask);
 
 } // namespace arc::render

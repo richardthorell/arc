@@ -44,14 +44,12 @@ import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
 import { flattenScene } from '../services/editorHostTypes';
 import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/editorHostTypes';
-import { UiButton, UiIconButton, UiPanel, UiTab, UiTabs, UiTreeRow } from '../ui';
+import { UiIconButton, UiPanel, UiTab, UiTabs, UiTreeRow } from '../ui';
 import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
 import type { HostWorldEnvironment } from '../environment/environmentTypes';
 import { InspectorPanel as DataDrivenInspector } from '../inspector/InspectorPanel';
 import type { HostProjectComponentSchema } from '../inspector/componentSchemas';
-import { AssetThumbnail } from '../inspector/AssetPicker';
-import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
 import { aggregateInspectorSnapshots, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
 import { ProfilerPanel } from '../profiler/ProfilerPanel';
@@ -1188,12 +1186,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     if (activity) setRequestedWorkspacePanel(activity.panelId);
   };
 
-  const setActiveCenterPanel = (panel: WorkbenchPanelId) =>
-    setLayout((current) => ({ ...current, activeCenterPanel: panel }));
-  const setActiveRightPanel = (panel: WorkbenchPanelId) =>
-    setLayout((current) => ({ ...current, activeRightPanel: panel }));
-  const setActiveBottomPanel = (panel: WorkbenchPanelId) =>
-    setLayout((current) => ({ ...current, activeBottomPanel: panel }));
   const setActivityExpanded = (expanded: boolean) =>
     setLayout((current) => ({ ...current, activityExpanded: expanded }));
   const updateViewportToolOptions = async (
@@ -2027,123 +2019,6 @@ function WorldSettingsPanel({
   );
 }
 
-/* Legacy content browser removed: ContentBrowserV2 is the single registry-backed implementation. */
-function _LegacyContentBrowserPanel({
-  project,
-  cache,
-  selectedAssetId,
-  onSelectAsset,
-  onCommand,
-  onInstantiatePrefab,
-  onAssetAction,
-  thumbnailProvider,
-}: {
-  project: ProjectSnapshot | null;
-  cache: HostProjectAssetsSnapshot | null;
-  selectedAssetId: string | null;
-  onSelectAsset: (assetId: string) => void;
-  onCommand: (command: CommandId) => void;
-  onInstantiatePrefab: (path: string) => void;
-  onAssetAction: (type: 'asset.reimport' | 'asset.cancelImport', guid: string) => void;
-  thumbnailProvider: AssetThumbnailProvider;
-}) {
-  const selectedAsset = project?.assets.find((asset) => asset.id === selectedAssetId) ?? null;
-  return (
-    <section className="content-browser-foundation">
-      <div className="content-browser-toolbar">
-        <UiButton onClick={() => onCommand('assets.import')} variant="toolbar">
-          + Add
-        </UiButton>
-        <UiButton onClick={() => onCommand('assets.import')} variant="toolbar">
-          Import
-        </UiButton>
-        <UiButton onClick={() => onCommand('assets.saveAll')} variant="toolbar">
-          Save All
-        </UiButton>
-        <span>Assets / Environment / Props</span>
-      </div>
-      {cache && (
-        <div className="asset-cache-summary">
-          <span>
-            DDC <b>{(cache.cacheLocalBytes / (1024 * 1024)).toFixed(1)} MiB</b>
-          </span>
-          <span>
-            Local {cache.cacheLocalHits}/{cache.cacheLocalHits + cache.cacheLocalMisses}
-          </span>
-          <span>
-            Shared {cache.cacheSharedHits}/{cache.cacheSharedHits + cache.cacheSharedMisses}
-          </span>
-          <span>Hit {(cache.cacheHitRate * 100).toFixed(1)}%</span>
-          {(cache.cacheCorruptEntries > 0 || cache.cacheEvictions > 0) && (
-            <span className="asset-registry-diagnostic">
-              Corrupt {cache.cacheCorruptEntries} · Evicted {cache.cacheEvictions}
-            </span>
-          )}
-        </div>
-      )}
-      <div className="asset-grid-foundation">
-        {(project?.assets ?? []).map((asset) => (
-          <_LegacyAssetCard
-            key={asset.id}
-            asset={asset}
-            selected={asset.id === selectedAssetId}
-            thumbnailProvider={thumbnailProvider}
-            onSelect={() => onSelectAsset(asset.id)}
-            onActivate={() => asset.kind === 'prefab' && onInstantiatePrefab(asset.path)}
-          />
-        ))}
-      </div>
-      {selectedAsset && (
-        <div className="asset-registry-details">
-          <strong>{selectedAsset.name}</strong>
-          <span>
-            GUID <code>{selectedAsset.guid ?? 'Legacy path reference'}</code>
-          </span>
-          <span>
-            Type <code>{selectedAsset.typeId ?? selectedAsset.kind}</code>
-          </span>
-          <span>
-            Importer <code>{selectedAsset.importerId ?? 'Unregistered'}</code>
-          </span>
-          <span>
-            State <b data-state={selectedAsset.status}>{selectedAsset.status}</b>
-          </span>
-          <span>
-            Residency <b>{selectedAsset.residency ?? 'metadata'}</b> · Generation {selectedAsset.generation ?? 0}
-          </span>
-          {selectedAsset.diagnostic && <span className="asset-registry-diagnostic">{selectedAsset.diagnostic}</span>}
-          <details>
-            <summary>Dependencies ({selectedAsset.dependencies?.length ?? 0})</summary>
-            {(selectedAsset.dependencies ?? []).map((guid) => (
-              <code key={guid}>{guid}</code>
-            ))}
-            {!selectedAsset.dependencies?.length && <small>No direct dependencies.</small>}
-          </details>
-          <details>
-            <summary>References ({selectedAsset.reverseDependencies?.length ?? 0})</summary>
-            {(selectedAsset.reverseDependencies ?? []).map((guid) => (
-              <code key={guid}>{guid}</code>
-            ))}
-            {!selectedAsset.reverseDependencies?.length && <small>No registered reverse dependencies.</small>}
-          </details>
-          {selectedAsset.guid && (
-            <div className="asset-registry-actions">
-              <UiButton onClick={() => onAssetAction('asset.reimport', selectedAsset.guid!)} variant="toolbar">
-                Reimport
-              </UiButton>
-              {selectedAsset.status === 'queued' || selectedAsset.status === 'importing' ? (
-                <UiButton onClick={() => onAssetAction('asset.cancelImport', selectedAsset.guid!)} variant="toolbar">
-                  Cancel Import
-                </UiButton>
-              ) : null}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function Panel({ children, icon, title }: { children: ReactNode; icon: ReactNode; title: string }) {
   return (
     <UiPanel className="workbench-panel">
@@ -2331,47 +2206,6 @@ function AssetRow({ asset, selected, onSelect }: { asset: AssetItem; selected: b
       <AssetIcon kind={asset.kind} />
       <span>{asset.name}</span>
     </UiTreeRow>
-  );
-}
-
-function _LegacyAssetCard({
-  asset,
-  selected,
-  thumbnailProvider,
-  onSelect,
-  onActivate,
-}: {
-  asset: AssetItem;
-  selected: boolean;
-  thumbnailProvider: AssetThumbnailProvider;
-  onSelect: () => void;
-  onActivate?: () => void;
-}) {
-  const draggable = asset.kind === 'texture' || asset.kind === 'material' || asset.kind === 'prefab';
-  return (
-    <UiButton
-      className={selected ? 'asset-card-foundation selected' : 'asset-card-foundation'}
-      draggable={draggable}
-      title={[asset.path, asset.guid && `GUID: ${asset.guid}`, asset.diagnostic].filter(Boolean).join('\n')}
-      onDoubleClick={onActivate}
-      onDragStart={(event) => {
-        if (!draggable) return;
-        event.dataTransfer.setData('application/x-arc-asset', asset.path);
-        if (asset.kind === 'texture') event.dataTransfer.setData('application/x-arc-environment', asset.path);
-      }}
-      onClick={onSelect}
-      variant="default"
-    >
-      {draggable ? (
-        <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
-      ) : (
-        <AssetIcon kind={asset.kind} />
-      )}
-      <strong>{asset.name}</strong>
-      <span>
-        {asset.kind} · {asset.status}
-      </span>
-    </UiButton>
   );
 }
 

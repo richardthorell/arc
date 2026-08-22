@@ -515,7 +515,6 @@ TEST_CASE("HTTP shared cache authenticates and verifies immutable blob responses
     REQUIRE(error);
 }
 
-
 TEST_CASE("read-only source roots mount built-in assets without allowing source mutation")
 {
     using namespace arc::assets;
@@ -532,7 +531,8 @@ TEST_CASE("read-only source roots mount built-in assets without allowing source 
                                 {.guid = guid, .type = asset_types::material, .importer = importer_ids::material}));
 
     arc::memory::memory_system memory;
-    arc::jobs::job_system jobs({.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory});
+    arc::jobs::job_system jobs(
+        {.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory});
     arc::io::async_file_service files(jobs);
     asset_manager manager({.project_root = project.root,
                            .asset_root = project.assets,
@@ -548,8 +548,10 @@ TEST_CASE("read-only source roots mount built-in assets without allowing source 
     REQUIRE(builtin);
     REQUIRE(builtin->guid == guid);
     REQUIRE(builtin->read_only);
-    const auto loaded = manager.load<source_asset_data>({.reference = {guid, asset_types::material,
-                                                                       "builtin/materials/default_phong.arcmat"}}).get();
+    const auto loaded = manager
+                            .load<source_asset_data>(
+                                {.reference = {guid, asset_types::material, "builtin/materials/default_phong.arcmat"}})
+                            .get();
     REQUIRE(loaded.succeeded());
     const auto moved = manager.move(guid, "assets/materials/copied.arcmat");
     REQUIRE_FALSE(moved.succeeded());

@@ -53,7 +53,8 @@ struct cylinder_mesh_parameters
     std::uint32_t radial_segments{32};
     std::uint32_t height_segments{1};
 
-    friend constexpr bool operator==(const cylinder_mesh_parameters&, const cylinder_mesh_parameters&) noexcept = default;
+    friend constexpr bool operator==(const cylinder_mesh_parameters&,
+                                     const cylinder_mesh_parameters&) noexcept = default;
 };
 
 struct cone_mesh_parameters

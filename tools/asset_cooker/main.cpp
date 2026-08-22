@@ -38,7 +38,9 @@ std::optional<std::string> environment_value(const char* name)
     std::free(value);
     return result;
 #else
-    if (const char* value = std::getenv(name)) return std::string(value);
+    // Cooker configuration is read during single-threaded process startup.
+    if (const char* value = std::getenv(name)) // NOLINT(concurrency-mt-unsafe)
+        return std::string(value);
     return std::nullopt;
 #endif
 }

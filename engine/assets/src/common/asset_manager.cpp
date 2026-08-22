@@ -166,7 +166,9 @@ bool execute(sqlite3* database, const char* sql, std::string* error = nullptr)
 
 void bind_text(sqlite3_stmt* statement, int index, std::string_view value)
 {
-    sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()), SQLITE_TRANSIENT);
+    // SQLITE_TRANSIENT is SQLite's documented sentinel for copying bound data.
+    sqlite3_bind_text(statement, index, value.data(), static_cast<int>(value.size()),
+                      SQLITE_TRANSIENT); // NOLINT(performance-no-int-to-ptr)
 }
 
 std::string column_text(sqlite3_stmt* statement, int column)
@@ -197,8 +199,7 @@ asset_reference dependency_from_path(const asset_import_context& context, std::s
                                   ? mounted_root / authored
                                   : context.source_path.parent_path() / authored;
         const auto relative_to_mount = resolved.lexically_normal().lexically_relative(mounted_root);
-        if (relative_to_mount.empty() ||
-            relative_to_mount.native().starts_with(std::filesystem::path("..").native()))
+        if (relative_to_mount.empty() || relative_to_mount.native().starts_with(std::filesystem::path("..").native()))
             return {};
         const auto path_hint = std::filesystem::path("builtin") / relative_to_mount;
         if (!expected_type.valid())
@@ -1044,18 +1045,16 @@ struct asset_manager::implementation
                 const auto importer_descriptor = importer->descriptor();
 
                 const auto& bytes = read.value();
-                asset_import_result imported = importer->import(
-                    {.reference = {guid, metadata.type,
-                                   source_path_hint},
-                     .metadata = metadata,
-                     .project_root = config.project_root,
-                     .source_path = source_path,
-                     .derived_data_root = config.cache_root / "derived",
-                     .source_bytes = bytes,
-                     .source_hash = source_hash,
-                     .priority = priority,
-                     .requested_residency = import_residency,
-                     .cancellation = effective_cancellation});
+                asset_import_result imported = importer->import({.reference = {guid, metadata.type, source_path_hint},
+                                                                 .metadata = metadata,
+                                                                 .project_root = config.project_root,
+                                                                 .source_path = source_path,
+                                                                 .derived_data_root = config.cache_root / "derived",
+                                                                 .source_bytes = bytes,
+                                                                 .source_hash = source_hash,
+                                                                 .priority = priority,
+                                                                 .requested_residency = import_residency,
+                                                                 .cancellation = effective_cancellation});
 
                 if (imported.succeeded() && !imported.dependencies.empty())
                 {
@@ -1199,8 +1198,8 @@ struct asset_manager::implementation
                     {
                         auto saved = save_asset_metadata(metadata_path_for(target.absolute_path), target.metadata);
                         if (!saved)
-                            target.snapshot.diagnostics.push_back(
-                                diagnostic(guid, asset_diagnostic_severity::warning, "metadata", saved.error().message));
+                            target.snapshot.diagnostics.push_back(diagnostic(guid, asset_diagnostic_severity::warning,
+                                                                             "metadata", saved.error().message));
                     }
                 }
 
@@ -1333,7 +1332,7 @@ void asset_manager::on_start(framework::runtime_service_context&)
         if (implementation_->started) return;
         if (!implementation_->open_database(error))
         {
-            const auto original_error = error;
+            const auto& original_error = error;
             std::string rebuild_error;
             if (implementation_->rebuild_database(rebuild_error))
                 implementation_->events.push_back(
@@ -1502,8 +1501,10 @@ asset_scan_result asset_manager::scan()
                          [&](const auto& value) { return path_key(value.path) == path_key(root); }))
             source_roots.push_back({root, read_only});
     };
-    for (const auto& root : implementation_->config.additional_source_roots) append_root(root, false);
-    for (const auto& root : implementation_->config.read_only_source_roots) append_root(root, true);
+    for (const auto& root : implementation_->config.additional_source_roots)
+        append_root(root, false);
+    for (const auto& root : implementation_->config.read_only_source_roots)
+        append_root(root, true);
     for (const auto& mounted_root : source_roots)
     {
         const auto& source_root = mounted_root.path;
@@ -1525,9 +1526,10 @@ asset_scan_result asset_manager::scan()
             if (!iterator->is_regular_file(error)) continue;
             const auto classification = classify_asset_path(iterator->path());
             if (!classification) continue;
-            const auto relative = mounted_root.read_only
-                                      ? std::filesystem::path("builtin") / iterator->path().lexically_relative(source_root)
-                                      : iterator->path().lexically_relative(implementation_->config.project_root);
+            const auto relative =
+                mounted_root.read_only
+                    ? std::filesystem::path("builtin") / iterator->path().lexically_relative(source_root)
+                    : iterator->path().lexically_relative(implementation_->config.project_root);
             if (relative.empty() || relative.native().starts_with(std::filesystem::path("..").native())) continue;
 
             discovered_source source;

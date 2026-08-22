@@ -66,11 +66,7 @@ textarea {
 .ui-button.is-active {
   color: var(--arc-color-text-inverse);
   border-color: var(--arc-color-button-primary-border);
-  background: linear-gradient(
-    180deg,
-    var(--arc-color-button-primary-top),
-    var(--arc-color-button-primary-bottom)
-  );
+  background: linear-gradient(180deg, var(--arc-color-button-primary-top), var(--arc-color-button-primary-bottom));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.075),
     0 1px 1px rgba(0, 52, 124, 0.22);
@@ -88,11 +84,7 @@ textarea {
 
 .ui-button-primary:active:not(:disabled),
 .ui-button.is-active:active:not(:disabled) {
-  background: linear-gradient(
-    180deg,
-    var(--arc-color-button-primary-bottom),
-    var(--arc-color-button-primary-pressed)
-  );
+  background: linear-gradient(180deg, var(--arc-color-button-primary-bottom), var(--arc-color-button-primary-pressed));
   box-shadow: inset 0 1px 2px rgba(0, 35, 88, 0.28);
 }
 
@@ -126,11 +118,7 @@ textarea {
 .ui-button-danger {
   color: var(--arc-color-text-inverse);
   border-color: var(--arc-color-button-danger-border);
-  background: linear-gradient(
-    180deg,
-    var(--arc-color-button-danger-top),
-    var(--arc-color-button-danger-bottom)
-  );
+  background: linear-gradient(180deg, var(--arc-color-button-danger-top), var(--arc-color-button-danger-bottom));
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.065),
     0 1px 1px rgba(85, 16, 14, 0.2);
@@ -146,11 +134,7 @@ textarea {
 }
 
 .ui-button-danger:active:not(:disabled) {
-  background: linear-gradient(
-    180deg,
-    var(--arc-color-button-danger-bottom),
-    var(--arc-color-button-danger-pressed)
-  );
+  background: linear-gradient(180deg, var(--arc-color-button-danger-bottom), var(--arc-color-button-danger-pressed));
   box-shadow: inset 0 1px 2px rgba(68, 11, 10, 0.3);
 }
 
@@ -223,11 +207,7 @@ textarea {
   padding: 0 var(--arc-space-4) 0 var(--arc-button-padding-x);
   border-color: var(--arc-color-button-border);
   color: var(--arc-color-text);
-  background: linear-gradient(
-    180deg,
-    var(--arc-color-button-field-top),
-    var(--arc-color-button-field-bottom)
-  );
+  background: linear-gradient(180deg, var(--arc-color-button-field-top), var(--arc-color-button-field-bottom));
   box-shadow:
     inset 0 1px 1px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.02);

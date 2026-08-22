@@ -65,8 +65,7 @@ public:
     virtual void mark(entity value, change_revision revision, std::uint64_t fields) = 0;
     [[nodiscard]] virtual component_change change(entity value) const noexcept = 0;
     [[nodiscard]] virtual std::span<const component_change> change_events() const noexcept = 0;
-    [[nodiscard]] virtual std::unique_ptr<component_pool_base>
-    clone(std::pmr::memory_resource* resource) const = 0;
+    [[nodiscard]] virtual std::unique_ptr<component_pool_base> clone(std::pmr::memory_resource* resource) const = 0;
 };
 
 template <class T> class component_pool final : public component_pool_base
@@ -206,8 +205,7 @@ public:
         return {change_events_.data(), change_events_.size()};
     }
 
-    [[nodiscard]] std::unique_ptr<component_pool_base>
-    clone(std::pmr::memory_resource* resource) const override
+    [[nodiscard]] std::unique_ptr<component_pool_base> clone(std::pmr::memory_resource* resource) const override
     {
         auto result = std::make_unique<component_pool<T>>(resource);
         result->ensure_entity_capacity(sparse_.size());

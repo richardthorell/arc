@@ -139,19 +139,18 @@ class async_file_service
 public:
     explicit async_file_service(jobs::job_system& jobs, async_file_config config = {});
 
-    [[nodiscard]] jobs::job_future<file_result<file_buffer>>
-    read_all(std::filesystem::path path, jobs::cancellation_token cancellation = {});
-    [[nodiscard]] jobs::job_future<file_result<file_buffer>>
-    read_range(std::filesystem::path path, std::uint64_t offset, std::size_t bytes,
-               jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_future<file_result<file_buffer>> read_all(std::filesystem::path path,
+                                                                      jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_future<file_result<file_buffer>> read_range(std::filesystem::path path,
+                                                                        std::uint64_t offset, std::size_t bytes,
+                                                                        jobs::cancellation_token cancellation = {});
     [[nodiscard]] jobs::job_future<file_result<void>>
-    write(std::filesystem::path path, std::span<const std::byte> bytes,
-          jobs::cancellation_token cancellation = {});
-    [[nodiscard]] jobs::job_future<file_result<void>>
-    write_atomic(std::filesystem::path path, std::span<const std::byte> bytes,
-                 jobs::cancellation_token cancellation = {});
-    [[nodiscard]] jobs::job_future<file_result<file_info>>
-    stat(std::filesystem::path path, jobs::cancellation_token cancellation = {});
+    write(std::filesystem::path path, std::span<const std::byte> bytes, jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_future<file_result<void>> write_atomic(std::filesystem::path path,
+                                                                   std::span<const std::byte> bytes,
+                                                                   jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_future<file_result<file_info>> stat(std::filesystem::path path,
+                                                                jobs::cancellation_token cancellation = {});
 
     [[nodiscard]] std::size_t chunk_size() const noexcept;
     [[nodiscard]] jobs::job_system& scheduler() const noexcept;

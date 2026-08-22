@@ -209,7 +209,7 @@ export const useShaderDocumentState = (document: EditorDocument) => {
   useEffect(() => subscribe(document.id, () => forceUpdate((value) => value + 1)), [document.id]);
   useEffect(() => {
     void loadShaderDocument(document);
-  }, [document.assetScope, document.id, document.path]);
+  }, [document]);
 
   return states.get(document.id) ?? state;
 };

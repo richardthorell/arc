@@ -149,7 +149,10 @@ describe('ViewportPanel', () => {
     await waitFor(() => expect(view.getByText('Shared GPU viewport failed')).toBeInTheDocument());
     expect(view.getByText('D3D12 shared handle import failed')).toBeInTheDocument();
     expect(attach).not.toHaveBeenCalled();
-    expect(view.getByText('GPU Shared')).toHaveAttribute('title', expect.stringContaining('D3D12 shared handle import failed'));
+    expect(view.getByText('GPU Shared')).toHaveAttribute(
+      'title',
+      expect.stringContaining('D3D12 shared handle import failed'),
+    );
 
     fireEvent.click(view.getByRole('button', { name: 'Use Native Fallback' }));
 

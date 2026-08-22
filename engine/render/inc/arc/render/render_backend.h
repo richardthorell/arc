@@ -535,14 +535,14 @@ enum class viewport_output_type : std::uint8_t
 /**
  * @brief Frame-local context supplied to a render-graph pass recorder.
  *
- * The context borrows the immutable compiled plan and active encoder. It is
+ * The context borrows the immutable
+ * compiled plan and active encoder. It is
  * valid only for the duration of the callback and must not be retained.
  */
 class render_pass_context
 {
 public:
-    render_pass_context(const compiled_render_graph& graph, std::uint32_t pass_index,
-                        command_encoder& encoder) noexcept
+    render_pass_context(const compiled_render_graph& graph, std::uint32_t pass_index, command_encoder& encoder) noexcept
         : graph_(&graph), pass_index_(pass_index), encoder_(&encoder)
     {
     }
@@ -560,8 +560,7 @@ public:
     }
 
     /** @brief Read the active pass's graph-owned inline payload. */
-    template <typename T>
-    [[nodiscard]] T payload() const noexcept
+    template <typename T> [[nodiscard]] T payload() const noexcept
     {
         return pass().payload.template get<T>();
     }
@@ -606,8 +605,10 @@ enum class external_gpu_handle_type : std::uint8_t
 /**
  * @brief Opaque platform handle exported by a rendering backend.
  *
- * The numeric payload is meaningful only to the platform integration layer in
+ * The numeric payload is meaningful only to
+ * the platform integration layer in
  * the process that owns it. Consumers must duplicate or transfer it explicitly
+ *
  * before crossing a process boundary.
  */
 struct external_gpu_handle
@@ -1007,8 +1008,8 @@ public:
     [[nodiscard]] virtual surface_frame_result create_viewport_output(const viewport_output_descriptor& descriptor);
 
     /** @brief Resize an existing viewport output and advance its generation. */
-    [[nodiscard]] virtual surface_frame_result resize_viewport_output(std::string_view viewport_id,
-                                                                      std::uint32_t width, std::uint32_t height);
+    [[nodiscard]] virtual surface_frame_result resize_viewport_output(std::string_view viewport_id, std::uint32_t width,
+                                                                      std::uint32_t height);
 
     /** @brief Submit the latest rendered frame to a named viewport output. */
     [[nodiscard]] virtual surface_frame_result present_viewport_output(std::string_view viewport_id);
@@ -1017,8 +1018,7 @@ public:
     [[nodiscard]] virtual shared_viewport_frame_result poll_viewport_output(std::string_view viewport_id);
 
     /** @brief Return a consumer-owned frame slot to the producer. */
-    virtual void release_viewport_frame(std::string_view viewport_id, std::uint64_t generation,
-                                        std::uint64_t frame_id);
+    virtual void release_viewport_frame(std::string_view viewport_id, std::uint64_t generation, std::uint64_t frame_id);
 
     /** @brief Change whether a viewport should produce frames. */
     virtual void set_viewport_output_visible(std::string_view viewport_id, bool visible);

@@ -90,8 +90,8 @@ public:
 
 private:
     template <std::size_t Index, class Value>
-    explicit result(std::in_place_index_t<Index> index, Value&& value)
-        noexcept(std::is_nothrow_constructible_v<std::variant<T, E>, std::in_place_index_t<Index>, Value&&>)
+    explicit result(std::in_place_index_t<Index> index, Value&& value) noexcept(
+        std::is_nothrow_constructible_v<std::variant<T, E>, std::in_place_index_t<Index>, Value&&>)
         : storage_(index, std::forward<Value>(value))
     {
     }
@@ -157,8 +157,8 @@ private:
     explicit result(std::in_place_index_t<0> index) noexcept : storage_(index) {}
 
     template <class Value>
-    explicit result(std::in_place_index_t<1> index, Value&& value)
-        noexcept(std::is_nothrow_constructible_v<std::variant<std::monostate, E>, std::in_place_index_t<1>, Value&&>)
+    explicit result(std::in_place_index_t<1> index, Value&& value) noexcept(
+        std::is_nothrow_constructible_v<std::variant<std::monostate, E>, std::in_place_index_t<1>, Value&&>)
         : storage_(index, std::forward<Value>(value))
     {
     }

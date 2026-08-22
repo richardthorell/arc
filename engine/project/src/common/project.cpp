@@ -436,7 +436,8 @@ std::optional<std::string> environment_value(const char* name)
     std::free(value);
     return result;
 #else
-    const char* value = std::getenv(name);
+    // Toolchain discovery runs during single-threaded project-tool startup.
+    const char* value = std::getenv(name); // NOLINT(concurrency-mt-unsafe)
     return value ? std::optional<std::string>(value) : std::nullopt;
 #endif
 }

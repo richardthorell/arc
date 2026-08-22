@@ -325,8 +325,7 @@ public:
     linear_arena(linear_arena&&) noexcept;
     linear_arena& operator=(linear_arena&&) noexcept;
 
-    [[nodiscard]] void* try_allocate(std::size_t bytes,
-                                     std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
     void reset() noexcept;
     [[nodiscard]] arena_mark mark() const noexcept;
     bool rewind(arena_mark value) noexcept;
@@ -378,8 +377,7 @@ public:
     fixed_block_pool(const fixed_block_pool&) = delete;
     fixed_block_pool& operator=(const fixed_block_pool&) = delete;
 
-    [[nodiscard]] void* try_allocate(std::size_t bytes,
-                                     std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
     void deallocate(void* pointer, std::size_t bytes) noexcept;
     [[nodiscard]] std::size_t pooled_bytes() const noexcept;
     [[nodiscard]] std::size_t outstanding_bytes() const noexcept;
@@ -434,8 +432,7 @@ public:
     streaming_heap(const streaming_heap&) = delete;
     streaming_heap& operator=(const streaming_heap&) = delete;
 
-    [[nodiscard]] void* try_allocate(std::size_t bytes,
-                                     std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] void* try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
     [[nodiscard]] std::size_t capacity() const noexcept;
     [[nodiscard]] std::size_t used() const noexcept;
     [[nodiscard]] std::size_t peak_used() const noexcept;

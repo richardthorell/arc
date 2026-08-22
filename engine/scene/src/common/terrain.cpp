@@ -35,8 +35,9 @@ float random_signed(std::int32_t x, std::int32_t z, std::uint64_t seed = 1u) noe
 {
     const auto seed_x = static_cast<std::uint32_t>(seed);
     const auto seed_z = static_cast<std::uint32_t>(seed >> 32u);
-    return static_cast<float>(hash(static_cast<std::uint32_t>(x) ^ seed_x,
-                                   static_cast<std::uint32_t>(z) ^ seed_z) & 0xffffu) / 32767.5f -
+    return static_cast<float>(hash(static_cast<std::uint32_t>(x) ^ seed_x, static_cast<std::uint32_t>(z) ^ seed_z) &
+                              0xffffu) /
+               32767.5f -
            1.0f;
 }
 
@@ -134,8 +135,8 @@ bool intersect_triangle(const math::vector3f& origin, const math::vector3f& dire
     return true;
 }
 
-bool intersect_bounds(const math::vector3f& origin, const math::vector3f& direction,
-                      const geometric::box3f& bounds, float maximum_distance) noexcept
+bool intersect_bounds(const math::vector3f& origin, const math::vector3f& direction, const geometric::box3f& bounds,
+                      float maximum_distance) noexcept
 {
     float near_distance{};
     float far_distance = maximum_distance;
@@ -177,8 +178,8 @@ std::vector<float> resample_scalar_field(std::span<const float> source, std::uin
     if (source_width == target_width && source_height == target_height) return {source.begin(), source.end()};
     std::vector<float> horizontal(static_cast<std::size_t>(target_width) * source_height);
     std::vector<float> result(static_cast<std::size_t>(target_width) * target_height);
-    const auto sample_line = [](auto sample, std::uint32_t source_count, std::uint32_t target_count,
-                                std::uint32_t target_index)
+    const auto sample_line =
+        [](auto sample, std::uint32_t source_count, std::uint32_t target_count, std::uint32_t target_index)
     {
         if (target_count < source_count)
         {
@@ -212,22 +213,21 @@ std::vector<float> resample_scalar_field(std::span<const float> source, std::uin
     };
     for (std::uint32_t z = 0; z < source_height; ++z)
         for (std::uint32_t x = 0; x < target_width; ++x)
-            horizontal[static_cast<std::size_t>(z) * target_width + x] =
-                sample_line([&](std::uint32_t value) { return source[static_cast<std::size_t>(z) * source_width + value]; },
-                            source_width, target_width, x);
+            horizontal[static_cast<std::size_t>(z) * target_width + x] = sample_line(
+                [&](std::uint32_t value) { return source[static_cast<std::size_t>(z) * source_width + value]; },
+                source_width, target_width, x);
     for (std::uint32_t z = 0; z < target_height; ++z)
         for (std::uint32_t x = 0; x < target_width; ++x)
-            result[static_cast<std::size_t>(z) * target_width + x] =
-                sample_line([&](std::uint32_t value) { return horizontal[static_cast<std::size_t>(value) * target_width + x]; },
-                            source_height, target_height, z);
+            result[static_cast<std::size_t>(z) * target_width + x] = sample_line(
+                [&](std::uint32_t value) { return horizontal[static_cast<std::size_t>(value) * target_width + x]; },
+                source_height, target_height, z);
     return result;
 }
 
 std::vector<float> resample_square_field(std::span<const float> source, std::uint32_t source_resolution,
                                          std::uint32_t target_resolution)
 {
-    return resample_scalar_field(source, source_resolution, source_resolution, target_resolution,
-                                 target_resolution);
+    return resample_scalar_field(source, source_resolution, source_resolution, target_resolution, target_resolution);
 }
 
 } // namespace
@@ -301,15 +301,13 @@ terrain_authoring_result generate_terrain(terrain_component& terrain, const terr
             const float warp_x = fbm(nx * 1.7f + 7.0f, nz * 1.7f - 4.0f, 3, descriptor.seed) * 0.18f;
             const float warp_z = fbm(nx * 1.7f - 9.0f, nz * 1.7f + 3.0f, 3, descriptor.seed ^ 0xa5a5a5a5u) * 0.18f;
             const float rear = std::exp(-std::pow((nz + 0.58f) / 0.30f, 2.0f));
-            const float mountains = std::pow(saturate(fbm((nx + warp_x) * 2.25f, (nz + warp_z) * 2.25f, 6,
-                                                          descriptor.seed) * 0.72f + 0.48f), 1.65f);
-            const float ridges = std::pow(1.0f - std::abs(fbm((nx + warp_x) * 4.2f + 13.0f,
-                                                              (nz + warp_z) * 4.2f, 4,
-                                                              descriptor.seed ^ 0x55aa55aau)), 3.0f);
-            const float basin = std::exp(-((nx - 0.18f) * (nx - 0.18f) / 0.10f +
-                                            (nz - 0.18f) * (nz - 0.18f) / 0.13f));
-            float normalized = 0.035f + mountains * (0.22f + rear * 0.80f) + ridges * rear * 0.16f -
-                               basin * 0.16f;
+            const float mountains = std::pow(
+                saturate(fbm((nx + warp_x) * 2.25f, (nz + warp_z) * 2.25f, 6, descriptor.seed) * 0.72f + 0.48f), 1.65f);
+            const float ridges = std::pow(1.0f - std::abs(fbm((nx + warp_x) * 4.2f + 13.0f, (nz + warp_z) * 4.2f, 4,
+                                                              descriptor.seed ^ 0x55aa55aau)),
+                                          3.0f);
+            const float basin = std::exp(-((nx - 0.18f) * (nx - 0.18f) / 0.10f + (nz - 0.18f) * (nz - 0.18f) / 0.13f));
+            float normalized = 0.035f + mountains * (0.22f + rear * 0.80f) + ridges * rear * 0.16f - basin * 0.16f;
             normalized = saturate(normalized);
             const auto index = sample_index(terrain, x, z);
             terrain.heights[index] = std::lerp(descriptor.minimum_elevation, descriptor.maximum_elevation, normalized);
@@ -325,8 +323,8 @@ terrain_authoring_result generate_terrain(terrain_component& terrain, const terr
             const float rock = saturate(smoothstep(0.10f, 0.38f, slope) + smoothstep(0.62f, 0.92f, height01));
             const float sand = (1.0f - smoothstep(0.03f, 0.12f, height01)) * (1.0f - rock);
             const float dirt = saturate(smoothstep(0.04f, 0.22f, slope) * (1.0f - rock));
-            terrain.layer_weights[index] = normalized_weights({std::max(0.0f, 1.0f - rock - sand - dirt * 0.55f),
-                                                               dirt, rock, sand});
+            terrain.layer_weights[index] =
+                normalized_weights({std::max(0.0f, 1.0f - rock - sand - dirt * 0.55f), dirt, rock, sand});
         }
     ++terrain.content_revision;
     return {true, {}};
@@ -415,7 +413,8 @@ terrain_authoring_result resample_terrain(terrain_component& terrain, const terr
                 source[sample] = static_cast<float>(source_weights[sample][channel]) / 255.0f;
             channels[channel] = resample_square_field(source, source_resolution, descriptor.sample_resolution);
         }
-        terrain.layer_weights.resize(static_cast<std::size_t>(descriptor.sample_resolution) * descriptor.sample_resolution);
+        terrain.layer_weights.resize(static_cast<std::size_t>(descriptor.sample_resolution) *
+                                     descriptor.sample_resolution);
         for (std::size_t sample = 0; sample < terrain.layer_weights.size(); ++sample)
             terrain.layer_weights[sample] = normalized_weights(
                 {channels[0][sample], channels[1][sample], channels[2][sample], channels[3][sample]});
@@ -447,9 +446,11 @@ terrain_authoring_result import_terrain_heightmap(terrain_component& terrain, co
         {
             const auto source_x = settings.flip_x ? heightmap.width - 1u - x : x;
             const auto source_z = settings.flip_z ? heightmap.height - 1u - z : z;
-            const float normalized = (static_cast<float>(heightmap.samples[static_cast<std::size_t>(source_z) *
-                                                                           heightmap.width + source_x]) -
-                                      source_minimum) / source_range;
+            const float normalized =
+                (static_cast<float>(
+                     heightmap.samples[static_cast<std::size_t>(source_z) * heightmap.width + source_x]) -
+                 source_minimum) /
+                source_range;
             source[static_cast<std::size_t>(z) * heightmap.width + x] =
                 std::lerp(settings.minimum_elevation, settings.maximum_elevation, saturate(normalized));
         }
@@ -477,8 +478,8 @@ terrain_heightmap export_terrain_heightmap(const terrain_component& terrain,
     result.samples.resize(terrain.heights.size());
     const float inverse_range = 1.0f / (settings.maximum_elevation - settings.minimum_elevation);
     for (std::size_t sample = 0; sample < terrain.heights.size(); ++sample)
-        result.samples[sample] = static_cast<std::uint16_t>(std::lround(
-            saturate((terrain.heights[sample] - settings.minimum_elevation) * inverse_range) * 65535.0f));
+        result.samples[sample] = static_cast<std::uint16_t>(
+            std::lround(saturate((terrain.heights[sample] - settings.minimum_elevation) * inverse_range) * 65535.0f));
     return result;
 }
 
@@ -530,20 +531,16 @@ terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math:
     std::vector<float> original_heights;
     if (settings.tool == terrain_brush_tool::smooth)
     {
-        original_heights.reserve(static_cast<std::size_t>(scratch_width) *
-                                 (scratch_max_z - scratch_min_z + 1u));
+        original_heights.reserve(static_cast<std::size_t>(scratch_width) * (scratch_max_z - scratch_min_z + 1u));
         for (std::uint32_t z = scratch_min_z; z <= scratch_max_z; ++z)
         {
-            const auto begin = terrain.heights.begin() + static_cast<std::ptrdiff_t>(
-                                                          sample_index(terrain, scratch_min_x, z));
+            const auto begin =
+                terrain.heights.begin() + static_cast<std::ptrdiff_t>(sample_index(terrain, scratch_min_x, z));
             original_heights.insert(original_heights.end(), begin, begin + scratch_width);
         }
     }
     const auto scratch_height = [&](std::uint32_t x, std::uint32_t z)
-    {
-        return original_heights[static_cast<std::size_t>(z - scratch_min_z) * scratch_width +
-                                (x - scratch_min_x)];
-    };
+    { return original_heights[static_cast<std::size_t>(z - scratch_min_z) * scratch_width + (x - scratch_min_x)]; };
     bool changed{};
     for (std::uint32_t z = min_z; z <= max_z; ++z)
     {
@@ -602,9 +599,13 @@ terrain_dirty_region apply_terrain_brush(terrain_component& terrain, const math:
     if (changed)
     {
         ++terrain.content_revision;
-        dirty = {min_x > 0 ? min_x - 1u : 0u, min_z > 0 ? min_z - 1u : 0u, std::min(max_x + 1u, terrain.subdivisions),
-                 std::min(max_z + 1u, terrain.subdivisions), true,
-                 settings.tool != terrain_brush_tool::paint, settings.tool == terrain_brush_tool::paint};
+        dirty = {min_x > 0 ? min_x - 1u : 0u,
+                 min_z > 0 ? min_z - 1u : 0u,
+                 std::min(max_x + 1u, terrain.subdivisions),
+                 std::min(max_z + 1u, terrain.subdivisions),
+                 true,
+                 settings.tool != terrain_brush_tool::paint,
+                 settings.tool == terrain_brush_tool::paint};
     }
     return dirty;
 }
@@ -643,8 +644,7 @@ terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const math
 }
 
 terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const render::terrain_hierarchy& hierarchy,
-                                    const math::vector3f& local_origin,
-                                    const math::vector3f& local_direction) noexcept
+                                    const math::vector3f& local_origin, const math::vector3f& local_direction) noexcept
 {
     terrain_raycast_hit result{};
     if (!terrain_heightfield_valid(terrain) || hierarchy.root == render::invalid_terrain_node ||
@@ -691,7 +691,9 @@ terrain_raycast_hit raycast_terrain(const terrain_component& terrain, const rend
                 {
                     closest = distance;
                     result = {.position = math::add(local_origin, math::mul(local_direction, distance)),
-                              .normal = normal, .distance = distance, .hit = true};
+                              .normal = normal,
+                              .distance = distance,
+                              .hit = true};
                 }
             }
     }
@@ -760,12 +762,11 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
             proxy.material = terrain.material;
             return proxy.handle.valid();
         }
-        const bool updated = renderer.update_terrain(
-            proxy.handle, terrain.material,
-            {.patch_quads = terrain.patch_quads,
-             .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
-             .geometric_error_multiplier = terrain.geometric_error_multiplier},
-            terrain.content_revision);
+        const bool updated = renderer.update_terrain(proxy.handle, terrain.material,
+                                                     {.patch_quads = terrain.patch_quads,
+                                                      .maximum_hierarchy_depth = terrain.maximum_hierarchy_depth,
+                                                      .geometric_error_multiplier = terrain.geometric_error_multiplier},
+                                                     terrain.content_revision);
         if (updated)
         {
             proxy.synchronized_revision = terrain.content_revision;
@@ -781,31 +782,28 @@ bool terrain_render_proxy_cache::synchronize(ecs::entity_guid guid, const terrai
     bool updated = true;
     if (dirty_region->heights_changed)
     {
-        render::terrain_height_region_update request{.region = region,
-                                                     .row_stride = width,
-                                                     .content_revision = terrain.content_revision};
+        render::terrain_height_region_update request{
+            .region = region, .row_stride = width, .content_revision = terrain.content_revision};
         request.values.reserve(static_cast<std::size_t>(width) * height);
         for (std::uint32_t z = region.min_z; z <= region.max_z; ++z)
         {
-            const auto begin = terrain.heights.begin() + static_cast<std::ptrdiff_t>(
-                                                          static_cast<std::size_t>(z) * (terrain.subdivisions + 1u) +
-                                                          region.min_x);
+            const auto begin =
+                terrain.heights.begin() +
+                static_cast<std::ptrdiff_t>(static_cast<std::size_t>(z) * (terrain.subdivisions + 1u) + region.min_x);
             request.values.insert(request.values.end(), begin, begin + width);
         }
         updated = renderer.update_terrain_heights(proxy.handle, std::move(request));
     }
     if (updated && dirty_region->weights_changed)
     {
-        render::terrain_weight_region_update request{.region = region,
-                                                     .row_stride = width,
-                                                     .content_revision = terrain.content_revision};
+        render::terrain_weight_region_update request{
+            .region = region, .row_stride = width, .content_revision = terrain.content_revision};
         request.values.reserve(static_cast<std::size_t>(width) * height);
         for (std::uint32_t z = region.min_z; z <= region.max_z; ++z)
         {
-            const auto begin = terrain.layer_weights.begin() + static_cast<std::ptrdiff_t>(
-                                                                static_cast<std::size_t>(z) *
-                                                                    (terrain.subdivisions + 1u) +
-                                                                region.min_x);
+            const auto begin =
+                terrain.layer_weights.begin() +
+                static_cast<std::ptrdiff_t>(static_cast<std::size_t>(z) * (terrain.subdivisions + 1u) + region.min_x);
             request.values.insert(request.values.end(), begin, begin + width);
         }
         updated = renderer.update_terrain_weights(proxy.handle, std::move(request));

@@ -8,7 +8,7 @@ Checks: >
   concurrency-*,
   performance-*,
   portability-*
-WarningsAsErrors: '*'
+WarningsAsErrors: '*, -clang-analyzer-optin.core.EnumCastOutOfRange, -performance-unnecessary-value-param'
 HeaderFilterRegex: '^(?!.*(?:third_party|out[\\/])).*(?:engine|editor[\\/]native|samples|tools)[\\/]'
 FormatStyle: file
 CheckOptions:

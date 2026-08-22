@@ -111,11 +111,7 @@ describe('Mesh Renderer asset picker', () => {
     await userEvent.type(screen.getByLabelText('Segments'), '64');
     await userEvent.tab();
 
-    expect(onValue).toHaveBeenCalledWith(
-      'meshRenderer.materialPath',
-      '__arc_primitive_parameter__/segments/64',
-      true,
-    );
+    expect(onValue).toHaveBeenCalledWith('meshRenderer.materialPath', '__arc_primitive_parameter__/segments/64', true);
   });
 
   it('exposes per-axis subdivisions for cube procedural meshes', () => {

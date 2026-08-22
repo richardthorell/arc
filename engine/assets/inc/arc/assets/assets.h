@@ -714,8 +714,8 @@ public:
 
     [[nodiscard]] std::optional<asset_snapshot> find(asset_guid guid) const;
     [[nodiscard]] std::optional<asset_snapshot> find(std::string_view project_relative_path) const;
-    [[nodiscard]] std::vector<asset_snapshot>
-    search(std::string_view text = {}, std::optional<asset_type_id> type = std::nullopt) const;
+    [[nodiscard]] std::vector<asset_snapshot> search(std::string_view text = {},
+                                                     std::optional<asset_type_id> type = std::nullopt) const;
     [[nodiscard]] asset_registry_snapshot snapshot() const;
     [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const;
     [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const;
@@ -727,9 +727,9 @@ public:
 
     bool set_dependencies(asset_guid guid, std::span<const asset_reference> dependencies);
     bool mark_stale(asset_guid guid, std::string reason);
-    [[nodiscard]] jobs::job_handle
-    reimport(asset_guid guid, asset_streaming_priority priority = asset_streaming_priority::normal,
-             jobs::cancellation_token cancellation = {});
+    [[nodiscard]] jobs::job_handle reimport(asset_guid guid,
+                                            asset_streaming_priority priority = asset_streaming_priority::normal,
+                                            jobs::cancellation_token cancellation = {});
     bool cancel_import(asset_guid guid);
     [[nodiscard]] asset_move_result move(asset_guid guid, std::filesystem::path destination);
     [[nodiscard]] asset_move_result rename(asset_guid guid, std::string filename);

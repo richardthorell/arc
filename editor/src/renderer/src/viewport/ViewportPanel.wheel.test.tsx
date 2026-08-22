@@ -13,7 +13,10 @@ class TestResizeObserver {
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', TestResizeObserver);
-  vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+  vi.stubGlobal(
+    'requestAnimationFrame',
+    vi.fn(() => 1),
+  );
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
     x: 0,

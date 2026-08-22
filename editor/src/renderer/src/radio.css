@@ -36,11 +36,7 @@ input[type='radio']::before {
 
 input[type='radio']:hover:not(:disabled) {
   border-color: var(--arc-color-radio-border-hover);
-  background: linear-gradient(
-    180deg,
-    var(--arc-color-radio-bg-hover-top),
-    var(--arc-color-radio-bg-hover-bottom)
-  );
+  background: linear-gradient(180deg, var(--arc-color-radio-bg-hover-top), var(--arc-color-radio-bg-hover-bottom));
 }
 
 input[type='radio']:checked {

@@ -24,7 +24,7 @@ afterEach(cleanup);
 describe('EditorDocumentTabs', () => {
   it('renders the active level document with the world icon and routes activation', () => {
     const onActivate = vi.fn();
-    const { container } = render(
+    render(
       <EditorDocumentTabs
         documents={[
           {
@@ -45,7 +45,7 @@ describe('EditorDocumentTabs', () => {
     const tab = screen.getByRole('tab', { name: /World\.arcscene/ });
     expect(tab).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByLabelText('Unsaved changes')).toBeInTheDocument();
-    expect(container.querySelector('.lucide-globe-2')).toBeInTheDocument();
+    expect(tab.querySelector('svg')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Close World\.arcscene/ })).not.toBeInTheDocument();
 
     fireEvent.click(tab);
@@ -55,7 +55,7 @@ describe('EditorDocumentTabs', () => {
   it('renders shader documents as closeable code-document tabs', () => {
     const onActivate = vi.fn();
     const onClose = vi.fn();
-    const { container } = render(
+    render(
       <EditorDocumentTabs
         documents={[
           {
@@ -75,7 +75,7 @@ describe('EditorDocumentTabs', () => {
       />,
     );
 
-    expect(container.querySelector('.lucide-file-code-2')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /pbr_lit\.hlsl/ }).querySelector('svg')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close pbr_lit.hlsl' }));
     expect(onClose).toHaveBeenCalledWith('shader:pbr');
   });
@@ -103,6 +103,8 @@ describe('EditorDocumentTabs', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close pbr_lit.hlsl' }));
     expect(screen.getByRole('dialog', { name: 'Save changes?' })).toBeInTheDocument();
-    expect(screen.getByText(/pbr_lit\.hlsl has unsaved changes/)).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Save changes?' })).toHaveTextContent(
+      'pbr_lit.hlsl has unsaved changes.',
+    );
   });
 });

@@ -230,7 +230,7 @@ export function ViewportPanel({
     void attachViewport();
   }, [attachViewport, streamedAvailable]);
 
-  const useNativeFallback = useCallback(async () => {
+  const activateNativeFallback = useCallback(async () => {
     if (!streamedAvailable || !sharedFailureRef.current) return;
     const bounds = viewportBounds();
     if (!bounds || bounds.width < 2 || bounds.height < 2) return;
@@ -568,7 +568,13 @@ export function ViewportPanel({
         ? 'Unlit'
         : 'Lit';
   const transportLabel =
-    transport === 'streamed' ? 'GPU Shared' : transport === 'native' ? (sharedFailure ? 'Native Fallback' : 'Native') : 'Unavailable';
+    transport === 'streamed'
+      ? 'GPU Shared'
+      : transport === 'native'
+        ? sharedFailure
+          ? 'Native Fallback'
+          : 'Native'
+        : 'Unavailable';
   const transportTitle =
     transport === 'streamed'
       ? sharedFailure
@@ -715,20 +721,21 @@ export function ViewportPanel({
           </details>
           <details className="arc-viewport-show-menu">
             <summary>
-              AA {renderOptions.antiAliasing === 'inherit' ? 'Project/Camera' : renderOptions.antiAliasing.toUpperCase()}
+              AA{' '}
+              {renderOptions.antiAliasing === 'inherit' ? 'Project/Camera' : renderOptions.antiAliasing.toUpperCase()}
             </summary>
             <div className="arc-viewport-show-popup viewport-aa-menu">
-              {([
-                ['inherit', 'Project / Camera Default'],
-                ['disabled', 'Off'],
-                ['fxaa', 'FXAA'],
-                ['taa', 'TAA'],
-                ['taau', 'TAAU'],
-              ] as const).map(([method, label]) => (
+              {(
+                [
+                  ['inherit', 'Project / Camera Default'],
+                  ['disabled', 'Off'],
+                  ['fxaa', 'FXAA'],
+                  ['taa', 'TAA'],
+                  ['taau', 'TAAU'],
+                ] as const
+              ).map(([method, label]) => (
                 <button key={method} onClick={() => void updateRenderOptions({ antiAliasing: method })}>
-                  <span className="arc-viewport-menu-check">
-                    {renderOptions.antiAliasing === method ? '✓' : ''}
-                  </span>
+                  <span className="arc-viewport-menu-check">{renderOptions.antiAliasing === method ? '✓' : ''}</span>
                   {label}
                 </button>
               ))}
@@ -838,7 +845,7 @@ export function ViewportPanel({
             </div>
             <div className="arc-viewport-shared-failure-actions">
               <button onClick={retrySharedViewport}>Retry Shared GPU</button>
-              <button className="fallback" onClick={() => void useNativeFallback()}>
+              <button className="fallback" onClick={() => void activateNativeFallback()}>
                 Use Native Fallback
               </button>
             </div>

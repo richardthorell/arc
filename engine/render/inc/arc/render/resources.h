@@ -178,8 +178,8 @@ public:
     gpu_upload_arena& operator=(gpu_upload_arena&&) = delete;
 
     void begin_frame(std::uint64_t frame) noexcept;
-    [[nodiscard]] upload_allocation
-    try_allocate(std::size_t bytes, std::size_t alignment = alignof(std::max_align_t)) noexcept;
+    [[nodiscard]] upload_allocation try_allocate(std::size_t bytes,
+                                                 std::size_t alignment = alignof(std::max_align_t)) noexcept;
     std::size_t retire_completed(std::uint64_t completed_frame) noexcept;
 
     [[nodiscard]] std::size_t capacity() const noexcept;

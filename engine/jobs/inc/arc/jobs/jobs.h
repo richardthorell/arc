@@ -520,7 +520,8 @@ private:
     void wait() const noexcept
     {
         if (!coroutine_) return;
-        while (!completed_->load(std::memory_order_acquire)) completed_->wait(false, std::memory_order_acquire);
+        while (!completed_->load(std::memory_order_acquire))
+            completed_->wait(false, std::memory_order_acquire);
     }
     void destroy() noexcept
     {
@@ -611,7 +612,8 @@ private:
     void wait() const noexcept
     {
         if (!coroutine_) return;
-        while (!completed_->load(std::memory_order_acquire)) completed_->wait(false, std::memory_order_acquire);
+        while (!completed_->load(std::memory_order_acquire))
+            completed_->wait(false, std::memory_order_acquire);
     }
     void destroy() noexcept
     {

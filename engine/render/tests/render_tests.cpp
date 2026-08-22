@@ -140,10 +140,8 @@ public:
 TEST_CASE("viewport output metadata is backend neutral and unsupported by default")
 {
     recording_backend backend;
-    const arc::render::viewport_output_descriptor descriptor{.id = "viewport-a",
-                                                              .type = arc::render::viewport_output_type::shared_texture,
-                                                              .width = 1280,
-                                                              .height = 720};
+    const arc::render::viewport_output_descriptor descriptor{
+        .id = "viewport-a", .type = arc::render::viewport_output_type::shared_texture, .width = 1280, .height = 720};
     const auto created = backend.create_viewport_output(descriptor);
     REQUIRE_FALSE(created);
     REQUIRE(created.error().code == arc::render::surface_frame_error_code::unsupported);
@@ -589,13 +587,14 @@ TEST_CASE("render graph specializes view extents queues and temporal resets")
                                 .write = true}},
                     .side_effect = true});
 
-    const auto compiled = graph.compile({.view_id = 42,
-                                         .output_extent = {1920, 1080, 1},
-                                         .render_extent = {1280, 720, 1},
-                                         .frame_index = 7,
-                                         .world_epoch = 9,
-                                         .temporal_reset = render_history_reset::camera_cut,
-                                         .compute_queue_available = false})
+    const auto compiled = graph
+                              .compile({.view_id = 42,
+                                        .output_extent = {1920, 1080, 1},
+                                        .render_extent = {1280, 720, 1},
+                                        .frame_index = 7,
+                                        .world_epoch = 9,
+                                        .temporal_reset = render_history_reset::camera_cut,
+                                        .compute_queue_available = false})
                               .value();
     REQUIRE(compiled.view.view_id == 42);
     REQUIRE(compiled.resources[history.index].extent.width == 640);
@@ -2463,8 +2462,8 @@ TEST_CASE("HZB min max reduction is conservative for odd extents")
     REQUIRE(hzb_mip_count(7, 3) == 3);
     REQUIRE(hzb_mip_count(1920, 1080) == 11);
 
-    const auto reduced = reduce_hzb_depth(reduce_hzb_depth({0.2f, 0.8f}, {0.1f, 0.7f}),
-                                          reduce_hzb_depth({0.4f, 0.9f}, {0.3f, 0.6f}));
+    const auto reduced =
+        reduce_hzb_depth(reduce_hzb_depth({0.2f, 0.8f}, {0.1f, 0.7f}), reduce_hzb_depth({0.4f, 0.9f}, {0.3f, 0.6f}));
     REQUIRE(reduced.nearest == Catch::Approx(0.1f));
     REQUIRE(reduced.farthest == Catch::Approx(0.9f));
 }
@@ -2505,14 +2504,11 @@ TEST_CASE("terrain hierarchy is deterministic monotonic and incrementally update
         for (std::uint32_t x = 0; x < resolution; ++x)
             heights[static_cast<std::size_t>(z) * resolution + x] =
                 std::sin(static_cast<float>(x) * 0.11f) * std::cos(static_cast<float>(z) * 0.07f);
-    const auto first = arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f,
-                                                            {.patch_quads = 16u});
-    auto second = arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f,
-                                                       {.patch_quads = 16u});
+    const auto first = arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f, {.patch_quads = 16u});
+    auto second = arc::render::build_terrain_hierarchy(heights, resolution, 64.0f, 64.0f, {.patch_quads = 16u});
     REQUIRE(first.nodes.size() == second.nodes.size());
     REQUIRE(first.leaf_count == 16u);
-    REQUIRE(first.nodes[first.root].geometric_error ==
-            Catch::Approx(second.nodes[second.root].geometric_error));
+    REQUIRE(first.nodes[first.root].geometric_error == Catch::Approx(second.nodes[second.root].geometric_error));
     for (const auto& node : first.nodes)
         for (const auto child : node.children)
             if (child != arc::render::invalid_terrain_node)
@@ -2520,8 +2516,8 @@ TEST_CASE("terrain hierarchy is deterministic monotonic and incrementally update
 
     const auto root_before = second.nodes[second.root].maximum_height;
     heights[32u * resolution + 32u] += 20.0f;
-    REQUIRE(arc::render::update_terrain_hierarchy(second, heights, resolution, 64.0f, 64.0f,
-                                                  {31u, 31u, 33u, 33u}, {.patch_quads = 16u}));
+    REQUIRE(arc::render::update_terrain_hierarchy(second, heights, resolution, 64.0f, 64.0f, {31u, 31u, 33u, 33u},
+                                                  {.patch_quads = 16u}));
     REQUIRE(second.nodes[second.root].maximum_height > root_before);
 }
 
@@ -2534,7 +2530,8 @@ TEST_CASE("terrain stitched topology variants remain valid and deterministic")
         REQUIRE(first == second);
         REQUIRE_FALSE(first.empty());
         REQUIRE(first.size() % 3u == 0u);
-        for (const auto index : first) REQUIRE(index < 33u * 33u);
+        for (const auto index : first)
+            REQUIRE(index < 33u * 33u);
         for (std::size_t triangle = 0; triangle < first.size(); triangle += 3u)
         {
             REQUIRE(first[triangle] != first[triangle + 1u]);
@@ -2552,8 +2549,8 @@ TEST_CASE("terrain selection responds to projected error and balances neighborin
         for (std::uint32_t x = 0; x < resolution; ++x)
             heights[static_cast<std::size_t>(z) * resolution + x] =
                 5.0f * std::sin(static_cast<float>(x) * 0.17f) * std::cos(static_cast<float>(z) * 0.13f);
-    const auto hierarchy = arc::render::build_terrain_hierarchy(heights, resolution, 128.0f, 128.0f,
-                                                                {.patch_quads = 16u});
+    const auto hierarchy =
+        arc::render::build_terrain_hierarchy(heights, resolution, 128.0f, 128.0f, {.patch_quads = 16u});
     arc::render::render_camera camera;
     camera.position = {0.0f, 5.0f, 96.0f};
     camera.render_width = 1920u;
@@ -2573,11 +2570,10 @@ TEST_CASE("terrain selection responds to projected error and balances neighborin
     camera.view(2, 3) = -camera.position[2];
     camera.view_projection = arc::math::matmul(camera.projection, camera.view);
     arc::render::terrain_selection_scratch scratch;
-    const auto detailed = arc::render::select_terrain_patches({1u, 1u}, hierarchy,
-                                                               arc::math::identity<float, 4>(), camera, 0.25f, 1.0f,
-                                                               &scratch);
-    const auto coarse = arc::render::select_terrain_patches({1u, 1u}, hierarchy,
-                                                             arc::math::identity<float, 4>(), camera, 10000.0f);
+    const auto detailed = arc::render::select_terrain_patches({1u, 1u}, hierarchy, arc::math::identity<float, 4>(),
+                                                              camera, 0.25f, 1.0f, &scratch);
+    const auto coarse =
+        arc::render::select_terrain_patches({1u, 1u}, hierarchy, arc::math::identity<float, 4>(), camera, 10000.0f);
     REQUIRE(detailed.patches.size() > coarse.patches.size());
     REQUIRE(detailed.statistics.rendered_triangles > coarse.statistics.rendered_triangles);
     for (std::size_t a = 0; a < detailed.patches.size(); ++a)
@@ -2614,8 +2610,7 @@ TEST_CASE("terrain renderer resources preserve weight-only hierarchy and emit pa
     arc::render::terrain_weight_region_update weights;
     weights.region = {4u, 5u, 7u, 8u};
     weights.row_stride = weights.region.width();
-    weights.values.resize(static_cast<std::size_t>(weights.row_stride) * weights.region.height(),
-                          {0u, 255u, 0u, 0u});
+    weights.values.resize(static_cast<std::size_t>(weights.row_stride) * weights.region.height(), {0u, 255u, 0u, 0u});
     weights.content_revision = 2u;
     REQUIRE(renderer.update_terrain_weights(terrain, std::move(weights)));
     const auto after = renderer.terrain_snapshot(terrain);

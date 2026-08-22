@@ -796,8 +796,8 @@ TEST_CASE("editor can add a selected primitive mesh entity")
 TEST_CASE("editor primitives bind the authored built-in default phong material")
 {
     const auto root = std::filesystem::temp_directory_path() /
-            ("arc_editor_default_primitive_material_" +
-             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+                      ("arc_editor_default_primitive_material_" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     const auto builtin_root = root / "builtin";
     std::filesystem::create_directories(builtin_root / "materials");
 
@@ -821,8 +821,7 @@ TEST_CASE("editor primitives bind the authored built-in default phong material")
     REQUIRE(scene.material_library.materials.size() == 1);
     REQUIRE(scene.material_library.materials.front().asset.name == "Default Phong");
 
-    const auto entity =
-        arc::editor::add_primitive_to_scene(scene, renderer, arc::editor::editor_primitive_type::cube);
+    const auto entity = arc::editor::add_primitive_to_scene(scene, renderer, arc::editor::editor_primitive_type::cube);
     REQUIRE(scene.scene.alive(entity));
     REQUIRE(scene.scene.get<arc::scene::mesh_renderer_component>(entity).material == default_material);
     const auto* binding = arc::editor::find_asset_binding(scene, arc::editor::entity_guid_of(scene, entity));
@@ -856,25 +855,26 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
              arc::editor::host_viewport_attach_command{
                  .viewport_id = "scene-main", .native_handle = 1234, .x = 16, .y = 32, .width = 1280, .height = 720}},
         {.request_id = 9,
-         .payload = arc::editor::host_viewport_resize_command{
-             .viewport_id = "scene-main", .x = 24, .y = 48, .width = 640, .height = 360}},
+         .payload =
+             arc::editor::host_viewport_resize_command{
+                 .viewport_id = "scene-main", .x = 24, .y = 48, .width = 640, .height = 360}},
         {.request_id = 28,
-         .payload = arc::editor::host_viewport_create_command{
-             .viewport_id = "scene-shared",
-             .output = arc::editor::host_viewport_output_type::shared_texture,
-             .consumer_process_id = 4242,
-             .width = 1920,
-             .height = 1080}},
+         .payload =
+             arc::editor::host_viewport_create_command{.viewport_id = "scene-shared",
+                                                       .output = arc::editor::host_viewport_output_type::shared_texture,
+                                                       .consumer_process_id = 4242,
+                                                       .width = 1920,
+                                                       .height = 1080}},
         {.request_id = 29,
-         .payload = arc::editor::host_viewport_frame_released_command{
-             .viewport_id = "scene-shared", .generation = 4, .frame_id = 99, .consumer_handle = "0x1234"}},
+         .payload =
+             arc::editor::host_viewport_frame_released_command{
+                 .viewport_id = "scene-shared", .generation = 4, .frame_id = 99, .consumer_handle = "0x1234"}},
         {.request_id = 30,
-         .payload = arc::editor::host_viewport_pointer_command{
-             .viewport_id = "scene-shared",
-             .phase = arc::editor::host_viewport_pointer_phase::move,
-             .x = 640,
-             .y = 360,
-             .alt = true}},
+         .payload = arc::editor::host_viewport_pointer_command{.viewport_id = "scene-shared",
+                                                               .phase = arc::editor::host_viewport_pointer_phase::move,
+                                                               .x = 640,
+                                                               .y = 360,
+                                                               .alt = true}},
         {.request_id = 10,
          .payload =
              arc::editor::host_viewport_set_camera_mode_command{.projection =
@@ -918,12 +918,12 @@ TEST_CASE("arc host protocol serializes command and query envelopes")
         {.request_id = 21, .payload = arc::editor::host_revert_prefab_command{.entity = entity}},
         {.request_id = 22, .payload = arc::editor::host_unpack_prefab_command{.entity = entity}},
         {.request_id = 26,
-         .payload = arc::editor::host_revert_prefab_override_command{
-             .entity = entity,
-             .source_entity = "00112233445566778899aabbccddeeff",
-             .component_id = "102030405060708090a0b0c0d0e0f000",
-             .field_id = 7,
-             .kind = "field"}},
+         .payload =
+             arc::editor::host_revert_prefab_override_command{.entity = entity,
+                                                              .source_entity = "00112233445566778899aabbccddeeff",
+                                                              .component_id = "102030405060708090a0b0c0d0e0f000",
+                                                              .field_id = 7,
+                                                              .kind = "field"}},
         {.request_id = 23,
          .payload =
              arc::editor::host_viewport_set_pose_command{.position = {1.0f, 2.0f, 3.0f}, .target = {0.0f, 0.0f, 0.0f}}},
@@ -1091,11 +1091,11 @@ TEST_CASE("arc host resolves material thumbnails from secondary project asset ro
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = primary_root;
-    REQUIRE(host->open_project({.name = "Secondary Material Thumbnail",
-                                .root = root,
-                                .content_roots = {primary_root, secondary_root}},
-                               assets)
-                .succeeded);
+    REQUIRE(
+        host->open_project(
+                {.name = "Secondary Material Thumbnail", .root = root, .content_roots = {primary_root, secondary_root}},
+                assets)
+            .succeeded);
 
     const auto catalog = host->project_assets_snapshot();
     const auto found = std::find_if(catalog.assets.begin(), catalog.assets.end(), [](const auto& asset)
@@ -1350,11 +1350,11 @@ TEST_CASE("mesh renderer snapshot preserves secondary content root catalog path"
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = primary_root;
-    REQUIRE(host->open_project({.name = "Secondary Material Roundtrip",
-                                .root = root,
-                                .content_roots = {primary_root, secondary_root}},
-                               assets)
-                .succeeded);
+    REQUIRE(
+        host->open_project(
+                {.name = "Secondary Material Roundtrip", .root = root, .content_roots = {primary_root, secondary_root}},
+                assets)
+            .succeeded);
     REQUIRE(host->execute(
                     {.request_id = 1,
                      .payload =
@@ -1368,10 +1368,10 @@ TEST_CASE("mesh renderer snapshot preserves secondary content root catalog path"
     REQUIRE(found != catalog.assets.end());
     REQUIRE(found->kind == "material");
 
-    REQUIRE(host->execute({.request_id = 2,
-                           .payload = arc::editor::host_set_entity_material_command{.entity = entity,
-                                                                                   .path = found->path}})
-                .succeeded);
+    REQUIRE(
+        host->execute({.request_id = 2,
+                       .payload = arc::editor::host_set_entity_material_command{.entity = entity, .path = found->path}})
+            .succeeded);
     const auto assigned = host->selected_entity_snapshot();
     REQUIRE(assigned.mesh_renderer.has_value());
     REQUIRE(assigned.mesh_renderer->asset_backed_material);
@@ -1603,21 +1603,19 @@ TEST_CASE("prefab property override revert is revisioned and undoable")
     const auto component = arc::ecs::component_type<arc::scene::transform_component>();
     arc::ecs::prefab_instance_component instance;
     instance.prefab_guid = arc::ecs::generate_entity_guid();
-    REQUIRE(arc::ecs::set_prefab_override(
-        instance,
-        {.key = {.source_entity = source,
-                 .component = component,
-                 .field = 1,
-                 .kind = arc::ecs::prefab_override_kind::field}}));
+    REQUIRE(arc::ecs::set_prefab_override(instance, {.key = {.source_entity = source,
+                                                             .component = component,
+                                                             .field = 1,
+                                                             .kind = arc::ecs::prefab_override_kind::field}}));
     host->scene_state().scene.emplace<arc::ecs::prefab_instance_component>(
         arc::ecs::entity{entity.index, entity.generation}, std::move(instance));
 
-    const auto reverted = host->execute(arc::editor::host_revert_prefab_override_command{
-        .entity = entity,
-        .source_entity = arc::ecs::to_string(source),
-        .component_id = arc::ecs::to_string(component),
-        .field_id = 1,
-        .kind = "field"});
+    const auto reverted =
+        host->execute(arc::editor::host_revert_prefab_override_command{.entity = entity,
+                                                                       .source_entity = arc::ecs::to_string(source),
+                                                                       .component_id = arc::ecs::to_string(component),
+                                                                       .field_id = 1,
+                                                                       .kind = "field"});
     REQUIRE(reverted.succeeded);
     REQUIRE(host->selected_entity_snapshot().prefab->override_count == 0);
     REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);

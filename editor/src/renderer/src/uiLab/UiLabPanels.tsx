@@ -102,7 +102,8 @@ function InternalPanelNotice({ id }: { id: WorkbenchPanelId }) {
     <div className="ui-lab-internal-panel-notice">
       <strong>{panelRegistry[id].title} is currently private to Workbench.tsx</strong>
       <span>
-        The UI Lab intentionally does not duplicate its markup. Extract it into a production component before styling it here.
+        The UI Lab intentionally does not duplicate its markup. Extract it into a production component before styling it
+        here.
       </span>
     </div>
   );
@@ -116,10 +117,7 @@ export function UiLabPanels() {
   const [clearedConsoleIds, setClearedConsoleIds] = useState<ReadonlySet<string>>(() => new Set());
   const [environment, setEnvironment] = useState(panelWorldEnvironmentFixture);
 
-  const shaderAsset = useMemo(
-    () => panelProjectFixture.assets.find((asset) => asset.kind === 'shader') ?? null,
-    [],
-  );
+  const shaderAsset = useMemo(() => panelProjectFixture.assets.find((asset) => asset.kind === 'shader') ?? null, []);
 
   const selectEntity = (entityId: string, additive = false) => {
     setSelectedEntityId(entityId);
