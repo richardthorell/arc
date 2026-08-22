@@ -1,0 +1,157 @@
+name: Temp Fix Material Function Tidy
+
+on:
+  push:
+    branches:
+      - feature/material-shader-functions
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feature/material-shader-functions
+          fetch-depth: 0
+
+      - name: Install clang-format 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+
+      - name: Fix changed-file clang-tidy findings
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected exactly one match, got {count}")
+              return text.replace(old, new, 1)
+
+          path = Path("engine/render-tools/src/common/material_function.cpp")
+          text = path.read_text()
+          text = replace_once(text, "#include <algorithm>\n", "#include <algorithm>\n#include <cstddef>\n#include <initializer_list>\n", "material_function includes")
+          marker = '''shader_compile_error validation_error(std::string message)
+          {
+              return {.code = shader_compile_error_code::validation_failed, .message = std::move(message)};
+          }
+          '''
+          helper = marker + '''
+          std::string concatenate(std::initializer_list<std::string_view> parts)
+          {
+              std::size_t size{};
+              for (const auto part : parts)
+                  size += part.size();
+              std::string result;
+              result.reserve(size);
+              for (const auto part : parts)
+                  result.append(part);
+              return result;
+          }
+          '''
+          text = replace_once(text, marker, helper, "material_function helper")
+          replacements = [
+              ('''validation_error(label + " references unknown function input '" + input + "'")''',
+               '''validation_error(concatenate({label, " references unknown function input '", input, "'"}))'''),
+              ('''validation_error(label + " writes unknown function output '" + target_pin + "'")''',
+               '''validation_error(concatenate({label, " writes unknown function output '", target_pin, "'"}))'''),
+              ('''validation_error(
+                              "Material Function call '" + call_id + "' has an invalid or duplicate input '" + pin + "'")''',
+               '''validation_error(concatenate(
+                              {"Material Function call '", call_id, "' has an invalid or duplicate input '", pin, "'"}))'''),
+              ('''validation_error("Material Function call '" + call_id +
+                                                   "' references unknown output '" + pin + "'")''',
+               '''validation_error(concatenate(
+                              {"Material Function call '", call_id, "' references unknown output '", pin, "'"}))'''),
+              ('''call_id + "::" + target_node''', '''concatenate({call_id, "::", target_node})'''),
+              ('''validation_error(
+                              "Material Function call '" + call_id + "' uses unconnected output '" + pin + "'")''',
+               '''validation_error(concatenate(
+                              {"Material Function call '", call_id, "' uses unconnected output '", pin, "'"}))'''),
+          ]
+          for index, (old, new) in enumerate(replacements, 1):
+              text = replace_once(text, old, new, f"material_function replacement {index}")
+          path.write_text(text)
+
+          path = Path("engine/render-tools/src/common/material_graph_ir.cpp")
+          text = path.read_text()
+          text = replace_once(text, "#include <cstddef>\n", "#include <cstddef>\n#include <initializer_list>\n", "material_graph_ir includes")
+          marker = '''using json = nlohmann::json;
+          '''
+          helper = marker + '''
+          std::string concatenate(std::initializer_list<std::string_view> parts)
+          {
+              std::size_t size{};
+              for (const auto part : parts)
+                  size += part.size();
+              std::string result;
+              result.reserve(size);
+              for (const auto part : parts)
+                  result.append(part);
+              return result;
+          }
+          '''
+          text = replace_once(text, marker, helper, "material_graph_ir helper")
+          text = replace_once(
+              text,
+              '''.message = "Material Function call '" + source + "' has no output pin '" + source_pin + "'"''',
+              '''.message = concatenate({"Material Function call '", source, "' has no output pin '", source_pin, "'"})''',
+              "material_graph_ir source pin")
+          text = replace_once(
+              text,
+              '''.message = "Material Function call '" + target + "' has no input pin '" + target_pin + "'"''',
+              '''.message = concatenate({"Material Function call '", target, "' has no input pin '", target_pin, "'"})''',
+              "material_graph_ir target pin")
+          path.write_text(text)
+
+          path = Path("tools/asset_cooker/material_processor.cpp")
+          text = path.read_text()
+          text = replace_once(text,
+                              "std::string normalized_path(std::filesystem::path path)",
+                              "std::string normalized_path(const std::filesystem::path& path)",
+                              "normalized_path parameter")
+          text = replace_once(text,
+                              "std::filesystem::path assets_root_for(std::filesystem::path source_path)",
+                              "std::filesystem::path assets_root_for(const std::filesystem::path& source_path)",
+                              "assets_root_for parameter")
+          old = '''            if (!nested_source)
+                          return function_source_result::failure("Material Function '" + nested + "' referenced by '" + key +
+                                                                 "' could not be loaded: " + nested_source.error());'''
+          new = '''            if (!nested_source)
+                      {
+                          std::string message = "Material Function '";
+                          message.append(nested);
+                          message.append("' referenced by '");
+                          message.append(key);
+                          message.append("' could not be loaded: ");
+                          message.append(nested_source.error());
+                          return function_source_result::failure(std::move(message));
+                      }'''
+          text = replace_once(text, old, new, "material_processor nested function error")
+          path.write_text(text)
+          PY
+
+          clang-format-18 -i \
+            engine/render-tools/src/common/material_function.cpp \
+            engine/render-tools/src/common/material_graph_ir.cpp \
+            tools/asset_cooker/material_processor.cpp
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            engine/render-tools/src/common/material_function.cpp \
+            engine/render-tools/src/common/material_graph_ir.cpp \
+            tools/asset_cooker/material_processor.cpp
+          if ! git diff --cached --quiet; then
+            git commit -m "fix: satisfy material function static analysis"
+            git push origin HEAD:feature/material-shader-functions
+          fi
