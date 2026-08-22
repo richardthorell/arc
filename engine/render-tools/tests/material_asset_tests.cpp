@@ -54,12 +54,18 @@ TEST_CASE("material authoring schema migrates historical versions without droppi
     REQUIRE(result.value().graph_json.find("\"version\":1") != std::string::npos);
 }
 
-TEST_CASE("material authoring schema accepts current version and rejects future versions")
+TEST_CASE("material authoring schema accepts current and nullable legacy documents")
 {
     const auto current = arc::render::tools::parse_material_authoring_json(R"({"version":4,"name":"Current"})");
     REQUIRE(current);
     REQUIRE(current.value().source_version == 4);
     REQUIRE_FALSE(current.value().migrated);
+
+    const auto legacy = arc::render::tools::parse_material_authoring_json(R"({"version":3,"graph":null})");
+    REQUIRE(legacy);
+    REQUIRE(legacy.value().migrated);
+    REQUIRE(legacy.value().graph_json.empty());
+    REQUIRE(legacy.value().canonical_json.find("\"graph\":null") != std::string::npos);
 
     const auto future = arc::render::tools::parse_material_authoring_json(R"({"version":5})");
     REQUIRE_FALSE(future);
