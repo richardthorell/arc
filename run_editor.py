@@ -8,12 +8,20 @@ import io
 import multiprocessing
 import os
 import platform
+import re
+import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
+import urllib.request
+import zipfile
 
 
 DEFAULT_BUILD_DIR = "out/build/editor-vulkan"
 DEFAULT_NO_VULKAN_BUILD_DIR = "out/build/editor-no-vulkan"
+SLANG_VERSION = "2026.14.1"
+SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
 
 
 def find_executable(name):
@@ -59,6 +67,134 @@ def cmake_cache_requires_configure(build_dir, vulkan_render):
         and "ARC_BUILD_RENDER_VULKAN:BOOL={}".format(expected_vulkan) in text
         and "FETCHCONTENT_FULLY_DISCONNECTED:BOOL=OFF" in text
     )
+
+
+def slang_archive():
+    machine = platform.machine().lower()
+    if machine not in ("amd64", "x86_64"):
+        raise RuntimeError("automatic Slang setup currently supports x86_64 hosts; got '{}'".format(machine))
+
+    system = platform.system()
+    if system == "Windows":
+        return "slang-{}-windows-x86_64.zip".format(SLANG_VERSION)
+    if system == "Linux":
+        return "slang-{}-linux-x86_64.tar.gz".format(SLANG_VERSION)
+    raise RuntimeError(
+        "automatic Slang setup is not available on {}; set ARC_SLANGC_EXECUTABLE to Slang {}".format(
+            system, SLANG_VERSION
+        )
+    )
+
+
+def slang_version_output(executable):
+    try:
+        return subprocess.check_output(
+            [executable, "-version"], stderr=subprocess.STDOUT, universal_newlines=True
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+
+
+def is_pinned_slang(executable):
+    if not executable or not os.path.isfile(executable):
+        return False
+    output = slang_version_output(executable)
+    pattern = r"(^|[^0-9.]){}([^0-9.]|$)".format(re.escape(SLANG_VERSION))
+    return re.search(pattern, output) is not None
+
+
+def find_slangc_under(root):
+    executable = "slangc.exe" if platform.system() == "Windows" else "slangc"
+    if not os.path.isdir(root):
+        return None
+    for directory, _, files in os.walk(root):
+        if executable in files:
+            return os.path.join(directory, executable)
+    return None
+
+
+def slang_cache_root(repo_root):
+    host = "{}-{}".format(platform.system().lower(), platform.machine().lower())
+    return os.path.join(repo_root, "out", "toolchains", "slang", SLANG_VERSION, host)
+
+
+def download_file(url, destination):
+    print("Downloading {}".format(url))
+    sys.stdout.flush()
+    with urllib.request.urlopen(url) as response, open(destination, "wb") as output:
+        shutil.copyfileobj(response, output)
+
+
+def extract_slang_archive(archive, destination):
+    if archive.endswith(".zip"):
+        with zipfile.ZipFile(archive, "r") as package:
+            package.extractall(destination)
+        return
+    with tarfile.open(archive, "r:gz") as package:
+        package.extractall(destination)
+
+
+def provision_slang(repo_root):
+    archive_name = slang_archive()
+    cache_root = slang_cache_root(repo_root)
+    cache_parent = os.path.dirname(cache_root)
+    if not os.path.isdir(cache_parent):
+        os.makedirs(cache_parent)
+
+    temporary_root = tempfile.mkdtemp(prefix=".install-", dir=cache_parent)
+    try:
+        archive_path = os.path.join(temporary_root, archive_name)
+        download_file("{}/{}".format(SLANG_RELEASE_BASE_URL, archive_name), archive_path)
+        extract_slang_archive(archive_path, temporary_root)
+        os.remove(archive_path)
+
+        slangc = find_slangc_under(temporary_root)
+        if not is_pinned_slang(slangc):
+            raise RuntimeError("downloaded Slang archive did not contain a working Slang {} compiler".format(SLANG_VERSION))
+
+        if os.path.isdir(cache_root):
+            shutil.rmtree(cache_root)
+        os.rename(temporary_root, cache_root)
+        temporary_root = None
+        installed = find_slangc_under(cache_root)
+        print("Installed Slang {}: {}".format(SLANG_VERSION, installed))
+        return installed
+    finally:
+        if temporary_root and os.path.isdir(temporary_root):
+            shutil.rmtree(temporary_root, ignore_errors=True)
+
+
+def resolve_slangc(repo_root):
+    configured = os.environ.get("ARC_SLANGC_EXECUTABLE")
+    if configured:
+        configured = os.path.abspath(os.path.expanduser(configured))
+        if is_pinned_slang(configured):
+            return configured
+        raise RuntimeError(
+            "ARC_SLANGC_EXECUTABLE does not point to the pinned Slang {} compiler: {}".format(
+                SLANG_VERSION, configured
+            )
+        )
+
+    system_slang = find_executable("slangc")
+    if is_pinned_slang(system_slang):
+        return system_slang
+
+    cached = find_slangc_under(slang_cache_root(repo_root))
+    if is_pinned_slang(cached):
+        return cached
+
+    print("Slang {} was not found; installing the pinned editor toolchain...".format(SLANG_VERSION))
+    return provision_slang(repo_root)
+
+
+def add_slang_to_environment(environment, slangc):
+    environment["ARC_SLANGC_EXECUTABLE"] = slangc
+    slang_dir = os.path.dirname(slangc)
+    current_path = environment.get("PATH", "")
+    path_entries = current_path.split(os.pathsep) if current_path else []
+    if slang_dir not in path_entries:
+        environment["PATH"] = slang_dir + (os.pathsep + current_path if current_path else "")
 
 
 def parse_args():
@@ -136,7 +272,7 @@ def find_project_tool_executable(build_dir, config):
     return None
 
 
-def prepare_native_editor(args, repo_root):
+def prepare_native_editor(args, repo_root, env=None):
     build_dir_name = args.build_dir
     if build_dir_name == DEFAULT_BUILD_DIR and not args.vulkan_render:
         build_dir_name = DEFAULT_NO_VULKAN_BUILD_DIR
@@ -163,6 +299,7 @@ def prepare_native_editor(args, repo_root):
                 "-DFETCHCONTENT_FULLY_DISCONNECTED=OFF",
             ],
             repo_root,
+            env,
         )
 
     # Always ask the build system for the host. CMake/MSBuild/Ninja perform an
@@ -181,6 +318,7 @@ def prepare_native_editor(args, repo_root):
             args.parallel or str(cpu_count()),
         ],
         repo_root,
+        env,
     )
     run(
         [
@@ -195,6 +333,7 @@ def prepare_native_editor(args, repo_root):
             args.parallel or str(cpu_count()),
         ],
         repo_root,
+        env,
     )
     host = find_host_executable(build_dir, args.config)
     project_tool = find_project_tool_executable(build_dir, args.config)
@@ -220,10 +359,13 @@ def main():
 
     host = None
     project_tool = None
+    tool_env = os.environ.copy()
     if not args.ui_lab:
         try:
-            host, project_tool = prepare_native_editor(args, repo_root)
-        except (RuntimeError, subprocess.CalledProcessError) as error:
+            slangc = resolve_slangc(repo_root)
+            add_slang_to_environment(tool_env, slangc)
+            host, project_tool = prepare_native_editor(args, repo_root, tool_env)
+        except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
             print("error: {}".format(error), file=sys.stderr)
             return 1
 
@@ -236,7 +378,7 @@ def main():
         if not args.skip_npm_install and (args.force_build or not dependencies_ready(editor_dir)):
             run([npm, "install"], editor_dir)
 
-        editor_env = os.environ.copy()
+        editor_env = tool_env.copy()
         if args.ui_lab:
             editor_env["VITE_ARC_UI_LAB"] = "1"
         if host is not None and project_tool is not None:
