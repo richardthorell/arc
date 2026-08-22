@@ -1,5 +1,5 @@
 name: Set Up Windows Toolchain
-description: Configure MSVC, sccache, and the pinned Vulkan SDK for Windows CI jobs.
+description: Configure MSVC, sccache, Vulkan, and the pinned Slang compiler for Windows CI jobs.
 
 runs:
   using: composite
@@ -27,3 +27,6 @@ runs:
 
     - name: Set Up Vulkan SDK 1.4.350.0
       uses: ./.github/actions/setup-vulkan
+
+    - name: Set Up Slang 2026.14.1
+      uses: ./.github/actions/setup-slang
