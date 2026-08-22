@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Image, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, Image, Plus, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { buildAssetCreation } from '../content/assetCreation';
@@ -33,6 +33,7 @@ export type AssetPickerProps = {
   thumbnailProvider?: AssetThumbnailProvider;
   createNewLabel?: string;
   onCreateNew?: (name: string) => Promise<string>;
+  onOpen?: (asset: AssetPickerItem) => void;
   onChange: (path: string) => void;
 };
 
@@ -189,6 +190,7 @@ export function AssetPicker({
   thumbnailProvider,
   createNewLabel,
   onCreateNew,
+  onOpen,
   onChange,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
@@ -218,6 +220,9 @@ export function AssetPicker({
     if (candidate) onChange(valueFor(candidate));
   };
 
+  const canOpen = Boolean(selected && onOpen && !mixed);
+  const canClear = Boolean(allowEmpty && value && !mixed);
+
   return (
     <div className="inspector-property inspector-asset-property">
       <span className="inspector-property-label">{label}</span>
@@ -245,16 +250,31 @@ export function AssetPicker({
           </span>
           <ChevronDown size={13} />
         </button>
-        {allowEmpty && value && !mixed && (
-          <button
-            aria-label={`Clear ${label}`}
-            className="asset-reference-clear"
-            onClick={() => onChange('')}
-            title="Clear asset reference"
-            type="button"
-          >
-            <X size={13} />
-          </button>
+        {(canOpen || canClear) && (
+          <span style={{ display: 'flex', alignItems: 'center' }}>
+            {canOpen && selected && onOpen && (
+              <button
+                aria-label={`Open ${displayNameOf(selected, value)} in ${assetTypeLabel} Editor`}
+                className="asset-reference-clear"
+                onClick={() => onOpen(selected)}
+                title={`Open in ${assetTypeLabel} Editor`}
+                type="button"
+              >
+                <ExternalLink size={13} />
+              </button>
+            )}
+            {canClear && (
+              <button
+                aria-label={`Clear ${label}`}
+                className="asset-reference-clear"
+                onClick={() => onChange('')}
+                title="Clear asset reference"
+                type="button"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </span>
         )}
       </div>
       {open && (
@@ -294,8 +314,26 @@ export function TexturePicker(props: Omit<AssetPickerProps, 'assetKinds'>) {
 }
 
 export function MaterialPicker(
-  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew'>,
+  props: Omit<
+    AssetPickerProps,
+    'assetKinds' | 'assetTypeLabel' | 'createNewLabel' | 'onCreateNew' | 'onOpen'
+  >,
 ) {
+  const openMaterial = (asset: AssetPickerItem) => {
+    if (asset.kind !== 'material' || asset.scope === 'procedural') return;
+    openAssetEditorDocument({
+      id: asset.id,
+      guid: asset.guid,
+      typeId: asset.typeId,
+      name: asset.name,
+      path: asset.path,
+      kind: 'material',
+      status: asset.status,
+      scope: asset.scope,
+      readOnly: asset.readOnly,
+    });
+  };
+
   const createMaterial = async (name: string) => {
     const projectSnapshot = await window.arc.projects.snapshot();
     const activeProject = projectSnapshot?.activeProject;
@@ -320,6 +358,7 @@ export function MaterialPicker(
       assetTypeLabel="Material"
       createNewLabel="Create New Material…"
       onCreateNew={createMaterial}
+      onOpen={openMaterial}
     />
   );
 }
