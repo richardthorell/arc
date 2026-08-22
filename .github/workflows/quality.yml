@@ -103,7 +103,8 @@ jobs:
           tidy_regex=$(printf '%s\n' "${changed_native_files[@]}" |
             python3 -c 'import re, sys; print("|".join(re.escape(line.strip()) + "$" for line in sys.stdin if line.strip()))')
 
-          printf 'Running clang-tidy for changed native files:\n - %s\n' "${changed_native_files[@]}"
+          echo 'Running clang-tidy for changed native files:'
+          printf ' - %s\n' "${changed_native_files[@]}"
           run-clang-tidy-18 -p out/build/analysis -quiet "$tidy_regex"
       - name: Static Analysis (Full Repository)
         if: ${{ github.event_name != 'pull_request' }}
