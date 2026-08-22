@@ -1,248 +1,168 @@
-import {
-  materialNodeDefinitions,
-  type MaterialAssetSurface,
-  type MaterialAssetTextures,
-  type MaterialGraph,
-  type MaterialGraphConnection,
-  type MaterialGraphNode,
-  type MaterialGraphValueType,
+import type {
+  MaterialAssetSurface,
+  MaterialAssetTextures,
+  MaterialGraph,
+  MaterialGraphConnection,
+  MaterialGraphValueType,
 } from './materialGraphTypes';
 
+/** Diagnostic returned by ARC's native Material IR/compiler pipeline. */
 export type MaterialCompileDiagnostic = {
-  severity: 'warning' | 'error';
+  severity: 'information' | 'warning' | 'error';
+  code?: string;
   nodeId?: string;
+  path?: string;
+  line?: number;
+  column?: number;
   message: string;
 };
 
-export type MaterialIRExpression = {
-  id: string;
-  operation: MaterialGraphNode['type'];
-  resultType: MaterialGraphValueType;
-  inputs: string[];
-  constant?: number[];
-  texture?: string;
+/** Editor-facing state for the native material compiler. */
+export type MaterialCompileResult = {
+  status: 'idle' | 'compiling' | 'succeeded' | 'failed';
+  succeeded: boolean;
+  diagnostics: MaterialCompileDiagnostic[];
 };
 
-export type MaterialIR = {
-  version: 1;
-  expressions: MaterialIRExpression[];
-  outputs: Partial<Record<MaterialOutputName, string>>;
-  parameters: Array<{
-    nodeId: string;
-    name: string;
-    type: MaterialGraphValueType;
-    value: number[];
+export type NativeMaterialCompilePayload = {
+  succeeded?: boolean;
+  message?: string;
+  diagnostics?: Array<{
+    severity?: string;
+    code?: string;
+    message?: string;
+    path?: string;
+    line?: number;
+    column?: number;
+    graphNode?: string;
   }>;
 };
 
-export type MaterialOutputName =
-  'baseColor' | 'metallic' | 'roughness' | 'normal' | 'ao' | 'emissive' | 'opacity' | 'alphaClip';
+export const emptyMaterialCompileResult = (): MaterialCompileResult => ({
+  status: 'idle',
+  succeeded: false,
+  diagnostics: [],
+});
 
-export type MaterialCompileResult = {
-  succeeded: boolean;
-  diagnostics: MaterialCompileDiagnostic[];
-  ir: MaterialIR;
-  surface: MaterialAssetSurface;
-  textures: MaterialAssetTextures;
+export const compilingMaterialResult = (previous: MaterialCompileResult): MaterialCompileResult => ({
+  ...previous,
+  status: 'compiling',
+});
+
+export const nativeMaterialCompileResult = (
+  responseSucceeded: boolean,
+  payload: NativeMaterialCompilePayload | undefined,
+  fallbackMessage = 'Native material compilation failed',
+): MaterialCompileResult => {
+  const diagnostics: MaterialCompileDiagnostic[] = (payload?.diagnostics ?? []).map((diagnostic) => ({
+    severity:
+      diagnostic.severity === 'warning' ? 'warning' : diagnostic.severity === 'information' ? 'information' : 'error',
+    code: diagnostic.code,
+    nodeId: diagnostic.graphNode || undefined,
+    path: diagnostic.path,
+    line: diagnostic.line,
+    column: diagnostic.column,
+    message: diagnostic.message || fallbackMessage,
+  }));
+  const succeeded = responseSucceeded && payload?.succeeded === true;
+  if (!succeeded && diagnostics.length === 0)
+    diagnostics.push({ severity: 'error', message: payload?.message || fallbackMessage });
+  return { status: succeeded ? 'succeeded' : 'failed', succeeded, diagnostics };
 };
 
-type EvaluatedValue = {
+export type MaterialEditorParameter = {
+  nodeId: string;
+  name: string;
   type: MaterialGraphValueType;
-  value?: number[];
-  texture?: string;
-  textureChannel?: string;
 };
 
-const outputNames = new Set<MaterialOutputName>([
-  'baseColor',
-  'metallic',
-  'roughness',
-  'normal',
-  'ao',
-  'emissive',
-  'opacity',
-  'alphaClip',
-]);
+/**
+ * Return authored exposed-parameter metadata for the inspector.
+ *
+ * This is deliberately not compiler output. Type checking, reachability, parameter IDs, layout,
+ * diagnostics, and shader generation are owned exclusively by the native compiler.
+ */
+export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorParameter[] =>
+  graph.nodes.flatMap((node) => {
+    if (!node.parameter?.exposed || node.type === 'output' || node.type === 'textureSample') return [];
+    const type: MaterialGraphValueType =
+      node.type === 'vector2' ? 'vec2' : node.type === 'vector3' ? 'vec3' : node.type === 'vector4' ? 'vec4' : 'float';
+    return [{ nodeId: node.id, name: node.parameter.name.trim() || 'Parameter', type }];
+  });
 
-const toNumber = (value: unknown, fallback = 0) =>
-  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-
-const toVector = (value: unknown, size: number, fallback = 0): number[] => {
-  const source = Array.isArray(value) ? value : [];
-  return Array.from({ length: size }, (_, index) => toNumber(source[index], fallback));
-};
-
-const pinType = (node: MaterialGraphNode, pin: string, output: boolean): MaterialGraphValueType => {
-  const definition = materialNodeDefinitions[node.type];
-  return (output ? definition.outputs : definition.inputs).find((candidate) => candidate.id === pin)?.type ?? 'float';
-};
-
-const width = (type: MaterialGraphValueType) => {
-  switch (type) {
-    case 'vec2':
-      return 2;
-    case 'vec3':
-      return 3;
-    case 'vec4':
-      return 4;
-    default:
-      return 1;
-  }
-};
-
-const broadcast = (value: number[], size: number) => {
-  if (value.length === size) return [...value];
-  if (value.length === 1) return Array.from({ length: size }, () => value[0]);
-  return Array.from({ length: size }, (_, index) => value[Math.min(index, value.length - 1)] ?? 0);
-};
-
-const resultType = (left: EvaluatedValue | undefined, right?: EvaluatedValue): MaterialGraphValueType => {
-  const leftWidth = left ? width(left.type) : 1;
-  const rightWidth = right ? width(right.type) : 1;
-  const resultWidth = Math.max(leftWidth, rightWidth);
-  return resultWidth === 4 ? 'vec4' : resultWidth === 3 ? 'vec3' : resultWidth === 2 ? 'vec2' : 'float';
-};
-
-const incomingConnection = (graph: MaterialGraph, nodeId: string, pin: string): MaterialGraphConnection | undefined =>
-  graph.connections.find((connection) => connection.to.nodeId === nodeId && connection.to.pin === pin);
-
-const clampNumber = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
-
-export const compileMaterialGraph = (graph: MaterialGraph): MaterialCompileResult => {
-  const diagnostics: MaterialCompileDiagnostic[] = [];
+/**
+ * Compatibility projection used only by the legacy renderer while Stage 11 is not yet merged.
+ *
+ * This routine never validates a graph and never controls compilation success. It projects simple
+ * constant/texture values into legacy `.arcmat` surface fields so editor previews do not regress
+ * during the native-compiler migration. It can be deleted with the legacy renderer.
+ */
+export const projectLegacyMaterialPreview = (
+  graph: MaterialGraph,
+): { surface: MaterialAssetSurface; textures: MaterialAssetTextures } => {
+  type Value = { value?: number[]; texture?: string };
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
-  const expressions = new Map<string, MaterialIRExpression>();
-  const evaluated = new Map<string, EvaluatedValue>();
   const visiting = new Set<string>();
 
-  const expressionKey = (nodeId: string, pin: string) => `${nodeId}:${pin}`;
+  const incoming = (nodeId: string, pin: string): MaterialGraphConnection | undefined =>
+    graph.connections.find((connection) => connection.to.nodeId === nodeId && connection.to.pin === pin);
 
-  const evaluateOutput = (nodeId: string, pin: string): EvaluatedValue | undefined => {
-    const key = expressionKey(nodeId, pin);
-    if (evaluated.has(key)) return evaluated.get(key);
-    if (visiting.has(key)) {
-      diagnostics.push({ severity: 'error', nodeId, message: 'Material graph contains a cycle.' });
-      return undefined;
-    }
+  const vector = (value: unknown, size: number, fallback = 0): number[] => {
+    const source = Array.isArray(value) ? value : [];
+    return Array.from({ length: size }, (_, index) =>
+      typeof source[index] === 'number' && Number.isFinite(source[index]) ? Number(source[index]) : fallback,
+    );
+  };
+  const scalar = (value: unknown, fallback = 0) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  const broadcast = (value: number[], size: number) =>
+    value.length === size
+      ? [...value]
+      : Array.from(
+          { length: size },
+          (_, index) => value[value.length === 1 ? 0 : Math.min(index, value.length - 1)] ?? 0,
+        );
 
+  const evaluate = (nodeId: string, pin: string): Value | undefined => {
+    const key = `${nodeId}:${pin}`;
+    if (visiting.has(key)) return undefined;
     const node = nodes.get(nodeId);
-    if (!node) {
-      diagnostics.push({ severity: 'error', nodeId, message: `Connection references missing node '${nodeId}'.` });
-      return undefined;
-    }
+    if (!node) return undefined;
     visiting.add(key);
 
-    const input = (inputPin: string): EvaluatedValue | undefined => {
-      const connection = incomingConnection(graph, node.id, inputPin);
-      if (!connection) {
-        const defaultValue = node.values[inputPin];
-        if (typeof defaultValue === 'number') return { type: 'float', value: [defaultValue] };
-        if (Array.isArray(defaultValue)) {
-          const size = Math.max(1, Math.min(4, defaultValue.length));
-          const type = size === 4 ? 'vec4' : size === 3 ? 'vec3' : size === 2 ? 'vec2' : 'float';
-          return { type, value: toVector(defaultValue, size) };
-        }
-        return undefined;
-      }
-      return evaluateOutput(connection.from.nodeId, connection.from.pin);
+    const input = (inputPin: string): Value | undefined => {
+      const connection = incoming(node.id, inputPin);
+      return connection ? evaluate(connection.from.nodeId, connection.from.pin) : undefined;
     };
 
-    let value: EvaluatedValue | undefined;
-    const expression: MaterialIRExpression = {
-      id: key,
-      operation: node.type,
-      resultType: pinType(node, pin, true),
-      inputs: [],
-    };
-
-    if (node.type === 'constant') value = { type: 'float', value: [toNumber(node.values.value, 0.5)] };
-    else if (node.type === 'vector2') value = { type: 'vec2', value: toVector(node.values.value, 2) };
-    else if (node.type === 'vector3') value = { type: 'vec3', value: toVector(node.values.value, 3) };
-    else if (node.type === 'vector4') value = { type: 'vec4', value: toVector(node.values.value, 4, 1) };
+    let result: Value | undefined;
+    if (node.type === 'constant') result = { value: [scalar(node.values.value, 0.5)] };
+    else if (node.type === 'vector2') result = { value: vector(node.values.value, 2) };
+    else if (node.type === 'vector3') result = { value: vector(node.values.value, 3) };
+    else if (node.type === 'vector4') result = { value: vector(node.values.value, 4, 1) };
     else if (node.type === 'textureSample') {
       const texture = typeof node.values.texture === 'string' ? node.values.texture : '';
-      value = {
-        type: pin === 'rgba' ? 'vec4' : pin === 'rgb' ? 'vec3' : 'float',
-        texture,
-        textureChannel: pin,
-      };
-      expression.texture = texture;
-      if (!texture)
-        diagnostics.push({ severity: 'warning', nodeId: node.id, message: 'Texture Sample has no texture assigned.' });
-    } else if (node.type === 'texCoord') {
-      value = { type: 'vec2' };
-      diagnostics.push({
-        severity: 'warning',
-        nodeId: node.id,
-        message:
-          'Texture-coordinate expressions are preserved in Material IR but are not lowered by the descriptor backend yet.',
-      });
-    } else if (node.type === 'time') {
-      value = { type: 'float' };
-      diagnostics.push({
-        severity: 'warning',
-        nodeId: node.id,
-        message: 'Time expressions are preserved in Material IR but are not lowered by the descriptor backend yet.',
-      });
-    } else if (node.type === 'normalMap') {
-      const source = input('texture');
-      value = source
-        ? { type: 'vec3', value: source.value ? broadcast(source.value, 3) : undefined, texture: source.texture }
-        : { type: 'vec3' };
-      const connection = incomingConnection(graph, node.id, 'texture');
-      if (connection) expression.inputs.push(expressionKey(connection.from.nodeId, connection.from.pin));
-    } else if (node.type === 'saturate') {
-      const source = input('value');
-      if (source) {
-        value = {
-          type: source.type,
-          value: source.value?.map((component) => clampNumber(component, 0, 1)),
-          texture: source.texture,
-        };
-      }
-      const connection = incomingConnection(graph, node.id, 'value');
-      if (connection) expression.inputs.push(expressionKey(connection.from.nodeId, connection.from.pin));
-    } else if (node.type === 'clamp') {
-      const source = input('value');
-      const minimum = input('min')?.value?.[0] ?? toNumber(node.values.min, 0);
-      const maximum = input('max')?.value?.[0] ?? toNumber(node.values.max, 1);
-      if (source) {
-        value = {
-          type: source.type,
-          value: source.value?.map((component) => clampNumber(component, minimum, maximum)),
-          texture: source.texture,
-        };
-      }
-      for (const inputPin of ['value', 'min', 'max']) {
-        const connection = incomingConnection(graph, node.id, inputPin);
-        if (connection) expression.inputs.push(expressionKey(connection.from.nodeId, connection.from.pin));
-      }
-    } else if (node.type === 'lerp') {
+      result = texture ? { texture } : undefined;
+    } else if (node.type === 'normalMap') result = input('texture');
+    else if (node.type === 'saturate' || node.type === 'clamp') result = input('value');
+    else if (node.type === 'lerp') {
       const a = input('a');
       const b = input('b');
       const t = input('t');
-      const type = resultType(a, b);
       if (a?.value && b?.value && t?.value) {
-        const size = width(type);
+        const size = Math.max(a.value.length, b.value.length);
         const av = broadcast(a.value, size);
         const bv = broadcast(b.value, size);
-        const alpha = t.value[0];
-        value = { type, value: av.map((component, index) => component + (bv[index] - component) * alpha) };
-      } else value = { type };
-      for (const inputPin of ['a', 'b', 't']) {
-        const connection = incomingConnection(graph, node.id, inputPin);
-        if (connection) expression.inputs.push(expressionKey(connection.from.nodeId, connection.from.pin));
-      }
-    } else if (node.type === 'add' || node.type === 'subtract' || node.type === 'multiply' || node.type === 'divide') {
+        result = { value: av.map((component, index) => component + (bv[index] - component) * t.value![0]) };
+      } else result = { texture: a?.texture ?? b?.texture };
+    } else if (['add', 'subtract', 'multiply', 'divide'].includes(node.type)) {
       const a = input('a');
       const b = input('b');
-      const type = resultType(a, b);
       if (a?.value && b?.value) {
-        const size = width(type);
+        const size = Math.max(a.value.length, b.value.length);
         const av = broadcast(a.value, size);
         const bv = broadcast(b.value, size);
-        value = {
-          type,
+        result = {
           value: av.map((component, index) => {
             if (node.type === 'add') return component + bv[index];
             if (node.type === 'subtract') return component - bv[index];
@@ -250,102 +170,43 @@ export const compileMaterialGraph = (graph: MaterialGraph): MaterialCompileResul
             return Math.abs(bv[index]) < 1e-6 ? 0 : component / bv[index];
           }),
         };
-      } else value = { type, texture: a?.texture ?? b?.texture };
-      for (const inputPin of ['a', 'b']) {
-        const connection = incomingConnection(graph, node.id, inputPin);
-        if (connection) expression.inputs.push(expressionKey(connection.from.nodeId, connection.from.pin));
-      }
+      } else result = { texture: a?.texture ?? b?.texture };
     }
 
-    if (value) {
-      expression.resultType = value.type;
-      if (value.value) expression.constant = [...value.value];
-      expressions.set(key, expression);
-      evaluated.set(key, value);
-    }
     visiting.delete(key);
-    return value;
+    return result;
   };
 
   const output = graph.nodes.find((node) => node.type === 'output');
-  if (!output) diagnostics.push({ severity: 'error', message: 'Material graph requires one Material Output node.' });
-
-  const irOutputs: MaterialIR['outputs'] = {};
-  const resolvedOutputs = new Map<MaterialOutputName, EvaluatedValue>();
-  if (output) {
-    for (const inputPin of materialNodeDefinitions.output.inputs) {
-      if (!outputNames.has(inputPin.id as MaterialOutputName)) continue;
-      const outputName = inputPin.id as MaterialOutputName;
-      const connection = incomingConnection(graph, output.id, inputPin.id);
-      if (!connection) continue;
-      const value = evaluateOutput(connection.from.nodeId, connection.from.pin);
-      if (!value) continue;
-      irOutputs[outputName] = expressionKey(connection.from.nodeId, connection.from.pin);
-      resolvedOutputs.set(outputName, value);
-    }
-  }
-
-  const baseColor = broadcast(resolvedOutputs.get('baseColor')?.value ?? [0.78, 0.8, 0.84], 3);
-  const emissive = broadcast(resolvedOutputs.get('emissive')?.value ?? [0, 0, 0], 3);
-  const metallic = clampNumber(resolvedOutputs.get('metallic')?.value?.[0] ?? 0, 0, 1);
-  const roughness = clampNumber(resolvedOutputs.get('roughness')?.value?.[0] ?? 0.62, 0, 1);
-  const ao = clampNumber(resolvedOutputs.get('ao')?.value?.[0] ?? 1, 0, 1);
-  const opacity = clampNumber(resolvedOutputs.get('opacity')?.value?.[0] ?? 1, 0, 1);
-  const alphaClip = clampNumber(resolvedOutputs.get('alphaClip')?.value?.[0] ?? 0.5, 0, 1);
-
+  const outputValue = (pin: string): Value | undefined => {
+    if (!output) return undefined;
+    const connection = incoming(output.id, pin);
+    return connection ? evaluate(connection.from.nodeId, connection.from.pin) : undefined;
+  };
+  const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+  const base = broadcast(outputValue('baseColor')?.value ?? [0.78, 0.8, 0.84], 3);
+  const emissive = broadcast(outputValue('emissive')?.value ?? [0, 0, 0], 3);
+  const opacity = clamp01(outputValue('opacity')?.value?.[0] ?? 1);
   const surface: MaterialAssetSurface = {
-    baseColor: { r: baseColor[0], g: baseColor[1], b: baseColor[2], a: opacity },
-    metallic,
-    roughness,
+    baseColor: { r: base[0], g: base[1], b: base[2], a: opacity },
+    metallic: clamp01(outputValue('metallic')?.value?.[0] ?? 0),
+    roughness: clamp01(outputValue('roughness')?.value?.[0] ?? 0.62),
     normalScale: 1,
-    aoStrength: ao,
+    aoStrength: clamp01(outputValue('ao')?.value?.[0] ?? 1),
     emissive: { r: emissive[0], g: emissive[1], b: emissive[2] },
-    emissiveStrength: Math.max(emissive[0], emissive[1], emissive[2]) > 0 ? 1 : 0,
+    emissiveStrength: Math.max(...emissive) > 0 ? 1 : 0,
     emissiveLuminanceNits: 100,
-    alphaCutoff: alphaClip,
+    alphaCutoff: clamp01(outputValue('alphaClip')?.value?.[0] ?? 0.5),
   };
-
   const textures: MaterialAssetTextures = {};
-  const baseColorTexture = resolvedOutputs.get('baseColor')?.texture;
-  if (baseColorTexture) {
-    textures.baseColor = baseColorTexture;
-    surface.baseColor = { r: 1, g: 1, b: 1, a: opacity };
-  }
-  const normalTexture = resolvedOutputs.get('normal')?.texture;
-  if (normalTexture) textures.normal = normalTexture;
-  const emissiveTexture = resolvedOutputs.get('emissive')?.texture;
-  if (emissiveTexture) textures.emissive = emissiveTexture;
-  const aoTexture = resolvedOutputs.get('ao')?.texture;
-  if (aoTexture) textures.ao = aoTexture;
-
-  const parameters: MaterialIR['parameters'] = [];
-  for (const node of graph.nodes) {
-    if (!node.parameter?.exposed || node.type === 'output') continue;
-    const definition = materialNodeDefinitions[node.type];
-    const firstOutput = definition.outputs[0];
-    if (!firstOutput) continue;
-    const value = evaluateOutput(node.id, firstOutput.id)?.value;
-    if (!value) continue;
-    parameters.push({
-      nodeId: node.id,
-      name: node.parameter.name.trim() || definition.title,
-      type: firstOutput.type,
-      value: [...value],
-    });
-  }
-
-  const ir: MaterialIR = {
-    version: 1,
-    expressions: [...expressions.values()],
-    outputs: irOutputs,
-    parameters,
+  const assignTexture = (pin: string, target: keyof MaterialAssetTextures) => {
+    const texture = outputValue(pin)?.texture;
+    if (texture) textures[target] = texture;
   };
-
-  return {
-    succeeded: diagnostics.every((diagnostic) => diagnostic.severity !== 'error'),
-    diagnostics,
-    ir,
-    surface,
-    textures,
-  };
+  assignTexture('baseColor', 'baseColor');
+  assignTexture('normal', 'normal');
+  assignTexture('ao', 'ao');
+  assignTexture('emissive', 'emissive');
+  if (textures.baseColor && surface.baseColor) surface.baseColor = { r: 1, g: 1, b: 1, a: opacity };
+  return { surface, textures };
 };

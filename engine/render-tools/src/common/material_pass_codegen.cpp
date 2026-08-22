@@ -12,6 +12,77 @@ namespace
 
 constexpr std::string_view standalone_harness_marker = "struct ArcCompilerInput\n";
 
+constexpr std::string_view custom_material_abi =
+    R"(// ARC Material ABI v1. Engine-owned declarations for handwritten Material Shaders.
+static const uint ARC_MATERIAL_ABI_VERSION = 1;
+struct ArcSurfaceInput
+{
+    float3 positionWS;
+    float3 normalWS;
+    float4 tangentWS;
+    float2 uv0;
+    float2 uv1;
+    float4 vertexColor;
+    float3 viewWS;
+};
+struct ArcSurfaceData
+{
+    float3 baseColor;
+    float metallic;
+    float roughness;
+    float3 normalWS;
+    float3 clearCoatNormalWS;
+    float3 tangentWS;
+    float ambientOcclusion;
+    float3 emissiveRadiance;
+    float opacity;
+    float alphaCutoff;
+    float indexOfRefraction;
+    float clearCoat;
+    float clearCoatRoughness;
+    float sheen;
+    float3 sheenColor;
+    float sheenRoughness;
+    float anisotropy;
+    float anisotropyRotation;
+    float transmission;
+    float thickness;
+    float3 attenuationColor;
+    float attenuationDistance;
+    float3 subsurfaceColor;
+    float subsurface;
+};
+ArcSurfaceData arcDefaultSurface(float3 normalWS)
+{
+    ArcSurfaceData surface;
+    surface.baseColor = float3(0.8);
+    surface.metallic = 0.0;
+    surface.roughness = 0.6;
+    surface.normalWS = normalize(normalWS);
+    surface.clearCoatNormalWS = surface.normalWS;
+    surface.tangentWS = float3(1.0, 0.0, 0.0);
+    surface.ambientOcclusion = 1.0;
+    surface.emissiveRadiance = float3(0.0);
+    surface.opacity = 1.0;
+    surface.alphaCutoff = 0.5;
+    surface.indexOfRefraction = 1.5;
+    surface.clearCoat = 0.0;
+    surface.clearCoatRoughness = 0.1;
+    surface.sheen = 0.0;
+    surface.sheenColor = float3(0.0);
+    surface.sheenRoughness = 0.5;
+    surface.anisotropy = 0.0;
+    surface.anisotropyRotation = 0.0;
+    surface.transmission = 0.0;
+    surface.thickness = 0.0;
+    surface.attenuationColor = float3(1.0);
+    surface.attenuationDistance = 1.0;
+    surface.subsurfaceColor = float3(1.0, 0.35, 0.2);
+    surface.subsurface = 0.0;
+    return surface;
+}
+)";
+
 void append_pass_input(std::ostringstream& source)
 {
     source << "struct ArcMaterialPassInput\n"
@@ -123,9 +194,59 @@ void append_selection(std::ostringstream& source)
               "}\n";
 }
 
+shader_compile_error custom_shader_error(std::string_view source_path, std::string message)
+{
+    return {.code = shader_compile_error_code::validation_failed,
+            .source_path = std::string(source_path),
+            .message = std::move(message)};
+}
+
 } // namespace
 
-material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
+material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation)
+{
+    auto generated = generate_material_slang(compilation);
+    if (!generated) return material_evaluator_result::failure(generated.error());
+
+    auto evaluator = std::move(generated).value();
+    const auto marker = evaluator.source.find(standalone_harness_marker);
+    if (marker == std::string::npos)
+        return material_evaluator_result::failure(
+            {.code = shader_compile_error_code::validation_failed,
+             .message = "generated material evaluator is missing the Stage 7 standalone harness boundary"});
+    evaluator.source.resize(marker);
+    return material_evaluator_result::success({.source = std::move(evaluator.source),
+                                               .generated_line_nodes = std::move(evaluator.generated_line_nodes),
+                                               .parameters = std::move(evaluator.parameters),
+                                               .diagnostics = std::move(evaluator.diagnostics)});
+}
+
+material_evaluator_result make_custom_material_evaluator(std::string_view source, std::string_view source_path)
+{
+    if (source.empty())
+        return material_evaluator_result::failure(custom_shader_error(source_path, "Material Shader source is empty"));
+    if (source.find("arc_evaluate_material") == std::string_view::npos)
+        return material_evaluator_result::failure(custom_shader_error(
+            source_path, "Material Shader must implement ArcSurfaceData arc_evaluate_material(ArcSurfaceInput input)"));
+    if (source.find("[shader(") != std::string_view::npos)
+        return material_evaluator_result::failure(custom_shader_error(
+            source_path, "Material Shader must not declare render-pass entry points; ARC owns all material passes"));
+
+    std::string evaluator;
+    evaluator.reserve(custom_material_abi.size() + source.size() + source_path.size() + 96u);
+    evaluator.append(custom_material_abi);
+    if (!source_path.empty())
+    {
+        evaluator.append("// ARC handwritten Material Shader: ");
+        evaluator.append(source_path);
+        evaluator.push_back('\n');
+    }
+    evaluator.append(source);
+    if (!evaluator.ends_with('\n')) evaluator.push_back('\n');
+    return material_evaluator_result::success({.source = std::move(evaluator), .handwritten = true});
+}
+
+material_pass_codegen_result generate_material_pass_slang(const material_evaluator_source& evaluator,
                                                           const material_descriptor& material, material_pass pass,
                                                           std::uint8_t debug_view, bool wireframe)
 {
@@ -138,19 +259,8 @@ material_pass_codegen_result generate_material_pass_slang(const material_graph_c
             {.code = shader_compile_error_code::validation_failed,
              .message = "ray-hit material composition is not implemented by material pass contract v1"});
 
-    auto evaluator = generate_material_slang(compilation);
-    if (!evaluator) return material_pass_codegen_result::failure(evaluator.error());
-
-    auto evaluator_source = std::move(evaluator).value();
-    const auto marker = evaluator_source.source.find(standalone_harness_marker);
-    if (marker == std::string::npos)
-        return material_pass_codegen_result::failure(
-            {.code = shader_compile_error_code::validation_failed,
-             .message = "generated material evaluator is missing the Stage 7 standalone harness boundary"});
-    evaluator_source.source.resize(marker);
-
     std::ostringstream pass_source;
-    pass_source << evaluator_source.source;
+    pass_source << evaluator.source;
     pass_source << "// ARC engine material pass contract v" << material_pass_contract_version << "; codegen v"
                 << material_pass_codegen_version << ".\n";
     append_pass_input(pass_source);
@@ -181,13 +291,21 @@ material_pass_codegen_result generate_material_pass_slang(const material_graph_c
     }
 
     const auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe);
-    return material_pass_codegen_result::success(
-        {.pass = pass,
-         .permutation = make_material_pass_permutation_id(key),
-         .source = std::move(pass_source).str(),
-         .generated_line_nodes = std::move(evaluator_source.generated_line_nodes),
-         .parameters = std::move(evaluator_source.parameters),
-         .diagnostics = std::move(evaluator_source.diagnostics)});
+    return material_pass_codegen_result::success({.pass = pass,
+                                                  .permutation = make_material_pass_permutation_id(key),
+                                                  .source = std::move(pass_source).str(),
+                                                  .generated_line_nodes = evaluator.generated_line_nodes,
+                                                  .parameters = evaluator.parameters,
+                                                  .diagnostics = evaluator.diagnostics});
+}
+
+material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
+                                                          const material_descriptor& material, material_pass pass,
+                                                          std::uint8_t debug_view, bool wireframe)
+{
+    auto evaluator = make_graph_material_evaluator(compilation);
+    if (!evaluator) return material_pass_codegen_result::failure(evaluator.error());
+    return generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe);
 }
 
 } // namespace arc::render::tools

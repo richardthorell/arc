@@ -94,6 +94,7 @@ export type MaterialAssetJson = Record<string, unknown> & {
   version?: number;
   name?: string;
   shader?: string;
+  shaderPath?: string;
   domain?: string;
   blendMode?: string;
   shadingModel?: string;
