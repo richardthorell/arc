@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -54,6 +55,17 @@ TEST_CASE("material authoring schema migrates historical versions without droppi
     REQUIRE(result.value().graph_json.find("\"version\":1") != std::string::npos);
 }
 
+TEST_CASE("material authoring migration exposes pass routing properties")
+{
+    const auto material = arc::render::tools::parse_material_authoring_json(
+        R"({"version":3,"domain":"surface","shadingModel":"transmission","blendMode":"masked","doubleSided":true})");
+    REQUIRE(material);
+    REQUIRE(material.value().domain == arc::render::material_domain::surface);
+    REQUIRE(material.value().shading_model == arc::render::material_shading_model::transmission);
+    REQUIRE(material.value().alpha_mode == arc::render::material_alpha_mode::masked);
+    REQUIRE(material.value().double_sided);
+}
+
 TEST_CASE("material authoring schema accepts current and nullable legacy documents")
 {
     const auto current = arc::render::tools::parse_material_authoring_json(R"({"version":4,"name":"Current"})");
@@ -98,7 +110,7 @@ TEST_CASE("material package v2 preserves the established binary envelope")
     const auto bytes = arc::render::tools::serialize_material_package_v2(package);
     std::size_t cursor{};
     const std::span<const std::byte> view(bytes);
-    REQUIRE(read_string(view, cursor) == arc::render::tools::material_package_signature);
+    REQUIRE(read_string(view, cursor) == arc::render::tools::material_package_v2_signature);
     REQUIRE(read_value<std::uint64_t>(view, cursor) == 11);
     REQUIRE(read_value<std::uint64_t>(view, cursor) == 22);
     REQUIRE(read_value<std::uint64_t>(view, cursor) == 33);
@@ -112,4 +124,55 @@ TEST_CASE("material package v2 preserves the established binary envelope")
     REQUIRE(read_value<std::uint32_t>(view, cursor) == 4);
     REQUIRE(read_string(view, cursor) == package.canonical_document_json);
     REQUIRE(cursor == bytes.size());
+}
+
+TEST_CASE("material package v3 round trips deterministic pass bindings")
+{
+    arc::render::tools::material_package_v3 package;
+    package.compiled.package = {.high = 11, .low = 22};
+    package.compiled.passes = {
+        {.pass = arc::render::material_pass::forward,
+         .permutation = {200},
+         .entry_point = arc::render::make_shader_entry_point_id("main", arc::render::shader_stage::fragment)},
+        {.pass = arc::render::material_pass::depth,
+         .permutation = {100},
+         .entry_point = arc::render::make_shader_entry_point_id("main", arc::render::shader_stage::fragment)}};
+    package.compiled.passes[0].build_hash.bytes[0] = std::byte{0x20};
+    package.compiled.passes[1].build_hash.bytes[0] = std::byte{0x10};
+    package.parameters.push_back({.id = arc::render::make_shader_parameter_id("roughness"),
+                                  .name = "Roughness",
+                                  .type = arc::render::shader_parameter_type::float32,
+                                  .offset = 0,
+                                  .size = 4});
+    package.canonical_document_json = R"({"version":4})";
+
+    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
+    std::size_t cursor{};
+    REQUIRE(read_string(std::span<const std::byte>(bytes), cursor) == arc::render::tools::material_package_signature);
+
+    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
+    REQUIRE(decoded);
+    REQUIRE(decoded.value().compiled.package == package.compiled.package);
+    REQUIRE(decoded.value().compiled.passes.size() == 2);
+    REQUIRE(decoded.value().compiled.passes[0].pass == arc::render::material_pass::depth);
+    REQUIRE(decoded.value().compiled.passes[1].pass == arc::render::material_pass::forward);
+    REQUIRE(decoded.value().compiled.passes[0].permutation == arc::render::shader_permutation_id{100});
+    REQUIRE(decoded.value().compiled.passes[1].permutation == arc::render::shader_permutation_id{200});
+    REQUIRE(decoded.value().parameters.size() == 1);
+    REQUIRE(decoded.value().canonical_document_json == package.canonical_document_json);
+
+    auto reversed = package;
+    std::ranges::reverse(reversed.compiled.passes);
+    REQUIRE(arc::render::tools::serialize_material_package_v3(reversed) == bytes);
+}
+
+TEST_CASE("material package v3 supports legacy-only materials without compiled passes")
+{
+    arc::render::tools::material_package_v3 package;
+    package.canonical_document_json = R"({"version":4,"graph":null})";
+    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
+    REQUIRE(decoded);
+    REQUIRE_FALSE(decoded.value().compiled.package.valid());
+    REQUIRE(decoded.value().compiled.passes.empty());
 }
