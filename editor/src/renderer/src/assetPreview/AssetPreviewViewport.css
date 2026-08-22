@@ -1,0 +1,50 @@
+.asset-preview-viewport,
+.asset-preview-viewport-fallback {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.asset-preview-viewport {
+  position: relative;
+  overflow: hidden;
+  outline: none;
+  cursor: grab;
+  background: #0c1418;
+  touch-action: none;
+}
+
+.asset-preview-viewport:active {
+  cursor: grabbing;
+}
+
+.asset-preview-viewport-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #0c1418;
+}
+
+.asset-preview-viewport-hint {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  padding: 3px 6px;
+  color: rgba(192, 208, 216, 0.62);
+  border-radius: 3px;
+  background: rgba(8, 14, 18, 0.6);
+  font-size: 9px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.asset-preview-viewport:hover .asset-preview-viewport-hint {
+  opacity: 1;
+}
+
+.asset-preview-viewport-fallback {
+  display: grid;
+  place-items: center;
+}

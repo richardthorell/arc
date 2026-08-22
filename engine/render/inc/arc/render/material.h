@@ -219,6 +219,19 @@ enum class material_displacement_mode : std::uint8_t
 };
 
 /**
+ * @brief Temporary implementation selector used while compiled materials replace the legacy descriptor path.
+ *
+ * Existing materials default to @ref legacy. The selector intentionally does not alter rendering by itself; later
+ * migration stages use it to opt individual materials into the compiled path or compare both implementations.
+ */
+enum class material_pipeline : std::uint8_t
+{
+    legacy,
+    compiled,
+    compare
+};
+
+/**
  * @brief Renderer material description used by scene rendering.
  */
 struct material_descriptor
@@ -279,6 +292,9 @@ struct material_descriptor
     resource_handle material_graph{};
     std::vector<material_parameter_override> parameters;
     std::array<terrain_layer_descriptor, 4> terrain_layers{};
+
+    /** @brief Migration-only path selection. Defaults to the current renderer behavior. */
+    material_pipeline pipeline{material_pipeline::legacy};
 };
 
 /** @brief Runtime material definition produced from an authored `.arcmat`. */
