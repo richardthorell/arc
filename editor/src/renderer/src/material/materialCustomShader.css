@@ -1,0 +1,46 @@
+.material-custom-shader {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  grid-template-columns: auto minmax(0, 520px);
+  align-content: center;
+  gap: 18px;
+  padding: 48px;
+  color: var(--arc-color-text-muted);
+  background: radial-gradient(circle at 50% 45%, rgba(59, 111, 132, 0.18), transparent 42%), #0d151a;
+}
+
+.material-custom-shader > svg {
+  color: #65b8cf;
+}
+
+.material-custom-shader > div {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.material-custom-shader strong {
+  color: var(--arc-color-text-strong);
+  font-size: 15px;
+}
+
+.material-custom-shader p {
+  margin: 0;
+  color: var(--arc-color-text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.material-custom-shader code {
+  overflow: hidden;
+  padding: 9px 11px;
+  color: #9fd5df;
+  border: 1px solid var(--arc-color-border-subtle);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

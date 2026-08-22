@@ -3,12 +3,19 @@ import { useEffect, useState } from 'react';
 import type { EditorDocument } from '../editors/editorTypes';
 import { updateEditorDocumentInStore } from '../editors/editorDocuments';
 import {
+  compilingMaterialResult,
+  emptyMaterialCompileResult,
+  nativeMaterialCompileResult,
+  projectLegacyMaterialPreview,
+  type MaterialCompileResult,
+  type NativeMaterialCompilePayload,
+} from './materialCompiler';
+import {
   cloneMaterialGraph,
   materialGraphFromAsset,
   type MaterialAssetJson,
   type MaterialGraph,
 } from './materialGraphTypes';
-import { compileMaterialGraph, type MaterialCompileResult } from './materialCompiler';
 
 export type MaterialDocumentState = {
   documentId: string;
@@ -44,8 +51,12 @@ type ThumbnailPayload = {
 const emptyGraph = materialGraphFromAsset({});
 const states = new Map<string, MaterialDocumentState>();
 const listeners = new Map<string, Set<() => void>>();
+const compileTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const compileGenerations = new Map<string, number>();
 
 const graphFingerprint = (graph: MaterialGraph) => JSON.stringify(graph);
+const materialShaderPath = (asset: MaterialAssetJson) =>
+  typeof asset.shaderPath === 'string' && asset.shaderPath.trim() ? asset.shaderPath.trim() : '';
 
 const initialState = (document: EditorDocument): MaterialDocumentState => ({
   documentId: document.id,
@@ -57,7 +68,7 @@ const initialState = (document: EditorDocument): MaterialDocumentState => ({
   confirmedGraph: '',
   history: [],
   historyIndex: -1,
-  compilation: compileMaterialGraph(emptyGraph),
+  compilation: emptyMaterialCompileResult(),
   previewDataUrl: '',
   previewRevision: 0,
   loading: false,
@@ -119,6 +130,21 @@ const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): Ma
   doubleSided: asset.doubleSided ?? false,
 });
 
+const cancelScheduledCompile = (documentId: string) => {
+  const timer = compileTimers.get(documentId);
+  if (timer !== undefined) clearTimeout(timer);
+  compileTimers.delete(documentId);
+};
+
+const scheduleNativeCompile = (document: EditorDocument) => {
+  cancelScheduledCompile(document.id);
+  const timer = setTimeout(() => {
+    compileTimers.delete(document.id);
+    void compileMaterialDocument(document, { quiet: true });
+  }, 180);
+  compileTimers.set(document.id, timer);
+};
+
 export const getMaterialDocumentState = (document: EditorDocument) => ensureState(document);
 
 export const refreshMaterialPreview = async (document: EditorDocument): Promise<boolean> => {
@@ -175,12 +201,13 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
       confirmedGraph: fingerprint,
       history: [cloneMaterialGraph(graph)],
       historyIndex: 0,
-      compilation: compileMaterialGraph(graph),
+      compilation: emptyMaterialCompileResult(),
       loading: false,
       loaded: true,
       message: document.readOnly ? 'Engine material opened read-only' : '',
     });
     updateEditorDocumentInStore(document.id, { dirty: false });
+    if (!materialShaderPath(parsed)) scheduleNativeCompile(document);
     void refreshMaterialPreview(document);
     return true;
   } catch (error) {
@@ -198,7 +225,7 @@ export const replaceMaterialGraph = (
   options: { recordHistory?: boolean; message?: string } = {},
 ) => {
   const current = ensureState(document);
-  if (document.readOnly || current.readOnly) return;
+  if (document.readOnly || current.readOnly || materialShaderPath(current.asset)) return;
   const nextGraph = cloneMaterialGraph(graph);
   let history = current.history;
   let historyIndex = current.historyIndex;
@@ -209,60 +236,73 @@ export const replaceMaterialGraph = (
     if (history.length > 80) history = history.slice(history.length - 80);
     historyIndex = history.length - 1;
   }
-  const compilation = compileMaterialGraph(nextGraph);
   setState(document.id, {
     graph: nextGraph,
     history,
     historyIndex,
-    compilation,
+    compilation: emptyMaterialCompileResult(),
     message: options.message ?? '',
   });
   updateDirtyState(document, nextGraph, current.confirmedGraph);
+  scheduleNativeCompile(document);
 };
 
 export const undoMaterialGraph = (document: EditorDocument) => {
   const current = ensureState(document);
-  if (document.readOnly || current.historyIndex <= 0) return false;
+  if (document.readOnly || materialShaderPath(current.asset) || current.historyIndex <= 0) return false;
   const historyIndex = current.historyIndex - 1;
   const graph = cloneMaterialGraph(current.history[historyIndex]);
   setState(document.id, {
     graph,
     historyIndex,
-    compilation: compileMaterialGraph(graph),
+    compilation: emptyMaterialCompileResult(),
     message: 'Undo material graph edit',
   });
   updateDirtyState(document, graph, current.confirmedGraph);
+  scheduleNativeCompile(document);
   return true;
 };
 
 export const redoMaterialGraph = (document: EditorDocument) => {
   const current = ensureState(document);
-  if (document.readOnly || current.historyIndex + 1 >= current.history.length) return false;
+  if (document.readOnly || materialShaderPath(current.asset) || current.historyIndex + 1 >= current.history.length)
+    return false;
   const historyIndex = current.historyIndex + 1;
   const graph = cloneMaterialGraph(current.history[historyIndex]);
   setState(document.id, {
     graph,
     historyIndex,
-    compilation: compileMaterialGraph(graph),
+    compilation: emptyMaterialCompileResult(),
     message: 'Redo material graph edit',
   });
   updateDirtyState(document, graph, current.confirmedGraph);
+  scheduleNativeCompile(document);
   return true;
 };
 
-export const compileMaterialDocument = async (document: EditorDocument): Promise<boolean> => {
+export const compileMaterialDocument = async (
+  document: EditorDocument,
+  options: { quiet?: boolean } = {},
+): Promise<boolean> => {
   const current = ensureState(document);
-  setState(document.id, { compiling: true, message: '' });
-  const compilation = compileMaterialGraph(current.graph);
-  const errors = compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
-  if (errors.length || !compilation.succeeded) {
-    setState(document.id, {
-      compilation,
-      compiling: false,
-      message: `${errors.length} material graph error${errors.length === 1 ? '' : 's'}`,
-    });
+  const customShader = materialShaderPath(current.asset);
+  if (customShader) {
+    if (!options.quiet)
+      setState(document.id, {
+        message: `Custom Material Shader '${customShader}' is validated during asset cook; reimport does not run the cooker`,
+      });
     return false;
   }
+
+  cancelScheduledCompile(document.id);
+  const generation = (compileGenerations.get(document.id) ?? 0) + 1;
+  compileGenerations.set(document.id, generation);
+  setState(document.id, {
+    compiling: true,
+    compilation: compilingMaterialResult(current.compilation),
+    message: options.quiet ? current.message : '',
+  });
+
   try {
     const response = (await window.arc.host.command('shader.compile', {
       path: `${document.path ?? document.title}.generated.slang`,
@@ -270,40 +310,59 @@ export const compileMaterialDocument = async (document: EditorDocument): Promise
       entryPoint: 'main',
       stage: 'fragment',
       domain: 'materialGraph',
-    })) as HostResponse<{
-      succeeded: boolean;
-      message: string;
-      diagnostics: Array<{ message: string; graphNode?: string }>;
-    }>;
-    const native = response.payload;
+    })) as HostResponse<NativeMaterialCompilePayload>;
+    if (compileGenerations.get(document.id) !== generation) return false;
+
+    const compilation = nativeMaterialCompileResult(
+      response.succeeded,
+      response.payload,
+      response.error || response.payload?.message || 'Native material compilation failed',
+    );
+    const errors = compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
     setState(document.id, {
       compilation,
       compiling: false,
-      message: native?.succeeded
-        ? `Native Slang compiled · ${compilation.ir.expressions.length} expressions · ${compilation.ir.parameters.length} parameters`
-        : native?.message ||
-          response.error ||
-          native?.diagnostics?.[0]?.message ||
-          'Native material compilation failed',
+      message: options.quiet
+        ? compilation.succeeded
+          ? ''
+          : `${errors.length || 1} native material compiler error${errors.length === 1 ? '' : 's'}`
+        : compilation.succeeded
+          ? 'Native Material IR compiled successfully'
+          : response.payload?.message ||
+            response.error ||
+            compilation.diagnostics[0]?.message ||
+            'Native material compilation failed',
     });
-    return response.succeeded && native?.succeeded === true;
+    return compilation.succeeded;
   } catch (error) {
+    if (compileGenerations.get(document.id) !== generation) return false;
+    const message = error instanceof Error ? error.message : String(error);
     setState(document.id, {
-      compilation,
       compiling: false,
-      message: error instanceof Error ? error.message : String(error),
+      compilation: {
+        status: 'failed',
+        succeeded: false,
+        diagnostics: [{ severity: 'error', message }],
+      },
+      message,
     });
     return false;
   }
 };
 
-const serializedMaterial = (
-  document: EditorDocument,
-  current: MaterialDocumentState,
-  compilation: MaterialCompileResult,
-) => {
-  const surface = { ...(current.asset.surface ?? {}), ...compilation.surface };
-  const textures = { ...(current.asset.textures ?? {}), ...compilation.textures };
+const serializedMaterial = (document: EditorDocument, current: MaterialDocumentState) => {
+  const customShader = materialShaderPath(current.asset);
+  if (customShader) {
+    const asset: MaterialAssetJson = {
+      ...normalizedAsset(current.asset, document),
+      graph: null,
+    };
+    return { asset, text: `${JSON.stringify(asset, null, 2)}\n` };
+  }
+
+  const projection = projectLegacyMaterialPreview(current.graph);
+  const surface = { ...(current.asset.surface ?? {}), ...projection.surface };
+  const textures = { ...(current.asset.textures ?? {}), ...projection.textures };
   const asset: MaterialAssetJson = {
     ...normalizedAsset(current.asset, document),
     surface,
@@ -324,16 +383,16 @@ export const saveMaterialDocument = async (document: EditorDocument): Promise<bo
     return false;
   }
 
-  const compilation = compileMaterialGraph(current.graph);
-  if (!compilation.succeeded) {
-    setState(document.id, { compilation, message: 'Resolve material graph errors before saving' });
+  if (!materialShaderPath(current.asset) && !(await compileMaterialDocument(document, { quiet: true }))) {
+    setState(document.id, { message: 'Resolve native material compiler errors before saving' });
     return false;
   }
-  setState(document.id, { saving: true, compilation, message: '' });
+  setState(document.id, { saving: true, message: '' });
   try {
-    const serialized = serializedMaterial(document, current, compilation);
+    const latest = ensureState(document);
+    const serialized = serializedMaterial(document, latest);
     await window.arc.projects.writeText(document.path, serialized.text);
-    const confirmedGraph = graphFingerprint(current.graph);
+    const confirmedGraph = graphFingerprint(latest.graph);
     setState(document.id, {
       asset: serialized.asset,
       confirmedGraph,
@@ -352,20 +411,32 @@ export const saveMaterialDocument = async (document: EditorDocument): Promise<bo
 };
 
 export const publishMaterialDocument = async (document: EditorDocument): Promise<boolean> => {
-  if (!(await compileMaterialDocument(document))) return false;
+  const current = ensureState(document);
+  const customShader = materialShaderPath(current.asset);
+  if (!customShader && !(await compileMaterialDocument(document))) return false;
   if (document.dirty && !(await saveMaterialDocument(document))) return false;
   if (!document.assetGuid) {
     setState(document.id, { message: 'Material has no registered asset GUID and cannot be reimported' });
     return false;
   }
-  setState(document.id, { compiling: true, message: 'Publishing material…' });
+  setState(document.id, { compiling: true, message: customShader ? 'Reimporting material…' : 'Publishing material…' });
   try {
     const response = (await window.arc.host.command('asset.reimport', { guid: document.assetGuid })) as HostResponse;
     if (!response.succeeded) {
-      setState(document.id, { compiling: false, message: response.error || 'Material reimport failed' });
+      setState(document.id, {
+        compiling: false,
+        message: response.error || 'Material reimport failed',
+      });
       return false;
     }
-    setState(document.id, { compiling: false, message: 'Material published to renderer' });
+    const latest = ensureState(document);
+    setState(document.id, {
+      compiling: false,
+      compilation: latest.compilation,
+      message: customShader
+        ? 'Material reimported; custom Material Shader validation runs during asset cook'
+        : 'Material published to renderer',
+    });
     window.setTimeout(() => void refreshMaterialPreview(document), 120);
     return true;
   } catch (error) {
@@ -389,11 +460,14 @@ export const reloadMaterialDocument = async (document: EditorDocument): Promise<
     !window.confirm(`Discard unsaved changes to ${document.title}?`)
   )
     return false;
+  cancelScheduledCompile(document.id);
   setState(document.id, { loaded: false });
   return loadMaterialDocument(document, true);
 };
 
 export const disposeMaterialDocument = (documentId: string) => {
+  cancelScheduledCompile(documentId);
+  compileGenerations.delete(documentId);
   states.delete(documentId);
   listeners.delete(documentId);
 };

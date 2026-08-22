@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -54,6 +56,68 @@ std::string compile_error_message(const render::shader_compile_error& error)
     return message;
 }
 
+std::string normalized_path(std::filesystem::path path)
+{
+    auto text = path.lexically_normal().generic_string();
+    while (text.starts_with("./"))
+        text.erase(0, 2);
+    return text;
+}
+
+bool path_matches(std::filesystem::path dependency, std::string_view authored)
+{
+    auto dependency_text = normalized_path(std::move(dependency));
+    auto authored_text = normalized_path(std::filesystem::path(authored));
+    if (authored_text.starts_with("assets/")) authored_text.erase(0, 7);
+    if (dependency_text == authored_text) return true;
+    return dependency_text.size() > authored_text.size() && dependency_text.ends_with(authored_text) &&
+           dependency_text[dependency_text.size() - authored_text.size() - 1] == '/';
+}
+
+const assets::asset_snapshot* find_material_shader_dependency(const assets::asset_cook_context& context,
+                                                              std::string_view shader_path)
+{
+    const assets::asset_snapshot* fallback{};
+    for (const auto& dependency : context.dependencies)
+    {
+        if (dependency.type != assets::asset_types::shader) continue;
+        if (!fallback) fallback = &dependency;
+        if (path_matches(dependency.source_path, shader_path)) return &dependency;
+    }
+    return fallback;
+}
+
+core::result<std::string, std::string> read_material_shader(const assets::asset_cook_context& context,
+                                                            std::string_view shader_path)
+{
+    const auto* dependency = find_material_shader_dependency(context, shader_path);
+    if (!dependency)
+        return core::result<std::string, std::string>::failure("Material Shader '" + std::string(shader_path) +
+                                                               "' is not a registered shader dependency");
+
+    std::ifstream input(dependency->source_path, std::ios::binary);
+    if (!input)
+        return core::result<std::string, std::string>::failure("Material Shader source could not be opened: " +
+                                                               dependency->source_path.generic_string());
+    std::ostringstream source;
+    source << input.rdbuf();
+    if (!input.eof() && input.fail())
+        return core::result<std::string, std::string>::failure("Material Shader source could not be read: " +
+                                                               dependency->source_path.generic_string());
+    return core::result<std::string, std::string>::success(std::move(source).str());
+}
+
+bool same_parameter_layout(const std::vector<render::shader_parameter_descriptor>& lhs,
+                           const std::vector<render::shader_parameter_descriptor>& rhs)
+{
+    if (lhs.size() != rhs.size()) return false;
+    for (std::size_t index = 0; index < lhs.size(); ++index)
+        if (lhs[index].id != rhs[index].id || lhs[index].type != rhs[index].type ||
+            lhs[index].offset != rhs[index].offset || lhs[index].size != rhs[index].size)
+            return false;
+    return true;
+}
+
 class material_processor final : public assets::asset_cook_processor
 {
 public:
@@ -62,7 +126,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 5;
+        descriptor_.version = 6;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
@@ -74,8 +138,9 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/5;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
-               "arc-material-codegen/1;arc-material-pass-contract/1;arc-material-pass-codegen/1;" +
+        return "arc.material-cooker/6;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
+               "arc-material-codegen/1;arc-material-pass-contract/1;arc-material-pass-codegen/2;"
+               "arc-custom-material-shader/1;" +
                std::string(compiler_.fingerprint());
     }
 
@@ -90,6 +155,12 @@ public:
                               .path = context.source.source_path,
                               .message = authored.error().message}};
 
+        if (!authored.value().graph_json.empty() && !authored.value().shader_path.empty())
+            return {.error = {.code = assets::asset_error_code::import_failed,
+                              .guid = context.asset.guid,
+                              .path = context.source.source_path,
+                              .message = "Material must use either a graph or shaderPath, not both"}};
+
         std::vector<assets::cooked_artifact> artifacts;
         std::vector<assets::asset_diagnostic> diagnostics;
         if (authored.value().migrated)
@@ -102,6 +173,11 @@ public:
 
         render::material_compiled_program program;
         std::vector<render::shader_parameter_descriptor> parameters;
+        render::tools::material_evaluator_source evaluator;
+        bool has_compiled_evaluator{};
+        bool handwritten{};
+        std::filesystem::path custom_shader_path;
+
         if (!authored.value().graph_json.empty())
         {
             auto compiled_graph = render::tools::compile_material_graph_json(authored.value().graph_json);
@@ -111,14 +187,54 @@ public:
                                   .path = context.source.source_path,
                                   .message = compiled_graph.error().message}};
 
-            parameters = compiled_graph.value().descriptor.parameters;
+            auto generated_evaluator = render::tools::make_graph_material_evaluator(compiled_graph.value());
+            if (!generated_evaluator)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = context.source.source_path,
+                                  .message = generated_evaluator.error().message}};
+            evaluator = std::move(generated_evaluator).value();
+            parameters = evaluator.parameters;
             std::uint32_t parameter_block_size{};
             for (auto& parameter : parameters)
             {
                 parameter.offset = parameter_block_size;
                 parameter_block_size += (parameter.size + 15u) & ~15u;
             }
+            evaluator.parameters = parameters;
+            has_compiled_evaluator = true;
+        }
+        else if (!authored.value().shader_path.empty())
+        {
+            auto custom_source = read_material_shader(context, authored.value().shader_path);
+            if (!custom_source)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = context.source.source_path,
+                                  .message = custom_source.error()}};
+            const auto* dependency = find_material_shader_dependency(context, authored.value().shader_path);
+            custom_shader_path =
+                dependency ? dependency->source_path : std::filesystem::path(authored.value().shader_path);
+            auto custom_evaluator = render::tools::make_custom_material_evaluator(custom_source.value(),
+                                                                                  custom_shader_path.generic_string());
+            if (!custom_evaluator)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = custom_shader_path,
+                                  .message = custom_evaluator.error().message}};
+            evaluator = std::move(custom_evaluator).value();
+            has_compiled_evaluator = true;
+            handwritten = true;
+            diagnostics.push_back({.severity = assets::asset_diagnostic_severity::information,
+                                   .guid = context.asset.guid,
+                                   .category = "material.shader",
+                                   .message = "Compiled handwritten Material Shader '" + authored.value().shader_path +
+                                              "' through Material ABI v" +
+                                              std::to_string(render::material_abi_version)});
+        }
 
+        if (has_compiled_evaluator)
+        {
             const render::material_descriptor pass_material{.domain = authored.value().domain,
                                                             .shading_model = authored.value().shading_model,
                                                             .alpha_mode = authored.value().alpha_mode,
@@ -129,8 +245,7 @@ public:
             {
                 if (!render::material_supports_pass(pass_material, pass)) continue;
 
-                auto generated =
-                    render::tools::generate_material_pass_slang(compiled_graph.value(), pass_material, pass);
+                auto generated = render::tools::generate_material_pass_slang(evaluator, pass_material, pass);
                 if (!generated)
                     return {.error = {.code = assets::asset_error_code::import_failed,
                                       .guid = context.asset.guid,
@@ -139,11 +254,13 @@ public:
 
                 const std::string pass_label{pass_name(pass)};
                 render::shader_compile_request request{
-                    .source_path = context.source.source_path.string() + "." + pass_label + ".generated.slang",
+                    .source_path = handwritten
+                                       ? custom_shader_path.generic_string()
+                                       : context.source.source_path.string() + "." + pass_label + ".generated.slang",
                     .source_override = generated.value().source,
                     .entry_point = generated.value().entry_point,
                     .profile = "spirv_1_5",
-                    .library_version = "arc-material-pass/1",
+                    .library_version = handwritten ? "arc-custom-material/1" : "arc-material-pass/2",
                     .domain = render::shader_domain::surface,
                     .stage = render::shader_stage::fragment,
                     .target = render::shader_target::spirv,
@@ -153,22 +270,42 @@ public:
                     .required_passes = {pass},
                     .generated_line_nodes = generated.value().generated_line_nodes,
                     .generate_debug_information = context.target.configuration != assets::cook_configuration::shipping};
+                if (handwritten && !custom_shader_path.empty())
+                    request.include_directories.push_back(custom_shader_path.parent_path());
+
                 auto compiled = cache_.compile_or_get(compiler_, request);
                 if (!compiled)
                     return {.error = {.code = assets::asset_error_code::import_failed,
                                       .guid = context.asset.guid,
-                                      .path = context.source.source_path,
+                                      .path = handwritten ? custom_shader_path : context.source.source_path,
                                       .message = compile_error_message(compiled.error())}};
 
-                for (const auto& [line, node] : request.generated_line_nodes)
-                    compiled.value().source_map.push_back(
-                        {.generated_line = line,
-                         .source = {.path = context.source.source_path.generic_string(),
-                                    .line = line,
-                                    .graph_node_id = node}});
-                std::ranges::sort(compiled.value().source_map, {}, &render::shader_source_map_entry::generated_line);
-                compiled.value().reflection.parameters = parameters;
-                compiled.value().reflection.parameter_block_size = parameter_block_size;
+                if (handwritten)
+                {
+                    if (parameters.empty())
+                        parameters = compiled.value().reflection.parameters;
+                    else if (!same_parameter_layout(parameters, compiled.value().reflection.parameters))
+                        return {.error = {.code = assets::asset_error_code::import_failed,
+                                          .guid = context.asset.guid,
+                                          .path = custom_shader_path,
+                                          .message = "Material Shader parameter layout differs between render passes"}};
+                }
+                else
+                {
+                    for (const auto& [line, node] : request.generated_line_nodes)
+                        compiled.value().source_map.push_back(
+                            {.generated_line = line,
+                             .source = {.path = context.source.source_path.generic_string(),
+                                        .line = line,
+                                        .graph_node_id = node}});
+                    std::ranges::sort(compiled.value().source_map, {},
+                                      &render::shader_source_map_entry::generated_line);
+                    compiled.value().reflection.parameters = parameters;
+                    std::uint32_t parameter_block_size{};
+                    for (const auto& parameter : parameters)
+                        parameter_block_size = std::max(parameter_block_size, parameter.offset + parameter.size);
+                    compiled.value().reflection.parameter_block_size = parameter_block_size;
+                }
 
                 const auto entry_point =
                     render::make_shader_entry_point_id(request.entry_point, render::shader_stage::fragment);

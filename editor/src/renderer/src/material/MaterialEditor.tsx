@@ -1,11 +1,13 @@
-import { AlertCircle, CheckCircle2, Lock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Code2, Lock } from 'lucide-react';
 
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import { AssetPreviewViewport } from '../assetPreview/AssetPreviewViewport';
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from './MaterialGraphEditor';
+import { materialEditorParameters } from './materialCompiler';
 import { replaceMaterialGraph, useMaterialDocumentState } from './materialDocumentState';
 import { cloneMaterialGraph, type MaterialGraphNode } from './materialGraphTypes';
+import './materialCustomShader.css';
 import './materialEditor.css';
 import './materialWorkspace.css';
 
@@ -20,6 +22,8 @@ const componentLabels = ['X', 'Y', 'Z', 'W'];
 
 export function MaterialEditor({ document }: { document: EditorDocument }) {
   const state = useMaterialDocumentState(document);
+  const customShader = typeof state.asset.shaderPath === 'string' ? state.asset.shaderPath.trim() : '';
+  const parameters = customShader ? [] : materialEditorParameters(state.graph);
   const errors = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
   const warnings = state.compilation.diagnostics.filter((diagnostic) => diagnostic.severity === 'warning');
   const fallbackPreview = state.previewDataUrl ? (
@@ -27,7 +31,13 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   ) : (
     <AssetPreviewPlaceholder
       label={state.previewLoading ? 'Rendering preview…' : 'Material preview'}
-      description={state.previewLoading ? 'Generating the fallback thumbnail.' : 'Save & Compile to render preview.'}
+      description={
+        state.previewLoading
+          ? 'Generating the fallback thumbnail.'
+          : customShader
+            ? 'Save & Reimport to refresh preview.'
+            : 'Save & Compile to render preview.'
+      }
     />
   );
 
@@ -46,7 +56,22 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
 
   return (
     <section className="material-editor">
-      <MaterialGraphEditor document={document} graph={state.graph} />
+      {customShader ? (
+        <section className="material-custom-shader">
+          <Code2 size={30} />
+          <div>
+            <strong>Custom Material Shader</strong>
+            <p>
+              This material implements the Material ABI with handwritten Slang. ARC owns render-pass entry points and
+              composes this evaluator into the same depth, shadow, G-buffer, forward and motion passes as graph
+              materials.
+            </p>
+            <code>{customShader}</code>
+          </div>
+        </section>
+      ) : (
+        <MaterialGraphEditor document={document} graph={state.graph} />
+      )}
 
       <aside className="material-editor-sidebar">
         <AssetPreviewPanel
@@ -69,7 +94,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           <header>
             <div>
               <strong>Parameters</strong>
-              <span>{state.compilation.ir.parameters.length} exposed</span>
+              <span>{customShader ? 'Reflected during cook' : `${parameters.length} exposed`}</span>
             </div>
             {document.readOnly && (
               <span className="material-readonly-badge">
@@ -78,7 +103,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             )}
           </header>
           <div className="material-parameter-list">
-            {state.compilation.ir.parameters.map((parameter) => {
+            {parameters.map((parameter) => {
               const node = state.graph.nodes.find((candidate) => candidate.id === parameter.nodeId);
               if (!node) return null;
               const values = parameterValue(node);
@@ -107,9 +132,11 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 </label>
               );
             })}
-            {!state.compilation.ir.parameters.length && (
+            {!parameters.length && (
               <div className="material-empty-parameters">
-                Expose a Constant or Vector node as a parameter to edit it here.
+                {customShader
+                  ? 'Custom Material Shader parameters are reflected by the material cooker during asset cook.'
+                  : 'Expose a Constant or Vector node as a parameter to edit it here.'}
               </div>
             )}
           </div>
@@ -127,22 +154,34 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
             <dd>{String(state.asset.blendMode ?? 'opaque')}</dd>
             <dt>Shading</dt>
             <dd>{String(state.asset.shadingModel ?? 'standard')}</dd>
-            <dt>Shader</dt>
-            <dd>{String(state.asset.shader ?? 'arc/default_phong')}</dd>
-            <dt>IR</dt>
-            <dd>{state.compilation.ir.expressions.length} expressions</dd>
+            <dt>Implementation</dt>
+            <dd>{customShader ? 'Material Shader' : 'Material Graph'}</dd>
+            <dt>{customShader ? 'Source' : 'Compiler'}</dt>
+            <dd>{customShader || 'Native Material IR'}</dd>
           </dl>
           <div className="material-compile-summary">
-            {errors.length ? <AlertCircle size={13} /> : <CheckCircle2 size={13} />}
+            {customShader ? (
+              <Code2 size={13} />
+            ) : errors.length ? (
+              <AlertCircle size={13} />
+            ) : (
+              <CheckCircle2 size={13} />
+            )}
             <span>
-              {errors.length
-                ? `${errors.length} error${errors.length === 1 ? '' : 's'}`
-                : warnings.length
-                  ? `Compiled with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}`
-                  : 'Graph compiles cleanly'}
+              {customShader
+                ? 'Validated during asset cook'
+                : state.compilation.status === 'compiling'
+                  ? 'Native compiler running…'
+                  : errors.length
+                    ? `${errors.length} error${errors.length === 1 ? '' : 's'}`
+                    : warnings.length
+                      ? `Compiled with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}`
+                      : state.compilation.succeeded
+                        ? 'Native compilation succeeded'
+                        : 'Awaiting native compilation'}
             </span>
           </div>
-          {(errors.length > 0 || warnings.length > 0) && (
+          {!customShader && (errors.length > 0 || warnings.length > 0) && (
             <div className="material-diagnostics">
               {[...errors, ...warnings].map((diagnostic, index) => (
                 <p className={diagnostic.severity} key={`${diagnostic.nodeId ?? 'graph'}-${index}`}>
