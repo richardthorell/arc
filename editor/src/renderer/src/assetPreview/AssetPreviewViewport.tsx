@@ -177,9 +177,9 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
     drag.x = event.clientX;
     drag.y = event.clientY;
     if (orbitX === 0 && orbitY === 0) return;
-    void window.arc.viewport.cameraInput({ viewportId, orbitX, orbitY }).catch((reason) =>
-      setError(reason instanceof Error ? reason.message : String(reason)),
-    );
+    void window.arc.viewport
+      .cameraInput({ viewportId, orbitX, orbitY })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   };
 
   const finishPointer = (event: PointerEvent<HTMLDivElement>) => {
@@ -193,9 +193,9 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
     event.preventDefault();
     const zoom = normalizeViewportWheel(event.deltaY, event.deltaMode);
     if (!zoom) return;
-    void window.arc.viewport.cameraInput({ viewportId, zoom }).catch((reason) =>
-      setError(reason instanceof Error ? reason.message : String(reason)),
-    );
+    void window.arc.viewport
+      .cameraInput({ viewportId, zoom })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   };
 
   if (!normalizedGuid || !streamed || error) {
