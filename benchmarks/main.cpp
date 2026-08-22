@@ -478,7 +478,8 @@ int main(int argc, char** argv)
          [&]
          {
              const auto graph = make_graph();
-             return graph.compile().transitions.size();
+             const auto compiled = graph.compile();
+             return compiled ? compiled.value().transitions.size() : std::size_t{};
          }},
     };
 
