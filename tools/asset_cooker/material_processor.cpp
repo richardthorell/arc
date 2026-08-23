@@ -444,7 +444,8 @@ public:
             evaluator = std::move(generated_evaluator).value();
             if (!apply_authored_advanced_properties(evaluator, document))
             {
-                const std::string message = "Generated Material ABI evaluator could not receive authored advanced properties";
+                const std::string message =
+                    "Generated Material ABI evaluator could not receive authored advanced properties";
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
                                   .path = context.source.source_path,
@@ -580,10 +581,11 @@ public:
                                  .bytes = std::move(bytes).value()});
         }
 
-        auto material_bytes = render::tools::serialize_material_package_v3(
-            {.compiled = std::move(program),
-             .parameters = std::move(parameters),
-             .canonical_document_json = authored.value().canonical_json});
+        render::tools::material_package_v3 material_package{
+            .compiled = std::move(program),
+            .parameters = std::move(parameters),
+            .canonical_document_json = authored.value().canonical_json};
+        auto material_bytes = render::tools::serialize_material_package_v3(material_package);
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatc",
                              .schema = descriptor_.schema,
