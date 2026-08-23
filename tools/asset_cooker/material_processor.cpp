@@ -581,10 +581,9 @@ public:
                                  .bytes = std::move(bytes).value()});
         }
 
-        render::tools::material_package_v3 material_package{
-            .compiled = std::move(program),
-            .parameters = std::move(parameters),
-            .canonical_document_json = authored.value().canonical_json};
+        render::tools::material_package_v3 material_package{.compiled = std::move(program),
+                                                            .parameters = std::move(parameters),
+                                                            .canonical_document_json = authored.value().canonical_json};
         auto material_bytes = render::tools::serialize_material_package_v3(material_package);
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatc",
