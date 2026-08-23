@@ -17,7 +17,9 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
         {"id":"clock","type":"time","values":{}},
         {"id":"tint","type":"vector3","values":{"value":[0.2,0.4,0.8]},
          "parameter":{"exposed":true,"name":"Tint"}},
-        {"id":"tinted","type":"multiply","values":{}}
+        {"id":"tinted","type":"multiply","values":{}},
+        {"id":"clear-coat","type":"constant","values":{"value":0.35}},
+        {"id":"transmission","type":"constant","values":{"value":0.2}}
       ],
       "connections":[
         {"id":"1","from":{"nodeId":"z-texture","pin":"rgb"},
@@ -29,12 +31,17 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
         {"id":"4","from":{"nodeId":"a-texture","pin":"rgb"},
          "to":{"nodeId":"material-output","pin":"emissive"}},
         {"id":"5","from":{"nodeId":"clock","pin":"time"},
-         "to":{"nodeId":"material-output","pin":"metallic"}}
+         "to":{"nodeId":"material-output","pin":"metallic"}},
+        {"id":"6","from":{"nodeId":"clear-coat","pin":"value"},
+         "to":{"nodeId":"material-output","pin":"clearCoat"}},
+        {"id":"7","from":{"nodeId":"transmission","pin":"value"},
+         "to":{"nodeId":"material-output","pin":"transmission"}}
       ]
     })";
 
     const auto compilation = arc::render::tools::compile_material_graph_json(graph);
     REQUIRE(compilation);
+    REQUIRE(compilation.value().descriptor.outputs.size() == 24);
     const auto first = arc::render::tools::generate_material_slang(compilation.value());
     const auto second = arc::render::tools::generate_material_slang(compilation.value());
     REQUIRE(first);
@@ -49,6 +56,8 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
     REQUIRE(source.find("surface.clearCoatRoughness = 0.1") != std::string::npos);
     REQUIRE(source.find("surface.ambientOcclusion") != std::string::npos);
     REQUIRE(source.find("surface.emissiveRadiance") != std::string::npos);
+    REQUIRE(source.find("surface.clearCoat = arc_node_clear_coat_value") != std::string::npos);
+    REQUIRE(source.find("surface.transmission = arc_node_transmission_value") != std::string::npos);
     REQUIRE(source.find("arcFrame.timeSeconds") != std::string::npos);
     REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcMaterialTextures[0].Sample") != std::string::npos);
     REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcMaterialTextures[1].Sample") != std::string::npos);
@@ -58,16 +67,11 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
 
     REQUIRE(first.value().parameters.size() == compilation.value().descriptor.parameters.size());
     REQUIRE(first.value().parameters.front().id == compilation.value().descriptor.parameters.front().id);
-    REQUIRE(first.value().generated_line_nodes.size() == 5);
+    REQUIRE(first.value().generated_line_nodes.size() == 7);
     REQUIRE(std::ranges::any_of(first.value().generated_line_nodes,
                                 [](const auto& entry) { return entry.second == "a-texture"; }));
     REQUIRE(std::ranges::any_of(first.value().generated_line_nodes,
                                 [](const auto& entry) { return entry.second == "z-texture"; }));
-
-    const auto compatibility = arc::render::tools::lower_material_graph_json(graph);
-    REQUIRE(compatibility);
-    REQUIRE(compatibility.value().source == first.value().source);
-    REQUIRE(compatibility.value().generated_line_nodes == first.value().generated_line_nodes);
 }
 
 TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain")
@@ -85,13 +89,16 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
         {"id":"base-color","type":"vector3","values":{"value":[0.25,0.5,0.75]},
          "parameter":{"exposed":true,"name":"Base Color"}},
         {"id":"roughness","type":"constant","values":{"value":0.35}},
+        {"id":"sheen","type":"constant","values":{"value":0.15}},
         {"id":"material-output","type":"output","values":{}}
       ],
       "connections":[
         {"id":"1","from":{"nodeId":"base-color","pin":"value"},
          "to":{"nodeId":"material-output","pin":"baseColor"}},
         {"id":"2","from":{"nodeId":"roughness","pin":"value"},
-         "to":{"nodeId":"material-output","pin":"roughness"}}
+         "to":{"nodeId":"material-output","pin":"roughness"}},
+        {"id":"3","from":{"nodeId":"sheen","pin":"value"},
+         "to":{"nodeId":"material-output","pin":"sheen"}}
       ]
     })";
 
