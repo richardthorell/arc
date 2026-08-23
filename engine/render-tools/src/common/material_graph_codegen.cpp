@@ -446,8 +446,9 @@ private:
                 break;
             }
             case material_ir_node_kind::normal_map:
-                expression = "normalize(lerp(float3(0.0,0.0,1.0)," + input(node.id, "texture", "float3(0.5,0.5,1.0)") +
-                             "*2.0-1.0," + number(node.strength) + "))";
+                expression = "normalize(lerp(float3(0.0,0.0,1.0)," +
+                             input(node.id, "texture", "float3(0.5,0.5,1.0)") + "*2.0-1.0," + number(node.strength) +
+                             "))";
                 break;
             case material_ir_node_kind::saturate:
                 expression = "saturate(" + input(node.id, "value", "0.0") + ')';
@@ -649,13 +650,29 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         const auto metallic = expressions.output(material_surface_output::metallic, {});
         const auto roughness = expressions.output(material_surface_output::roughness, {});
         const auto normal = expressions.output(material_surface_output::normal, {});
+        const auto clear_coat_normal = expressions.output(material_surface_output::clear_coat_normal, {});
+        const auto tangent = expressions.output(material_surface_output::tangent, {});
         const auto ambient_occlusion = expressions.output(material_surface_output::ambient_occlusion, {});
         const auto emissive = expressions.output(material_surface_output::emissive, {});
         const auto opacity = expressions.output(material_surface_output::opacity, {});
         const auto alpha_cutoff = expressions.output(material_surface_output::alpha_cutoff, {});
+        const auto index_of_refraction = expressions.output(material_surface_output::index_of_refraction, {});
+        const auto clear_coat = expressions.output(material_surface_output::clear_coat, {});
+        const auto clear_coat_roughness = expressions.output(material_surface_output::clear_coat_roughness, {});
+        const auto sheen = expressions.output(material_surface_output::sheen, {});
+        const auto sheen_color = expressions.output(material_surface_output::sheen_color, {});
+        const auto sheen_roughness = expressions.output(material_surface_output::sheen_roughness, {});
+        const auto anisotropy = expressions.output(material_surface_output::anisotropy, {});
+        const auto anisotropy_rotation = expressions.output(material_surface_output::anisotropy_rotation, {});
+        const auto transmission = expressions.output(material_surface_output::transmission, {});
+        const auto thickness = expressions.output(material_surface_output::thickness, {});
+        const auto attenuation_color = expressions.output(material_surface_output::attenuation_color, {});
+        const auto attenuation_distance = expressions.output(material_surface_output::attenuation_distance, {});
+        const auto subsurface_color = expressions.output(material_surface_output::subsurface_color, {});
+        const auto subsurface = expressions.output(material_surface_output::subsurface, {});
 
         source_builder source{generated};
-        source.append("// ARC generated Material IR v1; Material ABI v1; codegen v2.");
+        source.append("// ARC generated Material IR v1; Material ABI v1; codegen v3.");
         append_material_abi(source);
 
         const auto has_material_parameters =
@@ -696,10 +713,30 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         if (!metallic.empty()) source.append("    surface.metallic = " + metallic + ';');
         if (!roughness.empty()) source.append("    surface.roughness = " + roughness + ';');
         if (!normal.empty()) source.append("    surface.normalWS = " + normal + ';');
+        if (!clear_coat_normal.empty()) source.append("    surface.clearCoatNormalWS = " + clear_coat_normal + ';');
+        if (!tangent.empty()) source.append("    surface.tangentWS = " + tangent + ';');
         if (!ambient_occlusion.empty()) source.append("    surface.ambientOcclusion = " + ambient_occlusion + ';');
         if (!emissive.empty()) source.append("    surface.emissiveRadiance = " + emissive + ';');
         if (!opacity.empty()) source.append("    surface.opacity = " + opacity + ';');
         if (!alpha_cutoff.empty()) source.append("    surface.alphaCutoff = " + alpha_cutoff + ';');
+        if (!index_of_refraction.empty())
+            source.append("    surface.indexOfRefraction = " + index_of_refraction + ';');
+        if (!clear_coat.empty()) source.append("    surface.clearCoat = " + clear_coat + ';');
+        if (!clear_coat_roughness.empty())
+            source.append("    surface.clearCoatRoughness = " + clear_coat_roughness + ';');
+        if (!sheen.empty()) source.append("    surface.sheen = " + sheen + ';');
+        if (!sheen_color.empty()) source.append("    surface.sheenColor = " + sheen_color + ';');
+        if (!sheen_roughness.empty()) source.append("    surface.sheenRoughness = " + sheen_roughness + ';');
+        if (!anisotropy.empty()) source.append("    surface.anisotropy = " + anisotropy + ';');
+        if (!anisotropy_rotation.empty())
+            source.append("    surface.anisotropyRotation = " + anisotropy_rotation + ';');
+        if (!transmission.empty()) source.append("    surface.transmission = " + transmission + ';');
+        if (!thickness.empty()) source.append("    surface.thickness = " + thickness + ';');
+        if (!attenuation_color.empty()) source.append("    surface.attenuationColor = " + attenuation_color + ';');
+        if (!attenuation_distance.empty())
+            source.append("    surface.attenuationDistance = " + attenuation_distance + ';');
+        if (!subsurface_color.empty()) source.append("    surface.subsurfaceColor = " + subsurface_color + ';');
+        if (!subsurface.empty()) source.append("    surface.subsurface = " + subsurface + ';');
         source.append("    return surface;");
         source.append("}");
 
