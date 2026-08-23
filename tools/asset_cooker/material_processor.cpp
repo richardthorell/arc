@@ -8,7 +8,6 @@
 #include <array>
 #include <cstdint>
 #include <fstream>
-#include <iomanip>
 #include <map>
 #include <memory>
 #include <set>
@@ -244,105 +243,33 @@ bool same_parameter_layout(const std::vector<render::shader_parameter_descriptor
     return true;
 }
 
-float json_float(const json& object, std::string_view key, float fallback)
+render::material_descriptor authored_pass_material(const render::tools::material_authoring_document& authored)
 {
-    const auto found = object.find(std::string(key));
-    return found != object.end() && found->is_number() ? found->get<float>() : fallback;
+    return {.domain = authored.domain,
+            .shading_model = authored.shading_model,
+            .alpha_mode = authored.alpha_mode,
+            .double_sided = authored.double_sided};
 }
 
-math::vector3f json_vec3(const json& object, std::string_view key, const math::vector3f& fallback)
+bool graph_output_connected(const render::tools::material_graph_descriptor& graph,
+                            render::tools::material_surface_output output) noexcept
 {
-    const auto found = object.find(std::string(key));
-    if (found == object.end() || !found->is_object()) return fallback;
-    return {json_float(*found, "r", fallback[0]), json_float(*found, "g", fallback[1]),
-            json_float(*found, "b", fallback[2])};
+    const auto binding = std::ranges::find(graph.outputs, output, &render::tools::material_surface_output_binding::output);
+    return binding != graph.outputs.end() && binding->connected;
 }
 
-std::string slang_number(float value)
+void apply_graph_render_features(render::material_descriptor& material,
+                                 const render::tools::material_graph_descriptor& graph) noexcept
 {
-    std::ostringstream output;
-    output << std::setprecision(9) << value;
-    auto text = output.str();
-    if (text.find_first_of(".eE") == std::string::npos) text += ".0";
-    return text;
-}
-
-std::string slang_vec3(const math::vector3f& value)
-{
-    return "float3(" + slang_number(value[0]) + ',' + slang_number(value[1]) + ',' + slang_number(value[2]) + ')';
-}
-
-render::material_descriptor authored_pass_material(const render::tools::material_authoring_document& authored,
-                                                   const json& document)
-{
-    render::material_descriptor material{.domain = authored.domain,
-                                         .shading_model = authored.shading_model,
-                                         .alpha_mode = authored.alpha_mode,
-                                         .double_sided = authored.double_sided};
-    const auto advanced = document.value("advanced", json::object());
-    if (!advanced.is_object()) return material;
-    material.clear_coat_factor = json_float(advanced, "clearCoat", 0.0f);
-    material.clear_coat_roughness = json_float(advanced, "clearCoatRoughness", 0.0f);
-    material.sheen_factor = json_float(advanced, "sheen", 0.0f);
-    material.transmission_factor = json_float(advanced, "transmission", 0.0f);
-    material.index_of_refraction = json_float(advanced, "indexOfRefraction", 1.5f);
-    material.thickness_factor = json_float(advanced, "thickness", 0.0f);
-    material.attenuation_color = json_vec3(advanced, "attenuationColor", math::vector3f::one);
-    material.attenuation_distance = json_float(advanced, "attenuationDistance", 1.0f);
-    material.subsurface_factor = json_float(advanced, "subsurface", 0.0f);
-    material.subsurface_color = json_vec3(advanced, "subsurfaceColor", {1.0f, 0.35f, 0.2f});
-    material.anisotropy_factor = json_float(advanced, "anisotropy", 0.0f);
-    material.anisotropy_rotation = json_float(advanced, "anisotropyRotation", 0.0f);
-    material.parallax_height_scale = json_float(advanced, "parallaxHeightScale", 0.0f);
-    if (material.parallax_height_scale != 0.0f)
-        material.displacement_mode = render::material_displacement_mode::parallax;
-    return material;
-}
-
-bool apply_authored_advanced_properties(render::tools::material_evaluator_source& evaluator, const json& document)
-{
-    const auto advanced = document.value("advanced", json::object());
-    if (!advanced.is_object()) return true;
-
-    const auto evaluator_begin = evaluator.source.find("ArcSurfaceData arc_evaluate_material");
-    if (evaluator_begin == std::string::npos) return false;
-    const auto return_position = evaluator.source.find("    return surface;\n", evaluator_begin);
-    if (return_position == std::string::npos) return false;
-
-    std::string assignments;
-    const auto append_scalar = [&](std::string_view field, std::string_view key, float fallback)
-    {
-        assignments += "    surface.";
-        assignments += field;
-        assignments += " = ";
-        assignments += slang_number(json_float(advanced, key, fallback));
-        assignments += ";\n";
-    };
-    const auto append_vec3 = [&](std::string_view field, std::string_view key, const math::vector3f& fallback)
-    {
-        assignments += "    surface.";
-        assignments += field;
-        assignments += " = ";
-        assignments += slang_vec3(json_vec3(advanced, key, fallback));
-        assignments += ";\n";
-    };
-
-    append_scalar("clearCoat", "clearCoat", 0.0f);
-    append_scalar("clearCoatRoughness", "clearCoatRoughness", 0.1f);
-    append_scalar("sheen", "sheen", 0.0f);
-    append_vec3("sheenColor", "sheenColor", {});
-    append_scalar("sheenRoughness", "sheenRoughness", 0.5f);
-    append_scalar("anisotropy", "anisotropy", 0.0f);
-    append_scalar("anisotropyRotation", "anisotropyRotation", 0.0f);
-    append_scalar("transmission", "transmission", 0.0f);
-    append_scalar("indexOfRefraction", "indexOfRefraction", 1.5f);
-    append_scalar("thickness", "thickness", 0.0f);
-    append_vec3("attenuationColor", "attenuationColor", math::vector3f::one);
-    append_scalar("attenuationDistance", "attenuationDistance", 1.0f);
-    append_vec3("subsurfaceColor", "subsurfaceColor", {1.0f, 0.35f, 0.2f});
-    append_scalar("subsurface", "subsurface", 0.0f);
-    evaluator.source.insert(return_position, assignments);
-    return true;
+    material.clear_coat_factor =
+        graph_output_connected(graph, render::tools::material_surface_output::clear_coat) ? 1.0f : 0.0f;
+    material.sheen_factor = graph_output_connected(graph, render::tools::material_surface_output::sheen) ? 1.0f : 0.0f;
+    material.transmission_factor =
+        graph_output_connected(graph, render::tools::material_surface_output::transmission) ? 1.0f : 0.0f;
+    material.subsurface_factor =
+        graph_output_connected(graph, render::tools::material_surface_output::subsurface) ? 1.0f : 0.0f;
+    material.anisotropy_factor =
+        graph_output_connected(graph, render::tools::material_surface_output::anisotropy) ? 1.0f : 0.0f;
 }
 
 class material_processor final : public assets::asset_cook_processor
@@ -353,7 +280,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 8;
+        descriptor_.version = 9;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
@@ -365,9 +292,9 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/8;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
-               "arc-material-codegen/2;arc-material-function/1;arc-material-pass-contract/1;"
-               "arc-material-pass-codegen/2;arc-custom-material-shader/1;arc-authored-advanced/1;" +
+        return "arc.material-cooker/9;arc-material-package/3;arc-material-authoring/4;arc-material-ir/1;"
+               "arc-material-codegen/3;arc-material-function/1;arc-material-pass-contract/1;"
+               "arc-material-pass-codegen/2;arc-custom-material-shader/1;" +
                std::string(compiler_.fingerprint());
     }
 
@@ -404,18 +331,12 @@ public:
                               .path = context.source.source_path,
                               .message = authored.error().message}};
 
-        const auto document = json::parse(authored.value().canonical_json, nullptr, false);
-        if (!document.is_object())
-            return {.error = {.code = assets::asset_error_code::import_failed,
-                              .guid = context.asset.guid,
-                              .path = context.source.source_path,
-                              .message = "Canonical material document is invalid"}};
-
         std::vector<assets::cooked_artifact> artifacts;
         std::vector<assets::asset_diagnostic> diagnostics;
         render::material_compiled_program program;
         std::vector<render::shader_parameter_descriptor> parameters;
         render::tools::material_evaluator_source evaluator;
+        auto pass_material = authored_pass_material(authored.value());
         bool handwritten{};
         std::filesystem::path custom_shader_path;
 
@@ -435,6 +356,7 @@ public:
                                   .path = context.source.source_path,
                                   .message = compiled_graph.error().message}};
 
+            apply_graph_render_features(pass_material, compiled_graph.value().descriptor);
             auto generated_evaluator = render::tools::make_graph_material_evaluator(compiled_graph.value());
             if (!generated_evaluator)
                 return {.error = {.code = assets::asset_error_code::import_failed,
@@ -442,15 +364,6 @@ public:
                                   .path = context.source.source_path,
                                   .message = generated_evaluator.error().message}};
             evaluator = std::move(generated_evaluator).value();
-            if (!apply_authored_advanced_properties(evaluator, document))
-            {
-                const std::string message =
-                    "Generated Material ABI evaluator could not receive authored advanced properties";
-                return {.error = {.code = assets::asset_error_code::import_failed,
-                                  .guid = context.asset.guid,
-                                  .path = context.source.source_path,
-                                  .message = message}};
-            }
             parameters = evaluator.parameters;
             std::uint32_t parameter_block_size{};
             for (auto& parameter : parameters)
@@ -480,6 +393,7 @@ public:
                                   .message = custom_evaluator.error().message}};
             evaluator = std::move(custom_evaluator).value();
             handwritten = true;
+            pass_material.deferred_compatible = false;
             diagnostics.push_back({.severity = assets::asset_diagnostic_severity::information,
                                    .guid = context.asset.guid,
                                    .category = "material.shader",
@@ -488,7 +402,6 @@ public:
                                               std::to_string(render::material_abi_version)});
         }
 
-        const auto pass_material = authored_pass_material(authored.value(), document);
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
         for (const auto pass : material_passes)
