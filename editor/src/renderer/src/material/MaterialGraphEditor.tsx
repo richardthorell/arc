@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Plus, Search, Trash2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
+import { UiButton, UiContextMenu, UiContextMenuItem, UiNodeCard, UiTextInput } from '../ui';
 import {
   cloneMaterialGraph,
   createMaterialNode,
@@ -401,8 +402,10 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
 
   return (
     <div
+      aria-label="Material graph"
       className={`material-graph-canvas ${document.readOnly ? 'read-only' : ''}`}
       ref={canvasRef}
+      role="application"
       tabIndex={0}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -443,7 +446,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
       }}
     >
       <div className="material-graph-canvas-actions">
-        <button
+        <UiButton
           disabled={document.readOnly}
           onClick={() => {
             const rect = canvasRef.current?.getBoundingClientRect();
@@ -451,15 +454,16 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
             const screen: [number, number] = [24, 48];
             setAddMenu({ screen, graph: graphPoint(rect.left + screen[0], rect.top + screen[1]) });
           }}
+          variant="ghost"
         >
           <Plus size={13} /> Add Node
-        </button>
-        <button disabled={!selectedNodes.size} onClick={copySelected}>
+        </UiButton>
+        <UiButton disabled={!selectedNodes.size} onClick={copySelected} variant="ghost">
           <Copy size={13} /> Copy
-        </button>
-        <button disabled={document.readOnly || !selectedNodes.size} onClick={deleteSelected}>
+        </UiButton>
+        <UiButton disabled={document.readOnly || !selectedNodes.size} onClick={deleteSelected} variant="ghost">
           <Trash2 size={13} /> Delete
-        </button>
+        </UiButton>
         <span>{Math.round(viewport.zoom * 100)}%</span>
       </div>
 
@@ -475,11 +479,16 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
           const definition = materialNodeDefinitions[node.type];
           const selected = selectedNodes.has(node.id);
           return (
-            <article
-              className={`material-graph-node material-graph-node-${node.type} ${selected ? 'selected' : ''}`}
+            <UiNodeCard
+              badge={node.parameter?.exposed ? 'P' : undefined}
+              badgeTitle={node.parameter?.exposed ? `Parameter: ${node.parameter.name}` : undefined}
+              className={`material-graph-node material-graph-node-${node.type}`}
               data-node-id={node.id}
+              heading={definition.title}
               key={node.id}
+              selected={selected}
               style={{ left: node.position[0], top: node.position[1], width: nodeWidth }}
+              tone={node.type === 'output' ? 'accent' : 'default'}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
                 event.stopPropagation();
@@ -493,24 +502,18 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                   });
                 }
               }}
+              onHeaderPointerDown={(event) => {
+                if (document.readOnly || event.button !== 0) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const selection = selected ? selectedNodes : new Set([node.id]);
+                if (!selected) setSelectedNodes(selection);
+                const origins = new Map<string, [number, number]>();
+                for (const candidate of graph.nodes)
+                  if (selection.has(candidate.id)) origins.set(candidate.id, [...candidate.position]);
+                setDrag({ start: graphPoint(event.clientX, event.clientY), nodes: origins });
+              }}
             >
-              <header
-                onPointerDown={(event) => {
-                  if (document.readOnly || event.button !== 0) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const selection = selected ? selectedNodes : new Set([node.id]);
-                  if (!selected) setSelectedNodes(selection);
-                  const origins = new Map<string, [number, number]>();
-                  for (const candidate of graph.nodes)
-                    if (selection.has(candidate.id)) origins.set(candidate.id, [...candidate.position]);
-                  setDrag({ start: graphPoint(event.clientX, event.clientY), nodes: origins });
-                }}
-              >
-                <strong>{definition.title}</strong>
-                {node.parameter?.exposed && <span title={`Parameter: ${node.parameter.name}`}>P</span>}
-              </header>
-
               <div className="material-node-pins">
                 <div className="material-node-inputs">
                   {definition.inputs.map((pin) => {
@@ -604,7 +607,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                   )}
                 </label>
               )}
-            </article>
+            </UiNodeCard>
           );
         })}
       </div>
@@ -622,10 +625,18 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
       )}
 
       {addMenu && (
-        <div className="material-node-menu" style={{ left: addMenu.screen[0], top: addMenu.screen[1] }}>
-          <label>
+        <UiContextMenu
+          aria-label="Add material node"
+          className="material-node-menu"
+          maxHeight={420}
+          width={280}
+          x={addMenu.screen[0]}
+          y={addMenu.screen[1]}
+        >
+          <div className="material-node-menu-search">
             <Search size={13} />
-            <input
+            <UiTextInput
+              aria-label="Search material nodes"
               autoFocus
               placeholder="Search nodes"
               value={nodeSearch}
@@ -635,16 +646,19 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                 else if (event.key === 'Enter' && availableNodes[0]) addNode(availableNodes[0].type);
               }}
             />
-          </label>
-          <div>
+          </div>
+          <div className="material-node-menu-items">
             {availableNodes.map((definition) => (
-              <button key={definition.type} onClick={() => addNode(definition.type)}>
+              <UiContextMenuItem
+                key={definition.type}
+                onClick={() => addNode(definition.type)}
+                trailing={<small>{definition.category}</small>}
+              >
                 <strong>{definition.title}</strong>
-                <small>{definition.category}</small>
-              </button>
+              </UiContextMenuItem>
             ))}
           </div>
-        </div>
+        </UiContextMenu>
       )}
     </div>
   );
