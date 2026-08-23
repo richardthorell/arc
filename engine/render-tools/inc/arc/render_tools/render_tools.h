@@ -27,19 +27,6 @@ struct slang_compiler_config
     bool require_pinned_version{true};
 };
 
-/** @brief Compatibility name for Material IR generated shader source. */
-using material_graph_lowering = material_shader_source;
-using material_graph_lowering_result = material_shader_codegen_result;
-
-/**
- * @brief Validate and deterministically lower authored ARC material graph JSON to Slang.
- *
- * This compatibility entry point is now strictly `JSON -> Material IR -> Slang`. It remains for
- * editor/tool callers while the native compiler API is adopted directly; there is no independent
- * JSON-to-shader implementation behind it.
- */
-[[nodiscard]] material_graph_lowering_result lower_material_graph_json(std::string_view graph_json);
-
 /**
  * @brief Slang compiler adapter used by editor and cooker processes.
  *
