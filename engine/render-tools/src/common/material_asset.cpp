@@ -171,9 +171,7 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
              .message = has_graph ? "Material must use either a graph or shaderPath, not both"
                                   : "Material must provide a compiled graph or shaderPath"});
 
-    return material_authoring_result::success({.source_version = material_authoring_version,
-                                               .version = material_authoring_version,
-                                               .migrated = false,
+    return material_authoring_result::success({.version = material_authoring_version,
                                                .canonical_json = document.dump(),
                                                .graph_json = std::move(graph_json),
                                                .shader_path = std::move(shader_path),
