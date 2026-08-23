@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { buildAssetCreation } from '../content/assetCreation';
 import { openAssetEditorDocument } from '../editors/editorRegistry';
+import { MaterialParameterSubsection } from './MaterialParameterSubsection';
 
 export type AssetPickerItem = {
   id: string;
@@ -349,14 +350,22 @@ export function MaterialPicker(
   };
 
   return (
-    <AssetPicker
-      {...props}
-      assetKinds={['material']}
-      assetTypeLabel="Material"
-      createNewLabel="Create New Material…"
-      onCreateNew={createMaterial}
-      onOpen={openMaterial}
-    />
+    <>
+      <AssetPicker
+        {...props}
+        assetKinds={['material']}
+        assetTypeLabel="Material"
+        createNewLabel="Create New Material…"
+        onCreateNew={createMaterial}
+        onOpen={openMaterial}
+      />
+      <MaterialParameterSubsection
+        assets={props.assets}
+        mixed={props.mixed}
+        referenceMode={props.referenceMode}
+        value={props.value}
+      />
+    </>
   );
 }
 
