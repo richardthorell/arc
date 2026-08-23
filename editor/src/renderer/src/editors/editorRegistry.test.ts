@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { FileText } from 'lucide-react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AssetItem } from '../services/editorHostTypes';
 import { getEditorDocumentsSnapshot, resetEditorDocuments } from './editorDocuments';
@@ -38,7 +39,10 @@ const material: AssetItem = {
   readOnly: false,
 };
 
-afterEach(resetEditorDocuments);
+afterEach(() => {
+  resetEditorDocuments();
+  vi.restoreAllMocks();
+});
 
 describe('editor registry asset routing', () => {
   it('maps shader assets to multi-document shader editors', () => {
@@ -135,5 +139,50 @@ describe('editor registry asset routing', () => {
     const state = getEditorDocumentsSnapshot();
     expect(state.documents.map((document) => document.id)).toEqual(['material:material-guid', 'material:water']);
     expect(state.activeDocumentId).toBe('material:material-guid');
+  });
+
+  it('waits for a newly-authored material to receive its native GUID before opening it', async () => {
+    const query = vi.fn().mockResolvedValue({
+      succeeded: true,
+      payload: {
+        assets: [
+          {
+            guid: 'registered-material-guid',
+            path: 'Content/Materials/New Material.arcmat',
+            scope: 'project',
+            readOnly: false,
+            state: 'ready',
+          },
+        ],
+      },
+    });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: { host: { query } },
+    });
+
+    expect(
+      openAssetEditorDocument(
+        {
+          id: 'Content/Materials/New Material.arcmat',
+          name: 'New Material.arcmat',
+          path: 'Content/Materials/New Material.arcmat',
+          scope: 'project',
+          kind: 'material',
+          status: 'ready',
+        },
+        registry,
+      ),
+    ).toBe(true);
+    expect(getEditorDocumentsSnapshot().documents).toHaveLength(0);
+
+    await vi.waitFor(() => {
+      expect(getEditorDocumentsSnapshot().activeDocumentId).toBe('material:registered-material-guid');
+    });
+    expect(query).toHaveBeenCalledWith('project.assets');
+    expect(getEditorDocumentsSnapshot().documents[0]).toMatchObject({
+      assetGuid: 'registered-material-guid',
+      path: 'Content/Materials/New Material.arcmat',
+    });
   });
 });
