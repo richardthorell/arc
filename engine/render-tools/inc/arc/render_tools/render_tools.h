@@ -20,6 +20,23 @@ namespace arc::render::tools
 /** @brief Exact Slang release accepted by ARC's production shader pipeline. */
 inline constexpr std::string_view pinned_slang_version = "2026.14.1";
 
+/** @brief Generated shader source returned to editor/tool callers after native Material IR compilation. */
+using material_graph_lowering_result = material_shader_codegen_result;
+
+/**
+ * @brief Compile authored graph JSON through the native Material IR pipeline and generate Slang.
+ *
+ * This remains a thin tools-facing bridge for callers that need generated source in one step. There
+ * is no separate legacy graph compiler behind it: all validation and normalization are performed by
+ * `compile_material_graph_json`, followed by the current Material IR code generator.
+ */
+[[nodiscard]] inline material_graph_lowering_result lower_material_graph_json(std::string_view graph_json)
+{
+    auto compilation = compile_material_graph_json(graph_json);
+    if (!compilation) return material_graph_lowering_result::failure(compilation.error());
+    return generate_material_slang(compilation.value());
+}
+
 /** @brief Configuration for the tools-only Slang command-line adapter. */
 struct slang_compiler_config
 {
