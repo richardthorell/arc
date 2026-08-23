@@ -1,6 +1,9 @@
 name: Apply Material Graph UI
 
 on:
+  push:
+    branches:
+      - polish/material-graph-ui
   pull_request:
     types: [opened, reopened, synchronize]
 
@@ -9,12 +12,12 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'polish/material-graph-ui'
+    if: github.ref_name == 'polish/material-graph-ui' || github.head_ref == 'polish/material-graph-ui'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: polish/material-graph-ui
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Apply material graph refactor
         shell: bash
@@ -410,16 +413,15 @@ jobs:
               index_text += "export { UiNodeCard } from './UiNodeCard';\n"
           index.write_text(index_text)
           PY
-      - name: Remove one-shot workflow
-        run: rm .github/workflows/apply-material-graph-ui.yml
+      - name: Remove one-shot workflow and branch trigger
+        run: |
+          rm .github/workflows/apply-material-graph-ui.yml
+          rm -f .tmp-pr-trigger
       - name: Commit result
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add editor/src/renderer/src/material/MaterialGraphEditor.tsx \
-                  editor/src/renderer/src/material/materialEditor.css \
-                  editor/src/renderer/src/ui/index.ts \
-                  .github/workflows/apply-material-graph-ui.yml
+          git add -A
           git commit -m "refactor(editor): use shared material graph UI primitives"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:polish/material-graph-ui
