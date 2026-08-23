@@ -69,11 +69,14 @@ export function MaterialParameterSubsection({
       ),
     [assets, referenceMode, value],
   );
+  const materialPath = selected?.path ?? (referenceMode === 'path' && /\.arcmat$/i.test(value) ? value : '');
+  const materialScope = selected?.scope === 'builtin' ? 'builtin' : 'project';
+  const procedural = selected?.scope === 'procedural';
   const [state, setState] = useState<ParameterState>(emptyState);
 
   useEffect(() => {
     let active = true;
-    if (!value || mixed || !selected || selected.scope === 'procedural') {
+    if (!value || mixed || !materialPath || procedural) {
       setState(emptyState);
       return () => {
         active = false;
@@ -83,10 +86,7 @@ export function MaterialParameterSubsection({
     setState({ status: 'loading', parameters: [] });
     void (async () => {
       try {
-        const file = await window.arc.projects.readText(
-          selected.path,
-          selected.scope === 'builtin' ? 'builtin' : 'project',
-        );
+        const file = await window.arc.projects.readText(materialPath, materialScope);
         if (!active) return;
         const asset = JSON.parse(file.text) as MaterialAssetJson;
         const customShader = typeof asset.shaderPath === 'string' ? asset.shaderPath.trim() : '';
@@ -112,9 +112,9 @@ export function MaterialParameterSubsection({
     return () => {
       active = false;
     };
-  }, [mixed, selected, value]);
+  }, [materialPath, materialScope, mixed, procedural, value]);
 
-  if (!value || mixed || !selected || selected.scope === 'procedural') return null;
+  if (!value || mixed || !materialPath || procedural) return null;
 
   const summary =
     state.status === 'loading'
