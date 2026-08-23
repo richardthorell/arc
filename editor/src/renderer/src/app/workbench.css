@@ -892,27 +892,53 @@
 
 .content-browser-v2 {
   display: grid;
-  grid-template-columns: 190px minmax(320px, 1fr) minmax(0, 0fr);
+  grid-template-columns: var(--content-tree-width, 190px) 5px minmax(320px, 1fr) minmax(0, 0fr);
   height: 100%;
   min-height: 0;
   background: #111820;
-  transition: grid-template-columns 140ms ease;
 }
 
 .content-browser-v2:has(.content-asset-details) {
-  grid-template-columns: 190px minmax(320px, 1fr) 240px;
+  grid-template-columns: var(--content-tree-width, 190px) 5px minmax(320px, 1fr) 240px;
 }
 
 .content-folder-tree,
 .content-asset-details {
   min-width: 0;
   overflow: auto;
-  border-right: 1px solid #2a3540;
   background: linear-gradient(180deg, #19232c, #121920);
 }
 
 .content-folder-tree {
   padding: 8px 5px;
+}
+
+.content-folder-resizer {
+  position: relative;
+  z-index: 5;
+  width: 5px;
+  min-width: 5px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: #111820;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.content-folder-resizer::before {
+  position: absolute;
+  inset: 0 auto 0 2px;
+  width: 1px;
+  background: #2a3540;
+  content: '';
+  transition: background 90ms ease;
+}
+
+.content-folder-resizer:hover::before,
+.content-folder-resizer:focus-visible::before {
+  background: var(--arc-color-accent);
 }
 
 .content-folder-tree button {
@@ -944,16 +970,15 @@
 .content-browser-v2-toolbar {
   display: flex;
   align-items: center;
+  position: relative;
+  z-index: 20;
   gap: 5px;
   padding: 0 7px;
-  overflow: hidden;
+  overflow: visible;
   border-bottom: 1px solid #2a3540;
   background: #18212a;
 }
 
-.content-browser-v2-toolbar button,
-.content-browser-v2-toolbar select,
-.content-browser-v2-toolbar input,
 .content-asset-details > button {
   min-height: 26px;
   border: 1px solid #32404d;
@@ -962,14 +987,9 @@
   background: #111920;
 }
 
-.content-browser-v2-toolbar button.active {
-  border-color: #378bd0;
-  background: #1d4d75;
-}
-
 .content-browser-v2-toolbar nav,
 .content-browser-v2-toolbar nav span,
-.content-browser-v2-toolbar label {
+.content-browser-search {
   display: flex;
   align-items: center;
 }
@@ -980,24 +1000,47 @@
   overflow: hidden;
 }
 
-.content-browser-v2-toolbar nav button {
-  border: 0;
-  background: transparent;
+.content-browser-v2-toolbar nav .ui-button {
+  flex: 0 0 auto;
+  height: var(--arc-button-height);
+  padding-inline: var(--arc-space-3);
   white-space: nowrap;
 }
 
-.content-browser-v2-toolbar label {
-  gap: 5px;
-  padding-left: 7px;
-  border: 1px solid #32404d;
-  border-radius: 3px;
-  background: #0f171e;
+.content-browser-search {
+  position: relative;
+  flex: 0 1 230px;
+  min-width: 150px;
 }
 
-.content-browser-v2-toolbar label input {
-  width: 130px;
-  border: 0;
-  outline: 0;
+.content-browser-search > svg {
+  position: absolute;
+  z-index: 1;
+  left: 10px;
+  color: var(--arc-color-text-dim);
+  pointer-events: none;
+}
+
+.content-browser-search .ui-search-input {
+  width: 100%;
+}
+
+.content-toolbar-select {
+  flex: 0 0 auto;
+}
+
+.content-toolbar-select-type,
+.content-toolbar-select-state {
+  width: 108px;
+}
+
+.content-toolbar-select-sort {
+  width: 92px;
+}
+
+.content-browser-v2-toolbar > .ui-button,
+.content-create-wrap > .ui-button {
+  flex: 0 0 auto;
 }
 
 .content-assets {

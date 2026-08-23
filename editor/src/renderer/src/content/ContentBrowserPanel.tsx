@@ -7,7 +7,7 @@ import { openAssetEditorDocument } from '../editors/editorRegistry';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
-import { UiTreeRow } from '../ui';
+import { UiButton, UiIconButton, UiSearchInput, UiSelect, UiTreeRow } from '../ui';
 import {
   buildAssetCreation,
   projectAssetRootPath,
@@ -60,6 +60,37 @@ const assetPayload = (asset: AssetItem) =>
 const normalizedPath = (path: string) => cleanPath(path).toLocaleLowerCase();
 const favoriteId = (asset: AssetItem) => asset.guid ?? asset.path;
 const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;
+const contentTreeWidthStorageKey = 'arc.content.treeWidth';
+const defaultContentTreeWidth = 190;
+const minContentTreeWidth = 140;
+const maxContentTreeWidth = 420;
+const clampContentTreeWidth = (value: number) => Math.min(maxContentTreeWidth, Math.max(minContentTreeWidth, value));
+const readContentTreeWidth = () => {
+  const stored = Number.parseInt(localStorage.getItem(contentTreeWidthStorageKey) ?? '', 10);
+  return Number.isFinite(stored) ? clampContentTreeWidth(stored) : defaultContentTreeWidth;
+};
+const assetTypeOptions = [
+  { value: 'all', label: 'All types' },
+  { value: 'scene', label: 'Scene' },
+  { value: 'mesh', label: 'Mesh' },
+  { value: 'material', label: 'Material' },
+  { value: 'texture', label: 'Texture' },
+  { value: 'shader', label: 'Shader' },
+  { value: 'prefab', label: 'Prefab' },
+];
+const assetStateOptions = [
+  { value: 'all', label: 'All states' },
+  { value: 'ready', label: 'Ready' },
+  { value: 'stale', label: 'Stale' },
+  { value: 'importing', label: 'Importing' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'missing', label: 'Missing' },
+];
+const assetSortOptions = [
+  { value: 'name', label: 'Name' },
+  { value: 'type', label: 'Type' },
+  { value: 'state', label: 'State' },
+];
 
 const relativeFolderPath = (assetPath: string, source: LocalBrowserSource, projectRootName: string) => {
   const segments = parentFolder(assetPath).split('/').filter(Boolean);
@@ -193,6 +224,7 @@ export function ContentBrowserPanel({
   const [sort, setSort] = useState<'name' | 'type' | 'state'>('name');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [browserSource, setBrowserSource] = useState('project');
+  const [treeWidth, setTreeWidth] = useState(readContentTreeWidth);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set([folderKey('project', '')]));
   const [onlineSources, setOnlineSources] = useState<ArcAssetSourceDescriptor[]>([]);
   const [selection, setSelection] = useState<Set<string>>(() => new Set(selectedAssetId ? [selectedAssetId] : []));
@@ -423,12 +455,50 @@ export function ContentBrowserPanel({
     </div>
   );
 
+  const setContentTreeWidth = (nextWidth: number) => {
+    const clamped = clampContentTreeWidth(nextWidth);
+    setTreeWidth(clamped);
+    localStorage.setItem(contentTreeWidthStorageKey, String(clamped));
+  };
+
+  const beginContentTreeResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = treeWidth;
+    let latestWidth = startWidth;
+
+    const move = (moveEvent: PointerEvent) => {
+      latestWidth = clampContentTreeWidth(startWidth + moveEvent.clientX - startX);
+      setTreeWidth(latestWidth);
+    };
+    const finish = () => {
+      localStorage.setItem(contentTreeWidthStorageKey, String(latestWidth));
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+    };
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+  };
+
+  const handleContentTreeResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    let nextWidth: number | null = null;
+    if (event.key === 'ArrowLeft') nextWidth = treeWidth - 12;
+    else if (event.key === 'ArrowRight') nextWidth = treeWidth + 12;
+    else if (event.key === 'Home') nextWidth = minContentTreeWidth;
+    else if (event.key === 'End') nextWidth = maxContentTreeWidth;
+    if (nextWidth === null) return;
+    event.preventDefault();
+    setContentTreeWidth(nextWidth);
+  };
+
   const projectRootExpanded = expandedFolders.has(folderKey('project', ''));
   const builtinRootExpanded = expandedFolders.has(folderKey('builtin', ''));
 
   return (
     <section
       className="content-browser-v2"
+      style={{ '--content-tree-width': `${treeWidth}px` } as React.CSSProperties}
       onClick={() => createContextMenu && setCreateContextMenu(null)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
@@ -528,6 +598,20 @@ export function ContentBrowserPanel({
           );
         })}
       </aside>
+      <div
+        aria-label="Resize content folder tree"
+        aria-orientation="vertical"
+        aria-valuemax={maxContentTreeWidth}
+        aria-valuemin={minContentTreeWidth}
+        aria-valuenow={treeWidth}
+        className="content-folder-resizer"
+        role="separator"
+        tabIndex={0}
+        title="Drag to resize folder tree. Double-click to reset."
+        onDoubleClick={() => setContentTreeWidth(defaultContentTreeWidth)}
+        onKeyDown={handleContentTreeResizeKeyDown}
+        onPointerDown={beginContentTreeResize}
+      />
       {activeOnlineSource ? (
         <RemoteAssetBrowser source={activeOnlineSource} />
       ) : (
@@ -535,9 +619,11 @@ export function ContentBrowserPanel({
           <div className="content-browser-main">
             <header className="content-browser-v2-toolbar">
               <div className="content-create-wrap">
-                <button
+                <UiButton
                   aria-haspopup="menu"
                   aria-expanded={createMenuOpen}
+                  type="button"
+                  variant="toolbar"
                   onClick={(event) => {
                     event.stopPropagation();
                     setCreateContextMenu(null);
@@ -545,14 +631,22 @@ export function ContentBrowserPanel({
                   }}
                 >
                   + Create <ChevronDown size={12} />
-                </button>
+                </UiButton>
                 {createMenuOpen && createMenu(creationFolder)}
               </div>
-              <button onClick={() => onCommand('file.importScene')} title="Import scene or model asset">
+              <UiButton
+                title="Import scene or model asset"
+                type="button"
+                variant="toolbar"
+                onClick={() => onCommand('file.importScene')}
+              >
                 Import
-              </button>
-              <nav>
-                <button
+              </UiButton>
+              <nav aria-label="Content path">
+                <UiButton
+                  className="content-breadcrumb-button"
+                  type="button"
+                  variant="ghost"
                   onClick={() => {
                     if (browserSource === 'project' || browserSource === 'builtin') {
                       navigateFolder(browserSource, '');
@@ -560,11 +654,14 @@ export function ContentBrowserPanel({
                   }}
                 >
                   {sourceTitle}
-                </button>
+                </UiButton>
                 {crumbs.map((crumb, index) => (
                   <span key={`${crumb}-${index}`}>
-                    <ChevronRight size={12} />
-                    <button
+                    <ChevronRight size={12} aria-hidden="true" />
+                    <UiButton
+                      className="content-breadcrumb-button"
+                      type="button"
+                      variant="ghost"
                       onClick={() =>
                         navigateFolder(
                           browserSource === 'builtin' ? 'builtin' : 'project',
@@ -573,62 +670,58 @@ export function ContentBrowserPanel({
                       }
                     >
                       {crumb}
-                    </button>
+                    </UiButton>
                   </span>
                 ))}
               </nav>
-              <label>
-                <Search size={13} />
-                <input
+              <label className="content-browser-search">
+                <Search size={13} aria-hidden="true" />
+                <UiSearchInput
                   aria-label="Search assets"
                   placeholder="Search assets"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
               </label>
-              <select
-                aria-label="Asset type"
+              <UiSelect
+                ariaLabel="Asset type"
+                className="content-toolbar-select content-toolbar-select-type"
+                options={assetTypeOptions}
                 value={kind}
-                onChange={(event) => setKind(event.target.value as typeof kind)}
-              >
-                <option value="all">All types</option>
-                {['scene', 'mesh', 'material', 'texture', 'shader', 'prefab'].map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Asset state"
+                onValueChange={(value) => setKind(value as typeof kind)}
+              />
+              <UiSelect
+                ariaLabel="Asset state"
+                className="content-toolbar-select content-toolbar-select-state"
+                options={assetStateOptions}
                 value={state}
-                onChange={(event) => setState(event.target.value as typeof state)}
-              >
-                <option value="all">All states</option>
-                {['ready', 'stale', 'importing', 'failed', 'missing'].map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Sort assets"
+                onValueChange={(value) => setState(value as typeof state)}
+              />
+              <UiSelect
+                ariaLabel="Sort assets"
+                className="content-toolbar-select content-toolbar-select-sort"
+                options={assetSortOptions}
                 value={sort}
-                onChange={(event) => setSort(event.target.value as typeof sort)}
-              >
-                <option value="name">Name</option>
-                <option value="type">Type</option>
-                <option value="state">State</option>
-              </select>
-              <button
-                className={view === 'grid' ? 'active' : ''}
-                aria-label="Grid view"
+                onValueChange={(value) => setSort(value as typeof sort)}
+              />
+              <UiIconButton
+                active={view === 'grid'}
+                label="Grid view"
+                type="button"
+                variant="toolbar"
                 onClick={() => setView('grid')}
               >
                 <Grid2X2 size={14} />
-              </button>
-              <button
-                className={view === 'list' ? 'active' : ''}
-                aria-label="List view"
+              </UiIconButton>
+              <UiIconButton
+                active={view === 'list'}
+                label="List view"
+                type="button"
+                variant="toolbar"
                 onClick={() => setView('list')}
               >
                 <List size={14} />
-              </button>
+              </UiIconButton>
             </header>
             {cache && (
               <div className="asset-cache-summary">
