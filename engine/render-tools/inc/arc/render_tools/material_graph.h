@@ -145,7 +145,22 @@ enum class material_surface_output : std::uint8_t
     ambient_occlusion,
     emissive,
     opacity,
-    alpha_cutoff
+    alpha_cutoff,
+    clear_coat,
+    clear_coat_roughness,
+    clear_coat_normal,
+    sheen,
+    sheen_color,
+    sheen_roughness,
+    anisotropy,
+    anisotropy_rotation,
+    transmission,
+    index_of_refraction,
+    thickness,
+    attenuation_color,
+    attenuation_distance,
+    subsurface_color,
+    subsurface
 };
 
 /** @brief Connection selected for one material surface output. */
