@@ -51,9 +51,7 @@ struct material_asset_error
  */
 struct material_authoring_document
 {
-    std::uint32_t source_version{material_authoring_version};
     std::uint32_t version{material_authoring_version};
-    bool migrated{};
     std::string canonical_json;
     std::string graph_json;
     std::string shader_path;
