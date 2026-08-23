@@ -251,7 +251,7 @@
 }
 
 /* Favorites are a lightweight overlay, not another button tile. */
-.content-browser-v2 .content-asset-actions {
+.content-browser-v2 .content-assets.grid .content-asset-actions {
   z-index: 4;
   top: 7px;
   right: auto;
@@ -259,7 +259,7 @@
   display: flex;
 }
 
-.content-browser-v2 .content-asset-actions > button:first-child {
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child {
   display: grid;
   width: 20px;
   min-width: 20px;
@@ -275,19 +275,19 @@
   place-items: center;
 }
 
-.content-browser-v2 .content-asset-actions > button:first-child:hover,
-.content-browser-v2 .content-asset-actions > button:first-child:focus-visible {
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child:hover,
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child:focus-visible {
   color: var(--arc-color-text-strong);
   background: transparent;
   opacity: 1;
 }
 
-.content-browser-v2 .content-asset-actions > button:first-child.active {
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child.active {
   color: #ffcf5a;
   opacity: 1;
 }
 
-.content-browser-v2 .content-asset-actions > button:first-child.active svg {
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child.active svg {
   fill: currentColor;
 }
 
