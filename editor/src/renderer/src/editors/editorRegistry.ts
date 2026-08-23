@@ -17,6 +17,71 @@ import type {
   EditorRegistrySeed,
 } from './editorTypes';
 
+type HostAssetIdentity = {
+  guid?: string;
+  path?: string;
+  scope?: AssetItem['scope'];
+  readOnly?: boolean;
+  state?: AssetItem['status'];
+  typeId?: string;
+  importerId?: string;
+};
+
+type HostProjectAssetsPayload = {
+  assets?: HostAssetIdentity[];
+};
+
+type HostResponse<T = unknown> = {
+  succeeded: boolean;
+  payload?: T;
+};
+
+const registrationPollIntervalMs = 50;
+const registrationTimeoutMs = 2500;
+const normalizedAssetPath = (value: string) => value.replaceAll('\\', '/').replace(/^\.\//, '').toLowerCase();
+const sleep = (milliseconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+
+const registeredAssetFromHost = (asset: AssetItem, candidate: HostAssetIdentity): AssetItem => ({
+  ...asset,
+  id: candidate.guid || asset.id,
+  guid: candidate.guid || asset.guid,
+  path: candidate.path || asset.path,
+  scope: candidate.scope ?? asset.scope,
+  readOnly: candidate.readOnly ?? asset.readOnly,
+  status: candidate.state ?? asset.status,
+  typeId: candidate.typeId ?? asset.typeId,
+  importerId: candidate.importerId ?? asset.importerId,
+});
+
+export const resolveRegisteredEditorAsset = async (
+  asset: AssetItem,
+  timeoutMs = registrationTimeoutMs,
+): Promise<AssetItem | null> => {
+  if (asset.guid) return asset;
+  if (!asset.path || typeof window === 'undefined' || !window.arc?.host?.query) return null;
+
+  const expectedPath = normalizedAssetPath(asset.path);
+  const deadline = Date.now() + timeoutMs;
+  do {
+    try {
+      const response = (await window.arc.host.query('project.assets')) as HostResponse<HostProjectAssetsPayload> | undefined;
+      const registered = response?.succeeded
+        ? response.payload?.assets?.find(
+            (candidate) => Boolean(candidate.guid) && normalizedAssetPath(candidate.path ?? '') === expectedPath,
+          )
+        : undefined;
+      if (registered) return registeredAssetFromHost(asset, registered);
+    } catch {
+      return null;
+    }
+
+    if (Date.now() >= deadline) break;
+    await sleep(registrationPollIntervalMs);
+  } while (true);
+
+  return null;
+};
+
 const shaderRegistration: EditorRegistration = {
   kind: 'shader',
   title: 'Shader Source Editor',
@@ -92,10 +157,30 @@ export const createEditorDocumentForAsset = (
   return null;
 };
 
-export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegistry | null = currentRegistry) => {
+const openResolvedAssetEditorDocument = (asset: AssetItem, registry: EditorRegistry) => {
   const target = createEditorDocumentForAsset(asset, registry);
   if (!target) return false;
   openEditorDocumentInStore(target.document, target.registration.allowMultiple);
+  return true;
+};
+
+export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegistry | null = currentRegistry) => {
+  const target = createEditorDocumentForAsset(asset, registry);
+  if (!target || !registry) return false;
+
+  const needsRegistration = !asset.guid && (asset.kind === 'material' || asset.kind === 'shader');
+  if (!needsRegistration || typeof window === 'undefined' || !window.arc?.host?.query) {
+    openEditorDocumentInStore(target.document, target.registration.allowMultiple);
+    return true;
+  }
+
+  // Newly-authored assets are written to disk before the native asset monitor has
+  // necessarily assigned their stable GUID. Keep the current (usually level)
+  // editor active long enough for its viewport to drive the source monitor, then
+  // open the canonical registered asset so native previews/reimports use a GUID.
+  void resolveRegisteredEditorAsset(asset).then((registered) => {
+    openResolvedAssetEditorDocument(registered ?? asset, registry);
+  });
   return true;
 };
 
