@@ -1,0 +1,110 @@
+.data-inspector .inspector-property-label,
+.data-inspector .inspector-number-property .inspector-scalar-scrub {
+  font-size: var(--arc-text-xs);
+}
+
+.data-inspector .inspector-property-label,
+.data-inspector .inspector-number-property .inspector-scalar-scrub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-subsection,
+.inspector-procedural-mesh-controls {
+  --inspector-row-label: 96px;
+  display: grid;
+  min-width: 0;
+  margin: 3px 0 5px 10px;
+  padding: 0 0 4px 10px;
+  border-left: 1px solid #303b44;
+}
+
+.inspector-subsection-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  margin: 3px 0 1px !important;
+  padding: 5px 0 3px !important;
+  border-top: 0 !important;
+  color: var(--inspector-text-muted) !important;
+  font-size: var(--arc-text-xxs) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.045em !important;
+  text-transform: uppercase !important;
+}
+
+.inspector-subsection-title > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-subsection-title small {
+  flex: 0 0 auto;
+  color: var(--inspector-text-dim);
+  font-size: var(--arc-text-xxs);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.inspector-subsection-empty {
+  margin: 2px 0 3px;
+  color: var(--inspector-text-dim);
+  font-size: var(--arc-text-xxs);
+  line-height: 1.35;
+}
+
+.inspector-material-parameter-list {
+  display: grid;
+}
+
+.inspector-material-parameter {
+  display: grid;
+  grid-template-columns: var(--inspector-row-label) minmax(0, 1fr);
+  align-items: center;
+  min-height: 27px;
+}
+
+.inspector-material-parameter-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 3px;
+  min-width: 0;
+}
+
+.inspector-material-parameter-values output {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  height: var(--inspector-control-height);
+  padding: 0 6px;
+  border: 1px solid #28323a;
+  border-radius: var(--inspector-radius);
+  color: #abb5bd;
+  background: #141c22;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.28);
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.inspector-material-parameter-values output i {
+  margin-right: 4px;
+  color: var(--inspector-text-dim);
+  font-size: var(--arc-text-xxs);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.inspector-material-parameter-values output span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
