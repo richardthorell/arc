@@ -217,11 +217,10 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
              .message = "Material package uses an unsupported pass contract or Material ABI"});
 
     std::uint32_t pass_count{};
-    if (!reader.value(pass_count) || pass_count == 0 || pass_count > 32u)
+    if (!reader.value(pass_count) || pass_count > 32u)
         return material_package_v3_result::failure(
-            {.code = material_asset_error_code::corrupt_package,
-             .message = "Material package must contain compiled pass bindings"});
-    if (!package.compiled.package.valid())
+            {.code = material_asset_error_code::corrupt_package, .message = "Material package pass table is invalid"});
+    if (pass_count != 0 && !package.compiled.package.valid())
         return material_package_v3_result::failure(
             {.code = material_asset_error_code::corrupt_package,
              .message = "Compiled material passes require a valid shader package ID"});
@@ -263,6 +262,16 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
     if (!reader.string(package.canonical_document_json) || !reader.complete())
         return material_package_v3_result::failure(
             {.code = material_asset_error_code::corrupt_package, .message = "Material package payload is truncated"});
+
+    if (package.compiled.passes.empty())
+    {
+        const auto document = json::parse(package.canonical_document_json, nullptr, false);
+        if (!document.is_object() || document.value("domain", std::string{"surface"}) != "terrain")
+            return material_package_v3_result::failure(
+                {.code = material_asset_error_code::corrupt_package,
+                 .message = "Surface material package must contain compiled pass bindings"});
+    }
+
     return material_package_v3_result::success(std::move(package));
 }
 
