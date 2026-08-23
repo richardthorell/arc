@@ -24,24 +24,19 @@ std::string number(float value)
     return result.find_first_of(".eE") == std::string::npos ? result + ".0" : result;
 }
 
-std::string literal_value(const material_ir_literal& literal)
+std::string literal_value(const material_ir_node& node)
 {
-    if (literal.components <= 1) return number(literal.values[0]);
+    if (node.literal.components <= 1) return number(node.literal.values[0]);
 
     std::ostringstream output;
-    output << "float" << static_cast<unsigned int>(literal.components) << '(';
-    for (std::uint8_t index = 0; index < literal.components; ++index)
+    output << "float" << static_cast<unsigned int>(node.literal.components) << '(';
+    for (std::uint8_t index = 0; index < node.literal.components; ++index)
     {
         if (index != 0) output << ',';
-        output << number(literal.values[index]);
+        output << number(node.literal.values[index]);
     }
     output << ')';
     return output.str();
-}
-
-std::string literal_value(const material_ir_node& node)
-{
-    return literal_value(node.literal);
 }
 
 std::string sanitize(std::string_view text)
@@ -51,18 +46,6 @@ std::string sanitize(std::string_view text)
     for (const char character : text)
         result.push_back(std::isalnum(static_cast<unsigned char>(character)) ? character : '_');
     if (result.empty() || std::isdigit(static_cast<unsigned char>(result.front()))) result.insert(result.begin(), '_');
-    return result;
-}
-
-std::string escaped_path(std::string_view text)
-{
-    std::string result;
-    result.reserve(text.size());
-    for (const char character : text)
-    {
-        if (character == '\\' || character == '"') result.push_back('\\');
-        result.push_back(character == '\\' ? '/' : character);
-    }
     return result;
 }
 
@@ -84,37 +67,6 @@ std::string_view slang_parameter_type(shader_parameter_type type)
         default:
             return "float";
     }
-}
-
-std::string function_namespace(const material_ir_node& node)
-{
-    return "arc_function_" + std::to_string(make_shader_parameter_id(node.function_path).representation());
-}
-
-std::string function_output_variable(const material_ir_node& node, std::string_view pin)
-{
-    return "arc_node_" + sanitize(node.id) + '_' + sanitize(pin);
-}
-
-std::string function_prototype(const material_ir_node& node)
-{
-    std::ostringstream declaration;
-    declaration << "void " << node.function_entry_point << '(';
-    bool first = true;
-    for (const auto& pin : node.function_inputs)
-    {
-        if (!first) declaration << ',';
-        first = false;
-        declaration << slang_parameter_type(pin.type) << " arc_input_" << sanitize(pin.id);
-    }
-    for (const auto& pin : node.function_outputs)
-    {
-        if (!first) declaration << ',';
-        first = false;
-        declaration << "out " << slang_parameter_type(pin.type) << " arc_output_" << sanitize(pin.id);
-    }
-    declaration << ");";
-    return std::move(declaration).str();
 }
 
 enum class material_expression_type : std::uint8_t
@@ -194,22 +146,6 @@ struct source_builder
         generated.source.push_back('\n');
         ++line;
     }
-
-    void append_lines(std::string_view text)
-    {
-        std::size_t begin{};
-        while (begin < text.size())
-        {
-            const auto end = text.find('\n', begin);
-            if (end == std::string_view::npos)
-            {
-                append(text.substr(begin));
-                return;
-            }
-            append(text.substr(begin, end - begin));
-            begin = end + 1;
-        }
-    }
 };
 
 class material_expression_generator
@@ -218,21 +154,7 @@ public:
     explicit material_expression_generator(const material_graph_compilation& compilation) : compilation_(compilation)
     {
         for (const auto& node : compilation_.ir.nodes)
-        {
             nodes_.emplace(node.id, &node);
-            if (node.kind != material_ir_node_kind::function_call) continue;
-            const auto [found, inserted] = shader_functions_.try_emplace(node.function_path, &node);
-            if (!inserted)
-            {
-                const auto& existing = *found->second;
-                if (existing.function_entry_point != node.function_entry_point ||
-                    existing.function_source != node.function_source ||
-                    existing.function_inputs != node.function_inputs ||
-                    existing.function_outputs != node.function_outputs)
-                    throw std::runtime_error("Material Function path resolves to inconsistent shader definitions: " +
-                                             node.function_path);
-            }
-        }
         for (const auto& connection : compilation_.ir.connections)
             inputs_.emplace(std::pair{connection.target_node, connection.target_pin}, &connection);
         for (const auto& texture : compilation_.descriptor.textures)
@@ -253,11 +175,6 @@ public:
     const std::vector<generated_statement>& statements() const noexcept
     {
         return statements_;
-    }
-
-    const std::map<std::string, const material_ir_node*>& shader_functions() const noexcept
-    {
-        return shader_functions_;
     }
 
 private:
@@ -334,17 +251,6 @@ private:
                     type = widest(input_type(node.id, "a", material_expression_type::scalar),
                                   input_type(node.id, "b", material_expression_type::scalar));
                     break;
-                case material_ir_node_kind::function_call:
-                {
-                    const auto output =
-                        std::ranges::find_if(node.function_outputs, [&pin](const material_function_pin& candidate)
-                                             { return candidate.id == pin; });
-                    if (output == node.function_outputs.end())
-                        throw std::runtime_error("Material Function call references an unknown output: " + node.id +
-                                                 "." + pin);
-                    type = expression_type(output->type);
-                    break;
-                }
                 case material_ir_node_kind::output:
                     throw std::runtime_error("material output nodes cannot be emitted as expressions");
             }
@@ -353,53 +259,6 @@ private:
         type_visiting_.erase(key);
         expression_types_.emplace(key, type);
         return type;
-    }
-
-    std::string emit_function_call(const material_ir_node& node, const std::string& requested_pin)
-    {
-        if (emitted_function_calls_.insert(node.id).second)
-        {
-            for (const auto& output : node.function_outputs)
-            {
-                const auto variable = function_output_variable(node, output.id);
-                statements_.push_back(
-                    {.text = "    " + std::string(slang_parameter_type(output.type)) + ' ' + variable + ';',
-                     .node_id = node.id});
-                expressions_.emplace(std::pair{node.id, output.id}, variable);
-                expression_types_.emplace(std::pair{node.id, output.id}, expression_type(output.type));
-            }
-
-            std::ostringstream call;
-            call << "    " << function_namespace(node) << "::" << node.function_entry_point << '(';
-            bool first = true;
-            for (const auto& function_input : node.function_inputs)
-            {
-                if (!first) call << ',';
-                first = false;
-                const auto connected = inputs_.find({node.id, function_input.id});
-                if (connected != inputs_.end())
-                    call << emit(connected->second->source_node, connected->second->source_pin);
-                else if (function_input.has_default)
-                    call << literal_value(function_input.default_value);
-                else
-                    throw std::runtime_error("Material Function call is missing required input: " + node.id + "." +
-                                             function_input.id);
-            }
-            for (const auto& function_output : node.function_outputs)
-            {
-                if (!first) call << ',';
-                first = false;
-                call << function_output_variable(node, function_output.id);
-            }
-            call << ");";
-            statements_.push_back({.text = std::move(call).str(), .node_id = node.id});
-        }
-
-        const auto found = expressions_.find({node.id, requested_pin});
-        if (found == expressions_.end())
-            throw std::runtime_error("Material Function call references an unknown output: " + node.id + "." +
-                                     requested_pin);
-        return found->second;
     }
 
     std::string emit(const std::string& node_id, const std::string& pin)
@@ -412,14 +271,8 @@ private:
         const auto found_node = nodes_.find(node_id);
         if (found_node == nodes_.end()) throw std::runtime_error("material IR references a missing node: " + node_id);
         const auto& node = *found_node->second;
-        if (node.kind == material_ir_node_kind::function_call)
-        {
-            const auto variable = emit_function_call(node, pin);
-            visiting_.erase(key);
-            return variable;
-        }
-
         const auto type = infer_type(node_id, pin);
+
         std::string expression;
         switch (node.kind)
         {
@@ -473,8 +326,6 @@ private:
             case material_ir_node_kind::divide:
                 expression = '(' + input(node.id, "a", "0.0") + '/' + input(node.id, "b", "1.0") + ')';
                 break;
-            case material_ir_node_kind::function_call:
-                break;
             case material_ir_node_kind::output:
                 throw std::runtime_error("material output nodes cannot be emitted as expressions");
         }
@@ -498,10 +349,8 @@ private:
     std::map<std::uint64_t, shader_parameter_type> parameter_types_;
     std::map<std::pair<std::string, std::string>, std::string> expressions_;
     std::map<std::pair<std::string, std::string>, material_expression_type> expression_types_;
-    std::map<std::string, const material_ir_node*> shader_functions_;
     std::set<std::pair<std::string, std::string>> visiting_;
     std::set<std::pair<std::string, std::string>> type_visiting_;
-    std::set<std::string> emitted_function_calls_;
     std::vector<generated_statement> statements_;
 };
 
@@ -576,33 +425,6 @@ void append_material_abi(source_builder& source)
     source.append("}");
 }
 
-void append_function_declarations(source_builder& source,
-                                  const std::map<std::string, const material_ir_node*>& functions)
-{
-    for (const auto& [path, function] : functions)
-    {
-        static_cast<void>(path);
-        source.append("namespace " + function_namespace(*function));
-        source.append("{");
-        source.append("    " + function_prototype(*function));
-        source.append("}");
-    }
-}
-
-void append_function_definitions(source_builder& source,
-                                 const std::map<std::string, const material_ir_node*>& functions)
-{
-    for (const auto& [path, function] : functions)
-    {
-        source.append("namespace " + function_namespace(*function));
-        source.append("{");
-        source.append("#line 1 \"" + escaped_path(path) + "\"");
-        source.append_lines(function->function_source);
-        source.append("#line 1 \"arc-generated-material.slang\"");
-        source.append("}");
-    }
-}
-
 void append_compiler_input(source_builder& source)
 {
     source.append("struct ArcCompilerInput");
@@ -655,7 +477,7 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         const auto alpha_cutoff = expressions.output(material_surface_output::alpha_cutoff, {});
 
         source_builder source{generated};
-        source.append("// ARC generated Material IR v1; Material ABI v1; codegen v2.");
+        source.append("// ARC generated Material IR v1; Material ABI v1; codegen v1.");
         append_material_abi(source);
 
         const auto has_material_parameters =
@@ -686,7 +508,6 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
             source.append("SamplerState arcMaterialSampler;");
         }
 
-        append_function_declarations(source, expressions.shader_functions());
         source.append("ArcSurfaceData arc_evaluate_material(ArcSurfaceInput input)");
         source.append("{");
         source.append("    ArcSurfaceData surface = arcDefaultSurface(input.normalWS);");
@@ -703,7 +524,7 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         source.append("    return surface;");
         source.append("}");
 
-        append_function_definitions(source, expressions.shader_functions());
+        // Standalone compilation harness. Stage 8 replaces this entry point with render-pass composition.
         append_compiler_input(source);
         source.append("[shader(\"fragment\")] float4 main(ArcCompilerInput compilerInput) : SV_Target");
         source.append("{");

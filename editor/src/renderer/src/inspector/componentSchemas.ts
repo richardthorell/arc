@@ -183,6 +183,8 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         precision: 2,
         step: 0.1,
         scrubSensitivity: 0.02,
+        tooltip: 'Position relative to the parent in Local mode, or in world space in World mode.',
+        resetValue: { x: 0, y: 0, z: 0 },
       },
       {
         id: 'rotation',
@@ -193,6 +195,8 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         step: 1,
         scrubSensitivity: 0.2,
         unit: '°',
+        tooltip: 'Euler rotation in degrees relative to the parent in Local mode, or in world space in World mode.',
+        resetValue: { x: 0, y: 0, z: 0 },
       },
       {
         id: 'scale',
@@ -203,6 +207,9 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         step: 0.01,
         scrubSensitivity: 0.01,
         linked: true,
+        tooltip:
+          'Scale relative to the parent in Local mode, or in world space in World mode. Link axes to preserve proportions.',
+        resetValue: { x: 1, y: 1, z: 1 },
       },
     ],
   },

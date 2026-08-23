@@ -554,6 +554,7 @@ struct host_scene_entity_snapshot
     bool locked{};
     bool visible{true};
     bool pickable{true};
+    std::optional<host_transform> transform;
     std::size_t prefab_override_count{};
     bool selected{};
 };

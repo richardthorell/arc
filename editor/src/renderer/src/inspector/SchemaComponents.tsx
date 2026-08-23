@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
 import { UiButton, UiIconButton, UiSelect, UiTextInput } from '../ui';
@@ -80,6 +81,7 @@ export function SchemaComponentCard<TContext extends object>({
   onToggle,
   onValue,
   onAction,
+  headerAccessory,
 }: {
   schema: PropertyComponentSchema<TContext>;
   context: TContext;
@@ -89,8 +91,9 @@ export function SchemaComponentCard<TContext extends object>({
   onToggle: () => void;
   onValue: (path: string, value: unknown, settled: boolean) => void;
   onAction?: (action: string) => void;
+  headerAccessory?: ReactNode;
 }) {
-  const [linked, setLinked] = useState(false);
+  const [unlinkedFields, setUnlinkedFields] = useState<Set<string>>(() => new Set());
   const [actionsOpen, setActionsOpen] = useState(false);
   const componentRef = useRef<HTMLElement | null>(null);
   const visibleFields = schema.fields.filter((field) => !field.visible || field.visible(context));
@@ -125,7 +128,9 @@ export function SchemaComponentCard<TContext extends object>({
     <section ref={componentRef} className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
       <header
         style={{
-          gridTemplateColumns: 'minmax(0, 1fr) var(--arc-icon-button-size)',
+          gridTemplateColumns: headerAccessory
+            ? 'minmax(0, 1fr) auto var(--arc-icon-button-size)'
+            : 'minmax(0, 1fr) var(--arc-icon-button-size)',
           minHeight: 'var(--arc-icon-button-size)',
         }}
       >
@@ -133,6 +138,7 @@ export function SchemaComponentCard<TContext extends object>({
           {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
           <span>{schema.title}</span>
         </button>
+        {headerAccessory && <div className="inspector-component-header-accessory">{headerAccessory}</div>}
         {onAction && (
           <UiIconButton
             aria-expanded={actionsOpen}
@@ -207,19 +213,30 @@ export function SchemaComponentCard<TContext extends object>({
               }
             />
           )}
-          {visibleFields.map((field) => (
-            <SchemaField
-              key={field.id}
-              assets={assets}
-              context={context}
-              field={field}
-              linked={linked}
-              thumbnailProvider={thumbnailProvider}
-              onToggleLinked={() => setLinked((value) => !value)}
-              onValue={(value, settled) => onValue(field.path, value, settled)}
-              onAction={(action) => onAction?.(action)}
-            />
-          ))}
+          {visibleFields.map((field) => {
+            const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
+            return (
+              <div className="inspector-schema-field" key={field.id} title={field.tooltip}>
+                <SchemaField
+                  assets={assets}
+                  context={context}
+                  field={field}
+                  linked={linked}
+                  thumbnailProvider={thumbnailProvider}
+                  onToggleLinked={() =>
+                    setUnlinkedFields((current) => {
+                      const next = new Set(current);
+                      if (next.has(field.path)) next.delete(field.path);
+                      else next.add(field.path);
+                      return next;
+                    })
+                  }
+                  onValue={(value, settled) => onValue(field.path, value, settled)}
+                  onAction={(action) => onAction?.(action)}
+                />
+              </div>
+            );
+          })}
           {!visibleFields.length && !showMeshAsset && (
             <div className="inspector-component-empty">No settings are active for this mode.</div>
           )}
@@ -360,7 +377,7 @@ function SchemaField<TContext extends object>({
     const updateAxis = (axis: VectorAxis, nextValue: number) => {
       if (!linked || !field.linked) return { ...vector, [axis]: nextValue };
       const source = vector[axis];
-      if (Math.abs(source) < 1e-6) return { x: nextValue, y: nextValue, z: nextValue };
+      if (Math.abs(source) < 1e-6) return { ...vector, [axis]: nextValue };
       const ratio = nextValue / source;
       return { x: vector.x * ratio, y: vector.y * ratio, z: vector.z * ratio };
     };
@@ -371,6 +388,7 @@ function SchemaField<TContext extends object>({
         mixed={mixed}
         value={vector}
         onToggleLinked={onToggleLinked}
+        onReset={field.resetValue === undefined ? undefined : () => onValue(structuredClone(field.resetValue), true)}
         onCommit={(axis, next) => onValue(updateAxis(axis, next), true)}
         onPreview={(axis, next) => onValue(updateAxis(axis, next), false)}
       />

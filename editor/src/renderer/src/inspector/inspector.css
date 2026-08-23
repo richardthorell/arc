@@ -631,6 +631,68 @@
   min-width: 0;
 }
 
+.inspector-schema-field {
+  display: contents;
+}
+
+.inspector-vector-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.inspector-field-reset {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  color: var(--inspector-text-dim);
+  background: transparent;
+}
+
+.inspector-field-reset:hover {
+  color: var(--inspector-text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.inspector-component-header-accessory {
+  display: flex;
+  align-items: center;
+  padding-right: 3px;
+}
+
+.inspector-coordinate-space {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--inspector-text-dim);
+}
+
+.inspector-coordinate-space select {
+  height: 22px;
+  min-width: 58px;
+  padding: 0 18px 0 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--inspector-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+}
+
+.inspector-coordinate-space select:hover,
+.inspector-coordinate-space select:focus {
+  border-color: #3a4650;
+  color: var(--inspector-text);
+  background: #151d23;
+  outline: 0;
+}
+
 .inspector-number {
   position: relative;
   display: grid;

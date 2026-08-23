@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { Link2 } from 'lucide-react';
+import { Link2, RotateCcw } from 'lucide-react';
 
 import { colorToCss, ColorPicker } from './ColorPicker';
 import type { Vec3, Vec4 } from './inspectorTypes';
@@ -149,20 +149,22 @@ export function Vector3Control({
   value,
   linked,
   onToggleLinked,
+  onReset,
   onPreview,
   onCommit,
   mixed = false,
 }: {
-  field: Pick<Vector3FieldSchema, 'label' | 'precision' | 'step' | 'scrubSensitivity' | 'unit' | 'linked'>;
+  field: Pick<Vector3FieldSchema, 'label' | 'precision' | 'step' | 'scrubSensitivity' | 'unit' | 'linked' | 'tooltip'>;
   value: Vec3;
   linked: boolean;
   onToggleLinked?: () => void;
+  onReset?: () => void;
   onPreview: (axis: VectorAxis, value: number) => void;
   onCommit: (axis: VectorAxis, value: number) => void;
   mixed?: boolean;
 }) {
   return (
-    <div className="inspector-property inspector-vector-property">
+    <div className="inspector-property inspector-vector-property" title={field.tooltip}>
       <div className="inspector-property-label">
         <span>{field.label}</span>
         {field.linked && (
@@ -170,30 +172,43 @@ export function Vector3Control({
             aria-label={`${linked ? 'Unlink' : 'Link'} ${field.label.toLocaleLowerCase()} axes`}
             className={`inspector-scale-link ${linked ? 'is-linked' : ''}`}
             onClick={onToggleLinked}
-            title="Link scale axes"
+            title={`${linked ? 'Unlink' : 'Link'} scale axes`}
             type="button"
           >
             <Link2 aria-hidden="true" size={13} strokeWidth={2} />
           </button>
         )}
       </div>
-      <div className="inspector-axis-grid">
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <NumericInput
-            key={axis}
-            ariaLabel={`${field.label} ${axis.toUpperCase()}`}
-            precision={field.precision}
-            scrubClassName={`axis-${axis}`}
-            scrubLabel={axis.toUpperCase()}
-            scrubSensitivity={field.scrubSensitivity}
-            step={field.step}
-            unit={field.unit}
-            value={value[axis]}
-            mixed={mixed}
-            onCommit={(next) => onCommit(axis, next)}
-            onPreview={(next) => onPreview(axis, next)}
-          />
-        ))}
+      <div className="inspector-vector-value">
+        <div className="inspector-axis-grid">
+          {(['x', 'y', 'z'] as const).map((axis) => (
+            <NumericInput
+              key={axis}
+              ariaLabel={`${field.label} ${axis.toUpperCase()}`}
+              precision={field.precision}
+              scrubClassName={`axis-${axis}`}
+              scrubLabel={axis.toUpperCase()}
+              scrubSensitivity={field.scrubSensitivity}
+              step={field.step}
+              unit={field.unit}
+              value={value[axis]}
+              mixed={mixed}
+              onCommit={(next) => onCommit(axis, next)}
+              onPreview={(next) => onPreview(axis, next)}
+            />
+          ))}
+        </div>
+        {onReset && (
+          <button
+            aria-label={`Reset ${field.label}`}
+            className="inspector-field-reset"
+            onClick={onReset}
+            title={`Reset ${field.label}`}
+            type="button"
+          >
+            <RotateCcw aria-hidden="true" size={12} />
+          </button>
+        )}
       </div>
     </div>
   );
