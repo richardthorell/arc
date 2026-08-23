@@ -105,10 +105,9 @@ material_shading_model authored_shading_model(const json& document)
 
 material_alpha_mode authored_alpha_mode(const json& document)
 {
-    auto mode = document.value("blendMode", std::string{});
-    if (mode.empty()) mode = document.value("alphaMode", std::string{"opaque"});
-    if (mode == "masked" || mode == "mask") return material_alpha_mode::masked;
-    if (mode == "blend" || mode == "transparent") return material_alpha_mode::blend;
+    const auto mode = document.value("blendMode", std::string{"opaque"});
+    if (mode == "masked") return material_alpha_mode::masked;
+    if (mode == "blend") return material_alpha_mode::blend;
     return material_alpha_mode::opaque;
 }
 
@@ -121,19 +120,16 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
         return material_authoring_result::failure(
             {.code = material_asset_error_code::malformed_json, .message = "Material definition is not valid JSON"});
 
-    const bool has_version = document.contains("version");
-    std::uint32_t source_version = 1;
-    if (has_version)
+    if (!document.contains("version") || !document["version"].is_number_integer())
+        return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
+                                                   .message = "Material document version must be an integer"});
+    const auto authored_version = document["version"].get<std::int64_t>();
+    if (authored_version != static_cast<std::int64_t>(material_authoring_version))
     {
-        if (!document["version"].is_number_integer())
-            return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
-                                                       .message = "Material document version must be an integer"});
-        const auto authored_version = document["version"].get<std::int64_t>();
-        if (authored_version < 1 || authored_version > static_cast<std::int64_t>(material_authoring_version))
-            return material_authoring_result::failure(
-                {.code = material_asset_error_code::unsupported_version,
-                 .message = "Unsupported material document version: " + std::to_string(authored_version)});
-        source_version = static_cast<std::uint32_t>(authored_version);
+        auto message = "Material document must use schema v" + std::to_string(material_authoring_version);
+        message += "; legacy material schemas are no longer supported";
+        return material_authoring_result::failure(
+            {.code = material_asset_error_code::unsupported_version, .message = std::move(message)});
     }
 
     std::string graph_json;
@@ -153,38 +149,29 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
                 {.code = material_asset_error_code::invalid_document,
                  .message = "Material document shaderPath must be a string or null"});
         shader_path = document["shaderPath"].get<std::string>();
+        if (shader_path.empty())
+            return material_authoring_result::failure({.code = material_asset_error_code::invalid_document,
+                                                       .message = "Material Shader path must not be empty"});
     }
 
-    const auto domain = authored_domain(document);
-    const auto shading_model = authored_shading_model(document);
-    const auto alpha_mode = authored_alpha_mode(document);
-    const bool double_sided = document.value("doubleSided", false);
+    const bool has_graph = !graph_json.empty();
+    const bool has_shader = !shader_path.empty();
+    if (has_graph == has_shader)
+        return material_authoring_result::failure(
+            {.code = material_asset_error_code::invalid_document,
+             .message = has_graph ? "Material must use either a graph or shaderPath, not both"
+                                  : "Material must provide a compiled graph or shaderPath"});
 
-    document["version"] = material_authoring_version;
-    return material_authoring_result::success({.source_version = source_version,
+    return material_authoring_result::success({.source_version = material_authoring_version,
                                                .version = material_authoring_version,
-                                               .migrated = !has_version || source_version != material_authoring_version,
+                                               .migrated = false,
                                                .canonical_json = document.dump(),
                                                .graph_json = std::move(graph_json),
                                                .shader_path = std::move(shader_path),
-                                               .domain = domain,
-                                               .shading_model = shading_model,
-                                               .alpha_mode = alpha_mode,
-                                               .double_sided = double_sided});
-}
-
-std::vector<std::byte> serialize_material_package_v2(const material_package_v2& package)
-{
-    std::vector<std::byte> output;
-    append_string(output, material_package_v2_signature);
-    append_value(output, package.shader_package.high);
-    append_value(output, package.shader_package.low);
-    append_value(output, package.permutation.representation());
-    append_value(output, static_cast<std::uint32_t>(package.parameters.size()));
-    for (const auto& parameter : package.parameters)
-        append_parameter(output, parameter);
-    append_string(output, package.canonical_document_json);
-    return output;
+                                               .domain = authored_domain(document),
+                                               .shading_model = authored_shading_model(document),
+                                               .alpha_mode = authored_alpha_mode(document),
+                                               .double_sided = document.value("doubleSided", false)});
 }
 
 std::vector<std::byte> serialize_material_package_v3(const material_package_v3& package)
@@ -277,6 +264,16 @@ material_package_v3_result deserialize_material_package_v3(std::span<const std::
     if (!reader.string(package.canonical_document_json) || !reader.complete())
         return material_package_v3_result::failure(
             {.code = material_asset_error_code::corrupt_package, .message = "Material package payload is truncated"});
+
+    if (package.compiled.passes.empty())
+    {
+        const auto document = json::parse(package.canonical_document_json, nullptr, false);
+        if (!document.is_object() || document.value("domain", std::string{"surface"}) != "terrain")
+            return material_package_v3_result::failure(
+                {.code = material_asset_error_code::corrupt_package,
+                 .message = "Surface material package must contain compiled pass bindings"});
+    }
+
     return material_package_v3_result::success(std::move(package));
 }
 

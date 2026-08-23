@@ -31,102 +31,7 @@ std::string read_string(std::span<const std::byte> bytes, std::size_t& cursor)
     return value;
 }
 
-} // namespace
-
-TEST_CASE("material authoring schema migrates historical versions without dropping fields")
-{
-    constexpr std::string_view source = R"({
-      "name":"Legacy Material",
-      "shaderPath":"Shaders/custom.slang",
-      "graph":{"version":1,"nodes":[],"connections":[]},
-      "futureEditorMetadata":{"keep":true}
-    })";
-
-    const auto result = arc::render::tools::parse_material_authoring_json(source);
-    REQUIRE(result);
-    REQUIRE(result.value().source_version == 1);
-    REQUIRE(result.value().version == arc::render::tools::material_authoring_version);
-    REQUIRE(result.value().migrated);
-    REQUIRE(result.value().shader_path == "Shaders/custom.slang");
-    REQUIRE_FALSE(result.value().graph_json.empty());
-    REQUIRE(result.value().canonical_json.find("\"version\":4") != std::string::npos);
-    REQUIRE(result.value().canonical_json.find("\"name\":\"Legacy Material\"") != std::string::npos);
-    REQUIRE(result.value().canonical_json.find("\"futureEditorMetadata\":{\"keep\":true}") != std::string::npos);
-    REQUIRE(result.value().graph_json.find("\"version\":1") != std::string::npos);
-}
-
-TEST_CASE("material authoring migration exposes pass routing properties")
-{
-    const auto material = arc::render::tools::parse_material_authoring_json(
-        R"({"version":3,"domain":"surface","shadingModel":"transmission","blendMode":"masked","doubleSided":true})");
-    REQUIRE(material);
-    REQUIRE(material.value().domain == arc::render::material_domain::surface);
-    REQUIRE(material.value().shading_model == arc::render::material_shading_model::transmission);
-    REQUIRE(material.value().alpha_mode == arc::render::material_alpha_mode::masked);
-    REQUIRE(material.value().double_sided);
-}
-
-TEST_CASE("material authoring schema accepts current and nullable legacy documents")
-{
-    const auto current = arc::render::tools::parse_material_authoring_json(R"({"version":4,"name":"Current"})");
-    REQUIRE(current);
-    REQUIRE(current.value().source_version == 4);
-    REQUIRE_FALSE(current.value().migrated);
-
-    const auto legacy = arc::render::tools::parse_material_authoring_json(R"({"version":3,"graph":null})");
-    REQUIRE(legacy);
-    REQUIRE(legacy.value().migrated);
-    REQUIRE(legacy.value().graph_json.empty());
-    REQUIRE(legacy.value().canonical_json.find("\"graph\":null") != std::string::npos);
-
-    const auto future = arc::render::tools::parse_material_authoring_json(R"({"version":5})");
-    REQUIRE_FALSE(future);
-    REQUIRE(future.error().code == arc::render::tools::material_asset_error_code::unsupported_version);
-}
-
-TEST_CASE("material authoring schema validates typed migration fields")
-{
-    const auto invalid_graph = arc::render::tools::parse_material_authoring_json(R"({"version":3,"graph":[]})");
-    REQUIRE_FALSE(invalid_graph);
-    REQUIRE(invalid_graph.error().code == arc::render::tools::material_asset_error_code::invalid_document);
-
-    const auto invalid_shader = arc::render::tools::parse_material_authoring_json(R"({"version":2,"shaderPath":42})");
-    REQUIRE_FALSE(invalid_shader);
-    REQUIRE(invalid_shader.error().code == arc::render::tools::material_asset_error_code::invalid_document);
-}
-
-TEST_CASE("material package v2 preserves the established binary envelope")
-{
-    arc::render::tools::material_package_v2 package;
-    package.shader_package = {.high = 11, .low = 22};
-    package.permutation = {33};
-    package.parameters.push_back({.id = arc::render::make_shader_parameter_id("roughness"),
-                                  .name = "Roughness",
-                                  .type = arc::render::shader_parameter_type::float32,
-                                  .offset = 16,
-                                  .size = 4});
-    package.canonical_document_json = R"({"version":4})";
-
-    const auto bytes = arc::render::tools::serialize_material_package_v2(package);
-    std::size_t cursor{};
-    const std::span<const std::byte> view(bytes);
-    REQUIRE(read_string(view, cursor) == arc::render::tools::material_package_v2_signature);
-    REQUIRE(read_value<std::uint64_t>(view, cursor) == 11);
-    REQUIRE(read_value<std::uint64_t>(view, cursor) == 22);
-    REQUIRE(read_value<std::uint64_t>(view, cursor) == 33);
-    REQUIRE(read_value<std::uint32_t>(view, cursor) == 1);
-    REQUIRE(read_value<std::uint64_t>(view, cursor) ==
-            arc::render::make_shader_parameter_id("roughness").representation());
-    REQUIRE(read_string(view, cursor) == "Roughness");
-    REQUIRE(read_value<arc::render::shader_parameter_type>(view, cursor) ==
-            arc::render::shader_parameter_type::float32);
-    REQUIRE(read_value<std::uint32_t>(view, cursor) == 16);
-    REQUIRE(read_value<std::uint32_t>(view, cursor) == 4);
-    REQUIRE(read_string(view, cursor) == package.canonical_document_json);
-    REQUIRE(cursor == bytes.size());
-}
-
-TEST_CASE("material package v3 round trips deterministic pass bindings")
+arc::render::tools::material_package_v3 compiled_package()
 {
     arc::render::tools::material_package_v3 package;
     package.compiled.package = {.high = 11, .low = 22};
@@ -144,8 +49,98 @@ TEST_CASE("material package v3 round trips deterministic pass bindings")
                                   .type = arc::render::shader_parameter_type::float32,
                                   .offset = 0,
                                   .size = 4});
-    package.canonical_document_json = R"({"version":4})";
+    package.canonical_document_json = R"({"version":4,"graph":{"version":1,"nodes":[],"connections":[]}})";
+    return package;
+}
 
+} // namespace
+
+TEST_CASE("material authoring accepts the current graph schema without migration")
+{
+    constexpr std::string_view source = R"({
+      "version":4,
+      "name":"Current Material",
+      "domain":"surface",
+      "shadingModel":"transmission",
+      "blendMode":"masked",
+      "doubleSided":true,
+      "graph":{"version":1,"nodes":[],"connections":[]},
+      "futureEditorMetadata":{"keep":true}
+    })";
+
+    const auto result = arc::render::tools::parse_material_authoring_json(source);
+    REQUIRE(result);
+    REQUIRE(result.value().source_version == arc::render::tools::material_authoring_version);
+    REQUIRE(result.value().version == arc::render::tools::material_authoring_version);
+    REQUIRE_FALSE(result.value().migrated);
+    REQUIRE_FALSE(result.value().graph_json.empty());
+    REQUIRE(result.value().shader_path.empty());
+    REQUIRE(result.value().domain == arc::render::material_domain::surface);
+    REQUIRE(result.value().shading_model == arc::render::material_shading_model::transmission);
+    REQUIRE(result.value().alpha_mode == arc::render::material_alpha_mode::masked);
+    REQUIRE(result.value().double_sided);
+    REQUIRE(result.value().canonical_json.find("\"futureEditorMetadata\":{\"keep\":true}") != std::string::npos);
+}
+
+TEST_CASE("material authoring accepts a current handwritten Material Shader")
+{
+    const auto result = arc::render::tools::parse_material_authoring_json(
+        R"({"version":4,"shaderPath":"Shaders/custom.slang","graph":null})");
+    REQUIRE(result);
+    REQUIRE(result.value().graph_json.empty());
+    REQUIRE(result.value().shader_path == "Shaders/custom.slang");
+}
+
+TEST_CASE("material authoring rejects legacy schemas")
+{
+    constexpr std::string_view missing_source = R"({"graph":{"version":1,"nodes":[],"connections":[]}})";
+    const auto missing = arc::render::tools::parse_material_authoring_json(missing_source);
+    REQUIRE_FALSE(missing);
+    REQUIRE(missing.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+
+    for (const auto version : {1, 2, 3, 5})
+    {
+        auto source = "{\"version\":" + std::to_string(version);
+        source += ",\"graph\":{\"version\":1,\"nodes\":[],\"connections\":[]}}";
+        const auto result = arc::render::tools::parse_material_authoring_json(source);
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().code == arc::render::tools::material_asset_error_code::unsupported_version);
+    }
+}
+
+TEST_CASE("material authoring requires exactly one compiled implementation")
+{
+    const auto missing = arc::render::tools::parse_material_authoring_json(R"({"version":4,"graph":null})");
+    REQUIRE_FALSE(missing);
+    REQUIRE(missing.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+
+    const auto both = arc::render::tools::parse_material_authoring_json(
+        R"({"version":4,"shaderPath":"Shaders/custom.slang","graph":{"version":1,"nodes":[],"connections":[]}})");
+    REQUIRE_FALSE(both);
+    REQUIRE(both.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+}
+
+TEST_CASE("material authoring validates compiled implementation field types")
+{
+    const auto invalid_graph =
+        arc::render::tools::parse_material_authoring_json(R"({"version":4,"graph":[],"shaderPath":null})");
+    REQUIRE_FALSE(invalid_graph);
+    REQUIRE(invalid_graph.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+
+    const auto invalid_shader =
+        arc::render::tools::parse_material_authoring_json(R"({"version":4,"graph":null,"shaderPath":42})");
+    REQUIRE_FALSE(invalid_shader);
+    REQUIRE(invalid_shader.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+
+    const auto empty_shader =
+        arc::render::tools::parse_material_authoring_json(R"({"version":4,"graph":null,"shaderPath":""})");
+    REQUIRE_FALSE(empty_shader);
+    REQUIRE(empty_shader.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+}
+
+TEST_CASE("material package v3 round trips deterministic compiled pass bindings")
+{
+    const auto package = compiled_package();
     const auto bytes = arc::render::tools::serialize_material_package_v3(package);
     std::size_t cursor{};
     REQUIRE(read_string(std::span<const std::byte>(bytes), cursor) == arc::render::tools::material_package_signature);
@@ -166,13 +161,23 @@ TEST_CASE("material package v3 round trips deterministic pass bindings")
     REQUIRE(arc::render::tools::serialize_material_package_v3(reversed) == bytes);
 }
 
-TEST_CASE("material package v3 supports legacy-only materials without compiled passes")
+TEST_CASE("surface material package v3 rejects missing compiled passes")
 {
     arc::render::tools::material_package_v3 package;
-    package.canonical_document_json = R"({"version":4,"graph":null})";
+    package.canonical_document_json = R"({"version":4,"domain":"surface"})";
+    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
+    REQUIRE_FALSE(decoded);
+    REQUIRE(decoded.error().code == arc::render::tools::material_asset_error_code::corrupt_package);
+}
+
+TEST_CASE("terrain material package v3 may use the dedicated terrain renderer")
+{
+    arc::render::tools::material_package_v3 package;
+    package.canonical_document_json = R"({"version":4,"domain":"terrain"})";
     const auto bytes = arc::render::tools::serialize_material_package_v3(package);
     const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
     REQUIRE(decoded);
-    REQUIRE_FALSE(decoded.value().compiled.package.valid());
     REQUIRE(decoded.value().compiled.passes.empty());
+    REQUIRE_FALSE(decoded.value().compiled.package.valid());
 }

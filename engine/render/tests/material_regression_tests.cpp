@@ -11,7 +11,6 @@ TEST_CASE("material descriptor production defaults remain stable")
     REQUIRE(material.name.empty());
     REQUIRE(material.domain == arc::render::material_domain::surface);
     REQUIRE(material.shading_model == arc::render::material_shading_model::standard);
-    REQUIRE(material.pipeline == arc::render::material_pipeline::compiled);
 
     REQUIRE(material.base_color[0] == Catch::Approx(1.0f));
     REQUIRE(material.base_color[1] == Catch::Approx(1.0f));
@@ -128,22 +127,4 @@ TEST_CASE("representative advanced material preserves the shader permutation con
     REQUIRE(key.subsurface);
     REQUIRE(key.anisotropy);
     REQUIRE(key.parallax);
-}
-
-TEST_CASE("material implementation selection does not change shader permutations")
-{
-    arc::render::material_descriptor material;
-    material.normal_texture = {.index = 1, .generation = 1};
-    material.clear_coat_factor = 0.5f;
-
-    REQUIRE(material.pipeline == arc::render::material_pipeline::compiled);
-    const auto compiled_key = arc::render::make_shader_permutation_key(material);
-
-    material.pipeline = arc::render::material_pipeline::legacy;
-    REQUIRE(material.pipeline == arc::render::material_pipeline::legacy);
-    REQUIRE(arc::render::make_shader_permutation_key(material) == compiled_key);
-
-    material.pipeline = arc::render::material_pipeline::compare;
-    REQUIRE(material.pipeline == arc::render::material_pipeline::compare);
-    REQUIRE(arc::render::make_shader_permutation_key(material) == compiled_key);
 }

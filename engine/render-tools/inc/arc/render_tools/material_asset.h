@@ -2,7 +2,7 @@
 
 /**
  * @file arc/render_tools/material_asset.h
- * @brief Versioned authored-material migration and cooked material package schema.
+ * @brief Current authored-material and cooked material package schema.
  */
 
 #include <arc/core/result.h>
@@ -23,9 +23,7 @@ namespace arc::render::tools
 inline constexpr std::uint32_t material_authoring_version = 4;
 /** Current cooked ARC material package schema version. */
 inline constexpr std::uint32_t material_package_version = 3;
-/** Stable signature of the legacy version-2 cooked material payload. */
-inline constexpr std::string_view material_package_v2_signature = "ARC_MATERIAL_2";
-/** Stable signature of the version-3 pass-aware cooked material payload. */
+/** Stable signature of the pass-aware cooked material payload. */
 inline constexpr std::string_view material_package_signature = "ARC_MATERIAL_3";
 
 /** Failure category produced while reading an authored or cooked material document. */
@@ -47,15 +45,13 @@ struct material_asset_error
 /**
  * @brief Canonical authored material document consumed by cooking tools.
  *
- * ARC accepts historical authored versions and normalizes them to
- * @ref material_authoring_version without dropping unknown fields. The graph,
- * shader path, and pass-routing properties are extracted for tools while
- * canonical_json remains the authoritative migrated document persisted into
- * cooked packages.
+ * ARC material authoring is intentionally strict: the document must use the
+ * current schema and must provide exactly one compiled implementation, either a
+ * material graph or a handwritten Material Shader path.
  */
 struct material_authoring_document
 {
-    std::uint32_t source_version{1};
+    std::uint32_t source_version{material_authoring_version};
     std::uint32_t version{material_authoring_version};
     bool migrated{};
     std::string canonical_json;
@@ -69,17 +65,8 @@ struct material_authoring_document
 
 using material_authoring_result = core::result<material_authoring_document, material_asset_error>;
 
-/** Parse versions 1-4 and migrate them in memory to the canonical authored material schema. */
+/** Parse and validate a current-version material with exactly one compiled implementation. */
 [[nodiscard]] material_authoring_result parse_material_authoring_json(std::string_view source);
-
-/** Data stored by the legacy ARC_MATERIAL_2 cooked package envelope. */
-struct material_package_v2
-{
-    shader_package_id shader_package{};
-    shader_permutation_id permutation{};
-    std::vector<shader_parameter_descriptor> parameters;
-    std::string canonical_document_json;
-};
 
 /** Data stored by the pass-aware ARC_MATERIAL_3 cooked package envelope. */
 struct material_package_v3
@@ -90,9 +77,6 @@ struct material_package_v3
 };
 
 using material_package_v3_result = core::result<material_package_v3, material_asset_error>;
-
-/** Serialize the legacy version-2 material package without changing its byte layout. */
-[[nodiscard]] std::vector<std::byte> serialize_material_package_v2(const material_package_v2& package);
 
 /** Serialize deterministic pass-aware ARC_MATERIAL_3 bytes. */
 [[nodiscard]] std::vector<std::byte> serialize_material_package_v3(const material_package_v3& package);
