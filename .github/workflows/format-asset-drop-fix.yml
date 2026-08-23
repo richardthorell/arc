@@ -1,0 +1,36 @@
+name: Format Asset Drop Fix
+
+on:
+  pull_request:
+    types: [reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.head.ref == 'fix/content-asset-drag-drop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: npm ci --prefix editor
+      - run: |
+          cd editor
+          npx prettier --write \
+            src/renderer/src/viewport/viewportAssetDrop.ts \
+            src/renderer/src/viewport/ViewportPanel.tsx
+      - run: rm .github/workflows/format-asset-drop-fix.yml
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: format asset drag and drop fix"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
