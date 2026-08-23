@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace arc::editor
 {
@@ -20,6 +21,27 @@ struct material_preview_result
         return texture.has_pixels();
     }
 };
+
+struct material_graph_preview_result
+{
+    render::material_descriptor material;
+    std::string message;
+
+    bool succeeded() const noexcept
+    {
+        return message.empty();
+    }
+};
+
+/**
+ * @brief Resolve the statically evaluable outputs of a validated Material Graph for editor preview.
+ *
+ * The graph is first compiled by ARC's native Material IR compiler, so authoring validation and
+ * connectivity remain native-authoritative. Dynamic inputs such as time, UVs, textures, and
+ * shader-backed functions keep their renderer defaults until the preview renderer executes the
+ * compiled Material ABI directly.
+ */
+material_graph_preview_result material_graph_preview_descriptor(std::string_view graph_json);
 
 /**
  * @brief Render a deterministic scene-linear PBR material sphere on the CPU.
