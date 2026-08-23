@@ -139,24 +139,4 @@ const material_pass_binding* find_material_pass_binding(const material_compiled_
     return found == program.passes.end() ? nullptr : &*found;
 }
 
-material_pipeline_resolution resolve_material_pipeline(const material_descriptor& material, material_pass pass,
-                                                       const material_compiled_program* compiled) noexcept
-{
-    const bool compiled_contract_valid = compiled != nullptr &&
-                                         compiled->contract_version == material_pass_contract_version &&
-                                         compiled->material_abi == material_abi_version && compiled->package.valid() &&
-                                         find_material_pass_binding(*compiled, pass) != nullptr;
-
-    switch (material.pipeline)
-    {
-        case material_pipeline::legacy:
-            return {.use_legacy = true};
-        case material_pipeline::compiled:
-            return {.use_compiled = compiled_contract_valid};
-        case material_pipeline::compare:
-            return {.use_legacy = true, .use_compiled = compiled_contract_valid, .compare = compiled_contract_valid};
-    }
-    return {};
-}
-
 } // namespace arc::render
