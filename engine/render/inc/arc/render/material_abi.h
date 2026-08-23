@@ -51,31 +51,4 @@ struct material_surface
     float subsurface{};
 };
 
-/**
- * @brief Already-decoded texture samples used by the CPU legacy-reference evaluator.
- *
- * This is migration scaffolding, not the future material resource model. GPU legacy evaluation samples the
- * currently bound textures directly and feeds the same @ref material_surface contract.
- */
-struct legacy_material_samples
-{
-    math::vector4f base_color = math::vector4f::one;
-    math::vector4f metallic_roughness = math::vector4f::one;
-    math::vector3f normal_ws{0.0f, 0.0f, 1.0f};
-    float occlusion{1.0f};
-    math::vector3f emissive = math::vector3f::one;
-    float clear_coat{1.0f};
-    float clear_coat_roughness{1.0f};
-    math::vector3f clear_coat_normal_ws{0.0f, 0.0f, 1.0f};
-    float anisotropy{1.0f};
-    float subsurface{1.0f};
-    float thickness{1.0f};
-    float transmission{1.0f};
-};
-
-/** @brief CPU reference for the compatibility material implementation used by the current renderer. */
-[[nodiscard]] material_surface evaluate_legacy_material(const material_descriptor& material,
-                                                        const material_inputs& inputs,
-                                                        const legacy_material_samples& samples = {}) noexcept;
-
 } // namespace arc::render
