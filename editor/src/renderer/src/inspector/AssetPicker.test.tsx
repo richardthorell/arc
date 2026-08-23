@@ -141,7 +141,14 @@ describe('AssetPicker', () => {
     await waitFor(() => expect(snapshot).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText.mock.calls[0][0]).toBe('GameContent/Hero Surface.arcmat');
-    expect(JSON.parse(writeText.mock.calls[0][1]).shader).toBe('arc/default_phong');
+    const asset = JSON.parse(writeText.mock.calls[0][1]);
+    expect(asset.version).toBe(4);
+    expect(asset).not.toHaveProperty('shader');
+    expect(asset).not.toHaveProperty('surface');
+    expect(asset).not.toHaveProperty('textures');
+    expect(asset).not.toHaveProperty('advanced');
+    expect(asset.graph.version).toBe(1);
+    expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
     await waitFor(() => expect(onChange).toHaveBeenCalledWith('GameContent/Hero Surface.arcmat'));
   });
 });
