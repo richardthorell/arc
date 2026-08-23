@@ -125,10 +125,12 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
                                                    .message = "Material document version must be an integer"});
     const auto authored_version = document["version"].get<std::int64_t>();
     if (authored_version != static_cast<std::int64_t>(material_authoring_version))
+    {
+        auto message = "Material document must use schema v" + std::to_string(material_authoring_version);
+        message += "; legacy material schemas are no longer supported";
         return material_authoring_result::failure(
-            {.code = material_asset_error_code::unsupported_version,
-             .message = "Material document must use schema v" + std::to_string(material_authoring_version) +
-                        "; legacy material schemas are no longer supported"});
+            {.code = material_asset_error_code::unsupported_version, .message = std::move(message)});
+    }
 
     std::string graph_json;
     if (document.contains("graph") && !document["graph"].is_null())
