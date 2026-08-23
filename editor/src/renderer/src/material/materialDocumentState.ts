@@ -6,7 +6,6 @@ import {
   compilingMaterialResult,
   emptyMaterialCompileResult,
   nativeMaterialCompileResult,
-  projectLegacyMaterialPreview,
   type MaterialCompileResult,
   type NativeMaterialCompilePayload,
 } from './materialCompiler';
@@ -121,14 +120,27 @@ const updateDirtyState = (document: EditorDocument, graph: MaterialGraph, confir
 
 const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => ({
   ...asset,
-  version: Math.max(4, typeof asset.version === 'number' ? asset.version : 4),
+  version: 4,
   name: asset.name ?? document.title.replace(/\.arcmat$/i, ''),
-  shader: asset.shader ?? 'arc/default_phong',
   domain: asset.domain ?? 'surface',
   blendMode: asset.blendMode ?? 'opaque',
   shadingModel: asset.shadingModel ?? 'standard',
   doubleSided: asset.doubleSided ?? false,
 });
+
+const canonicalAssetFields = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => {
+  const normalized = normalizedAsset(asset, document);
+  const {
+    shader: _shader,
+    shaderPath: _shaderPath,
+    surface: _surface,
+    textures: _textures,
+    advanced: _advanced,
+    graph: _graph,
+    ...canonical
+  } = normalized;
+  return canonical;
+};
 
 const cancelScheduledCompile = (documentId: string) => {
   const timer = compileTimers.get(documentId);
@@ -352,23 +364,17 @@ export const compileMaterialDocument = async (
 
 const serializedMaterial = (document: EditorDocument, current: MaterialDocumentState) => {
   const customShader = materialShaderPath(current.asset);
-  if (customShader) {
-    const asset: MaterialAssetJson = {
-      ...normalizedAsset(current.asset, document),
-      graph: null,
-    };
-    return { asset, text: `${JSON.stringify(asset, null, 2)}\n` };
-  }
-
-  const projection = projectLegacyMaterialPreview(current.graph);
-  const surface = { ...(current.asset.surface ?? {}), ...projection.surface };
-  const textures = { ...(current.asset.textures ?? {}), ...projection.textures };
-  const asset: MaterialAssetJson = {
-    ...normalizedAsset(current.asset, document),
-    surface,
-    textures,
-    graph: cloneMaterialGraph(current.graph),
-  };
+  const canonical = canonicalAssetFields(current.asset, document);
+  const asset: MaterialAssetJson = customShader
+    ? {
+        ...canonical,
+        shaderPath: customShader,
+        graph: null,
+      }
+    : {
+        ...canonical,
+        graph: cloneMaterialGraph(current.graph),
+      };
   return { asset, text: `${JSON.stringify(asset, null, 2)}\n` };
 };
 
