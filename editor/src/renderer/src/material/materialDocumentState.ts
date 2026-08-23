@@ -86,8 +86,9 @@ const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): Ma
 };
 
 const canonicalAssetFields = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => {
-  const normalized = normalizedAsset(asset, document);
-  const { shaderPath: _shaderPath, graph: _graph, ...canonical } = normalized;
+  const canonical = { ...normalizedAsset(asset, document) };
+  delete canonical.shaderPath;
+  delete canonical.graph;
   return canonical;
 };
 
