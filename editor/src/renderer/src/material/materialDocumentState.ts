@@ -135,7 +135,6 @@ const canonicalAssetFields = (asset: MaterialAssetJson, document: EditorDocument
     shaderPath: _shaderPath,
     surface: _surface,
     textures: _textures,
-    advanced: _advanced,
     graph: _graph,
     ...canonical
   } = normalized;
