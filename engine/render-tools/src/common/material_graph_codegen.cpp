@@ -446,9 +446,8 @@ private:
                 break;
             }
             case material_ir_node_kind::normal_map:
-                expression = "normalize(lerp(float3(0.0,0.0,1.0)," +
-                             input(node.id, "texture", "float3(0.5,0.5,1.0)") + "*2.0-1.0," + number(node.strength) +
-                             "))";
+                expression = "normalize(lerp(float3(0.0,0.0,1.0)," + input(node.id, "texture", "float3(0.5,0.5,1.0)") +
+                             "*2.0-1.0," + number(node.strength) + "))";
                 break;
             case material_ir_node_kind::saturate:
                 expression = "saturate(" + input(node.id, "value", "0.0") + ')';
@@ -719,8 +718,7 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         if (!emissive.empty()) source.append("    surface.emissiveRadiance = " + emissive + ';');
         if (!opacity.empty()) source.append("    surface.opacity = " + opacity + ';');
         if (!alpha_cutoff.empty()) source.append("    surface.alphaCutoff = " + alpha_cutoff + ';');
-        if (!index_of_refraction.empty())
-            source.append("    surface.indexOfRefraction = " + index_of_refraction + ';');
+        if (!index_of_refraction.empty()) source.append("    surface.indexOfRefraction = " + index_of_refraction + ';');
         if (!clear_coat.empty()) source.append("    surface.clearCoat = " + clear_coat + ';');
         if (!clear_coat_roughness.empty())
             source.append("    surface.clearCoatRoughness = " + clear_coat_roughness + ';');

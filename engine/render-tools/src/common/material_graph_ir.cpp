@@ -396,9 +396,11 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         static_cast<void>(id);
         compilation.ir.nodes.push_back(std::move(node));
     }
-    std::ranges::sort(connections, {}, [](const material_ir_connection& connection) {
-        return std::tuple{connection.target_node, connection.target_pin, connection.source_node, connection.source_pin};
-    });
+    std::ranges::sort(connections, {},
+                      [](const material_ir_connection& connection) {
+                          return std::tuple{connection.target_node, connection.target_pin, connection.source_node,
+                                            connection.source_pin};
+                      });
     compilation.ir.connections = std::move(connections);
 
     if (has_cycle(adjacency, compilation.ir.nodes))

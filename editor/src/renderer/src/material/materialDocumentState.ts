@@ -68,7 +68,11 @@ const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): Ma
   const shaderPath = materialShaderPath(asset);
   const hasGraph = isMaterialGraph(asset.graph);
   if (hasGraph === Boolean(shaderPath))
-    throw new Error(hasGraph ? 'Material must use either a graph or shaderPath, not both' : 'Material must provide a graph or shaderPath');
+    throw new Error(
+      hasGraph
+        ? 'Material must use either a graph or shaderPath, not both'
+        : 'Material must provide a graph or shaderPath',
+    );
 
   return {
     ...asset,

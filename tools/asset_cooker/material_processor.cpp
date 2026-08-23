@@ -254,7 +254,8 @@ render::material_descriptor authored_pass_material(const render::tools::material
 bool graph_output_connected(const render::tools::material_graph_descriptor& graph,
                             render::tools::material_surface_output output) noexcept
 {
-    const auto binding = std::ranges::find(graph.outputs, output, &render::tools::material_surface_output_binding::output);
+    const auto binding =
+        std::ranges::find(graph.outputs, output, &render::tools::material_surface_output_binding::output);
     return binding != graph.outputs.end() && binding->connected;
 }
 
