@@ -36,45 +36,15 @@ const cleanAssetName = (name: string) => {
 
 const joinPath = (folder: string, fileName: string) => `${normalizePath(folder)}/${fileName}`.replace(/^\//, '');
 
-const defaultMaterialAsset = (name: string): MaterialAssetJson => {
-  const surface = {
-    baseColor: { r: 0.78, g: 0.8, b: 0.84, a: 1 },
-    metallic: 0,
-    roughness: 0.62,
-    normalScale: 1,
-    aoStrength: 1,
-    emissive: { r: 0, g: 0, b: 0 },
-    emissiveStrength: 0,
-    alphaCutoff: 0.5,
-  };
-  return {
-    version: 4,
-    name,
-    shader: 'arc/default_phong',
-    domain: 'surface',
-    blendMode: 'opaque',
-    shadingModel: 'standard',
-    doubleSided: false,
-    surface,
-    textures: {
-      baseColor: '',
-      metallicRoughness: '',
-      normal: '',
-      ao: '',
-      emissive: '',
-      height: '',
-    },
-    advanced: {
-      clearCoat: 0,
-      sheen: 0,
-      transmission: 0,
-      subsurface: 0,
-      anisotropy: 0,
-      parallaxHeightScale: 0,
-    },
-    graph: createDefaultMaterialGraph({ surface }),
-  };
-};
+const defaultMaterialAsset = (name: string): MaterialAssetJson => ({
+  version: 4,
+  name,
+  domain: 'surface',
+  blendMode: 'opaque',
+  shadingModel: 'standard',
+  doubleSided: false,
+  graph: createDefaultMaterialGraph(),
+});
 
 const shaderTemplateSource = (template: ShaderAssetTemplate) => {
   if (template === 'compute') {
