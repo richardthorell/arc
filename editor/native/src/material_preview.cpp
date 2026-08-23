@@ -1,11 +1,16 @@
 #include <arc/editor/material_preview.h>
 
+#include <arc/render_tools/material_graph.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <numbers>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace arc::editor
@@ -158,7 +163,259 @@ color3 preview_background(float x, float y) noexcept
     return mix({0.018f, 0.024f, 0.029f}, {0.085f, 0.105f, 0.118f}, radial * (0.45f + vertical * 0.35f));
 }
 
+struct graph_preview_value
+{
+    std::array<float, 4> values{};
+    std::uint8_t components{};
+
+    explicit operator bool() const noexcept
+    {
+        return components != 0;
+    }
+};
+
+graph_preview_value literal_value(const render::tools::material_ir_literal& literal) noexcept
+{
+    return {.values = literal.values, .components = literal.components};
+}
+
+float component(const graph_preview_value& value, std::size_t index) noexcept
+{
+    if (!value || value.components == 0) return 0.0f;
+    if (value.components == 1) return value.values[0];
+    return value.values[std::min<std::size_t>(index, value.components - 1u)];
+}
+
+class graph_preview_evaluator
+{
+public:
+    explicit graph_preview_evaluator(const render::tools::material_graph_compilation& compilation)
+        : compilation_(compilation)
+    {
+        for (const auto& node : compilation_.ir.nodes) nodes_.emplace(node.id, &node);
+        for (const auto& connection : compilation_.ir.connections)
+            incoming_.emplace(connection.target_node + '\x1f' + connection.target_pin, &connection);
+    }
+
+    graph_preview_value output(render::tools::material_surface_output semantic)
+    {
+        const auto found = std::find_if(compilation_.descriptor.outputs.begin(), compilation_.descriptor.outputs.end(),
+                                        [semantic](const auto& binding) { return binding.output == semantic; });
+        if (found == compilation_.descriptor.outputs.end() || !found->connected) return {};
+        return evaluate(found->source_node, found->source_pin);
+    }
+
+private:
+    graph_preview_value input(const render::tools::material_ir_node& node, std::string_view pin)
+    {
+        const auto found = incoming_.find(node.id + '\x1f' + std::string(pin));
+        if (found == incoming_.end()) return {};
+        return evaluate(found->second->source_node, found->second->source_pin);
+    }
+
+    graph_preview_value unary(const render::tools::material_ir_node& node, float minimum, float maximum)
+    {
+        auto value = input(node, "value");
+        if (!value) return {};
+        for (std::size_t index = 0; index < value.components; ++index)
+            value.values[index] = std::clamp(value.values[index], minimum, maximum);
+        return value;
+    }
+
+    graph_preview_value binary(const render::tools::material_ir_node& node)
+    {
+        const auto a = input(node, "a");
+        const auto b = input(node, "b");
+        if (!a || !b) return {};
+        graph_preview_value result;
+        result.components = std::max(a.components, b.components);
+        for (std::size_t index = 0; index < result.components; ++index)
+        {
+            const float left = component(a, index);
+            const float right = component(b, index);
+            switch (node.kind)
+            {
+                case render::tools::material_ir_node_kind::add:
+                    result.values[index] = left + right;
+                    break;
+                case render::tools::material_ir_node_kind::subtract:
+                    result.values[index] = left - right;
+                    break;
+                case render::tools::material_ir_node_kind::multiply:
+                    result.values[index] = left * right;
+                    break;
+                case render::tools::material_ir_node_kind::divide:
+                    result.values[index] = std::abs(right) < 1.0e-6f ? 0.0f : left / right;
+                    break;
+                default:
+                    return {};
+            }
+        }
+        return result;
+    }
+
+    graph_preview_value evaluate(std::string_view node_id, std::string_view output_pin)
+    {
+        const std::string key = std::string(node_id) + '\x1f' + std::string(output_pin);
+        if (const auto cached = memo_.find(key); cached != memo_.end()) return cached->second;
+        if (!active_.insert(key).second) return {};
+
+        graph_preview_value result;
+        const auto found = nodes_.find(std::string(node_id));
+        if (found != nodes_.end())
+        {
+            const auto& node = *found->second;
+            switch (node.kind)
+            {
+                case render::tools::material_ir_node_kind::constant:
+                case render::tools::material_ir_node_kind::vector2:
+                case render::tools::material_ir_node_kind::vector3:
+                case render::tools::material_ir_node_kind::vector4:
+                    result = literal_value(node.literal);
+                    break;
+                case render::tools::material_ir_node_kind::saturate:
+                    result = unary(node, 0.0f, 1.0f);
+                    break;
+                case render::tools::material_ir_node_kind::clamp:
+                    result = unary(node, node.minimum, node.maximum);
+                    break;
+                case render::tools::material_ir_node_kind::add:
+                case render::tools::material_ir_node_kind::subtract:
+                case render::tools::material_ir_node_kind::multiply:
+                case render::tools::material_ir_node_kind::divide:
+                    result = binary(node);
+                    break;
+                case render::tools::material_ir_node_kind::lerp:
+                {
+                    const auto a = input(node, "a");
+                    const auto b = input(node, "b");
+                    const auto t = input(node, "t");
+                    if (a && b && t)
+                    {
+                        result.components = std::max(a.components, b.components);
+                        const float amount = component(t, 0);
+                        for (std::size_t index = 0; index < result.components; ++index)
+                        {
+                            const float left = component(a, index);
+                            result.values[index] = left + (component(b, index) - left) * amount;
+                        }
+                    }
+                    break;
+                }
+                case render::tools::material_ir_node_kind::normal_map:
+                    result = input(node, "texture");
+                    break;
+                case render::tools::material_ir_node_kind::tex_coord:
+                case render::tools::material_ir_node_kind::time:
+                case render::tools::material_ir_node_kind::texture_sample:
+                case render::tools::material_ir_node_kind::function_call:
+                case render::tools::material_ir_node_kind::output:
+                    break;
+            }
+        }
+
+        active_.erase(key);
+        memo_[key] = result;
+        return result;
+    }
+
+    const render::tools::material_graph_compilation& compilation_;
+    std::unordered_map<std::string, const render::tools::material_ir_node*> nodes_;
+    std::unordered_map<std::string, const render::tools::material_ir_connection*> incoming_;
+    std::unordered_map<std::string, graph_preview_value> memo_;
+    std::unordered_set<std::string> active_;
+};
+
+float scalar_or(const graph_preview_value& value, float fallback) noexcept
+{
+    return value ? value.values[0] : fallback;
+}
+
+void assign_vec3_if_valid(const graph_preview_value& value, math::vector3f& target) noexcept
+{
+    if (!value) return;
+    target = {component(value, 0), component(value, 1), component(value, 2)};
+}
+
 } // namespace
+
+material_graph_preview_result material_graph_preview_descriptor(std::string_view graph_json)
+{
+    auto compiled = render::tools::compile_material_graph_json(graph_json);
+    if (!compiled)
+        return {.message = compiled.error().message.empty() ? "Material Graph preview compilation failed"
+                                                            : compiled.error().message};
+
+    graph_preview_evaluator evaluator(compiled.value());
+    render::material_descriptor material;
+    material.name = "Material Graph Preview";
+    material.base_color = {0.78f, 0.80f, 0.84f, 1.0f};
+    material.roughness = 0.62f;
+
+    const auto base_color = evaluator.output(render::tools::material_surface_output::base_color);
+    if (base_color)
+    {
+        material.base_color[0] = component(base_color, 0);
+        material.base_color[1] = component(base_color, 1);
+        material.base_color[2] = component(base_color, 2);
+    }
+    material.metallic = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::metallic), material.metallic), 0.0f, 1.0f);
+    material.roughness = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::roughness), material.roughness), 0.0f, 1.0f);
+    material.base_color[3] = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::opacity), material.base_color[3]), 0.0f, 1.0f);
+    material.alpha_cutoff = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::alpha_cutoff), material.alpha_cutoff), 0.0f,
+        1.0f);
+
+    const auto emissive = evaluator.output(render::tools::material_surface_output::emissive);
+    if (emissive)
+    {
+        assign_vec3_if_valid(emissive, material.emissive_factor);
+        material.emissive_strength = 1.0f;
+    }
+    material.occlusion_strength = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::ambient_occlusion),
+                  material.occlusion_strength),
+        0.0f, 1.0f);
+    material.index_of_refraction = std::max(
+        1.0f, scalar_or(evaluator.output(render::tools::material_surface_output::index_of_refraction),
+                        material.index_of_refraction));
+    material.clear_coat_factor = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::clear_coat), material.clear_coat_factor),
+        0.0f, 1.0f);
+    material.clear_coat_roughness = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::clear_coat_roughness),
+                  material.clear_coat_roughness),
+        0.0f, 1.0f);
+    material.sheen_factor = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::sheen), material.sheen_factor), 0.0f, 1.0f);
+    assign_vec3_if_valid(evaluator.output(render::tools::material_surface_output::sheen_color), material.sheen_color);
+    material.anisotropy_factor = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::anisotropy), material.anisotropy_factor),
+        -1.0f, 1.0f);
+    material.anisotropy_rotation =
+        scalar_or(evaluator.output(render::tools::material_surface_output::anisotropy_rotation),
+                  material.anisotropy_rotation);
+    material.transmission_factor = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::transmission), material.transmission_factor),
+        0.0f, 1.0f);
+    material.thickness_factor = std::max(
+        0.0f, scalar_or(evaluator.output(render::tools::material_surface_output::thickness), material.thickness_factor));
+    assign_vec3_if_valid(evaluator.output(render::tools::material_surface_output::attenuation_color),
+                         material.attenuation_color);
+    material.attenuation_distance = std::max(
+        1.0e-4f, scalar_or(evaluator.output(render::tools::material_surface_output::attenuation_distance),
+                           material.attenuation_distance));
+    assign_vec3_if_valid(evaluator.output(render::tools::material_surface_output::subsurface_color),
+                         material.subsurface_color);
+    material.subsurface_factor = std::clamp(
+        scalar_or(evaluator.output(render::tools::material_surface_output::subsurface), material.subsurface_factor),
+        0.0f, 1.0f);
+
+    return {.material = std::move(material)};
+}
 
 material_preview_result render_material_preview(const material_asset& asset, const std::filesystem::path& asset_root,
                                                 std::uint32_t size)
