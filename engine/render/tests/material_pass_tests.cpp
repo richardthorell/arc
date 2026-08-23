@@ -54,77 +54,26 @@ TEST_CASE("material pass eligibility follows alpha and render routing")
     REQUIRE(arc::render::material_supports_pass(material, arc::render::material_pass::forward));
 }
 
-TEST_CASE("compiled materials are the default and never silently fall back to legacy")
+TEST_CASE("compiled material programs never silently fall back when a pass is unavailable")
 {
-    arc::render::material_descriptor material;
-    REQUIRE(material.pipeline == arc::render::material_pipeline::compiled);
-
-    const auto unavailable =
-        arc::render::resolve_material_pipeline(material, arc::render::material_pass::gbuffer, nullptr);
-    REQUIRE_FALSE(unavailable.use_legacy);
-    REQUIRE_FALSE(unavailable.use_compiled);
-    REQUIRE_FALSE(unavailable.compare);
-
     arc::render::material_compiled_program program;
+    REQUIRE_FALSE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
+
     program.package = {.high = 1, .low = 2};
     program.passes.push_back({.pass = arc::render::material_pass::gbuffer,
                               .permutation = {17},
                               .entry_point = arc::render::make_shader_entry_point_id(
                                   "arc_material_gbuffer", arc::render::shader_stage::fragment)});
 
-    const auto compiled =
-        arc::render::resolve_material_pipeline(material, arc::render::material_pass::gbuffer, &program);
-    REQUIRE_FALSE(compiled.use_legacy);
-    REQUIRE(compiled.use_compiled);
-    REQUIRE_FALSE(compiled.compare);
-
-    const auto missing_shadow =
-        arc::render::resolve_material_pipeline(material, arc::render::material_pass::shadow, &program);
-    REQUIRE_FALSE(missing_shadow.use_legacy);
-    REQUIRE_FALSE(missing_shadow.use_compiled);
-    REQUIRE_FALSE(missing_shadow.compare);
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
+    REQUIRE_FALSE(arc::render::material_program_supports_pass(program, arc::render::material_pass::shadow));
 
     program.contract_version = arc::render::material_pass_contract_version + 1;
-    const auto incompatible =
-        arc::render::resolve_material_pipeline(material, arc::render::material_pass::gbuffer, &program);
-    REQUIRE_FALSE(incompatible.use_legacy);
-    REQUIRE_FALSE(incompatible.use_compiled);
-    REQUIRE_FALSE(incompatible.compare);
-}
-
-TEST_CASE("explicit legacy and compare modes remain available during migration")
-{
-    arc::render::material_descriptor material;
-    arc::render::material_compiled_program program;
-    program.package = {.high = 3, .low = 4};
-    program.passes.push_back({.pass = arc::render::material_pass::forward,
-                              .permutation = {23},
-                              .entry_point = arc::render::make_shader_entry_point_id(
-                                  "arc_material_forward", arc::render::shader_stage::fragment)});
-
-    material.pipeline = arc::render::material_pipeline::legacy;
-    const auto legacy = arc::render::resolve_material_pipeline(material, arc::render::material_pass::forward, &program);
-    REQUIRE(legacy.use_legacy);
-    REQUIRE_FALSE(legacy.use_compiled);
-    REQUIRE_FALSE(legacy.compare);
-
-    material.pipeline = arc::render::material_pipeline::compare;
-    const auto compare =
-        arc::render::resolve_material_pipeline(material, arc::render::material_pass::forward, &program);
-    REQUIRE(compare.use_legacy);
-    REQUIRE(compare.use_compiled);
-    REQUIRE(compare.compare);
-
-    const auto compare_missing =
-        arc::render::resolve_material_pipeline(material, arc::render::material_pass::shadow, &program);
-    REQUIRE(compare_missing.use_legacy);
-    REQUIRE_FALSE(compare_missing.use_compiled);
-    REQUIRE_FALSE(compare_missing.compare);
+    REQUIRE_FALSE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
 }
 
 TEST_CASE("compiled routing accepts every raster material pass produced by the cooker")
 {
-    arc::render::material_descriptor material;
     arc::render::material_compiled_program program;
     program.package = {.high = 5, .low = 6};
 
@@ -143,18 +92,11 @@ TEST_CASE("compiled routing accepts every raster material pass produced by the c
     add_pass(arc::render::material_pass::object_id, 6);
     add_pass(arc::render::material_pass::selection, 7);
 
-    const auto require_compiled = [&](arc::render::material_pass pass)
-    {
-        const auto resolved = arc::render::resolve_material_pipeline(material, pass, &program);
-        REQUIRE_FALSE(resolved.use_legacy);
-        REQUIRE(resolved.use_compiled);
-        REQUIRE_FALSE(resolved.compare);
-    };
-    require_compiled(arc::render::material_pass::depth);
-    require_compiled(arc::render::material_pass::shadow);
-    require_compiled(arc::render::material_pass::gbuffer);
-    require_compiled(arc::render::material_pass::forward);
-    require_compiled(arc::render::material_pass::motion);
-    require_compiled(arc::render::material_pass::object_id);
-    require_compiled(arc::render::material_pass::selection);
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::depth));
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::shadow));
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::forward));
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::motion));
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::object_id));
+    REQUIRE(arc::render::material_program_supports_pass(program, arc::render::material_pass::selection));
 }
