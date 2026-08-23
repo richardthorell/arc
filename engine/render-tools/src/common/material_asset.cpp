@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <type_traits>
 #include <utility>
@@ -12,6 +13,8 @@ namespace arc::render::tools
 namespace
 {
 using json = nlohmann::json;
+
+constexpr std::array<std::string_view, 4> legacy_material_fields{"shader", "surface", "textures", "advanced"};
 
 template <class T> void append_value(std::vector<std::byte>& output, const T& value)
 {
@@ -131,6 +134,12 @@ material_authoring_result parse_material_authoring_json(std::string_view source)
         return material_authoring_result::failure(
             {.code = material_asset_error_code::unsupported_version, .message = std::move(message)});
     }
+
+    for (const auto field : legacy_material_fields)
+        if (document.contains(field))
+            return material_authoring_result::failure(
+                {.code = material_asset_error_code::invalid_document,
+                 .message = "Legacy material field '" + std::string(field) + "' is no longer supported"});
 
     std::string graph_json;
     if (document.contains("graph") && !document["graph"].is_null())
