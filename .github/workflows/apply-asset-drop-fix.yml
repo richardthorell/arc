@@ -1,0 +1,86 @@
+name: Apply Asset Drop Fix
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'fix/content-asset-drag-drop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply renderer integration
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'expected snippet not found in {path}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'editor/src/renderer/src/inspector/AssetPicker.tsx',
+              "import { buildAssetCreation } from '../content/assetCreation';\n",
+              "import { buildAssetCreation } from '../content/assetCreation';\nimport { readArcAssetDragPayload } from '../services/assetDragPayload';\n",
+          )
+          replace_once(
+              'editor/src/renderer/src/inspector/AssetPicker.tsx',
+              """  const acceptDrop = (event: React.DragEvent) => {\n    event.preventDefault();\n    const path =\n      event.dataTransfer.getData('application/x-arc-asset') ||\n      event.dataTransfer.getData('application/x-arc-environment');\n    const candidate = candidates.find((asset) => asset.path === path);\n    if (candidate) onChange(valueFor(candidate));\n  };\n""",
+              """  const acceptDrop = (event: React.DragEvent) => {\n    const dropped = readArcAssetDragPayload(event.dataTransfer);\n    if (!dropped) return;\n    const candidate = candidates.find(\n      (asset) =>\n        (dropped.guid && (asset.guid === dropped.guid || asset.id === dropped.guid)) ||\n        normalizedPath(asset.path) === normalizedPath(dropped.pathHint),\n    );\n    if (!candidate) return;\n    event.preventDefault();\n    event.dataTransfer.dropEffect = 'copy';\n    onChange(valueFor(candidate));\n  };\n""",
+          )
+
+          replace_once(
+              'editor/src/renderer/src/viewport/ViewportPanel.tsx',
+              "import type { PointerEvent, WheelEvent } from 'react';\n",
+              "import type { DragEvent, PointerEvent, WheelEvent } from 'react';\n",
+          )
+          replace_once(
+              'editor/src/renderer/src/viewport/ViewportPanel.tsx',
+              "import type { ProjectSnapshot } from '../services/editorHostTypes';\n",
+              """import type { ProjectSnapshot } from '../services/editorHostTypes';\nimport { arcAssetDragMime, arcEnvironmentDragMime, readArcAssetDragPayload } from '../services/assetDragPayload';\nimport { assignDroppedMaterialToViewport } from './viewportAssetDrop';\n""",
+          )
+          replace_once(
+              'editor/src/renderer/src/viewport/ViewportPanel.tsx',
+              """  const sendPointer = (event: PointerEvent<HTMLDivElement>, phase: 'down' | 'move' | 'up' | 'leave' | 'cancel') => {\n""",
+              """  const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {\n    if (!viewportActive) return;\n    if (!event.dataTransfer.types.includes(arcAssetDragMime) && !event.dataTransfer.types.includes(arcEnvironmentDragMime))\n      return;\n    event.preventDefault();\n    event.dataTransfer.dropEffect = 'copy';\n  };\n\n  const onAssetDrop = (event: DragEvent<HTMLDivElement>) => {\n    if (!viewportActive) return;\n    const dropped = readArcAssetDragPayload(event.dataTransfer);\n    if (!dropped || dropped.type !== 'material') return;\n    event.preventDefault();\n    event.stopPropagation();\n    const position = pointerCoordinates(event.clientX, event.clientY);\n    void assignDroppedMaterialToViewport(window.arc.host, {\n      viewportId,\n      ...position,\n      path: dropped.pathHint,\n    }).then((result) => {\n      if (result.succeeded) {\n        setViewportError('');\n      } else if (result.error !== 'No scene object at the drop position') {\n        setViewportError(result.error);\n      }\n    });\n  };\n\n  const sendPointer = (event: PointerEvent<HTMLDivElement>, phase: 'down' | 'move' | 'up' | 'leave' | 'cancel') => {\n""",
+          )
+          replace_once(
+              'editor/src/renderer/src/viewport/ViewportPanel.tsx',
+              """        onFocus={() => onFocusChange?.(true)}\n        onPointerDown={onPointerDown}\n""",
+              """        onFocus={() => onFocusChange?.(true)}\n        onDragOver={onAssetDragOver}\n        onDrop={onAssetDrop}\n        onPointerDown={onPointerDown}\n""",
+          )
+
+          replace_once(
+              'editor/src/renderer/src/inspector/AssetPicker.test.tsx',
+              "import { cleanup, render, screen, waitFor } from '@testing-library/react';\n",
+              "import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';\n",
+          )
+          replace_once(
+              'editor/src/renderer/src/inspector/AssetPicker.test.tsx',
+              "import { AssetPicker, MaterialPicker } from './AssetPicker';\n",
+              """import { arcAssetDragMime } from '../services/assetDragPayload';\nimport { AssetPicker, MaterialPicker, TexturePicker } from './AssetPicker';\n""",
+          )
+          replace_once(
+              'editor/src/renderer/src/inspector/AssetPicker.test.tsx',
+              """describe('AssetPicker', () => {\n""",
+              """describe('AssetPicker', () => {\n  it('accepts Content Browser material drag payloads on material slots', () => {\n    const onChange = vi.fn();\n    render(\n      <MaterialPicker\n        assets={[\n          {\n            id: 'hero-material-guid',\n            guid: 'hero-material-guid',\n            name: 'Hero Surface',\n            path: 'Content/Materials/Hero.arcmat',\n            kind: 'material',\n            status: 'ready',\n          },\n        ]}\n        label=\"Material\"\n        value=\"\"\n        onChange={onChange}\n      />,\n    );\n\n    const control = screen.getByRole('button', { name: 'Choose Material asset' }).closest('.asset-reference-control');\n    fireEvent.drop(control!, {\n      dataTransfer: {\n        dropEffect: 'none',\n        getData: (type: string) =>\n          type === arcAssetDragMime\n            ? JSON.stringify({\n                guid: 'hero-material-guid',\n                type: 'material',\n                pathHint: 'Content/Materials/Hero.arcmat',\n              })\n            : '',\n      },\n    });\n\n    expect(onChange).toHaveBeenCalledWith('Content/Materials/Hero.arcmat');\n  });\n\n  it('accepts Content Browser image payloads on texture asset fields', () => {\n    const onChange = vi.fn();\n    render(\n      <TexturePicker\n        assets={[\n          {\n            id: 'albedo-guid',\n            guid: 'albedo-guid',\n            name: 'Albedo',\n            path: 'Content/Textures/Albedo.png',\n            kind: 'texture',\n            status: 'ready',\n          },\n        ]}\n        label=\"Albedo\"\n        referenceMode=\"guid\"\n        value=\"\"\n        onChange={onChange}\n      />,\n    );\n\n    const control = screen.getByRole('button', { name: 'Choose Albedo asset' }).closest('.asset-reference-control');\n    fireEvent.drop(control!, {\n      dataTransfer: {\n        dropEffect: 'none',\n        getData: (type: string) =>\n          type === arcAssetDragMime\n            ? JSON.stringify({ guid: 'albedo-guid', type: 'texture', pathHint: 'Content/Textures/Albedo.png' })\n            : '',\n      },\n    });\n\n    expect(onChange).toHaveBeenCalledWith('albedo-guid');\n  });\n\n""",
+          )
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/apply-asset-drop-fix.yml
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "editor: fix content asset drag and drop"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
