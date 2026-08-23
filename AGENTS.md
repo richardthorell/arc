@@ -152,6 +152,18 @@ approval, transaction, debugging, and failure-handling guidance.
 - Rendering/editor changes may need smoke testing through `run_editor.py` until more automated coverage exists.
 - Keep tests deterministic and avoid requiring a specific GPU unless the test is explicitly a graphics smoke test.
 
+## Pull Request Utilities
+
+When working on a pull request, repository collaborators can use these PR comment commands:
+
+- `/format fix`
+  - Runs `clang-format-18` on changed first-party native C/C++ files.
+  - Runs Prettier on changed Electron/editor files.
+  - If formatting changes files, GitHub Actions commits and pushes the fixes directly to the PR branch.
+  - Use this when CI reports formatting failures or when the branch is known to contain mechanical formatting issues instead of manually fixing those changes.
+  - Do not invoke it preemptively on every PR when formatting checks are already passing.
+  - Only works for same-repository PR branches and authorized collaborators.
+
 ## Change Management
 
 - Keep changes scoped and module-focused.

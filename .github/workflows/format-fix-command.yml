@@ -1,0 +1,143 @@
+name: PR Format Fix
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  format-fix:
+    name: Format Fix
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.body == '/format fix' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Resolve Pull Request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          head_repo=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name')
+          head_ref=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.ref')
+          head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')
+
+          if [[ "$head_repo" != "$GITHUB_REPOSITORY" ]]; then
+            echo "This command can only push format fixes to branches in ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+
+          echo "head_ref=$head_ref" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout Pull Request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Set Up Node 22.12
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.12.0
+
+      - name: Install Formatters
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+          npm install --global --ignore-scripts prettier@3.9.6
+
+      - name: Format Changed Files
+        id: format
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t changed_files < <(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename'
+          )
+
+          native_files=()
+          editor_files=()
+
+          for file in "${changed_files[@]}"; do
+            [[ -f "$file" ]] || continue
+
+            if [[ "$file" =~ ^(engine|editor/native|samples|tools|benchmarks|tests)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx|inl|ixx|cppm)$ ]] &&
+               [[ "$file" != "engine/render-vulkan/src/builtin_shaders.h" ]]; then
+              native_files+=("$file")
+            fi
+
+            if [[ "$file" =~ ^editor/.*\.(js|jsx|ts|tsx|json|css|scss|md|html|yaml|yml)$ ]]; then
+              editor_files+=("$file")
+            fi
+          done
+
+          if (( ${#native_files[@]} > 0 )); then
+            echo 'Running clang-format-18 on changed native files:'
+            printf ' - %s\n' "${native_files[@]}"
+            clang-format-18 -i -- "${native_files[@]}"
+          else
+            echo 'No changed native files require clang-format.'
+          fi
+
+          if (( ${#editor_files[@]} > 0 )); then
+            echo 'Running Prettier 3.9.6 on changed editor files:'
+            printf ' - %s\n' "${editor_files[@]}"
+            prettier --write --ignore-unknown -- "${editor_files[@]}"
+          else
+            echo 'No changed editor files require Prettier.'
+          fi
+
+          if git diff --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+            git diff --stat
+          fi
+
+      - name: Commit Format Fixes
+        if: steps.format.outputs.changed == 'true'
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u
+          git add --all
+          git commit -m 'Apply automated formatting fixes'
+          git push origin "HEAD:${HEAD_REF}"
+
+      - name: Report Result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          CHANGED: ${{ steps.format.outputs.changed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ job.status }}" != 'success' ]]; then
+            gh pr comment "$PR_NUMBER" --body '❌ `/format fix` failed. Check the **PR Format Fix** workflow run for details.'
+          elif [[ "$CHANGED" == 'true' ]]; then
+            gh pr comment "$PR_NUMBER" --body '✅ `/format fix` applied clang-format/Prettier changes and pushed a commit to this PR branch.'
+          else
+            gh pr comment "$PR_NUMBER" --body '✅ `/format fix` found no formatting changes to apply.'
+          fi
