@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <map>
 #include <optional>
 #include <set>
@@ -17,6 +18,18 @@ namespace arc::render::tools
 namespace
 {
 using json = nlohmann::json;
+
+std::string concatenate(std::initializer_list<std::string_view> parts)
+{
+    std::size_t size{};
+    for (const auto part : parts)
+        size += part.size();
+    std::string result;
+    result.reserve(size);
+    for (const auto part : parts)
+        result.append(part);
+    return result;
+}
 
 std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
 {
@@ -35,8 +48,81 @@ std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
     if (type == "subtract") return material_ir_node_kind::subtract;
     if (type == "multiply") return material_ir_node_kind::multiply;
     if (type == "divide") return material_ir_node_kind::divide;
+    if (type == "shaderFunctionCall") return material_ir_node_kind::function_call;
     if (type == "output") return material_ir_node_kind::output;
     return std::nullopt;
+}
+
+std::optional<shader_parameter_type> function_pin_type(std::string_view type) noexcept
+{
+    if (type == "float" || type == "float1") return shader_parameter_type::float32;
+    if (type == "float2" || type == "vec2") return shader_parameter_type::float2;
+    if (type == "float3" || type == "vec3") return shader_parameter_type::float3;
+    if (type == "float4" || type == "vec4") return shader_parameter_type::float4;
+    return std::nullopt;
+}
+
+std::uint8_t function_pin_components(shader_parameter_type type) noexcept
+{
+    switch (type)
+    {
+        case shader_parameter_type::float2:
+            return 2;
+        case shader_parameter_type::float3:
+            return 3;
+        case shader_parameter_type::float4:
+            return 4;
+        default:
+            return 1;
+    }
+}
+
+bool parse_function_default(const json& value, shader_parameter_type type, material_ir_literal& output)
+{
+    output.components = function_pin_components(type);
+    if (output.components == 1)
+    {
+        if (!value.is_number()) return false;
+        output.values[0] = value.get<float>();
+        return true;
+    }
+    if (!value.is_array() || value.size() != output.components) return false;
+    for (std::uint8_t index = 0; index < output.components; ++index)
+    {
+        if (!value[index].is_number()) return false;
+        output.values[index] = value[index].get<float>();
+    }
+    return true;
+}
+
+bool parse_function_pins(const json& authored, bool allow_defaults, std::vector<material_function_pin>& output)
+{
+    if (!authored.is_array()) return false;
+    std::set<std::string> ids;
+    for (const auto& pin : authored)
+    {
+        if (!pin.is_object()) return false;
+        const auto id = pin.value("id", "");
+        const auto name = pin.value("name", id);
+        const auto type = function_pin_type(pin.value("type", ""));
+        if (id.empty() || name.empty() || !type || !ids.insert(id).second) return false;
+
+        material_function_pin parsed{.id = id, .name = name, .type = *type};
+        parsed.has_default = pin.value("hasDefault", false);
+        if (parsed.has_default)
+        {
+            if (!allow_defaults || !pin.contains("default") ||
+                !parse_function_default(pin["default"], *type, parsed.default_value))
+                return false;
+        }
+        output.push_back(std::move(parsed));
+    }
+    return true;
+}
+
+bool function_has_pin(const std::vector<material_function_pin>& pins, std::string_view id)
+{
+    return std::ranges::any_of(pins, [id](const material_function_pin& pin) { return pin.id == id; });
 }
 
 float number(const json& value, float fallback)
@@ -224,6 +310,20 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                               .exposed_parameter = parameter.value("exposed", false),
                               .parameter_id = make_shader_parameter_id(id),
                               .parameter_name = parameter.value("name", id)};
+
+        if (*kind == material_ir_node_kind::function_call)
+        {
+            node.function_path = values.value("path", "");
+            node.function_entry_point = values.value("entryPoint", "");
+            node.function_source = values.value("source", "");
+            if (node.exposed_parameter || node.function_path.empty() || node.function_entry_point.empty() ||
+                node.function_source.empty() || !values.contains("inputs") || !values.contains("outputs") ||
+                !parse_function_pins(values["inputs"], true, node.function_inputs) ||
+                !parse_function_pins(values["outputs"], false, node.function_outputs) || node.function_outputs.empty())
+                return material_graph_compile_result::failure(
+                    {.code = shader_compile_error_code::validation_failed,
+                     .message = "material graph contains an invalid shader-backed Material Function call: " + id});
+        }
         normalized_nodes.emplace(id, std::move(node));
     }
 
@@ -251,6 +351,21 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
             return material_graph_compile_result::failure(
                 {.code = shader_compile_error_code::validation_failed,
                  .message = "material graph contains an invalid or multiply-connected input"});
+
+        const auto& source_node = normalized_nodes.at(source);
+        if (source_node.kind == material_ir_node_kind::function_call &&
+            !function_has_pin(source_node.function_outputs, source_pin))
+            return material_graph_compile_result::failure(
+                {.code = shader_compile_error_code::validation_failed,
+                 .message =
+                     concatenate({"Material Function call '", source, "' has no output pin '", source_pin, "'"})});
+        const auto& target_node = normalized_nodes.at(target);
+        if (target_node.kind == material_ir_node_kind::function_call &&
+            !function_has_pin(target_node.function_inputs, target_pin))
+            return material_graph_compile_result::failure(
+                {.code = shader_compile_error_code::validation_failed,
+                 .message =
+                     concatenate({"Material Function call '", target, "' has no input pin '", target_pin, "'"})});
 
         connections.push_back(
             {.source_node = source, .source_pin = source_pin, .target_node = target, .target_pin = target_pin});
@@ -281,6 +396,16 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
     for (const auto& node : compilation.ir.nodes)
     {
         if (!reachable.contains(node.id) || node.kind == material_ir_node_kind::output) continue;
+
+        if (node.kind == material_ir_node_kind::function_call)
+        {
+            for (const auto& pin : node.function_inputs)
+                if (!inputs.contains({node.id, pin.id}) && !pin.has_default)
+                    return material_graph_compile_result::failure(
+                        {.code = shader_compile_error_code::validation_failed,
+                         .message =
+                             "Material Function call '" + node.id + "' is missing required input '" + pin.id + "'"});
+        }
 
         if (node.exposed_parameter)
         {

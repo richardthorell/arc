@@ -2,7 +2,7 @@
 
 /**
  * @file arc/render_tools/material_graph.h
- * @brief Backend-neutral native material graph IR, descriptor compiler, and shader code generation.
+ * @brief Backend-neutral native material graph IR, reusable functions, descriptor compiler, and shader code generation.
  */
 
 #include <arc/render/material_abi.h>
@@ -11,6 +11,7 @@
 #include <array>
 #include <compare>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -23,7 +24,10 @@ namespace arc::render::tools
 inline constexpr std::uint32_t material_ir_version = 1;
 
 /** @brief Version of the deterministic Material IR to Slang generator. */
-inline constexpr std::uint32_t material_shader_codegen_version = 1;
+inline constexpr std::uint32_t material_shader_codegen_version = 2;
+
+/** @brief Version of first-class reusable Material/Shader Function documents. */
+inline constexpr std::uint32_t material_function_version = 1;
 
 /** @brief Operation represented by one normalized material IR node. */
 enum class material_ir_node_kind : std::uint8_t
@@ -43,16 +47,48 @@ enum class material_ir_node_kind : std::uint8_t
     subtract,
     multiply,
     divide,
+    function_call,
     output
 };
 
-/** @brief Numeric literal carried by a material IR node. */
+/** @brief Numeric literal carried by a material IR node or function-pin default. */
 struct material_ir_literal
 {
     std::array<float, 4> values{};
     std::uint8_t components{};
 
     friend constexpr auto operator<=>(const material_ir_literal&, const material_ir_literal&) noexcept = default;
+};
+
+/** @brief One typed public input or output in a reusable Material/Shader Function signature. */
+struct material_function_pin
+{
+    std::string id;
+    std::string name;
+    shader_parameter_type type{shader_parameter_type::float32};
+    bool has_default{};
+    material_ir_literal default_value;
+
+    friend auto operator<=>(const material_function_pin&, const material_function_pin&) = default;
+};
+
+/** @brief Validated public metadata for one reusable Material/Shader Function asset. */
+struct material_function_descriptor
+{
+    std::string name;
+    std::string description;
+    std::vector<material_function_pin> inputs;
+    std::vector<material_function_pin> outputs;
+    bool shader_backed{};
+
+    friend auto operator<=>(const material_function_descriptor&, const material_function_descriptor&) = default;
+};
+
+/** @brief Authored reusable function source supplied to the native Material Graph compiler. */
+struct material_function_source
+{
+    std::string path;
+    std::string source;
 };
 
 /** @brief One normalized authored material graph node. */
@@ -67,6 +103,14 @@ struct material_ir_node
     bool exposed_parameter{};
     shader_parameter_id parameter_id{};
     std::string parameter_name;
+
+    // Populated only for shader-backed Material Function calls. Graph-backed
+    // functions are deterministically inlined before native IR is emitted.
+    std::string function_path;
+    std::string function_entry_point;
+    std::string function_source;
+    std::vector<material_function_pin> function_inputs;
+    std::vector<material_function_pin> function_outputs;
 
     friend auto operator<=>(const material_ir_node&, const material_ir_node&) = default;
 };
@@ -160,21 +204,38 @@ struct material_shader_source
 
 using material_graph_compile_result = core::result<material_graph_compilation, shader_compile_error>;
 using material_shader_codegen_result = core::result<material_shader_source, shader_compile_error>;
+using material_function_validation_result = core::result<std::vector<material_function_pin>, shader_compile_error>;
 
 /**
  * @brief Validate and normalize authored material graph JSON into native IR and descriptor data.
  *
- * JSON is an authoring boundary only. Shader generation consumes the resulting native IR so
- * descriptor data and generated shader behavior share one normalized source of truth.
+ * This overload accepts graphs that do not reference reusable function assets.
  */
 [[nodiscard]] material_graph_compile_result compile_material_graph_json(std::string_view graph_json);
+
+/**
+ * @brief Compile a material graph with a deterministic library of reusable Material/Shader Functions.
+ *
+ * Graph-backed functions are recursively inlined before Material IR is emitted. Shader-backed
+ * functions remain typed `function_call` IR nodes and are namespaced by code generation. Missing
+ * functions, recursive dependencies, invalid boundary pins, and incomplete required inputs fail
+ * native compilation rather than being deferred to the renderer.
+ */
+[[nodiscard]] material_graph_compile_result
+compile_material_graph_json(std::string_view graph_json, std::span<const material_function_source> functions);
+
+/** @brief Validate one first-class Material/Shader Function document and return its public pins. */
+[[nodiscard]] material_function_validation_result validate_material_function_json(std::string_view function_json,
+                                                                                  std::string_view source_path = {});
+
+/** @brief Return true when the authored JSON document identifies itself as a reusable material function. */
+[[nodiscard]] bool is_material_function_json(std::string_view source) noexcept;
 
 /**
  * @brief Deterministically generate Slang from validated native Material IR.
  *
  * The generated source implements `arc_evaluate_material(ArcSurfaceInput)` against Material ABI v1.
- * A minimal fragment entry point is included only so the current cooker can compile and reflect the
- * material package before render-pass composition is introduced in the next migration stage.
+ * Shader-backed reusable functions are emitted once in stable namespaces before the evaluator.
  */
 [[nodiscard]] material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation);
 
