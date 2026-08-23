@@ -74,6 +74,17 @@ describe('MaterialPicker exported parameters', () => {
     expect(screen.queryByRole('spinbutton', { name: 'Roughness' })).not.toBeInTheDocument();
   });
 
+  it('reads path-backed project parameters even before the asset list refreshes', async () => {
+    const path = 'Content/Materials/New Material.arcmat';
+    render(<MaterialPicker assets={[]} label="Material" value={path} onChange={() => undefined} />);
+
+    expect(screen.getByRole('region', { name: 'Material parameters' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('2 exposed')).toBeVisible());
+    expect(readText).toHaveBeenCalledWith(path, 'project');
+    expect(screen.getByText('Base Color')).toBeVisible();
+    expect(screen.getByText('Roughness')).toBeVisible();
+  });
+
   it('does not show shared material parameters for a mixed assignment', () => {
     render(
       <MaterialPicker assets={[material]} label="Material" mixed value={material.path} onChange={() => undefined} />,
