@@ -10,6 +10,7 @@ type FieldBase<TContext> = {
   path: string;
   visible?: (context: TContext) => boolean;
   tooltip?: string;
+  resetValue?: unknown;
 };
 
 export type Vector3FieldSchema<TContext = object> = FieldBase<TContext> & {

@@ -373,7 +373,7 @@ describe('data-driven InspectorPanel', () => {
   it('links scale axes proportionally', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     render(<InspectorPanel snapshot={cameraSnapshot()} command={command} refresh={async () => undefined} />);
-    await userEvent.click(screen.getByLabelText('Link scale axes'));
+    expect(screen.getByLabelText('Unlink scale axes')).toBeInTheDocument();
     const scaleX = screen.getByLabelText('Scale X');
     fireEvent.change(scaleX, { target: { value: '2' } });
     fireEvent.keyDown(scaleX, { key: 'Enter' });

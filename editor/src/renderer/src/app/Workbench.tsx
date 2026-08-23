@@ -51,7 +51,12 @@ import type { HostWorldEnvironment } from '../environment/environmentTypes';
 import { InspectorPanel as DataDrivenInspector } from '../inspector/InspectorPanel';
 import type { HostProjectComponentSchema } from '../inspector/componentSchemas';
 import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
-import { aggregateInspectorSnapshots, hostEntityKey, parseSelectedEntitySnapshot } from '../inspector/inspectorTypes';
+import {
+  aggregateInspectorSnapshots,
+  hostEntityKey,
+  parseSelectedEntitySnapshot,
+  quaternionToEulerDegrees,
+} from '../inspector/inspectorTypes';
 import { ProfilerPanel } from '../profiler/ProfilerPanel';
 import type { ProfilerSnapshot } from '../profiler/ProfilerPanel';
 import { TerrainToolsPanel } from '../terrain/TerrainToolsPanel';
@@ -89,6 +94,11 @@ export type HostSceneEntity = {
   locked?: boolean;
   visible?: boolean;
   pickable?: boolean;
+  transform?: {
+    position: [number, number, number];
+    rotation: [number, number, number, number];
+    scale: [number, number, number];
+  } | null;
   prefabOverrideCount?: number;
 };
 
@@ -239,6 +249,22 @@ export const buildSceneTree = (entities: HostSceneEntity[]): SceneEntity[] => {
       locked: entity.locked,
       visible: entity.visible ?? true,
       pickable: entity.pickable ?? true,
+      transform: entity.transform
+        ? {
+            position: {
+              x: entity.transform.position[0],
+              y: entity.transform.position[1],
+              z: entity.transform.position[2],
+            },
+            rotation: quaternionToEulerDegrees({
+              x: entity.transform.rotation[0],
+              y: entity.transform.rotation[1],
+              z: entity.transform.rotation[2],
+              w: entity.transform.rotation[3],
+            }),
+            scale: { x: entity.transform.scale[0], y: entity.transform.scale[1], z: entity.transform.scale[2] },
+          }
+        : undefined,
       prefabOverrideCount: entity.prefabOverrideCount ?? 0,
       children: [],
     });
@@ -1425,6 +1451,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           }}
           loading={selectedSnapshotLoading}
           snapshot={selectedSnapshot}
+          coordinateSpace={coordinateSpace}
+          onCoordinateSpaceChange={(space) => void updateViewportToolOptions(space, snapping)}
+          scene={project?.scene ?? []}
           assets={project?.assets ?? []}
           thumbnailProvider={loadAssetThumbnail}
           projectSchemas={projectComponentSchemas}

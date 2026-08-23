@@ -4669,8 +4669,15 @@ host_scene_snapshot arc_host::scene_snapshot() const
                                                     : std::string{"Default"};
                                      }(),
                                      .active = entity_active(state_->scene, entity),
-                                     .visible = entity_active(state_->scene, entity),
-                                     .prefab_override_count = [&]
+                           .visible = entity_active(state_->scene, entity),
+                           .transform = [&]() -> std::optional<host_transform>
+                           {
+                               if (const auto* transform =
+                                       state_->scene.scene.try_get<scene::transform_component>(entity))
+                                   return to_host_transform(*transform);
+                               return std::nullopt;
+                           }(),
+                           .prefab_override_count = [&]
                                      {
                                          const auto* prefab =
                                              state_->scene.scene.try_get<ecs::prefab_instance_component>(entity);

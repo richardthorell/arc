@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Filter, MoreVertical, Search } from 'lucide-react';
+import { Filter, Globe2, MoreVertical, Search } from 'lucide-react';
 
+import type { SceneEntity } from '../services/editorHostTypes';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 
 import { schemaForSnapshot, setPathValue } from './componentSchemas';
 import type { HostProjectComponentSchema, InspectorComponentId } from './componentSchemas';
 import type { HostResponse, InspectorEntitySnapshot, Vec3 } from './inspectorTypes';
-import { cameraHostPayload, lightHostPayload, transformHostPayload } from './inspectorTypes';
+import { cameraHostPayload, hostEntityKey, lightHostPayload, transformHostPayload } from './inspectorTypes';
 import { SchemaComponentCard } from './SchemaComponents';
+import { inspectorLocalToWorld, inspectorWorldToLocal } from './transformSpace';
 
 import './inspector.css';
 
@@ -27,6 +29,9 @@ export type InspectorPanelProps = {
   assets?: ReadonlyArray<AssetPickerItem>;
   thumbnailProvider?: AssetThumbnailProvider;
   projectSchemas?: ReadonlyArray<HostProjectComponentSchema>;
+  scene?: ReadonlyArray<SceneEntity>;
+  coordinateSpace?: 'local' | 'world';
+  onCoordinateSpaceChange?: (space: 'local' | 'world') => void;
 };
 
 const knownTags = ['Untagged', 'Camera', 'Light', 'Mesh', 'Environment'];
@@ -99,6 +104,9 @@ export function InspectorPanel({
   assets = [],
   thumbnailProvider,
   projectSchemas = [],
+  scene = [],
+  coordinateSpace = 'local',
+  onCoordinateSpaceChange,
 }: InspectorPanelProps) {
   const [draft, setDraft] = useState(snapshot);
   const [filter, setFilter] = useState('');
@@ -301,20 +309,28 @@ export function InspectorPanel({
     }
   };
 
+  const displayDraft = useMemo(() => {
+    if (!draft?.transform || coordinateSpace !== 'world' || (draft.selectionCount ?? 1) > 1) return draft;
+    return {
+      ...draft,
+      transform: inspectorLocalToWorld(scene, hostEntityKey(draft.entity), draft.transform),
+    };
+  }, [coordinateSpace, draft, scene]);
+
   const schemas = useMemo(() => {
-    if (!draft) return [];
+    if (!displayDraft) return [];
     const needle = filter.trim().toLocaleLowerCase();
-    const common = new Set(draft.aggregate?.commonComponents ?? []);
-    return schemaForSnapshot(draft, projectSchemas).filter((schema) => {
+    const common = new Set(displayDraft.aggregate?.commonComponents ?? []);
+    return schemaForSnapshot(displayDraft, projectSchemas).filter((schema) => {
       const componentKey = schema.id.endsWith('Light') ? 'light' : schema.id;
-      if ((draft.selectionCount ?? 1) > 1 && !common.has(componentKey)) return false;
+      if ((displayDraft.selectionCount ?? 1) > 1 && !common.has(componentKey)) return false;
       return (
         !needle ||
         schema.title.toLocaleLowerCase().includes(needle) ||
         schema.fields.some((field) => field.label.toLocaleLowerCase().includes(needle))
       );
     });
-  }, [draft, filter, projectSchemas]);
+  }, [displayDraft, filter, projectSchemas]);
 
   const runComponentAction = (component: InspectorComponentId, action: string) => {
     if (!draft) return;
@@ -566,16 +582,50 @@ export function InspectorPanel({
           <SchemaComponentCard
             key={schema.id}
             collapsed={collapsed[schema.id] ?? false}
-            context={draft}
+            context={displayDraft ?? draft}
             schema={schema}
             assets={assets}
+            headerAccessory={
+              schema.id === 'transform' ? (
+                <label
+                  className="inspector-coordinate-space"
+                  title="Choose whether Transform values are edited relative to the parent or in world space."
+                >
+                  <Globe2 aria-hidden="true" size={12} />
+                  <select
+                    aria-label="Inspector transform coordinate space"
+                    disabled={(draft.selectionCount ?? 1) > 1}
+                    onChange={(event) => onCoordinateSpaceChange?.(event.target.value as 'local' | 'world')}
+                    value={coordinateSpace}
+                  >
+                    <option value="local">Local</option>
+                    <option value="world">World</option>
+                  </select>
+                </label>
+              ) : undefined
+            }
             thumbnailProvider={thumbnailProvider}
             onToggle={() => setCollapsed((value) => ({ ...value, [schema.id]: !(value[schema.id] ?? false) }))}
             onAction={(action) => runComponentAction(schema.id, action)}
             onValue={(path, value, settled) => {
               if (path === 'terrain.activeLayer') value = Number(value);
-              let next = setPathValue(draft, path, value);
-              if (path === 'transform.rotationDegrees' && next.transform) {
+              let next: InspectorEntitySnapshot;
+              if (
+                schema.id === 'transform' &&
+                coordinateSpace === 'world' &&
+                displayDraft?.transform &&
+                draft.transform &&
+                (draft.selectionCount ?? 1) === 1
+              ) {
+                const nextDisplay = setPathValue(displayDraft, path, value);
+                next = {
+                  ...draft,
+                  transform: inspectorWorldToLocal(scene, hostEntityKey(draft.entity), nextDisplay.transform!),
+                };
+              } else {
+                next = setPathValue(draft, path, value);
+              }
+              if (path === 'transform.rotationDegrees' && next.transform && coordinateSpace !== 'world') {
                 next = { ...next, transform: { ...next.transform, rotationDegrees: value as Vec3 } };
               }
               updateComponent(schema.id, path, next, settled);
