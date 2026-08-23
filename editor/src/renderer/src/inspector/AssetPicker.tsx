@@ -3,6 +3,7 @@ import { ChevronDown, ExternalLink, Image, Plus, Search, X } from 'lucide-react'
 import { createPortal } from 'react-dom';
 
 import { buildAssetCreation } from '../content/assetCreation';
+import { readArcAssetDragPayload } from '../services/assetDragPayload';
 import { openAssetEditorDocument } from '../editors/editorRegistry';
 import { MaterialParameterSubsection } from './MaterialParameterSubsection';
 
@@ -213,12 +214,17 @@ export function AssetPicker({
   const selected = assets.find((asset) => valueFor(asset) === value);
 
   const acceptDrop = (event: React.DragEvent) => {
+    const dropped = readArcAssetDragPayload(event.dataTransfer);
+    if (!dropped) return;
+    const candidate = candidates.find(
+      (asset) =>
+        (dropped.guid && (asset.guid === dropped.guid || asset.id === dropped.guid)) ||
+        normalizedPath(asset.path) === normalizedPath(dropped.pathHint),
+    );
+    if (!candidate) return;
     event.preventDefault();
-    const path =
-      event.dataTransfer.getData('application/x-arc-asset') ||
-      event.dataTransfer.getData('application/x-arc-environment');
-    const candidate = candidates.find((asset) => asset.path === path);
-    if (candidate) onChange(valueFor(candidate));
+    event.dataTransfer.dropEffect = 'copy';
+    onChange(valueFor(candidate));
   };
 
   const canOpen = Boolean(selected && onOpen && !mixed);
