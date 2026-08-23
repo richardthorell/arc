@@ -93,16 +93,16 @@ TEST_CASE("material authoring accepts a current handwritten Material Shader")
 
 TEST_CASE("material authoring rejects legacy schemas")
 {
-    const auto missing = arc::render::tools::parse_material_authoring_json(
-        R"({"graph":{"version":1,"nodes":[],"connections":[]}})");
+    constexpr std::string_view missing_source = R"({"graph":{"version":1,"nodes":[],"connections":[]}})";
+    const auto missing = arc::render::tools::parse_material_authoring_json(missing_source);
     REQUIRE_FALSE(missing);
     REQUIRE(missing.error().code == arc::render::tools::material_asset_error_code::invalid_document);
 
     for (const auto version : {1, 2, 3, 5})
     {
-        const auto result = arc::render::tools::parse_material_authoring_json(
-            "{\"version\":" + std::to_string(version) +
-            ",\"graph\":{\"version\":1,\"nodes\":[],\"connections\":[]}}");
+        auto source = "{\"version\":" + std::to_string(version);
+        source += ",\"graph\":{\"version\":1,\"nodes\":[],\"connections\":[]}}";
+        const auto result = arc::render::tools::parse_material_authoring_json(source);
         REQUIRE_FALSE(result);
         REQUIRE(result.error().code == arc::render::tools::material_asset_error_code::unsupported_version);
     }
@@ -165,8 +165,8 @@ TEST_CASE("surface material package v3 rejects missing compiled passes")
 {
     arc::render::tools::material_package_v3 package;
     package.canonical_document_json = R"({"version":4,"domain":"surface"})";
-    const auto decoded = arc::render::tools::deserialize_material_package_v3(
-        arc::render::tools::serialize_material_package_v3(package));
+    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
     REQUIRE_FALSE(decoded);
     REQUIRE(decoded.error().code == arc::render::tools::material_asset_error_code::corrupt_package);
 }
@@ -175,8 +175,8 @@ TEST_CASE("terrain material package v3 may use the dedicated terrain renderer")
 {
     arc::render::tools::material_package_v3 package;
     package.canonical_document_json = R"({"version":4,"domain":"terrain"})";
-    const auto decoded = arc::render::tools::deserialize_material_package_v3(
-        arc::render::tools::serialize_material_package_v3(package));
+    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
+    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
     REQUIRE(decoded);
     REQUIRE(decoded.value().compiled.passes.empty());
     REQUIRE_FALSE(decoded.value().compiled.package.valid());
