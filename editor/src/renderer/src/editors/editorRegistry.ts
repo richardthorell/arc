@@ -64,7 +64,8 @@ export const resolveRegisteredEditorAsset = async (
   const deadline = Date.now() + timeoutMs;
   do {
     try {
-      const response = (await window.arc.host.query('project.assets')) as HostResponse<HostProjectAssetsPayload> | undefined;
+      const response = (await window.arc.host.query('project.assets')) as
+        HostResponse<HostProjectAssetsPayload> | undefined;
       const registered = response?.succeeded
         ? response.payload?.assets?.find(
             (candidate) => Boolean(candidate.guid) && normalizedAssetPath(candidate.path ?? '') === expectedPath,
