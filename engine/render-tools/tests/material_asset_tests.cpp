@@ -161,12 +161,23 @@ TEST_CASE("material package v3 round trips deterministic compiled pass bindings"
     REQUIRE(arc::render::tools::serialize_material_package_v3(reversed) == bytes);
 }
 
-TEST_CASE("material package v3 rejects packages without compiled passes")
+TEST_CASE("surface material package v3 rejects missing compiled passes")
 {
     arc::render::tools::material_package_v3 package;
-    package.canonical_document_json = R"({"version":4})";
-    const auto bytes = arc::render::tools::serialize_material_package_v3(package);
-    const auto decoded = arc::render::tools::deserialize_material_package_v3(bytes);
+    package.canonical_document_json = R"({"version":4,"domain":"surface"})";
+    const auto decoded = arc::render::tools::deserialize_material_package_v3(
+        arc::render::tools::serialize_material_package_v3(package));
     REQUIRE_FALSE(decoded);
     REQUIRE(decoded.error().code == arc::render::tools::material_asset_error_code::corrupt_package);
+}
+
+TEST_CASE("terrain material package v3 may use the dedicated terrain renderer")
+{
+    arc::render::tools::material_package_v3 package;
+    package.canonical_document_json = R"({"version":4,"domain":"terrain"})";
+    const auto decoded = arc::render::tools::deserialize_material_package_v3(
+        arc::render::tools::serialize_material_package_v3(package));
+    REQUIRE(decoded);
+    REQUIRE(decoded.value().compiled.passes.empty());
+    REQUIRE_FALSE(decoded.value().compiled.package.valid());
 }
