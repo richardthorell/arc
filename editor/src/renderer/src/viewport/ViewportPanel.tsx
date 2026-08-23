@@ -386,7 +386,10 @@ export function ViewportPanel({
 
   const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!viewportActive) return;
-    if (!event.dataTransfer.types.includes(arcAssetDragMime) && !event.dataTransfer.types.includes(arcEnvironmentDragMime))
+    if (
+      !event.dataTransfer.types.includes(arcAssetDragMime) &&
+      !event.dataTransfer.types.includes(arcEnvironmentDragMime)
+    )
       return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';

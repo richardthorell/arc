@@ -18,8 +18,7 @@ type SelectedEntityPayload = {
 };
 
 export type ViewportMaterialDropResult =
-  | { succeeded: true; entity: HostEntityId }
-  | { succeeded: false; error: string };
+  { succeeded: true; entity: HostEntityId } | { succeeded: false; error: string };
 
 type WaitOptions = {
   attempts?: number;
