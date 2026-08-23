@@ -62,45 +62,14 @@ export type MaterialGraph = {
   viewport?: MaterialGraphViewport;
 };
 
-export type MaterialAssetSurface = {
-  baseColor?: { r: number; g: number; b: number; a: number };
-  metallic?: number;
-  roughness?: number;
-  normalScale?: number;
-  aoStrength?: number;
-  emissive?: { r: number; g: number; b: number };
-  emissiveStrength?: number;
-  emissiveLuminanceNits?: number;
-  alphaCutoff?: number;
-};
-
-export type MaterialAssetTextures = {
-  baseColor?: string;
-  metallicRoughness?: string;
-  normal?: string;
-  ao?: string;
-  emissive?: string;
-  height?: string;
-  clearCoat?: string;
-  clearCoatRoughness?: string;
-  clearCoatNormal?: string;
-  anisotropy?: string;
-  subsurface?: string;
-  thickness?: string;
-  transmission?: string;
-};
-
 export type MaterialAssetJson = Record<string, unknown> & {
   version?: number;
   name?: string;
-  shader?: string;
   shaderPath?: string;
   domain?: string;
   blendMode?: string;
   shadingModel?: string;
   doubleSided?: boolean;
-  surface?: MaterialAssetSurface;
-  textures?: MaterialAssetTextures;
   graph?: MaterialGraph | null;
 };
 
@@ -131,10 +100,26 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
       pin('metallic', 'Metallic', 'float'),
       pin('roughness', 'Roughness', 'float'),
       pin('normal', 'Normal', 'vec3'),
+      pin('clearCoatNormal', 'Clear Coat Normal', 'vec3'),
+      pin('tangent', 'Tangent', 'vec3'),
       pin('ao', 'Ambient Occlusion', 'float'),
       pin('emissive', 'Emissive', 'vec3'),
       pin('opacity', 'Opacity', 'float'),
       pin('alphaClip', 'Alpha Clip', 'float'),
+      pin('indexOfRefraction', 'Index of Refraction', 'float'),
+      pin('clearCoat', 'Clear Coat', 'float'),
+      pin('clearCoatRoughness', 'Clear Coat Roughness', 'float'),
+      pin('sheen', 'Sheen', 'float'),
+      pin('sheenColor', 'Sheen Color', 'vec3'),
+      pin('sheenRoughness', 'Sheen Roughness', 'float'),
+      pin('anisotropy', 'Anisotropy', 'float'),
+      pin('anisotropyRotation', 'Anisotropy Rotation', 'float'),
+      pin('transmission', 'Transmission', 'float'),
+      pin('thickness', 'Thickness', 'float'),
+      pin('attenuationColor', 'Attenuation Color', 'vec3'),
+      pin('attenuationDistance', 'Attenuation Distance', 'float'),
+      pin('subsurfaceColor', 'Subsurface Color', 'vec3'),
+      pin('subsurface', 'Subsurface', 'float'),
     ],
     outputs: [],
     defaultValues: {},
@@ -286,23 +271,12 @@ export const createMaterialNode = (
   values: { ...materialNodeDefinitions[type].defaultValues, ...values },
 });
 
-const finite = (value: unknown, fallback: number) =>
-  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-
-const vec3FromAsset = (
-  value: MaterialAssetSurface['baseColor'] | MaterialAssetSurface['emissive'],
-  fallback: number[],
-) => [finite(value?.r, fallback[0]), finite(value?.g, fallback[1]), finite(value?.b, fallback[2])];
-
-export const createDefaultMaterialGraph = (asset: MaterialAssetJson = {}): MaterialGraph => {
-  const surface = asset.surface ?? {};
-  const baseColor = createMaterialNode('vector3', [80, 120], {
-    value: vec3FromAsset(surface.baseColor, [0.78, 0.8, 0.84]),
-  });
+export const createDefaultMaterialGraph = (): MaterialGraph => {
+  const baseColor = createMaterialNode('vector3', [80, 120], { value: [0.78, 0.8, 0.84] });
   baseColor.parameter = { exposed: true, name: 'Base Color' };
-  const metallic = createMaterialNode('constant', [80, 290], { value: finite(surface.metallic, 0) });
+  const metallic = createMaterialNode('constant', [80, 290], { value: 0 });
   metallic.parameter = { exposed: true, name: 'Metallic' };
-  const roughness = createMaterialNode('constant', [80, 420], { value: finite(surface.roughness, 0.62) });
+  const roughness = createMaterialNode('constant', [80, 420], { value: 0.62 });
   roughness.parameter = { exposed: true, name: 'Roughness' };
   const output = createMaterialNode('output', [520, 210]);
 
@@ -353,5 +327,7 @@ export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
   );
 };
 
-export const materialGraphFromAsset = (asset: MaterialAssetJson): MaterialGraph =>
-  isMaterialGraph(asset.graph) ? cloneMaterialGraph(asset.graph) : createDefaultMaterialGraph(asset);
+export const materialGraphFromAsset = (asset: MaterialAssetJson): MaterialGraph => {
+  if (!isMaterialGraph(asset.graph)) throw new Error('Material asset does not contain a valid native material graph');
+  return cloneMaterialGraph(asset.graph);
+};
