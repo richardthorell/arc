@@ -11,6 +11,8 @@ import {
 } from './materialCompiler';
 import {
   cloneMaterialGraph,
+  createDefaultMaterialGraph,
+  isMaterialGraph,
   materialGraphFromAsset,
   type MaterialAssetJson,
   type MaterialGraph,
@@ -47,7 +49,7 @@ type ThumbnailPayload = {
   dataUrl?: string;
 };
 
-const emptyGraph = materialGraphFromAsset({});
+const emptyGraph = createDefaultMaterialGraph();
 const states = new Map<string, MaterialDocumentState>();
 const listeners = new Map<string, Set<() => void>>();
 const compileTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -56,6 +58,34 @@ const compileGenerations = new Map<string, number>();
 const graphFingerprint = (graph: MaterialGraph) => JSON.stringify(graph);
 const materialShaderPath = (asset: MaterialAssetJson) =>
   typeof asset.shaderPath === 'string' && asset.shaderPath.trim() ? asset.shaderPath.trim() : '';
+
+const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => {
+  if (asset.version !== 4) throw new Error('Material asset must use authoring schema v4');
+  const legacyFields = ['shader', 'surface', 'textures', 'advanced'].filter((field) => field in asset);
+  if (legacyFields.length > 0)
+    throw new Error(`Legacy material fields are no longer supported: ${legacyFields.join(', ')}`);
+
+  const shaderPath = materialShaderPath(asset);
+  const hasGraph = isMaterialGraph(asset.graph);
+  if (hasGraph === Boolean(shaderPath))
+    throw new Error(hasGraph ? 'Material must use either a graph or shaderPath, not both' : 'Material must provide a graph or shaderPath');
+
+  return {
+    ...asset,
+    version: 4,
+    name: asset.name ?? document.title.replace(/\.arcmat$/i, ''),
+    domain: asset.domain ?? 'surface',
+    blendMode: asset.blendMode ?? 'opaque',
+    shadingModel: asset.shadingModel ?? 'standard',
+    doubleSided: asset.doubleSided ?? false,
+  };
+};
+
+const canonicalAssetFields = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => {
+  const normalized = normalizedAsset(asset, document);
+  const { shaderPath: _shaderPath, graph: _graph, ...canonical } = normalized;
+  return canonical;
+};
 
 const initialState = (document: EditorDocument): MaterialDocumentState => ({
   documentId: document.id,
@@ -117,29 +147,6 @@ const subscribe = (documentId: string, listener: () => void) => {
 
 const updateDirtyState = (document: EditorDocument, graph: MaterialGraph, confirmedGraph: string) =>
   updateEditorDocumentInStore(document.id, { dirty: graphFingerprint(graph) !== confirmedGraph });
-
-const normalizedAsset = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => ({
-  ...asset,
-  version: 4,
-  name: asset.name ?? document.title.replace(/\.arcmat$/i, ''),
-  domain: asset.domain ?? 'surface',
-  blendMode: asset.blendMode ?? 'opaque',
-  shadingModel: asset.shadingModel ?? 'standard',
-  doubleSided: asset.doubleSided ?? false,
-});
-
-const canonicalAssetFields = (asset: MaterialAssetJson, document: EditorDocument): MaterialAssetJson => {
-  const normalized = normalizedAsset(asset, document);
-  const {
-    shader: _shader,
-    shaderPath: _shaderPath,
-    surface: _surface,
-    textures: _textures,
-    graph: _graph,
-    ...canonical
-  } = normalized;
-  return canonical;
-};
 
 const cancelScheduledCompile = (documentId: string) => {
   const timer = compileTimers.get(documentId);
@@ -204,21 +211,22 @@ export const loadMaterialDocument = async (document: EditorDocument, force = fal
       document.assetScope === 'builtin' ? 'builtin' : 'project',
     );
     const parsed = normalizedAsset(JSON.parse(file.text) as MaterialAssetJson, document);
-    const graph = materialGraphFromAsset(parsed);
+    const customShader = materialShaderPath(parsed);
+    const graph = customShader ? createDefaultMaterialGraph() : materialGraphFromAsset(parsed);
     const fingerprint = graphFingerprint(graph);
     setState(document.id, {
       asset: parsed,
       graph,
       confirmedGraph: fingerprint,
-      history: [cloneMaterialGraph(graph)],
-      historyIndex: 0,
+      history: customShader ? [] : [cloneMaterialGraph(graph)],
+      historyIndex: customShader ? -1 : 0,
       compilation: emptyMaterialCompileResult(),
       loading: false,
       loaded: true,
       message: document.readOnly ? 'Engine material opened read-only' : '',
     });
     updateEditorDocumentInStore(document.id, { dirty: false });
-    if (!materialShaderPath(parsed)) scheduleNativeCompile(document);
+    if (!customShader) scheduleNativeCompile(document);
     void refreshMaterialPreview(document);
     return true;
   } catch (error) {
