@@ -262,7 +262,7 @@ std::string slang_number(float value)
 {
     std::ostringstream output;
     output << std::setprecision(9) << value;
-    auto text = std::move(output).str();
+    auto text = output.str();
     if (text.find_first_of(".eE") == std::string::npos) text += ".0";
     return text;
 }
@@ -294,7 +294,8 @@ render::material_descriptor authored_pass_material(const render::tools::material
     material.anisotropy_factor = json_float(advanced, "anisotropy", 0.0f);
     material.anisotropy_rotation = json_float(advanced, "anisotropyRotation", 0.0f);
     material.parallax_height_scale = json_float(advanced, "parallaxHeightScale", 0.0f);
-    if (material.parallax_height_scale != 0.0f) material.displacement_mode = render::material_displacement_mode::parallax;
+    if (material.parallax_height_scale != 0.0f)
+        material.displacement_mode = render::material_displacement_mode::parallax;
     return material;
 }
 
@@ -442,10 +443,13 @@ public:
                                   .message = generated_evaluator.error().message}};
             evaluator = std::move(generated_evaluator).value();
             if (!apply_authored_advanced_properties(evaluator, document))
+            {
+                const std::string message = "Generated Material ABI evaluator could not receive authored advanced properties";
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
                                   .path = context.source.source_path,
-                                  .message = "Generated Material ABI evaluator could not receive authored advanced properties"}};
+                                  .message = message}};
+            }
             parameters = evaluator.parameters;
             std::uint32_t parameter_block_size{};
             for (auto& parameter : parameters)
@@ -515,7 +519,8 @@ public:
                 .required_passes = {pass},
                 .generated_line_nodes = generated.value().generated_line_nodes,
                 .generate_debug_information = context.target.configuration != assets::cook_configuration::shipping};
-            if (handwritten && !custom_shader_path.empty()) request.include_directories.push_back(custom_shader_path.parent_path());
+            if (handwritten && !custom_shader_path.empty())
+                request.include_directories.push_back(custom_shader_path.parent_path());
 
             auto compiled = cache_.compile_or_get(compiler_, request);
             if (!compiled)
@@ -550,7 +555,8 @@ public:
                 compiled.value().reflection.parameter_block_size = parameter_block_size;
             }
 
-            const auto entry_point = render::make_shader_entry_point_id(request.entry_point, render::shader_stage::fragment);
+            const auto entry_point =
+                render::make_shader_entry_point_id(request.entry_point, render::shader_stage::fragment);
             program.passes.push_back({.pass = pass,
                                       .permutation = generated.value().permutation,
                                       .entry_point = entry_point,
@@ -574,9 +580,10 @@ public:
                                  .bytes = std::move(bytes).value()});
         }
 
-        auto material_bytes = render::tools::serialize_material_package_v3({.compiled = std::move(program),
-                                                                            .parameters = std::move(parameters),
-                                                                            .canonical_document_json = authored.value().canonical_json});
+        auto material_bytes = render::tools::serialize_material_package_v3(
+            {.compiled = std::move(program),
+             .parameters = std::move(parameters),
+             .canonical_document_json = authored.value().canonical_json});
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatc",
                              .schema = descriptor_.schema,
