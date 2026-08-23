@@ -168,3 +168,130 @@
 .content-create-dialog footer button {
   padding: 6px 12px;
 }
+
+/* Asset cards prioritize the preview and identity. Secondary operations stay in
+   the selected-asset details pane instead of competing with every thumbnail. */
+.content-browser-v2 .content-assets.grid .content-asset {
+  grid-template-rows: 88px 30px;
+  place-items: stretch;
+  gap: 5px;
+  min-height: 132px;
+  padding: 7px 7px 8px;
+  overflow: hidden;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-preview {
+  width: 100%;
+  height: 88px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 3px;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-preview .asset-thumbnail {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: auto;
+  overflow: hidden;
+  place-content: center;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-preview .asset-thumbnail img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-name {
+  display: -webkit-box;
+  align-self: start;
+  width: 100%;
+  min-width: 0;
+  max-height: 2.5em;
+  overflow: hidden;
+  color: var(--arc-color-text);
+  font-size: var(--arc-text-xxs);
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* Grid cards use the colored state dot instead of repeating "type · status"
+   under every asset. Keep the text available to assistive technology. */
+.content-browser-v2 .content-assets.grid .content-asset > small {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.content-browser-v2 .content-assets.grid .asset-state {
+  z-index: 3;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(8, 13, 18, 0.78);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Favorites are a lightweight overlay, not another button tile. */
+.content-browser-v2 .content-assets.grid .content-asset-actions {
+  z-index: 4;
+  top: 7px;
+  right: auto;
+  left: 7px;
+  display: flex;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child {
+  display: grid;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--arc-color-text-muted);
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.72;
+  place-items: center;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child:hover,
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child:focus-visible {
+  color: var(--arc-color-text-strong);
+  background: transparent;
+  opacity: 1;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child.active {
+  color: #ffcf5a;
+  opacity: 1;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-actions > button:first-child.active svg {
+  fill: currentColor;
+}
+
+/* Reimport remains available from the selected-asset details pane. */
+.content-browser-v2 .content-asset-actions > button:not(:first-child) {
+  display: none;
+}
