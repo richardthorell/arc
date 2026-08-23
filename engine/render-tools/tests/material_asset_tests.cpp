@@ -55,7 +55,7 @@ arc::render::tools::material_package_v3 compiled_package()
 
 } // namespace
 
-TEST_CASE("material authoring accepts the current graph schema without migration")
+TEST_CASE("material authoring accepts the current graph schema")
 {
     constexpr std::string_view source = R"({
       "version":4,
@@ -70,9 +70,7 @@ TEST_CASE("material authoring accepts the current graph schema without migration
 
     const auto result = arc::render::tools::parse_material_authoring_json(source);
     REQUIRE(result);
-    REQUIRE(result.value().source_version == arc::render::tools::material_authoring_version);
     REQUIRE(result.value().version == arc::render::tools::material_authoring_version);
-    REQUIRE_FALSE(result.value().migrated);
     REQUIRE_FALSE(result.value().graph_json.empty());
     REQUIRE(result.value().shader_path.empty());
     REQUIRE(result.value().domain == arc::render::material_domain::surface);
@@ -105,6 +103,20 @@ TEST_CASE("material authoring rejects legacy schemas")
         const auto result = arc::render::tools::parse_material_authoring_json(source);
         REQUIRE_FALSE(result);
         REQUIRE(result.error().code == arc::render::tools::material_asset_error_code::unsupported_version);
+    }
+}
+
+TEST_CASE("material authoring rejects legacy fields in the current schema")
+{
+    for (const auto field : {"shader", "surface", "textures", "advanced"})
+    {
+        auto source = std::string{"{\"version\":4,\"graph\":{\"version\":1,\"nodes\":[],\"connections\":[]},\""};
+        source += field;
+        source += "\":{}}";
+        const auto result = arc::render::tools::parse_material_authoring_json(source);
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().code == arc::render::tools::material_asset_error_code::invalid_document);
+        REQUIRE(result.error().message.find(field) != std::string::npos);
     }
 }
 
