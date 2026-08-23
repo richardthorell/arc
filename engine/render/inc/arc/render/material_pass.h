@@ -65,14 +65,6 @@ struct material_compiled_program
     std::vector<material_pass_binding> passes;
 };
 
-/** @brief Result of applying the material implementation selector to one render pass. */
-struct material_pipeline_resolution
-{
-    bool use_legacy{};
-    bool use_compiled{};
-    bool compare{};
-};
-
 /** @brief Return whether a material is eligible to participate in the requested render pass. */
 [[nodiscard]] bool material_supports_pass(const material_descriptor& material, material_pass pass) noexcept;
 
@@ -96,15 +88,12 @@ make_material_pass_permutation_id(const material_pass_permutation_key& key) noex
 [[nodiscard]] const material_pass_binding* find_material_pass_binding(const material_compiled_program& program,
                                                                       material_pass pass) noexcept;
 
-/**
- * @brief Resolve legacy/compiled/compare behavior for one pass.
- *
- * Compiled mode never silently falls back to the legacy renderer. Missing or incompatible compiled pass data resolves
- * to no implementation so the caller can surface an error/fallback material. Legacy remains explicitly selectable,
- * while compare always runs legacy and adds compiled execution only when the compiled contract is valid.
- */
-[[nodiscard]] material_pipeline_resolution
-resolve_material_pipeline(const material_descriptor& material, material_pass pass,
-                          const material_compiled_program* compiled) noexcept;
+/** @brief Return whether a cooked compiled material program is valid for the requested pass. */
+[[nodiscard]] inline bool material_program_supports_pass(const material_compiled_program& program,
+                                                         material_pass pass) noexcept
+{
+    return program.contract_version == material_pass_contract_version && program.material_abi == material_abi_version &&
+           program.package.valid() && find_material_pass_binding(program, pass) != nullptr;
+}
 
 } // namespace arc::render
