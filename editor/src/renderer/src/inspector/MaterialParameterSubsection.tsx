@@ -12,6 +12,7 @@ import './inspectorPolish.css';
 
 type MaterialParameterAsset = {
   id: string;
+  guid?: string;
   name: string;
   path: string;
   kind: string;
@@ -51,15 +52,22 @@ const formatParameter = (value: number) => {
 export function MaterialParameterSubsection({
   assets,
   mixed = false,
+  referenceMode = 'path',
   value,
 }: {
   assets: ReadonlyArray<MaterialParameterAsset>;
   mixed?: boolean;
+  referenceMode?: 'path' | 'guid';
   value: string;
 }) {
   const selected = useMemo(
-    () => assets.find((asset) => asset.kind === 'material' && asset.path === value),
-    [assets, value],
+    () =>
+      assets.find(
+        (asset) =>
+          asset.kind === 'material' &&
+          (referenceMode === 'guid' ? (asset.guid || asset.id) === value : asset.path === value),
+      ),
+    [assets, referenceMode, value],
   );
   const [state, setState] = useState<ParameterState>(emptyState);
 
@@ -75,7 +83,10 @@ export function MaterialParameterSubsection({
     setState({ status: 'loading', parameters: [] });
     void (async () => {
       try {
-        const file = await window.arc.projects.readText(selected.path, selected.scope === 'builtin' ? 'builtin' : 'project');
+        const file = await window.arc.projects.readText(
+          selected.path,
+          selected.scope === 'builtin' ? 'builtin' : 'project',
+        );
         if (!active) return;
         const asset = JSON.parse(file.text) as MaterialAssetJson;
         const customShader = typeof asset.shaderPath === 'string' ? asset.shaderPath.trim() : '';
