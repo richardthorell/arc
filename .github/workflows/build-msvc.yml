@@ -171,37 +171,29 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake -S . -B out/build/sdk-relwithdebinfo -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake -S . -B out/build/sdk -G "Ninja Multi-Config" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK configure failed with exit code ${exitCode}" }
+          if ($exitCode -ne 0) { throw "SDK configure failed with exit code ${exitCode}" }
 
-          cmake --build out/build/sdk-relwithdebinfo --parallel
+          cmake --build out/build/sdk --config RelWithDebInfo --parallel
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "RelWithDebInfo SDK build failed with exit code ${exitCode}" }
 
-      - name: Configure and Build Debug SDK
+      - name: Build Debug SDK
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake -S . -B out/build/sdk-debug -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 0) { throw "Debug SDK configure failed with exit code ${exitCode}" }
-
-          cmake --build out/build/sdk-debug --parallel
+          cmake --build out/build/sdk --config Debug --parallel
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "Debug SDK build failed with exit code ${exitCode}" }
 
-      - name: Configure and Build Shipping SDK
+      - name: Build Shipping SDK
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake -S . -B out/build/sdk-shipping -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
-          $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 0) { throw "Shipping SDK configure failed with exit code ${exitCode}" }
-
-          cmake --build out/build/sdk-shipping --parallel
+          cmake --build out/build/sdk --config Shipping --parallel
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "Shipping SDK build failed with exit code ${exitCode}" }
 
@@ -210,17 +202,26 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake --install out/build/sdk-relwithdebinfo --prefix out/sdk/arc-0.1.0
+          cmake --install out/build/sdk --config Shipping --prefix out/sdk/arc-0.1.0
           $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK install failed with exit code ${exitCode}" }
+          if ($exitCode -ne 0) { throw "Shipping SDK install failed with exit code ${exitCode}" }
 
-          cmake --install out/build/sdk-debug --prefix out/sdk/arc-0.1.0
+          cmake --install out/build/sdk --config Debug --prefix out/sdk/arc-0.1.0
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "Debug SDK install failed with exit code ${exitCode}" }
 
-          cmake --install out/build/sdk-shipping --prefix out/sdk/arc-0.1.0
+          cmake --install out/build/sdk --config RelWithDebInfo --prefix out/sdk/arc-0.1.0
           $exitCode = $LASTEXITCODE
-          if ($exitCode -ne 0) { throw "Shipping SDK install failed with exit code ${exitCode}" }
+          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK install failed with exit code ${exitCode}" }
+
+      - name: Verify SDK CMake Configurations
+        shell: pwsh
+        run: |
+          $targetsDir = 'out/sdk/arc-0.1.0/lib/cmake/ARC'
+          foreach ($configuration in @('debug', 'relwithdebinfo', 'shipping')) {
+            $targetsFile = Join-Path $targetsDir "ARCTargets-${configuration}.cmake"
+            if (-not (Test-Path $targetsFile)) { throw "Installed SDK is missing ${targetsFile}" }
+          }
 
       - name: Register SDK
         shell: pwsh
