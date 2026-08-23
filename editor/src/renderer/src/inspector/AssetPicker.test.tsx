@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { AssetPicker, MaterialPicker } from './AssetPicker';
+import { arcAssetDragMime } from '../services/assetDragPayload';
+import { AssetPicker, MaterialPicker, TexturePicker } from './AssetPicker';
 
 const writeText = vi.fn().mockResolvedValue({ succeeded: true });
 const snapshot = vi.fn().mockResolvedValue({
@@ -29,6 +30,79 @@ beforeEach(() => {
 });
 
 describe('AssetPicker', () => {
+  it('accepts Content Browser material drag payloads on material slots', () => {
+    const onChange = vi.fn();
+    render(
+      <MaterialPicker
+        assets={[
+          {
+            id: 'hero-material-guid',
+            guid: 'hero-material-guid',
+            name: 'Hero Surface',
+            path: 'Content/Materials/Hero.arcmat',
+            kind: 'material',
+            status: 'ready',
+          },
+        ]}
+        label="Material"
+        value=""
+        onChange={onChange}
+      />,
+    );
+
+    const control = screen.getByRole('button', { name: 'Choose Material asset' }).closest('.asset-reference-control');
+    fireEvent.drop(control!, {
+      dataTransfer: {
+        dropEffect: 'none',
+        getData: (type: string) =>
+          type === arcAssetDragMime
+            ? JSON.stringify({
+                guid: 'hero-material-guid',
+                type: 'material',
+                pathHint: 'Content/Materials/Hero.arcmat',
+              })
+            : '',
+      },
+    });
+
+    expect(onChange).toHaveBeenCalledWith('Content/Materials/Hero.arcmat');
+  });
+
+  it('accepts Content Browser image payloads on texture asset fields', () => {
+    const onChange = vi.fn();
+    render(
+      <TexturePicker
+        assets={[
+          {
+            id: 'albedo-guid',
+            guid: 'albedo-guid',
+            name: 'Albedo',
+            path: 'Content/Textures/Albedo.png',
+            kind: 'texture',
+            status: 'ready',
+          },
+        ]}
+        label="Albedo"
+        referenceMode="guid"
+        value=""
+        onChange={onChange}
+      />,
+    );
+
+    const control = screen.getByRole('button', { name: 'Choose Albedo asset' }).closest('.asset-reference-control');
+    fireEvent.drop(control!, {
+      dataTransfer: {
+        dropEffect: 'none',
+        getData: (type: string) =>
+          type === arcAssetDragMime
+            ? JSON.stringify({ guid: 'albedo-guid', type: 'texture', pathHint: 'Content/Textures/Albedo.png' })
+            : '',
+      },
+    });
+
+    expect(onChange).toHaveBeenCalledWith('albedo-guid');
+  });
+
   it('filters reflected asset types and commits the stable GUID', async () => {
     const onChange = vi.fn();
     render(

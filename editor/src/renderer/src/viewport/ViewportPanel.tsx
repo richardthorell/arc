@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PointerEvent, WheelEvent } from 'react';
+import type { DragEvent, PointerEvent, WheelEvent } from 'react';
 import { Box, Camera, Eye, EyeOff, Focus, Maximize2, RefreshCw } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
 import type { StartupState } from '../app/workbenchTypes';
 import type { ProjectSnapshot } from '../services/editorHostTypes';
+import { arcAssetDragMime, arcEnvironmentDragMime, readArcAssetDragPayload } from '../services/assetDragPayload';
+import { assignDroppedMaterialToViewport } from './viewportAssetDrop';
 
 import './viewport.css';
 import { toViewportPixels } from './viewportCoordinates';
@@ -379,6 +381,37 @@ export function ViewportPanel({
       renderWidth: stats.width,
       renderHeight: stats.height,
       devicePixelRatio: window.devicePixelRatio,
+    });
+  };
+
+  const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!viewportActive) return;
+    if (
+      !event.dataTransfer.types.includes(arcAssetDragMime) &&
+      !event.dataTransfer.types.includes(arcEnvironmentDragMime)
+    )
+      return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+
+  const onAssetDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!viewportActive) return;
+    const dropped = readArcAssetDragPayload(event.dataTransfer);
+    if (!dropped || dropped.type !== 'material') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const position = pointerCoordinates(event.clientX, event.clientY);
+    void assignDroppedMaterialToViewport(window.arc.host, {
+      viewportId,
+      ...position,
+      path: dropped.pathHint,
+    }).then((result) => {
+      if (result.succeeded) {
+        setViewportError('');
+      } else if (result.error !== 'No scene object at the drop position') {
+        setViewportError(result.error);
+      }
     });
   };
 
@@ -787,6 +820,8 @@ export function ViewportPanel({
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange?.(false);
         }}
         onFocus={() => onFocusChange?.(true)}
+        onDragOver={onAssetDragOver}
+        onDrop={onAssetDrop}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
