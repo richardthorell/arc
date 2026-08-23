@@ -91,6 +91,34 @@ const renderBrowser = (onCommand = vi.fn()) =>
   );
 
 describe('ContentBrowserPanel', () => {
+  it('uses shared ARC controls in the Content Browser toolbar', () => {
+    const view = renderBrowser();
+
+    expect(view.getByRole('button', { name: /Create/ })).toHaveClass('ui-button', 'ui-button-toolbar');
+    expect(view.getByRole('button', { name: 'Import' })).toHaveClass('ui-button', 'ui-button-toolbar');
+    expect(view.getByLabelText('Search assets')).toHaveClass('ui-text-input', 'ui-search-input');
+    expect(view.getByRole('combobox', { name: 'Asset type' })).toHaveClass('ui-select-trigger');
+    expect(view.getByRole('combobox', { name: 'Asset state' })).toHaveClass('ui-select-trigger');
+    expect(view.getByRole('combobox', { name: 'Sort assets' })).toHaveClass('ui-select-trigger');
+    expect(view.getByLabelText('Grid view')).toHaveClass('ui-icon-button');
+    expect(view.getByLabelText('List view')).toHaveClass('ui-icon-button');
+  });
+
+  it('persists an adjustable Content Browser tree width', () => {
+    localStorage.setItem('arc.content.treeWidth', '244');
+    const view = renderBrowser();
+    const separator = view.getByRole('separator', { name: 'Resize content folder tree' });
+
+    expect(separator).toHaveAttribute('aria-valuenow', '244');
+    fireEvent.keyDown(separator, { key: 'ArrowRight' });
+    expect(separator).toHaveAttribute('aria-valuenow', '256');
+    expect(localStorage.getItem('arc.content.treeWidth')).toBe('256');
+
+    fireEvent.doubleClick(separator);
+    expect(separator).toHaveAttribute('aria-valuenow', '190');
+    expect(localStorage.getItem('arc.content.treeWidth')).toBe('190');
+  });
+
   it('filters registry assets and emits GUID drag payloads', () => {
     const view = renderBrowser();
     fireEvent.change(view.getByLabelText('Search assets'), { target: { value: 'rock' } });
