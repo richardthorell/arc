@@ -24,7 +24,7 @@ namespace arc::render::tools
 inline constexpr std::uint32_t material_ir_version = 1;
 
 /** @brief Version of the deterministic Material IR to Slang generator. */
-inline constexpr std::uint32_t material_shader_codegen_version = 2;
+inline constexpr std::uint32_t material_shader_codegen_version = 3;
 
 /** @brief Version of first-class reusable Material/Shader Function documents. */
 inline constexpr std::uint32_t material_function_version = 1;
@@ -142,10 +142,26 @@ enum class material_surface_output : std::uint8_t
     metallic,
     roughness,
     normal,
+    clear_coat_normal,
+    tangent,
     ambient_occlusion,
     emissive,
     opacity,
-    alpha_cutoff
+    alpha_cutoff,
+    index_of_refraction,
+    clear_coat,
+    clear_coat_roughness,
+    sheen,
+    sheen_color,
+    sheen_roughness,
+    anisotropy,
+    anisotropy_rotation,
+    transmission,
+    thickness,
+    attenuation_color,
+    attenuation_distance,
+    subsurface_color,
+    subsurface
 };
 
 /** @brief Connection selected for one material surface output. */

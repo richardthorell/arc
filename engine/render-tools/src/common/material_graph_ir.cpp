@@ -250,15 +250,31 @@ std::set<std::string> reachable_nodes(const std::string& output_node, const inpu
     return reachable;
 }
 
-constexpr std::array<std::pair<material_surface_output, std::string_view>, 8> surface_outputs{{
+constexpr std::array<std::pair<material_surface_output, std::string_view>, 24> surface_outputs{{
     {material_surface_output::base_color, "baseColor"},
     {material_surface_output::metallic, "metallic"},
     {material_surface_output::roughness, "roughness"},
     {material_surface_output::normal, "normal"},
+    {material_surface_output::clear_coat_normal, "clearCoatNormal"},
+    {material_surface_output::tangent, "tangent"},
     {material_surface_output::ambient_occlusion, "ao"},
     {material_surface_output::emissive, "emissive"},
     {material_surface_output::opacity, "opacity"},
     {material_surface_output::alpha_cutoff, "alphaClip"},
+    {material_surface_output::index_of_refraction, "indexOfRefraction"},
+    {material_surface_output::clear_coat, "clearCoat"},
+    {material_surface_output::clear_coat_roughness, "clearCoatRoughness"},
+    {material_surface_output::sheen, "sheen"},
+    {material_surface_output::sheen_color, "sheenColor"},
+    {material_surface_output::sheen_roughness, "sheenRoughness"},
+    {material_surface_output::anisotropy, "anisotropy"},
+    {material_surface_output::anisotropy_rotation, "anisotropyRotation"},
+    {material_surface_output::transmission, "transmission"},
+    {material_surface_output::thickness, "thickness"},
+    {material_surface_output::attenuation_color, "attenuationColor"},
+    {material_surface_output::attenuation_distance, "attenuationDistance"},
+    {material_surface_output::subsurface_color, "subsurfaceColor"},
+    {material_surface_output::subsurface, "subsurface"},
 }};
 
 } // namespace

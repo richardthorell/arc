@@ -162,8 +162,13 @@ describe('ContentBrowserPanel', () => {
     const [path, text] = writeText.mock.calls[0] as [string, string];
     expect(path).toBe('Content/Props/Rock Material.arcmat');
     const asset = JSON.parse(text);
-    expect(asset.shader).toBe('arc/default_phong');
+    expect(asset.version).toBe(4);
+    expect(asset).not.toHaveProperty('shader');
+    expect(asset).not.toHaveProperty('surface');
+    expect(asset).not.toHaveProperty('textures');
+    expect(asset).not.toHaveProperty('advanced');
     expect(asset.domain).toBe('surface');
+    expect(asset.graph.version).toBe(1);
     expect(asset.graph.nodes.some((node: { type: string }) => node.type === 'output')).toBe(true);
     expect(asset.graph.connections).toHaveLength(3);
   });

@@ -218,20 +218,11 @@ enum class material_displacement_mode : std::uint8_t
 };
 
 /**
- * @brief Material implementation selector retained while the legacy path is deprecated.
- *
- * Compiled Material ABI programs are the production default. @ref legacy remains available as an explicit
- * compatibility/debugging mode and @ref compare executes both implementations when compiled pass data is valid.
- */
-enum class material_pipeline : std::uint8_t
-{
-    legacy,
-    compiled,
-    compare
-};
-
-/**
  * @brief Renderer material description used by scene rendering.
+ *
+ * Materials are backed by a cooked Material ABI program. The scalar and texture
+ * fields below describe pass routing and renderer resource bindings; they are not
+ * an alternate material implementation.
  */
 struct material_descriptor
 {
@@ -291,9 +282,6 @@ struct material_descriptor
     resource_handle material_graph{};
     std::vector<material_parameter_override> parameters;
     std::array<terrain_layer_descriptor, 4> terrain_layers{};
-
-    /** @brief Material implementation selection. Compiled Material ABI programs are the production default. */
-    material_pipeline pipeline{material_pipeline::compiled};
 };
 
 /** @brief Runtime material definition produced from an authored `.arcmat`. */
