@@ -1,4 +1,5 @@
 #include <arc/editor/material_preview.h>
+#include <arc/editor/material_preview_realizer.h>
 
 #include <algorithm>
 #include <array>
@@ -164,20 +165,40 @@ material_preview_result render_material_preview(const material_asset& asset, con
                                                 std::uint32_t size)
 {
     size = std::clamp(size, 32u, 256u);
-    const auto base_map = load_preview_texture(asset_root, asset.textures.base_color);
-    const auto metallic_roughness_map = load_preview_texture(asset_root, asset.textures.metallic_roughness);
-    const auto normal_map = load_preview_texture(asset_root, asset.textures.normal);
-    const auto ao_map = load_preview_texture(asset_root, asset.textures.ao);
-    const auto emissive_map = load_preview_texture(asset_root, asset.textures.emissive);
+
+    material_asset preview_asset = asset;
+    if (asset.graph_reserved && !asset.path.empty())
+    {
+        const auto realized = load_material_preview_descriptor(asset.path);
+        if (realized.succeeded)
+        {
+            const auto alpha_mode = preview_asset.material.alpha_mode;
+            const auto shading_model = preview_asset.material.shading_model;
+            const auto domain = preview_asset.material.domain;
+            const bool double_sided = preview_asset.material.double_sided;
+            preview_asset.material = realized.material;
+            preview_asset.material.name = asset.name;
+            preview_asset.material.alpha_mode = alpha_mode;
+            preview_asset.material.shading_model = shading_model;
+            preview_asset.material.domain = domain;
+            preview_asset.material.double_sided = double_sided;
+        }
+    }
+
+    const auto base_map = load_preview_texture(asset_root, preview_asset.textures.base_color);
+    const auto metallic_roughness_map = load_preview_texture(asset_root, preview_asset.textures.metallic_roughness);
+    const auto normal_map = load_preview_texture(asset_root, preview_asset.textures.normal);
+    const auto ao_map = load_preview_texture(asset_root, preview_asset.textures.ao);
+    const auto emissive_map = load_preview_texture(asset_root, preview_asset.textures.emissive);
 
     render::texture_data output;
-    output.name = asset.name + " Preview";
+    output.name = preview_asset.name + " Preview";
     output.width = size;
     output.height = size;
     output.format = render::texture_format::rgba8_srgb;
     output.pixels.resize(static_cast<std::size_t>(size) * size * 4u);
 
-    const auto& material = asset.material;
+    const auto& material = preview_asset.material;
     const color3 base_factor{material.base_color[0], material.base_color[1], material.base_color[2]};
     const color3 emissive_factor{material.emissive_factor[0], material.emissive_factor[1], material.emissive_factor[2]};
     const color3 view{0.0f, 0.0f, 1.0f};
