@@ -5,14 +5,14 @@
   overflow: hidden;
 }
 
-.ui-context-menu-item.ui-button {
+.ui-context-menu .ui-context-menu-item.ui-button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   justify-content: stretch;
   width: 100%;
 }
 
-.ui-context-menu-item.ui-button.ui-context-menu-item-has-leading {
+.ui-context-menu .ui-context-menu-item.ui-button.ui-context-menu-item-has-leading {
   grid-template-columns: 18px minmax(0, 1fr) auto;
 }
 
