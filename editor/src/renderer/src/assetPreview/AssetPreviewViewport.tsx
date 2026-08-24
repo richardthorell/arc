@@ -50,6 +50,7 @@ const boundsKey = (bounds: ViewportBounds) =>
 const normalizedAssetGuid = (guid?: string) => guid?.trim().toLowerCase() ?? '';
 
 const assetPreviewViewportLifecycle = new Map<string, Promise<void>>();
+let nextAssetPreviewViewportInstance = 1;
 
 export function serializeAssetPreviewViewportLifecycle<T>(viewportId: string, operation: () => Promise<T>): Promise<T> {
   const previous = assetPreviewViewportLifecycle.get(viewportId) ?? Promise.resolve();
@@ -65,15 +66,23 @@ export function serializeAssetPreviewViewportLifecycle<T>(viewportId: string, op
   return result;
 }
 
-export function assetPreviewViewportId(kind: AssetPreviewViewportProps['kind'], assetGuid: string) {
-  return `asset-preview-${kind}-${normalizedAssetGuid(assetGuid)}`;
+export function assetPreviewViewportId(
+  kind: AssetPreviewViewportProps['kind'],
+  assetGuid: string,
+  instance?: number,
+) {
+  const base = `asset-preview-${kind}-${normalizedAssetGuid(assetGuid)}`;
+  return instance === undefined ? base : `${base}~${instance}`;
 }
 
 export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: AssetPreviewViewportProps) {
   const normalizedGuid = normalizedAssetGuid(assetGuid);
+  const viewportInstanceRef = useRef<number | null>(null);
+  if (viewportInstanceRef.current === null) viewportInstanceRef.current = nextAssetPreviewViewportInstance++;
+  const viewportInstance = viewportInstanceRef.current;
   const viewportId = useMemo(
-    () => (normalizedGuid ? assetPreviewViewportId(kind, normalizedGuid) : ''),
-    [kind, normalizedGuid],
+    () => (normalizedGuid ? assetPreviewViewportId(kind, normalizedGuid, viewportInstance) : ''),
+    [kind, normalizedGuid, viewportInstance],
   );
   const surfaceId = useMemo(
     () => `arc-asset-preview-surface-${viewportId.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`,
