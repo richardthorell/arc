@@ -582,6 +582,51 @@ void reset_asset_preview_scenes(viewport_surface_registry& surfaces, render::ren
         if (surface.preview_kind != asset_preview_kind::none) cleanup_asset_preview_surface(surface, renderer);
     }
 }
+
+template <class HostState>
+void refresh_reimported_world_material(HostState& host, const host_asset_reimport_command& command)
+{
+    if (!host.asset_registry || !host.renderer) return;
+    const auto guid = assets::parse_asset_guid(command.guid);
+    if (!guid) return;
+    const auto asset = host.asset_registry->find(*guid);
+    if (!asset || asset->type != assets::asset_types::material) return;
+
+    const auto resolved =
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+    if (!resolved || !is_material_asset_path(resolved->path)) return;
+
+    auto realized = load_material_preview_descriptor(resolved->path);
+    if (!realized.succeeded)
+    {
+        arc::diagnostics::warn("editor.materials",
+                               "[material-flow] assigned material refresh failed guid=" + command.guid +
+                                   " error=" + realized.message);
+        return;
+    }
+
+    bool refreshed{};
+    for (auto& record : host.scene.material_library.materials)
+    {
+        std::error_code equivalent_error;
+        const bool same_path = record.path.lexically_normal() == resolved->path.lexically_normal() ||
+                               std::filesystem::equivalent(record.path, resolved->path, equivalent_error);
+        if (!same_path || !record.material.valid()) continue;
+        if (!host.renderer->update_material(record.material, realized.material))
+        {
+            arc::diagnostics::warn("editor.materials",
+                                   "[material-flow] renderer could not refresh assigned material guid=" + command.guid);
+            continue;
+        }
+        record.asset.material = realized.material;
+        refreshed = true;
+    }
+
+    if (refreshed)
+        arc::diagnostics::info("editor.materials",
+                               "[material-flow] refreshed assigned material guid=" + command.guid +
+                                   " path=" + resolved->path.generic_string());
+}
 } // namespace
 
 host_response arc_host::execute(host_command_payload command)
@@ -628,6 +673,11 @@ host_response arc_host::execute(const host_command_envelope& command)
         {
             asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
             response = execute_base(command);
+        }
+        if (response.succeeded)
+        {
+            if (const auto* reimport = std::get_if<host_asset_reimport_command>(&command.payload))
+                refresh_reimported_world_material(*state_, *reimport);
         }
         capture_viewport_surface(*state_, *viewport_surface);
         if (response.succeeded && std::holds_alternative<host_viewport_pick_command>(command.payload))
