@@ -48,4 +48,21 @@ describe('UiContextMenu', () => {
     expect(parentPointer).not.toHaveBeenCalled();
     expect(parentContext).not.toHaveBeenCalled();
   });
+
+  it('only reserves a leading column when an item has leading content', () => {
+    render(
+      <UiContextMenu aria-label="Compact menu">
+        <UiContextMenuItem>Without icon</UiContextMenuItem>
+        <UiContextMenuItem leading={<span data-testid="leading-icon">I</span>}>With icon</UiContextMenuItem>
+      </UiContextMenu>,
+    );
+
+    const compact = screen.getByRole('menuitem', { name: 'Without icon' });
+    const withIcon = screen.getByRole('menuitem', { name: 'I With icon' });
+
+    expect(compact).not.toHaveClass('ui-context-menu-item-has-leading');
+    expect(compact.querySelector('.menu-leading')).not.toBeInTheDocument();
+    expect(withIcon).toHaveClass('ui-context-menu-item-has-leading');
+    expect(screen.getByTestId('leading-icon')).toBeInTheDocument();
+  });
 });
