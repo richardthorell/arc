@@ -757,10 +757,9 @@ export function ContentBrowserPanel({
                     event.dataTransfer.effectAllowed = 'copy';
                   }}
                   onKeyDown={(event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
                     event.preventDefault();
-                    if (event.key === 'Enter') activateAsset(asset);
-                    else select(asset, event.ctrlKey || event.metaKey);
+                    select(asset, event.ctrlKey || event.metaKey);
                   }}
                 >
                   <span className="content-asset-preview">
