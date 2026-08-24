@@ -5,8 +5,7 @@ export type StartupState = {
   hostError?: string;
 };
 
-export type ActivityId =
-  'scene' | 'assets' | 'search' | 'versionControl' | 'aiAssistant' | 'profiler' | 'renderGraph' | 'settings';
+export type ActivityId = 'scene' | 'assets' | 'search' | 'versionControl' | 'aiAssistant' | 'profiler' | 'renderGraph';
 
 export type DockRegion = 'left' | 'center' | 'right' | 'bottom';
 
@@ -25,8 +24,7 @@ export type WorkbenchPanelId =
   | 'buildOutput'
   | 'versionControl'
   | 'aiAssistant'
-  | 'profiler'
-  | 'settings';
+  | 'profiler';
 
 export type CommandId =
   | 'file.new'

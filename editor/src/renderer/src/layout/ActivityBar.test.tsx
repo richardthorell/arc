@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 describe('ActivityBar', () => {
   it('shows global utilities without hierarchy', () => {
-    render(<ActivityBar activeActivity="scene" onSelectActivity={vi.fn()} />);
+    render(<ActivityBar activeActivity="scene" onSelectActivity={vi.fn()} onSettings={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: 'Hierarchy' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
@@ -28,6 +28,7 @@ describe('ActivityBar', () => {
         expanded={false}
         onExpandedChange={onExpandedChange}
         onSelectActivity={onSelectActivity}
+        onSettings={vi.fn()}
       />,
     );
 
@@ -41,9 +42,33 @@ describe('ActivityBar', () => {
         expanded
         onExpandedChange={onExpandedChange}
         onSelectActivity={onSelectActivity}
+        onSettings={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     expect(onExpandedChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('opens settings without treating it as an expandable activity panel', () => {
+    const onExpandedChange = vi.fn();
+    const onSelectActivity = vi.fn();
+    const onSettings = vi.fn();
+    render(
+      <ActivityBar
+        activeActivity="scene"
+        expanded={false}
+        onExpandedChange={onExpandedChange}
+        onSelectActivity={onSelectActivity}
+        onSettings={onSettings}
+      />,
+    );
+
+    const settings = screen.getByRole('button', { name: 'Settings' });
+    expect(settings).toHaveAttribute('aria-haspopup', 'dialog');
+    fireEvent.click(settings);
+
+    expect(onSettings).toHaveBeenCalledTimes(1);
+    expect(onSelectActivity).not.toHaveBeenCalled();
+    expect(onExpandedChange).not.toHaveBeenCalled();
   });
 });

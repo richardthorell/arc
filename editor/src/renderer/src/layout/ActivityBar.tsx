@@ -1,3 +1,5 @@
+import { Settings } from 'lucide-react';
+
 import { activityRegistry } from '../app/panelRegistry';
 import type { ActivityId, ActivityRegistration } from '../app/workbenchTypes';
 import { UiButton } from '../ui';
@@ -7,17 +9,17 @@ type ActivityBarProps = {
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   onSelectActivity: (activity: ActivityId) => void;
+  onSettings: () => void;
 };
 
 const utilityActivities = activityRegistry.filter((activity) => activity.id !== 'scene');
-const primaryActivities = utilityActivities.filter((activity) => activity.id !== 'settings');
-const footerActivities = utilityActivities.filter((activity) => activity.id === 'settings');
 
 export function ActivityBar({
   activeActivity,
   expanded = false,
   onExpandedChange,
   onSelectActivity,
+  onSettings,
 }: ActivityBarProps) {
   const renderActivity = (activity: ActivityRegistration) => {
     const Icon = activity.icon;
@@ -47,8 +49,19 @@ export function ActivityBar({
 
   return (
     <aside className="activity-bar utility-rail" aria-label="Global utilities">
-      <div className="activity-items">{primaryActivities.map(renderActivity)}</div>
-      <div className="activity-footer">{footerActivities.map(renderActivity)}</div>
+      <div className="activity-items">{utilityActivities.map(renderActivity)}</div>
+      <div className="activity-footer">
+        <UiButton
+          aria-label="Settings"
+          aria-haspopup="dialog"
+          className="activity-button"
+          onClick={onSettings}
+          title="Settings"
+          variant="ghost"
+        >
+          <Settings size={20} />
+        </UiButton>
+      </div>
     </aside>
   );
 }

@@ -71,7 +71,7 @@ import { RenderGraphPanel } from '../renderGraph/RenderGraphPanel';
 import { ShaderEditorPanel } from '../shader/ShaderEditorPanel';
 import { LightingPanel } from '../lighting/LightingPanel';
 import { SearchPanel } from '../search/SearchPanel';
-import { SettingsPanel } from '../settings/SettingsPanel';
+import { SettingsDialog } from '../settings/SettingsDialog';
 import { VersionControlPanel } from '../versionControl/VersionControlPanel';
 import { ContentBrowserPanel as ContentBrowserV2 } from '../content/ContentBrowserPanel';
 
@@ -407,6 +407,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [viewportGridVisible, setViewportGridVisible] = useState(true);
   const [viewportFocused, setViewportFocused] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [createTerrainOpen, setCreateTerrainOpen] = useState(false);
   const [requestedWorkspaceLayout, setRequestedWorkspaceLayout] = useState<WorkspaceLayoutName | 'Reset' | null>(null);
   const [requestedWorkspacePanel, setRequestedWorkspacePanel] = useState<WorkbenchPanelId | null>(null);
@@ -639,7 +640,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     editorFocused: true,
     viewportFocused,
     textInputFocused: false,
-    modalOpen: commandPaletteOpen,
+    modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen,
     playing: runtimeState.state === 'running' || runtimeState.state === 'paused',
     hasSelection: Boolean(selectedEntityId),
     canUndo: documentState.canUndo,
@@ -733,6 +734,12 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
     if (command === 'view.commandPalette') {
       setCommandPaletteOpen(true);
+      return;
+    }
+    if (command === 'settings.open') {
+      setCommandPaletteOpen(false);
+      setSettingsOpen(true);
+      setLayout((current) => ({ ...current, activityExpanded: false }));
       return;
     }
     if (command === 'layout.reset') {
@@ -1311,10 +1318,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       );
     }
 
-    if (requestedPanel === 'settings' || (!requestedPanel && layout.activeActivity === 'settings')) {
-      return <SettingsPanel onResetLayout={resetLayout} />;
-    }
-
     const panelId = activityRegistry.find((entry) => entry.id === layout.activeActivity)?.panelId ?? 'hierarchy';
     const panel = getPanel(panelId);
     return (
@@ -1345,7 +1348,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             onReconnect={reconnectHost}
             gridVisible={viewportGridVisible}
             onGridVisibilityChange={setViewportGridVisible}
-            active={!createTerrainOpen && (context.instanceId ?? 'viewport-1') === activeViewportId}
+            active={!createTerrainOpen && !settingsOpen && (context.instanceId ?? 'viewport-1') === activeViewportId}
             onFocusChange={(focused) => {
               setViewportFocused(focused);
               if (focused) setActiveViewportId(context.instanceId ?? 'viewport-1');
@@ -1627,6 +1630,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           expanded={layout.activityExpanded}
           onExpandedChange={setActivityExpanded}
           onSelectActivity={selectActivity}
+          onSettings={() => void runCommand('settings.open')}
         />
 
         <section className="editor-region dockview-editor-region">
@@ -1656,6 +1660,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               : undefined
         }
       />
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={resetLayout} />}
       {commandPaletteOpen && (
         <CommandPalette
           context={{ ...commandContext, modalOpen: true }}
