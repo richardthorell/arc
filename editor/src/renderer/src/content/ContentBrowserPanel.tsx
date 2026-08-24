@@ -743,15 +743,24 @@ export function ContentBrowserPanel({
               }}
             >
               {filtered.map((asset) => (
-                <button
+                <div
+                  aria-selected={selection.has(asset.id)}
                   className={`content-asset ${selection.has(asset.id) ? 'selected' : ''}`}
                   draggable={Boolean(asset.guid)}
                   key={asset.id}
+                  role="option"
+                  tabIndex={0}
                   onClick={(event) => select(asset, event.ctrlKey || event.metaKey)}
                   onDoubleClick={() => activateAsset(asset)}
                   onDragStart={(event) => {
                     event.dataTransfer.setData('application/x-arc-asset', assetPayload(asset));
                     event.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    if (event.key === 'Enter') activateAsset(asset);
+                    else select(asset, event.ctrlKey || event.metaKey);
                   }}
                 >
                   <span className="content-asset-preview">
@@ -775,7 +784,7 @@ export function ContentBrowserPanel({
                       <button onClick={() => onAssetAction('asset.reimport', asset.guid!)}>Reimport</button>
                     )}
                   </span>
-                </button>
+                </div>
               ))}
               {filtered.length === 0 && (
                 <div className="content-empty">
