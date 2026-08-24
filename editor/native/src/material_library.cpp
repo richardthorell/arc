@@ -318,8 +318,7 @@ render::material_handle load_material_for_editor(editor_material_library& librar
     }
 
     auto realized = load_material_preview_descriptor(path);
-    const bool legacy_document =
-        !realized.succeeded && realized.message.starts_with("Legacy material field '");
+    const bool legacy_document = !realized.succeeded && realized.message.starts_with("Legacy material field '");
     if (!realized.succeeded && !legacy_document)
     {
         arc::diagnostics::error("editor.materials",
@@ -328,9 +327,8 @@ render::material_handle load_material_for_editor(editor_material_library& librar
     }
     if (legacy_document)
     {
-        arc::diagnostics::info("editor.materials",
-                               "Loading legacy material descriptor for '" + path.string() +
-                                   "' until native material serialization is graph-only");
+        arc::diagnostics::info("editor.materials", "Loading legacy material descriptor for '" + path.string() +
+                                                       "' until native material serialization is graph-only");
     }
     else
     {
