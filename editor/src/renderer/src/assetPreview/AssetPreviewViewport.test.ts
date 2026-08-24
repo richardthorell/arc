@@ -14,6 +14,12 @@ describe('assetPreviewViewportId', () => {
     expect(assetPreviewViewportId('shader', guid)).toBe(`asset-preview-shader-${guid}`);
     expect(assetPreviewViewportId('shader', guid)).not.toBe(assetPreviewViewportId('material', guid));
   });
+
+  it('can isolate separate mount lifetimes for the same preview asset', () => {
+    const guid = '11111111-2222-3333-4444-555555555555';
+    expect(assetPreviewViewportId('material', guid, 7)).toBe(`asset-preview-material-${guid}~7`);
+    expect(assetPreviewViewportId('material', guid, 7)).not.toBe(assetPreviewViewportId('material', guid, 8));
+  });
 });
 
 describe('serializeAssetPreviewViewportLifecycle', () => {
