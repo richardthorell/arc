@@ -409,8 +409,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   const visibleCategoryNodes =
     nodeMenuCategory && nodeMenuSubcategory
       ? availableNodes.filter(
-          (definition) =>
-            definition.category === nodeMenuCategory && definition.subcategory === nodeMenuSubcategory,
+          (definition) => definition.category === nodeMenuCategory && definition.subcategory === nodeMenuSubcategory,
         )
       : [];
   const searchingNodes = nodeSearch.trim().length > 0;
@@ -712,10 +711,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
               ))
             ) : !nodeMenuSubcategory ? (
               <>
-                <UiContextMenuItem
-                  onClick={() => setNodeMenuCategory(null)}
-                  leading={<ChevronLeft size={13} />}
-                >
+                <UiContextMenuItem onClick={() => setNodeMenuCategory(null)} leading={<ChevronLeft size={13} />}>
                   All Categories
                 </UiContextMenuItem>
                 {visibleSubcategories.map((subcategory) => (
@@ -730,10 +726,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
               </>
             ) : (
               <>
-                <UiContextMenuItem
-                  onClick={() => setNodeMenuSubcategory(null)}
-                  leading={<ChevronLeft size={13} />}
-                >
+                <UiContextMenuItem onClick={() => setNodeMenuSubcategory(null)} leading={<ChevronLeft size={13} />}>
                   {nodeMenuCategory}
                 </UiContextMenuItem>
                 {visibleCategoryNodes.map((definition) => (

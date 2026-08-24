@@ -165,18 +165,13 @@ const binaryMath = (
 
 export const materialNodeCategoryOrder: MaterialNodeCategory[] = ['Values', 'Textures', 'Math', 'Utility'];
 
-export const materialNodeSubcategoryOrder: Record<Exclude<MaterialNodeCategory, 'Output'>, MaterialNodeSubcategory[]> = {
+export const materialNodeSubcategoryOrder: Record<
+  Exclude<MaterialNodeCategory, 'Output'>,
+  MaterialNodeSubcategory[]
+> = {
   Values: ['Constants'],
   Textures: ['Sampling'],
-  Math: [
-    'Arithmetic',
-    'Rounding',
-    'Exponential',
-    'Trigonometry',
-    'Range & Interpolation',
-    'Comparison',
-    'Measurement',
-  ],
+  Math: ['Arithmetic', 'Rounding', 'Exponential', 'Trigonometry', 'Range & Interpolation', 'Comparison', 'Measurement'],
   Utility: ['Coordinates', 'Animation'],
 };
 

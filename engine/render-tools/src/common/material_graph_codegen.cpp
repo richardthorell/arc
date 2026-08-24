@@ -176,8 +176,7 @@ material_expression_type merge_numeric_type(material_expression_type lhs, materi
     if (lhs == rhs) return lhs;
     if (lhs == material_expression_type::scalar) return rhs;
     if (rhs == material_expression_type::scalar) return lhs;
-    throw std::runtime_error("material math node '" + std::string(node_id) +
-                             "' combines incompatible vector widths");
+    throw std::runtime_error("material math node '" + std::string(node_id) + "' combines incompatible vector widths");
 }
 
 struct generated_statement
@@ -299,8 +298,9 @@ private:
                                  std::string(slang_expression_type(target)));
     }
 
-    material_expression_type merged_inputs(const material_ir_node& node,
-                                           std::initializer_list<std::pair<std::string_view, material_expression_type>> pins)
+    material_expression_type
+    merged_inputs(const material_ir_node& node,
+                  std::initializer_list<std::pair<std::string_view, material_expression_type>> pins)
     {
         material_expression_type type = material_expression_type::scalar;
         bool first = true;
@@ -339,21 +339,21 @@ private:
             case operation::modulo:
             case operation::minimum:
             case operation::maximum:
-                return merged_inputs(node, {{"a", material_expression_type::scalar},
-                                            {"b", material_expression_type::scalar}});
+                return merged_inputs(
+                    node, {{"a", material_expression_type::scalar}, {"b", material_expression_type::scalar}});
             case operation::power:
-                return merged_inputs(node, {{"base", material_expression_type::scalar},
-                                            {"exponent", material_expression_type::scalar}});
+                return merged_inputs(
+                    node, {{"base", material_expression_type::scalar}, {"exponent", material_expression_type::scalar}});
             case operation::arctangent2:
-                return merged_inputs(node, {{"y", material_expression_type::scalar},
-                                            {"x", material_expression_type::scalar}});
+                return merged_inputs(
+                    node, {{"y", material_expression_type::scalar}, {"x", material_expression_type::scalar}});
             case operation::smooth_step:
                 return merged_inputs(node, {{"min", material_expression_type::scalar},
                                             {"max", material_expression_type::scalar},
                                             {"value", material_expression_type::scalar}});
             case operation::step:
-                return merged_inputs(node, {{"edge", material_expression_type::scalar},
-                                            {"value", material_expression_type::scalar}});
+                return merged_inputs(
+                    node, {{"edge", material_expression_type::scalar}, {"value", material_expression_type::scalar}});
             case operation::if_else:
             {
                 if (input_type(node.id, "a", material_expression_type::scalar) != material_expression_type::scalar ||
@@ -364,8 +364,8 @@ private:
                                             {"less", material_expression_type::scalar}});
             }
             case operation::distance:
-                static_cast<void>(merged_inputs(node, {{"a", material_expression_type::scalar},
-                                                       {"b", material_expression_type::scalar}}));
+                static_cast<void>(merged_inputs(
+                    node, {{"a", material_expression_type::scalar}, {"b", material_expression_type::scalar}}));
                 return material_expression_type::scalar;
             case operation::length:
                 static_cast<void>(input_type(node.id, "value", material_expression_type::scalar));
@@ -436,8 +436,8 @@ private:
                 case material_ir_node_kind::subtract:
                 case material_ir_node_kind::multiply:
                 case material_ir_node_kind::divide:
-                    type = merged_inputs(node, {{"a", material_expression_type::scalar},
-                                                {"b", material_expression_type::scalar}});
+                    type = merged_inputs(
+                        node, {{"a", material_expression_type::scalar}, {"b", material_expression_type::scalar}});
                     break;
                 case material_ir_node_kind::math:
                     type = math_type(node);
@@ -533,8 +533,8 @@ private:
                 return unary("sign");
             case operation::distance:
             {
-                const auto operand_type = merged_inputs(node, {{"a", material_expression_type::scalar},
-                                                               {"b", material_expression_type::scalar}});
+                const auto operand_type = merged_inputs(
+                    node, {{"a", material_expression_type::scalar}, {"b", material_expression_type::scalar}});
                 return "distance(" + input_as(node.id, "a", "0.0", operand_type) + ',' +
                        input_as(node.id, "b", "0.0", operand_type) + ')';
             }
@@ -649,20 +649,24 @@ private:
                              input_as(node.id, "max", number(node.maximum), type) + ')';
                 break;
             case material_ir_node_kind::lerp:
-                expression = "lerp(" + input_as(node.id, "a", "0.0", type) + ',' +
-                             input_as(node.id, "b", "0.0", type) + ',' + input_as(node.id, "t", "0.5", type) + ')';
+                expression = "lerp(" + input_as(node.id, "a", "0.0", type) + ',' + input_as(node.id, "b", "0.0", type) +
+                             ',' + input_as(node.id, "t", "0.5", type) + ')';
                 break;
             case material_ir_node_kind::add:
-                expression = '(' + input_as(node.id, "a", "0.0", type) + '+' + input_as(node.id, "b", "0.0", type) + ')';
+                expression =
+                    '(' + input_as(node.id, "a", "0.0", type) + '+' + input_as(node.id, "b", "0.0", type) + ')';
                 break;
             case material_ir_node_kind::subtract:
-                expression = '(' + input_as(node.id, "a", "0.0", type) + '-' + input_as(node.id, "b", "0.0", type) + ')';
+                expression =
+                    '(' + input_as(node.id, "a", "0.0", type) + '-' + input_as(node.id, "b", "0.0", type) + ')';
                 break;
             case material_ir_node_kind::multiply:
-                expression = '(' + input_as(node.id, "a", "0.0", type) + '*' + input_as(node.id, "b", "0.0", type) + ')';
+                expression =
+                    '(' + input_as(node.id, "a", "0.0", type) + '*' + input_as(node.id, "b", "0.0", type) + ')';
                 break;
             case material_ir_node_kind::divide:
-                expression = '(' + input_as(node.id, "a", "0.0", type) + '/' + input_as(node.id, "b", "1.0", type) + ')';
+                expression =
+                    '(' + input_as(node.id, "a", "0.0", type) + '/' + input_as(node.id, "b", "1.0", type) + ')';
                 break;
             case material_ir_node_kind::math:
                 expression = emit_math(node, type);
