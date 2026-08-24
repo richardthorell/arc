@@ -65,16 +65,25 @@ export type UiContextMenuItemProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 export function UiContextMenuItem({ children, className, leading, trailing, ...props }: UiContextMenuItemProps) {
+  const hasLeading = leading !== undefined && leading !== null;
+
   return (
     <UiButton
       {...props}
-      className={['menu-entry', 'ui-context-menu-item', className].filter(Boolean).join(' ')}
+      className={[
+        'menu-entry',
+        'ui-context-menu-item',
+        hasLeading ? 'ui-context-menu-item-has-leading' : undefined,
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
       role={props.role ?? 'menuitem'}
       variant="ghost"
     >
-      <span className="menu-leading">{leading}</span>
+      {hasLeading && <span className="menu-leading">{leading}</span>}
       <span className="menu-entry-label">{children}</span>
-      <span className="ui-context-menu-trailing">{trailing}</span>
+      {trailing !== undefined && trailing !== null && <span className="ui-context-menu-trailing">{trailing}</span>}
     </UiButton>
   );
 }

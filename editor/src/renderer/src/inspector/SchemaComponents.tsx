@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { UiButton, UiIconButton, UiSelect, UiTextInput } from '../ui';
+import { UiButton, UiContextMenu, UiContextMenuItem, UiIconButton, UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
@@ -151,9 +151,8 @@ export function SchemaComponentCard<TContext extends object>({
           </UiIconButton>
         )}
         {onAction && actionsOpen && (
-          <div
-            className="menu-dropdown"
-            role="menu"
+          <UiContextMenu
+            aria-label={`${schema.title} component actions menu`}
             style={{
               left: 'auto',
               right: '4px',
@@ -161,27 +160,25 @@ export function SchemaComponentCard<TContext extends object>({
               maxWidth: 'calc(100% - 8px)',
             }}
           >
-            <UiButton onClick={() => runComponentAction('copy')} role="menuitem" type="button" variant="ghost">
-              <span>Copy Component</span>
-            </UiButton>
-            <UiButton onClick={() => runComponentAction('paste')} role="menuitem" type="button" variant="ghost">
-              <span>Paste Component Values</span>
-            </UiButton>
-            <UiButton onClick={() => runComponentAction('reset')} role="menuitem" type="button" variant="ghost">
-              <span>Reset Component</span>
-            </UiButton>
+            <UiContextMenuItem onClick={() => runComponentAction('copy')} type="button">
+              Copy Component
+            </UiContextMenuItem>
+            <UiContextMenuItem onClick={() => runComponentAction('paste')} type="button">
+              Paste Component Values
+            </UiContextMenuItem>
+            <UiContextMenuItem onClick={() => runComponentAction('reset')} type="button">
+              Reset Component
+            </UiContextMenuItem>
             {schema.id !== 'transform' && schema.id !== 'prefab' && (
-              <UiButton
+              <UiContextMenuItem
                 onClick={() => runComponentAction('remove')}
-                role="menuitem"
                 style={{ color: 'var(--arc-color-danger)' }}
                 type="button"
-                variant="ghost"
               >
-                <span>Remove Component</span>
-              </UiButton>
+                Remove Component
+              </UiContextMenuItem>
             )}
-          </div>
+          </UiContextMenu>
         )}
       </header>
       {!collapsed && (

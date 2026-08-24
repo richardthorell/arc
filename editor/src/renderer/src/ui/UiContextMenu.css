@@ -1,15 +1,24 @@
-.ui-context-menu.menu-dropdown {
+.ui-context-menu {
   position: absolute;
   top: auto;
   left: auto;
   overflow: hidden;
 }
 
-.ui-context-menu-item.ui-button {
+.ui-context-menu .ui-context-menu-item.ui-button {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   justify-content: stretch;
   width: 100%;
+}
+
+.ui-context-menu .ui-context-menu-item.ui-button.ui-context-menu-item-has-leading {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+}
+
+.ui-context-menu-item .menu-entry-label,
+.ui-context-menu-item .menu-entry-label strong {
+  font-weight: 400;
 }
 
 .ui-context-menu-trailing {

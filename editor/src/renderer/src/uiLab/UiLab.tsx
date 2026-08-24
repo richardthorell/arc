@@ -23,6 +23,8 @@ import { MenuBar } from '../layout/MenuBar';
 import { TerrainRange } from '../terrain/TerrainToolsPanel';
 import {
   UiButton,
+  UiContextMenu,
+  UiContextMenuItem,
   UiIconButton,
   UiPanel,
   UiPanelHeader,
@@ -602,25 +604,16 @@ export function UiLab() {
           title="Menus and popovers"
           description="Menu and popup interaction surfaces. Asset and color picker popovers can also be opened from their cards above."
         >
-          <LabCard title="Context / dropdown menu" caption="menu-dropdown" wide>
+          <LabCard title="Context menu" caption="UiContextMenu" wide>
             <div className="ui-lab-menu-preview">
-              <div className="menu-dropdown ui-lab-menu-static" role="menu">
-                <UiButton role="menuitem" variant="ghost">
-                  Rename
-                  <small>F2</small>
-                </UiButton>
-                <UiButton role="menuitem" variant="ghost">
-                  Duplicate
-                  <small>Ctrl+D</small>
-                </UiButton>
-                <UiButton role="menuitem" variant="ghost">
-                  Create Prefab
-                </UiButton>
-                <UiButton className="ui-lab-menu-danger" role="menuitem" variant="ghost">
+              <UiContextMenu aria-label="Context menu preview" className="ui-lab-menu-static">
+                <UiContextMenuItem trailing={<small>F2</small>}>Rename</UiContextMenuItem>
+                <UiContextMenuItem trailing={<small>Ctrl+D</small>}>Duplicate</UiContextMenuItem>
+                <UiContextMenuItem>Create Prefab</UiContextMenuItem>
+                <UiContextMenuItem className="ui-lab-menu-danger" trailing={<small>Del</small>}>
                   Delete
-                  <small>Del</small>
-                </UiButton>
-              </div>
+                </UiContextMenuItem>
+              </UiContextMenu>
             </div>
           </LabCard>
           <LabCard title="Component actions" caption="SchemaComponentCard" wide>
