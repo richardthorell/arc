@@ -13,7 +13,6 @@ import { LightingPanel } from '../lighting/LightingPanel';
 import { ProfilerPanel } from '../profiler/ProfilerPanel';
 import { RenderGraphPanel } from '../renderGraph/RenderGraphPanel';
 import { SearchPanel } from '../search/SearchPanel';
-import { SettingsPanel } from '../settings/SettingsPanel';
 import { ShaderEditorPanel } from '../shader/ShaderEditorPanel';
 import { VersionControlPanel } from '../versionControl/VersionControlPanel';
 import { ViewportPanel } from '../viewport/ViewportPanel';
@@ -46,7 +45,6 @@ const panelOrder: WorkbenchPanelId[] = [
   'versionControl',
   'aiAssistant',
   'profiler',
-  'settings',
 ];
 
 const panelSize: Partial<Record<WorkbenchPanelId, 'featured' | 'tall' | 'normal'>> = {
@@ -57,7 +55,6 @@ const panelSize: Partial<Record<WorkbenchPanelId, 'featured' | 'tall' | 'normal'
   worldSettings: 'tall',
   contentBrowser: 'featured',
   profiler: 'featured',
-  settings: 'featured',
 };
 
 const productionComponentNames: Partial<Record<WorkbenchPanelId, string>> = {
@@ -75,7 +72,6 @@ const productionComponentNames: Partial<Record<WorkbenchPanelId, string>> = {
   versionControl: 'VersionControlPanel',
   aiAssistant: 'AiGatewayPanel',
   profiler: 'ProfilerPanel',
-  settings: 'SettingsPanel',
 };
 
 function PanelCard({ id, children }: { id: WorkbenchPanelId; children: React.ReactNode }) {
@@ -258,8 +254,6 @@ export function UiLabPanels() {
         );
       case 'profiler':
         return <ProfilerPanel samples={panelProfilerFixtures} />;
-      case 'settings':
-        return <SettingsPanel onResetLayout={() => undefined} />;
       default:
         return <InternalPanelNotice id={id} />;
     }

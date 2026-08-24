@@ -58,7 +58,7 @@ describe('UiLabPanels', () => {
 
     expect(previews).toHaveLength(Object.keys(panelRegistry).length);
     expect(ids).toEqual(expect.arrayContaining(Object.keys(panelRegistry)));
-    expect(screen.getByText('16 registered panels')).toBeInTheDocument();
+    expect(screen.getByText('15 registered panels')).toBeInTheDocument();
   });
 
   it('mounts the production viewport, hierarchy, inspector, and content browser', () => {

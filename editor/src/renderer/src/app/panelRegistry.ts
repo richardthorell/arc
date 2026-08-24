@@ -10,7 +10,6 @@ import {
   Layers3,
   Lightbulb,
   Search,
-  Settings,
   SlidersHorizontal,
   Globe2,
 } from 'lucide-react';
@@ -84,12 +83,11 @@ export const panelRegistry: Record<WorkbenchPanelId, PanelRegistration> = {
     activityId: 'aiAssistant',
   },
   profiler: { id: 'profiler', title: 'Profiler', icon: Gauge, defaultRegion: 'bottom', activityId: 'profiler' },
-  settings: { id: 'settings', title: 'Settings', icon: Settings, defaultRegion: 'left', activityId: 'settings' },
 };
 
 // Only document-independent utilities live in the global drawer. Hierarchy is
 // now a normal Level Design workspace panel instead of a global sidebar tool.
-export const sidebarPanelIds = ['search', 'aiAssistant', 'versionControl', 'settings'] as const;
+export const sidebarPanelIds = ['search', 'aiAssistant', 'versionControl'] as const;
 export type SidebarPanelId = (typeof sidebarPanelIds)[number];
 
 export const isSidebarPanel = (panel: WorkbenchPanelId): panel is SidebarPanelId =>
@@ -102,7 +100,6 @@ export const activityRegistry: ActivityRegistration[] = [
   { id: 'search', title: 'Search', icon: Search, panelId: 'search' },
   { id: 'aiAssistant', title: 'AI Gateway', icon: Bot, panelId: 'aiAssistant' },
   { id: 'versionControl', title: 'Version Control', icon: GitBranch, panelId: 'versionControl' },
-  { id: 'settings', title: 'Settings', icon: Settings, panelId: 'settings' },
 ];
 
 export const dockPanelIds = {
