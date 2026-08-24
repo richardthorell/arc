@@ -102,6 +102,8 @@ asset_preview_identity asset_preview_from_viewport_id(std::string_view viewport_
         return result;
     }
 
+    if (const auto instance = guid_text.find('~'); instance != std::string_view::npos)
+        guid_text = guid_text.substr(0, instance);
     if (const auto guid = assets::parse_asset_guid(guid_text)) result.guid = *guid;
     return result;
 }
