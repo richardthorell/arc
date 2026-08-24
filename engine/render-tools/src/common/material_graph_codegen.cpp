@@ -289,7 +289,7 @@ private:
             return std::string(slang_expression_type(target)) + '(' + fallback + ')';
         }
         const auto source_type = infer_type(found->second->source_node, found->second->source_pin);
-        const auto expression = emit(found->second->source_node, found->second->source_pin);
+        auto expression = emit(found->second->source_node, found->second->source_pin);
         if (source_type == target) return expression;
         if (source_type == material_expression_type::scalar)
             return std::string(slang_expression_type(target)) + '(' + expression + ')';
