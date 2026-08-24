@@ -1,4 +1,5 @@
 export type MaterialGraphValueType = 'float' | 'vec2' | 'vec3' | 'vec4' | 'texture2d';
+export type MaterialGraphPinType = MaterialGraphValueType | 'numeric';
 
 export type MaterialGraphNodeType =
   | 'output'
@@ -13,9 +14,36 @@ export type MaterialGraphNodeType =
   | 'subtract'
   | 'multiply'
   | 'divide'
+  | 'abs'
+  | 'ceil'
+  | 'floor'
+  | 'round'
+  | 'truncate'
+  | 'frac'
+  | 'fmod'
+  | 'min'
+  | 'max'
   | 'lerp'
   | 'clamp'
   | 'saturate'
+  | 'oneMinus'
+  | 'power'
+  | 'squareRoot'
+  | 'logarithm'
+  | 'log2'
+  | 'log10'
+  | 'sine'
+  | 'cosine'
+  | 'arcsine'
+  | 'arccosine'
+  | 'arctangent'
+  | 'arctangent2'
+  | 'smoothStep'
+  | 'step'
+  | 'if'
+  | 'sign'
+  | 'distance'
+  | 'length'
   | 'normalMap';
 
 export type MaterialGraphPosition = [number, number];
@@ -76,25 +104,83 @@ export type MaterialAssetJson = Record<string, unknown> & {
 export type MaterialNodePin = {
   id: string;
   label: string;
-  type: MaterialGraphValueType;
+  type: MaterialGraphPinType;
 };
+
+export type MaterialNodeCategory = 'Output' | 'Values' | 'Textures' | 'Math' | 'Utility';
+export type MaterialNodeSubcategory =
+  | 'Surface'
+  | 'Constants'
+  | 'Sampling'
+  | 'Arithmetic'
+  | 'Rounding'
+  | 'Exponential'
+  | 'Trigonometry'
+  | 'Range & Interpolation'
+  | 'Comparison'
+  | 'Measurement'
+  | 'Coordinates'
+  | 'Animation';
 
 export type MaterialNodeDefinition = {
   type: MaterialGraphNodeType;
   title: string;
-  category: 'Output' | 'Values' | 'Textures' | 'Math' | 'Utility';
+  category: MaterialNodeCategory;
+  subcategory: MaterialNodeSubcategory;
   inputs: MaterialNodePin[];
   outputs: MaterialNodePin[];
   defaultValues: Record<string, unknown>;
 };
 
-const pin = (id: string, label: string, type: MaterialGraphValueType): MaterialNodePin => ({ id, label, type });
+const pin = (id: string, label: string, type: MaterialGraphPinType): MaterialNodePin => ({ id, label, type });
+const numeric = (id: string, label: string) => pin(id, label, 'numeric');
+
+const unaryMath = (
+  type: MaterialGraphNodeType,
+  title: string,
+  subcategory: MaterialNodeSubcategory,
+): MaterialNodeDefinition => ({
+  type,
+  title,
+  category: 'Math',
+  subcategory,
+  inputs: [numeric('value', 'Value')],
+  outputs: [numeric('result', 'Result')],
+  defaultValues: {},
+});
+
+const binaryMath = (
+  type: MaterialGraphNodeType,
+  title: string,
+  subcategory: MaterialNodeSubcategory,
+): MaterialNodeDefinition => ({
+  type,
+  title,
+  category: 'Math',
+  subcategory,
+  inputs: [numeric('a', 'A'), numeric('b', 'B')],
+  outputs: [numeric('result', 'Result')],
+  defaultValues: {},
+});
+
+export const materialNodeCategoryOrder: MaterialNodeCategory[] = ['Values', 'Textures', 'Math', 'Utility'];
+
+export const materialNodeSubcategoryOrder: Record<
+  Exclude<MaterialNodeCategory, 'Output'>,
+  MaterialNodeSubcategory[]
+> = {
+  Values: ['Constants'],
+  Textures: ['Sampling'],
+  Math: ['Arithmetic', 'Rounding', 'Exponential', 'Trigonometry', 'Range & Interpolation', 'Comparison', 'Measurement'],
+  Utility: ['Coordinates', 'Animation'],
+};
 
 export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNodeDefinition> = {
   output: {
     type: 'output',
     title: 'Material Output',
     category: 'Output',
+    subcategory: 'Surface',
     inputs: [
       pin('baseColor', 'Base Color', 'vec3'),
       pin('metallic', 'Metallic', 'float'),
@@ -128,6 +214,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     type: 'constant',
     title: 'Constant',
     category: 'Values',
+    subcategory: 'Constants',
     inputs: [],
     outputs: [pin('value', 'Value', 'float')],
     defaultValues: { value: 0.5 },
@@ -136,6 +223,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     type: 'vector2',
     title: 'Vector 2',
     category: 'Values',
+    subcategory: 'Constants',
     inputs: [],
     outputs: [pin('value', 'Value', 'vec2')],
     defaultValues: { value: [0, 0] },
@@ -144,6 +232,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     type: 'vector3',
     title: 'Vector 3 / Color',
     category: 'Values',
+    subcategory: 'Constants',
     inputs: [],
     outputs: [pin('value', 'Value', 'vec3')],
     defaultValues: { value: [0.78, 0.8, 0.84] },
@@ -152,6 +241,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     type: 'vector4',
     title: 'Vector 4',
     category: 'Values',
+    subcategory: 'Constants',
     inputs: [],
     outputs: [pin('value', 'Value', 'vec4')],
     defaultValues: { value: [1, 1, 1, 1] },
@@ -160,6 +250,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     type: 'textureSample',
     title: 'Texture Sample',
     category: 'Textures',
+    subcategory: 'Sampling',
     inputs: [pin('uv', 'UV', 'vec2')],
     outputs: [
       pin('rgb', 'RGB', 'vec3'),
@@ -175,6 +266,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     type: 'texCoord',
     title: 'Texture Coordinate',
     category: 'Utility',
+    subcategory: 'Coordinates',
     inputs: [],
     outputs: [pin('uv', 'UV', 'vec2')],
     defaultValues: { channel: 0 },
@@ -183,70 +275,118 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     type: 'time',
     title: 'Time',
     category: 'Utility',
+    subcategory: 'Animation',
     inputs: [],
     outputs: [pin('seconds', 'Seconds', 'float')],
     defaultValues: {},
   },
-  add: {
-    type: 'add',
-    title: 'Add',
-    category: 'Math',
-    inputs: [pin('a', 'A', 'vec4'), pin('b', 'B', 'vec4')],
-    outputs: [pin('result', 'Result', 'vec4')],
-    defaultValues: {},
-  },
-  subtract: {
-    type: 'subtract',
-    title: 'Subtract',
-    category: 'Math',
-    inputs: [pin('a', 'A', 'vec4'), pin('b', 'B', 'vec4')],
-    outputs: [pin('result', 'Result', 'vec4')],
-    defaultValues: {},
-  },
-  multiply: {
-    type: 'multiply',
-    title: 'Multiply',
-    category: 'Math',
-    inputs: [pin('a', 'A', 'vec4'), pin('b', 'B', 'vec4')],
-    outputs: [pin('result', 'Result', 'vec4')],
-    defaultValues: {},
-  },
-  divide: {
-    type: 'divide',
-    title: 'Divide',
-    category: 'Math',
-    inputs: [pin('a', 'A', 'vec4'), pin('b', 'B', 'vec4')],
-    outputs: [pin('result', 'Result', 'vec4')],
-    defaultValues: {},
-  },
+  add: binaryMath('add', 'Add', 'Arithmetic'),
+  subtract: binaryMath('subtract', 'Subtract', 'Arithmetic'),
+  multiply: binaryMath('multiply', 'Multiply', 'Arithmetic'),
+  divide: binaryMath('divide', 'Divide', 'Arithmetic'),
+  abs: unaryMath('abs', 'Abs', 'Arithmetic'),
+  ceil: unaryMath('ceil', 'Ceil', 'Rounding'),
+  floor: unaryMath('floor', 'Floor', 'Rounding'),
+  round: unaryMath('round', 'Round', 'Rounding'),
+  truncate: unaryMath('truncate', 'Truncate', 'Rounding'),
+  frac: unaryMath('frac', 'Frac', 'Rounding'),
+  fmod: binaryMath('fmod', 'Fmod / Modulo', 'Arithmetic'),
+  min: binaryMath('min', 'Min', 'Arithmetic'),
+  max: binaryMath('max', 'Max', 'Arithmetic'),
   lerp: {
     type: 'lerp',
-    title: 'Lerp',
+    title: 'Linear Interpolate / Lerp',
     category: 'Math',
-    inputs: [pin('a', 'A', 'vec4'), pin('b', 'B', 'vec4'), pin('t', 'Alpha', 'float')],
-    outputs: [pin('result', 'Result', 'vec4')],
+    subcategory: 'Range & Interpolation',
+    inputs: [numeric('a', 'A'), numeric('b', 'B'), numeric('t', 'Alpha')],
+    outputs: [numeric('result', 'Result')],
     defaultValues: {},
   },
   clamp: {
     type: 'clamp',
     title: 'Clamp',
     category: 'Math',
-    inputs: [pin('value', 'Value', 'vec4'), pin('min', 'Min', 'float'), pin('max', 'Max', 'float')],
-    outputs: [pin('result', 'Result', 'vec4')],
+    subcategory: 'Range & Interpolation',
+    inputs: [numeric('value', 'Value'), numeric('min', 'Min'), numeric('max', 'Max')],
+    outputs: [numeric('result', 'Result')],
     defaultValues: { min: 0, max: 1 },
   },
-  saturate: {
-    type: 'saturate',
-    title: 'Saturate',
+  saturate: unaryMath('saturate', 'Saturate', 'Range & Interpolation'),
+  oneMinus: unaryMath('oneMinus', 'One Minus', 'Arithmetic'),
+  power: {
+    type: 'power',
+    title: 'Power',
     category: 'Math',
-    inputs: [pin('value', 'Value', 'vec4')],
-    outputs: [pin('result', 'Result', 'vec4')],
+    subcategory: 'Exponential',
+    inputs: [numeric('base', 'Base'), numeric('exponent', 'Exponent')],
+    outputs: [numeric('result', 'Result')],
     defaultValues: {},
+  },
+  squareRoot: unaryMath('squareRoot', 'Square Root', 'Exponential'),
+  logarithm: unaryMath('logarithm', 'Logarithm', 'Exponential'),
+  log2: unaryMath('log2', 'Log2', 'Exponential'),
+  log10: unaryMath('log10', 'Log10', 'Exponential'),
+  sine: unaryMath('sine', 'Sine', 'Trigonometry'),
+  cosine: unaryMath('cosine', 'Cosine', 'Trigonometry'),
+  arcsine: unaryMath('arcsine', 'Arcsine', 'Trigonometry'),
+  arccosine: unaryMath('arccosine', 'Arccosine', 'Trigonometry'),
+  arctangent: unaryMath('arctangent', 'Arctangent', 'Trigonometry'),
+  arctangent2: {
+    type: 'arctangent2',
+    title: 'Arctangent2',
+    category: 'Math',
+    subcategory: 'Trigonometry',
+    inputs: [numeric('y', 'Y'), numeric('x', 'X')],
+    outputs: [numeric('result', 'Result')],
+    defaultValues: {},
+  },
+  smoothStep: {
+    type: 'smoothStep',
+    title: 'Smooth Step',
+    category: 'Math',
+    subcategory: 'Range & Interpolation',
+    inputs: [numeric('min', 'Min'), numeric('max', 'Max'), numeric('value', 'Value')],
+    outputs: [numeric('result', 'Result')],
+    defaultValues: {},
+  },
+  step: {
+    type: 'step',
+    title: 'Step',
+    category: 'Math',
+    subcategory: 'Comparison',
+    inputs: [numeric('edge', 'Edge'), numeric('value', 'Value')],
+    outputs: [numeric('result', 'Result')],
+    defaultValues: {},
+  },
+  if: {
+    type: 'if',
+    title: 'If',
+    category: 'Math',
+    subcategory: 'Comparison',
+    inputs: [
+      pin('a', 'A', 'float'),
+      pin('b', 'B', 'float'),
+      numeric('greater', 'A > B'),
+      numeric('equal', 'A = B'),
+      numeric('less', 'A < B'),
+    ],
+    outputs: [numeric('result', 'Result')],
+    defaultValues: {},
+  },
+  sign: unaryMath('sign', 'Sign', 'Comparison'),
+  distance: {
+    ...binaryMath('distance', 'Distance', 'Measurement'),
+    outputs: [pin('result', 'Result', 'float')],
+  },
+  length: {
+    ...unaryMath('length', 'Length', 'Measurement'),
+    outputs: [pin('result', 'Result', 'float')],
   },
   normalMap: {
     type: 'normalMap',
     title: 'Normal Map',
     category: 'Textures',
+    subcategory: 'Sampling',
     inputs: [pin('texture', 'Texture RGB', 'vec3')],
     outputs: [pin('normal', 'Normal', 'vec3')],
     defaultValues: { strength: 1 },

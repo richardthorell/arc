@@ -31,6 +31,8 @@ describe('MaterialGraphEditor menus', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
     const menu = screen.getByRole('menu', { name: 'Add material node' });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Values/ }));
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Constants/ }));
     const item = within(menu).getByRole('menuitem', { name: /Constant/ });
 
     materialState.replaceMaterialGraph.mockClear();
@@ -43,6 +45,38 @@ describe('MaterialGraphEditor menus', () => {
       deltaY: 120,
     });
     expect(materialState.replaceMaterialGraph).toHaveBeenCalledTimes(1);
+  });
+
+  it('groups material nodes by category and math subcategory', () => {
+    render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
+    const menu = screen.getByRole('menu', { name: 'Add material node' });
+    expect(within(menu).getByRole('menuitem', { name: /Math/ })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: /^Add$/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Math/ }));
+    expect(within(menu).getByRole('menuitem', { name: /Arithmetic/ })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /Trigonometry/ })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /Measurement/ })).toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole('menuitem', { name: /Arithmetic/ }));
+    expect(within(menu).getByRole('menuitem', { name: 'Add' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /Fmod/ })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: /One Minus/ })).toBeInTheDocument();
+  });
+
+  it('searches across material node subcategories', () => {
+    render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
+    const menu = screen.getByRole('menu', { name: 'Add material node' });
+    fireEvent.change(within(menu).getByRole('textbox', { name: 'Search material nodes' }), {
+      target: { value: 'arctangent2' },
+    });
+
+    expect(within(menu).getByRole('menuitem', { name: /Arctangent2/ })).toBeInTheDocument();
+    expect(within(menu).getByText('Math / Trigonometry')).toBeInTheDocument();
   });
 
   it('uses the same isolated shared menu for right-click node creation', () => {

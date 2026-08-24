@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy, Plus, Search, Trash2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton, UiContextMenu, UiContextMenuItem, UiNodeCard, UiTextInput } from '../ui';
@@ -7,12 +7,16 @@ import {
   cloneMaterialGraph,
   createMaterialNode,
   materialGraphId,
+  materialNodeCategoryOrder,
   materialNodeDefinitions,
+  materialNodeSubcategoryOrder,
   type MaterialGraph,
   type MaterialGraphConnection,
   type MaterialGraphNode,
   type MaterialGraphNodeType,
   type MaterialGraphPinRef,
+  type MaterialNodeCategory,
+  type MaterialNodeSubcategory,
 } from './materialGraphTypes';
 import { redoMaterialGraph, replaceMaterialGraph, undoMaterialGraph } from './materialDocumentState';
 
@@ -20,6 +24,8 @@ const nodeWidth = 214;
 const headerHeight = 34;
 const pinRowHeight = 25;
 const nodePaddingTop = 9;
+
+type AddMenuCategory = Exclude<MaterialNodeCategory, 'Output'>;
 
 const editableValueNode = (node: MaterialGraphNode) =>
   node.type === 'constant' || node.type === 'vector2' || node.type === 'vector3' || node.type === 'vector4';
@@ -157,6 +163,8 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   const [box, setBox] = useState<{ start: [number, number]; current: [number, number] } | null>(null);
   const [addMenu, setAddMenu] = useState<{ screen: [number, number]; graph: [number, number] } | null>(null);
   const [nodeSearch, setNodeSearch] = useState('');
+  const [nodeMenuCategory, setNodeMenuCategory] = useState<AddMenuCategory | null>(null);
+  const [nodeMenuSubcategory, setNodeMenuSubcategory] = useState<MaterialNodeSubcategory | null>(null);
   const viewport = useMemo(() => graph.viewport ?? { x: 40, y: 40, zoom: 1 }, [graph.viewport]);
 
   useEffect(() => {
@@ -362,6 +370,11 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     setPendingConnection(null);
   };
 
+  const resetAddMenuPath = () => {
+    setNodeMenuCategory(null);
+    setNodeMenuSubcategory(null);
+  };
+
   const addNode = (type: MaterialGraphNodeType) => {
     if (type === 'output' || document.readOnly || !addMenu) return;
     const node = createMaterialNode(type, addMenu.graph);
@@ -369,6 +382,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     setSelectedNodes(new Set([node.id]));
     setAddMenu(null);
     setNodeSearch('');
+    resetAddMenuPath();
   };
 
   const availableNodes = useMemo(() => {
@@ -376,9 +390,29 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     return (Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>)
       .filter((definition) => definition.type !== 'output')
       .filter(
-        (definition) => !query || `${definition.title} ${definition.category}`.toLocaleLowerCase().includes(query),
+        (definition) =>
+          !query ||
+          `${definition.title} ${definition.category} ${definition.subcategory}`.toLocaleLowerCase().includes(query),
       );
   }, [nodeSearch]);
+
+  const visibleCategories = materialNodeCategoryOrder.filter((category): category is AddMenuCategory =>
+    availableNodes.some((definition) => definition.category === category),
+  );
+  const visibleSubcategories = nodeMenuCategory
+    ? materialNodeSubcategoryOrder[nodeMenuCategory].filter((subcategory) =>
+        availableNodes.some(
+          (definition) => definition.category === nodeMenuCategory && definition.subcategory === subcategory,
+        ),
+      )
+    : [];
+  const visibleCategoryNodes =
+    nodeMenuCategory && nodeMenuSubcategory
+      ? availableNodes.filter(
+          (definition) => definition.category === nodeMenuCategory && definition.subcategory === nodeMenuSubcategory,
+        )
+      : [];
+  const searchingNodes = nodeSearch.trim().length > 0;
 
   const wirePaths = graph.connections.map((connection) => {
     const fromNode = graph.nodes.find((node) => node.id === connection.from.nodeId);
@@ -412,6 +446,8 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
         if (document.readOnly) return;
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return;
+        resetAddMenuPath();
+        setNodeSearch('');
         setAddMenu({
           screen: [event.clientX - rect.left, event.clientY - rect.top],
           graph: graphPoint(event.clientX, event.clientY),
@@ -452,6 +488,8 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
             const rect = canvasRef.current?.getBoundingClientRect();
             if (!rect) return;
             const screen: [number, number] = [24, 48];
+            resetAddMenuPath();
+            setNodeSearch('');
             setAddMenu({ screen, graph: graphPoint(rect.left + screen[0], rect.top + screen[1]) });
           }}
           variant="ghost"
@@ -648,15 +686,56 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
             />
           </div>
           <div className="material-node-menu-items">
-            {availableNodes.map((definition) => (
-              <UiContextMenuItem
-                key={definition.type}
-                onClick={() => addNode(definition.type)}
-                trailing={<small>{definition.category}</small>}
-              >
-                <strong>{definition.title}</strong>
-              </UiContextMenuItem>
-            ))}
+            {searchingNodes ? (
+              availableNodes.map((definition) => (
+                <UiContextMenuItem
+                  key={definition.type}
+                  onClick={() => addNode(definition.type)}
+                  trailing={<small>{`${definition.category} / ${definition.subcategory}`}</small>}
+                >
+                  <strong>{definition.title}</strong>
+                </UiContextMenuItem>
+              ))
+            ) : !nodeMenuCategory ? (
+              visibleCategories.map((category) => (
+                <UiContextMenuItem
+                  key={category}
+                  onClick={() => {
+                    setNodeMenuCategory(category);
+                    setNodeMenuSubcategory(null);
+                  }}
+                  trailing={<ChevronRight size={13} />}
+                >
+                  <strong>{category}</strong>
+                </UiContextMenuItem>
+              ))
+            ) : !nodeMenuSubcategory ? (
+              <>
+                <UiContextMenuItem onClick={() => setNodeMenuCategory(null)} leading={<ChevronLeft size={13} />}>
+                  All Categories
+                </UiContextMenuItem>
+                {visibleSubcategories.map((subcategory) => (
+                  <UiContextMenuItem
+                    key={subcategory}
+                    onClick={() => setNodeMenuSubcategory(subcategory)}
+                    trailing={<ChevronRight size={13} />}
+                  >
+                    <strong>{subcategory}</strong>
+                  </UiContextMenuItem>
+                ))}
+              </>
+            ) : (
+              <>
+                <UiContextMenuItem onClick={() => setNodeMenuSubcategory(null)} leading={<ChevronLeft size={13} />}>
+                  {nodeMenuCategory}
+                </UiContextMenuItem>
+                {visibleCategoryNodes.map((definition) => (
+                  <UiContextMenuItem key={definition.type} onClick={() => addNode(definition.type)}>
+                    <strong>{definition.title}</strong>
+                  </UiContextMenuItem>
+                ))}
+              </>
+            )}
           </div>
         </UiContextMenu>
       )}

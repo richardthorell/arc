@@ -24,7 +24,7 @@ namespace arc::render::tools
 inline constexpr std::uint32_t material_ir_version = 1;
 
 /** @brief Version of the deterministic Material IR to Slang generator. */
-inline constexpr std::uint32_t material_shader_codegen_version = 3;
+inline constexpr std::uint32_t material_shader_codegen_version = 4;
 
 /** @brief Version of first-class reusable Material/Shader Function documents. */
 inline constexpr std::uint32_t material_function_version = 1;
@@ -47,8 +47,42 @@ enum class material_ir_node_kind : std::uint8_t
     subtract,
     multiply,
     divide,
+    math,
     function_call,
     output
+};
+
+/** @brief Extended component-wise math operation represented by a `math` IR node. */
+enum class material_math_operation : std::uint8_t
+{
+    none,
+    absolute,
+    ceil,
+    floor,
+    round,
+    truncate,
+    fraction,
+    modulo,
+    minimum,
+    maximum,
+    one_minus,
+    power,
+    square_root,
+    logarithm,
+    logarithm2,
+    logarithm10,
+    sine,
+    cosine,
+    arcsine,
+    arccosine,
+    arctangent,
+    arctangent2,
+    smooth_step,
+    step,
+    if_else,
+    sign,
+    distance,
+    length
 };
 
 /** @brief Numeric literal carried by a material IR node or function-pin default. */
@@ -96,6 +130,7 @@ struct material_ir_node
 {
     std::string id;
     material_ir_node_kind kind{material_ir_node_kind::constant};
+    material_math_operation math_operation{material_math_operation::none};
     material_ir_literal literal;
     float strength{1.0f};
     float minimum{};

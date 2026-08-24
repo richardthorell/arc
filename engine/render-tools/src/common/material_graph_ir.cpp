@@ -31,6 +31,38 @@ std::string concatenate(std::initializer_list<std::string_view> parts)
     return result;
 }
 
+std::optional<material_math_operation> node_math_operation(std::string_view type) noexcept
+{
+    if (type == "abs") return material_math_operation::absolute;
+    if (type == "ceil") return material_math_operation::ceil;
+    if (type == "floor") return material_math_operation::floor;
+    if (type == "round") return material_math_operation::round;
+    if (type == "truncate") return material_math_operation::truncate;
+    if (type == "frac") return material_math_operation::fraction;
+    if (type == "fmod") return material_math_operation::modulo;
+    if (type == "min") return material_math_operation::minimum;
+    if (type == "max") return material_math_operation::maximum;
+    if (type == "oneMinus") return material_math_operation::one_minus;
+    if (type == "power") return material_math_operation::power;
+    if (type == "squareRoot") return material_math_operation::square_root;
+    if (type == "logarithm") return material_math_operation::logarithm;
+    if (type == "log2") return material_math_operation::logarithm2;
+    if (type == "log10") return material_math_operation::logarithm10;
+    if (type == "sine") return material_math_operation::sine;
+    if (type == "cosine") return material_math_operation::cosine;
+    if (type == "arcsine") return material_math_operation::arcsine;
+    if (type == "arccosine") return material_math_operation::arccosine;
+    if (type == "arctangent") return material_math_operation::arctangent;
+    if (type == "arctangent2") return material_math_operation::arctangent2;
+    if (type == "smoothStep") return material_math_operation::smooth_step;
+    if (type == "step") return material_math_operation::step;
+    if (type == "if") return material_math_operation::if_else;
+    if (type == "sign") return material_math_operation::sign;
+    if (type == "distance") return material_math_operation::distance;
+    if (type == "length") return material_math_operation::length;
+    return std::nullopt;
+}
+
 std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
 {
     if (type == "constant") return material_ir_node_kind::constant;
@@ -48,6 +80,7 @@ std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
     if (type == "subtract") return material_ir_node_kind::subtract;
     if (type == "multiply") return material_ir_node_kind::multiply;
     if (type == "divide") return material_ir_node_kind::divide;
+    if (node_math_operation(type)) return material_ir_node_kind::math;
     if (type == "shaderFunctionCall") return material_ir_node_kind::function_call;
     if (type == "output") return material_ir_node_kind::output;
     return std::nullopt;
@@ -319,6 +352,7 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
         const auto parameter = authored_node.value("parameter", json::object());
         material_ir_node node{.id = id,
                               .kind = *kind,
+                              .math_operation = node_math_operation(type).value_or(material_math_operation::none),
                               .literal = literal(values, *kind),
                               .strength = number(values.value("strength", json{}), 1.0f),
                               .minimum = number(values.value("min", json{}), 0.0f),
