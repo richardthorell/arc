@@ -28,12 +28,7 @@ export function UiNodeCard({
   return (
     <article
       {...props}
-      className={[
-        'ui-node-card',
-        `ui-node-card-${tone}`,
-        selected ? 'is-selected selected' : '',
-        className,
-      ]
+      className={['ui-node-card', `ui-node-card-${tone}`, selected ? 'is-selected selected' : '', className]
         .filter(Boolean)
         .join(' ')}
     >
