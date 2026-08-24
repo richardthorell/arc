@@ -1,8 +1,12 @@
+#include <arc/editor/material_preview.h>
 #include <arc/editor/material_preview_realizer.h>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 namespace
@@ -15,11 +19,7 @@ bool near(float lhs, float rhs)
     return std::abs(lhs - rhs) <= epsilon;
 }
 
-} // namespace
-
-TEST_CASE("material preview realizes authored base color through native Material IR")
-{
-    const std::string source = R"({
+const std::string red_material_source = R"({
   "version": 4,
   "name": "Preview Red",
   "domain": "surface",
@@ -38,7 +38,11 @@ TEST_CASE("material preview realizes authored base color through native Material
   }
 })";
 
-    const auto result = arc::editor::realize_material_preview_descriptor(source, "Preview Red");
+} // namespace
+
+TEST_CASE("material preview realizes authored base color through native Material IR")
+{
+    const auto result = arc::editor::realize_material_preview_descriptor(red_material_source, "Preview Red");
     REQUIRE(result.succeeded);
     CHECK(near(result.material.base_color[0], 1.0f));
     CHECK(near(result.material.base_color[1], 0.0f));
@@ -52,6 +56,31 @@ TEST_CASE("material preview realizes authored base color through native Material
         CHECK_FALSE(result.material.runtime_program->parameters.empty());
         CHECK_FALSE(result.material.runtime_program->parameter_defaults.empty());
     }
+}
+
+TEST_CASE("material thumbnail renderer uses graph-realized surface values")
+{
+    const auto source_path = std::filesystem::temp_directory_path() / "arc-preview-red-thumbnail.arcmat";
+    {
+        std::ofstream output(source_path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << red_material_source;
+    }
+
+    arc::editor::material_asset asset = arc::editor::make_default_material_asset("Preview Red");
+    asset.path = source_path;
+    asset.graph_reserved = true;
+    const auto preview = arc::editor::render_material_preview(asset, source_path.parent_path(), 64u);
+    std::filesystem::remove(source_path);
+
+    REQUIRE(preview.succeeded());
+    REQUIRE(preview.texture.has_pixels());
+    const std::size_t center = (32u * 64u + 32u) * 4u;
+    const auto red = std::to_integer<unsigned char>(preview.texture.pixels[center]);
+    const auto green = std::to_integer<unsigned char>(preview.texture.pixels[center + 1u]);
+    const auto blue = std::to_integer<unsigned char>(preview.texture.pixels[center + 2u]);
+    CHECK(red > green + 20u);
+    CHECK(red > blue + 20u);
 }
 
 TEST_CASE("material preview evaluates static Material IR math instead of projecting authored fields")

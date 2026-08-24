@@ -30,7 +30,7 @@ struct material_preview_descriptor_result
 [[nodiscard]] material_preview_descriptor_result realize_material_preview_descriptor(std::string_view source,
                                                                                      std::string_view name = {});
 
-/** @brief Read and realize one authored material file for the native Material Preview surface. */
+/** @brief Read and realize one graph-authored material file for the native Material Preview surface. */
 [[nodiscard]] material_preview_descriptor_result
 load_material_preview_descriptor(const std::filesystem::path& source_path);
 
