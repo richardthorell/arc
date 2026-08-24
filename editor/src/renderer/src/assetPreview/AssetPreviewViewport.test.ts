@@ -20,6 +20,10 @@ describe('serializeAssetPreviewViewportLifecycle', () => {
   it('finishes the previous detach before recreating the same preview viewport', async () => {
     const viewportId = 'asset-preview-material-lifecycle-test';
     const calls: string[] = [];
+    let markDetachStarted: (() => void) | undefined;
+    const detachStarted = new Promise<void>((resolve) => {
+      markDetachStarted = resolve;
+    });
     let releaseDetach: (() => void) | undefined;
     const detachBlocked = new Promise<void>((resolve) => {
       releaseDetach = resolve;
@@ -27,6 +31,7 @@ describe('serializeAssetPreviewViewportLifecycle', () => {
 
     const detach = serializeAssetPreviewViewportLifecycle(viewportId, async () => {
       calls.push('detach:start');
+      markDetachStarted?.();
       await detachBlocked;
       calls.push('detach:end');
     });
@@ -34,7 +39,7 @@ describe('serializeAssetPreviewViewportLifecycle', () => {
       calls.push('create');
     });
 
-    await Promise.resolve();
+    await detachStarted;
     expect(calls).toEqual(['detach:start']);
 
     releaseDetach?.();
