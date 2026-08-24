@@ -1,0 +1,20 @@
+.ui-context-menu.menu-dropdown {
+  position: absolute;
+  top: auto;
+  left: auto;
+  overflow: hidden;
+}
+
+.ui-context-menu-item.ui-button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  justify-content: stretch;
+  width: 100%;
+}
+
+.ui-context-menu-trailing {
+  justify-self: end;
+  margin-left: var(--arc-space-6);
+  color: var(--arc-color-text-subtle);
+  white-space: nowrap;
+}

@@ -1,0 +1,64 @@
+.ui-node-card {
+  overflow: visible;
+  color: var(--arc-color-text);
+  border: var(--arc-border-width) solid var(--arc-color-border-strong);
+  border-radius: var(--arc-radius-3);
+  background: var(--arc-color-bg-panel-raised);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.34);
+  user-select: none;
+}
+
+.ui-node-card:hover {
+  border-color: var(--arc-color-border-accent);
+}
+
+.ui-node-card.is-selected {
+  border-color: var(--arc-color-accent);
+  box-shadow:
+    0 0 0 1px var(--arc-color-focus-ring),
+    0 9px 24px rgba(0, 0, 0, 0.4);
+}
+
+.ui-node-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--arc-space-3);
+  min-height: 33px;
+  padding: 0 var(--arc-space-5);
+  border-bottom: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  border-radius: calc(var(--arc-radius-3) - 1px) calc(var(--arc-radius-3) - 1px) 0 0;
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-chrome-raised);
+  cursor: grab;
+}
+
+.ui-node-card-header:active {
+  cursor: grabbing;
+}
+
+.ui-node-card-accent > .ui-node-card-header {
+  background: var(--arc-color-bg-active);
+}
+
+.ui-node-card-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: var(--arc-text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-node-card-badge {
+  display: inline-grid;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border: var(--arc-border-width) solid var(--arc-color-border-accent);
+  border-radius: 50%;
+  color: var(--arc-color-accent);
+  font-size: var(--arc-text-xxs);
+  font-weight: 700;
+}
