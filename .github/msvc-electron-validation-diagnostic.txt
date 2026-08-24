@@ -1,1 +1,0 @@
-Temporary CI trigger to reproduce the current main-branch MSVC Electron validation failure on a pull-request run.
