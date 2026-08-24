@@ -320,13 +320,14 @@ render::material_handle load_material_for_editor(editor_material_library& librar
     auto realized = load_material_preview_descriptor(path);
     if (!realized.succeeded)
     {
-        arc::diagnostics::error("editor.materials", "Failed to realize material '" + path.string() + "': " +
-                                                       realized.message);
+        arc::diagnostics::error("editor.materials",
+                                "Failed to realize material '" + path.string() + "': " + realized.message);
         return {};
     }
     asset.material = std::move(realized.material);
     for (const auto& diagnostic : realized.diagnostics)
-        arc::diagnostics::info("editor.materials", "Material realization note for '" + path.string() + "': " + diagnostic);
+        arc::diagnostics::info("editor.materials",
+                               "Material realization note for '" + path.string() + "': " + diagnostic);
 
     resolve_texture_handles(library, renderer, asset_root, asset);
     const auto handle = renderer.create_material(asset.material);
