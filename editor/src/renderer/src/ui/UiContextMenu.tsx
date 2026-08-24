@@ -83,9 +83,7 @@ export function UiContextMenuItem({ children, className, leading, trailing, ...p
     >
       {hasLeading && <span className="menu-leading">{leading}</span>}
       <span className="menu-entry-label">{children}</span>
-      {trailing !== undefined && trailing !== null && (
-        <span className="ui-context-menu-trailing">{trailing}</span>
-      )}
+      {trailing !== undefined && trailing !== null && <span className="ui-context-menu-trailing">{trailing}</span>}
     </UiButton>
   );
 }
