@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <span>
 #include <string>
 #include <variant>
@@ -217,6 +218,34 @@ enum class material_displacement_mode : std::uint8_t
     tessellated
 };
 
+/** @brief One executable fragment program produced for a Material ABI render pass. */
+struct material_runtime_pass
+{
+    material_pass pass{material_pass::forward};
+    shader_permutation_id permutation{};
+    shader_compile_output compiled;
+};
+
+/**
+ * @brief Backend-neutral executable material data attached to a renderer material.
+ *
+ * Authoring/tool processes compile Material Graphs and handwritten Material Shaders into this structure. Runtime
+ * backends only consume already-compiled shader bytecode and reflected parameter/default data; they never depend on
+ * render-tools or source authoring formats.
+ */
+struct material_runtime_program
+{
+    std::uint32_t contract_version{1};
+    std::uint32_t material_abi{1};
+    std::uint64_t generation{1};
+    std::vector<material_runtime_pass> passes;
+    std::vector<shader_parameter_descriptor> parameters;
+    std::uint32_t parameter_block_size{};
+    std::vector<std::byte> parameter_defaults;
+    bool uses_time{};
+    bool uses_texture_sampling{};
+};
+
 /**
  * @brief Renderer material description used by scene rendering.
  *
@@ -234,6 +263,9 @@ struct material_descriptor
     shader_package_id shader_package{};
     shader_permutation_id shader_permutation{};
     bool deferred_compatible{true};
+
+    /** Compiled Material ABI programs used by runtime backends when present. */
+    std::shared_ptr<const material_runtime_program> runtime_program;
 
     math::vector4f base_color = math::vector4f::one;
     float metallic{};

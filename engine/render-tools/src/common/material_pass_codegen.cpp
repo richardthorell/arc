@@ -85,18 +85,19 @@ ArcSurfaceData arcDefaultSurface(float3 normalWS)
 
 void append_pass_input(std::ostringstream& source)
 {
+    // Keep this interface in exact location order with assets/shaders/gbuffer.vert. Slang maps the
+    // TEXCOORD semantic sequence to the Vulkan user-varying locations without backend annotations.
     source << "struct ArcMaterialPassInput\n"
               "{\n"
-              "    float3 positionWS : TEXCOORD0;\n"
-              "    float3 normalWS : TEXCOORD1;\n"
-              "    float4 tangentWS : TEXCOORD2;\n"
+              "    float3 normalWS : TEXCOORD0;\n"
+              "    float3 positionWS : TEXCOORD1;\n"
+              "    float4 vertexColor : TEXCOORD2;\n"
               "    float2 uv0 : TEXCOORD3;\n"
-              "    float2 uv1 : TEXCOORD4;\n"
-              "    float4 vertexColor : COLOR0;\n"
-              "    float3 viewWS : TEXCOORD5;\n"
-              "    float4 clipPosition : TEXCOORD6;\n"
-              "    float4 previousClipPosition : TEXCOORD7;\n"
-              "    nointerpolation uint objectId : TEXCOORD8;\n"
+              "    float4 tangentWS : TEXCOORD4;\n"
+              "    float4 clipPosition : TEXCOORD5;\n"
+              "    float4 previousClipPosition : TEXCOORD6;\n"
+              "    nointerpolation uint objectId : TEXCOORD7;\n"
+              "    float3 viewWS : TEXCOORD8;\n"
               "};\n"
               "ArcSurfaceInput arcMakeMaterialSurfaceInput(ArcMaterialPassInput passInput)\n"
               "{\n"
@@ -105,7 +106,7 @@ void append_pass_input(std::ostringstream& source)
               "    input.normalWS = passInput.normalWS;\n"
               "    input.tangentWS = passInput.tangentWS;\n"
               "    input.uv0 = passInput.uv0;\n"
-              "    input.uv1 = passInput.uv1;\n"
+              "    input.uv1 = passInput.uv0;\n"
               "    input.vertexColor = passInput.vertexColor;\n"
               "    input.viewWS = passInput.viewWS;\n"
               "    return input;\n"

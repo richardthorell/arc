@@ -1477,11 +1477,25 @@ private:
         environment_descriptor data;
     };
 
+    struct gpu_material_runtime
+    {
+        VkPipeline gbuffer_pipeline{};
+        VkPipelineLayout pipeline_layout{};
+        VkDescriptorSetLayout descriptor_set_layout{};
+        VkDescriptorPool descriptor_pool{};
+        std::vector<VkDescriptorSet> descriptor_sets;
+        std::vector<gpu_buffer> parameter_buffers;
+        std::vector<gpu_buffer> frame_buffers;
+        std::uint64_t generation{};
+        bool failed{};
+    };
+
     struct gpu_material
     {
         material_descriptor data;
         std::vector<gpu_buffer> parameter_buffers;
         std::vector<VkDescriptorSet> descriptor_sets;
+        gpu_material_runtime runtime;
     };
 
     struct folded_light_constants
@@ -2722,6 +2736,7 @@ private:
         {
             for (auto& parameters : material.parameter_buffers)
                 destroy_buffer(parameters);
+            destroy_material_runtime(material.runtime);
         }
         materials_.clear();
         environments_.clear();
@@ -3553,6 +3568,19 @@ private:
         if (!event.material) return;
 
         auto& material = materials_[resource_key(event.handle)];
+        if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+            material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+            material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
+            !material.runtime.frame_buffers.empty())
+        {
+            auto retired = std::move(material.runtime);
+            material.runtime = {};
+            deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                     [this, retired = std::move(retired)]() mutable
+                                     { destroy_material_runtime(retired); });
+        }
+        else
+            material.runtime = {};
         material.data = *event.material;
     }
 
@@ -4413,6 +4441,48 @@ private:
         return slot < white_descriptor_sets_.size() ? white_descriptor_sets_[slot] : VK_NULL_HANDLE;
     }
 
+    bool draw_runtime_material_gbuffer(VkCommandBuffer command_buffer, const draw_mesh_event& draw)
+    {
+        const auto found = materials_.find(resource_key(draw.material));
+        if (found == materials_.end() || !found->second.data.runtime_program) return false;
+        auto& material = found->second;
+        if (!ensure_runtime_gbuffer_pipeline(material) || !update_runtime_material_buffers(material)) return false;
+
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.gbuffer_pipeline);
+        if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+        {
+            const auto slot = current_frame_slot();
+            if (slot >= material.runtime.descriptor_sets.size()) return false;
+            const auto descriptor_set = material.runtime.descriptor_sets[slot];
+            vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout,
+                                    0, 1, &descriptor_set, 0, nullptr);
+        }
+        draw_indexed_mesh(command_buffer, draw, material.runtime.pipeline_layout,
+                          VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
+        return true;
+    }
+
+    bool draw_runtime_material_gbuffer(VkCommandBuffer command_buffer, const virtual_cluster_draw& draw)
+    {
+        const auto found = materials_.find(resource_key(draw.draw.material));
+        if (found == materials_.end() || !found->second.data.runtime_program) return false;
+        auto& material = found->second;
+        if (!ensure_runtime_gbuffer_pipeline(material) || !update_runtime_material_buffers(material)) return false;
+
+        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.gbuffer_pipeline);
+        if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+        {
+            const auto slot = current_frame_slot();
+            if (slot >= material.runtime.descriptor_sets.size()) return false;
+            const auto descriptor_set = material.runtime.descriptor_sets[slot];
+            vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.runtime.pipeline_layout,
+                                    0, 1, &descriptor_set, 0, nullptr);
+        }
+        draw_indexed_virtual_cluster(command_buffer, draw, material.runtime.pipeline_layout,
+                                     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, true, true);
+        return true;
+    }
+
     void destroy_mesh_pipeline() noexcept
     {
         const auto destroy_debug_pipeline = [&](VkPipeline& pipeline)
@@ -4611,6 +4681,404 @@ private:
         VkShaderModule module{};
         if (vkCreateShaderModule(device_, &info, nullptr, &module) != VK_SUCCESS) return VK_NULL_HANDLE;
         return module;
+    }
+
+    VkShaderModule create_shader_module(const std::vector<std::uint8_t>& bytecode)
+    {
+        if (bytecode.empty() || bytecode.size() % sizeof(std::uint32_t) != 0) return VK_NULL_HANDLE;
+        std::vector<std::uint32_t> words(bytecode.size() / sizeof(std::uint32_t));
+        std::memcpy(words.data(), bytecode.data(), bytecode.size());
+        return create_shader_module(words.data(), words.size());
+    }
+
+    void destroy_material_runtime(gpu_material_runtime& runtime) noexcept
+    {
+        if (runtime.gbuffer_pipeline != VK_NULL_HANDLE) vkDestroyPipeline(device_, runtime.gbuffer_pipeline, nullptr);
+        if (runtime.pipeline_layout != VK_NULL_HANDLE)
+            vkDestroyPipelineLayout(device_, runtime.pipeline_layout, nullptr);
+        if (runtime.descriptor_pool != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device_, runtime.descriptor_pool, nullptr);
+        if (runtime.descriptor_set_layout != VK_NULL_HANDLE)
+            vkDestroyDescriptorSetLayout(device_, runtime.descriptor_set_layout, nullptr);
+        for (auto& buffer : runtime.parameter_buffers)
+            destroy_buffer(buffer);
+        for (auto& buffer : runtime.frame_buffers)
+            destroy_buffer(buffer);
+        runtime = {};
+    }
+
+    bool reject_runtime_material(gpu_material& material, std::string reason)
+    {
+        const auto generation = material.data.runtime_program ? material.data.runtime_program->generation : 0u;
+        destroy_material_runtime(material.runtime);
+        material.runtime.generation = generation;
+        material.runtime.failed = true;
+        arc::diagnostics::warn("render.vulkan", "Compiled Material ABI G-buffer fallback for '" + material.data.name +
+                                                    "': " + std::move(reason));
+        return false;
+    }
+
+    const material_runtime_pass* runtime_gbuffer_pass(const gpu_material& material) const noexcept
+    {
+        if (!material.data.runtime_program) return nullptr;
+        const auto& program = *material.data.runtime_program;
+        if (program.contract_version != 1u || program.material_abi != 1u) return nullptr;
+        const auto found = std::ranges::find(program.passes, material_pass::gbuffer, &material_runtime_pass::pass);
+        return found == program.passes.end() ? nullptr : &*found;
+    }
+
+    bool update_runtime_parameter_buffer(gpu_buffer& buffer, const material_descriptor& material,
+                                         const material_runtime_program& program)
+    {
+        const auto byte_size = std::max<std::size_t>(program.parameter_block_size, 16u);
+        if (buffer.buffer == VK_NULL_HANDLE &&
+            !create_buffer(byte_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, buffer))
+            return false;
+
+        void* mapped{};
+        if (vmaMapMemory(allocator_, buffer.allocation, &mapped) != VK_SUCCESS) return false;
+        std::memset(mapped, 0, byte_size);
+        if (!program.parameter_defaults.empty())
+            std::memcpy(mapped, program.parameter_defaults.data(),
+                        std::min(byte_size, program.parameter_defaults.size()));
+
+        const auto copy_override =
+            [&](const shader_parameter_descriptor& parameter, const material_parameter_value& value)
+        {
+            if (parameter.offset >= byte_size) return;
+            const auto destination = static_cast<std::byte*>(mapped) + parameter.offset;
+            const auto available = std::min<std::size_t>(parameter.size, byte_size - parameter.offset);
+            const auto copy = [&](const void* source, std::size_t size)
+            { std::memcpy(destination, source, std::min(size, available)); };
+            switch (parameter.type)
+            {
+                case shader_parameter_type::boolean:
+                    if (const auto* typed = std::get_if<bool>(&value))
+                    {
+                        const std::uint32_t packed = *typed ? 1u : 0u;
+                        copy(&packed, sizeof(packed));
+                    }
+                    break;
+                case shader_parameter_type::int32:
+                    if (const auto* typed = std::get_if<std::int32_t>(&value)) copy(typed, sizeof(*typed));
+                    break;
+                case shader_parameter_type::uint32:
+                    if (const auto* typed = std::get_if<std::uint32_t>(&value)) copy(typed, sizeof(*typed));
+                    break;
+                case shader_parameter_type::float32:
+                    if (const auto* typed = std::get_if<float>(&value)) copy(typed, sizeof(*typed));
+                    break;
+                case shader_parameter_type::float2:
+                    if (const auto* typed = std::get_if<math::vector2f>(&value))
+                        copy(typed->data(), sizeof(float) * 2u);
+                    break;
+                case shader_parameter_type::float3:
+                    if (const auto* typed = std::get_if<math::vector3f>(&value))
+                        copy(typed->data(), sizeof(float) * 3u);
+                    break;
+                case shader_parameter_type::float4:
+                    if (const auto* typed = std::get_if<math::vector4f>(&value))
+                        copy(typed->data(), sizeof(float) * 4u);
+                    break;
+                case shader_parameter_type::matrix4x4:
+                    if (const auto* typed = std::get_if<math::matrix4x4f>(&value))
+                        copy(typed->data(), sizeof(float) * 16u);
+                    break;
+                case shader_parameter_type::texture_2d:
+                case shader_parameter_type::texture_cube:
+                case shader_parameter_type::sampler:
+                    break;
+            }
+        };
+        for (const auto& override : material.parameters)
+        {
+            const auto parameter = std::ranges::find(program.parameters, override.id, &shader_parameter_descriptor::id);
+            if (parameter != program.parameters.end()) copy_override(*parameter, override.value);
+        }
+
+        vmaFlushAllocation(allocator_, buffer.allocation, 0, byte_size);
+        vmaUnmapMemory(allocator_, buffer.allocation);
+        return true;
+    }
+
+    bool update_runtime_frame_buffer(gpu_buffer& buffer)
+    {
+        constexpr VkDeviceSize byte_size = sizeof(float) * 4u;
+        if (buffer.buffer == VK_NULL_HANDLE &&
+            !create_buffer(byte_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, buffer))
+            return false;
+        const std::array<float, 4> frame{static_cast<float>(last_profile_.frame_index) / 60.0f, 0.0f, 0.0f, 0.0f};
+        void* mapped{};
+        if (vmaMapMemory(allocator_, buffer.allocation, &mapped) != VK_SUCCESS) return false;
+        std::memcpy(mapped, frame.data(), sizeof(frame));
+        vmaFlushAllocation(allocator_, buffer.allocation, 0, sizeof(frame));
+        vmaUnmapMemory(allocator_, buffer.allocation);
+        return true;
+    }
+
+    bool update_runtime_material_buffers(gpu_material& material)
+    {
+        if (!material.data.runtime_program) return false;
+        const auto slot = current_frame_slot();
+        if (!material.runtime.parameter_buffers.empty())
+        {
+            if (slot >= material.runtime.parameter_buffers.size() ||
+                !update_runtime_parameter_buffer(material.runtime.parameter_buffers[slot], material.data,
+                                                 *material.data.runtime_program))
+                return false;
+        }
+        if (!material.runtime.frame_buffers.empty())
+        {
+            if (slot >= material.runtime.frame_buffers.size() ||
+                !update_runtime_frame_buffer(material.runtime.frame_buffers[slot]))
+                return false;
+        }
+        return true;
+    }
+
+    bool create_runtime_material_descriptors(gpu_material& material, const material_runtime_pass& pass)
+    {
+        const auto& reflection = pass.compiled.reflection;
+        std::vector<const shader_resource_descriptor*> resources;
+        resources.reserve(reflection.resources.size());
+        for (const auto& resource : reflection.resources)
+        {
+            if (resource.set != 0u)
+                return reject_runtime_material(material,
+                                               "compiled preview resources must currently use descriptor set 0");
+            if (resource.kind != shader_resource_kind::constant_buffer)
+                return reject_runtime_material(
+                    material, "sampled/storage Material ABI resources are not wired into the preview backend yet");
+            if (resource.name != "arcMaterialParameters" && resource.name != "arcFrame")
+                return reject_runtime_material(material,
+                                               "unsupported reflected Material ABI resource '" + resource.name + "'");
+            resources.push_back(&resource);
+        }
+        if (resources.empty()) return true;
+
+        std::ranges::sort(resources, {}, [](const shader_resource_descriptor* resource) { return resource->binding; });
+        for (std::size_t index = 1; index < resources.size(); ++index)
+            if (resources[index - 1]->binding == resources[index]->binding)
+                return reject_runtime_material(
+                    material, "compiled Material ABI reflection contains duplicate descriptor bindings");
+
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        bindings.reserve(resources.size());
+        for (const auto* resource : resources)
+            bindings.push_back(
+                {resource->binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
+        VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
+        layout.pBindings = bindings.data();
+        if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &material.runtime.descriptor_set_layout) !=
+            VK_SUCCESS)
+            return reject_runtime_material(material, "failed to create reflected Material ABI descriptor layout");
+
+        const auto frame_count = frame_resource_count();
+        VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                       static_cast<std::uint32_t>(resources.size()) * frame_count};
+        VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool.maxSets = frame_count;
+        pool.poolSizeCount = 1u;
+        pool.pPoolSizes = &pool_size;
+        if (vkCreateDescriptorPool(device_, &pool, nullptr, &material.runtime.descriptor_pool) != VK_SUCCESS)
+            return reject_runtime_material(material, "failed to create reflected Material ABI descriptor pool");
+
+        material.runtime.descriptor_sets.resize(frame_count);
+        std::vector<VkDescriptorSetLayout> layouts(frame_count, material.runtime.descriptor_set_layout);
+        VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocate.descriptorPool = material.runtime.descriptor_pool;
+        allocate.descriptorSetCount = frame_count;
+        allocate.pSetLayouts = layouts.data();
+        if (vkAllocateDescriptorSets(device_, &allocate, material.runtime.descriptor_sets.data()) != VK_SUCCESS)
+            return reject_runtime_material(material, "failed to allocate reflected Material ABI descriptor sets");
+
+        const bool needs_parameters = std::ranges::any_of(resources, [](const auto* resource)
+                                                          { return resource->name == "arcMaterialParameters"; });
+        const bool needs_frame =
+            std::ranges::any_of(resources, [](const auto* resource) { return resource->name == "arcFrame"; });
+        if (needs_parameters) material.runtime.parameter_buffers.resize(frame_count);
+        if (needs_frame) material.runtime.frame_buffers.resize(frame_count);
+
+        for (std::uint32_t slot = 0; slot < frame_count; ++slot)
+        {
+            if (needs_parameters && !update_runtime_parameter_buffer(material.runtime.parameter_buffers[slot],
+                                                                     material.data, *material.data.runtime_program))
+                return reject_runtime_material(material, "failed to allocate Material ABI parameter buffer");
+            if (needs_frame && !update_runtime_frame_buffer(material.runtime.frame_buffers[slot]))
+                return reject_runtime_material(material, "failed to allocate Material ABI frame buffer");
+
+            std::vector<VkDescriptorBufferInfo> infos;
+            infos.reserve(resources.size());
+            for (const auto* resource : resources)
+            {
+                const bool parameters = resource->name == "arcMaterialParameters";
+                const auto& buffer =
+                    parameters ? material.runtime.parameter_buffers[slot] : material.runtime.frame_buffers[slot];
+                const auto range = parameters ? static_cast<VkDeviceSize>(std::max<std::size_t>(
+                                                    material.data.runtime_program->parameter_block_size, 16u))
+                                              : static_cast<VkDeviceSize>(sizeof(float) * 4u);
+                infos.push_back({buffer.buffer, 0u, range});
+            }
+            std::vector<VkWriteDescriptorSet> writes(resources.size());
+            for (std::size_t index = 0; index < resources.size(); ++index)
+            {
+                writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[index].dstSet = material.runtime.descriptor_sets[slot];
+                writes[index].dstBinding = resources[index]->binding;
+                writes[index].descriptorCount = 1u;
+                writes[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                writes[index].pBufferInfo = &infos[index];
+            }
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+        }
+        return true;
+    }
+
+    bool create_runtime_gbuffer_pipeline(gpu_material& material, const material_runtime_pass& pass)
+    {
+        VkShaderModule vert = create_shader_module(builtin::gbuffer_vert_spv, std::size(builtin::gbuffer_vert_spv));
+        VkShaderModule frag = create_shader_module(pass.compiled.bytecode);
+        if (vert == VK_NULL_HANDLE || frag == VK_NULL_HANDLE)
+        {
+            if (vert != VK_NULL_HANDLE) vkDestroyShaderModule(device_, vert, nullptr);
+            if (frag != VK_NULL_HANDLE) vkDestroyShaderModule(device_, frag, nullptr);
+            return reject_runtime_material(material, "failed to create compiled Material ABI shader module");
+        }
+
+        VkPushConstantRange push{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0u,
+                                 sizeof(mesh_push_constants)};
+        VkPipelineLayoutCreateInfo layout{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+        if (material.runtime.descriptor_set_layout != VK_NULL_HANDLE)
+        {
+            layout.setLayoutCount = 1u;
+            layout.pSetLayouts = &material.runtime.descriptor_set_layout;
+        }
+        layout.pushConstantRangeCount = 1u;
+        layout.pPushConstantRanges = &push;
+        if (vkCreatePipelineLayout(device_, &layout, nullptr, &material.runtime.pipeline_layout) != VK_SUCCESS)
+        {
+            vkDestroyShaderModule(device_, vert, nullptr);
+            vkDestroyShaderModule(device_, frag, nullptr);
+            return reject_runtime_material(material, "failed to create compiled Material ABI pipeline layout");
+        }
+
+        std::array<VkPipelineShaderStageCreateInfo, 2> stages{};
+        stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        stages[0].module = vert;
+        stages[0].pName = "main";
+        stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO};
+        stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        stages[1].module = frag;
+        stages[1].pName = "main";
+
+        VkVertexInputBindingDescription binding{0u, sizeof(mesh_vertex), VK_VERTEX_INPUT_RATE_VERTEX};
+        const std::array<VkVertexInputAttributeDescription, 5> attributes{
+            VkVertexInputAttributeDescription{0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, position)},
+            VkVertexInputAttributeDescription{1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(mesh_vertex, normal)},
+            VkVertexInputAttributeDescription{2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(mesh_vertex, texcoord)},
+            VkVertexInputAttributeDescription{3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, color)},
+            VkVertexInputAttributeDescription{4, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(mesh_vertex, tangent)}};
+        VkPipelineVertexInputStateCreateInfo vertex_input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+        vertex_input.vertexBindingDescriptionCount = 1u;
+        vertex_input.pVertexBindingDescriptions = &binding;
+        vertex_input.vertexAttributeDescriptionCount = static_cast<std::uint32_t>(attributes.size());
+        vertex_input.pVertexAttributeDescriptions = attributes.data();
+        VkPipelineInputAssemblyStateCreateInfo input_assembly{
+            VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
+        input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};
+        viewport.viewportCount = 1u;
+        viewport.scissorCount = 1u;
+        VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+        raster.polygonMode = VK_POLYGON_MODE_FILL;
+        raster.cullMode = VK_CULL_MODE_NONE;
+        raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        raster.lineWidth = 1.0f;
+        VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+        multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        VkPipelineDepthStencilStateCreateInfo depth{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+        depth.depthTestEnable = VK_TRUE;
+        depth.depthWriteEnable = VK_FALSE;
+        depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+        std::array<VkPipelineColorBlendAttachmentState, 6> attachments{};
+        for (auto& attachment : attachments)
+            attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+                                        VK_COLOR_COMPONENT_A_BIT;
+        VkPipelineColorBlendStateCreateInfo color_blend{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+        color_blend.attachmentCount = static_cast<std::uint32_t>(attachments.size());
+        color_blend.pAttachments = attachments.data();
+        const std::array<VkDynamicState, 2> dynamic_states{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+        dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
+        dynamic.pDynamicStates = dynamic_states.data();
+        const std::array<VkFormat, 6> color_formats{VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R16G16B16A16_SFLOAT,
+                                                    VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R16G16B16A16_SFLOAT,
+                                                    VK_FORMAT_R16G16_SFLOAT,       VK_FORMAT_R32_UINT};
+        VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+        rendering.colorAttachmentCount = static_cast<std::uint32_t>(color_formats.size());
+        rendering.pColorAttachmentFormats = color_formats.data();
+        rendering.depthAttachmentFormat = depth_format_;
+        VkGraphicsPipelineCreateInfo pipeline{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+        pipeline.pNext = &rendering;
+        pipeline.stageCount = static_cast<std::uint32_t>(stages.size());
+        pipeline.pStages = stages.data();
+        pipeline.pVertexInputState = &vertex_input;
+        pipeline.pInputAssemblyState = &input_assembly;
+        pipeline.pViewportState = &viewport;
+        pipeline.pRasterizationState = &raster;
+        pipeline.pMultisampleState = &multisample;
+        pipeline.pDepthStencilState = &depth;
+        pipeline.pColorBlendState = &color_blend;
+        pipeline.pDynamicState = &dynamic;
+        pipeline.layout = material.runtime.pipeline_layout;
+        const auto result = vkCreateGraphicsPipelines(device_, vk_pipeline_cache_, 1u, &pipeline, nullptr,
+                                                      &material.runtime.gbuffer_pipeline);
+        vkDestroyShaderModule(device_, vert, nullptr);
+        vkDestroyShaderModule(device_, frag, nullptr);
+        if (result != VK_SUCCESS)
+            return reject_runtime_material(material, "failed to create compiled Material ABI G-buffer pipeline: " +
+                                                         describe_vk_result(result));
+        return true;
+    }
+
+    bool ensure_runtime_gbuffer_pipeline(gpu_material& material)
+    {
+        const auto* program = material.data.runtime_program.get();
+        if (program == nullptr) return false;
+        if (material.runtime.failed && material.runtime.generation == program->generation) return false;
+        if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE && material.runtime.generation == program->generation &&
+            (material.runtime.descriptor_set_layout == VK_NULL_HANDLE ||
+             material.runtime.descriptor_sets.size() == frame_resource_count()))
+            return true;
+
+        if (material.runtime.gbuffer_pipeline != VK_NULL_HANDLE || material.runtime.pipeline_layout != VK_NULL_HANDLE ||
+            material.runtime.descriptor_pool != VK_NULL_HANDLE ||
+            material.runtime.descriptor_set_layout != VK_NULL_HANDLE || !material.runtime.parameter_buffers.empty() ||
+            !material.runtime.frame_buffers.empty())
+        {
+            wait_for_in_flight_frames();
+            destroy_material_runtime(material.runtime);
+        }
+        material.runtime.generation = program->generation;
+
+        if (program->contract_version != 1u || program->material_abi != 1u)
+            return reject_runtime_material(material, "unsupported compiled Material ABI contract version");
+        if (material.data.alpha_mode != material_alpha_mode::opaque)
+            return reject_runtime_material(material,
+                                           "compiled preview execution currently requires an opaque material");
+        if (program->uses_texture_sampling)
+            return reject_runtime_material(
+                material, "compiled texture sampling is not wired into the preview descriptor path yet");
+        const auto* pass = runtime_gbuffer_pass(material);
+        if (pass == nullptr || pass->compiled.bytecode.empty())
+            return reject_runtime_material(material, "compiled material does not provide an executable G-buffer pass");
+        if (!create_runtime_material_descriptors(material, *pass)) return false;
+        if (!create_runtime_gbuffer_pipeline(material, *pass)) return false;
+        arc::diagnostics::debug("render.vulkan",
+                                "Using compiled Material ABI G-buffer pass for '" + material.data.name + "'");
+        return true;
     }
 
     void destroy_shadow_resources() noexcept
@@ -8665,6 +9133,7 @@ private:
             {
                 if (draw.mode == render_mode::wireframe || material_alpha_mode_for(draw) == material_alpha_mode::blend)
                     continue;
+                if (!material_is_terrain(draw) && draw_runtime_material_gbuffer(command_buffer, draw)) continue;
                 vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                   material_is_terrain(draw) && terrain_gbuffer_pipeline_ != VK_NULL_HANDLE
                                       ? terrain_gbuffer_pipeline_
@@ -8680,6 +9149,7 @@ private:
                 if (draw.draw.mode == render_mode::wireframe ||
                     material_alpha_mode_for(draw.draw) == material_alpha_mode::blend)
                     continue;
+                if (!material_is_terrain(draw.draw) && draw_runtime_material_gbuffer(command_buffer, draw)) continue;
                 vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                   material_is_terrain(draw.draw) && terrain_gbuffer_pipeline_ != VK_NULL_HANDLE
                                       ? terrain_gbuffer_pipeline_

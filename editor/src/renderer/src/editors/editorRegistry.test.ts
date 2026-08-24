@@ -42,6 +42,7 @@ const material: AssetItem = {
 afterEach(() => {
   resetEditorDocuments();
   vi.restoreAllMocks();
+  Reflect.deleteProperty(window, 'arc');
 });
 
 describe('editor registry asset routing', () => {
@@ -145,10 +146,12 @@ describe('editor registry asset routing', () => {
     const query = vi.fn().mockResolvedValue({
       succeeded: true,
       payload: {
+        projectRoot: 'D:/Project',
+        assetRoot: 'D:/Project/Content',
         assets: [
           {
             guid: 'registered-material-guid',
-            path: 'Content/Materials/New Material.arcmat',
+            path: 'Materials/New Material.arcmat',
             scope: 'project',
             readOnly: false,
             state: 'ready',
@@ -183,6 +186,40 @@ describe('editor registry asset routing', () => {
     expect(getEditorDocumentsSnapshot().documents[0]).toMatchObject({
       assetGuid: 'registered-material-guid',
       path: 'Content/Materials/New Material.arcmat',
+    });
+  });
+
+  it('canonicalizes an already-registered asset-root-relative material path before opening', async () => {
+    const query = vi.fn().mockResolvedValue({
+      succeeded: true,
+      payload: {
+        projectRoot: 'D:/Project',
+        assetRoot: 'D:/Project/Content',
+        assets: [
+          {
+            guid: 'material-guid',
+            path: 'pr_test.arcmat',
+            scope: 'project',
+            readOnly: false,
+            state: 'ready',
+          },
+        ],
+      },
+    });
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: { host: { query } },
+    });
+
+    expect(openAssetEditorDocument({ ...material, path: 'pr_test.arcmat' }, registry)).toBe(true);
+    expect(getEditorDocumentsSnapshot().documents).toHaveLength(0);
+
+    await vi.waitFor(() => {
+      expect(getEditorDocumentsSnapshot().activeDocumentId).toBe('material:material-guid');
+    });
+    expect(getEditorDocumentsSnapshot().documents[0]).toMatchObject({
+      assetGuid: 'material-guid',
+      path: 'Content/pr_test.arcmat',
     });
   });
 });

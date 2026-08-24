@@ -17,6 +17,19 @@ type ViewportCommandResponse = {
   error?: string;
 };
 
+type ViewportStateResponse = {
+  succeeded?: boolean;
+  error?: string;
+  payload?: {
+    viewportId?: string;
+    submitted?: boolean;
+    frameIndex?: number;
+    assetPreviewKind?: string;
+    assetPreviewGuid?: string;
+    assetPreviewError?: string;
+  };
+};
+
 type ViewportBounds = {
   viewportId: string;
   x: number;
@@ -53,11 +66,56 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
   const rootRef = useRef<HTMLDivElement | null>(null);
   const attachedRef = useRef(false);
   const lastBoundsRef = useRef('');
+  const lastPreviewErrorRef = useRef('');
   const resizeInFlightRef = useRef(false);
   const pendingBoundsRef = useRef<ViewportBounds | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [streamed, setStreamed] = useState(false);
   const [error, setError] = useState('');
+
+  const traceViewportState = useCallback(
+    async (phase: string) => {
+      if (!viewportId || !window.arc?.host?.query) return;
+      try {
+        const response = (await window.arc.host.query('viewport.state', { viewportId })) as ViewportStateResponse;
+        const previewError = response?.payload?.assetPreviewError ?? '';
+        console.info('[material-flow] asset preview viewport state', {
+          phase,
+          kind,
+          viewportId,
+          guid: normalizedGuid,
+          succeeded: response?.succeeded ?? false,
+          error: response?.error ?? '',
+          submitted: response?.payload?.submitted ?? false,
+          frameIndex: response?.payload?.frameIndex ?? 0,
+          assetPreviewError: previewError,
+        });
+        if (kind === 'material' && previewError && previewError !== lastPreviewErrorRef.current) {
+          console.error('[material-flow] material preview realization failed', {
+            phase,
+            viewportId,
+            guid: normalizedGuid,
+            error: previewError,
+          });
+        } else if (kind === 'material' && !previewError && lastPreviewErrorRef.current) {
+          console.info('[material-flow] material preview realization recovered', {
+            phase,
+            viewportId,
+            guid: normalizedGuid,
+          });
+        }
+        lastPreviewErrorRef.current = previewError;
+      } catch (reason) {
+        console.warn('[material-flow] asset preview viewport state query failed', {
+          phase,
+          kind,
+          viewportId,
+          reason: reason instanceof Error ? reason.message : String(reason),
+        });
+      }
+    },
+    [kind, normalizedGuid, viewportId],
+  );
 
   const currentBounds = useCallback((): ViewportBounds | null => {
     if (!viewportId) return null;
@@ -126,6 +184,7 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
     if (!streamed || !viewportId) return;
     let cancelled = false;
     let animationFrame = 0;
+    let traceTimer = 0;
     let observer: ResizeObserver | null = null;
 
     const attach = async () => {
@@ -144,6 +203,9 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
         attachedRef.current = true;
         lastBoundsRef.current = boundsKey(bounds);
         setError('');
+        console.info('[material-flow] asset preview viewport attached', { kind, viewportId, guid: normalizedGuid });
+        void traceViewportState('attached');
+        traceTimer = window.setTimeout(() => void traceViewportState('after-first-frame'), 150);
         observer = new ResizeObserver(resize);
         if (rootRef.current) observer.observe(rootRef.current);
       } catch (reason) {
@@ -155,13 +217,19 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
     return () => {
       cancelled = true;
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      if (traceTimer) window.clearTimeout(traceTimer);
       observer?.disconnect();
       pendingBoundsRef.current = null;
       lastBoundsRef.current = '';
-      if (attachedRef.current) void window.arc.viewport.detach?.(viewportId);
+      lastPreviewErrorRef.current = '';
+      if (attachedRef.current) {
+        console.info('[material-flow] asset preview viewport detaching', { kind, viewportId, guid: normalizedGuid });
+        void traceViewportState('before-detach');
+        void window.arc.viewport.detach?.(viewportId);
+      }
       attachedRef.current = false;
     };
-  }, [currentBounds, resize, streamed, viewportId]);
+  }, [currentBounds, kind, normalizedGuid, resize, streamed, traceViewportState, viewportId]);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!attachedRef.current) return;

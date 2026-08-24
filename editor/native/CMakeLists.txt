@@ -11,6 +11,7 @@ add_library(arc-editor-host STATIC
     src/material_asset.cpp
     src/material_library.cpp
     src/material_preview.cpp
+    src/material_preview_realizer.cpp
     src/prefab_document.cpp
     src/procedural_mesh.cpp
     src/project_module_loader.cpp

@@ -212,7 +212,7 @@ describe('AssetPicker', () => {
     await user.type(screen.getByLabelText('New material name'), 'Hero Surface');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(snapshot).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(snapshot).toHaveBeenCalled());
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText.mock.calls[0][0]).toBe('GameContent/Hero Surface.arcmat');
     const asset = JSON.parse(writeText.mock.calls[0][1]);

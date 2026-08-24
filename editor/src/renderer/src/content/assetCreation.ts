@@ -74,6 +74,18 @@ export const buildAssetCreation = (
     request.kind === 'material'
       ? `${JSON.stringify(defaultMaterialAsset(name), null, 2)}\n`
       : shaderTemplateSource(request.template);
+
+  if (request.kind === 'material' || request.kind === 'shader') {
+    console.info('[material-flow] asset creation path', {
+      kind: request.kind,
+      projectRoot: project.root,
+      assetRoot: project.assetRoot,
+      requestedFolder: request.folder,
+      resolvedFolder: folder,
+      path,
+    });
+  }
+
   return {
     asset: {
       id: path,
