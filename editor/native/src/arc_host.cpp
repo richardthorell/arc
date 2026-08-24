@@ -599,9 +599,8 @@ void refresh_reimported_world_material(HostState& host, const host_asset_reimpor
     auto realized = load_material_preview_descriptor(resolved->path);
     if (!realized.succeeded)
     {
-        arc::diagnostics::warn("editor.materials",
-                               "[material-flow] assigned material refresh failed guid=" + command.guid +
-                                   " error=" + realized.message);
+        arc::diagnostics::warn("editor.materials", "[material-flow] assigned material refresh failed guid=" +
+                                                       command.guid + " error=" + realized.message);
         return;
     }
 
@@ -623,9 +622,8 @@ void refresh_reimported_world_material(HostState& host, const host_asset_reimpor
     }
 
     if (refreshed)
-        arc::diagnostics::info("editor.materials",
-                               "[material-flow] refreshed assigned material guid=" + command.guid +
-                                   " path=" + resolved->path.generic_string());
+        arc::diagnostics::info("editor.materials", "[material-flow] refreshed assigned material guid=" + command.guid +
+                                                       " path=" + resolved->path.generic_string());
 }
 } // namespace
 
