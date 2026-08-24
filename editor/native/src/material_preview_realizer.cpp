@@ -244,6 +244,7 @@ private:
                 }
                 break;
             }
+            case material_ir_node_kind::math:
             case material_ir_node_kind::tex_coord:
             case material_ir_node_kind::time:
             case material_ir_node_kind::texture_sample:
