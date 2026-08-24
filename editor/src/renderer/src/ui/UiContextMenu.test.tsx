@@ -58,7 +58,7 @@ describe('UiContextMenu', () => {
     );
 
     const compact = screen.getByRole('menuitem', { name: 'Without icon' });
-    const withIcon = screen.getByRole('menuitem', { name: 'I With icon' });
+    const withIcon = screen.getByRole('menuitem', { name: /With icon$/ });
 
     expect(compact).not.toHaveClass('ui-context-menu-item-has-leading');
     expect(compact.querySelector('.menu-leading')).not.toBeInTheDocument();
