@@ -1,6 +1,7 @@
 #include <arc/editor/material_library.h>
 
 #include <arc/editor/editor_interaction.h>
+#include <arc/editor/material_preview_realizer.h>
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/render/primitives.h>
 #include <arc/render/texture.h>
@@ -315,6 +316,17 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         arc::diagnostics::error("editor.materials", "Failed to load material '" + path.string() + "': " + message);
         return {};
     }
+
+    auto realized = load_material_preview_descriptor(path);
+    if (!realized.succeeded)
+    {
+        arc::diagnostics::error("editor.materials", "Failed to realize material '" + path.string() + "': " +
+                                                       realized.message);
+        return {};
+    }
+    asset.material = std::move(realized.material);
+    for (const auto& diagnostic : realized.diagnostics)
+        arc::diagnostics::info("editor.materials", "Material realization note for '" + path.string() + "': " + diagnostic);
 
     resolve_texture_handles(library, renderer, asset_root, asset);
     const auto handle = renderer.create_material(asset.material);
