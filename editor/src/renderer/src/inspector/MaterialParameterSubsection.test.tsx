@@ -9,6 +9,7 @@ vi.mock('../editors/editorRegistry', () => ({ openAssetEditorDocument: vi.fn() }
 import { MaterialPicker } from './AssetPicker';
 
 const readText = vi.fn();
+const snapshot = vi.fn();
 const material = {
   id: 'default-phong',
   guid: 'default-phong-guid',
@@ -22,6 +23,16 @@ const material = {
 
 beforeEach(() => {
   readText.mockReset();
+  snapshot.mockReset();
+  snapshot.mockResolvedValue({
+    activeProject: {
+      projectRoot: 'D:/Project',
+      descriptor: {
+        paths: { content: 'Content' },
+        assetRoots: ['Content'],
+      },
+    },
+  });
   readText.mockResolvedValue({
     text: JSON.stringify({
       version: 4,
@@ -51,7 +62,7 @@ beforeEach(() => {
   });
   Object.defineProperty(window, 'arc', {
     configurable: true,
-    value: { projects: { readText } },
+    value: { projects: { readText, snapshot } },
   });
 });
 
@@ -83,6 +94,30 @@ describe('MaterialPicker exported parameters', () => {
     expect(readText).toHaveBeenCalledWith(path, 'project');
     expect(screen.getByText('Base Color')).toBeVisible();
     expect(screen.getByText('Roughness')).toBeVisible();
+  });
+
+  it('resolves a native asset-root-relative project material before reading parameters', async () => {
+    const registryMaterial = {
+      id: 'material-guid',
+      guid: 'material-guid',
+      name: 'pr2.arcmat',
+      path: 'pr2.arcmat',
+      kind: 'material',
+      status: 'ready' as const,
+      scope: 'project' as const,
+    };
+    render(
+      <MaterialPicker
+        assets={[registryMaterial]}
+        label="Material"
+        value={registryMaterial.path}
+        onChange={() => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('2 exposed')).toBeVisible());
+    expect(snapshot).toHaveBeenCalled();
+    expect(readText).toHaveBeenCalledWith('Content/pr2.arcmat', 'project');
   });
 
   it('does not show shared material parameters for a mixed assignment', () => {

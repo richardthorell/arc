@@ -36,6 +36,43 @@ type ParameterState =
 const emptyState: ParameterState = { status: 'idle', parameters: [] };
 const componentLabels = ['X', 'Y', 'Z', 'W'];
 
+const normalizePath = (value: string) =>
+  value
+    .trim()
+    .replaceAll('\\', '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^\/|\/$/g, '');
+
+const projectRelativeMaterialPath = async (materialPath: string, scope: 'builtin' | 'project') => {
+  const normalized = normalizePath(materialPath);
+  if (scope !== 'project' || !normalized || /^[a-z]:\//i.test(normalized)) return normalized;
+
+  try {
+    const snapshot = await window.arc.projects.snapshot();
+    const project = snapshot?.activeProject;
+    if (!project) return normalized;
+
+    const roots = [project.descriptor.paths.content, ...(project.descriptor.assetRoots ?? [])]
+      .map(normalizePath)
+      .filter(Boolean);
+    if (roots.some((root) => normalized.toLocaleLowerCase().startsWith(`${root.toLocaleLowerCase()}/`))) {
+      return normalized;
+    }
+
+    const contentRoot = roots[0] || 'Content';
+    const resolved = normalizePath(`${contentRoot}/${normalized}`);
+    console.info('[material-flow] inspector resolved material path', {
+      registryPath: materialPath,
+      projectPath: resolved,
+    });
+    return resolved;
+  } catch (error) {
+    console.warn('[material-flow] inspector could not resolve project material path', error);
+    return normalized;
+  }
+};
+
 const parameterValues = (node: MaterialGraphNode): number[] => {
   if (typeof node.values.value === 'number' && Number.isFinite(node.values.value)) return [node.values.value];
   if (!Array.isArray(node.values.value)) return [];
@@ -86,7 +123,8 @@ export function MaterialParameterSubsection({
     setState({ status: 'loading', parameters: [] });
     void (async () => {
       try {
-        const file = await window.arc.projects.readText(materialPath, materialScope);
+        const resolvedMaterialPath = await projectRelativeMaterialPath(materialPath, materialScope);
+        const file = await window.arc.projects.readText(resolvedMaterialPath, materialScope);
         if (!active) return;
         const asset = JSON.parse(file.text) as MaterialAssetJson;
         const customShader = typeof asset.shaderPath === 'string' ? asset.shaderPath.trim() : '';

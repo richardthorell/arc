@@ -10,6 +10,7 @@ layout(location = 3) in vec2 in_texcoord;
 layout(location = 4) in vec4 in_tangent;
 layout(location = 5) in vec4 in_clip_position;
 layout(location = 6) in vec4 in_previous_clip_position;
+layout(location = 7) flat in uint in_object_id;
 
 layout(location = 0) out vec4 out_albedo;
 layout(location = 1) out vec4 out_normal;
@@ -86,5 +87,5 @@ void main()
     out_material = vec4(metallic, roughness, 1.0, 0.0);
     out_emissive = vec4(emissive, 1.0);
     out_motion = (current_ndc - previous_ndc) * 0.5;
-    out_object_id = uint(constants.fog_params.w);
+    out_object_id = in_object_id;
 }

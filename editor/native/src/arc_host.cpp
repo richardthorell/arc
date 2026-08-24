@@ -7,6 +7,7 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
+#include <arc/editor/material_preview_realizer.h>
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/procedural_mesh.h>
 #include <arc/editor/scene_document.h>
@@ -138,7 +139,7 @@ struct viewport_surface_registry
         editor_camera_controller preview_camera;
         ecs::entity preview_entity{};
         render::mesh_handle preview_mesh{};
-        assets::asset_handle<render::material_handle> preview_material;
+        render::material_handle preview_material{};
         std::uint64_t preview_material_generation{};
         std::string preview_error;
     };
@@ -397,50 +398,81 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
         surface.preview_error = "Material preview is waiting for the project asset registry";
         return false;
     }
-
-    if (!surface.preview_material.valid())
+    if (!host.renderer)
     {
-        assets::asset_load_request request;
-        request.reference.guid = surface.preview_guid;
-        request.reference.expected_type = assets::asset_types::material;
-        request.priority = assets::asset_streaming_priority::high;
-        request.residency = assets::asset_residency::device;
-        request.allow_fallback = true;
-        auto loaded = host.asset_registry->template load<render::material_handle>(std::move(request)).get();
-        if (!loaded.asset.valid())
-        {
-            surface.preview_error =
-                loaded.error.message.empty() ? "Material preview asset could not be loaded" : loaded.error.message;
-            return false;
-        }
-        surface.preview_material = std::move(loaded.asset);
-        surface.preview_material_generation = 0;
-    }
-
-    const auto generation = surface.preview_material.generation();
-    if (generation == surface.preview_material_generation) return true;
-    const auto* material = surface.preview_material.get();
-    if (!material || !material->valid())
-    {
-        surface.preview_error = "Material preview resolved to an invalid renderer material";
+        surface.preview_error = "Material preview renderer is unavailable";
         return false;
     }
+
+    const auto asset = host.asset_registry->find(surface.preview_guid);
+    if (!asset)
+    {
+        surface.preview_error = "Material preview asset is not registered";
+        return false;
+    }
+    if (asset->type != assets::asset_types::material)
+    {
+        surface.preview_error = "Material preview GUID does not reference a material asset";
+        return false;
+    }
+
+    const auto generation = asset->generation;
+    if (surface.preview_material.valid() && generation == surface.preview_material_generation) return true;
+
+    const auto resolved =
+        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, asset->source_path);
+    if (!resolved || !is_material_asset_path(resolved->path))
+    {
+        surface.preview_error =
+            "Material preview source path could not be resolved: " + asset->source_path.generic_string();
+        return false;
+    }
+
+    arc::diagnostics::info(
+        "editor.materials",
+        "[material-flow] realizing material preview guid=" + assets::to_string(surface.preview_guid) +
+            " generation=" + std::to_string(generation) + " path=" + resolved->path.generic_string());
+    auto realized = load_material_preview_descriptor(resolved->path);
+    if (!realized.succeeded)
+    {
+        surface.preview_error = realized.message.empty() ? "Material preview realization failed" : realized.message;
+        arc::diagnostics::warn("editor.materials", "[material-flow] material preview realization failed guid=" +
+                                                       assets::to_string(surface.preview_guid) +
+                                                       " error=" + surface.preview_error);
+        return false;
+    }
+
+    bool uploaded{};
+    if (surface.preview_material.valid())
+        uploaded = host.renderer->update_material(surface.preview_material, std::move(realized.material));
+    if (!uploaded)
+    {
+        surface.preview_material = host.renderer->create_material(std::move(realized.material));
+        uploaded = surface.preview_material.valid();
+    }
+    if (!uploaded)
+    {
+        surface.preview_error = "Renderer could not realize the material preview resource";
+        return false;
+    }
+
     auto* mesh_renderer = surface.preview_scene->scene.try_get<scene::mesh_renderer_component>(surface.preview_entity);
     if (!mesh_renderer)
     {
         surface.preview_error = "Material preview sphere has no mesh renderer";
         return false;
     }
-    mesh_renderer->material = *material;
+    mesh_renderer->material = surface.preview_material;
     surface.preview_material_generation = generation;
-    if (surface.preview_material.using_fallback())
-    {
-        surface.preview_error = "Material preview is using the renderer error material";
-    }
-    else
-    {
-        surface.preview_error.clear();
-    }
+    surface.preview_error.clear();
+
+    arc::diagnostics::info("editor.materials",
+                           "[material-flow] material preview realized guid=" + assets::to_string(surface.preview_guid) +
+                               " generation=" + std::to_string(generation) +
+                               " handle=" + std::to_string(surface.preview_material.index) + ':' +
+                               std::to_string(surface.preview_material.generation));
+    for (const auto& diagnostic : realized.diagnostics)
+        arc::diagnostics::info("editor.materials", "[material-flow] preview note: " + diagnostic);
     return true;
 }
 

@@ -13,6 +13,8 @@ layout(location = 3) out vec2 out_texcoord;
 layout(location = 4) out vec4 out_tangent;
 layout(location = 5) out vec4 out_clip_position;
 layout(location = 6) out vec4 out_previous_clip_position;
+layout(location = 7) flat out uint out_object_id;
+layout(location = 8) out vec3 out_view_ws;
 
 layout(push_constant) uniform mesh_constants
 {
@@ -45,5 +47,7 @@ void main()
         vec4(constants.camera_position.yzw, constants.fog_color_density.x),
         vec4(constants.fog_color_density.yzw, constants.fog_params.x));
     out_previous_clip_position = previous_model_view_projection * local_position;
+    out_object_id = uint(constants.fog_params.w);
+    out_view_ws = normalize(constants.camera_position.xyz - world_position.xyz);
     gl_Position = out_clip_position;
 }

@@ -28,6 +28,8 @@ type HostAssetIdentity = {
 };
 
 type HostProjectAssetsPayload = {
+  projectRoot?: string;
+  assetRoot?: string;
   assets?: HostAssetIdentity[];
 };
 
@@ -38,26 +40,62 @@ type HostResponse<T = unknown> = {
 
 const registrationPollIntervalMs = 50;
 const registrationTimeoutMs = 2500;
-const normalizedAssetPath = (value: string) => value.replaceAll('\\', '/').replace(/^\.\//, '').toLowerCase();
+const cleanAssetPath = (value: string) =>
+  value
+    .replaceAll('\\', '/')
+    .replace(/\/+/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^\/|\/$/g, '');
+const normalizedAssetPath = (value: string) => cleanAssetPath(value).toLowerCase();
 const sleep = (milliseconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
-const registeredAssetFromHost = (asset: AssetItem, candidate: HostAssetIdentity): AssetItem => ({
-  ...asset,
-  id: candidate.guid || asset.id,
-  guid: candidate.guid || asset.guid,
-  path: candidate.path || asset.path,
-  scope: candidate.scope ?? asset.scope,
-  readOnly: candidate.readOnly ?? asset.readOnly,
-  status: candidate.state ?? asset.status,
-  typeId: candidate.typeId ?? asset.typeId,
-  importerId: candidate.importerId ?? asset.importerId,
-});
+const projectRelativeHostAssetPath = (payload: HostProjectAssetsPayload, candidate: HostAssetIdentity) => {
+  const candidatePath = cleanAssetPath(candidate.path ?? '');
+  if (!candidatePath || candidate.scope === 'builtin') return candidatePath;
+
+  const projectRoot = cleanAssetPath(payload.projectRoot ?? '');
+  const assetRoot = cleanAssetPath(payload.assetRoot ?? '');
+  if (!projectRoot || !assetRoot) return candidatePath;
+
+  const normalizedProjectRoot = projectRoot.toLowerCase();
+  const normalizedAssetRoot = assetRoot.toLowerCase();
+  if (normalizedAssetRoot === normalizedProjectRoot) return candidatePath;
+  if (!normalizedAssetRoot.startsWith(`${normalizedProjectRoot}/`)) return candidatePath;
+
+  const assetRootRelative = assetRoot.slice(projectRoot.length + 1);
+  return cleanAssetPath(`${assetRootRelative}/${candidatePath}`);
+};
+
+const registeredAssetFromHost = (
+  asset: AssetItem,
+  candidate: HostAssetIdentity,
+  payload: HostProjectAssetsPayload,
+): AssetItem => {
+  const registryPath = cleanAssetPath(candidate.path ?? '');
+  const projectPath = projectRelativeHostAssetPath(payload, candidate);
+  const authoredPath = cleanAssetPath(asset.path);
+  const path =
+    authoredPath && normalizedAssetPath(authoredPath) !== normalizedAssetPath(registryPath)
+      ? authoredPath
+      : projectPath || authoredPath || registryPath;
+
+  return {
+    ...asset,
+    id: candidate.guid || asset.id,
+    guid: candidate.guid || asset.guid,
+    path,
+    scope: candidate.scope ?? asset.scope,
+    readOnly: candidate.readOnly ?? asset.readOnly,
+    status: candidate.state ?? asset.status,
+    typeId: candidate.typeId ?? asset.typeId,
+    importerId: candidate.importerId ?? asset.importerId,
+  };
+};
 
 export const resolveRegisteredEditorAsset = async (
   asset: AssetItem,
   timeoutMs = registrationTimeoutMs,
 ): Promise<AssetItem | null> => {
-  if (asset.guid) return asset;
   if (!asset.path || typeof window === 'undefined' || !window.arc?.host?.query) return null;
 
   const expectedPath = normalizedAssetPath(asset.path);
@@ -66,20 +104,43 @@ export const resolveRegisteredEditorAsset = async (
     try {
       const response = (await window.arc.host.query('project.assets')) as
         HostResponse<HostProjectAssetsPayload> | undefined;
-      const registered = response?.succeeded
-        ? response.payload?.assets?.find(
-            (candidate) => Boolean(candidate.guid) && normalizedAssetPath(candidate.path ?? '') === expectedPath,
-          )
-        : undefined;
-      if (registered) return registeredAssetFromHost(asset, registered);
-    } catch {
+      const payload = response?.succeeded ? response.payload : undefined;
+      const registered = payload?.assets?.find((candidate) => {
+        if (!candidate.guid) return false;
+        if (asset.guid && candidate.guid === asset.guid) return true;
+        const registryPath = normalizedAssetPath(candidate.path ?? '');
+        const projectPath = normalizedAssetPath(projectRelativeHostAssetPath(payload, candidate));
+        return registryPath === expectedPath || projectPath === expectedPath;
+      });
+      if (registered && payload) {
+        const resolved = registeredAssetFromHost(asset, registered, payload);
+        if (asset.kind === 'material' || asset.kind === 'shader') {
+          console.info('[material-flow] asset registration resolved', {
+            kind: asset.kind,
+            authoredPath: asset.path,
+            registryPath: registered.path ?? '',
+            projectPath: projectRelativeHostAssetPath(payload, registered),
+            resolvedPath: resolved.path,
+            guid: registered.guid ?? '',
+            state: registered.state ?? '',
+          });
+        }
+        return resolved;
+      }
+    } catch (error) {
+      console.warn('[material-flow] asset registration query failed', error);
       return null;
     }
 
-    if (Date.now() >= deadline) break;
+    if (asset.guid || Date.now() >= deadline) break;
     await sleep(registrationPollIntervalMs);
   } while (true);
 
+  console.warn('[material-flow] asset registration unresolved', {
+    kind: asset.kind,
+    guid: asset.guid ?? '',
+    path: asset.path,
+  });
   return null;
 };
 
@@ -169,16 +230,16 @@ export const openAssetEditorDocument = (asset: AssetItem, registry: EditorRegist
   const target = createEditorDocumentForAsset(asset, registry);
   if (!target || !registry) return false;
 
-  const needsRegistration = !asset.guid && (asset.kind === 'material' || asset.kind === 'shader');
-  if (!needsRegistration || typeof window === 'undefined' || !window.arc?.host?.query) {
+  const needsCanonicalProjectIdentity =
+    asset.scope !== 'builtin' && (asset.kind === 'material' || asset.kind === 'shader');
+  if (!needsCanonicalProjectIdentity || typeof window === 'undefined' || !window.arc?.host?.query) {
     openEditorDocumentInStore(target.document, target.registration.allowMultiple);
     return true;
   }
 
-  // Newly-authored assets are written to disk before the native asset monitor has
-  // necessarily assigned their stable GUID. Keep the current (usually level)
-  // editor active long enough for its viewport to drive the source monitor, then
-  // open the canonical registered asset so native previews/reimports use a GUID.
+  // Project asset snapshots use paths relative to the native asset root, while
+  // project file I/O uses paths relative to the project root. Resolve both newly
+  // authored and already-registered materials/shaders before opening the editor.
   void resolveRegisteredEditorAsset(asset).then((registered) => {
     openResolvedAssetEditorDocument(registered ?? asset, registry);
   });
