@@ -317,15 +317,21 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         return {};
     }
 
-    if (asset.graph_reserved)
+    auto realized = load_material_preview_descriptor(path);
+    const bool legacy_document = !realized.succeeded && realized.message.starts_with("Legacy material field '");
+    if (!realized.succeeded && !legacy_document)
     {
-        auto realized = load_material_preview_descriptor(path);
-        if (!realized.succeeded)
-        {
-            arc::diagnostics::error("editor.materials",
-                                    "Failed to realize material '" + path.string() + "': " + realized.message);
-            return {};
-        }
+        arc::diagnostics::error("editor.materials",
+                                "Failed to realize material '" + path.string() + "': " + realized.message);
+        return {};
+    }
+    if (legacy_document)
+    {
+        arc::diagnostics::info("editor.materials", "Loading legacy material descriptor for '" + path.string() +
+                                                       "' until native material serialization is graph-only");
+    }
+    else
+    {
         asset.material = std::move(realized.material);
         for (const auto& diagnostic : realized.diagnostics)
             arc::diagnostics::info("editor.materials",
