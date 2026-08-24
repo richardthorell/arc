@@ -28,6 +28,7 @@ describe('UiLab', () => {
     expect(screen.getByRole('checkbox', { name: 'Realtime updates' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Entity notes' })).toBeInTheDocument();
     expect(screen.getByRole('slider', { name: 'Preview quality' })).toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: 'Context menu preview' })).toHaveClass('ui-context-menu');
 
     const componentRegion = screen.getByText('ECS component region').closest<HTMLElement>('.ui-lab-card');
     expect(componentRegion).not.toBeNull();
@@ -75,7 +76,7 @@ describe('UiLab', () => {
     expect(component.getByRole('combobox', { name: 'Mobility' })).toHaveTextContent('Movable');
   });
 
-  it('uses the shared compact menu surface for ECS component actions', () => {
+  it('uses the shared context menu for ECS component actions', () => {
     render(<UiLab />);
 
     expect(screen.queryByText('ECS')).not.toBeInTheDocument();
@@ -88,8 +89,7 @@ describe('UiLab', () => {
 
     const copy = within(actionCard!).getByRole('menuitem', { name: 'Copy Component' });
     const menu = copy.closest('.menu-dropdown');
-    expect(menu).toBeInTheDocument();
-    expect(menu).not.toHaveClass('inspector-component-menu');
+    expect(menu).toHaveClass('ui-context-menu');
     expect(within(actionCard!).getByRole('menuitem', { name: 'Paste Component Values' })).toBeInTheDocument();
     expect(within(actionCard!).getByRole('menuitem', { name: 'Reset Component' })).toBeInTheDocument();
     expect(within(actionCard!).getByRole('menuitem', { name: 'Remove Component' })).toBeInTheDocument();
