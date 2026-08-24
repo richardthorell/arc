@@ -66,11 +66,7 @@ export function serializeAssetPreviewViewportLifecycle<T>(viewportId: string, op
   return result;
 }
 
-export function assetPreviewViewportId(
-  kind: AssetPreviewViewportProps['kind'],
-  assetGuid: string,
-  instance?: number,
-) {
+export function assetPreviewViewportId(kind: AssetPreviewViewportProps['kind'], assetGuid: string, instance?: number) {
   const base = `asset-preview-${kind}-${normalizedAssetGuid(assetGuid)}`;
   return instance === undefined ? base : `${base}~${instance}`;
 }
