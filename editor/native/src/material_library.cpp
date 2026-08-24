@@ -318,16 +318,27 @@ render::material_handle load_material_for_editor(editor_material_library& librar
     }
 
     auto realized = load_material_preview_descriptor(path);
-    if (!realized.succeeded)
+    const bool legacy_document =
+        !realized.succeeded && realized.message.starts_with("Legacy material field '");
+    if (!realized.succeeded && !legacy_document)
     {
         arc::diagnostics::error("editor.materials",
                                 "Failed to realize material '" + path.string() + "': " + realized.message);
         return {};
     }
-    asset.material = std::move(realized.material);
-    for (const auto& diagnostic : realized.diagnostics)
+    if (legacy_document)
+    {
         arc::diagnostics::info("editor.materials",
-                               "Material realization note for '" + path.string() + "': " + diagnostic);
+                               "Loading legacy material descriptor for '" + path.string() +
+                                   "' until native material serialization is graph-only");
+    }
+    else
+    {
+        asset.material = std::move(realized.material);
+        for (const auto& diagnostic : realized.diagnostics)
+            arc::diagnostics::info("editor.materials",
+                                   "Material realization note for '" + path.string() + "': " + diagnostic);
+    }
 
     resolve_texture_handles(library, renderer, asset_root, asset);
     const auto handle = renderer.create_material(asset.material);
