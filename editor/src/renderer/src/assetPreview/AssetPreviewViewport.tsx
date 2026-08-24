@@ -49,6 +49,22 @@ const boundsKey = (bounds: ViewportBounds) =>
 
 const normalizedAssetGuid = (guid?: string) => guid?.trim().toLowerCase() ?? '';
 
+const assetPreviewViewportLifecycle = new Map<string, Promise<void>>();
+
+export function serializeAssetPreviewViewportLifecycle<T>(viewportId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = assetPreviewViewportLifecycle.get(viewportId) ?? Promise.resolve();
+  const result = previous.catch(() => undefined).then(operation);
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  assetPreviewViewportLifecycle.set(viewportId, tail);
+  void tail.finally(() => {
+    if (assetPreviewViewportLifecycle.get(viewportId) === tail) assetPreviewViewportLifecycle.delete(viewportId);
+  });
+  return result;
+}
+
 export function assetPreviewViewportId(kind: AssetPreviewViewportProps['kind'], assetGuid: string) {
   return `asset-preview-${kind}-${normalizedAssetGuid(assetGuid)}`;
 }
@@ -194,12 +210,11 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
         return;
       }
       try {
-        const response = (await window.arc.viewport.create(bounds)) as ViewportCommandResponse | undefined;
+        const response = (await serializeAssetPreviewViewportLifecycle(viewportId, () =>
+          window.arc.viewport.create(bounds),
+        )) as ViewportCommandResponse | undefined;
         if (response?.succeeded === false) throw new Error(response.error || 'Asset preview surface was rejected');
-        if (cancelled) {
-          void window.arc.viewport.detach?.(viewportId);
-          return;
-        }
+        if (cancelled) return;
         attachedRef.current = true;
         lastBoundsRef.current = boundsKey(bounds);
         setError('');
@@ -225,8 +240,10 @@ export function AssetPreviewViewport({ kind, assetGuid, fallback, label }: Asset
       if (attachedRef.current) {
         console.info('[material-flow] asset preview viewport detaching', { kind, viewportId, guid: normalizedGuid });
         void traceViewportState('before-detach');
-        void window.arc.viewport.detach?.(viewportId);
       }
+      void serializeAssetPreviewViewportLifecycle(viewportId, async () => {
+        await window.arc.viewport.detach?.(viewportId);
+      });
       attachedRef.current = false;
     };
   }, [currentBounds, kind, normalizedGuid, resize, streamed, traceViewportState, viewportId]);
