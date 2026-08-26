@@ -28,7 +28,12 @@ const nodePaddingTop = 9;
 type AddMenuCategory = Exclude<MaterialNodeCategory, 'Output'>;
 
 const editableValueNode = (node: MaterialGraphNode) =>
-  node.type === 'constant' || node.type === 'vector2' || node.type === 'vector3' || node.type === 'vector4';
+  node.type === 'constant' ||
+  node.type === 'vector2' ||
+  node.type === 'vector3' ||
+  node.type === 'vector4' ||
+  node.type === 'colorRgb' ||
+  node.type === 'colorRgba';
 
 const pinY = (node: MaterialGraphNode, pin: string, output: boolean) => {
   const pins = output ? materialNodeDefinitions[node.type].outputs : materialNodeDefinitions[node.type].inputs;
@@ -55,6 +60,16 @@ const nextNodeValue = (node: MaterialGraphNode, value: unknown): MaterialGraphNo
   ...node,
   values: { ...node.values, value },
 });
+
+const colorChannel = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+const colorHex = (value: unknown) => {
+  const components = Array.isArray(value) ? value : [];
+  return `#${[0, 1, 2]
+    .map((index) => Math.round(Math.min(1, Math.max(0, colorChannel(components[index]))) * 255).toString(16).padStart(2, '0'))
+    .join('')}`;
+};
+const colorFromHex = (hex: string) =>
+  [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
 
 function MaterialNodeValueEditor({
   node,
@@ -101,6 +116,48 @@ function MaterialNodeValueEditor({
             }}
           />
         ))}
+      </div>
+    );
+  }
+
+  if (node.type === 'colorRgb' || node.type === 'colorRgba') {
+    const size = node.type === 'colorRgba' ? 4 : 3;
+    const current = Array.isArray(node.values.value) ? node.values.value : [];
+    const channels = node.type === 'colorRgba' ? ['R', 'G', 'B', 'A'] : ['R', 'G', 'B'];
+    return (
+      <div className="material-node-color-value">
+        <input
+          aria-label={`${node.type} color picker`}
+          className="material-node-color-swatch"
+          disabled={readOnly}
+          type="color"
+          value={colorHex(current)}
+          onChange={(event) => {
+            const rgb = colorFromHex(event.target.value);
+            onChange(nextNodeValue(node, node.type === 'colorRgba' ? [...rgb, colorChannel(current[3] ?? 1)] : rgb));
+          }}
+        />
+        <div className="material-node-color-components">
+          {Array.from({ length: size }, (_, index) => (
+            <label key={channels[index]}>
+              {channels[index]}
+              <input
+                aria-label={`${node.type} ${channels[index]}`}
+                disabled={readOnly}
+                type="number"
+                step="0.01"
+                value={colorChannel(current[index] ?? (index === 3 ? 1 : 0))}
+                onChange={(event) => {
+                  const next = Array.from({ length: size }, (_, component) =>
+                    colorChannel(current[component] ?? (component === 3 ? 1 : 0)),
+                  );
+                  next[index] = Number(event.target.value);
+                  onChange(nextNodeValue(node, next));
+                }}
+              />
+            </label>
+          ))}
+        </div>
       </div>
     );
   }
@@ -226,8 +283,6 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     };
     const up = () => {
       if (drag) {
-        // The pointer-move updates intentionally avoid history spam. Commit the
-        // final graph as one undoable operation when the drag ends.
         replaceMaterialGraph(document, graph, { recordHistory: true });
       }
       if (box) {
@@ -259,8 +314,6 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-    // Graph/viewport deliberately remain current while the active gesture is
-    // driven by the latest render.
   }, [box, document, drag, graph, graphPoint, mutate, pan, updateViewport, viewport.x, viewport.y, viewport.zoom]);
 
   const deleteSelected = () => {
@@ -704,6 +757,10 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                     setNodeMenuCategory(category);
                     setNodeMenuSubcategory(null);
                   }}
+                  onMouseEnter={() => {
+                    setNodeMenuCategory(category);
+                    setNodeMenuSubcategory(null);
+                  }}
                   trailing={<ChevronRight size={13} />}
                 >
                   <strong>{category}</strong>
@@ -718,6 +775,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                   <UiContextMenuItem
                     key={subcategory}
                     onClick={() => setNodeMenuSubcategory(subcategory)}
+                    onMouseEnter={() => setNodeMenuSubcategory(subcategory)}
                     trailing={<ChevronRight size={13} />}
                   >
                     <strong>{subcategory}</strong>
