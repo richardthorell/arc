@@ -80,6 +80,12 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
   graph.nodes.flatMap((node) => {
     if (!node.parameter?.exposed || node.type === 'output' || node.type === 'textureSample') return [];
     const type: MaterialGraphValueType =
-      node.type === 'vector2' ? 'vec2' : node.type === 'vector3' ? 'vec3' : node.type === 'vector4' ? 'vec4' : 'float';
+      node.type === 'vector2'
+        ? 'vec2'
+        : node.type === 'vector3' || node.type === 'colorRgb'
+          ? 'vec3'
+          : node.type === 'vector4' || node.type === 'colorRgba'
+            ? 'vec4'
+            : 'float';
     return [{ nodeId: node.id, name: node.parameter.name.trim() || 'Parameter', type }];
   });
