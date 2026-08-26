@@ -67,8 +67,8 @@ std::optional<material_ir_node_kind> node_kind(std::string_view type) noexcept
 {
     if (type == "constant") return material_ir_node_kind::constant;
     if (type == "vector2") return material_ir_node_kind::vector2;
-    if (type == "vector3") return material_ir_node_kind::vector3;
-    if (type == "vector4") return material_ir_node_kind::vector4;
+    if (type == "vector3" || type == "colorRgb") return material_ir_node_kind::vector3;
+    if (type == "vector4" || type == "colorRgba") return material_ir_node_kind::vector4;
     if (type == "texCoord") return material_ir_node_kind::tex_coord;
     if (type == "time") return material_ir_node_kind::time;
     if (type == "textureSample") return material_ir_node_kind::texture_sample;
