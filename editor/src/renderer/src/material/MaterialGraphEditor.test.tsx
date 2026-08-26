@@ -31,8 +31,8 @@ describe('MaterialGraphEditor menus', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
     const menu = screen.getByRole('menu', { name: 'Add material node' });
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /Values/ }));
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /Constants/ }));
+    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Values/ }));
+    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Constants/ }));
     const item = within(menu).getByRole('menuitem', { name: /Constant/ });
 
     materialState.replaceMaterialGraph.mockClear();
@@ -47,23 +47,35 @@ describe('MaterialGraphEditor menus', () => {
     expect(materialState.replaceMaterialGraph).toHaveBeenCalledTimes(1);
   });
 
-  it('groups material nodes by category and math subcategory', () => {
+  it('opens material categories and subcategories on hover', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
     const menu = screen.getByRole('menu', { name: 'Add material node' });
-    expect(within(menu).getByRole('menuitem', { name: /Math/ })).toBeInTheDocument();
-    expect(within(menu).queryByRole('menuitem', { name: /^Add$/ })).not.toBeInTheDocument();
+    const math = within(menu).getByRole('menuitem', { name: /Math/ });
+    expect(within(menu).queryByRole('menuitem', { name: /Arithmetic/ })).not.toBeInTheDocument();
 
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /Math/ }));
+    fireEvent.mouseEnter(math);
     expect(within(menu).getByRole('menuitem', { name: /Arithmetic/ })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: /Trigonometry/ })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: /Measurement/ })).toBeInTheDocument();
 
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /Arithmetic/ }));
+    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Arithmetic/ }));
     expect(within(menu).getByRole('menuitem', { name: 'Add' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: /Fmod/ })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: /One Minus/ })).toBeInTheDocument();
+  });
+
+  it('offers separate RGB and RGBA color nodes under Values', () => {
+    render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
+    const menu = screen.getByRole('menu', { name: 'Add material node' });
+    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Values/ }));
+    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Colors/ }));
+
+    expect(within(menu).getByRole('menuitem', { name: 'Color (RGB)' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Color (RGBA)' })).toBeInTheDocument();
   });
 
   it('searches across material node subcategories', () => {
@@ -92,10 +104,11 @@ describe('MaterialGraphEditor menus', () => {
     expect(materialState.replaceMaterialGraph).not.toHaveBeenCalled();
   });
 
-  it('renders material graph nodes through the shared node-card base', () => {
+  it('renders the default base color as a dedicated color node with a picker', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
     expect(screen.getByText('Material Output').closest('article')).toHaveClass('ui-node-card', 'ui-node-card-accent');
-    expect(screen.getByText('Vector 3 / Color').closest('article')).toHaveClass('ui-node-card');
+    expect(screen.getByText('Color (RGB)').closest('article')).toHaveClass('ui-node-card');
+    expect(screen.getByLabelText('colorRgb color picker')).toHaveAttribute('type', 'color');
   });
 });
