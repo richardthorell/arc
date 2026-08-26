@@ -7,6 +7,8 @@ export type MaterialGraphNodeType =
   | 'vector2'
   | 'vector3'
   | 'vector4'
+  | 'colorRgb'
+  | 'colorRgba'
   | 'textureSample'
   | 'texCoord'
   | 'time'
@@ -111,6 +113,7 @@ export type MaterialNodeCategory = 'Output' | 'Values' | 'Textures' | 'Math' | '
 export type MaterialNodeSubcategory =
   | 'Surface'
   | 'Constants'
+  | 'Colors'
   | 'Sampling'
   | 'Arithmetic'
   | 'Rounding'
@@ -169,7 +172,7 @@ export const materialNodeSubcategoryOrder: Record<
   Exclude<MaterialNodeCategory, 'Output'>,
   MaterialNodeSubcategory[]
 > = {
-  Values: ['Constants'],
+  Values: ['Constants', 'Colors'],
   Textures: ['Sampling'],
   Math: ['Arithmetic', 'Rounding', 'Exponential', 'Trigonometry', 'Range & Interpolation', 'Comparison', 'Measurement'],
   Utility: ['Coordinates', 'Animation'],
@@ -230,12 +233,12 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
   },
   vector3: {
     type: 'vector3',
-    title: 'Vector 3 / Color',
+    title: 'Vector 3',
     category: 'Values',
     subcategory: 'Constants',
     inputs: [],
     outputs: [pin('value', 'Value', 'vec3')],
-    defaultValues: { value: [0.78, 0.8, 0.84] },
+    defaultValues: { value: [0, 0, 0] },
   },
   vector4: {
     type: 'vector4',
@@ -244,6 +247,24 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     subcategory: 'Constants',
     inputs: [],
     outputs: [pin('value', 'Value', 'vec4')],
+    defaultValues: { value: [0, 0, 0, 0] },
+  },
+  colorRgb: {
+    type: 'colorRgb',
+    title: 'Color (RGB)',
+    category: 'Values',
+    subcategory: 'Colors',
+    inputs: [],
+    outputs: [pin('value', 'RGB', 'vec3')],
+    defaultValues: { value: [0.78, 0.8, 0.84] },
+  },
+  colorRgba: {
+    type: 'colorRgba',
+    title: 'Color (RGBA)',
+    category: 'Values',
+    subcategory: 'Colors',
+    inputs: [],
+    outputs: [pin('value', 'RGBA', 'vec4')],
     defaultValues: { value: [1, 1, 1, 1] },
   },
   textureSample: {
@@ -412,7 +433,7 @@ export const createMaterialNode = (
 });
 
 export const createDefaultMaterialGraph = (): MaterialGraph => {
-  const baseColor = createMaterialNode('vector3', [80, 120], { value: [0.78, 0.8, 0.84] });
+  const baseColor = createMaterialNode('colorRgb', [80, 120], { value: [0.78, 0.8, 0.84] });
   baseColor.parameter = { exposed: true, name: 'Base Color' };
   const metallic = createMaterialNode('constant', [80, 290], { value: 0 });
   metallic.parameter = { exposed: true, name: 'Metallic' };
