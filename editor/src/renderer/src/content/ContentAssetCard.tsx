@@ -127,7 +127,8 @@ export function ContentAssetCard({
       role="option"
       tabIndex={0}
       onBlur={(event) => {
-        if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) setDetailsVisible(false);
+        if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node))
+          setDetailsVisible(false);
       }}
       onClick={(event) => onSelect(event.ctrlKey || event.metaKey)}
       onDoubleClick={onActivate}
