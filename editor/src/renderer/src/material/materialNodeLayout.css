@@ -1,7 +1,7 @@
 .material-graph-node,
 .ui-lab-material-node {
   --material-node-body-gap: 5px;
-  --material-node-control-inset: 4px;
+  --material-node-control-inset: 7px;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
   grid-template-rows: auto auto auto;
@@ -76,7 +76,7 @@
 .material-graph-node .material-node-outputs,
 .ui-lab-material-node .material-node-inputs,
 .ui-lab-material-node .material-node-outputs {
-  padding-top: 3px;
+  padding-top: 6px;
 }
 
 .material-graph-node .material-pin.input,
@@ -90,10 +90,23 @@
 }
 
 .material-node-parameter-toggle > input:last-child {
-  margin-left: 3px;
+  margin-left: 5px;
 }
 
 .material-node-parameter-toggle > input:last-child:disabled {
   opacity: 0.55;
   cursor: default;
+}
+
+.material-graph-node-constant > .material-node-inline-value,
+.ui-lab-material-node .material-node-inline-value:has(> input[aria-label='Constant value']) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  font-size: 0;
+}
+
+.material-graph-node-constant > .material-node-inline-value > input,
+.ui-lab-material-node .material-node-inline-value:has(> input[aria-label='Constant value']) > input {
+  width: 100%;
+  font-size: 10px;
 }
