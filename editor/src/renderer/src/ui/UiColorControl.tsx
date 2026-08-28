@@ -1,4 +1,5 @@
 import { ColorControl } from '../inspector/InspectorControls';
+import './UiColorControl.css';
 
 type UiColorValue = [number, number, number, number];
 
@@ -9,22 +10,26 @@ export function UiColorControl({
   label,
   value,
   allowAlpha = true,
+  showLabel = false,
   onPreview,
   onCommit,
 }: {
   label: string;
   value: UiColorValue;
   allowAlpha?: boolean;
+  showLabel?: boolean;
   onPreview?: (value: UiColorValue) => void;
   onCommit: (value: UiColorValue) => void;
 }) {
   return (
-    <ColorControl
-      label={label}
-      showAlpha={allowAlpha}
-      value={toInspectorColor(value)}
-      onPreview={(next) => onPreview?.(fromInspectorColor(next))}
-      onCommit={(next) => onCommit(fromInspectorColor(next))}
-    />
+    <div className={`ui-color-control ${showLabel ? '' : 'is-label-hidden'}`}>
+      <ColorControl
+        label={label}
+        showAlpha={allowAlpha}
+        value={toInspectorColor(value)}
+        onPreview={(next) => onPreview?.(fromInspectorColor(next))}
+        onCommit={(next) => onCommit(fromInspectorColor(next))}
+      />
+    </div>
   );
 }
