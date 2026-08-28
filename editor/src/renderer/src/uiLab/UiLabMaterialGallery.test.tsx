@@ -9,14 +9,18 @@ import { UiLabMaterialControls, UiLabMaterialPanels } from './UiLabMaterialGalle
 afterEach(cleanup);
 
 describe('UI Lab material galleries', () => {
-  it('shows a representative material node in the Controls gallery', () => {
+  it('shows representative material node cards in the Controls gallery', () => {
     render(<UiLabMaterialControls />);
 
     expect(screen.getByRole('heading', { name: 'Material nodes' })).toBeInTheDocument();
-    expect(screen.getByText('Color node')).toBeInTheDocument();
     expect(screen.getByText('Color (RGBA)')).toBeInTheDocument();
+    expect(screen.getByText('Texture Sample')).toBeInTheDocument();
+    expect(screen.getByText('Constant')).toBeInTheDocument();
     expect(screen.getByLabelText('Material node color picker')).toBeInTheDocument();
     expect(screen.getByLabelText('Material node parameter name')).toHaveValue('Base Color');
+    expect(screen.getByLabelText('Texture parameter name')).toHaveValue('Albedo Texture');
+    expect(screen.getByLabelText('Constant parameter name')).toHaveValue('Roughness');
+    expect(screen.getByLabelText('Constant value')).toHaveValue(0.45);
     expect(screen.queryByRole('application', { name: 'Material graph' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Material Preview')).not.toBeInTheDocument();
 
@@ -24,9 +28,14 @@ describe('UI Lab material galleries', () => {
     fireEvent.change(red, { target: { value: '0.75' } });
     expect(red).toHaveValue(0.75);
 
-    const parameter = screen.getByRole('checkbox', { name: 'Parameter' });
-    fireEvent.click(parameter);
-    expect(screen.queryByLabelText('Material node parameter name')).not.toBeInTheDocument();
+    const constant = screen.getByLabelText('Constant value');
+    fireEvent.change(constant, { target: { value: '0.7' } });
+    expect(constant).toHaveValue(0.7);
+
+    const texture = screen.getByLabelText('Texture sample asset');
+    expect(texture).toHaveTextContent('T_Bark_Albedo');
+    fireEvent.click(texture);
+    expect(texture).toHaveTextContent('T_Moss_Albedo');
   });
 
   it('includes non-dockable material editor surfaces in the Panels gallery', () => {
