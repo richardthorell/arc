@@ -30,9 +30,7 @@ export const assetHoverPosition = (point: HoverPoint, size: HoverSize, viewport:
   const left = Math.min(point.x + TOOLTIP_GAP, Math.max(TOOLTIP_MARGIN, viewport.width - size.width - TOOLTIP_MARGIN));
   const downTop = point.y + TOOLTIP_GAP;
   const fitsBelow = downTop + size.height <= viewport.height - TOOLTIP_MARGIN;
-  const top = fitsBelow
-    ? downTop
-    : Math.max(TOOLTIP_MARGIN, point.y - TOOLTIP_GAP - size.height);
+  const top = fitsBelow ? downTop : Math.max(TOOLTIP_MARGIN, point.y - TOOLTIP_GAP - size.height);
   return { left, top };
 };
 
