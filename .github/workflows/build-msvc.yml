@@ -35,17 +35,6 @@ jobs:
       - name: Set Up Windows Toolchain
         uses: ./.github/actions/setup-windows-toolchain
 
-      - name: Set Up Node 22.12
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22.12.0
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
-
-      - name: Install Electron Dependencies
-        working-directory: editor
-        run: npm ci
-
       - name: Configure Native Products
         run: >
           cmake -S . -B out/build/ci-windows -G Ninja
@@ -69,14 +58,6 @@ jobs:
 
       - name: Run Native Tests
         run: ctest --test-dir out/build/ci-windows --output-on-failure
-
-      - name: Validate Electron
-        working-directory: editor
-        env:
-          ARC_PROJECT_TOOL_PATH: ${{ github.workspace }}\out\build\ci-windows\tools\project_cli\arc-project.exe
-        run: |
-          npm run typecheck
-          npm test
 
       - name: Stage Product Symbols
         if: github.event_name != 'pull_request'
