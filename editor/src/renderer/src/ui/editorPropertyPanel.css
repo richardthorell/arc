@@ -39,11 +39,7 @@
 .editor-property-panel .editor-property-section > h3:first-child {
   color: var(--editor-property-text);
   border-bottom-color: var(--editor-property-border-soft);
-  background: linear-gradient(
-    180deg,
-    var(--editor-property-bg-header-top),
-    var(--editor-property-bg-header-bottom)
-  );
+  background: linear-gradient(180deg, var(--editor-property-bg-header-top), var(--editor-property-bg-header-bottom));
 }
 
 .editor-property-panel .editor-property-section > header strong,

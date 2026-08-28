@@ -296,7 +296,10 @@ export function UiLabMaterialDetails() {
 
 export function UiLabMaterialSidePanel() {
   return (
-    <aside className="material-editor-sidebar editor-property-panel ui-lab-material-sidebar-fixture" aria-label="Material editor side panel">
+    <aside
+      className="material-editor-sidebar editor-property-panel ui-lab-material-sidebar-fixture"
+      aria-label="Material editor side panel"
+    >
       <UiLabMaterialPreview />
       <UiLabMaterialParameters />
       <UiLabMaterialDetails />
