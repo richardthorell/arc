@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, ReactNode } from 'react';
 
 import { UiButton } from './UiButton';
+import { UiFloatingSurface } from './UiFloatingSurface';
 
 import './UiContextMenu.css';
 
@@ -12,49 +13,22 @@ export type UiContextMenuProps = Omit<HTMLAttributes<HTMLDivElement>, 'children'
   maxHeight?: CSSProperties['maxHeight'];
 };
 
-export function UiContextMenu({
-  children,
-  className,
-  maxHeight,
-  onContextMenu,
-  onPointerDown,
-  onWheel,
-  style,
-  width,
-  x,
-  y,
-  ...props
-}: UiContextMenuProps) {
+export function UiContextMenu({ children, className, maxHeight, style, width, x, y, ...props }: UiContextMenuProps) {
   return (
-    <div
+    <UiFloatingSurface
       {...props}
-      className={['menu-dropdown', 'ui-context-menu', className].filter(Boolean).join(' ')}
+      className={['ui-context-menu', className].filter(Boolean).join(' ')}
+      maxHeight={maxHeight}
       role={props.role ?? 'menu'}
       style={{
         ...(x !== undefined ? { left: x } : {}),
         ...(y !== undefined ? { top: y } : {}),
-        ...(width !== undefined ? { width } : {}),
-        ...(maxHeight !== undefined ? { maxHeight } : {}),
         ...style,
       }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onContextMenu?.(event);
-      }}
-      onPointerDown={(event) => {
-        event.stopPropagation();
-        onPointerDown?.(event);
-      }}
-      onWheel={(event) => {
-        // Menus own wheel input. Keep native scrolling enabled while preventing
-        // parent graph/canvas zoom handlers from seeing the same wheel event.
-        event.stopPropagation();
-        onWheel?.(event);
-      }}
+      width={width}
     >
       {children}
-    </div>
+    </UiFloatingSurface>
   );
 }
 

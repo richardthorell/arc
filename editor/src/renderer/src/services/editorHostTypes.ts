@@ -46,6 +46,13 @@ export type AssetItem = {
   diagnostic?: string;
   dependencies?: string[];
   reverseDependencies?: string[];
+  sourceBytes?: number;
+  width?: number;
+  height?: number;
+  depth?: number;
+  mipLevels?: number;
+  vertexCount?: number;
+  triangleCount?: number;
 };
 
 export type ConsoleEvent = {

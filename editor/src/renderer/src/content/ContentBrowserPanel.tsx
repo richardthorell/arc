@@ -4,7 +4,6 @@ import { ChevronDown, ChevronRight, Folder, Globe2, Grid2X2, List, Lock, Search,
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
 import type { CommandId } from '../app/workbenchTypes';
 import { openAssetEditorDocument } from '../editors/editorRegistry';
-import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { AssetItem, ProjectSnapshot } from '../services/editorHostTypes';
 import { UiButton, UiIconButton, UiSearchInput, UiSelect, UiTreeRow } from '../ui';
@@ -14,6 +13,7 @@ import {
   type AssetCreationRequest,
   type ShaderAssetTemplate,
 } from './assetCreation';
+import { ContentAssetCard } from './ContentAssetCard';
 import { RemoteAssetBrowser } from './RemoteAssetBrowser';
 
 import './contentBrowser.css';
@@ -55,8 +55,6 @@ const cleanPath = (path: string) =>
     .replace(/\/+/g, '/')
     .replace(/^\/|\/$/g, '');
 const parentFolder = (path: string) => cleanPath(path).split('/').slice(0, -1).join('/');
-const assetPayload = (asset: AssetItem) =>
-  JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path });
 const normalizedPath = (path: string) => cleanPath(path).toLocaleLowerCase();
 const favoriteId = (asset: AssetItem) => asset.guid ?? asset.path;
 const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;
@@ -743,47 +741,17 @@ export function ContentBrowserPanel({
               }}
             >
               {filtered.map((asset) => (
-                <div
-                  aria-selected={selection.has(asset.id)}
-                  className={`content-asset ${selection.has(asset.id) ? 'selected' : ''}`}
-                  draggable={Boolean(asset.guid)}
+                <ContentAssetCard
+                  asset={asset}
+                  favorite={favorites.has(favoriteId(asset))}
                   key={asset.id}
-                  role="option"
-                  tabIndex={0}
-                  onClick={(event) => select(asset, event.ctrlKey || event.metaKey)}
-                  onDoubleClick={() => activateAsset(asset)}
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData('application/x-arc-asset', assetPayload(asset));
-                    event.dataTransfer.effectAllowed = 'copy';
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-                    event.preventDefault();
-                    select(asset, event.ctrlKey || event.metaKey);
-                  }}
-                >
-                  <span className="content-asset-preview">
-                    <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
-                    <i className={`asset-state ${asset.status}`} />
-                  </span>
-                  <span className="content-asset-name">{asset.name}</span>
-                  <small>
-                    {asset.kind} · {asset.status}
-                    {asset.readOnly ? ' · Built-in' : ''}
-                  </small>
-                  <span className="content-asset-actions" onClick={(event) => event.stopPropagation()}>
-                    <button
-                      aria-label="Favorite"
-                      className={favorites.has(favoriteId(asset)) ? 'active' : ''}
-                      onClick={() => toggleFavorite(asset)}
-                    >
-                      <Star size={12} />
-                    </button>
-                    {asset.guid && !asset.readOnly && (
-                      <button onClick={() => onAssetAction('asset.reimport', asset.guid!)}>Reimport</button>
-                    )}
-                  </span>
-                </div>
+                  selected={selection.has(asset.id)}
+                  thumbnailProvider={thumbnailProvider}
+                  onActivate={() => activateAsset(asset)}
+                  onFavorite={() => toggleFavorite(asset)}
+                  onReimport={() => asset.guid && onAssetAction('asset.reimport', asset.guid)}
+                  onSelect={(additive) => select(asset, additive)}
+                />
               ))}
               {filtered.length === 0 && (
                 <div className="content-empty">

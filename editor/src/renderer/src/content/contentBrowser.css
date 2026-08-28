@@ -171,18 +171,23 @@
 
 /* Asset cards prioritize the preview and identity. Secondary operations stay in
    the selected-asset details pane instead of competing with every thumbnail. */
+.content-browser-v2 .content-assets.grid {
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+}
+
 .content-browser-v2 .content-assets.grid .content-asset {
-  grid-template-rows: 88px 30px;
+  position: relative;
+  grid-template-rows: 104px auto;
   place-items: stretch;
-  gap: 5px;
-  min-height: 132px;
-  padding: 7px 7px 8px;
-  overflow: hidden;
+  gap: 7px;
+  min-height: 157px;
+  padding: 8px 8px 9px;
+  overflow: visible;
 }
 
 .content-browser-v2 .content-assets.grid .content-asset-preview {
   width: 100%;
-  height: 88px;
+  height: 104px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -208,44 +213,54 @@
   object-position: center;
 }
 
-.content-browser-v2 .content-assets.grid .content-asset-name {
-  display: -webkit-box;
-  align-self: start;
-  width: 100%;
+.content-browser-v2 .content-assets.grid .content-asset-info {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px;
+  grid-template-rows: auto auto;
+  column-gap: 7px;
+  row-gap: 2px;
   min-width: 0;
-  max-height: 2.5em;
+  width: 100%;
+  text-align: left;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-name {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
   overflow: hidden;
   color: var(--arc-color-text);
   font-size: var(--arc-text-xxs);
   font-weight: 600;
   line-height: 1.25;
-  overflow-wrap: anywhere;
-  text-align: center;
-  white-space: normal;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-/* Grid cards use the colored state dot instead of repeating "type · status"
-   under every asset. Keep the text available to assistive technology. */
-.content-browser-v2 .content-assets.grid .content-asset > small {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
+  text-align: left;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  border: 0;
 }
 
-.content-browser-v2 .content-assets.grid .asset-state {
-  z-index: 3;
-  right: 4px;
-  bottom: 4px;
+.content-browser-v2 .content-assets.grid .content-asset-info > small {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--arc-color-text-muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-browser-v2 .content-assets.grid .content-asset-info .asset-state {
+  position: static;
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
   width: 8px;
   height: 8px;
+  margin: 0;
   border: 1px solid rgba(8, 13, 18, 0.78);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
@@ -253,9 +268,9 @@
 /* Favorites are a lightweight overlay, not another button tile. */
 .content-browser-v2 .content-assets.grid .content-asset-actions {
   z-index: 4;
-  top: 7px;
+  top: 8px;
   right: auto;
-  left: 7px;
+  left: 8px;
   display: flex;
 }
 
@@ -294,4 +309,91 @@
 /* Reimport remains available from the selected-asset details pane. */
 .content-browser-v2 .content-asset-actions > button:not(:first-child) {
   display: none;
+}
+
+.content-asset-hover-anchor {
+  position: absolute;
+  z-index: 90;
+  inset: 0;
+  pointer-events: none;
+}
+
+.content-asset-hover.ui-floating-surface {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 8px);
+  left: 0;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateY(-3px);
+  transition:
+    opacity 110ms ease,
+    transform 110ms ease;
+}
+
+.content-asset:hover .content-asset-hover,
+.content-asset:focus-visible .content-asset-hover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.content-asset-hover header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 11px 9px;
+  border-bottom: 1px solid var(--arc-color-border, var(--border, #34383f));
+}
+
+.content-asset-hover header strong {
+  overflow: hidden;
+  color: var(--arc-color-text-strong, var(--text-primary, #eef0f3));
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-asset-hover header span {
+  color: var(--arc-color-text-muted, var(--text-muted, #8d939d));
+  font-size: 10px;
+}
+
+.content-asset-hover-section {
+  display: grid;
+  gap: 5px;
+  padding: 9px 11px;
+}
+
+.content-asset-hover-section + .content-asset-hover-section {
+  border-top: 1px solid var(--arc-color-border, var(--border, #34383f));
+}
+
+.content-asset-hover-section.secondary {
+  background: rgb(255 255 255 / 2%);
+}
+
+.content-asset-hover-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.content-asset-hover-row > span {
+  color: var(--arc-color-text-muted, var(--text-muted, #8d939d));
+}
+
+.content-asset-hover-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--arc-color-text, var(--text-secondary, #c7cbd1));
+  font-weight: 400;
 }
