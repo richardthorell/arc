@@ -33,11 +33,11 @@
   width: calc(100% - 16px);
   min-width: 0;
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
+  grid-template-columns: 65px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   margin: 4px 8px 8px;
-  padding: 6px;
+  padding: 7px;
   color: var(--arc-color-text-muted);
   border: 1px solid #314650;
   border-radius: 3px;
@@ -75,8 +75,8 @@
 }
 
 .ui-lab-texture-checker {
-  width: 54px;
-  height: 54px;
+  width: 65px;
+  height: 65px;
   border-radius: 3px;
   background:
     linear-gradient(45deg, rgba(94, 125, 89, 0.9) 25%, transparent 25% 75%, rgba(94, 125, 89, 0.9) 75%),
