@@ -204,6 +204,35 @@ editor_material_record* find_record(editor_material_library& library, const std:
 
 } // namespace
 
+void resolve_material_runtime_textures(editor_material_library& library, render::renderer& renderer,
+                                       const std::filesystem::path& asset_root,
+                                       const std::filesystem::path& material_path,
+                                       const std::vector<std::string>& texture_sources,
+                                       render::material_descriptor& material)
+{
+    material.runtime_textures.clear();
+    material.runtime_textures.resize(texture_sources.size());
+    for (std::size_t slot = 0; slot < texture_sources.size(); ++slot)
+    {
+        if (texture_sources[slot].empty()) continue;
+        std::filesystem::path source(texture_sources[slot]);
+        if (!source.is_absolute())
+        {
+            const auto beside_material = (material_path.parent_path() / source).lexically_normal();
+            std::error_code ec;
+            if (std::filesystem::exists(beside_material, ec) && !ec)
+                source = beside_material;
+            else if (!asset_root.empty() && source.begin() != source.end() &&
+                     source.begin()->string() == asset_root.filename().string())
+                source = (asset_root.parent_path() / source).lexically_normal();
+            else
+                source = (asset_root / source).lexically_normal();
+        }
+        material.runtime_textures[slot] =
+            ensure_texture(library, renderer, source, render::texture_semantic::generic_color);
+    }
+}
+
 bool is_material_asset_path(const std::filesystem::path& path)
 {
     auto ext = path.extension().string();
@@ -333,6 +362,8 @@ render::material_handle load_material_for_editor(editor_material_library& librar
     else
     {
         asset.material = std::move(realized.material);
+        resolve_material_runtime_textures(library, renderer, asset_root, path, realized.texture_sources,
+                                          asset.material);
         for (const auto& diagnostic : realized.diagnostics)
             arc::diagnostics::info("editor.materials",
                                    "Material realization note for '" + path.string() + "': " + diagnostic);

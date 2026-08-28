@@ -2,6 +2,8 @@
 
 #include <arc/render_tools/render_tools.h>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -427,6 +429,8 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
     auto program = std::make_shared<render::material_runtime_program>();
     program->uses_time = compilation.descriptor.requirements.uses_time;
     program->uses_texture_sampling = compilation.descriptor.requirements.uses_texture_sampling;
+    for (const auto& texture : compilation.descriptor.textures)
+        program->texture_bindings.push_back({.slot = texture.slot, .parameter_id = texture.parameter_id});
 
     for (const auto& authored_parameter : evaluator.value().parameters)
     {
@@ -498,6 +502,22 @@ material_preview_descriptor_result realize_material_preview_descriptor(std::stri
     {
         result.message = compiled.error().message;
         return result;
+    }
+
+    result.texture_sources.resize(compiled.value().descriptor.textures.size());
+    const auto graph_document = nlohmann::json::parse(authored.value().graph_json, nullptr, false);
+    if (!graph_document.is_discarded() && graph_document.contains("nodes") && graph_document["nodes"].is_array())
+    {
+        for (const auto& texture : compiled.value().descriptor.textures)
+        {
+            if (texture.slot >= result.texture_sources.size()) continue;
+            const auto node =
+                std::ranges::find_if(graph_document["nodes"], [&](const auto& candidate)
+                                     { return candidate.is_object() && candidate.value("id", "") == texture.node_id; });
+            if (node == graph_document["nodes"].end()) continue;
+            const auto values = node->value("values", nlohmann::json::object());
+            result.texture_sources[texture.slot] = values.value("texture", "");
+        }
     }
 
     static_material_evaluator evaluator(compiled.value());

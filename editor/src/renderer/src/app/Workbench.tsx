@@ -510,7 +510,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         timestamp: event.timestamp || timestamp(),
       };
       setHostConsoleEvents((current) => [...current, entry].slice(-1000));
-      setLastCommand(event.message);
     });
   }, []);
 

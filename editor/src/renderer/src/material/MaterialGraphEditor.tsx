@@ -19,6 +19,7 @@ import {
   type MaterialNodeSubcategory,
 } from './materialGraphTypes';
 import { redoMaterialGraph, replaceMaterialGraph, undoMaterialGraph } from './materialDocumentState';
+import { MaterialTextureSampleEditor } from './MaterialTextureSampleEditor';
 
 const nodeWidth = 214;
 const headerHeight = 34;
@@ -167,17 +168,7 @@ function MaterialNodeValueEditor({
   }
 
   if (node.type === 'textureSample')
-    return (
-      <label className="material-node-texture-value">
-        Texture
-        <input
-          disabled={readOnly}
-          placeholder="Content/Textures/..."
-          value={typeof node.values.texture === 'string' ? node.values.texture : ''}
-          onChange={(event) => onChange({ ...node, values: { ...node.values, texture: event.target.value } })}
-        />
-      </label>
-    );
+    return <MaterialTextureSampleEditor node={node} readOnly={readOnly} onChange={onChange} />;
 
   if (node.type === 'normalMap')
     return (
@@ -286,9 +277,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
       }
     };
     const up = () => {
-      if (drag) {
-        replaceMaterialGraph(document, graph, { recordHistory: true });
-      }
+      if (drag) replaceMaterialGraph(document, graph, { recordHistory: true });
       if (box) {
         const left = Math.min(box.start[0], box.current[0]);
         const right = Math.max(box.start[0], box.current[0]);

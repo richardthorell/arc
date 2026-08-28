@@ -217,11 +217,20 @@ asset_reference dependency_from_path(const asset_import_context& context, std::s
         return {.expected_type = expected_type, .path_hint = normalize_asset_path(path_hint)};
     }
 
+    const auto configured_asset_root =
+        context.asset_root.empty() ? context.project_root / "assets" : context.asset_root;
+    const auto relative_asset_root =
+        normalize_asset_path(configured_asset_root.lexically_normal().lexically_relative(context.project_root));
+    const auto normalized_key = path_key(normalized_text);
+    const auto asset_root_key = path_key(relative_asset_root);
+    const bool already_rooted = !asset_root_key.empty() &&
+                                (normalized_key == asset_root_key || normalized_key.starts_with(asset_root_key + "/"));
+
     std::filesystem::path resolved;
-    if (normalized_text == "assets" || normalized_text.starts_with("assets/"))
+    if (already_rooted)
         resolved = context.project_root / authored;
     else if (context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_instance)
-        resolved = context.project_root / "assets" / authored;
+        resolved = configured_asset_root / authored;
     else
         resolved = context.source_path.parent_path() / authored;
     const auto relative = resolved.lexically_normal().lexically_relative(context.project_root);
@@ -1062,6 +1071,7 @@ struct asset_manager::implementation
                 asset_import_result imported = importer->import({.reference = {guid, metadata.type, source_path_hint},
                                                                  .metadata = metadata,
                                                                  .project_root = config.project_root,
+                                                                 .asset_root = config.asset_root,
                                                                  .source_path = source_path,
                                                                  .derived_data_root = config.cache_root / "derived",
                                                                  .source_bytes = bytes,

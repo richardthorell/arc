@@ -14,11 +14,11 @@ namespace
 class temporary_project
 {
 public:
-    temporary_project()
+    explicit temporary_project(std::string_view asset_directory = "assets")
     {
         root = std::filesystem::temp_directory_path() /
                ("arc-assets-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
-        assets = root / "assets";
+        assets = root / asset_directory;
         std::filesystem::create_directories(assets);
     }
     ~temporary_project()
@@ -301,6 +301,29 @@ TEST_CASE("authored dependencies are extracted imported and reverse indexed")
     REQUIRE(fixture.manager.dependencies(material->guid) == std::vector<asset_guid>{texture->guid});
     REQUIRE(fixture.manager.reverse_dependencies(texture->guid) == std::vector<asset_guid>{material->guid});
     REQUIRE(fixture.manager.find(texture->guid)->state == asset_state::ready);
+}
+
+TEST_CASE("material dependencies honor the configured project asset root")
+{
+    using namespace arc::assets;
+    temporary_project project("Content");
+    project.write("Textures/albedo.png", "texture-bytes");
+    project.write(
+        "Materials/linked.arcmat",
+        R"({"version":4,"graph":{"version":1,"nodes":[{"id":"sample","type":"textureSample","values":{"texture":"Content/Textures/albedo.png"}}],"connections":[]}})");
+
+    asset_fixture fixture(project);
+    const auto material = fixture.manager.find("Content/Materials/linked.arcmat");
+    const auto texture = fixture.manager.find("Content/Textures/albedo.png");
+    REQUIRE(material);
+    REQUIRE(texture);
+    const auto loaded = fixture.manager
+                            .load<source_asset_data>({.reference = {material->guid, asset_types::material,
+                                                                    "Content/Materials/linked.arcmat"}})
+                            .get();
+    REQUIRE(loaded.succeeded());
+    REQUIRE(fixture.manager.dependencies(material->guid) == std::vector<asset_guid>{texture->guid});
+    REQUIRE(fixture.manager.reverse_dependencies(texture->guid) == std::vector<asset_guid>{material->guid});
 }
 
 TEST_CASE("asset handles pins cancellation and pressure eviction preserve residency contracts")

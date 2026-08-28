@@ -394,6 +394,7 @@ struct asset_import_context
     asset_reference reference;
     asset_source_metadata metadata;
     std::filesystem::path project_root;
+    std::filesystem::path asset_root;
     std::filesystem::path source_path;
     std::filesystem::path derived_data_root;
     std::span<const std::byte> source_bytes;

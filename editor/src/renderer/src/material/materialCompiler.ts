@@ -78,14 +78,16 @@ export type MaterialEditorParameter = {
  */
 export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorParameter[] =>
   graph.nodes.flatMap((node) => {
-    if (!node.parameter?.exposed || node.type === 'output' || node.type === 'textureSample') return [];
+    if (!node.parameter?.exposed || node.type === 'output') return [];
     const type: MaterialGraphValueType =
-      node.type === 'vector2'
-        ? 'vec2'
-        : node.type === 'vector3' || node.type === 'colorRgb'
-          ? 'vec3'
-          : node.type === 'vector4' || node.type === 'colorRgba'
-            ? 'vec4'
-            : 'float';
+      node.type === 'textureSample'
+        ? 'texture2d'
+        : node.type === 'vector2'
+          ? 'vec2'
+          : node.type === 'vector3' || node.type === 'colorRgb'
+            ? 'vec3'
+            : node.type === 'vector4' || node.type === 'colorRgba'
+              ? 'vec4'
+              : 'float';
     return [{ nodeId: node.id, name: node.parameter.name.trim() || 'Parameter', type }];
   });

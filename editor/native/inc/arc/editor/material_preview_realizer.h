@@ -21,6 +21,7 @@ namespace arc::editor
 struct material_preview_descriptor_result
 {
     render::material_descriptor material;
+    std::vector<std::string> texture_sources;
     std::vector<std::string> diagnostics;
     std::string message;
     bool succeeded{};
