@@ -65,7 +65,11 @@ const colorChannel = (value: unknown) => (typeof value === 'number' && Number.is
 const colorHex = (value: unknown) => {
   const components = Array.isArray(value) ? value : [];
   return `#${[0, 1, 2]
-    .map((index) => Math.round(Math.min(1, Math.max(0, colorChannel(components[index]))) * 255).toString(16).padStart(2, '0'))
+    .map((index) =>
+      Math.round(Math.min(1, Math.max(0, colorChannel(components[index]))) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
     .join('')}`;
 };
 const colorFromHex = (hex: string) =>

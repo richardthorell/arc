@@ -24,6 +24,7 @@ except ImportError:
 
 DEFAULT_BUILD_DIR = "out/build/editor-vulkan"
 DEFAULT_NO_VULKAN_BUILD_DIR = "out/build/editor-no-vulkan"
+DEFAULT_QUICK_START_PROJECT = os.path.join("out", "editor-quick-start-project")
 SLANG_VERSION = "2026.14.1"
 SLANG_RELEASE_BASE_URL = "https://github.com/shader-slang/slang/releases/download/v{}".format(SLANG_VERSION)
 
@@ -303,6 +304,17 @@ def parse_args():
         help="Open a persistent Blank 3D development project and bypass the project browser.",
     )
     parser.add_argument(
+        "--clear-asset-db",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="PROJECT",
+        help=(
+            "Delete the rebuildable .arc/cache/assets.db registry before launch. "
+            "Defaults to the quick-start project; optionally pass a project root or .arcproject path."
+        ),
+    )
+    parser.add_argument(
         "--ui-lab",
         action="store_true",
         help="Launch the standalone editor UI control lab without building or starting the native engine host.",
@@ -311,6 +323,31 @@ def parse_args():
     if args.ui_lab and args.quick_start:
         parser.error("--ui-lab and --quick-start cannot be used together")
     return args
+
+
+def clear_asset_database(repo_root, project_argument):
+    project_path = project_argument or os.environ.get("ARC_EDITOR_QUICK_START_PROJECT") or DEFAULT_QUICK_START_PROJECT
+    project_path = os.path.abspath(os.path.join(repo_root, os.path.expanduser(project_path)))
+    if project_path.lower().endswith(".arcproject"):
+        project_path = os.path.dirname(project_path)
+
+    cache_dir = os.path.join(project_path, ".arc", "cache")
+    removed = []
+    if os.path.isdir(cache_dir):
+        for name in os.listdir(cache_dir):
+            if not name.startswith("assets.db"):
+                continue
+            candidate = os.path.join(cache_dir, name)
+            if os.path.isfile(candidate):
+                os.remove(candidate)
+                removed.append(candidate)
+
+    if removed:
+        print("Cleared ARC asset database for {}".format(project_path))
+        for candidate in removed:
+            print("  removed {}".format(candidate))
+    else:
+        print("No ARC asset database found for {}".format(project_path))
 
 
 def run(command, cwd, env=None):
@@ -429,6 +466,13 @@ def dependencies_ready(editor_dir):
 def main():
     args = parse_args()
     repo_root = os.path.dirname(os.path.abspath(__file__))
+    if args.clear_asset_db is not None:
+        try:
+            clear_asset_database(repo_root, args.clear_asset_db)
+        except OSError as error:
+            print("error: could not clear ARC asset database: {}".format(error), file=sys.stderr)
+            return 1
+
     editor_dir = os.path.abspath(os.path.join(repo_root, args.editor_dir))
     if not os.path.isdir(editor_dir):
         print("error: editor directory was not found: {}".format(editor_dir), file=sys.stderr)
@@ -463,9 +507,7 @@ def main():
             editor_env["ARC_PROJECT_TOOL_PATH"] = project_tool
             editor_env["ARC_PROJECT_TEMPLATES_PATH"] = os.path.join(repo_root, "templates")
         if args.quick_start:
-            editor_env["ARC_EDITOR_QUICK_START_PROJECT"] = os.path.join(
-                repo_root, "out", "editor-quick-start-project"
-            )
+            editor_env["ARC_EDITOR_QUICK_START_PROJECT"] = os.path.join(repo_root, DEFAULT_QUICK_START_PROJECT)
         if args.build_only:
             run([npm, "run", "typecheck"], editor_dir, editor_env)
             print("ARC Editor is ready: {}".format(editor_dir))
