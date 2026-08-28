@@ -204,7 +204,8 @@ const waitForImportedTexture = async (relativePath: string): Promise<ImportedHos
   const deadline = Date.now() + 15_000;
   const normalized = normalizedAssetPath(relativePath);
   while (Date.now() < deadline) {
-    const response = (await ipcRenderer.invoke('host:query', 'project.assets', {})) as ProjectAssetsResponse | undefined;
+    const response = (await ipcRenderer.invoke('host:query', 'project.assets', {})) as
+      ProjectAssetsResponse | undefined;
     if (response?.succeeded && response.payload?.assets) {
       const asset = response.payload.assets.find((candidate) => normalizedAssetPath(candidate.path) === normalized);
       if (asset?.state === 'ready') return asset;
