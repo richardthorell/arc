@@ -18,7 +18,7 @@ describe('UI Lab material galleries', () => {
     expect(screen.queryByText('Color (RGBA)')).not.toBeInTheDocument();
     expect(screen.getByText('Texture Sample')).toBeInTheDocument();
     expect(screen.getByText('Constant')).toBeInTheDocument();
-    expect(screen.getByLabelText('Color color picker')).toBeInTheDocument();
+    expect(screen.getByLabelText('Open Color color picker')).toBeInTheDocument();
     expect(screen.getByLabelText('Material node parameter name')).toHaveValue('Base Color');
     expect(screen.getByLabelText('Texture parameter name')).toHaveValue('Albedo Texture');
     expect(screen.getByLabelText('Constant parameter name')).toHaveValue('Roughness');
@@ -28,7 +28,8 @@ describe('UI Lab material galleries', () => {
 
     const red = screen.getByLabelText('Color R');
     fireEvent.change(red, { target: { value: '0.75' } });
-    expect(red).toHaveValue(0.75);
+    fireEvent.blur(red);
+    expect(red).toHaveValue('0.75');
 
     const constant = screen.getByLabelText('Constant value');
     fireEvent.change(constant, { target: { value: '0.7' } });
