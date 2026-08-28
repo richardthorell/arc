@@ -1,0 +1,80 @@
+.ui-lab-dialogs {
+  min-height: 0;
+  overflow: auto;
+  padding: 22px;
+  background: var(--arc-color-surface-0);
+}
+
+.ui-lab-dialogs-heading {
+  margin-bottom: 18px;
+}
+
+.ui-lab-dialogs-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ui-lab-dialogs-heading strong {
+  color: var(--arc-text-primary);
+  font-size: 17px;
+}
+
+.ui-lab-dialogs-heading span {
+  color: var(--arc-text-muted);
+  font-size: 11px;
+}
+
+.ui-lab-dialog-preview {
+  margin-bottom: 22px;
+  overflow: hidden;
+  border: 1px solid var(--arc-border-subtle);
+  border-radius: var(--arc-radius-3);
+  background: var(--arc-color-surface-1);
+}
+
+.ui-lab-dialog-preview > header {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--arc-border-subtle);
+  color: var(--arc-text-primary);
+  background: var(--arc-color-surface-2);
+  font-size: 11px;
+}
+
+.ui-lab-dialog-preview > div {
+  padding: 24px;
+}
+
+.ui-lab-dialog-preview .settings-dialog-backdrop {
+  position: relative;
+  z-index: auto;
+  inset: auto;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.ui-lab-dialog-preview .settings-dialog {
+  width: 100%;
+  height: 640px;
+  min-width: 0;
+  min-height: 0;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+}
+
+.close-dialog-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.close-dialog-copy strong {
+  color: var(--arc-text-primary);
+  font-size: 13px;
+}
+
+.close-dialog-copy p {
+  margin: 0;
+  color: var(--arc-text-muted);
+  font-size: 11px;
+}

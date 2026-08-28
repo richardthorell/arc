@@ -81,12 +81,18 @@ describe('UiLabPanels', () => {
 });
 
 describe('UiLabWindow pages', () => {
-  it('switches between control and panel pages from the top-level tabs', () => {
+  it('switches between controls, panels, and dialog pages from the top-level tabs', () => {
     render(<UiLabWindow />);
 
     expect(screen.getByText('ARC UI Lab')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Panels' }));
     expect(screen.getByText('Panel Lab')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dialogs' }));
+    expect(screen.getByText('Dialog Lab')).toBeInTheDocument();
+    expect(screen.getByText('Base dialog')).toBeInTheDocument();
+    expect(screen.getByText('Close dialog')).toBeInTheDocument();
+    expect(screen.getByText('Settings dialog')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Don't Save" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Controls' }));
     expect(screen.getByText('ARC UI Lab')).toBeInTheDocument();
   });
