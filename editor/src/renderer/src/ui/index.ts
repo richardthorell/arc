@@ -1,5 +1,6 @@
 export { UiButton } from './UiButton';
 export { UiContextMenu, UiContextMenuItem } from './UiContextMenu';
+export { UiDialog } from './UiDialog';
 export { UiIconButton } from './UiIconButton';
 export { UiNodeCard } from './UiNodeCard';
 export { UiPanel, UiPanelHeader } from './UiPanel';

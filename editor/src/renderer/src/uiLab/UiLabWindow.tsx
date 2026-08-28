@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { WindowControls } from '../layout/WindowControls';
 import { UiTab, UiTabs } from '../ui';
 import { UiLab } from './UiLab';
+import { UiLabDialogs } from './UiLabDialogs';
 import { UiLabMaterialControls, UiLabMaterialPanels } from './UiLabMaterialGallery';
 import { UiLabPanels } from './UiLabPanels';
 import { UiLabThemePicker } from './UiLabThemePicker';
 
 import './uiLabWindow.css';
 
-type UiLabPage = 'controls' | 'panels';
+type UiLabPage = 'controls' | 'panels' | 'dialogs';
 
 export function UiLabWindow() {
   const [page, setPage] = useState<UiLabPage>('controls');
@@ -33,21 +34,26 @@ export function UiLabWindow() {
         <UiTab active={page === 'panels'} onClick={() => setPage('panels')}>
           Panels
         </UiTab>
+        <UiTab active={page === 'dialogs'} onClick={() => setPage('dialogs')}>
+          Dialogs
+        </UiTab>
       </UiTabs>
       <div className="ui-lab-page-scroll">
-        {page === 'controls' ? (
+        {page === 'controls' && (
           <>
             <UiLab />
             <div className="ui-lab-content ui-lab-material-extension">
               <UiLabMaterialControls />
             </div>
           </>
-        ) : (
+        )}
+        {page === 'panels' && (
           <>
             <UiLabPanels />
             <UiLabMaterialPanels />
           </>
         )}
+        {page === 'dialogs' && <UiLabDialogs />}
       </div>
     </div>
   );
