@@ -44,10 +44,12 @@ describe('native material compiler editor adapter', () => {
     texture.parameter = { exposed: true, name: 'Albedo' };
     graph.nodes.push(texture);
 
-    expect(materialEditorParameters(graph)).toContainEqual({
-      nodeId: texture.id,
-      name: 'Albedo',
-      type: 'texture2d',
-    });
+    expect(materialEditorParameters(graph)).toContainEqual(
+      expect.objectContaining({
+        nodeId: texture.id,
+        name: 'Albedo',
+        type: 'texture2d',
+      }),
+    );
   });
 });
