@@ -177,17 +177,17 @@
 
 .content-browser-v2 .content-assets.grid .content-asset {
   position: relative;
-  grid-template-rows: 104px auto;
+  grid-template-rows: 120px auto;
   place-items: stretch;
   gap: 7px;
-  min-height: 157px;
+  min-height: 173px;
   padding: 8px 8px 9px;
   overflow: visible;
 }
 
 .content-browser-v2 .content-assets.grid .content-asset-preview {
   width: 100%;
-  height: 104px;
+  height: 120px;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -311,34 +311,32 @@
   display: none;
 }
 
-.content-asset-hover-anchor {
-  position: absolute;
-  z-index: 90;
-  inset: 0;
+.content-asset-hover-portal {
+  position: fixed;
+  z-index: 1200;
   pointer-events: none;
 }
 
 .content-asset-hover.ui-floating-surface {
-  position: absolute;
-  z-index: 90;
-  top: calc(100% + 8px);
-  left: 0;
+  position: static;
   display: block;
   padding: 0;
   overflow: hidden;
-  opacity: 0;
   pointer-events: none;
   text-align: left;
-  transform: translateY(-3px);
-  transition:
-    opacity 110ms ease,
-    transform 110ms ease;
+  animation: content-asset-hover-in 110ms ease-out;
 }
 
-.content-asset:hover .content-asset-hover,
-.content-asset:focus-visible .content-asset-hover {
-  opacity: 1;
-  transform: translateY(0);
+@keyframes content-asset-hover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .content-asset-hover header {
