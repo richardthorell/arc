@@ -43,7 +43,7 @@ describe('UI Lab material galleries', () => {
 
     expect(screen.getByText('Editor Surfaces')).toBeInTheDocument();
     expect(screen.getByText('Material Graph')).toBeInTheDocument();
-    expect(screen.getByText('Material Preview')).toBeInTheDocument();
+    expect(screen.getAllByText('Material Preview')).toHaveLength(2);
     expect(screen.getByText('Material Parameters')).toBeInTheDocument();
     expect(screen.getByText('3 material surfaces')).toBeInTheDocument();
   });
