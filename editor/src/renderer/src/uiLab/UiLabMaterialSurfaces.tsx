@@ -68,6 +68,28 @@ const toHex = (value: readonly number[]) =>
     )
     .join('')}`;
 
+function ParameterControl({
+  enabled,
+  name,
+  onEnabledChange,
+  onNameChange,
+  nameLabel,
+}: {
+  enabled: boolean;
+  name: string;
+  onEnabledChange: (enabled: boolean) => void;
+  onNameChange: (name: string) => void;
+  nameLabel: string;
+}) {
+  return (
+    <label className="material-node-parameter-toggle">
+      <input checked={enabled} type="checkbox" onChange={(event) => onEnabledChange(event.target.checked)} />
+      Parameter
+      {enabled && <input aria-label={nameLabel} value={name} onChange={(event) => onNameChange(event.target.value)} />}
+    </label>
+  );
+}
+
 export function UiLabMaterialNodeCard() {
   const [color, setColor] = useState([0.42, 0.24, 0.12, 1]);
   const [parameter, setParameter] = useState(true);
@@ -124,17 +146,96 @@ export function UiLabMaterialNodeCard() {
           ))}
         </div>
       </div>
-      <label className="material-node-parameter-toggle">
-        <input checked={parameter} type="checkbox" onChange={(event) => setParameter(event.target.checked)} />
-        Parameter
-        {parameter && (
-          <input
-            aria-label="Material node parameter name"
-            value={parameterName}
-            onChange={(event) => setParameterName(event.target.value)}
-          />
-        )}
+      <ParameterControl
+        enabled={parameter}
+        name={parameterName}
+        nameLabel="Material node parameter name"
+        onEnabledChange={setParameter}
+        onNameChange={setParameterName}
+      />
+    </UiNodeCard>
+  );
+}
+
+export function UiLabTextureSampleNodeCard() {
+  const [parameter, setParameter] = useState(true);
+  const [parameterName, setParameterName] = useState('Albedo Texture');
+  const [textureName, setTextureName] = useState('T_Bark_Albedo');
+
+  return (
+    <UiNodeCard badge="tex2d" className="ui-lab-material-node" heading="Texture Sample">
+      <div className="material-node-pins">
+        <div className="material-node-inputs">
+          <button className="material-pin input" disabled type="button">
+            <i />
+            <span>UV</span>
+          </button>
+        </div>
+        <div className="material-node-outputs">
+          {['RGB', 'R', 'G', 'B', 'A', 'RGBA'].map((pin) => (
+            <button className="material-pin output" disabled key={pin} type="button">
+              <span>{pin}</span>
+              <i />
+            </button>
+          ))}
+        </div>
+      </div>
+      <button
+        aria-label="Texture sample asset"
+        className="ui-lab-texture-sample-preview"
+        type="button"
+        onClick={() => setTextureName((current) => (current === 'T_Bark_Albedo' ? 'T_Moss_Albedo' : 'T_Bark_Albedo'))}
+      >
+        <span className="ui-lab-texture-checker" aria-hidden="true" />
+        <span>
+          <strong>{textureName}</strong>
+          <small>Click to switch fixture texture</small>
+        </span>
+      </button>
+      <ParameterControl
+        enabled={parameter}
+        name={parameterName}
+        nameLabel="Texture parameter name"
+        onEnabledChange={setParameter}
+        onNameChange={setParameterName}
+      />
+    </UiNodeCard>
+  );
+}
+
+export function UiLabConstantNodeCard() {
+  const [value, setValue] = useState(0.45);
+  const [parameter, setParameter] = useState(true);
+  const [parameterName, setParameterName] = useState('Roughness');
+
+  return (
+    <UiNodeCard badge="float" className="ui-lab-material-node" heading="Constant">
+      <div className="material-node-pins">
+        <div className="material-node-inputs" />
+        <div className="material-node-outputs">
+          <button className="material-pin output" disabled type="button">
+            <span>Value</span>
+            <i />
+          </button>
+        </div>
+      </div>
+      <label className="material-node-inline-value">
+        Value
+        <input
+          aria-label="Constant value"
+          step="0.01"
+          type="number"
+          value={value}
+          onChange={(event) => setValue(Number(event.target.value))}
+        />
       </label>
+      <ParameterControl
+        enabled={parameter}
+        name={parameterName}
+        nameLabel="Constant parameter name"
+        onEnabledChange={setParameter}
+        onNameChange={setParameterName}
+      />
     </UiNodeCard>
   );
 }
