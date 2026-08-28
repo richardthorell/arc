@@ -100,7 +100,7 @@ export function ShaderSourceEditor({
             onSave={() => void saveShaderDocument(document)}
           />
         </div>
-        <aside className="shader-side-panel">
+        <aside className="shader-side-panel editor-property-panel">
           <AssetPreviewPanel
             title="Shader Preview"
             subtitle="Native renderer"
@@ -121,7 +121,7 @@ export function ShaderSourceEditor({
               }
             />
           </AssetPreviewPanel>
-          <section className="shader-include-tree">
+          <section className="shader-include-tree editor-property-section">
             <h3>Include closure</h3>
             <button type="button">{document.path}</button>
             {includes.map((include) => (

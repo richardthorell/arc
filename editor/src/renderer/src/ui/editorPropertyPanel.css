@@ -1,0 +1,61 @@
+:root {
+  --editor-property-bg: #171f26;
+  --editor-property-bg-deep: #10171c;
+  --editor-property-bg-header-top: #29323a;
+  --editor-property-bg-header-bottom: #222a31;
+  --editor-property-border: #2c363e;
+  --editor-property-border-soft: #242d34;
+  --editor-property-text: #cbd2d8;
+  --editor-property-text-muted: #a2abb3;
+  --editor-property-text-dim: #707a83;
+}
+
+/* Shared high-level surface for inspector-like property panels. Keep the
+   editor-specific content/layout local, but centralize the chrome so Inspector,
+   Material and Shader sidebars read as the same family of panel. */
+.data-inspector,
+.editor-property-panel {
+  color: var(--editor-property-text);
+  background: var(--editor-property-bg);
+  font-size: var(--arc-text-sm);
+  line-height: var(--arc-line-default);
+}
+
+.editor-property-panel {
+  min-width: 0;
+  min-height: 0;
+  border-color: var(--editor-property-border-soft);
+}
+
+.editor-property-panel .editor-property-section {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--editor-property-border-soft);
+  background: var(--editor-property-bg);
+}
+
+.editor-property-panel .editor-property-section > header,
+.editor-property-panel .editor-property-section > h3:first-child {
+  color: var(--editor-property-text);
+  border-bottom-color: var(--editor-property-border-soft);
+  background: linear-gradient(180deg, var(--editor-property-bg-header-top), var(--editor-property-bg-header-bottom));
+}
+
+.editor-property-panel .editor-property-section > header strong,
+.editor-property-panel .editor-property-section > h3:first-child {
+  color: var(--editor-property-text);
+  font-weight: 600;
+}
+
+.editor-property-panel .editor-property-section > header span,
+.editor-property-panel .editor-property-section small,
+.editor-property-panel .editor-property-section p {
+  color: var(--editor-property-text-dim);
+}
+
+.editor-property-panel .editor-property-section input,
+.editor-property-panel .editor-property-section select,
+.editor-property-panel .editor-property-section button {
+  border-color: var(--editor-property-border);
+}

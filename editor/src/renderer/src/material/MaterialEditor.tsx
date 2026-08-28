@@ -73,7 +73,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
         <MaterialGraphEditor document={document} graph={state.graph} />
       )}
 
-      <aside className="material-editor-sidebar">
+      <aside className="material-editor-sidebar editor-property-panel">
         <AssetPreviewPanel
           title="Material Preview"
           subtitle="Native renderer"
@@ -90,7 +90,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           />
         </AssetPreviewPanel>
 
-        <section className="material-parameters-panel">
+        <section className="material-parameters-panel editor-property-section">
           <header>
             <div>
               <strong>Parameters</strong>
@@ -142,7 +142,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
           </div>
         </section>
 
-        <section className="material-details-panel">
+        <section className="material-details-panel editor-property-section">
           <header>
             <strong>Material</strong>
             <span>{state.asset.name ?? document.title}</span>
