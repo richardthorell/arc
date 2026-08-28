@@ -555,10 +555,7 @@ const saveSceneWithDialog = async (target: BrowserWindow, activeScenePath = ''):
   return hostClient?.command('scene.saveAs', { path: result.filePath }) ?? null;
 };
 
-const requestWindowCloseChoice = (
-  target: BrowserWindow,
-  sceneName: string,
-): Promise<'save' | 'discard' | 'cancel'> =>
+const requestWindowCloseChoice = (target: BrowserWindow, sceneName: string): Promise<'save' | 'discard' | 'cancel'> =>
   new Promise((resolve) => {
     closeChoiceResolve = resolve;
     target.webContents.send('nativeWindow:closeRequested', { sceneName: sceneName || 'Untitled' });
