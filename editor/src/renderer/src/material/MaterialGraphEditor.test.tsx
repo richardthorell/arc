@@ -68,7 +68,7 @@ describe('MaterialGraphEditor menus', () => {
     expect(within(menu).getByRole('menuitem', { name: /One Minus/ })).toBeInTheDocument();
   });
 
-  it('offers separate RGB and RGBA color nodes under Values', () => {
+  it('offers the unified Color node under Values', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
@@ -76,8 +76,9 @@ describe('MaterialGraphEditor menus', () => {
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Values/ }));
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Colors/ }));
 
-    expect(within(menu).getByRole('menuitem', { name: 'Color (RGB)' })).toBeInTheDocument();
-    expect(within(menu).getByRole('menuitem', { name: 'Color (RGBA)' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Color' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Color (RGB)' })).not.toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Color (RGBA)' })).not.toBeInTheDocument();
   });
 
   it('searches across material node subcategories', () => {
@@ -110,7 +111,10 @@ describe('MaterialGraphEditor menus', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
     expect(screen.getByText('Material Output').closest('article')).toHaveClass('ui-node-card', 'ui-node-card-accent');
-    expect(screen.getByText('Color (RGB)').closest('article')).toHaveClass('ui-node-card');
-    expect(screen.getByLabelText('colorRgb color picker')).toHaveAttribute('type', 'color');
+    expect(screen.getByText('Color', { selector: '.ui-node-card-title' }).closest('article')).toHaveClass(
+      'ui-node-card',
+      'material-graph-node-colorRgba',
+    );
+    expect(screen.getByRole('button', { name: 'Open Color color picker' })).toBeEnabled();
   });
 });
