@@ -3,6 +3,7 @@
   --material-node-body-gap: 5px;
   --material-node-control-inset: 7px;
   display: grid;
+  box-sizing: border-box;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
   grid-template-rows: auto auto auto;
   column-gap: var(--material-node-body-gap);
