@@ -1,7 +1,10 @@
+import { useState } from 'react';
+
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from '../material/MaterialGraphEditor';
 import type { MaterialGraph } from '../material/materialGraphTypes';
+import { UiNodeCard } from '../ui';
 
 import '../material/materialEditor.css';
 import '../material/materialWorkspace.css';
@@ -54,6 +57,87 @@ const materialGraph: MaterialGraph = {
   ],
   viewport: { x: 0, y: 0, zoom: 1 },
 };
+
+const toHex = (value: readonly number[]) =>
+  `#${value
+    .slice(0, 3)
+    .map((channel) =>
+      Math.round(Math.min(1, Math.max(0, channel)) * 255)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+
+export function UiLabMaterialNodeCard() {
+  const [color, setColor] = useState([0.42, 0.24, 0.12, 1]);
+  const [parameter, setParameter] = useState(true);
+  const [parameterName, setParameterName] = useState('Base Color');
+  const channels = ['R', 'G', 'B', 'A'] as const;
+
+  return (
+    <UiNodeCard badge="vec4" className="ui-lab-material-node" heading="Color (RGBA)">
+      <div className="material-node-pins">
+        <div className="material-node-inputs" />
+        <div className="material-node-outputs">
+          <button className="material-pin output" disabled type="button">
+            <span>RGBA</span>
+            <i />
+          </button>
+        </div>
+      </div>
+      <div className="material-node-color-value">
+        <input
+          aria-label="Material node color picker"
+          className="material-node-color-swatch"
+          type="color"
+          value={toHex(color)}
+          onChange={(event) => {
+            const hex = event.target.value;
+            setColor((current) => [
+              Number.parseInt(hex.slice(1, 3), 16) / 255,
+              Number.parseInt(hex.slice(3, 5), 16) / 255,
+              Number.parseInt(hex.slice(5, 7), 16) / 255,
+              current[3],
+            ]);
+          }}
+        />
+        <div className="material-node-color-components">
+          {channels.map((channel, index) => (
+            <label key={channel}>
+              {channel}
+              <input
+                aria-label={`Material node ${channel}`}
+                max={1}
+                min={0}
+                step="0.01"
+                type="number"
+                value={color[index]}
+                onChange={(event) =>
+                  setColor((current) => {
+                    const next = [...current];
+                    next[index] = Number(event.target.value);
+                    return next;
+                  })
+                }
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+      <label className="material-node-parameter-toggle">
+        <input checked={parameter} type="checkbox" onChange={(event) => setParameter(event.target.checked)} />
+        Parameter
+        {parameter && (
+          <input
+            aria-label="Material node parameter name"
+            value={parameterName}
+            onChange={(event) => setParameterName(event.target.value)}
+          />
+        )}
+      </label>
+    </UiNodeCard>
+  );
+}
 
 export function UiLabMaterialPreview() {
   return (
