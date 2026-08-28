@@ -3,27 +3,17 @@
 }
 
 .ui-lab-material-controls .ui-lab-card-stage {
-  align-items: stretch;
+  align-items: center;
+  justify-content: center;
+  min-height: 250px;
 }
 
-.ui-lab-material-controls .asset-preview-panel,
-.ui-lab-material-controls .material-parameters-panel {
-  width: 100%;
+.ui-lab-material-node {
+  width: min(100%, 300px);
 }
 
-.ui-lab-material-graph-card {
-  grid-column: 1 / -1;
-}
-
-.ui-lab-material-graph-card .ui-lab-card-stage {
-  min-height: 520px;
-  padding: 0;
-  overflow: hidden;
-}
-
-.ui-lab-material-graph-card .material-graph-canvas {
-  width: 100%;
-  min-height: 520px;
+.ui-lab-material-node .material-node-pins {
+  min-height: 38px;
 }
 
 .ui-lab-material-panel-gallery {
@@ -48,10 +38,4 @@
 .ui-lab-material-panel-gallery .asset-preview-panel,
 .ui-lab-material-panel-gallery .material-parameters-panel {
   min-height: 100%;
-}
-
-@media (max-width: 680px) {
-  .ui-lab-material-graph-card {
-    grid-column: span 1;
-  }
 }
