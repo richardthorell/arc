@@ -1,0 +1,7 @@
+.ui-color-control.is-label-hidden > .inspector-property > .inspector-property-label {
+  display: none;
+}
+
+.ui-color-control.is-label-hidden > .inspector-property {
+  grid-template-columns: minmax(0, 1fr);
+}
