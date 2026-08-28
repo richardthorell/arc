@@ -74,8 +74,13 @@ function ParameterControl({
   return (
     <label className="material-node-parameter-toggle">
       <input checked={enabled} type="checkbox" onChange={(event) => onEnabledChange(event.target.checked)} />
-      Parameter
-      {enabled && <input aria-label={nameLabel} value={name} onChange={(event) => onNameChange(event.target.value)} />}
+      <span>Parameter</span>
+      <input
+        aria-label={nameLabel}
+        disabled={!enabled}
+        value={name}
+        onChange={(event) => onNameChange(event.target.value)}
+      />
     </label>
   );
 }
@@ -98,7 +103,9 @@ export function UiLabMaterialNodeCard() {
           ))}
         </div>
       </div>
-      <UiColorControl label="Color" value={color} onCommit={setColor} />
+      <div className="material-node-value-area">
+        <UiColorControl label="Color" value={color} onCommit={setColor} />
+      </div>
       <ParameterControl
         enabled={parameter}
         name={parameterName}
@@ -133,18 +140,20 @@ export function UiLabTextureSampleNodeCard() {
           ))}
         </div>
       </div>
-      <button
-        aria-label="Texture sample asset"
-        className="ui-lab-texture-sample-preview"
-        type="button"
-        onClick={() => setTextureName((current) => (current === 'T_Bark_Albedo' ? 'T_Moss_Albedo' : 'T_Bark_Albedo'))}
-      >
-        <span className="ui-lab-texture-checker" aria-hidden="true" />
-        <span>
-          <strong>{textureName}</strong>
-          <small>Click to switch fixture texture</small>
-        </span>
-      </button>
+      <div className="material-node-value-area">
+        <button
+          aria-label="Texture sample asset"
+          className="ui-lab-texture-sample-preview"
+          type="button"
+          onClick={() => setTextureName((current) => (current === 'T_Bark_Albedo' ? 'T_Moss_Albedo' : 'T_Bark_Albedo'))}
+        >
+          <span className="ui-lab-texture-checker" aria-hidden="true" />
+          <span>
+            <strong>{textureName}</strong>
+            <small>Click to switch fixture texture</small>
+          </span>
+        </button>
+      </div>
       <ParameterControl
         enabled={parameter}
         name={parameterName}
@@ -172,16 +181,18 @@ export function UiLabConstantNodeCard() {
           </button>
         </div>
       </div>
-      <label className="material-node-inline-value">
-        Value
-        <input
-          aria-label="Constant value"
-          step="0.01"
-          type="number"
-          value={value}
-          onChange={(event) => setValue(Number(event.target.value))}
-        />
-      </label>
+      <div className="material-node-value-area">
+        <label className="material-node-inline-value">
+          Value
+          <input
+            aria-label="Constant value"
+            step="0.01"
+            type="number"
+            value={value}
+            onChange={(event) => setValue(Number(event.target.value))}
+          />
+        </label>
+      </div>
       <ParameterControl
         enabled={parameter}
         name={parameterName}
