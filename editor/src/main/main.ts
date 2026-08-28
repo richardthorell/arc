@@ -35,6 +35,7 @@ let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
+let closeChoiceResolve: ((choice: 'save' | 'discard' | 'cancel') => void) | null = null;
 let shutdownPending = false;
 let shutdownComplete = false;
 
@@ -554,6 +555,12 @@ const saveSceneWithDialog = async (target: BrowserWindow, activeScenePath = ''):
   return hostClient?.command('scene.saveAs', { path: result.filePath }) ?? null;
 };
 
+const requestWindowCloseChoice = (target: BrowserWindow, sceneName: string): Promise<'save' | 'discard' | 'cancel'> =>
+  new Promise((resolve) => {
+    closeChoiceResolve = resolve;
+    target.webContents.send('nativeWindow:closeRequested', { sceneName: sceneName || 'Untitled' });
+  });
+
 const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
   if (closeConfirmationPending) return;
   closeConfirmationPending = true;
@@ -561,18 +568,9 @@ const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
     const state = await hostClient?.query('scene.hierarchy');
     const document = state?.payload as SceneDocumentState | undefined;
     if (state?.succeeded && document?.dirty) {
-      const choice = await dialog.showMessageBox(target, {
-        type: 'warning',
-        title: 'Unsaved ARC Scene',
-        message: `Save changes to ${document.sceneName || 'Untitled'}?`,
-        detail: 'Unsaved scene authoring changes will be lost.',
-        buttons: ['Save', "Don't Save", 'Cancel'],
-        defaultId: 0,
-        cancelId: 2,
-        noLink: true,
-      });
-      if (choice.response === 2) return;
-      if (choice.response === 0) {
+      const choice = await requestWindowCloseChoice(target, document.sceneName || 'Untitled');
+      if (choice === 'cancel') return;
+      if (choice === 'save') {
         const saved = await saveSceneWithDialog(target, document.activeScenePath);
         if (!saved?.succeeded) {
           if (saved) dialog.showErrorBox('Scene Save Failed', saved.error || 'The scene could not be saved.');
@@ -583,8 +581,9 @@ const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
     allowWindowClose = true;
     target.close();
   } catch (error) {
-    dialog.showErrorBox('Unable to Close Scene', error instanceof Error ? error.message : String(error));
+    dialog.showErrorBox('Unable to Close Editor', error instanceof Error ? error.message : String(error));
   } finally {
+    closeChoiceResolve = null;
     closeConfirmationPending = false;
   }
 };
@@ -1224,6 +1223,12 @@ void app.whenReady().then(async () => {
     return true;
   });
   ipcMain.handle('nativeWindow:close', () => activeWindow()?.close());
+  ipcMain.on('nativeWindow:closeResponse', (_event, choice: unknown) => {
+    if (choice !== 'save' && choice !== 'discard' && choice !== 'cancel') return;
+    const resolve = closeChoiceResolve;
+    closeChoiceResolve = null;
+    resolve?.(choice);
+  });
   ipcMain.handle('nativeWindow:isMaximized', () => activeWindow()?.isMaximized() ?? false);
 
   createMainWindow();

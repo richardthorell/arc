@@ -415,6 +415,13 @@ const arcApi = {
     minimize: (): Promise<void> => ipcRenderer.invoke('nativeWindow:minimize'),
     toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('nativeWindow:toggleMaximize'),
     close: (): Promise<void> => ipcRenderer.invoke('nativeWindow:close'),
+    respondToClose: (choice: 'save' | 'discard' | 'cancel'): void =>
+      ipcRenderer.send('nativeWindow:closeResponse', choice),
+    onCloseRequested: (callback: (request: { sceneName: string }) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, request: { sceneName: string }) => callback(request);
+      ipcRenderer.on('nativeWindow:closeRequested', listener);
+      return () => ipcRenderer.removeListener('nativeWindow:closeRequested', listener);
+    },
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke('nativeWindow:isMaximized'),
     onMaximizedChanged: (callback: (maximized: boolean) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized);

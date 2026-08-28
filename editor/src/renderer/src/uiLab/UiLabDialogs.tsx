@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { CloseDialog } from '../dialogs/CloseDialog';
+import { ImportDialog } from '../dialogs/ImportDialog';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { UiDialog } from '../ui';
 
@@ -33,6 +34,10 @@ export function UiLabDialogs() {
 
       <DialogPreview title="Close dialog">
         <CloseDialog onChoose={() => undefined} preview sceneName="Example Scene" />
+      </DialogPreview>
+
+      <DialogPreview title="Import dialog">
+        <ImportDialog onClose={() => undefined} onImport={() => undefined} preview />
       </DialogPreview>
 
       <DialogPreview title="Settings dialog">
