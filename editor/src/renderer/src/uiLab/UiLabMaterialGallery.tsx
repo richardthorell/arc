@@ -1,15 +1,17 @@
 import {
+  UiLabConstantNodeCard,
   UiLabMaterialGraph,
   UiLabMaterialNodeCard,
   UiLabMaterialParameters,
   UiLabMaterialPreview,
+  UiLabTextureSampleNodeCard,
 } from './UiLabMaterialSurfaces';
 
 import './uiLabMaterialGallery.css';
 
 function ControlCard({ title, caption, children }: { title: string; caption: string; children: React.ReactNode }) {
   return (
-    <article className="ui-lab-card ui-lab-card-wide">
+    <article className="ui-lab-card ui-lab-card-wide ui-lab-material-node-showcase">
       <header>
         <strong>{title}</strong>
         <code>{caption}</code>
@@ -53,12 +55,16 @@ export function UiLabMaterialControls() {
       <header className="ui-lab-section-header">
         <div>
           <h2>Material nodes</h2>
-          <p>A production node card with representative value, pin, and parameter controls.</p>
+          <p>Representative production node cards kept together for visual iteration.</p>
         </div>
       </header>
       <div className="ui-lab-grid">
-        <ControlCard title="Color node" caption="UiNodeCard / material controls">
-          <UiLabMaterialNodeCard />
+        <ControlCard title="Material node cards" caption="UiNodeCard / material controls">
+          <div className="ui-lab-material-node-row">
+            <UiLabMaterialNodeCard />
+            <UiLabTextureSampleNodeCard />
+            <UiLabConstantNodeCard />
+          </div>
         </ControlCard>
       </div>
     </section>
