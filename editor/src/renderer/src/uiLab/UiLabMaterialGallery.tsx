@@ -1,20 +1,15 @@
-import { UiLabMaterialGraph, UiLabMaterialParameters, UiLabMaterialPreview } from './UiLabMaterialSurfaces';
+import {
+  UiLabMaterialGraph,
+  UiLabMaterialNodeCard,
+  UiLabMaterialParameters,
+  UiLabMaterialPreview,
+} from './UiLabMaterialSurfaces';
 
 import './uiLabMaterialGallery.css';
 
-function ControlCard({
-  title,
-  caption,
-  className = '',
-  children,
-}: {
-  title: string;
-  caption: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
+function ControlCard({ title, caption, children }: { title: string; caption: string; children: React.ReactNode }) {
   return (
-    <article className={`ui-lab-card ui-lab-card-wide ${className}`.trim()}>
+    <article className="ui-lab-card ui-lab-card-wide">
       <header>
         <strong>{title}</strong>
         <code>{caption}</code>
@@ -57,19 +52,13 @@ export function UiLabMaterialControls() {
     <section className="ui-lab-section ui-lab-material-controls" aria-label="Material editor controls">
       <header className="ui-lab-section-header">
         <div>
-          <h2>Material editor</h2>
-          <p>Production material controls and editor surfaces mounted with deterministic UI Lab data.</p>
+          <h2>Material nodes</h2>
+          <p>A production node card with representative value, pin, and parameter controls.</p>
         </div>
       </header>
       <div className="ui-lab-grid">
-        <ControlCard title="Material parameters" caption="material-parameters-panel">
-          <UiLabMaterialParameters />
-        </ControlCard>
-        <ControlCard title="Material preview" caption="AssetPreviewPanel">
-          <UiLabMaterialPreview />
-        </ControlCard>
-        <ControlCard className="ui-lab-material-graph-card" title="Material graph" caption="MaterialGraphEditor">
-          <UiLabMaterialGraph />
+        <ControlCard title="Color node" caption="UiNodeCard / material controls">
+          <UiLabMaterialNodeCard />
         </ControlCard>
       </div>
     </section>
