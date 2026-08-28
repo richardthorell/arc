@@ -13,7 +13,7 @@ describe('UI Lab material galleries', () => {
     render(<UiLabMaterialControls />);
 
     expect(screen.getByRole('heading', { name: 'Material nodes' })).toBeInTheDocument();
-    expect(screen.getByText('Color')).toBeInTheDocument();
+    expect(screen.getByText('Color', { selector: '.ui-node-card-title' })).toBeInTheDocument();
     expect(screen.queryByText('Color (RGB)')).not.toBeInTheDocument();
     expect(screen.queryByText('Color (RGBA)')).not.toBeInTheDocument();
     expect(screen.getByText('Texture Sample')).toBeInTheDocument();
