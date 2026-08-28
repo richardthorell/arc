@@ -9,6 +9,7 @@ add_library(arc-editor-host STATIC
     src/editor_viewport.cpp
     src/host_protocol.cpp
     src/material_asset.cpp
+    src/material_instance_bridge.cpp
     src/material_library.cpp
     src/material_preview.cpp
     src/material_preview_realizer.cpp

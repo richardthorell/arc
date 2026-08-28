@@ -105,4 +105,21 @@ procedural_mesh_component* ensure_procedural_mesh_component(editor_scene_state& 
 bool regenerate_procedural_mesh(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity);
 void synchronize_procedural_mesh_components(editor_scene_state& scene, render::renderer& renderer);
 
+#ifdef ARC_EDITOR_HOST_MATERIAL_INSTANCE_BRIDGE
+procedural_mesh_component* ensure_procedural_or_material_parameter_component(editor_scene_state& scene,
+                                                                             ecs::entity entity);
+bool set_procedural_or_material_parameter(procedural_mesh_component& component, std::string_view parameter,
+                                          double value);
+bool regenerate_procedural_or_material_parameter(editor_scene_state& scene, render::renderer& renderer,
+                                                 ecs::entity entity);
+void synchronize_procedural_and_material_instances(editor_scene_state& scene, render::renderer& renderer);
+#endif
+
 } // namespace arc::editor
+
+#ifdef ARC_EDITOR_HOST_MATERIAL_INSTANCE_BRIDGE
+#define ensure_procedural_mesh_component ensure_procedural_or_material_parameter_component
+#define set_procedural_mesh_parameter set_procedural_or_material_parameter
+#define regenerate_procedural_mesh regenerate_procedural_or_material_parameter
+#define synchronize_procedural_mesh_components synchronize_procedural_and_material_instances
+#endif

@@ -1,4 +1,4 @@
-import type { MaterialGraph, MaterialGraphValueType } from './materialGraphTypes';
+import type { MaterialGraph, MaterialGraphNodeType, MaterialGraphValueType } from './materialGraphTypes';
 
 /** Diagnostic returned by ARC's native Material IR/compiler pipeline. */
 export type MaterialCompileDiagnostic = {
@@ -64,10 +64,14 @@ export const nativeMaterialCompileResult = (
   return { status: succeeded ? 'succeeded' : 'failed', succeeded, diagnostics };
 };
 
+export type MaterialEditorParameterKind = 'scalar' | 'vector' | 'color' | 'texture';
+
 export type MaterialEditorParameter = {
   nodeId: string;
   name: string;
   type: MaterialGraphValueType;
+  nodeType: MaterialGraphNodeType;
+  editorKind: MaterialEditorParameterKind;
 };
 
 /**
@@ -89,5 +93,21 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
             : node.type === 'vector4' || node.type === 'colorRgba'
               ? 'vec4'
               : 'float';
-    return [{ nodeId: node.id, name: node.parameter.name.trim() || 'Parameter', type }];
+    const editorKind: MaterialEditorParameterKind =
+      node.type === 'textureSample'
+        ? 'texture'
+        : node.type === 'colorRgb' || node.type === 'colorRgba'
+          ? 'color'
+          : type === 'float'
+            ? 'scalar'
+            : 'vector';
+    return [
+      {
+        nodeId: node.id,
+        name: node.parameter.name.trim() || 'Parameter',
+        type,
+        nodeType: node.type,
+        editorKind,
+      },
+    ];
   });
