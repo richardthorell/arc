@@ -233,6 +233,12 @@ struct material_runtime_pass
  * backends only consume already-compiled shader bytecode and reflected parameter/default data; they never depend on
  * render-tools or source authoring formats.
  */
+struct material_runtime_texture_binding
+{
+    std::uint32_t slot{};
+    shader_parameter_id parameter_id{};
+};
+
 struct material_runtime_program
 {
     std::uint32_t contract_version{1};
@@ -240,6 +246,7 @@ struct material_runtime_program
     std::uint64_t generation{1};
     std::vector<material_runtime_pass> passes;
     std::vector<shader_parameter_descriptor> parameters;
+    std::vector<material_runtime_texture_binding> texture_bindings;
     std::uint32_t parameter_block_size{};
     std::vector<std::byte> parameter_defaults;
     bool uses_time{};
@@ -266,6 +273,7 @@ struct material_descriptor
 
     /** Compiled Material ABI programs used by runtime backends when present. */
     std::shared_ptr<const material_runtime_program> runtime_program;
+    std::vector<texture_handle> runtime_textures;
 
     math::vector4f base_color = math::vector4f::one;
     float metallic{};

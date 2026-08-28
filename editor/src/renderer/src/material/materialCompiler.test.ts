@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { materialEditorParameters, nativeMaterialCompileResult } from './materialCompiler';
-import { createDefaultMaterialGraph } from './materialGraphTypes';
+import { createDefaultMaterialGraph, createMaterialNode } from './materialGraphTypes';
 
 describe('native material compiler editor adapter', () => {
   it('maps native diagnostics without performing local graph validation', () => {
@@ -36,5 +36,18 @@ describe('native material compiler editor adapter', () => {
       'Metallic',
       'Roughness',
     ]);
+  });
+
+  it('exposes Texture Sample parameters as texture2d values', () => {
+    const graph = createDefaultMaterialGraph();
+    const texture = createMaterialNode('textureSample', [160, 160], { texture: 'Content/Textures/albedo.png' });
+    texture.parameter = { exposed: true, name: 'Albedo' };
+    graph.nodes.push(texture);
+
+    expect(materialEditorParameters(graph)).toContainEqual({
+      nodeId: texture.id,
+      name: 'Albedo',
+      type: 'texture2d',
+    });
   });
 });

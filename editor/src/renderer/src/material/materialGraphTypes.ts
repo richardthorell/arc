@@ -80,11 +80,6 @@ export type MaterialGraphViewport = {
   zoom: number;
 };
 
-/**
- * Stable ARC-owned graph representation persisted inside `.arcmat` assets.
- * UI implementation details (DOM ids, React state, selection, Dockview state,
- * etc.) must never be serialized into this structure.
- */
 export type MaterialGraph = {
   version: 1;
   nodes: MaterialGraphNode[];
@@ -275,11 +270,11 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     inputs: [pin('uv', 'UV', 'vec2')],
     outputs: [
       pin('rgb', 'RGB', 'vec3'),
-      pin('rgba', 'RGBA', 'vec4'),
       pin('r', 'R', 'float'),
       pin('g', 'G', 'float'),
       pin('b', 'B', 'float'),
       pin('a', 'A', 'float'),
+      pin('rgba', 'RGBA', 'vec4'),
     ],
     defaultValues: { texture: '' },
   },

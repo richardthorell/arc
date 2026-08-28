@@ -404,8 +404,19 @@ shader_reflection parse_reflection(const std::filesystem::path& path, const shad
             if (!parameter.is_object()) continue;
             shader_resource_descriptor resource;
             resource.name = parameter.value("name", "");
-            const auto kind = reflected_kind(parameter);
-            resource.kind = resource_kind(kind);
+            const nlohmann::json* resource_type = parameter.contains("type") ? &parameter["type"] : &parameter;
+            resource.count = 1u;
+            while (resource_type->is_object())
+            {
+                auto kind = reflected_kind(*resource_type);
+                std::ranges::transform(kind, kind.begin(),
+                                       [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+                if (kind != "array") break;
+                resource.count *= resource_type->value("elementCount", resource_type->value("count", 1u));
+                if (!resource_type->contains("elementType") || !(*resource_type)["elementType"].is_object()) break;
+                resource_type = &(*resource_type)["elementType"];
+            }
+            resource.kind = resource_kind(reflected_kind(*resource_type));
             if (parameter.contains("binding") && parameter["binding"].is_object())
             {
                 resource.binding = parameter["binding"].value("index", parameter["binding"].value("binding", 0u));

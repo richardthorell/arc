@@ -11,6 +11,7 @@ import { createDefaultMaterialGraph } from './materialGraphTypes';
 const materialState = vi.hoisted(() => ({
   redoMaterialGraph: vi.fn(),
   replaceMaterialGraph: vi.fn(),
+  saveMaterialDocument: vi.fn(async () => true),
   undoMaterialGraph: vi.fn(),
 }));
 
@@ -22,6 +23,7 @@ afterEach(cleanup);
 beforeEach(() => {
   materialState.redoMaterialGraph.mockClear();
   materialState.replaceMaterialGraph.mockClear();
+  materialState.saveMaterialDocument.mockClear();
   materialState.undoMaterialGraph.mockClear();
 });
 

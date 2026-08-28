@@ -435,6 +435,9 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
         "[material-flow] realizing material preview guid=" + assets::to_string(surface.preview_guid) +
             " generation=" + std::to_string(generation) + " path=" + resolved->path.generic_string());
     auto realized = load_material_preview_descriptor(resolved->path);
+    if (realized.succeeded && host.renderer)
+        resolve_material_runtime_textures(host.scene.material_library, *host.renderer, resolved->asset_root,
+                                          resolved->path, realized.texture_sources, realized.material);
     if (!realized.succeeded)
     {
         surface.preview_error = realized.message.empty() ? "Material preview realization failed" : realized.message;
@@ -599,6 +602,9 @@ void refresh_reimported_world_material(HostState& host, const host_asset_reimpor
     if (!resolved || !is_material_asset_path(resolved->path)) return;
 
     auto realized = load_material_preview_descriptor(resolved->path);
+    if (realized.succeeded && host.renderer)
+        resolve_material_runtime_textures(host.scene.material_library, *host.renderer, resolved->asset_root,
+                                          resolved->path, realized.texture_sources, realized.material);
     if (!realized.succeeded)
     {
         arc::diagnostics::warn("editor.materials", "[material-flow] assigned material refresh failed guid=" +

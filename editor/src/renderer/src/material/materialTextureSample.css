@@ -1,0 +1,40 @@
+.material-node-texture-picker {
+  margin: 4px 8px 8px;
+  min-width: 0;
+}
+
+.material-node-texture-picker .inspector-property {
+  display: block;
+  padding: 0;
+}
+
+.material-node-texture-picker .inspector-property-label {
+  display: none;
+}
+
+.material-node-texture-picker .asset-reference-control {
+  width: 100%;
+  min-width: 0;
+}
+
+.material-node-texture-picker .asset-reference-main {
+  width: 100%;
+  min-width: 0;
+}
+
+.material-node-texture-picker .asset-reference-copy {
+  min-width: 0;
+}
+
+.material-node-texture-picker .asset-reference-copy strong,
+.material-node-texture-picker .asset-reference-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-node-texture-readonly {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}

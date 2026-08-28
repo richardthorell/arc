@@ -67,6 +67,12 @@ bool assign_texture_to_material_slot(material_editor_state& editor, material_tex
 bool create_default_material_asset(const std::filesystem::path& path, const std::filesystem::path& asset_root,
                                    std::string& message);
 
+void resolve_material_runtime_textures(editor_material_library& library, render::renderer& renderer,
+                                       const std::filesystem::path& asset_root,
+                                       const std::filesystem::path& material_path,
+                                       const std::vector<std::string>& texture_sources,
+                                       render::material_descriptor& material);
+
 render::material_handle load_material_for_editor(editor_material_library& library, render::renderer& renderer,
                                                  const std::filesystem::path& asset_root,
                                                  const std::filesystem::path& path,

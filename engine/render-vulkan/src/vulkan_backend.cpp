@@ -4833,6 +4833,105 @@ private:
                 !update_runtime_frame_buffer(material.runtime.frame_buffers[slot]))
                 return false;
         }
+        if (material.data.runtime_program->uses_texture_sampling && !update_runtime_texture_descriptors(material, slot))
+            return false;
+        return true;
+    }
+
+    texture_handle runtime_texture_handle(const gpu_material& material, std::uint32_t slot) const noexcept
+    {
+        texture_handle handle{};
+        if (slot < material.data.runtime_textures.size()) handle = material.data.runtime_textures[slot];
+        if (!material.data.runtime_program) return handle;
+        const auto binding = std::ranges::find(material.data.runtime_program->texture_bindings, slot,
+                                               &material_runtime_texture_binding::slot);
+        if (binding == material.data.runtime_program->texture_bindings.end() ||
+            binding->parameter_id.representation() == 0u)
+            return handle;
+        const auto override =
+            std::ranges::find(material.data.parameters, binding->parameter_id, &material_parameter_override::id);
+        if (override == material.data.parameters.end()) return handle;
+        if (const auto* resource = std::get_if<resource_handle>(&override->value)) return *resource;
+        return handle;
+    }
+
+    VkDescriptorType runtime_descriptor_type(shader_resource_kind kind) const noexcept
+    {
+        switch (kind)
+        {
+            case shader_resource_kind::constant_buffer:
+                return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            case shader_resource_kind::sampled_texture:
+                return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            case shader_resource_kind::sampler:
+                return VK_DESCRIPTOR_TYPE_SAMPLER;
+            default:
+                return VK_DESCRIPTOR_TYPE_MAX_ENUM;
+        }
+    }
+
+    bool update_runtime_texture_descriptors(gpu_material& material, std::uint32_t frame_slot)
+    {
+        if (!material.data.runtime_program || frame_slot >= material.runtime.descriptor_sets.size()) return false;
+        const auto* pass = runtime_gbuffer_pass(material);
+        if (pass == nullptr) return false;
+
+        const auto& resources = pass->compiled.reflection.resources;
+        std::vector<std::vector<VkDescriptorImageInfo>> image_infos(resources.size());
+        std::vector<VkWriteDescriptorSet> writes;
+        writes.reserve(resources.size());
+
+        VkSampler graph_sampler = white_sampler_;
+        for (std::uint32_t texture_slot = 0;
+             texture_slot < static_cast<std::uint32_t>(material.data.runtime_program->texture_bindings.size());
+             ++texture_slot)
+        {
+            const auto handle = runtime_texture_handle(material, texture_slot);
+            if (!handle.valid()) continue;
+            const auto found = textures_.find(resource_key(handle));
+            if (found != textures_.end() && found->second.sampler != VK_NULL_HANDLE)
+            {
+                graph_sampler = found->second.sampler;
+                break;
+            }
+        }
+
+        for (std::size_t resource_index = 0; resource_index < resources.size(); ++resource_index)
+        {
+            const auto& resource = resources[resource_index];
+            if (resource.kind != shader_resource_kind::sampled_texture &&
+                resource.kind != shader_resource_kind::sampler)
+                continue;
+
+            auto& infos = image_infos[resource_index];
+            infos.resize(resource.kind == shader_resource_kind::sampled_texture ? resource.count : 1u);
+            if (resource.kind == shader_resource_kind::sampled_texture)
+            {
+                for (std::uint32_t texture_slot = 0; texture_slot < resource.count; ++texture_slot)
+                {
+                    VkImageView view = white_view_;
+                    const auto handle = runtime_texture_handle(material, texture_slot);
+                    if (handle.valid())
+                    {
+                        const auto found = textures_.find(resource_key(handle));
+                        if (found != textures_.end() && found->second.view != VK_NULL_HANDLE) view = found->second.view;
+                    }
+                    infos[texture_slot] = {VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+                }
+            }
+            else
+                infos[0] = {graph_sampler, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+
+            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            write.dstSet = material.runtime.descriptor_sets[frame_slot];
+            write.dstBinding = resource.binding;
+            write.descriptorCount = static_cast<std::uint32_t>(infos.size());
+            write.descriptorType = runtime_descriptor_type(resource.kind);
+            write.pImageInfo = infos.data();
+            writes.push_back(write);
+        }
+        if (!writes.empty())
+            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
         return true;
     }
 
@@ -4846,10 +4945,16 @@ private:
             if (resource.set != 0u)
                 return reject_runtime_material(material,
                                                "compiled preview resources must currently use descriptor set 0");
-            if (resource.kind != shader_resource_kind::constant_buffer)
-                return reject_runtime_material(
-                    material, "sampled/storage Material ABI resources are not wired into the preview backend yet");
-            if (resource.name != "arcMaterialParameters" && resource.name != "arcFrame")
+            const auto descriptor_type = runtime_descriptor_type(resource.kind);
+            if (descriptor_type == VK_DESCRIPTOR_TYPE_MAX_ENUM)
+                return reject_runtime_material(material,
+                                               "unsupported reflected Material ABI resource '" + resource.name + "'");
+            const bool supported_name =
+                (resource.kind == shader_resource_kind::constant_buffer &&
+                 (resource.name == "arcMaterialParameters" || resource.name == "arcFrame")) ||
+                (resource.kind == shader_resource_kind::sampled_texture && resource.name == "arcMaterialTextures") ||
+                (resource.kind == shader_resource_kind::sampler && resource.name == "arcMaterialSampler");
+            if (!supported_name)
                 return reject_runtime_material(material,
                                                "unsupported reflected Material ABI resource '" + resource.name + "'");
             resources.push_back(&resource);
@@ -4865,8 +4970,8 @@ private:
         std::vector<VkDescriptorSetLayoutBinding> bindings;
         bindings.reserve(resources.size());
         for (const auto* resource : resources)
-            bindings.push_back(
-                {resource->binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1u, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
+            bindings.push_back({resource->binding, runtime_descriptor_type(resource->kind), resource->count,
+                                VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
         VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
         layout.pBindings = bindings.data();
@@ -4875,12 +4980,33 @@ private:
             return reject_runtime_material(material, "failed to create reflected Material ABI descriptor layout");
 
         const auto frame_count = frame_resource_count();
-        VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                       static_cast<std::uint32_t>(resources.size()) * frame_count};
+        std::array<std::uint32_t, 3> descriptor_counts{};
+        for (const auto* resource : resources)
+        {
+            const auto count = resource->count * frame_count;
+            switch (runtime_descriptor_type(resource->kind))
+            {
+                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+                    descriptor_counts[0] += count;
+                    break;
+                case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+                    descriptor_counts[1] += count;
+                    break;
+                case VK_DESCRIPTOR_TYPE_SAMPLER:
+                    descriptor_counts[2] += count;
+                    break;
+                default:
+                    break;
+            }
+        }
+        std::vector<VkDescriptorPoolSize> pool_sizes;
+        if (descriptor_counts[0]) pool_sizes.push_back({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, descriptor_counts[0]});
+        if (descriptor_counts[1]) pool_sizes.push_back({VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, descriptor_counts[1]});
+        if (descriptor_counts[2]) pool_sizes.push_back({VK_DESCRIPTOR_TYPE_SAMPLER, descriptor_counts[2]});
         VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pool.maxSets = frame_count;
-        pool.poolSizeCount = 1u;
-        pool.pPoolSizes = &pool_size;
+        pool.poolSizeCount = static_cast<std::uint32_t>(pool_sizes.size());
+        pool.pPoolSizes = pool_sizes.data();
         if (vkCreateDescriptorPool(device_, &pool, nullptr, &material.runtime.descriptor_pool) != VK_SUCCESS)
             return reject_runtime_material(material, "failed to create reflected Material ABI descriptor pool");
 
@@ -4909,9 +5035,12 @@ private:
                 return reject_runtime_material(material, "failed to allocate Material ABI frame buffer");
 
             std::vector<VkDescriptorBufferInfo> infos;
+            std::vector<VkWriteDescriptorSet> writes;
             infos.reserve(resources.size());
+            writes.reserve(resources.size());
             for (const auto* resource : resources)
             {
+                if (resource->kind != shader_resource_kind::constant_buffer) continue;
                 const bool parameters = resource->name == "arcMaterialParameters";
                 const auto& buffer =
                     parameters ? material.runtime.parameter_buffers[slot] : material.runtime.frame_buffers[slot];
@@ -4919,18 +5048,18 @@ private:
                                                     material.data.runtime_program->parameter_block_size, 16u))
                                               : static_cast<VkDeviceSize>(sizeof(float) * 4u);
                 infos.push_back({buffer.buffer, 0u, range});
+                VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+                write.dstSet = material.runtime.descriptor_sets[slot];
+                write.dstBinding = resource->binding;
+                write.descriptorCount = 1u;
+                write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                write.pBufferInfo = &infos.back();
+                writes.push_back(write);
             }
-            std::vector<VkWriteDescriptorSet> writes(resources.size());
-            for (std::size_t index = 0; index < resources.size(); ++index)
-            {
-                writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-                writes[index].dstSet = material.runtime.descriptor_sets[slot];
-                writes[index].dstBinding = resources[index]->binding;
-                writes[index].descriptorCount = 1u;
-                writes[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                writes[index].pBufferInfo = &infos[index];
-            }
-            vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+            if (!writes.empty())
+                vkUpdateDescriptorSets(device_, static_cast<std::uint32_t>(writes.size()), writes.data(), 0u, nullptr);
+            if (!update_runtime_texture_descriptors(material, slot))
+                return reject_runtime_material(material, "failed to update Material ABI texture descriptors");
         }
         return true;
     }
@@ -5068,9 +5197,6 @@ private:
         if (material.data.alpha_mode != material_alpha_mode::opaque)
             return reject_runtime_material(material,
                                            "compiled preview execution currently requires an opaque material");
-        if (program->uses_texture_sampling)
-            return reject_runtime_material(
-                material, "compiled texture sampling is not wired into the preview descriptor path yet");
         const auto* pass = runtime_gbuffer_pass(material);
         if (pass == nullptr || pass->compiled.bytecode.empty())
             return reject_runtime_material(material, "compiled material does not provide an executable G-buffer pass");
