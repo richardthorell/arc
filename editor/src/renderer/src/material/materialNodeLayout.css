@@ -1,0 +1,101 @@
+.material-graph-node,
+.ui-lab-material-node {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-rows: auto auto auto;
+  column-gap: 3px;
+  align-items: start;
+}
+
+.material-graph-node > .ui-node-card-header,
+.ui-lab-material-node > .ui-node-card-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.material-graph-node .ui-node-card-badge,
+.ui-lab-material-node .ui-node-card-badge {
+  display: none;
+}
+
+.material-graph-node > .material-node-parameter-toggle,
+.ui-lab-material-node > .material-node-parameter-toggle,
+.material-graph-node-textureSample > .material-node-texture-picker > .material-node-parameter-toggle {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin: 5px 7px 2px;
+  padding: 0 0 5px;
+  border-top: 0;
+  border-bottom: 1px solid rgba(104, 132, 145, 0.15);
+}
+
+.material-graph-node > .material-node-pins,
+.ui-lab-material-node > .material-node-pins {
+  display: contents;
+}
+
+.material-graph-node .material-node-inputs,
+.ui-lab-material-node .material-node-inputs {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.material-graph-node .material-node-outputs,
+.ui-lab-material-node .material-node-outputs {
+  grid-column: 3;
+  grid-row: 3;
+}
+
+.material-graph-node > .material-node-inline-value,
+.material-graph-node > .material-node-vector-value,
+.material-graph-node > .inspector-property,
+.material-graph-node > .ui-color-control,
+.ui-lab-material-node > .material-node-value-area {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 3;
+  margin: 7px 0 6px;
+}
+
+.material-graph-node-textureSample > .material-node-texture-picker {
+  display: contents;
+}
+
+.material-graph-node-textureSample > .material-node-texture-picker > :not(.material-node-parameter-toggle):not(.material-node-texture-readonly) {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 3;
+  margin: 7px 0 6px;
+}
+
+.material-node-value-area > .material-node-inline-value,
+.material-node-value-area > .material-node-vector-value,
+.material-node-value-area > .inspector-property,
+.material-node-value-area > .ui-color-control,
+.material-node-value-area > .ui-lab-texture-sample-preview {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.material-graph-node .material-node-inputs,
+.material-graph-node .material-node-outputs,
+.ui-lab-material-node .material-node-inputs,
+.ui-lab-material-node .material-node-outputs {
+  padding-top: 3px;
+}
+
+.material-graph-node .material-pin.input,
+.ui-lab-material-node .material-pin.input {
+  padding-right: 1px;
+}
+
+.material-graph-node .material-pin.output,
+.ui-lab-material-node .material-pin.output {
+  padding-left: 1px;
+}
+
+.material-node-parameter-toggle > input:last-child:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
