@@ -37,12 +37,12 @@ jobs:
       - name: Set Up Slang 2026.14.1
         uses: ./.github/actions/setup-slang
       - name: Restore Compiler Cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: arc-ccache-clang18-relwithdebinfo-v1-${{ github.sha }}
+          key: arc-ccache-clang18-relwithdebinfo-v2-${{ github.event.pull_request.base.sha || github.sha }}
           restore-keys: |
-            arc-ccache-clang18-relwithdebinfo-v1-
+            arc-ccache-clang18-relwithdebinfo-v2-
       - name: Reset Compiler Cache Stats
         run: ccache --zero-stats
       - name: Set Up Vulkan SDK 1.4.350.0
@@ -67,9 +67,24 @@ jobs:
         run: cmake --build out/build/clang-vulkan --target arc-shaders-check
       - name: Test
         run: ctest --test-dir out/build/clang-vulkan --output-on-failure
+      - name: Save Main Compiler Cache
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: arc-ccache-clang18-relwithdebinfo-v2-${{ github.sha }}
       - name: Compiler Cache Stats
         if: always()
-        run: ccache --show-stats
+        shell: bash
+        run: |
+          ccache --show-stats
+          {
+            echo '### Clang compiler cache'
+            echo
+            echo '```text'
+            ccache --show-stats
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Package and Smoke Headless Runtime
         if: github.event_name != 'pull_request'
         run: |
