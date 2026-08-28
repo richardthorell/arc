@@ -645,20 +645,22 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                       })
                     }
                   />
-                  Parameter
-                  {node.parameter?.exposed && (
-                    <input
-                      aria-label="Parameter name"
-                      disabled={document.readOnly}
-                      value={node.parameter.name}
-                      onChange={(event) =>
-                        mutate((next) => {
-                          const target = next.nodes.find((candidate) => candidate.id === node.id);
-                          if (target?.parameter) target.parameter.name = event.target.value;
-                        })
-                      }
-                    />
-                  )}
+                  <span>Parameter</span>
+                  <input
+                    aria-label="Parameter name"
+                    disabled={document.readOnly || !node.parameter?.exposed}
+                    value={node.parameter?.name ?? definition.title}
+                    onChange={(event) =>
+                      mutate((next) => {
+                        const target = next.nodes.find((candidate) => candidate.id === node.id);
+                        if (!target) return;
+                        target.parameter = {
+                          exposed: Boolean(target.parameter?.exposed),
+                          name: event.target.value,
+                        };
+                      })
+                    }
+                  />
                 </label>
               )}
             </UiNodeCard>
