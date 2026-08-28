@@ -91,8 +91,12 @@ describe('UiLabWindow pages', () => {
     expect(screen.getByText('Dialog Lab')).toBeInTheDocument();
     expect(screen.getByText('Base dialog')).toBeInTheDocument();
     expect(screen.getByText('Close dialog')).toBeInTheDocument();
+    expect(screen.getByText('Import dialog')).toBeInTheDocument();
     expect(screen.getByText('Settings dialog')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: "Don't Save" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Import 3 Assets' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Content/Textures')).toBeInTheDocument();
+    expect(screen.getByText('oak_normal.png')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Controls' }));
     expect(screen.getByText('ARC UI Lab')).toBeInTheDocument();
   });
