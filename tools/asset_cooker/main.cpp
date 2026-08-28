@@ -9,6 +9,7 @@
 #include <arc/render/mesh.h>
 #include <arc/render/lighting_scene.h>
 #include <arc/render/texture.h>
+#include <arc/render/virtual_geometry_artifact.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/render_tools/render_tools.h>
 #include <arc/scene/persistence.h>
@@ -75,45 +76,15 @@ void append_vector3(std::vector<std::byte>& output, const math::vector3f& value)
     append_value(output, value[2]);
 }
 
-void append_virtual_cluster(std::vector<std::byte>& output, const render::virtual_mesh_cluster& cluster)
+std::uint64_t artifact_link_hash(std::span<const std::byte> bytes) noexcept
 {
-    append_value(output, cluster.first_index);
-    append_value(output, cluster.index_count);
-    append_value(output, cluster.first_triangle);
-    append_value(output, cluster.triangle_count);
-    append_value(output, cluster.first_vertex);
-    append_value(output, cluster.vertex_count);
-    append_value(output, static_cast<std::uint64_t>(cluster.material_index));
-    append_vector3(output, cluster.bounds_min);
-    append_vector3(output, cluster.bounds_max);
-    append_vector3(output, cluster.sphere_center);
-    append_value(output, cluster.sphere_radius);
-    append_vector3(output, cluster.cone_axis);
-    append_value(output, cluster.cone_cutoff);
-    append_value(output, cluster.geometric_error);
-    append_value(output, cluster.hierarchy_node);
-    append_value(output, cluster.page_index);
-    append_value(output, cluster.hierarchy_level);
-    append_value(output, cluster.flags);
-}
-
-void append_virtual_node(std::vector<std::byte>& output, const render::virtual_mesh_lod_node& node)
-{
-    append_value(output, node.first_cluster);
-    append_value(output, node.cluster_count);
-    append_value(output, node.first_child);
-    append_value(output, node.child_count);
-    append_value(output, node.parent);
-    append_value(output, node.page_index);
-    append_value(output, node.error);
-    append_vector3(output, node.bounds_min);
-    append_vector3(output, node.bounds_max);
-    append_vector3(output, node.sphere_center);
-    append_value(output, node.sphere_radius);
-    append_vector3(output, node.cone_axis);
-    append_value(output, node.cone_cutoff);
-    append_value(output, node.level);
-    append_value(output, node.flags);
+    std::uint64_t hash = 1469598103934665603ull;
+    for (const auto value : bytes)
+    {
+        hash ^= std::to_integer<std::uint8_t>(value);
+        hash *= 1099511628211ull;
+    }
+    return hash;
 }
 
 class document_processor final : public asset_cook_processor
@@ -327,8 +298,8 @@ public:
         descriptor_.id = cook_processor_ids::mesh;
         descriptor_.name = "ARC Mesh";
         descriptor_.schema = artifact_schemas::mesh;
-        descriptor_.version = 3;
-        descriptor_.schema_version = 3;
+        descriptor_.version = 4;
+        descriptor_.schema_version = 4;
         descriptor_.input_types = {asset_types::imported_scene, asset_types::static_mesh};
     }
     const asset_cook_processor_descriptor& descriptor() const noexcept override
@@ -337,7 +308,7 @@ public:
     }
     std::string toolchain_fingerprint() const override
     {
-        return "arc.mesh-cooker/3;meshoptimizer-1.2;arc-virtual-geometry-2;arc-lighting-geometry-1";
+        return "arc.mesh-cooker/4;meshoptimizer-1.2;arc-virtual-geometry-3;arc-lighting-geometry-1";
     }
     asset_cook_result cook(const asset_cook_context& context) override
     {
@@ -348,20 +319,21 @@ public:
                               .path = context.source.source_path,
                               .message = loaded.message.empty() ? "Mesh import failed" : loaded.message}};
         std::vector<std::byte> conventional_bytes;
-        std::vector<std::byte> virtual_bytes;
         std::vector<std::byte> card_bytes;
         std::vector<std::byte> distance_field_bytes;
         append_string(conventional_bytes, "ARC_MESH_2");
-        append_string(virtual_bytes, "ARC_VIRTUAL_GEOMETRY_2");
         append_string(card_bytes, "ARC_SURFACE_CARDS_1");
         append_string(distance_field_bytes, "ARC_MESH_DISTANCE_FIELD_1");
         append_value(conventional_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
-        append_value(virtual_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
         append_value(card_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
         append_value(distance_field_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
-        for (const auto& mesh : loaded.meshes)
+        std::vector<render::virtual_mesh_data> geometries;
+        geometries.reserve(loaded.meshes.size());
+        for (const auto& mesh : loaded.meshes) geometries.push_back(render::build_virtual_mesh(mesh));
+        for (std::size_t mesh_index = 0; mesh_index < loaded.meshes.size(); ++mesh_index)
         {
-            const auto geometry = render::build_virtual_mesh(mesh);
+            const auto& mesh = loaded.meshes[mesh_index];
+            const auto& geometry = geometries[mesh_index];
             const auto lighting = render::build_lighting_geometry(mesh);
 
             append_string(conventional_bytes, mesh.name);
@@ -374,30 +346,6 @@ public:
                 append_bytes(conventional_bytes, std::as_bytes(std::span(lod.vertices)));
                 append_bytes(conventional_bytes, std::as_bytes(std::span(lod.indices)));
             }
-
-            append_string(virtual_bytes, mesh.name);
-            append_value(virtual_bytes, static_cast<std::uint64_t>(mesh.material_index));
-            append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.clusters.size()));
-            for (const auto& cluster : geometry.clusters)
-                append_virtual_cluster(virtual_bytes, cluster);
-            append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.lod_nodes.size()));
-            for (const auto& node : geometry.lod_nodes)
-                append_virtual_node(virtual_bytes, node);
-            append_bytes(virtual_bytes, std::as_bytes(std::span(geometry.hierarchy_children)));
-            append_bytes(virtual_bytes, std::as_bytes(std::span(geometry.root_nodes)));
-            append_value(virtual_bytes, static_cast<std::uint32_t>(geometry.pages.size()));
-            for (const auto& page : geometry.pages)
-            {
-                append_value(virtual_bytes, page.first_cluster);
-                append_value(virtual_bytes, page.cluster_count);
-                append_value(virtual_bytes, page.uncompressed_offset);
-                append_value(virtual_bytes, page.uncompressed_size);
-                append_value(virtual_bytes, page.compressed_offset);
-                append_value(virtual_bytes, page.compressed_size);
-                append_value(virtual_bytes, page.content_hash);
-                append_value(virtual_bytes, static_cast<std::uint8_t>(page.root));
-            }
-            append_bytes(virtual_bytes, geometry.page_payload);
 
             append_string(card_bytes, mesh.name);
             append_value(card_bytes, static_cast<std::uint64_t>(mesh.material_index));
@@ -441,6 +389,19 @@ public:
             append_bytes(distance_field_bytes, std::as_bytes(std::span(field.page_offsets)));
             append_bytes(distance_field_bytes, field.pages);
         }
+        std::vector<render::virtual_geometry_artifact_source> virtual_sources;
+        virtual_sources.reserve(loaded.meshes.size());
+        for (std::size_t index = 0; index < loaded.meshes.size(); ++index)
+            virtual_sources.push_back({.name = loaded.meshes[index].name,
+                                       .material_index = static_cast<std::uint64_t>(loaded.meshes[index].material_index),
+                                       .geometry = &geometries[index]});
+        auto encoded_virtual = render::encode_virtual_geometry_artifact(
+            virtual_sources, artifact_link_hash(conventional_bytes));
+        if (!encoded_virtual)
+            return {.error = {.code = asset_error_code::import_failed,
+                              .guid = context.asset.guid,
+                              .path = context.source.source_path,
+                              .message = encoded_virtual.error().message}};
         const auto name = context.source.source_path.stem().string();
         return {.artifacts = {{.name = name,
                                .extension = ".arcmesh",
@@ -450,8 +411,8 @@ public:
                               {.name = name,
                                .extension = ".arcvg",
                                .schema = artifact_schemas::virtual_geometry,
-                               .schema_version = 2,
-                               .bytes = std::move(virtual_bytes)},
+                               .schema_version = render::virtual_geometry_artifact_schema_version,
+                               .bytes = std::move(encoded_virtual).value()},
                               {.name = name,
                                .extension = ".arccards",
                                .schema = artifact_schemas::surface_cards,

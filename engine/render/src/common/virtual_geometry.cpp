@@ -131,6 +131,120 @@ virtual_geometry_reference_result traverse_virtual_geometry_reference(const virt
     return result;
 }
 
+virtual_geometry_gpu_table_update make_virtual_geometry_gpu_table_update(virtual_mesh_handle resource,
+                                                                         const virtual_mesh_data& geometry,
+                                                                         std::uint32_t resource_generation)
+{
+    virtual_geometry_gpu_table_update result{.resource = resource, .resource_generation = resource_generation};
+    result.resources.push_back({.first_node = 0,
+                                .node_count = static_cast<std::uint32_t>(geometry.lod_nodes.size()),
+                                .first_cluster = 0,
+                                .cluster_count = static_cast<std::uint32_t>(geometry.clusters.size()),
+                                .first_child = 0,
+                                .child_count = static_cast<std::uint32_t>(geometry.hierarchy_children.size()),
+                                .first_page = 0,
+                                .page_count = static_cast<std::uint32_t>(geometry.pages.size()),
+                                .first_root = 0,
+                                .root_count = static_cast<std::uint32_t>(geometry.root_nodes.size()),
+                                .generation = resource_generation});
+    result.nodes.reserve(geometry.lod_nodes.size());
+    for (const auto& node : geometry.lod_nodes)
+        result.nodes.push_back({.sphere = {node.sphere_center[0], node.sphere_center[1], node.sphere_center[2],
+                                           node.sphere_radius},
+                                .normal_cone = {node.cone_axis[0], node.cone_axis[1], node.cone_axis[2],
+                                                node.cone_cutoff},
+                                .geometric_error = node.error,
+                                .first_cluster = node.first_cluster,
+                                .cluster_count = node.cluster_count,
+                                .first_child = node.first_child,
+                                .child_count = node.child_count,
+                                .page_index = node.page_index,
+                                .level = node.level,
+                                .flags = node.flags});
+    result.clusters.reserve(geometry.clusters.size());
+    for (const auto& cluster : geometry.clusters)
+        result.clusters.push_back({.sphere = {cluster.sphere_center[0], cluster.sphere_center[1],
+                                              cluster.sphere_center[2], cluster.sphere_radius},
+                                   .normal_cone = {cluster.cone_axis[0], cluster.cone_axis[1], cluster.cone_axis[2],
+                                                   cluster.cone_cutoff},
+                                   .bounds_min_error = {cluster.bounds_min[0], cluster.bounds_min[1],
+                                                        cluster.bounds_min[2], cluster.geometric_error},
+                                   .bounds_max = {cluster.bounds_max[0], cluster.bounds_max[1], cluster.bounds_max[2],
+                                                  0.0f},
+                                   .page_index = cluster.page_index,
+                                   .page_byte_offset = cluster.page_byte_offset,
+                                   .vertex_count = cluster.vertex_count,
+                                   .triangle_count = cluster.triangle_count,
+                                   .material_section = static_cast<std::uint32_t>(std::min<std::size_t>(
+                                       cluster.material_index, std::numeric_limits<std::uint32_t>::max())),
+                                   .hierarchy_node = cluster.hierarchy_node,
+                                   .flags = cluster.flags});
+    result.children = geometry.hierarchy_children;
+    result.roots = geometry.root_nodes;
+    result.pages.reserve(geometry.pages.size());
+    for (const auto& page : geometry.pages)
+        result.pages.push_back({.stored_size = page.compressed_size,
+                                .decoded_size = page.uncompressed_size,
+                                .resource_generation = resource_generation,
+                                .flags = page.root ? static_cast<virtual_geometry_gpu_page_flag>(
+                                                       static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::root) |
+                                                       static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::resident))
+                                                   : virtual_geometry_gpu_page_flag::none});
+    return result;
+}
+
+virtual_geometry_gpu_reference_result
+traverse_virtual_geometry_gpu_reference(virtual_mesh_handle resource, std::uint32_t resource_generation,
+                                        std::uint32_t instance_index, std::uint32_t material_index,
+                                        const virtual_mesh_data& geometry,
+                                        std::span<const std::uint8_t> resident_pages,
+                                        const virtual_geometry_reference_view& view,
+                                        virtual_geometry_traversal_limits limits)
+{
+    virtual_geometry_gpu_reference_result result;
+    const auto reference = traverse_virtual_geometry_reference(geometry, resident_pages, view);
+    result.frustum_rejected = reference.frustum_rejected;
+    result.cone_rejected = reference.cone_rejected;
+    result.hzb_rejected = reference.hzb_rejected;
+    result.projected_size_rejected = reference.projected_size_rejected;
+    result.feedback.overflow.fallback_instance_count = 0;
+    const auto visible_count = std::min<std::size_t>(reference.visible_clusters.size(),
+                                                     limits.maximum_visible_clusters);
+    result.visible_clusters.reserve(visible_count);
+    for (std::size_t index = 0; index < visible_count; ++index)
+    {
+        const auto cluster_index = reference.visible_clusters[index];
+        const auto& cluster = geometry.clusters[cluster_index];
+        result.visible_clusters.push_back({.instance_index = instance_index,
+                                           .resource_index = resource.index,
+                                           .cluster_index = cluster_index,
+                                           .page_index = cluster.page_index,
+                                           .material_index = material_index,
+                                           .hierarchy_level = cluster.hierarchy_level});
+    }
+    if (visible_count != reference.visible_clusters.size())
+    {
+        result.feedback.overflow.visible_cluster_overflow =
+            static_cast<std::uint32_t>(reference.visible_clusters.size() - visible_count);
+        result.feedback.overflow.fallback_instance_count = 1;
+        result.visible_clusters.clear();
+    }
+
+    const auto request_count = std::min<std::size_t>(reference.requested_pages.size(),
+                                                     limits.maximum_page_requests);
+    result.feedback.page_requests.reserve(request_count);
+    for (std::size_t index = 0; index < request_count; ++index)
+        result.feedback.page_requests.push_back({.resource_index = resource.index,
+                                                 .handle_generation = resource.generation,
+                                                 .resource_generation = resource_generation,
+                                                 .page_index = reference.requested_pages[index],
+                                                 .flags = 1u});
+    if (request_count != reference.requested_pages.size())
+        result.feedback.overflow.page_request_overflow =
+            static_cast<std::uint32_t>(reference.requested_pages.size() - request_count);
+    return result;
+}
+
 struct virtual_geometry_residency_manager::implementation
 {
     struct page_entry
@@ -158,6 +272,7 @@ struct virtual_geometry_residency_manager::implementation
     std::uint32_t evictions{};
     std::uint32_t deduplicated_requests{};
     std::uint32_t parent_fallbacks{};
+    std::uint32_t stale_requests{};
 
     page_entry* find(virtual_mesh_handle handle, std::uint32_t generation, std::uint32_t page_index) noexcept
     {
@@ -265,6 +380,7 @@ void virtual_geometry_residency_manager::begin_frame(std::uint64_t frame_index)
     implementation_->frame_index = frame_index;
     implementation_->deduplicated_requests = 0;
     implementation_->parent_fallbacks = 0;
+    implementation_->stale_requests = 0;
 }
 
 void virtual_geometry_residency_manager::request(std::span<const virtual_geometry_page_request> requests)
@@ -289,6 +405,30 @@ void virtual_geometry_residency_manager::request(std::span<const virtual_geometr
         }
         page->state = virtual_geometry_page_state::requested;
         page->priority = priority;
+    }
+}
+
+void virtual_geometry_residency_manager::request_gpu(std::span<const virtual_geometry_gpu_page_request> requests)
+{
+    for (const auto& request : requests)
+    {
+        const virtual_mesh_handle handle{request.resource_index, request.handle_generation};
+        if (!implementation_->find(handle, request.resource_generation, request.page_index))
+        {
+            ++implementation_->stale_requests;
+            continue;
+        }
+        const bool visible_child = (request.flags & 1u) != 0;
+        const bool shadow_view = (request.flags & 2u) != 0;
+        const virtual_geometry_page_request translated{.resource = handle,
+                                                       .resource_generation = request.resource_generation,
+                                                       .page_index = request.page_index,
+                                                       .projected_error = request.projected_error,
+                                                       .screen_coverage = request.screen_coverage,
+                                                       .distance = request.distance,
+                                                       .visible_child = visible_child,
+                                                       .shadow_view = shadow_view};
+        this->request(std::span(&translated, 1));
     }
 }
 
@@ -382,12 +522,18 @@ virtual_geometry_residency_snapshot virtual_geometry_residency_manager::snapshot
         .resource_count = static_cast<std::uint32_t>(implementation_->resources.size()),
         .evictions = implementation_->evictions,
         .deduplicated_requests = implementation_->deduplicated_requests,
-        .parent_fallbacks = implementation_->parent_fallbacks};
+        .parent_fallbacks = implementation_->parent_fallbacks,
+        .stale_requests = implementation_->stale_requests};
     for (const auto& [_, resource] : implementation_->resources)
         for (const auto& page : resource.pages)
         {
             ++result.page_count;
             if (page.state == virtual_geometry_page_state::resident) ++result.resident_pages;
+            if (page.state == virtual_geometry_page_state::resident &&
+                (page.descriptor.root ||
+                 implementation_->frame_index - std::min(implementation_->frame_index, page.last_used_frame) <=
+                     implementation_->config.protected_frame_count))
+                ++result.protected_pages;
             if (page.state == virtual_geometry_page_state::requested ||
                 page.state == virtual_geometry_page_state::loading)
                 ++result.requested_pages;

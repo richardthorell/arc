@@ -7,6 +7,7 @@
 #include <arc/render/lighting_scene.h>
 #include <arc/render/shadow.h>
 #include <arc/render/virtual_mesh.h>
+#include <arc/render/virtual_geometry.h>
 #include <arc/render/terrain.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
@@ -37,6 +38,7 @@ enum class render_event_type : std::uint8_t
     mesh_destroy,
     virtual_mesh_upload,
     virtual_mesh_destroy,
+    virtual_geometry_page_upload,
     terrain_upload,
     terrain_height_update,
     terrain_weight_update,
@@ -184,6 +186,7 @@ struct virtual_mesh_upload_event
 {
     virtual_mesh_handle handle{};
     std::shared_ptr<const virtual_mesh_data> mesh;
+    std::uint32_t resource_generation{1};
     std::string label;
 };
 
@@ -191,6 +194,12 @@ struct virtual_mesh_upload_event
 struct virtual_mesh_destroy_event
 {
     virtual_mesh_handle handle{};
+};
+
+/** @brief Publish one decoded virtual-geometry page on render affinity. */
+struct virtual_geometry_page_upload_event
+{
+    virtual_geometry_page_upload upload;
 };
 
 /** @brief Upload or fully replace a renderer-owned terrain resource. */
@@ -429,6 +438,7 @@ struct render_world_event
 
 using render_event_payload =
     std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, virtual_mesh_destroy_event,
+                 virtual_geometry_page_upload_event,
                  terrain_upload_event, terrain_height_update_event, terrain_weight_update_event, terrain_destroy_event,
                  lighting_geometry_upload_event, lighting_geometry_destroy_event, texture_upload_event,
                  material_upload_event, environment_upload_event, environment_destroy_event, viewport_resize_event,
@@ -508,10 +518,13 @@ public:
      * @brief Append a virtual mesh upload request.
      */
     void virtual_mesh_upload(virtual_mesh_handle handle, std::shared_ptr<const virtual_mesh_data> mesh,
-                             std::string label = {});
+                             std::uint32_t resource_generation, std::string label = {});
 
     /** @brief Append a virtual-geometry retirement request. */
     void virtual_mesh_destroy(virtual_mesh_handle handle);
+
+    /** @brief Append one generation-safe decoded virtual page publication. */
+    void virtual_geometry_page_upload(virtual_geometry_page_upload upload);
 
     /** @brief Append a complete terrain upload. */
     void terrain_upload(terrain_handle handle, std::shared_ptr<const terrain_resource_descriptor> terrain,

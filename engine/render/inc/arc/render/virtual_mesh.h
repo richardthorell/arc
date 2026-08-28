@@ -20,6 +20,8 @@ using virtual_mesh_handle = resource_handle;
 inline constexpr std::uint32_t virtual_geometry_max_vertices_per_cluster = 64;
 inline constexpr std::uint32_t virtual_geometry_max_triangles_per_cluster = 124;
 inline constexpr std::uint32_t virtual_geometry_page_bytes = 64u * 1024u;
+inline constexpr std::uint32_t virtual_geometry_decoded_vertex_bytes = 24u;
+inline constexpr std::uint32_t virtual_geometry_decoded_cluster_header_bytes = 16u;
 inline constexpr std::uint32_t invalid_virtual_geometry_index = std::numeric_limits<std::uint32_t>::max();
 
 /** @brief Runtime representation policy authored on an ordinary mesh renderer. */
@@ -110,6 +112,7 @@ struct virtual_mesh_cluster
     float geometric_error{};
     std::uint32_t hierarchy_node{invalid_virtual_geometry_index};
     std::uint32_t page_index{invalid_virtual_geometry_index};
+    std::uint32_t page_byte_offset{};
     std::uint16_t hierarchy_level{};
     std::uint16_t flags{};
 };

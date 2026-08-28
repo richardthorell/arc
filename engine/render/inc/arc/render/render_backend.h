@@ -856,9 +856,17 @@ struct render_virtual_geometry_profile
     std::uint32_t requested_pages{};
     std::uint32_t loaded_pages{};
     std::uint32_t failed_pages{};
+    std::uint32_t evicted_pages{};
+    std::uint32_t stale_page_requests{};
     std::uint32_t parent_fallbacks{};
+    std::uint32_t overflowed_clusters{};
+    std::uint32_t fallback_instances{};
+    std::uint32_t cpu_submissions{};
     std::uint64_t resident_bytes{};
     std::uint64_t residency_budget_bytes{};
+    double traversal_milliseconds{};
+    double raster_milliseconds{};
+    double request_latency_milliseconds{};
     double decompression_milliseconds{};
     double upload_milliseconds{};
     std::string fallback_reason;

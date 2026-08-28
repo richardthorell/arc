@@ -549,6 +549,8 @@ public:
                 retire_virtual_mesh(virtual_destroy->handle);
                 ++shadow_resource_revision_;
             }
+            else if (const auto* virtual_page = std::get_if<virtual_geometry_page_upload_event>(&event.payload))
+                upload_virtual_geometry_page(*virtual_page);
             else if (const auto* terrain = std::get_if<terrain_upload_event>(&event.payload))
             {
                 upload_terrain(*terrain);
@@ -1413,7 +1415,18 @@ private:
     {
         gpu_buffer vertices;
         gpu_buffer indices;
+        gpu_buffer resources;
+        gpu_buffer nodes;
+        gpu_buffer clusters_metadata;
+        gpu_buffer hierarchy_children;
+        gpu_buffer roots;
+        gpu_buffer page_table;
+        gpu_buffer page_heap;
         std::vector<virtual_mesh_cluster> clusters;
+        std::vector<virtual_geometry_gpu_page_record> page_records;
+        std::vector<VkDeviceSize> page_offsets;
+        std::shared_ptr<const virtual_mesh_data> source;
+        std::uint32_t resource_generation{};
         std::uint32_t index_count{};
     };
 
@@ -2819,6 +2832,21 @@ private:
         return true;
     }
 
+    bool upload_buffer_region(const void* source, VkDeviceSize size, gpu_buffer& destination, VkDeviceSize offset)
+    {
+        if (!source || size == 0 || destination.buffer == VK_NULL_HANDLE) return false;
+        const auto staging = reserve_upload(size, 16u);
+        if (!staging) return false;
+        std::memcpy(staging.bytes.data(), source, static_cast<std::size_t>(size));
+        vmaFlushAllocation(allocator_, upload_staging_.allocation, static_cast<VkDeviceSize>(staging.offset), size);
+        const VkBufferCopy copy{.srcOffset = static_cast<VkDeviceSize>(staging.offset),
+                                .dstOffset = offset,
+                                .size = size};
+        vkCmdCopyBuffer(upload_command_buffer_, upload_staging_.buffer, destination.buffer, 1, &copy);
+        upload_batch_has_work_ = true;
+        return true;
+    }
+
     bool upload_texture_image(const texture_data& data, gpu_texture& destination)
     {
         const auto format = vulkan_texture_format(data.format);
@@ -3491,21 +3519,96 @@ private:
         }
     }
 
+    void destroy_virtual_mesh_buffers(gpu_virtual_mesh& mesh) noexcept
+    {
+        destroy_buffer(mesh.vertices);
+        destroy_buffer(mesh.indices);
+        destroy_buffer(mesh.resources);
+        destroy_buffer(mesh.nodes);
+        destroy_buffer(mesh.clusters_metadata);
+        destroy_buffer(mesh.hierarchy_children);
+        destroy_buffer(mesh.roots);
+        destroy_buffer(mesh.page_table);
+        destroy_buffer(mesh.page_heap);
+    }
+
     void upload_virtual_mesh(const virtual_mesh_upload_event& event)
     {
         if (!event.mesh || event.mesh->vertices.empty() || event.mesh->indices.empty() || event.mesh->clusters.empty())
             return;
 
         gpu_virtual_mesh mesh;
+        mesh.source = event.mesh;
+        mesh.resource_generation = event.resource_generation;
         const VkDeviceSize vertex_size = buffer_size(event.mesh->vertices.size(), sizeof(mesh_vertex));
         const VkDeviceSize index_size = buffer_size(event.mesh->indices.size(), sizeof(std::uint32_t));
         if (!upload_buffer(event.mesh->vertices.data(), vertex_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                            mesh.vertices) ||
             !upload_buffer(event.mesh->indices.data(), index_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, mesh.indices))
         {
-            destroy_buffer(mesh.vertices);
-            destroy_buffer(mesh.indices);
+            destroy_virtual_mesh_buffers(mesh);
             arc::diagnostics::error("render.vulkan", "Failed to upload virtual mesh '" + event.label + "'");
+            return;
+        }
+
+        auto tables = make_virtual_geometry_gpu_table_update(event.handle, *event.mesh, event.resource_generation);
+        const auto upload_table = [&](const auto& values, VkBufferUsageFlags usage, gpu_buffer& destination)
+        {
+            using value_type = typename std::decay_t<decltype(values)>::value_type;
+            return values.empty() ||
+                   upload_buffer(values.data(), buffer_size(values.size(), sizeof(value_type)),
+                                 usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, destination);
+        };
+        if (!upload_table(tables.resources, 0, mesh.resources) || !upload_table(tables.nodes, 0, mesh.nodes) ||
+            !upload_table(tables.clusters, 0, mesh.clusters_metadata) ||
+            !upload_table(tables.children, 0, mesh.hierarchy_children) || !upload_table(tables.roots, 0, mesh.roots))
+        {
+            destroy_virtual_mesh_buffers(mesh);
+            arc::diagnostics::error("render.vulkan",
+                                    "Failed to upload virtual-geometry metadata for '" + event.label + "'");
+            return;
+        }
+
+        mesh.page_records = std::move(tables.pages);
+        mesh.page_offsets.resize(mesh.page_records.size());
+        VkDeviceSize heap_size{};
+        for (std::size_t page_index = 0; page_index < mesh.page_records.size(); ++page_index)
+        {
+            heap_size = (heap_size + 255u) & ~VkDeviceSize{255u};
+            mesh.page_offsets[page_index] = heap_size;
+            auto& page = mesh.page_records[page_index];
+            page.heap_index = 0;
+            page.heap_byte_offset = static_cast<std::uint32_t>(heap_size);
+            heap_size += std::max<VkDeviceSize>(page.decoded_size, 1u);
+        }
+        if (heap_size == 0 ||
+            !create_buffer(heap_size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                           VMA_MEMORY_USAGE_GPU_ONLY, mesh.page_heap))
+        {
+            destroy_virtual_mesh_buffers(mesh);
+            arc::diagnostics::error("render.vulkan", "Failed to allocate virtual-geometry page heap for '" +
+                                                         event.label + "'");
+            return;
+        }
+
+        std::vector<std::byte> decoded;
+        for (std::uint32_t page_index = 0; page_index < event.mesh->pages.size(); ++page_index)
+        {
+            if (!event.mesh->pages[page_index].root) continue;
+            if (!decode_virtual_geometry_page(*event.mesh, page_index, decoded) ||
+                !upload_buffer_region(decoded.data(), decoded.size(), mesh.page_heap, mesh.page_offsets[page_index]))
+            {
+                destroy_virtual_mesh_buffers(mesh);
+                arc::diagnostics::error("render.vulkan", "Failed to publish pinned virtual-geometry root page for '" +
+                                                             event.label + "'");
+                return;
+            }
+        }
+        if (!upload_table(mesh.page_records, VK_BUFFER_USAGE_TRANSFER_DST_BIT, mesh.page_table))
+        {
+            destroy_virtual_mesh_buffers(mesh);
+            arc::diagnostics::error("render.vulkan", "Failed to upload virtual-geometry page table for '" +
+                                                         event.label + "'");
             return;
         }
 
@@ -3517,12 +3620,29 @@ private:
             auto retired = std::move(found->second);
             deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
                                      [this, retired]() mutable
-                                     {
-                                         destroy_buffer(retired.vertices);
-                                         destroy_buffer(retired.indices);
-                                     });
+                                     { destroy_virtual_mesh_buffers(retired); });
         }
         virtual_meshes_[key] = std::move(mesh);
+    }
+
+    void upload_virtual_geometry_page(const virtual_geometry_page_upload_event& event)
+    {
+        const auto found = virtual_meshes_.find(resource_key(event.upload.resource));
+        if (found == virtual_meshes_.end() || found->second.resource_generation != event.upload.resource_generation ||
+            !event.upload.decoded_bytes || event.upload.page_index >= found->second.page_records.size())
+            return;
+        auto& mesh = found->second;
+        auto& page = mesh.page_records[event.upload.page_index];
+        if (event.upload.decoded_bytes->size() != page.decoded_size) return;
+        if (!upload_buffer_region(event.upload.decoded_bytes->data(), event.upload.decoded_bytes->size(), mesh.page_heap,
+                                  mesh.page_offsets[event.upload.page_index]))
+            return;
+        page.flags = static_cast<virtual_geometry_gpu_page_flag>(
+            static_cast<std::uint32_t>(page.flags) |
+            static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::resident));
+        const auto offset = static_cast<VkDeviceSize>(event.upload.page_index) * sizeof(virtual_geometry_gpu_page_record);
+        if (!upload_buffer_region(&page, sizeof(page), mesh.page_table, offset))
+            arc::diagnostics::warn("render.vulkan", "Failed to update virtual-geometry page-table residency");
     }
 
     void retire_virtual_mesh(virtual_mesh_handle handle)
@@ -3533,10 +3653,7 @@ private:
         virtual_meshes_.erase(found);
         deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
                                  [this, retired]() mutable
-                                 {
-                                     destroy_buffer(retired.vertices);
-                                     destroy_buffer(retired.indices);
-                                 });
+                                 { destroy_virtual_mesh_buffers(retired); });
     }
 
     void upload_texture(const texture_upload_event& event)

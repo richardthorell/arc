@@ -31,3 +31,4 @@
 #include <arc/render/terrain.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/render/virtual_geometry.h>
+#include <arc/render/virtual_geometry_artifact.h>

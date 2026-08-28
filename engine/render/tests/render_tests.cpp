@@ -1281,8 +1281,8 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE_FALSE(resolved.features.temporal_upscaling);
     REQUIRE(resolved.anti_aliasing == anti_aliasing_method::taa);
     REQUIRE(resolved.features.async_compute);
-    REQUIRE(resolved.features.virtual_geometry);
-    REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
+    REQUIRE_FALSE(resolved.features.virtual_geometry);
+    REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::unavailable);
     REQUIRE(resolved.features.software_ray_tracing);
     REQUIRE(resolved.features.hardware_ray_tracing);
     REQUIRE(resolved.features.screen_space_gi);
@@ -1296,6 +1296,12 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.indirect_lighting_path == lighting_trace_path::hybrid_hardware);
     REQUIRE(resolved.lighting_scene_gpu_budget_bytes == 768ull * 1024ull * 1024ull);
     REQUIRE(resolved.features.submission == gpu_submission_path::indirect_count);
+
+    config.quality = render_quality_tier::high;
+    const auto high = resolve_render_config(config, capabilities);
+    REQUIRE_FALSE(high.features.virtual_geometry);
+    REQUIRE(high.features.virtual_geometry_path == virtual_geometry_raster_path::unavailable);
+    config.quality = render_quality_tier::ultra;
 
     capabilities.gpu_visibility_compaction = true;
     capabilities.bindless_sampled_images = true;
@@ -1311,6 +1317,8 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.features.gpu_transparent_sorting);
     REQUIRE(resolved.features.gpu_skinning);
     REQUIRE(resolved.features.gpu_terrain_traversal);
+    REQUIRE(resolved.features.virtual_geometry);
+    REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
 
     config.force_disable_gpu_driven = true;
     config.force_disable_temporal = true;
@@ -2568,6 +2576,54 @@ TEST_CASE("virtual geometry graph selects mesh-shader rasterization without soft
     REQUIRE_FALSE(contains(builtin_render_pass::virtual_geometry_software_depth));
 }
 
+TEST_CASE("virtual geometry artifact is deterministic page aligned and integrity checked")
+{
+    using namespace arc::render;
+    mesh_data source;
+    source.name = "fixture";
+    source.material_index = 19;
+    source.vertices.resize(6);
+    source.vertices[1].position[0] = 1.0f;
+    source.vertices[2].position[1] = 1.0f;
+    source.vertices[3].position[0] = 1.0f;
+    source.vertices[4].position[0] = 1.0f;
+    source.vertices[4].position[1] = 1.0f;
+    source.vertices[5].position[1] = 1.0f;
+    source.indices = {0, 1, 2, 3, 4, 5};
+    const auto geometry = build_virtual_mesh(source, {.max_triangles_per_cluster = 1});
+    const std::array inputs{virtual_geometry_artifact_source{
+        .name = source.name, .material_index = source.material_index, .geometry = &geometry}};
+
+    const auto first = encode_virtual_geometry_artifact(inputs, 0x12345678u);
+    const auto second = encode_virtual_geometry_artifact(inputs, 0x12345678u);
+    REQUIRE(first);
+    REQUIRE(second);
+    REQUIRE(first.value() == second.value());
+
+    const auto inspected = inspect_virtual_geometry_artifact(first.value());
+    REQUIRE(inspected);
+    REQUIRE(inspected.value().schema_version == virtual_geometry_artifact_schema_version);
+    REQUIRE(inspected.value().conventional_artifact_hash == 0x12345678u);
+    REQUIRE(inspected.value().meshes.size() == 1);
+    REQUIRE(inspected.value().meshes[0].name == source.name);
+    REQUIRE(inspected.value().meshes[0].material_index == source.material_index);
+    REQUIRE(inspected.value().meshes[0].pages.size() == geometry.pages.size());
+    REQUIRE(std::all_of(inspected.value().meshes[0].pages.begin(), inspected.value().meshes[0].pages.end(),
+                        [](const auto& page)
+                        { return page.offset % virtual_geometry_artifact_page_alignment == 0; }));
+    REQUIRE(std::any_of(inspected.value().meshes[0].pages.begin(), inspected.value().meshes[0].pages.end(),
+                        [](const auto& page) { return page.root; }));
+
+    auto corrupt = first.value();
+    const auto page_offset = inspected.value().meshes[0].pages[0].offset;
+    corrupt[static_cast<std::size_t>(page_offset)] ^= std::byte{1};
+    const auto corrupt_index = inspect_virtual_geometry_artifact(corrupt);
+    REQUIRE(corrupt_index);
+    const auto rejected = read_virtual_geometry_artifact_page(corrupt, corrupt_index.value(), 0, 0);
+    REQUIRE_FALSE(rejected);
+    REQUIRE(rejected.error().code == virtual_geometry_artifact_error_code::integrity_failure);
+}
+
 TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid triangles")
 {
     arc::render::mesh_data source;
@@ -2595,6 +2651,8 @@ TEST_CASE("virtual mesh builder honors custom cluster size and skips invalid tri
     REQUIRE(virtual_mesh.clusters[1].triangle_count == 1);
     REQUIRE(virtual_mesh.clusters[0].material_index == 11);
     REQUIRE(virtual_mesh.clusters[1].material_index == 11);
+    REQUIRE(virtual_mesh.clusters[0].page_byte_offset == 0);
+    REQUIRE(virtual_mesh.clusters[1].page_byte_offset > virtual_mesh.clusters[0].page_byte_offset);
     REQUIRE(virtual_mesh.stats.source_vertex_count == 6);
     REQUIRE(virtual_mesh.stats.source_triangle_count == 3);
     REQUIRE(virtual_mesh.stats.invalid_triangle_count == 2);
@@ -2632,6 +2690,43 @@ TEST_CASE("virtual geometry residency keeps roots and deduplicates prioritized p
     residency.publish(handle, 7, 1, 768, 256);
     REQUIRE(residency.resident(handle, 7, 1));
     REQUIRE(residency.snapshot().resident_pages == 2);
+
+    const std::array gpu_requests{
+        arc::render::virtual_geometry_gpu_page_request{.resource_index = handle.index,
+                                                       .handle_generation = handle.generation,
+                                                       .resource_generation = 6,
+                                                       .page_index = 1},
+        arc::render::virtual_geometry_gpu_page_request{.resource_index = handle.index,
+                                                       .handle_generation = handle.generation,
+                                                       .resource_generation = 7,
+                                                       .page_index = 1}};
+    residency.request_gpu(gpu_requests);
+    REQUIRE(residency.snapshot().stale_requests == 1);
+}
+
+TEST_CASE("virtual geometry GPU table update preserves hierarchy and page generations")
+{
+    using namespace arc::render;
+    mesh_data source;
+    source.material_index = 5;
+    source.vertices.resize(3);
+    source.vertices[1].position[0] = 1.0f;
+    source.vertices[2].position[1] = 1.0f;
+    source.indices = {0, 1, 2};
+    const auto geometry = build_virtual_mesh(source);
+    const virtual_mesh_handle handle{12, 4};
+
+    const auto update = make_virtual_geometry_gpu_table_update(handle, geometry, 9);
+    REQUIRE(update.resource == handle);
+    REQUIRE(update.resource_generation == 9);
+    REQUIRE(update.resources.size() == 1);
+    REQUIRE(update.resources[0].node_count == geometry.lod_nodes.size());
+    REQUIRE(update.resources[0].cluster_count == geometry.clusters.size());
+    REQUIRE(update.nodes.size() == geometry.lod_nodes.size());
+    REQUIRE(update.clusters.size() == geometry.clusters.size());
+    REQUIRE(update.pages.size() == geometry.pages.size());
+    REQUIRE(update.pages[0].resource_generation == 9);
+    REQUIRE(update.clusters[0].page_byte_offset == geometry.clusters[0].page_byte_offset);
 }
 
 TEST_CASE("unified geometry binding selects cooked conventional LODs by geometric error")
@@ -2695,6 +2790,23 @@ TEST_CASE("virtual geometry reference traversal selects resident children or a h
     REQUIRE(detailed.visible_clusters == std::vector<std::uint32_t>{0, 1});
     REQUIRE(detailed.requested_pages.empty());
     REQUIRE(detailed.parent_fallbacks == 0);
+
+    const auto gpu_fallback = traverse_virtual_geometry_gpu_reference(
+        {7, 3}, 11, 23, 5, geometry, root_only, view, {.maximum_visible_clusters = 8, .maximum_page_requests = 1});
+    REQUIRE(gpu_fallback.visible_clusters.size() == 1);
+    REQUIRE(gpu_fallback.visible_clusters[0].instance_index == 23);
+    REQUIRE(gpu_fallback.visible_clusters[0].resource_index == 7);
+    REQUIRE(gpu_fallback.feedback.page_requests.size() == 1);
+    REQUIRE(gpu_fallback.feedback.page_requests[0].handle_generation == 3);
+    REQUIRE(gpu_fallback.feedback.page_requests[0].resource_generation == 11);
+    REQUIRE(gpu_fallback.feedback.overflow.page_request_overflow == 1);
+
+    const auto overflow = traverse_virtual_geometry_gpu_reference(
+        {7, 3}, 11, 23, 5, geometry, all_resident, view,
+        {.maximum_visible_clusters = 1, .maximum_page_requests = 8});
+    REQUIRE(overflow.visible_clusters.empty());
+    REQUIRE(overflow.feedback.overflow.visible_cluster_overflow == 1);
+    REQUIRE(overflow.feedback.overflow.fallback_instance_count == 1);
 }
 
 TEST_CASE("GLB mesh loader reads checked-in editor startup mesh")

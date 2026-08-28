@@ -39,6 +39,8 @@ struct encoded_cluster_header
     std::uint32_t triangle_bytes{};
 };
 
+static_assert(sizeof(encoded_cluster_header) == virtual_geometry_decoded_cluster_header_bytes);
+
 struct hierarchy_work_node
 {
     std::uint32_t node_index{};
@@ -542,12 +544,13 @@ void assign_pages(virtual_mesh_data& result)
     virtual_geometry_page page{};
     page.first_cluster = 0;
     std::vector<std::byte> page_bytes;
+    std::uint32_t decoded_page_bytes{};
     auto flush = [&]()
     {
         if (page.cluster_count == 0) return;
         page.compressed_offset = static_cast<std::uint32_t>(result.page_payload.size());
         page.compressed_size = static_cast<std::uint32_t>(page_bytes.size());
-        page.uncompressed_size = page.compressed_size;
+        page.uncompressed_size = decoded_page_bytes;
         std::uint64_t hash = 1469598103934665603ull;
         for (const auto byte : page_bytes)
         {
@@ -564,6 +567,7 @@ void assign_pages(virtual_mesh_data& result)
         page.first_cluster = static_cast<std::uint32_t>(
             result.pages.empty() ? 0 : result.pages.back().first_cluster + result.pages.back().cluster_count);
         page_bytes.clear();
+        decoded_page_bytes = 0;
     };
 
     for (std::uint32_t cluster = 0; cluster < cluster_payloads.size(); ++cluster)
@@ -571,6 +575,10 @@ void assign_pages(virtual_mesh_data& result)
         const auto& payload = cluster_payloads[cluster];
         if (!page_bytes.empty() && page_bytes.size() + payload.size() > virtual_geometry_page_bytes) flush();
         if (page.cluster_count == 0) page.first_cluster = cluster;
+        result.clusters[cluster].page_byte_offset = decoded_page_bytes;
+        decoded_page_bytes += virtual_geometry_decoded_cluster_header_bytes +
+                              result.clusters[cluster].vertex_count * virtual_geometry_decoded_vertex_bytes +
+                              result.clusters[cluster].index_count;
         page.root = page.root || root_clusters.contains(cluster);
         page_bytes.insert(page_bytes.end(), payload.begin(), payload.end());
         ++page.cluster_count;

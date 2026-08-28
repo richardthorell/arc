@@ -274,6 +274,19 @@ public:
     /** @return Read-only renderer-owned virtual-geometry residency authority. */
     [[nodiscard]] const virtual_geometry_residency_manager& virtual_geometry_residency() const noexcept;
 
+    /** @brief Validate feedback copied from a completed GPU traversal frame. */
+    void submit_virtual_geometry_feedback(const virtual_geometry_feedback_readback& feedback);
+
+    /** @brief Take prioritized range requests for the asset/IO streaming service. */
+    [[nodiscard]] std::vector<virtual_geometry_page_load> take_virtual_geometry_page_loads();
+
+    /** @brief Publish a decoded page after asynchronous range IO and worker decompression. */
+    [[nodiscard]] bool publish_virtual_geometry_page(virtual_geometry_page_upload upload);
+
+    /** @brief Mark an asynchronous page load as failed without invalidating resident parents. */
+    void fail_virtual_geometry_page(virtual_mesh_handle resource, std::uint32_t generation,
+                                    std::uint32_t page_index);
+
     /** @return Renderer-owned Lighting Scene authority shared by all views of a world. */
     [[nodiscard]] lighting_scene& indirect_lighting_scene() noexcept;
     /** @return Read-only renderer-owned Lighting Scene authority. */

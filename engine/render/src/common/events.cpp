@@ -11,6 +11,8 @@ render_event_type render_event::type() const noexcept
     if (std::holds_alternative<mesh_destroy_event>(payload)) return render_event_type::mesh_destroy;
     if (std::holds_alternative<virtual_mesh_upload_event>(payload)) return render_event_type::virtual_mesh_upload;
     if (std::holds_alternative<virtual_mesh_destroy_event>(payload)) return render_event_type::virtual_mesh_destroy;
+    if (std::holds_alternative<virtual_geometry_page_upload_event>(payload))
+        return render_event_type::virtual_geometry_page_upload;
     if (std::holds_alternative<terrain_upload_event>(payload)) return render_event_type::terrain_upload;
     if (std::holds_alternative<terrain_height_update_event>(payload)) return render_event_type::terrain_height_update;
     if (std::holds_alternative<terrain_weight_update_event>(payload)) return render_event_type::terrain_weight_update;
@@ -84,10 +86,13 @@ void render_event_writer::mesh_destroy(mesh_handle handle)
 }
 
 void render_event_writer::virtual_mesh_upload(virtual_mesh_handle handle, std::shared_ptr<const virtual_mesh_data> mesh,
-                                              std::string label)
+                                              std::uint32_t resource_generation, std::string label)
 {
     render_event event{};
-    event.payload = virtual_mesh_upload_event{.handle = handle, .mesh = std::move(mesh), .label = std::move(label)};
+    event.payload = virtual_mesh_upload_event{.handle = handle,
+                                              .mesh = std::move(mesh),
+                                              .resource_generation = resource_generation,
+                                              .label = std::move(label)};
     buffer_->push(std::move(event));
 }
 
@@ -95,6 +100,13 @@ void render_event_writer::virtual_mesh_destroy(virtual_mesh_handle handle)
 {
     render_event event{};
     event.payload = virtual_mesh_destroy_event{.handle = handle};
+    buffer_->push(std::move(event));
+}
+
+void render_event_writer::virtual_geometry_page_upload(arc::render::virtual_geometry_page_upload upload)
+{
+    render_event event{};
+    event.payload = virtual_geometry_page_upload_event{.upload = std::move(upload)};
     buffer_->push(std::move(event));
 }
 

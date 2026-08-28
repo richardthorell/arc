@@ -152,11 +152,12 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     const bool bindless_gpu_scene = gpu_driven && capabilities.gpu_visibility_compaction &&
                                     capabilities.bindless_sampled_images && capabilities.bindless_samplers &&
                                     capabilities.bindless_material_tables && capabilities.bindless_geometry_tables;
-    const bool virtual_geometry_quality =
-        result.quality == render_quality_tier::high || result.quality == render_quality_tier::ultra;
+    const bool virtual_geometry_quality = result.quality == render_quality_tier::ultra;
     const bool virtual_geometry_common = optional_features && virtual_geometry_quality && gpu_driven &&
                                          capabilities.hzb_occlusion && capabilities.descriptor_indexing &&
-                                         capabilities.virtual_geometry_streaming;
+                                         capabilities.virtual_geometry_streaming &&
+                                         capabilities.bindless_sampled_images && capabilities.bindless_samplers &&
+                                         capabilities.bindless_material_tables && capabilities.bindless_geometry_tables;
     const auto virtual_geometry_path =
         virtual_geometry_common && capabilities.virtual_geometry_mesh_shader ? virtual_geometry_raster_path::mesh_shader
         : virtual_geometry_common && capabilities.virtual_geometry_compute   ? virtual_geometry_raster_path::compute
@@ -682,7 +683,7 @@ virtual_mesh_handle renderer::create_virtual_mesh(virtual_mesh_data mesh)
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
-    writer.virtual_mesh_upload(handle, shared_mesh, "virtual mesh");
+    writer.virtual_mesh_upload(handle, shared_mesh, 1, "virtual mesh");
     frame_queue_.submit(std::move(buffer));
     return handle;
 }
@@ -700,7 +701,7 @@ bool renderer::update_virtual_mesh(virtual_mesh_handle handle, virtual_mesh_data
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
-    writer.virtual_mesh_upload(handle, shared_mesh, "virtual mesh update");
+    writer.virtual_mesh_upload(handle, shared_mesh, content_generation, "virtual mesh update");
     frame_queue_.submit(std::move(buffer));
     return true;
 }
@@ -1087,6 +1088,49 @@ const virtual_geometry_residency_manager& renderer::virtual_geometry_residency()
     return virtual_geometry_residency_;
 }
 
+void renderer::submit_virtual_geometry_feedback(const virtual_geometry_feedback_readback& feedback)
+{
+    virtual_geometry_residency_.request_gpu(feedback.page_requests);
+    for (std::uint32_t index = 0; index < feedback.overflow.fallback_instance_count; ++index)
+        virtual_geometry_residency_.note_parent_fallback();
+}
+
+std::vector<virtual_geometry_page_load> renderer::take_virtual_geometry_page_loads()
+{
+    auto result = virtual_geometry_residency_.take_load_requests();
+    for (const auto& load : result)
+        virtual_geometry_residency_.mark_loading(load.resource, load.resource_generation, load.page_index);
+    return result;
+}
+
+bool renderer::publish_virtual_geometry_page(virtual_geometry_page_upload upload)
+{
+    if (!upload.resource.valid() || !upload.decoded_bytes || upload.decoded_bytes->empty()) return false;
+    const auto key = renderer_resource_key(upload.resource);
+    const auto generation = virtual_mesh_content_generations_.find(key);
+    if (generation == virtual_mesh_content_generations_.end() || generation->second != upload.resource_generation)
+        return false;
+    const auto geometry = virtual_mesh_data_.find(key);
+    if (geometry == virtual_mesh_data_.end() || upload.page_index >= geometry->second->pages.size() ||
+        upload.decoded_bytes->size() != geometry->second->pages[upload.page_index].uncompressed_size)
+        return false;
+
+    virtual_geometry_residency_.publish(upload.resource, upload.resource_generation, upload.page_index,
+                                        static_cast<std::uint32_t>(upload.decoded_bytes->size()),
+                                        upload.compressed_cpu_bytes);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.virtual_geometry_page_upload(std::move(upload));
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+void renderer::fail_virtual_geometry_page(virtual_mesh_handle resource, std::uint32_t generation,
+                                          std::uint32_t page_index)
+{
+    virtual_geometry_residency_.fail(resource, generation, page_index);
+}
+
 lighting_scene& renderer::indirect_lighting_scene() noexcept
 {
     return lighting_scene_;
@@ -1134,6 +1178,8 @@ render_backend_frame_profile renderer::last_frame_profile() const
     result.virtual_geometry.raster_path = resolved_config_.features.virtual_geometry_path;
     result.virtual_geometry.requested_pages = residency.requested_pages;
     result.virtual_geometry.failed_pages = residency.failed_pages;
+    result.virtual_geometry.evicted_pages = residency.evictions;
+    result.virtual_geometry.stale_page_requests = residency.stale_requests;
     result.virtual_geometry.parent_fallbacks = residency.parent_fallbacks;
     result.virtual_geometry.resident_bytes = residency.gpu_resident_bytes;
     result.virtual_geometry.residency_budget_bytes = residency.gpu_budget_bytes;
