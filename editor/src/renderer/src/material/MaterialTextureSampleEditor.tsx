@@ -43,6 +43,8 @@ export function MaterialTextureSampleEditor({
 }) {
   const [assets, setAssets] = useState<AssetPickerItem[]>([]);
   const texturePath = typeof node.values.texture === 'string' ? node.values.texture : '';
+  const parameterName = node.parameter?.name ?? 'Texture';
+  const parameterEnabled = Boolean(node.parameter?.exposed);
 
   useEffect(() => {
     let mounted = true;
@@ -89,18 +91,24 @@ export function MaterialTextureSampleEditor({
   const selectedAsset = useMemo(() => assets.find((asset) => asset.path === texturePath), [assets, texturePath]);
 
   return (
-    <div className="material-node-texture-picker" title={selectedAsset?.path || texturePath || 'Choose texture asset'}>
-      <TexturePicker
-        assets={assets}
-        value={texturePath}
-        label="Texture"
-        allowEmpty
-        thumbnailProvider={thumbnailProvider}
-        onChange={(texture) => onChange({ ...node, values: { ...node.values, texture } })}
-      />
+    <>
+      <div
+        className="material-node-value-area material-node-texture-picker"
+        title={selectedAsset?.path || texturePath || 'Choose texture asset'}
+      >
+        <TexturePicker
+          assets={assets}
+          value={texturePath}
+          label="Texture"
+          allowEmpty
+          thumbnailProvider={thumbnailProvider}
+          onChange={(texture) => onChange({ ...node, values: { ...node.values, texture } })}
+        />
+        {readOnly && <span className="material-node-texture-readonly" aria-hidden="true" />}
+      </div>
       <label className="material-node-parameter-toggle">
         <input
-          checked={Boolean(node.parameter?.exposed)}
+          checked={parameterEnabled}
           disabled={readOnly}
           type="checkbox"
           onChange={(event) =>
@@ -108,22 +116,27 @@ export function MaterialTextureSampleEditor({
               ...node,
               parameter: {
                 exposed: event.target.checked,
-                name: node.parameter?.name ?? 'Texture',
+                name: parameterName,
               },
             })
           }
         />
-        Parameter
-        {node.parameter?.exposed && (
-          <input
-            aria-label="Parameter name"
-            disabled={readOnly}
-            value={node.parameter.name}
-            onChange={(event) => onChange({ ...node, parameter: { ...node.parameter!, name: event.target.value } })}
-          />
-        )}
+        <span>Parameter</span>
+        <input
+          aria-label="Parameter name"
+          disabled={readOnly || !parameterEnabled}
+          value={parameterName}
+          onChange={(event) =>
+            onChange({
+              ...node,
+              parameter: {
+                exposed: parameterEnabled,
+                name: event.target.value,
+              },
+            })
+          }
+        />
       </label>
-      {readOnly && <span className="material-node-texture-readonly" aria-hidden="true" />}
-    </div>
+    </>
   );
 }
