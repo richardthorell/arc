@@ -1,11 +1,12 @@
 .ui-lab-window {
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--arc-color-bg-app);
 }
 
 .ui-lab-window-titlebar {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 40;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -77,8 +78,7 @@
 }
 
 .ui-lab-page-tabs {
-  position: sticky;
-  top: var(--arc-titlebar-height);
+  position: relative;
   z-index: 35;
   height: 32px;
   padding-left: 10px;
@@ -91,10 +91,26 @@
   font-weight: 500;
 }
 
-.ui-lab-window .ui-lab-shell {
-  min-height: calc(100vh - var(--arc-titlebar-height) - 32px);
+.ui-lab-page-scroll {
+  height: calc(100vh - var(--arc-titlebar-height) - 32px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
-.ui-lab-window .ui-lab-hero {
-  top: calc(var(--arc-titlebar-height) + 32px);
+.ui-lab-page-scroll > .ui-lab-shell,
+.ui-lab-page-scroll > .ui-lab-panels-shell {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.ui-lab-page-scroll .ui-lab-hero,
+.ui-lab-page-scroll .ui-lab-panels-hero {
+  top: 0;
+}
+
+.ui-lab-material-extension {
+  padding-top: 0;
 }
