@@ -47,9 +47,7 @@ function SurfaceCard({
         </span>
         <code>{component}</code>
       </header>
-      <div className={`ui-lab-production-panel-stage ${featured ? 'ui-lab-material-graph-stage' : ''}`}>
-        {children}
-      </div>
+      <div className={`ui-lab-production-panel-stage ${featured ? 'ui-lab-material-graph-stage' : ''}`}>{children}</div>
     </article>
   );
 }
