@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { UiLabMaterialControls, UiLabMaterialPanels } from './UiLabMaterialGallery';
@@ -10,10 +10,12 @@ afterEach(cleanup);
 
 describe('UI Lab material galleries', () => {
   it('shows representative material node cards in the Controls gallery', () => {
-    render(<UiLabMaterialControls />);
+    const { container } = render(<UiLabMaterialControls />);
 
     expect(screen.getByRole('heading', { name: 'Material nodes' })).toBeInTheDocument();
-    expect(screen.getByText('Color')).toBeInTheDocument();
+    const materialNodes = container.querySelector('.ui-lab-material-node-row');
+    expect(materialNodes).toBeInTheDocument();
+    expect(within(materialNodes as HTMLElement).getByText('Color', { selector: '.ui-node-card-title' })).toBeInTheDocument();
     expect(screen.queryByText('Color (RGB)')).not.toBeInTheDocument();
     expect(screen.queryByText('Color (RGBA)')).not.toBeInTheDocument();
     expect(screen.getByText('Texture Sample')).toBeInTheDocument();
