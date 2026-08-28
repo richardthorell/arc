@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Star } from 'lucide-react';
 
 import { AssetThumbnail } from '../inspector/AssetPicker';
@@ -14,6 +15,25 @@ const assetTypeLabels: Record<AssetItem['kind'], string> = {
   shader: 'Shader',
   prefab: 'Prefab',
   folder: 'Folder',
+};
+
+const TOOLTIP_DELAY_MS = 350;
+const TOOLTIP_GAP = 14;
+const TOOLTIP_MARGIN = 8;
+const TOOLTIP_WIDTH = 276;
+
+type HoverPoint = { x: number; y: number };
+type HoverSize = { width: number; height: number };
+type HoverViewport = { width: number; height: number };
+
+export const assetHoverPosition = (point: HoverPoint, size: HoverSize, viewport: HoverViewport) => {
+  const left = Math.min(point.x + TOOLTIP_GAP, Math.max(TOOLTIP_MARGIN, viewport.width - size.width - TOOLTIP_MARGIN));
+  const downTop = point.y + TOOLTIP_GAP;
+  const fitsBelow = downTop + size.height <= viewport.height - TOOLTIP_MARGIN;
+  const top = fitsBelow
+    ? downTop
+    : Math.max(TOOLTIP_MARGIN, point.y - TOOLTIP_GAP - size.height);
+  return { left, top };
 };
 
 const fileNameFromPath = (path: string) => path.replaceAll('\\', '/').split('/').at(-1) ?? path;
@@ -66,7 +86,7 @@ function AssetHoverDetails({ asset }: { asset: AssetItem }) {
   const triangles = formatCount(asset.triangleCount);
 
   return (
-    <UiFloatingSurface className="content-asset-hover" role="tooltip" width={276}>
+    <UiFloatingSurface className="content-asset-hover" role="tooltip" width={TOOLTIP_WIDTH}>
       <header>
         <strong>{assetDisplayName(asset)}</strong>
         <span>{assetTypeLabels[asset.kind]}</span>
@@ -116,59 +136,112 @@ export function ContentAssetCard({
   onSelect: (additive: boolean) => void;
 }) {
   const tooltipId = `asset-details-${asset.id.replace(/[^a-z0-9_-]/gi, '-')}`;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
+  const [hoverPoint, setHoverPoint] = useState<HoverPoint>({ x: 0, y: 0 });
+  const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0 });
+
+  const cancelHover = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = null;
+  };
+
+  const scheduleHover = (point: HoverPoint) => {
+    cancelHover();
+    setHoverPoint(point);
+    hoverTimerRef.current = setTimeout(() => {
+      hoverTimerRef.current = null;
+      setDetailsVisible(true);
+    }, TOOLTIP_DELAY_MS);
+  };
+
+  const hideHover = () => {
+    cancelHover();
+    setDetailsVisible(false);
+  };
+
+  useLayoutEffect(() => {
+    if (!detailsVisible || !tooltipRef.current) return;
+    const rect = tooltipRef.current.getBoundingClientRect();
+    setTooltipPosition(
+      assetHoverPosition(
+        hoverPoint,
+        { width: rect.width || TOOLTIP_WIDTH, height: rect.height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
+  }, [detailsVisible, hoverPoint]);
 
   return (
-    <div
-      aria-describedby={detailsVisible ? tooltipId : undefined}
-      aria-selected={selected}
-      className={`content-asset ${selected ? 'selected' : ''}`}
-      draggable={Boolean(asset.guid)}
-      role="option"
-      tabIndex={0}
-      onBlur={(event) => {
-        if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node))
-          setDetailsVisible(false);
-      }}
-      onClick={(event) => onSelect(event.ctrlKey || event.metaKey)}
-      onDoubleClick={onActivate}
-      onDragStart={(event) => {
-        event.dataTransfer.setData(
-          'application/x-arc-asset',
-          JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path }),
-        );
-        event.dataTransfer.effectAllowed = 'copy';
-      }}
-      onFocus={() => setDetailsVisible(true)}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
-        event.preventDefault();
-        onSelect(event.ctrlKey || event.metaKey);
-      }}
-      onMouseEnter={() => setDetailsVisible(true)}
-      onMouseLeave={() => setDetailsVisible(false)}
-    >
-      <span className="content-asset-preview">
-        <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
-      </span>
-      <span className="content-asset-info">
-        <span className="content-asset-name" title={assetDisplayName(asset)}>
-          {assetDisplayName(asset)}
+    <>
+      <div
+        ref={cardRef}
+        aria-describedby={detailsVisible ? tooltipId : undefined}
+        aria-selected={selected}
+        className={`content-asset ${selected ? 'selected' : ''}`}
+        draggable={Boolean(asset.guid)}
+        role="option"
+        tabIndex={0}
+        onBlur={(event) => {
+          if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) hideHover();
+        }}
+        onClick={(event) => onSelect(event.ctrlKey || event.metaKey)}
+        onDoubleClick={onActivate}
+        onDragStart={(event) => {
+          hideHover();
+          event.dataTransfer.setData(
+            'application/x-arc-asset',
+            JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path }),
+          );
+          event.dataTransfer.effectAllowed = 'copy';
+        }}
+        onFocus={() => {
+          const rect = cardRef.current?.getBoundingClientRect();
+          if (rect) scheduleHover({ x: rect.right, y: rect.top + rect.height / 2 });
+        }}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+          event.preventDefault();
+          onSelect(event.ctrlKey || event.metaKey);
+        }}
+        onMouseEnter={(event) => scheduleHover({ x: event.clientX, y: event.clientY })}
+        onMouseLeave={hideHover}
+        onMouseMove={(event) => {
+          const point = { x: event.clientX, y: event.clientY };
+          setHoverPoint(point);
+        }}
+      >
+        <span className="content-asset-preview">
+          <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
         </span>
-        <small>{assetTypeLabels[asset.kind]}</small>
-        <i aria-label={`Asset status: ${asset.status}`} className={`asset-state ${asset.status}`} />
-      </span>
-      <span className="content-asset-actions" onClick={(event) => event.stopPropagation()}>
-        <button aria-label="Favorite" className={favorite ? 'active' : ''} onClick={onFavorite}>
-          <Star size={12} />
-        </button>
-        {asset.guid && !asset.readOnly && <button onClick={onReimport}>Reimport</button>}
-      </span>
-      {detailsVisible && (
-        <div id={tooltipId} className="content-asset-hover-anchor">
-          <AssetHoverDetails asset={asset} />
-        </div>
-      )}
-    </div>
+        <span className="content-asset-info">
+          <span className="content-asset-name" title={assetDisplayName(asset)}>
+            {assetDisplayName(asset)}
+          </span>
+          <small>{assetTypeLabels[asset.kind]}</small>
+          <i aria-label={`Asset status: ${asset.status}`} className={`asset-state ${asset.status}`} />
+        </span>
+        <span className="content-asset-actions" onClick={(event) => event.stopPropagation()}>
+          <button aria-label="Favorite" className={favorite ? 'active' : ''} onClick={onFavorite}>
+            <Star size={12} />
+          </button>
+          {asset.guid && !asset.readOnly && <button onClick={onReimport}>Reimport</button>}
+        </span>
+      </div>
+      {detailsVisible &&
+        createPortal(
+          <div
+            ref={tooltipRef}
+            id={tooltipId}
+            className="content-asset-hover-portal"
+            style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
+          >
+            <AssetHoverDetails asset={asset} />
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
