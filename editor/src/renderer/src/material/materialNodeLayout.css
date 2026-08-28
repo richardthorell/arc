@@ -1,9 +1,11 @@
 .material-graph-node,
 .ui-lab-material-node {
+  --material-node-body-gap: 5px;
+  --material-node-control-inset: 4px;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
   grid-template-rows: auto auto auto;
-  column-gap: 3px;
+  column-gap: var(--material-node-body-gap);
   align-items: start;
 }
 
@@ -22,8 +24,9 @@
 .ui-lab-material-node > .material-node-parameter-toggle {
   grid-column: 1 / -1;
   grid-row: 2;
-  margin: 5px 7px 2px;
-  padding: 0 0 5px;
+  box-sizing: border-box;
+  margin: 5px 0 2px;
+  padding: 0 var(--material-node-control-inset) 5px;
   border-top: 0;
   border-bottom: 1px solid rgba(104, 132, 145, 0.15);
 }
@@ -54,7 +57,9 @@
   min-width: 0;
   grid-column: 2;
   grid-row: 3;
+  box-sizing: border-box;
   margin: 7px 0 6px;
+  padding-inline: var(--material-node-control-inset);
 }
 
 .material-node-value-area > .material-node-inline-value,
@@ -76,12 +81,16 @@
 
 .material-graph-node .material-pin.input,
 .ui-lab-material-node .material-pin.input {
-  padding-right: 1px;
+  padding-right: 2px;
 }
 
 .material-graph-node .material-pin.output,
 .ui-lab-material-node .material-pin.output {
-  padding-left: 1px;
+  padding-left: 2px;
+}
+
+.material-node-parameter-toggle > input:last-child {
+  margin-left: 3px;
 }
 
 .material-node-parameter-toggle > input:last-child:disabled {
