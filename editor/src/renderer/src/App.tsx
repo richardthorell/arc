@@ -37,6 +37,18 @@ function EditorApplication() {
   );
 }
 
+function UiLabApplication() {
+  useEffect(
+    () =>
+      window.arc.nativeWindow.onCloseRequested(() => {
+        window.arc.nativeWindow.respondToClose('discard');
+      }),
+    [],
+  );
+
+  return <UiLabWindow />;
+}
+
 export function App() {
-  return isUiLabMode() ? <UiLabWindow /> : <EditorApplication />;
+  return isUiLabMode() ? <UiLabApplication /> : <EditorApplication />;
 }

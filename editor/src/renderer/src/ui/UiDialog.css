@@ -27,6 +27,12 @@
   color: var(--arc-text-secondary);
   background: #151f26;
   box-shadow: 0 24px 72px rgba(0, 0, 0, 0.52);
+  user-select: none;
+}
+
+.ui-dialog input,
+.ui-dialog textarea {
+  user-select: text;
 }
 
 .ui-dialog-backdrop.is-preview .ui-dialog {
@@ -43,6 +49,15 @@
   padding: 6px 9px 6px 14px;
   border-bottom: 1px solid var(--arc-border-subtle);
   background: #1c2830;
+}
+
+.ui-dialog-header.is-draggable {
+  cursor: grab;
+  touch-action: none;
+}
+
+.ui-dialog.is-dragging .ui-dialog-header.is-draggable {
+  cursor: grabbing;
 }
 
 .ui-dialog-heading {
