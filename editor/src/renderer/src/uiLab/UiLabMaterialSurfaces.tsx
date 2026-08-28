@@ -4,7 +4,7 @@ import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/Asse
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from '../material/MaterialGraphEditor';
 import type { MaterialGraph } from '../material/materialGraphTypes';
-import { UiNodeCard } from '../ui';
+import { UiColorControl, UiNodeCard } from '../ui';
 
 import '../material/materialEditor.css';
 import '../material/materialWorkspace.css';
@@ -24,9 +24,9 @@ const materialGraph: MaterialGraph = {
   nodes: [
     {
       id: 'base-color',
-      type: 'colorRgb',
+      type: 'colorRgba',
       position: [80, 120],
-      values: { value: [0.42, 0.24, 0.12] },
+      values: { value: [0.42, 0.24, 0.12, 1] },
       parameter: { exposed: true, name: 'Base Color' },
     },
     {
@@ -46,7 +46,7 @@ const materialGraph: MaterialGraph = {
   connections: [
     {
       id: 'base-color-output',
-      from: { nodeId: 'base-color', pin: 'value' },
+      from: { nodeId: 'base-color', pin: 'rgb' },
       to: { nodeId: 'output', pin: 'baseColor' },
     },
     {
@@ -57,16 +57,6 @@ const materialGraph: MaterialGraph = {
   ],
   viewport: { x: 0, y: 0, zoom: 1 },
 };
-
-const toHex = (value: readonly number[]) =>
-  `#${value
-    .slice(0, 3)
-    .map((channel) =>
-      Math.round(Math.min(1, Math.max(0, channel)) * 255)
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')}`;
 
 function ParameterControl({
   enabled,
@@ -84,67 +74,37 @@ function ParameterControl({
   return (
     <label className="material-node-parameter-toggle">
       <input checked={enabled} type="checkbox" onChange={(event) => onEnabledChange(event.target.checked)} />
-      Parameter
-      {enabled && <input aria-label={nameLabel} value={name} onChange={(event) => onNameChange(event.target.value)} />}
+      <span>Parameter</span>
+      <input
+        aria-label={nameLabel}
+        disabled={!enabled}
+        value={name}
+        onChange={(event) => onNameChange(event.target.value)}
+      />
     </label>
   );
 }
 
 export function UiLabMaterialNodeCard() {
-  const [color, setColor] = useState([0.42, 0.24, 0.12, 1]);
+  const [color, setColor] = useState<[number, number, number, number]>([0.42, 0.24, 0.12, 1]);
   const [parameter, setParameter] = useState(true);
   const [parameterName, setParameterName] = useState('Base Color');
-  const channels = ['R', 'G', 'B', 'A'] as const;
 
   return (
-    <UiNodeCard badge="vec4" className="ui-lab-material-node" heading="Color (RGBA)">
+    <UiNodeCard badge="vec4" className="ui-lab-material-node" heading="Color">
       <div className="material-node-pins">
         <div className="material-node-inputs" />
         <div className="material-node-outputs">
-          <button className="material-pin output" disabled type="button">
-            <span>RGBA</span>
-            <i />
-          </button>
-        </div>
-      </div>
-      <div className="material-node-color-value">
-        <input
-          aria-label="Material node color picker"
-          className="material-node-color-swatch"
-          type="color"
-          value={toHex(color)}
-          onChange={(event) => {
-            const hex = event.target.value;
-            setColor((current) => [
-              Number.parseInt(hex.slice(1, 3), 16) / 255,
-              Number.parseInt(hex.slice(3, 5), 16) / 255,
-              Number.parseInt(hex.slice(5, 7), 16) / 255,
-              current[3],
-            ]);
-          }}
-        />
-        <div className="material-node-color-components">
-          {channels.map((channel, index) => (
-            <label key={channel}>
-              {channel}
-              <input
-                aria-label={`Material node ${channel}`}
-                max={1}
-                min={0}
-                step="0.01"
-                type="number"
-                value={color[index]}
-                onChange={(event) =>
-                  setColor((current) => {
-                    const next = [...current];
-                    next[index] = Number(event.target.value);
-                    return next;
-                  })
-                }
-              />
-            </label>
+          {['RGB', 'R', 'G', 'B', 'A', 'RGBA'].map((pin) => (
+            <button className="material-pin output" disabled key={pin} type="button">
+              <span>{pin}</span>
+              <i />
+            </button>
           ))}
         </div>
+      </div>
+      <div className="material-node-value-area">
+        <UiColorControl label="Color" value={color} onCommit={setColor} />
       </div>
       <ParameterControl
         enabled={parameter}
@@ -180,18 +140,20 @@ export function UiLabTextureSampleNodeCard() {
           ))}
         </div>
       </div>
-      <button
-        aria-label="Texture sample asset"
-        className="ui-lab-texture-sample-preview"
-        type="button"
-        onClick={() => setTextureName((current) => (current === 'T_Bark_Albedo' ? 'T_Moss_Albedo' : 'T_Bark_Albedo'))}
-      >
-        <span className="ui-lab-texture-checker" aria-hidden="true" />
-        <span>
-          <strong>{textureName}</strong>
-          <small>Click to switch fixture texture</small>
-        </span>
-      </button>
+      <div className="material-node-value-area">
+        <button
+          aria-label="Texture sample asset"
+          className="ui-lab-texture-sample-preview"
+          type="button"
+          onClick={() => setTextureName((current) => (current === 'T_Bark_Albedo' ? 'T_Moss_Albedo' : 'T_Bark_Albedo'))}
+        >
+          <span className="ui-lab-texture-checker" aria-hidden="true" />
+          <span>
+            <strong>{textureName}</strong>
+            <small>Click to switch fixture texture</small>
+          </span>
+        </button>
+      </div>
       <ParameterControl
         enabled={parameter}
         name={parameterName}
@@ -219,16 +181,18 @@ export function UiLabConstantNodeCard() {
           </button>
         </div>
       </div>
-      <label className="material-node-inline-value">
-        Value
-        <input
-          aria-label="Constant value"
-          step="0.01"
-          type="number"
-          value={value}
-          onChange={(event) => setValue(Number(event.target.value))}
-        />
-      </label>
+      <div className="material-node-value-area">
+        <label className="material-node-inline-value">
+          Value
+          <input
+            aria-label="Constant value"
+            step="0.01"
+            type="number"
+            value={value}
+            onChange={(event) => setValue(Number(event.target.value))}
+          />
+        </label>
+      </div>
       <ParameterControl
         enabled={parameter}
         name={parameterName}

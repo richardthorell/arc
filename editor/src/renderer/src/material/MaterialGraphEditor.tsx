@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Plus, Search, Trash2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiButton, UiContextMenu, UiContextMenuItem, UiNodeCard, UiTextInput } from '../ui';
+import { UiButton, UiColorControl, UiContextMenu, UiContextMenuItem, UiNodeCard, UiTextInput } from '../ui';
 import {
   cloneMaterialGraph,
   createMaterialNode,
@@ -63,18 +63,15 @@ const nextNodeValue = (node: MaterialGraphNode, value: unknown): MaterialGraphNo
 });
 
 const colorChannel = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
-const colorHex = (value: unknown) => {
+const colorTuple = (value: unknown): [number, number, number, number] => {
   const components = Array.isArray(value) ? value : [];
-  return `#${[0, 1, 2]
-    .map((index) =>
-      Math.round(Math.min(1, Math.max(0, colorChannel(components[index]))) * 255)
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')}`;
+  return [
+    colorChannel(components[0] ?? 1),
+    colorChannel(components[1] ?? 1),
+    colorChannel(components[2] ?? 1),
+    colorChannel(components[3] ?? 1),
+  ];
 };
-const colorFromHex = (hex: string) =>
-  [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255);
 
 function MaterialNodeValueEditor({
   node,
@@ -126,44 +123,17 @@ function MaterialNodeValueEditor({
   }
 
   if (node.type === 'colorRgb' || node.type === 'colorRgba') {
-    const size = node.type === 'colorRgba' ? 4 : 3;
-    const current = Array.isArray(node.values.value) ? node.values.value : [];
-    const channels = node.type === 'colorRgba' ? ['R', 'G', 'B', 'A'] : ['R', 'G', 'B'];
+    const color = colorTuple(node.values.value);
     return (
-      <div className="material-node-color-value">
-        <input
-          aria-label={`${node.type} color picker`}
-          className="material-node-color-swatch"
-          disabled={readOnly}
-          type="color"
-          value={colorHex(current)}
-          onChange={(event) => {
-            const rgb = colorFromHex(event.target.value);
-            onChange(nextNodeValue(node, node.type === 'colorRgba' ? [...rgb, colorChannel(current[3] ?? 1)] : rgb));
-          }}
-        />
-        <div className="material-node-color-components">
-          {Array.from({ length: size }, (_, index) => (
-            <label key={channels[index]}>
-              {channels[index]}
-              <input
-                aria-label={`${node.type} ${channels[index]}`}
-                disabled={readOnly}
-                type="number"
-                step="0.01"
-                value={colorChannel(current[index] ?? (index === 3 ? 1 : 0))}
-                onChange={(event) => {
-                  const next = Array.from({ length: size }, (_, component) =>
-                    colorChannel(current[component] ?? (component === 3 ? 1 : 0)),
-                  );
-                  next[index] = Number(event.target.value);
-                  onChange(nextNodeValue(node, next));
-                }}
-              />
-            </label>
-          ))}
-        </div>
-      </div>
+      <UiColorControl
+        allowAlpha={node.type === 'colorRgba'}
+        label={node.type === 'colorRgba' ? 'Color' : 'Legacy RGB color'}
+        onCommit={(next) => {
+          if (readOnly) return;
+          onChange(nextNodeValue(node, node.type === 'colorRgba' ? next : next.slice(0, 3)));
+        }}
+        value={color}
+      />
     );
   }
 
@@ -434,7 +404,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   const availableNodes = useMemo(() => {
     const query = nodeSearch.trim().toLocaleLowerCase();
     return (Object.values(materialNodeDefinitions) as Array<(typeof materialNodeDefinitions)[MaterialGraphNodeType]>)
-      .filter((definition) => definition.type !== 'output')
+      .filter((definition) => definition.type !== 'output' && definition.type !== 'colorRgb')
       .filter(
         (definition) =>
           !query ||
@@ -675,20 +645,22 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                       })
                     }
                   />
-                  Parameter
-                  {node.parameter?.exposed && (
-                    <input
-                      aria-label="Parameter name"
-                      disabled={document.readOnly}
-                      value={node.parameter.name}
-                      onChange={(event) =>
-                        mutate((next) => {
-                          const target = next.nodes.find((candidate) => candidate.id === node.id);
-                          if (target?.parameter) target.parameter.name = event.target.value;
-                        })
-                      }
-                    />
-                  )}
+                  <span>Parameter</span>
+                  <input
+                    aria-label="Parameter name"
+                    disabled={document.readOnly || !node.parameter?.exposed}
+                    value={node.parameter?.name ?? definition.title}
+                    onChange={(event) =>
+                      mutate((next) => {
+                        const target = next.nodes.find((candidate) => candidate.id === node.id);
+                        if (!target) return;
+                        target.parameter = {
+                          exposed: Boolean(target.parameter?.exposed),
+                          name: event.target.value,
+                        };
+                      })
+                    }
+                  />
                 </label>
               )}
             </UiNodeCard>

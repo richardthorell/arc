@@ -13,10 +13,12 @@ describe('UI Lab material galleries', () => {
     render(<UiLabMaterialControls />);
 
     expect(screen.getByRole('heading', { name: 'Material nodes' })).toBeInTheDocument();
-    expect(screen.getByText('Color (RGBA)')).toBeInTheDocument();
+    expect(screen.getByText('Color')).toBeInTheDocument();
+    expect(screen.queryByText('Color (RGB)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Color (RGBA)')).not.toBeInTheDocument();
     expect(screen.getByText('Texture Sample')).toBeInTheDocument();
     expect(screen.getByText('Constant')).toBeInTheDocument();
-    expect(screen.getByLabelText('Material node color picker')).toBeInTheDocument();
+    expect(screen.getByLabelText('Open Color color picker')).toBeInTheDocument();
     expect(screen.getByLabelText('Material node parameter name')).toHaveValue('Base Color');
     expect(screen.getByLabelText('Texture parameter name')).toHaveValue('Albedo Texture');
     expect(screen.getByLabelText('Constant parameter name')).toHaveValue('Roughness');
@@ -24,9 +26,10 @@ describe('UI Lab material galleries', () => {
     expect(screen.queryByRole('application', { name: 'Material graph' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Material Preview')).not.toBeInTheDocument();
 
-    const red = screen.getByLabelText('Material node R');
+    const red = screen.getByLabelText('Color R');
     fireEvent.change(red, { target: { value: '0.75' } });
-    expect(red).toHaveValue(0.75);
+    fireEvent.blur(red);
+    expect(red).toHaveValue('0.75');
 
     const constant = screen.getByLabelText('Constant value');
     fireEvent.change(constant, { target: { value: '0.7' } });
@@ -36,6 +39,16 @@ describe('UI Lab material galleries', () => {
     expect(texture).toHaveTextContent('T_Bark_Albedo');
     fireEvent.click(texture);
     expect(texture).toHaveTextContent('T_Moss_Albedo');
+
+    const colorParameterName = screen.getByLabelText('Material node parameter name');
+    const parameterToggles = screen.getAllByRole('checkbox');
+    expect(colorParameterName).toBeEnabled();
+    fireEvent.click(parameterToggles[0]);
+    expect(colorParameterName).toBeDisabled();
+    expect(colorParameterName).toHaveValue('Base Color');
+    fireEvent.click(parameterToggles[0]);
+    expect(colorParameterName).toBeEnabled();
+    expect(colorParameterName).toHaveValue('Base Color');
   });
 
   it('includes non-dockable material editor surfaces in the Panels gallery', () => {

@@ -1,4 +1,5 @@
 export { UiButton } from './UiButton';
+export { UiColorControl } from './UiColorControl';
 export { UiContextMenu, UiContextMenuItem } from './UiContextMenu';
 export { UiDialog } from './UiDialog';
 export { UiIconButton } from './UiIconButton';

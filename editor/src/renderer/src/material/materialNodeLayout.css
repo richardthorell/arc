@@ -1,0 +1,112 @@
+.material-graph-node,
+.ui-lab-material-node {
+  --material-node-body-gap: 5px;
+  --material-node-control-inset: 7px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-rows: auto auto auto;
+  column-gap: var(--material-node-body-gap);
+  align-items: start;
+}
+
+.material-graph-node > .ui-node-card-header,
+.ui-lab-material-node > .ui-node-card-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.material-graph-node .ui-node-card-badge,
+.ui-lab-material-node .ui-node-card-badge {
+  display: none;
+}
+
+.material-graph-node > .material-node-parameter-toggle,
+.ui-lab-material-node > .material-node-parameter-toggle {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  box-sizing: border-box;
+  margin: 5px 0 2px;
+  padding: 0 var(--material-node-control-inset) 5px;
+  border-top: 0;
+  border-bottom: 1px solid rgba(104, 132, 145, 0.15);
+}
+
+.material-graph-node > .material-node-pins,
+.ui-lab-material-node > .material-node-pins {
+  display: contents;
+}
+
+.material-graph-node .material-node-inputs,
+.ui-lab-material-node .material-node-inputs {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.material-graph-node .material-node-outputs,
+.ui-lab-material-node .material-node-outputs {
+  grid-column: 3;
+  grid-row: 3;
+}
+
+.material-graph-node > .material-node-inline-value,
+.material-graph-node > .material-node-vector-value,
+.material-graph-node > .material-node-value-area,
+.material-graph-node > .inspector-property,
+.material-graph-node > .ui-color-control,
+.ui-lab-material-node > .material-node-value-area {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 3;
+  box-sizing: border-box;
+  margin: 7px 0 6px;
+  padding-inline: var(--material-node-control-inset);
+}
+
+.material-node-value-area > .material-node-inline-value,
+.material-node-value-area > .material-node-vector-value,
+.material-node-value-area > .inspector-property,
+.material-node-value-area > .ui-color-control,
+.material-node-value-area > .ui-lab-texture-sample-preview {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.material-graph-node .material-node-inputs,
+.material-graph-node .material-node-outputs,
+.ui-lab-material-node .material-node-inputs,
+.ui-lab-material-node .material-node-outputs {
+  padding-top: 6px;
+}
+
+.material-graph-node .material-pin.input,
+.ui-lab-material-node .material-pin.input {
+  padding-right: 2px;
+}
+
+.material-graph-node .material-pin.output,
+.ui-lab-material-node .material-pin.output {
+  padding-left: 2px;
+}
+
+.material-node-parameter-toggle > input:last-child {
+  margin-left: 5px;
+}
+
+.material-node-parameter-toggle > input:last-child:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.material-graph-node-constant > .material-node-inline-value,
+.ui-lab-material-node .material-node-inline-value:has(> input[aria-label='Constant value']) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  font-size: 0;
+}
+
+.material-graph-node-constant > .material-node-inline-value > input,
+.ui-lab-material-node .material-node-inline-value:has(> input[aria-label='Constant value']) > input {
+  width: 100%;
+  font-size: 10px;
+}
