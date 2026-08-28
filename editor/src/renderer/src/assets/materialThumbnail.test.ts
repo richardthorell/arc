@@ -20,17 +20,16 @@ describe('material thumbnails', () => {
       pixels[offset + 3] = 255;
     }
 
-    const center = (2 * width + 2) * 4;
+    const centerIndex = 12;
+    const center = centerIndex * 4;
     pixels[center] = 180;
     pixels[center + 1] = 80;
     pixels[center + 2] = 40;
-    // Same clear color enclosed by the sphere must not be erased by the edge flood fill.
-    const enclosed = (2 * width + 1) * 4;
-    pixels[enclosed] = 20;
-    pixels[enclosed + 1] = 24;
-    pixels[enclosed + 2] = 28;
-    // Surround the enclosed pixel with material-colored pixels.
-    for (const index of [6, 7, 8, 11, 13, 16, 17, 18]) {
+
+    // Same clear color enclosed by material-colored pixels must not be erased by the edge flood fill.
+    const enclosedIndex = 11;
+    const enclosed = enclosedIndex * 4;
+    for (const index of [6, 7, 10, 12, 16, 17]) {
       const offset = index * 4;
       pixels[offset] = 180;
       pixels[offset + 1] = 80;
