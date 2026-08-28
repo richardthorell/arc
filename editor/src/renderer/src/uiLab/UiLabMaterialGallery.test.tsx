@@ -55,7 +55,7 @@ describe('UI Lab material galleries', () => {
     render(<UiLabMaterialPanels />);
 
     expect(screen.getByText('Editor Surfaces')).toBeInTheDocument();
-    expect(screen.getByText('Material Graph')).toBeInTheDocument();
+    expect(screen.getByText('Material Graph', { selector: '.ui-lab-production-panel-label strong' })).toBeInTheDocument();
     expect(screen.getByText('Material Editor Side Panel')).toBeInTheDocument();
     expect(screen.getByText('4 material surfaces')).toBeInTheDocument();
 
