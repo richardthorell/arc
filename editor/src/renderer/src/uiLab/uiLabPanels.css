@@ -192,7 +192,20 @@
   height: 100%;
 }
 
-.ui-lab-production-panel[data-panel-id='hierarchy'] .hierarchy-tree,
+.ui-lab-production-panel[data-panel-id='hierarchy'] .explorer-view,
+.ui-lab-production-panel[data-panel-id='hierarchy'] .workbench-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.ui-lab-production-panel[data-panel-id='hierarchy'] .hierarchy-tree {
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
 .ui-lab-production-panel[data-panel-id='inspector'] .inspector-component-list {
   max-height: 430px;
   overflow: auto;

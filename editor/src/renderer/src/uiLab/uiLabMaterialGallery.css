@@ -1,0 +1,118 @@
+.ui-lab-material-controls {
+  margin-top: 0;
+}
+
+.ui-lab-material-controls .ui-lab-card-stage {
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 280px;
+}
+
+.ui-lab-material-node-showcase {
+  grid-column: 1 / -1;
+}
+
+.ui-lab-material-node-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+
+.ui-lab-material-node {
+  width: 100%;
+  min-width: 0;
+}
+
+.ui-lab-material-node .material-node-pins {
+  min-height: 38px;
+}
+
+.ui-lab-texture-sample-preview {
+  width: calc(100% - 16px);
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 4px 8px 8px;
+  padding: 6px;
+  color: var(--arc-color-text-muted);
+  border: 1px solid #314650;
+  border-radius: 3px;
+  background: #101a20;
+  text-align: left;
+}
+
+.ui-lab-texture-sample-preview:hover {
+  border-color: #4d97ad;
+  background: #142129;
+}
+
+.ui-lab-texture-sample-preview > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.ui-lab-texture-sample-preview strong,
+.ui-lab-texture-sample-preview small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-lab-texture-sample-preview strong {
+  color: var(--arc-color-text);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.ui-lab-texture-sample-preview small {
+  color: var(--arc-color-text-dim);
+  font-size: 8px;
+}
+
+.ui-lab-texture-checker {
+  width: 54px;
+  height: 54px;
+  border-radius: 3px;
+  background:
+    linear-gradient(45deg, rgba(94, 125, 89, 0.9) 25%, transparent 25% 75%, rgba(94, 125, 89, 0.9) 75%),
+    linear-gradient(45deg, rgba(77, 101, 73, 0.95) 25%, rgba(112, 142, 104, 0.9) 25% 75%, rgba(77, 101, 73, 0.95) 75%);
+  background-position:
+    0 0,
+    7px 7px;
+  background-size: 14px 14px;
+}
+
+.ui-lab-material-panel-gallery {
+  border-top: var(--arc-border-width) solid var(--arc-color-border-subtle);
+  background: var(--arc-color-bg-app);
+}
+
+.ui-lab-material-panels-hero {
+  z-index: 19;
+}
+
+.ui-lab-material-graph-stage {
+  min-height: 520px;
+  overflow: hidden;
+}
+
+.ui-lab-material-graph-stage .material-graph-canvas {
+  width: 100%;
+  min-height: 520px;
+}
+
+.ui-lab-material-panel-gallery .asset-preview-panel,
+.ui-lab-material-panel-gallery .material-parameters-panel {
+  min-height: 100%;
+}
+
+@media (max-width: 980px) {
+  .ui-lab-material-node-row {
+    grid-template-columns: minmax(220px, 1fr);
+  }
+}

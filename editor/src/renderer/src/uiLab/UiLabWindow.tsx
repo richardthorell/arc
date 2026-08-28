@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { WindowControls } from '../layout/WindowControls';
 import { UiTab, UiTabs } from '../ui';
 import { UiLab } from './UiLab';
+import { UiLabMaterialControls, UiLabMaterialPanels } from './UiLabMaterialGallery';
 import { UiLabPanels } from './UiLabPanels';
 import { UiLabThemePicker } from './UiLabThemePicker';
 
@@ -33,7 +34,21 @@ export function UiLabWindow() {
           Panels
         </UiTab>
       </UiTabs>
-      {page === 'controls' ? <UiLab /> : <UiLabPanels />}
+      <div className="ui-lab-page-scroll">
+        {page === 'controls' ? (
+          <>
+            <UiLab />
+            <div className="ui-lab-content ui-lab-material-extension">
+              <UiLabMaterialControls />
+            </div>
+          </>
+        ) : (
+          <>
+            <UiLabPanels />
+            <UiLabMaterialPanels />
+          </>
+        )}
+      </div>
     </div>
   );
 }
