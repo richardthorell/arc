@@ -45,11 +45,13 @@ const renderCard = (asset: AssetItem) =>
     />,
   );
 
-const revealTooltip = (view: ReturnType<typeof render>) => {
+const revealTooltip = async (view: ReturnType<typeof render>) => {
   vi.useFakeTimers();
   fireEvent.mouseEnter(view.getByRole('option'), { clientX: 120, clientY: 90 });
   expect(view.queryByRole('tooltip')).not.toBeInTheDocument();
-  act(() => vi.advanceTimersByTime(350));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(350);
+  });
   return view.getByRole('tooltip');
 };
 
@@ -69,9 +71,9 @@ describe('ContentAssetCard', () => {
     expect(view.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
-  it('delays the hover surface and portals it outside the asset card', () => {
+  it('delays the hover surface and portals it outside the asset card', async () => {
     const view = renderCard(mesh);
-    const tooltip = revealTooltip(view);
+    const tooltip = await revealTooltip(view);
 
     expect(tooltip).toHaveClass('menu-dropdown', 'ui-floating-surface', 'content-asset-hover');
     expect(tooltip.closest('.content-asset')).toBeNull();
@@ -83,9 +85,9 @@ describe('ContentAssetCard', () => {
     expect(tooltip).toHaveTextContent('12,288');
   });
 
-  it('shows texture dimensions and mip levels when registry metadata is available', () => {
+  it('shows texture dimensions and mip levels when registry metadata is available', async () => {
     const view = renderCard(texture);
-    const tooltip = revealTooltip(view);
+    const tooltip = await revealTooltip(view);
 
     expect(tooltip).toHaveTextContent('2048 × 1024');
     expect(tooltip).toHaveTextContent('12');
