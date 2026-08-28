@@ -132,6 +132,14 @@ export type MaterialNodeDefinition = {
 
 const pin = (id: string, label: string, type: MaterialGraphPinType): MaterialNodePin => ({ id, label, type });
 const numeric = (id: string, label: string) => pin(id, label, 'numeric');
+const colorOutputs = (): MaterialNodePin[] => [
+  pin('rgb', 'RGB', 'vec3'),
+  pin('r', 'R', 'float'),
+  pin('g', 'G', 'float'),
+  pin('b', 'B', 'float'),
+  pin('a', 'A', 'float'),
+  pin('rgba', 'RGBA', 'vec4'),
+];
 
 const unaryMath = (
   type: MaterialGraphNodeType,
@@ -246,7 +254,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
   },
   colorRgb: {
     type: 'colorRgb',
-    title: 'Color (RGB)',
+    title: 'Legacy Color (RGB)',
     category: 'Values',
     subcategory: 'Colors',
     inputs: [],
@@ -255,11 +263,11 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
   },
   colorRgba: {
     type: 'colorRgba',
-    title: 'Color (RGBA)',
+    title: 'Color',
     category: 'Values',
     subcategory: 'Colors',
     inputs: [],
-    outputs: [pin('value', 'RGBA', 'vec4')],
+    outputs: colorOutputs(),
     defaultValues: { value: [1, 1, 1, 1] },
   },
   textureSample: {
@@ -268,14 +276,7 @@ export const materialNodeDefinitions: Record<MaterialGraphNodeType, MaterialNode
     category: 'Textures',
     subcategory: 'Sampling',
     inputs: [pin('uv', 'UV', 'vec2')],
-    outputs: [
-      pin('rgb', 'RGB', 'vec3'),
-      pin('r', 'R', 'float'),
-      pin('g', 'G', 'float'),
-      pin('b', 'B', 'float'),
-      pin('a', 'A', 'float'),
-      pin('rgba', 'RGBA', 'vec4'),
-    ],
+    outputs: colorOutputs(),
     defaultValues: { texture: '' },
   },
   texCoord: {
@@ -428,7 +429,7 @@ export const createMaterialNode = (
 });
 
 export const createDefaultMaterialGraph = (): MaterialGraph => {
-  const baseColor = createMaterialNode('colorRgb', [80, 120], { value: [0.78, 0.8, 0.84] });
+  const baseColor = createMaterialNode('colorRgba', [80, 120], { value: [0.78, 0.8, 0.84, 1] });
   baseColor.parameter = { exposed: true, name: 'Base Color' };
   const metallic = createMaterialNode('constant', [80, 290], { value: 0 });
   metallic.parameter = { exposed: true, name: 'Metallic' };
@@ -442,7 +443,7 @@ export const createDefaultMaterialGraph = (): MaterialGraph => {
     connections: [
       {
         id: materialGraphId('connection'),
-        from: { nodeId: baseColor.id, pin: 'value' },
+        from: { nodeId: baseColor.id, pin: 'rgb' },
         to: { nodeId: output.id, pin: 'baseColor' },
       },
       {
