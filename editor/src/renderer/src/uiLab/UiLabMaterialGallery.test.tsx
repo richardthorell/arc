@@ -39,6 +39,16 @@ describe('UI Lab material galleries', () => {
     expect(texture).toHaveTextContent('T_Bark_Albedo');
     fireEvent.click(texture);
     expect(texture).toHaveTextContent('T_Moss_Albedo');
+
+    const colorParameterName = screen.getByLabelText('Material node parameter name');
+    const parameterToggles = screen.getAllByRole('checkbox');
+    expect(colorParameterName).toBeEnabled();
+    fireEvent.click(parameterToggles[0]);
+    expect(colorParameterName).toBeDisabled();
+    expect(colorParameterName).toHaveValue('Base Color');
+    fireEvent.click(parameterToggles[0]);
+    expect(colorParameterName).toBeEnabled();
+    expect(colorParameterName).toHaveValue('Base Color');
   });
 
   it('includes non-dockable material editor surfaces in the Panels gallery', () => {
