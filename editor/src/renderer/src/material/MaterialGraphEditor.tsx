@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Copy, Plus, Search, Trash2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -21,12 +21,49 @@ import {
 import { redoMaterialGraph, replaceMaterialGraph, undoMaterialGraph } from './materialDocumentState';
 import { MaterialTextureSampleEditor } from './MaterialTextureSampleEditor';
 
-const nodeWidth = 214;
+const defaultNodeWidth = 214;
 const headerHeight = 34;
 const pinRowHeight = 25;
 const nodePaddingTop = 9;
 
 type AddMenuCategory = Exclude<MaterialNodeCategory, 'Output'>;
+type PinPosition = [number, number];
+
+export const materialNodeWidth = (type: MaterialGraphNodeType) => {
+  switch (type) {
+    case 'vector2':
+      return 232;
+    case 'vector3':
+      return 252;
+    case 'vector4':
+      return 286;
+    case 'colorRgb':
+    case 'colorRgba':
+      return 300;
+    case 'textureSample':
+      return 286;
+    case 'output':
+      return 236;
+    case 'normalMap':
+    case 'clamp':
+      return 232;
+    default:
+      return defaultNodeWidth;
+  }
+};
+
+const materialPinKey = (nodeId: string, pin: string, output: boolean) =>
+  `${nodeId}:${output ? 'output' : 'input'}:${pin}`;
+
+const samePinPositions = (left: Map<string, PinPosition>, right: Map<string, PinPosition>) => {
+  if (left.size !== right.size) return false;
+  for (const [key, point] of left) {
+    const candidate = right.get(key);
+    if (!candidate || Math.abs(candidate[0] - point[0]) > 0.01 || Math.abs(candidate[1] - point[1]) > 0.01)
+      return false;
+  }
+  return true;
+};
 
 const editableValueNode = (node: MaterialGraphNode) =>
   node.type === 'constant' ||
@@ -44,6 +81,11 @@ const pinY = (node: MaterialGraphNode, pin: string, output: boolean) => {
   );
   return node.position[1] + headerHeight + nodePaddingTop + pinRowHeight * index + pinRowHeight / 2;
 };
+
+const fallbackPinPosition = (node: MaterialGraphNode, pin: string, output: boolean): PinPosition => [
+  node.position[0] + (output ? materialNodeWidth(node.type) : 0),
+  pinY(node, pin, output),
+];
 
 const connectionPath = (from: [number, number], to: [number, number]) => {
   const distance = Math.max(55, Math.abs(to[0] - from[0]) * 0.45);
@@ -180,6 +222,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   const [selectedNodes, setSelectedNodes] = useState<Set<string>>(() => new Set());
   const [pendingConnection, setPendingConnection] = useState<MaterialGraphPinRef | null>(null);
   const [pointerGraph, setPointerGraph] = useState<[number, number]>([0, 0]);
+  const [pinPositions, setPinPositions] = useState<Map<string, PinPosition>>(() => new Map());
   const [drag, setDrag] = useState<{ start: [number, number]; nodes: Map<string, [number, number]> } | null>(null);
   const [pan, setPan] = useState<{ start: [number, number]; viewport: [number, number] } | null>(null);
   const [box, setBox] = useState<{ start: [number, number]; current: [number, number] } | null>(null);
@@ -211,6 +254,38 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     },
     [viewport.x, viewport.y, viewport.zoom],
   );
+
+  const measurePinPositions = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const next = new Map<string, PinPosition>();
+    for (const element of canvas.querySelectorAll<HTMLElement>('[data-material-pin-key]')) {
+      const key = element.dataset.materialPinKey;
+      const socket = element.querySelector<HTMLElement>('i');
+      if (!key || !socket) continue;
+      const rect = socket.getBoundingClientRect();
+      next.set(key, [
+        (rect.left + rect.width / 2 - canvasRect.left - viewport.x) / viewport.zoom,
+        (rect.top + rect.height / 2 - canvasRect.top - viewport.y) / viewport.zoom,
+      ]);
+    }
+    setPinPositions((current) => (samePinPositions(current, next) ? current : next));
+  }, [viewport.x, viewport.y, viewport.zoom]);
+
+  useLayoutEffect(() => {
+    measurePinPositions();
+    const frame = window.requestAnimationFrame(measurePinPositions);
+    const nodes = canvasRef.current?.querySelectorAll<HTMLElement>('.material-graph-node') ?? [];
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measurePinPositions);
+    for (const node of nodes) observer?.observe(node);
+    window.addEventListener('resize', measurePinPositions);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener('resize', measurePinPositions);
+    };
+  }, [graph.nodes, measurePinPositions]);
 
   const updateViewport = useCallback(
     (patch: Partial<typeof viewport>, recordHistory = false) =>
@@ -258,7 +333,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
             graph.nodes
               .filter(
                 (node) =>
-                  node.position[0] + nodeWidth >= left &&
+                  node.position[0] + materialNodeWidth(node.type) >= left &&
                   node.position[0] <= right &&
                   node.position[1] + 180 >= top &&
                   node.position[1] <= bottom,
@@ -429,6 +504,8 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
         )
       : [];
   const searchingNodes = nodeSearch.trim().length > 0;
+  const pinPosition = (node: MaterialGraphNode, pin: string, output: boolean) =>
+    pinPositions.get(materialPinKey(node.id, pin, output)) ?? fallbackPinPosition(node, pin, output);
 
   const wirePaths = graph.connections.map((connection) => {
     const fromNode = graph.nodes.find((node) => node.id === connection.from.nodeId);
@@ -437,8 +514,8 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     return {
       id: connection.id,
       d: connectionPath(
-        [fromNode.position[0] + nodeWidth, pinY(fromNode, connection.from.pin, true)],
-        [toNode.position[0], pinY(toNode, connection.to.pin, false)],
+        pinPosition(fromNode, connection.from.pin, true),
+        pinPosition(toNode, connection.to.pin, false),
       ),
     };
   });
@@ -447,7 +524,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
     if (!pendingConnection) return null;
     const node = graph.nodes.find((candidate) => candidate.id === pendingConnection.nodeId);
     if (!node) return null;
-    return connectionPath([node.position[0] + nodeWidth, pinY(node, pendingConnection.pin, true)], pointerGraph);
+    return connectionPath(pinPosition(node, pendingConnection.pin, true), pointerGraph);
   })();
 
   return (
@@ -541,7 +618,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
               heading={definition.title}
               key={node.id}
               selected={selected}
-              style={{ left: node.position[0], top: node.position[1], width: nodeWidth }}
+              style={{ left: node.position[0], top: node.position[1], width: materialNodeWidth(node.type) }}
               tone={node.type === 'output' ? 'accent' : 'default'}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
@@ -577,6 +654,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                     return (
                       <button
                         className={`material-pin input ${connected ? 'connected' : ''}`}
+                        data-material-pin-key={materialPinKey(node.id, pin.id, false)}
                         disabled={document.readOnly}
                         key={pin.id}
                         onPointerDown={(event) => {
@@ -601,6 +679,7 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
                           ? 'connected'
                           : ''
                       }`}
+                      data-material-pin-key={materialPinKey(node.id, pin.id, true)}
                       disabled={document.readOnly}
                       key={pin.id}
                       onPointerDown={(event) => {
