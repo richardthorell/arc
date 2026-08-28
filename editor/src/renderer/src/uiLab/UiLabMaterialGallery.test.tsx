@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { UiLabMaterialControls, UiLabMaterialPanels } from './UiLabMaterialGallery';
@@ -51,13 +51,19 @@ describe('UI Lab material galleries', () => {
     expect(colorParameterName).toHaveValue('Base Color');
   });
 
-  it('includes non-dockable material editor surfaces in the Panels gallery', () => {
+  it('includes the complete material side panel in the Panels gallery', () => {
     render(<UiLabMaterialPanels />);
 
     expect(screen.getByText('Editor Surfaces')).toBeInTheDocument();
     expect(screen.getByText('Material Graph')).toBeInTheDocument();
-    expect(screen.getAllByText('Material Preview')).toHaveLength(2);
-    expect(screen.getByText('Material Parameters')).toBeInTheDocument();
-    expect(screen.getByText('3 material surfaces')).toBeInTheDocument();
+    expect(screen.getByText('Material Editor Side Panel')).toBeInTheDocument();
+    expect(screen.getByText('4 material surfaces')).toBeInTheDocument();
+
+    const sidePanel = screen.getByLabelText('Material editor side panel');
+    expect(sidePanel).toHaveClass('editor-property-panel');
+    expect(within(sidePanel).getByLabelText('Material Preview')).toBeInTheDocument();
+    expect(within(sidePanel).getByLabelText('Material parameters')).toBeInTheDocument();
+    expect(within(sidePanel).getByLabelText('Material details')).toBeInTheDocument();
+    expect(within(sidePanel).getByText('Native compilation succeeded')).toBeInTheDocument();
   });
 });

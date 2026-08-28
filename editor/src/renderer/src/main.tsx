@@ -9,6 +9,7 @@ import './radio.css';
 import './styles.css';
 import './layout/titlebar.css';
 import './layout/toolbar.css';
+import './ui/editorPropertyPanel.css';
 import './ui-polish.css';
 import './viewport/viewportChromeOverrides.css';
 import './viewport/viewportChromeBehavior';

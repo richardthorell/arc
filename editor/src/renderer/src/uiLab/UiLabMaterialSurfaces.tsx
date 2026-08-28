@@ -230,7 +230,7 @@ export function UiLabMaterialParameters() {
   ] as const;
 
   return (
-    <section className="material-parameters-panel" aria-label="Material parameters">
+    <section className="material-parameters-panel editor-property-section" aria-label="Material parameters">
       <header>
         <div>
           <strong>Parameters</strong>
@@ -265,6 +265,42 @@ export function UiLabMaterialParameters() {
         </label>
       </div>
     </section>
+  );
+}
+
+export function UiLabMaterialDetails() {
+  return (
+    <section className="material-details-panel editor-property-section" aria-label="Material details">
+      <header>
+        <strong>Material</strong>
+        <span>M_Wood_Logs</span>
+      </header>
+      <dl>
+        <dt>Domain</dt>
+        <dd>surface</dd>
+        <dt>Blend</dt>
+        <dd>opaque</dd>
+        <dt>Shading</dt>
+        <dd>standard</dd>
+        <dt>Implementation</dt>
+        <dd>Material Graph</dd>
+        <dt>Compiler</dt>
+        <dd>Native Material IR</dd>
+      </dl>
+      <div className="material-compile-summary">
+        <span>Native compilation succeeded</span>
+      </div>
+    </section>
+  );
+}
+
+export function UiLabMaterialSidePanel() {
+  return (
+    <aside className="material-editor-sidebar editor-property-panel ui-lab-material-sidebar-fixture" aria-label="Material editor side panel">
+      <UiLabMaterialPreview />
+      <UiLabMaterialParameters />
+      <UiLabMaterialDetails />
+    </aside>
   );
 }
 

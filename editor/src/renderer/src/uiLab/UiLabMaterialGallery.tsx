@@ -4,6 +4,7 @@ import {
   UiLabMaterialNodeCard,
   UiLabMaterialParameters,
   UiLabMaterialPreview,
+  UiLabMaterialSidePanel,
   UiLabTextureSampleNodeCard,
 } from './UiLabMaterialSurfaces';
 
@@ -80,7 +81,7 @@ export function UiLabMaterialPanels() {
           <span>Production editor surfaces that are not registered as dockable workbench panels.</span>
         </div>
         <div className="ui-lab-panels-meta">
-          <span>3 material surfaces</span>
+          <span>4 material surfaces</span>
           <span>Production components</span>
           <span>No native renderer required</span>
         </div>
@@ -88,6 +89,9 @@ export function UiLabMaterialPanels() {
       <div className="ui-lab-panels-grid">
         <SurfaceCard featured title="Material Graph" component="MaterialGraphEditor">
           <UiLabMaterialGraph />
+        </SurfaceCard>
+        <SurfaceCard title="Material Editor Side Panel" component="editor-property-panel">
+          <UiLabMaterialSidePanel />
         </SurfaceCard>
         <SurfaceCard title="Material Preview" component="AssetPreviewPanel">
           <UiLabMaterialPreview />
