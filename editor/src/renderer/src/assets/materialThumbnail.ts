@@ -161,7 +161,9 @@ const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnai
     source.height = renderSize;
     const sourceContext = source.getContext('2d');
     if (!sourceContext) return null;
-    sourceContext.putImageData(new ImageData(transparent, renderSize, renderSize), 0, 0);
+    const transparentImage = sourceContext.createImageData(renderSize, renderSize);
+    transparentImage.data.set(transparent);
+    sourceContext.putImageData(transparentImage, 0, 0);
 
     const output = document.createElement('canvas');
     output.width = outputSize;
