@@ -4,6 +4,12 @@
 
 #include <memory>
 
+// arc_host.cpp includes procedural_mesh.h after this header. The host implementation
+// already has a narrow procedural-parameter command path, so let that translation
+// unit route the same path through the material-instance bridge without duplicating
+// the large host dispatch implementation.
+#define ARC_EDITOR_HOST_MATERIAL_INSTANCE_BRIDGE 1
+
 namespace arc::render
 {
 class renderer;
