@@ -173,7 +173,7 @@ struct virtual_shadow_cache_statistics
 };
 
 /** @brief Result of resolving one deterministic request batch. */
-struct virtual_shadow_request_result
+struct [[nodiscard]] virtual_shadow_request_result
 {
     std::vector<virtual_shadow_page_mapping> render_pages;
     std::uint32_t cache_hits{};
