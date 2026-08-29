@@ -98,10 +98,9 @@ struct virtual_shadow_page_coordinate
     std::uint8_t level{};
     std::uint8_t face{};
 
-    friend constexpr bool operator==(virtual_shadow_page_coordinate, virtual_shadow_page_coordinate) noexcept =
-        default;
-    friend constexpr auto operator<=>(virtual_shadow_page_coordinate, virtual_shadow_page_coordinate) noexcept =
-        default;
+    friend constexpr bool operator==(virtual_shadow_page_coordinate, virtual_shadow_page_coordinate) noexcept = default;
+    friend constexpr auto operator<=>(virtual_shadow_page_coordinate,
+                                      virtual_shadow_page_coordinate) noexcept = default;
 };
 
 /** @brief Complete identity of one static or dynamic virtual shadow page. */
@@ -251,8 +250,7 @@ private:
 [[nodiscard]] constexpr std::uint32_t virtual_shadow_pages_per_axis(std::uint32_t virtual_resolution,
                                                                     std::uint8_t level) noexcept
 {
-    const std::uint32_t base =
-        (virtual_resolution + virtual_shadow_page_texels - 1u) / virtual_shadow_page_texels;
+    const std::uint32_t base = (virtual_resolution + virtual_shadow_page_texels - 1u) / virtual_shadow_page_texels;
     return std::max(1u, base >> level);
 }
 

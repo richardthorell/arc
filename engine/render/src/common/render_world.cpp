@@ -290,35 +290,35 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                                            .lifetime = render_resource_lifetime_class::per_world,
                                                            .persistent_key = "shadow.virtual.dynamic_pages",
                                                            .persistent = true});
-        virtual_shadow_requests = graph.add_resource({.name = "virtual_shadow_page_requests",
-                                                      .kind = render_resource_kind::buffer,
-                                                      .byte_size = maximum_virtual_shadow_requests *
-                                                                   virtual_shadow_request_stride,
-                                                      .element_stride = virtual_shadow_request_stride});
+        virtual_shadow_requests =
+            graph.add_resource({.name = "virtual_shadow_page_requests",
+                                .kind = render_resource_kind::buffer,
+                                .byte_size = maximum_virtual_shadow_requests * virtual_shadow_request_stride,
+                                .element_stride = virtual_shadow_request_stride});
         virtual_shadow_compacted_requests =
             graph.add_resource({.name = "virtual_shadow_compacted_requests",
                                 .kind = render_resource_kind::buffer,
                                 .byte_size = maximum_virtual_shadow_requests * virtual_shadow_request_stride,
                                 .element_stride = virtual_shadow_request_stride});
-        virtual_shadow_render_pages = graph.add_resource({.name = "virtual_shadow_render_pages",
-                                                          .kind = render_resource_kind::buffer,
-                                                          .byte_size = maximum_virtual_shadow_requests *
-                                                                       virtual_shadow_mapping_stride,
-                                                          .element_stride = virtual_shadow_mapping_stride});
+        virtual_shadow_render_pages =
+            graph.add_resource({.name = "virtual_shadow_render_pages",
+                                .kind = render_resource_kind::buffer,
+                                .byte_size = maximum_virtual_shadow_requests * virtual_shadow_mapping_stride,
+                                .element_stride = virtual_shadow_mapping_stride});
         virtual_shadow_casters = graph.add_resource({.name = "virtual_shadow_page_casters",
                                                      .kind = render_resource_kind::buffer,
                                                      .byte_size = 64ull * 1024ull * 1024ull,
                                                      .element_stride = 16});
-        virtual_shadow_feedback = graph.add_resource({.name = "virtual_shadow_feedback_readback",
-                                                      .kind = render_resource_kind::buffer,
-                                                      .byte_size = maximum_virtual_shadow_requests *
-                                                                   virtual_shadow_request_stride,
-                                                      .element_stride = virtual_shadow_request_stride,
-                                                      .memory = render_memory_class::readback,
-                                                      .lifetime = render_resource_lifetime_class::per_world,
-                                                      .persistent_key = "shadow.virtual.feedback",
-                                                      .exported = true,
-                                                      .persistent = true});
+        virtual_shadow_feedback =
+            graph.add_resource({.name = "virtual_shadow_feedback_readback",
+                                .kind = render_resource_kind::buffer,
+                                .byte_size = maximum_virtual_shadow_requests * virtual_shadow_request_stride,
+                                .element_stride = virtual_shadow_request_stride,
+                                .memory = render_memory_class::readback,
+                                .lifetime = render_resource_lifetime_class::per_world,
+                                .persistent_key = "shadow.virtual.feedback",
+                                .exported = true,
+                                .persistent = true});
     }
 
     render_graph_resource_handle gpu_scene_instances{};

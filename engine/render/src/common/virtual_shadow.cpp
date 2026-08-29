@@ -54,12 +54,12 @@ virtual_shadow_cache::virtual_shadow_cache(std::uint64_t requested_budget_bytes,
                                            virtual_shadow_depth_format format)
     : depth_format_(format)
 {
-    const std::uint64_t device_cap = device_budget_bytes == 0 ? requested_budget_bytes : device_budget_bytes * 8u / 100u;
+    const std::uint64_t device_cap =
+        device_budget_bytes == 0 ? requested_budget_bytes : device_budget_bytes * 8u / 100u;
     budget_bytes_ = std::min(requested_budget_bytes, device_cap);
     const std::uint64_t bytes_per_page = physical_page_bytes(format);
-    const auto capacity = static_cast<std::uint32_t>(
-        std::min<std::uint64_t>(budget_bytes_ / std::max<std::uint64_t>(bytes_per_page, 1u),
-                                std::numeric_limits<std::uint32_t>::max()));
+    const auto capacity = static_cast<std::uint32_t>(std::min<std::uint64_t>(
+        budget_bytes_ / std::max<std::uint64_t>(bytes_per_page, 1u), std::numeric_limits<std::uint32_t>::max()));
     physical_pages_.resize(capacity);
     free_physical_pages_.reserve(capacity);
     for (std::uint32_t index = capacity; index > 0; --index)
@@ -161,7 +161,8 @@ std::optional<std::uint32_t> virtual_shadow_cache::eviction_candidate(std::uint6
         const bool recently_used = frame_index < mapping.last_used_frame + virtual_shadow_page_protection_frames;
         if (mapping.pinned || mapping.in_flight || recently_used) continue;
         if (!candidate || mapping.last_used_frame < mappings_[*candidate].last_used_frame ||
-            (mapping.last_used_frame == mappings_[*candidate].last_used_frame && mapping.key < mappings_[*candidate].key))
+            (mapping.last_used_frame == mappings_[*candidate].last_used_frame &&
+             mapping.key < mappings_[*candidate].key))
             candidate = index;
     }
     return candidate;
@@ -262,12 +263,12 @@ virtual_shadow_cache::resolve_requests(std::span<const virtual_shadow_page_reque
             continue;
         }
         virtual_shadow_page_mapping mapping{.key = request.key,
-                                              .physical_page = *physical,
-                                              .content_revision = request.content_revision,
-                                              .last_used_frame = frame_index,
-                                              .dirty_reason = virtual_shadow_invalidation_reason::newly_allocated,
-                                              .resident = false,
-                                              .pinned = request.coarse_page};
+                                            .physical_page = *physical,
+                                            .content_revision = request.content_revision,
+                                            .last_used_frame = frame_index,
+                                            .dirty_reason = virtual_shadow_invalidation_reason::newly_allocated,
+                                            .resident = false,
+                                            .pinned = request.coarse_page};
         const auto insertion = std::lower_bound(mappings_.begin(), mappings_.end(), mapping.key,
                                                 [](const virtual_shadow_page_mapping& value,
                                                    const virtual_shadow_page_key& key) { return value.key < key; });
