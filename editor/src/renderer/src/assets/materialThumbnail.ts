@@ -4,16 +4,26 @@ type HostResponse<T = unknown> = {
   payload?: T;
 };
 
-type ViewportState = {
-  submitted?: boolean;
-  frameIndex?: number;
-  assetPreviewError?: string;
-};
-
 type MaterialThumbnailRequest = {
   guid: string;
   generation?: number;
   maxSize?: number;
+};
+
+type ProjectAssetsSnapshot = {
+  assets?: Array<{
+    guid?: string;
+    path: string;
+    kind?: string;
+    generation?: number;
+  }>;
+};
+
+type AssetThumbnailSnapshot = {
+  path: string;
+  width: number;
+  height: number;
+  dataUrl: string;
 };
 
 type PixelBounds = {
@@ -25,12 +35,12 @@ type PixelBounds = {
 
 const thumbnailCache = new Map<string, Promise<string | null>>();
 let queue: Promise<void> = Promise.resolve();
-let thumbnailInstance = 0;
-
-const sleep = (milliseconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
 const normalizedGuid = (guid: string) => guid.trim().replace(/[^a-zA-Z0-9-]/g, '');
 
+// Kept stable for callers/tests that still use the old preview identity when
+// diagnosing material viewport rendering. Material thumbnails no longer create
+// a live viewport; they use the same native asset thumbnail renderer as pickers.
 export const materialThumbnailViewportId = (guid: string, instance: number) =>
   `asset-preview-material-${normalizedGuid(guid)}~thumbnail-${instance}`;
 
@@ -45,9 +55,9 @@ const colorDistance = (pixels: Uint8ClampedArray, offset: number, background: re
   );
 
 /**
- * Removes the uniform preview clear color while preserving the isolated sphere.
- * The flood fill only enters pixels connected to an image edge, so a material
- * that happens to contain the clear color inside the sphere remains opaque.
+ * Removes a uniform preview clear color while preserving an isolated object.
+ * The flood fill only enters pixels connected to an image edge, so matching
+ * colors enclosed by the object remain opaque.
  */
 export function transparentPreviewPixels(
   source: Uint8ClampedArray,
@@ -98,6 +108,41 @@ export function transparentPreviewPixels(
   return pixels;
 }
 
+/**
+ * The native material preview uses a centered sphere with radius 0.82 in NDC.
+ * Masking from that known geometry gives us a clean transparent background even
+ * though the native studio background is intentionally graded instead of flat.
+ */
+export function maskMaterialSpherePixels(
+  source: Uint8ClampedArray,
+  width: number,
+  height: number,
+  sphereRadius = 0.82,
+): Uint8ClampedArray {
+  const pixels = new Uint8ClampedArray(source);
+  if (width <= 0 || height <= 0 || pixels.length < width * height * 4) return pixels;
+
+  const centerX = width * 0.5;
+  const centerY = height * 0.5;
+  const radius = Math.min(width, height) * 0.5 * sphereRadius;
+  const feather = Math.max(1, Math.min(width, height) / 192);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const dx = x + 0.5 - centerX;
+      const dy = y + 0.5 - centerY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const offset = (y * width + x) * 4 + 3;
+      if (distance >= radius + feather) pixels[offset] = 0;
+      else if (distance > radius - feather) {
+        const coverage = Math.max(0, Math.min(1, (radius + feather - distance) / (feather * 2)));
+        pixels[offset] = Math.round(pixels[offset] * coverage);
+      }
+    }
+  }
+  return pixels;
+}
+
 export function opaquePixelBounds(
   pixels: Uint8ClampedArray,
   width: number,
@@ -124,125 +169,86 @@ export function opaquePixelBounds(
   return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
-const queryViewportState = async (viewportId: string) =>
-  (await window.arc.host.query('viewport.state', { viewportId })) as HostResponse<ViewportState>;
+const loadImage = (dataUrl: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Material thumbnail image could not be decoded'));
+    image.src = dataUrl;
+  });
 
-const waitForPreviewFrame = async (viewportId: string, minimumFrameIndex: number) => {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const response = await queryViewportState(viewportId);
-    if (response.succeeded && response.payload?.assetPreviewError) throw new Error(response.payload.assetPreviewError);
-    if (response.succeeded && response.payload?.submitted && (response.payload.frameIndex ?? 0) >= minimumFrameIndex) {
-      // Let the shared-texture receiver copy the completed native frame into the hidden canvas.
-      await sleep(75);
-      return;
-    }
-    await sleep(25);
-  }
-  throw new Error('Timed out while rendering the material thumbnail');
+const materialPathForGuid = async (guid: string): Promise<{ path: string; generation?: number } | null> => {
+  const response = (await window.arc.host.query('project.assets')) as HostResponse<ProjectAssetsSnapshot>;
+  if (!response.succeeded) return null;
+  const normalized = normalizedGuid(guid).toLocaleLowerCase();
+  const asset = response.payload?.assets?.find(
+    (candidate) => normalizedGuid(candidate.guid ?? '').toLocaleLowerCase() === normalized,
+  );
+  return asset ? { path: asset.path, generation: asset.generation } : null;
 };
 
 const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnailRequest): Promise<string | null> => {
-  if (!guid || !window.arc?.host || !window.arc?.viewport) return null;
+  if (!guid || !window.arc?.host) return null;
 
   const outputSize = Math.max(32, Math.min(256, Math.round(maxSize)));
-  const renderSize = Math.min(512, outputSize * 2);
-  const instance = ++thumbnailInstance;
-  const viewportId = materialThumbnailViewportId(guid, instance);
-  const canvas = document.createElement('canvas');
-  canvas.id = `arc-material-thumbnail-${instance}`;
-  canvas.width = renderSize;
-  canvas.height = renderSize;
-  canvas.setAttribute('aria-hidden', 'true');
-  Object.assign(canvas.style, {
-    position: 'absolute',
-    left: '-10000px',
-    top: '0',
-    width: `${renderSize}px`,
-    height: `${renderSize}px`,
-    pointerEvents: 'none',
-  });
-  document.body.appendChild(canvas);
-  window.arc.viewport.registerSurface(viewportId, canvas.id);
+  const renderSize = Math.min(256, outputSize * 2);
+  const asset = await materialPathForGuid(guid);
+  if (!asset?.path) return null;
 
-  try {
-    await window.arc.viewport.create({ viewportId, x: 0, y: 0, width: renderSize, height: renderSize });
-    const stateBeforeOptions = await queryViewportState(viewportId);
-    const baselineFrameIndex = stateBeforeOptions.payload?.frameIndex ?? 0;
-    await window.arc.host.command('viewport.setRenderOptions', {
-      viewportId,
-      renderMode: 'shaded',
-      visualization: 'standard',
-      overlay: 'none',
-      shadows: true,
-      grid: false,
-      realtime: true,
-      cameraSpeed: 1,
-      antiAliasing: 'disabled',
-      environment: {
-        sky: false,
-        fog: false,
-        terrain: false,
-        water: false,
-        vegetation: false,
-        decals: false,
-      },
-    });
-    // Surface creation can publish before the material-preview scene has propagated
-    // to the shared texture. Capture a few realtime frames later so the thumbnail
-    // reflects the realized material instead of the primitive fallback.
-    await waitForPreviewFrame(viewportId, baselineFrameIndex + 3);
+  const response = (await window.arc.host.query('asset.thumbnail', {
+    path: asset.path,
+    maxSize: renderSize,
+  })) as HostResponse<AssetThumbnailSnapshot>;
+  const dataUrl = response.succeeded ? response.payload?.dataUrl : null;
+  if (!dataUrl) return null;
 
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    const frame = context.getImageData(0, 0, renderSize, renderSize);
-    const transparent = transparentPreviewPixels(frame.data, renderSize, renderSize);
+  const image = await loadImage(dataUrl);
+  const sourceWidth = image.naturalWidth || response.payload?.width || renderSize;
+  const sourceHeight = image.naturalHeight || response.payload?.height || renderSize;
+  const source = document.createElement('canvas');
+  source.width = sourceWidth;
+  source.height = sourceHeight;
+  const sourceContext = source.getContext('2d');
+  if (!sourceContext) return null;
+  sourceContext.drawImage(image, 0, 0, sourceWidth, sourceHeight);
 
-    const source = document.createElement('canvas');
-    source.width = renderSize;
-    source.height = renderSize;
-    const sourceContext = source.getContext('2d');
-    if (!sourceContext) return null;
-    const transparentImage = sourceContext.createImageData(renderSize, renderSize);
-    transparentImage.data.set(transparent);
-    sourceContext.putImageData(transparentImage, 0, 0);
+  const frame = sourceContext.getImageData(0, 0, sourceWidth, sourceHeight);
+  const transparent = maskMaterialSpherePixels(frame.data, sourceWidth, sourceHeight);
+  const transparentImage = sourceContext.createImageData(sourceWidth, sourceHeight);
+  transparentImage.data.set(transparent);
+  sourceContext.clearRect(0, 0, sourceWidth, sourceHeight);
+  sourceContext.putImageData(transparentImage, 0, 0);
 
-    const output = document.createElement('canvas');
-    output.width = outputSize;
-    output.height = outputSize;
-    const outputContext = output.getContext('2d');
-    if (!outputContext) return null;
-    outputContext.clearRect(0, 0, outputSize, outputSize);
-    outputContext.imageSmoothingEnabled = true;
-    outputContext.imageSmoothingQuality = 'high';
+  const output = document.createElement('canvas');
+  output.width = outputSize;
+  output.height = outputSize;
+  const outputContext = output.getContext('2d');
+  if (!outputContext) return null;
+  outputContext.clearRect(0, 0, outputSize, outputSize);
+  outputContext.imageSmoothingEnabled = true;
+  outputContext.imageSmoothingQuality = 'high';
 
-    const bounds = opaquePixelBounds(transparent, renderSize, renderSize);
-    if (bounds) {
-      const availableSize = outputSize * 0.84;
-      const scale = Math.min(availableSize / bounds.width, availableSize / bounds.height);
-      const drawWidth = bounds.width * scale;
-      const drawHeight = bounds.height * scale;
-      outputContext.drawImage(
-        source,
-        bounds.x,
-        bounds.y,
-        bounds.width,
-        bounds.height,
-        (outputSize - drawWidth) * 0.5,
-        (outputSize - drawHeight) * 0.5,
-        drawWidth,
-        drawHeight,
-      );
-    } else {
-      outputContext.drawImage(source, 0, 0, outputSize, outputSize);
-    }
-    return output.toDataURL('image/png');
-  } catch {
-    return null;
-  } finally {
-    window.arc.viewport.unregisterSurface(viewportId);
-    await window.arc.viewport.detach(viewportId).catch(() => undefined);
-    canvas.remove();
+  const bounds = opaquePixelBounds(transparent, sourceWidth, sourceHeight);
+  if (bounds) {
+    const availableSize = outputSize * 0.82;
+    const scale = Math.min(availableSize / bounds.width, availableSize / bounds.height);
+    const drawWidth = bounds.width * scale;
+    const drawHeight = bounds.height * scale;
+    outputContext.drawImage(
+      source,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+      (outputSize - drawWidth) * 0.5,
+      (outputSize - drawHeight) * 0.5,
+      drawWidth,
+      drawHeight,
+    );
+  } else {
+    outputContext.drawImage(source, 0, 0, outputSize, outputSize);
   }
+  return output.toDataURL('image/png');
 };
 
 export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): Promise<string | null> {
@@ -263,9 +269,14 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
   queue = queue
     .catch(() => undefined)
     .then(async () => {
-      const result = await renderMaterialThumbnail(request);
-      if (!result) thumbnailCache.delete(key);
-      resolveTask(result);
+      try {
+        const result = await renderMaterialThumbnail(request);
+        if (!result) thumbnailCache.delete(key);
+        resolveTask(result);
+      } catch {
+        thumbnailCache.delete(key);
+        resolveTask(null);
+      }
     });
   return task;
 }
