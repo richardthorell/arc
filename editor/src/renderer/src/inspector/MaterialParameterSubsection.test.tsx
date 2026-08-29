@@ -109,7 +109,25 @@ describe('MaterialPicker exported parameters', () => {
     expect(readText).toHaveBeenCalledWith(material.path, 'builtin');
     expect(screen.getByRole('button', { name: 'Open Base Color color picker' })).toBeVisible();
     expect(screen.getByLabelText('Roughness')).toHaveValue('0.620');
-    expect(screen.getByRole('combobox', { name: 'Choose Albedo texture' })).toHaveValue('assets/textures/default.png');
+    expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
+  });
+
+  it('uses the shared texture asset picker for texture overrides', async () => {
+    render(
+      <MaterialPicker assets={[material, texture]} label="Material" value={material.path} onChange={() => undefined} />,
+    );
+
+    const texturePicker = await screen.findByRole('button', { name: 'Choose Albedo asset' });
+    fireEvent.click(texturePicker);
+    fireEvent.click(await screen.findByRole('button', { name: 'Select albedo' }));
+
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
+    expect(command).toHaveBeenCalledWith(
+      'entity.setMaterial',
+      expect.objectContaining({
+        path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_parameter__[0-9a-f]+\/0$/),
+      }),
+    );
   });
 
   it('creates a sparse instance override when a scalar changes', async () => {
