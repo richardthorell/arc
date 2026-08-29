@@ -87,14 +87,13 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
     constexpr std::string_view graph = R"({
       "version":1,
       "nodes":[
-        {"id":"base-color","type":"vector3","values":{"value":[0.25,0.5,0.75]},
-         "parameter":{"exposed":true,"name":"Base Color"}},
+        {"id":"base-color","type":"textureSample","values":{}},
         {"id":"roughness","type":"constant","values":{"value":0.35}},
         {"id":"sheen","type":"constant","values":{"value":0.15}},
         {"id":"material-output","type":"output","values":{}}
       ],
       "connections":[
-        {"id":"1","from":{"nodeId":"base-color","pin":"value"},
+        {"id":"1","from":{"nodeId":"base-color","pin":"rgb"},
          "to":{"nodeId":"material-output","pin":"baseColor"}},
         {"id":"2","from":{"nodeId":"roughness","pin":"value"},
          "to":{"nodeId":"material-output","pin":"roughness"}},
@@ -129,6 +128,11 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
         FAIL(failure);
     }
     REQUIRE_FALSE(result.value().bytecode.empty());
+    const auto texture = std::ranges::find(result.value().reflection.resources, "arcMaterialTextures",
+                                           &arc::render::shader_resource_descriptor::name);
+    REQUIRE(texture != result.value().reflection.resources.end());
+    REQUIRE(texture->kind == arc::render::shader_resource_kind::sampled_texture);
+    REQUIRE(texture->count == 1);
 }
 
 TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")
