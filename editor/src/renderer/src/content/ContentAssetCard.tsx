@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Star } from 'lucide-react';
 
+import { loadMaterialSphereThumbnail } from '../assets/materialThumbnail';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import type { AssetItem } from '../services/editorHostTypes';
@@ -140,6 +141,15 @@ export function ContentAssetCard({
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [hoverPoint, setHoverPoint] = useState<HoverPoint>({ x: 0, y: 0 });
   const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0 });
+  const cardThumbnailProvider = useMemo<AssetThumbnailProvider>(() => {
+    if (asset.kind !== 'material' || !asset.guid) return thumbnailProvider;
+    return () =>
+      loadMaterialSphereThumbnail({
+        guid: asset.guid!,
+        generation: asset.generation,
+        maxSize: 128,
+      });
+  }, [asset.generation, asset.guid, asset.kind, thumbnailProvider]);
 
   const cancelHover = () => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
@@ -212,7 +222,7 @@ export function ContentAssetCard({
         }}
       >
         <span className="content-asset-preview">
-          <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
+          <AssetThumbnail asset={asset} path={asset.path} provider={cardThumbnailProvider} />
         </span>
         <span className="content-asset-info">
           <span className="content-asset-name" title={assetDisplayName(asset)}>
