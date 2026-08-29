@@ -155,6 +155,22 @@ material_expression_type expression_type(std::uint8_t components)
     }
 }
 
+material_expression_type vector_output_type(material_expression_type type, std::string_view pin)
+{
+    if (type != material_expression_type::vector4) return type;
+    if (pin == "rgb") return material_expression_type::vector3;
+    if (pin == "r" || pin == "g" || pin == "b" || pin == "a") return material_expression_type::scalar;
+    return type;
+}
+
+std::string vector_output_expression(std::string expression, material_ir_node_kind kind, std::string_view pin)
+{
+    if (kind != material_ir_node_kind::vector4 || pin == "value" || pin == "rgba") return expression;
+    if (pin == "rgb") return expression + ".rgb";
+    if (pin == "r" || pin == "g" || pin == "b" || pin == "a") return expression + '.' + std::string(pin);
+    return expression;
+}
+
 std::string_view slang_expression_type(material_expression_type type)
 {
     switch (type)
@@ -394,6 +410,7 @@ private:
             if (parameter == parameter_types_.end())
                 throw std::runtime_error("material IR exposed parameter is missing descriptor metadata: " + node.id);
             type = expression_type(parameter->second);
+            if (node.kind == material_ir_node_kind::vector4) type = vector_output_type(type, pin);
         }
         else
         {
@@ -402,8 +419,10 @@ private:
                 case material_ir_node_kind::constant:
                 case material_ir_node_kind::vector2:
                 case material_ir_node_kind::vector3:
-                case material_ir_node_kind::vector4:
                     type = expression_type(node.literal.components);
+                    break;
+                case material_ir_node_kind::vector4:
+                    type = vector_output_type(expression_type(node.literal.components), pin);
                     break;
                 case material_ir_node_kind::tex_coord:
                     type = material_expression_type::vector2;
@@ -618,7 +637,9 @@ private:
             case material_ir_node_kind::vector2:
             case material_ir_node_kind::vector3:
             case material_ir_node_kind::vector4:
-                expression = literal_value(node);
+                expression = node.exposed_parameter ? "arcMaterialParameters." + parameter_field(node.parameter_id)
+                                                    : literal_value(node);
+                expression = vector_output_expression(std::move(expression), node.kind, pin);
                 break;
             case material_ir_node_kind::tex_coord:
                 expression = "input.uv0";
@@ -677,7 +698,9 @@ private:
                 throw std::runtime_error("material output nodes cannot be emitted as expressions");
         }
 
-        if (node.exposed_parameter && node.kind != material_ir_node_kind::texture_sample)
+        const bool literal_node = node.kind == material_ir_node_kind::constant || node.kind == material_ir_node_kind::vector2 ||
+                                  node.kind == material_ir_node_kind::vector3 || node.kind == material_ir_node_kind::vector4;
+        if (node.exposed_parameter && node.kind != material_ir_node_kind::texture_sample && !literal_node)
             expression = "arcMaterialParameters." + parameter_field(node.parameter_id);
 
         const auto variable = "arc_node_" + sanitize(node.id) + '_' + sanitize(pin);
