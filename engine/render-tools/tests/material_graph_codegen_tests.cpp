@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <set>
 #include <string>
 #include <string_view>
 
@@ -133,6 +134,15 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
     REQUIRE(texture != result.value().reflection.resources.end());
     REQUIRE(texture->kind == arc::render::shader_resource_kind::sampled_texture);
     REQUIRE(texture->count == 1);
+
+    const auto sampler = std::ranges::find(result.value().reflection.resources, "arcMaterialSampler",
+                                           &arc::render::shader_resource_descriptor::name);
+    REQUIRE(sampler != result.value().reflection.resources.end());
+    REQUIRE(sampler->kind == arc::render::shader_resource_kind::sampler);
+
+    std::set<std::pair<std::uint32_t, std::uint32_t>> descriptor_bindings;
+    for (const auto& resource : result.value().reflection.resources)
+        REQUIRE(descriptor_bindings.emplace(resource.set, resource.binding).second);
 }
 
 TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")
