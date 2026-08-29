@@ -291,13 +291,10 @@ make_virtual_geometry_gpu_table_update(virtual_mesh_handle resource, const virtu
  * @details This path is used by deterministic tests and correctness fallback diagnostics; production Ultra frames
  * execute the equivalent algorithm in compute or mesh shaders.
  */
-[[nodiscard]] virtual_geometry_gpu_reference_result
-traverse_virtual_geometry_gpu_reference(virtual_mesh_handle resource, std::uint32_t resource_generation,
-                                        std::uint32_t instance_index, std::uint32_t material_index,
-                                        const virtual_mesh_data& geometry,
-                                        std::span<const std::uint8_t> resident_pages,
-                                        const virtual_geometry_reference_view& view,
-                                        virtual_geometry_traversal_limits limits = {});
+[[nodiscard]] virtual_geometry_gpu_reference_result traverse_virtual_geometry_gpu_reference(
+    virtual_mesh_handle resource, std::uint32_t resource_generation, std::uint32_t instance_index,
+    std::uint32_t material_index, const virtual_mesh_data& geometry, std::span<const std::uint8_t> resident_pages,
+    const virtual_geometry_reference_view& view, virtual_geometry_traversal_limits limits = {});
 
 /**
  * @brief Render-thread authority for virtual-geometry page requests and eviction.

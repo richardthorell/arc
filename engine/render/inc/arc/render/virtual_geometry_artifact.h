@@ -70,8 +70,7 @@ struct virtual_geometry_artifact_index
     std::vector<virtual_geometry_artifact_mesh_index> meshes;
 };
 
-using virtual_geometry_artifact_bytes_result =
-    core::result<std::vector<std::byte>, virtual_geometry_artifact_error>;
+using virtual_geometry_artifact_bytes_result = core::result<std::vector<std::byte>, virtual_geometry_artifact_error>;
 using virtual_geometry_artifact_index_result =
     core::result<virtual_geometry_artifact_index, virtual_geometry_artifact_error>;
 
@@ -102,8 +101,7 @@ inspect_virtual_geometry_artifact(std::span<const std::byte> bytes);
  * @return Encoded page bytes ready for worker decompression.
  */
 [[nodiscard]] virtual_geometry_artifact_bytes_result
-read_virtual_geometry_artifact_page(std::span<const std::byte> bytes,
-                                    const virtual_geometry_artifact_index& index, std::uint32_t mesh_index,
-                                    std::uint32_t page_index);
+read_virtual_geometry_artifact_page(std::span<const std::byte> bytes, const virtual_geometry_artifact_index& index,
+                                    std::uint32_t mesh_index, std::uint32_t page_index);
 
 } // namespace arc::render

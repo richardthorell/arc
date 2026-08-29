@@ -284,8 +284,7 @@ public:
     [[nodiscard]] bool publish_virtual_geometry_page(virtual_geometry_page_upload upload);
 
     /** @brief Mark an asynchronous page load as failed without invalidating resident parents. */
-    void fail_virtual_geometry_page(virtual_mesh_handle resource, std::uint32_t generation,
-                                    std::uint32_t page_index);
+    void fail_virtual_geometry_page(virtual_mesh_handle resource, std::uint32_t generation, std::uint32_t page_index);
 
     /** @return Renderer-owned Lighting Scene authority shared by all views of a world. */
     [[nodiscard]] lighting_scene& indirect_lighting_scene() noexcept;

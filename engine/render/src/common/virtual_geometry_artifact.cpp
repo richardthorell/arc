@@ -12,10 +12,9 @@ namespace arc::render
 namespace
 {
 
-constexpr std::array<std::byte, 8> artifact_magic{static_cast<std::byte>('A'), static_cast<std::byte>('R'),
-                                                  static_cast<std::byte>('C'), static_cast<std::byte>('V'),
-                                                  static_cast<std::byte>('G'), static_cast<std::byte>('0'),
-                                                  static_cast<std::byte>('0'), static_cast<std::byte>('3')};
+constexpr std::array<std::byte, 8> artifact_magic{
+    static_cast<std::byte>('A'), static_cast<std::byte>('R'), static_cast<std::byte>('C'), static_cast<std::byte>('V'),
+    static_cast<std::byte>('G'), static_cast<std::byte>('0'), static_cast<std::byte>('0'), static_cast<std::byte>('3')};
 constexpr std::uint32_t header_bytes = 48;
 
 template <typename T, bool = std::is_enum_v<T>> struct stored_type_for
@@ -237,13 +236,17 @@ encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_sourc
     {
         encoded_mesh mesh{.name = source.name, .material_index = source.material_index, .geometry = source.geometry};
         mesh.metadata.value(static_cast<std::uint32_t>(source.geometry->clusters.size()));
-        for (const auto& cluster : source.geometry->clusters) write_cluster(mesh.metadata, cluster);
+        for (const auto& cluster : source.geometry->clusters)
+            write_cluster(mesh.metadata, cluster);
         mesh.metadata.value(static_cast<std::uint32_t>(source.geometry->lod_nodes.size()));
-        for (const auto& node : source.geometry->lod_nodes) write_node(mesh.metadata, node);
+        for (const auto& node : source.geometry->lod_nodes)
+            write_node(mesh.metadata, node);
         mesh.metadata.value(static_cast<std::uint32_t>(source.geometry->hierarchy_children.size()));
-        for (const auto child : source.geometry->hierarchy_children) mesh.metadata.value(child);
+        for (const auto child : source.geometry->hierarchy_children)
+            mesh.metadata.value(child);
         mesh.metadata.value(static_cast<std::uint32_t>(source.geometry->root_nodes.size()));
-        for (const auto root : source.geometry->root_nodes) mesh.metadata.value(root);
+        for (const auto root : source.geometry->root_nodes)
+            mesh.metadata.value(root);
         encoded.push_back(std::move(mesh));
     }
 
@@ -260,7 +263,8 @@ encode_virtual_geometry_artifact(std::span<const virtual_geometry_artifact_sourc
     const auto table_offset = output.size();
     std::size_t table_size{};
     for (const auto& mesh : encoded)
-        table_size += sizeof(std::uint32_t) + mesh.name.size() + sizeof(std::uint64_t) * 3u + sizeof(std::uint32_t) * 2u +
+        table_size += sizeof(std::uint32_t) + mesh.name.size() + sizeof(std::uint64_t) * 3u +
+                      sizeof(std::uint32_t) * 2u +
                       mesh.geometry->pages.size() * (sizeof(std::uint64_t) * 2u + sizeof(std::uint32_t) * 3u);
     output.bytes().resize(output.size() + table_size);
 
@@ -338,9 +342,8 @@ virtual_geometry_artifact_index_result inspect_virtual_geometry_artifact(std::sp
         return virtual_geometry_artifact_index_result::failure(
             failure(virtual_geometry_artifact_error_code::invalid_data, "truncated virtual-geometry header"));
     if (result.schema_version != virtual_geometry_artifact_schema_version || declared_header != header_bytes)
-        return virtual_geometry_artifact_index_result::failure(
-            failure(virtual_geometry_artifact_error_code::unsupported_version,
-                    "unsupported virtual-geometry artifact schema"));
+        return virtual_geometry_artifact_index_result::failure(failure(
+            virtual_geometry_artifact_error_code::unsupported_version, "unsupported virtual-geometry artifact schema"));
     if (result.artifact_size != bytes.size() || table_offset < header_bytes || table_offset >= bytes.size())
         return virtual_geometry_artifact_index_result::failure(
             failure(virtual_geometry_artifact_error_code::out_of_bounds, "invalid artifact size or table offset"));
@@ -365,13 +368,13 @@ virtual_geometry_artifact_index_result inspect_virtual_geometry_artifact(std::sp
             std::uint32_t root{};
             if (!table.value(page.offset) || !table.value(page.stored_size) || !table.value(page.decoded_size) ||
                 !table.value(page.content_hash) || !table.value(root))
-                return virtual_geometry_artifact_index_result::failure(
-                    failure(virtual_geometry_artifact_error_code::invalid_data, "truncated virtual-geometry page table"));
+                return virtual_geometry_artifact_index_result::failure(failure(
+                    virtual_geometry_artifact_error_code::invalid_data, "truncated virtual-geometry page table"));
             page.root = root != 0;
             if (page.offset % virtual_geometry_artifact_page_alignment != 0 || page.offset > bytes.size() ||
                 page.stored_size > bytes.size() - page.offset)
-                return virtual_geometry_artifact_index_result::failure(
-                    failure(virtual_geometry_artifact_error_code::out_of_bounds, "virtual-geometry page range is invalid"));
+                return virtual_geometry_artifact_index_result::failure(failure(
+                    virtual_geometry_artifact_error_code::out_of_bounds, "virtual-geometry page range is invalid"));
             mesh.pages.push_back(page);
         }
         result.meshes.push_back(std::move(mesh));
@@ -379,25 +382,22 @@ virtual_geometry_artifact_index_result inspect_virtual_geometry_artifact(std::sp
     return virtual_geometry_artifact_index_result::success(std::move(result));
 }
 
-virtual_geometry_artifact_bytes_result
-read_virtual_geometry_artifact_page(std::span<const std::byte> bytes,
-                                    const virtual_geometry_artifact_index& index, std::uint32_t mesh_index,
-                                    std::uint32_t page_index)
+virtual_geometry_artifact_bytes_result read_virtual_geometry_artifact_page(std::span<const std::byte> bytes,
+                                                                           const virtual_geometry_artifact_index& index,
+                                                                           std::uint32_t mesh_index,
+                                                                           std::uint32_t page_index)
 {
     if (mesh_index >= index.meshes.size() || page_index >= index.meshes[mesh_index].pages.size())
-        return virtual_geometry_artifact_bytes_result::failure(
-            failure(virtual_geometry_artifact_error_code::out_of_bounds,
-                    "virtual-geometry page index is out of range"));
+        return virtual_geometry_artifact_bytes_result::failure(failure(
+            virtual_geometry_artifact_error_code::out_of_bounds, "virtual-geometry page index is out of range"));
     const auto& page = index.meshes[mesh_index].pages[page_index];
     if (page.offset > bytes.size() || page.stored_size > bytes.size() - page.offset)
-        return virtual_geometry_artifact_bytes_result::failure(
-            failure(virtual_geometry_artifact_error_code::out_of_bounds,
-                    "virtual-geometry page bytes are unavailable"));
+        return virtual_geometry_artifact_bytes_result::failure(failure(
+            virtual_geometry_artifact_error_code::out_of_bounds, "virtual-geometry page bytes are unavailable"));
     const auto payload = bytes.subspan(static_cast<std::size_t>(page.offset), page.stored_size);
     if (hash_bytes(payload) != page.content_hash)
-        return virtual_geometry_artifact_bytes_result::failure(
-            failure(virtual_geometry_artifact_error_code::integrity_failure,
-                    "virtual-geometry page content hash mismatch"));
+        return virtual_geometry_artifact_bytes_result::failure(failure(
+            virtual_geometry_artifact_error_code::integrity_failure, "virtual-geometry page content hash mismatch"));
     return virtual_geometry_artifact_bytes_result::success(std::vector<std::byte>(payload.begin(), payload.end()));
 }
 
