@@ -28,6 +28,6 @@ describe('DocumentTypeIcon', () => {
       backgroundSize: '400% 300%',
       backgroundPosition: '66.66666666666666% 0%',
     });
-    expect(icon.style.backgroundImage).toContain('document-type-icons-atlas.png');
+    expect(icon).toHaveAttribute('data-document-type-icon', 'shader');
   });
 });
