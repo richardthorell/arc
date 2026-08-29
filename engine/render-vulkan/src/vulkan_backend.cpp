@@ -487,9 +487,9 @@ public:
         {
             if (!virtual_shadow_cache_ || previous_virtual_shadow_budget != config.virtual_shadow_budget_bytes)
             {
-                virtual_shadow_cache_ = std::make_unique<virtual_shadow_cache>(
-                    config.virtual_shadow_budget_bytes, capabilities_.memory_budget,
-                    virtual_shadow_depth_format::d16_unorm);
+                virtual_shadow_cache_ = std::make_unique<virtual_shadow_cache>(config.virtual_shadow_budget_bytes,
+                                                                               capabilities_.memory_budget,
+                                                                               virtual_shadow_depth_format::d16_unorm);
                 virtual_shadow_lights_.clear();
                 retire_virtual_shadow_resources();
             }
@@ -5418,10 +5418,9 @@ private:
     {
         if (!virtual_shadow_cache_ || virtual_shadow_cache_->physical_page_capacity() == 0) return false;
         const std::uint32_t page_capacity = virtual_shadow_cache_->physical_page_capacity();
-        const std::uint32_t physical_page_extent =
-            virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
-        const std::uint32_t pages_per_axis = static_cast<std::uint32_t>(
-            std::ceil(std::sqrt(static_cast<double>(page_capacity))));
+        const std::uint32_t physical_page_extent = virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
+        const std::uint32_t pages_per_axis =
+            static_cast<std::uint32_t>(std::ceil(std::sqrt(static_cast<double>(page_capacity))));
         const std::uint32_t atlas_extent = pages_per_axis * physical_page_extent;
         if (atlas_extent == 0 || atlas_extent > capabilities_.max_texture_dimension_2d) return false;
         if (virtual_shadow_resources_.static_image != VK_NULL_HANDLE &&
@@ -5435,8 +5434,8 @@ private:
         vkGetPhysicalDeviceFormatProperties(physical_device_, VK_FORMAT_D16_UNORM, &d16_properties);
         const VkFormatFeatureFlags required =
             VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
-        resources.format = (d16_properties.optimalTilingFeatures & required) == required ? VK_FORMAT_D16_UNORM
-                                                                                         : VK_FORMAT_D32_SFLOAT;
+        resources.format =
+            (d16_properties.optimalTilingFeatures & required) == required ? VK_FORMAT_D16_UNORM : VK_FORMAT_D32_SFLOAT;
         VkFormatProperties selected_properties{};
         vkGetPhysicalDeviceFormatProperties(physical_device_, resources.format, &selected_properties);
         if ((selected_properties.optimalTilingFeatures & required) != required) return false;
@@ -5494,8 +5493,8 @@ private:
             return false;
         }
 
-        resources.page_table_capacity = static_cast<VkDeviceSize>(page_capacity) *
-                                        sizeof(gpu_virtual_shadow_page_mapping);
+        resources.page_table_capacity =
+            static_cast<VkDeviceSize>(page_capacity) * sizeof(gpu_virtual_shadow_page_mapping);
         const VkDeviceSize request_capacity =
             static_cast<VkDeviceSize>(std::max(4096u, resolved_config_.virtual_shadow_page_render_budget * 2u)) *
             sizeof(virtual_shadow_page_request);
@@ -5540,12 +5539,13 @@ private:
                     {.light_kind = kind,
                      .light_key = key,
                      .mobility = mobility,
-                     .virtual_resolution = kind == shadow_light_kind::directional ? 16384u :
-                                                                                   std::max(settings.resolution, 2048u),
+                     .virtual_resolution =
+                         kind == shadow_light_kind::directional ? 16384u : std::max(settings.resolution, 2048u),
                      .level_count = virtual_shadow_directional_clip_levels,
                      .priority = settings.priority});
                 if (!address_space) return;
-                found = virtual_shadow_lights_.emplace(key, virtual_shadow_light_state{*address_space, frame_index}).first;
+                found =
+                    virtual_shadow_lights_.emplace(key, virtual_shadow_light_state{*address_space, frame_index}).first;
             }
             found->second.last_seen_frame = frame_index;
             const auto* descriptor = virtual_shadow_cache_->address_space(found->second.address_space);
@@ -5567,8 +5567,7 @@ private:
             };
             for (std::uint8_t face = 0; face < descriptor->face_count; ++face)
             {
-                if (mobility != render_mobility::movable)
-                    append_layer(virtual_shadow_page_layer::static_depth, face);
+                if (mobility != render_mobility::movable) append_layer(virtual_shadow_page_layer::static_depth, face);
                 if (mobility != render_mobility::static_object)
                     append_layer(virtual_shadow_page_layer::dynamic_depth, face);
             }
@@ -5663,12 +5662,12 @@ private:
     void clear_virtual_shadow_render_pages(VkCommandBuffer command_buffer, virtual_shadow_page_layer layer)
     {
         auto& resources = virtual_shadow_resources_;
-        VkImage image = layer == virtual_shadow_page_layer::static_depth ? resources.static_image :
-                                                                          resources.dynamic_image;
-        VkImageView view = layer == virtual_shadow_page_layer::static_depth ? resources.static_view :
-                                                                             resources.dynamic_view;
-        auto& layout = layer == virtual_shadow_page_layer::static_depth ? resources.static_layout :
-                                                                         resources.dynamic_layout;
+        VkImage image =
+            layer == virtual_shadow_page_layer::static_depth ? resources.static_image : resources.dynamic_image;
+        VkImageView view =
+            layer == virtual_shadow_page_layer::static_depth ? resources.static_view : resources.dynamic_view;
+        auto& layout =
+            layer == virtual_shadow_page_layer::static_depth ? resources.static_layout : resources.dynamic_layout;
         if (image == VK_NULL_HANDLE || view == VK_NULL_HANDLE || pending_virtual_shadow_pages_.empty()) return;
         transition_virtual_shadow_image(command_buffer, image, layout,
                                         VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
@@ -5684,8 +5683,7 @@ private:
         rendering.layerCount = 1;
         rendering.pDepthAttachment = &depth_attachment;
         cmd_begin_rendering(command_buffer, &rendering);
-        const std::uint32_t physical_extent =
-            virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
+        const std::uint32_t physical_extent = virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
         const std::uint32_t pages_per_axis = resources.atlas_extent / physical_extent;
         VkClearAttachment attachment{};
         attachment.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -5717,8 +5715,8 @@ private:
         pending_virtual_shadow_pages_.clear();
 
         const auto mappings = virtual_shadow_cache_->mappings();
-        const std::size_t count = std::min<std::size_t>(
-            mappings.size(), virtual_shadow_resources_.page_table_capacity / sizeof(gpu_virtual_shadow_page_mapping));
+        const std::size_t count = std::min<std::size_t>(mappings.size(), virtual_shadow_resources_.page_table_capacity /
+                                                                             sizeof(gpu_virtual_shadow_page_mapping));
         if (count > 0 && virtual_shadow_resources_.page_table.allocation != VK_NULL_HANDLE)
         {
             void* mapped{};

@@ -171,12 +171,11 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                      capabilities.virtual_shadow_allocation && capabilities.virtual_shadow_feedback &&
                                      capabilities.virtual_shadow_rendering && capabilities.virtual_shadow_sampling &&
                                      capabilities.compute_shaders && capabilities.storage_buffers;
-    const bool virtual_shadow_virtual_geometry =
-        virtual_shadow_maps && capabilities.virtual_shadow_virtual_geometry &&
-        virtual_geometry_path != virtual_geometry_raster_path::unavailable;
+    const bool virtual_shadow_virtual_geometry = virtual_shadow_maps && capabilities.virtual_shadow_virtual_geometry &&
+                                                 virtual_geometry_path != virtual_geometry_raster_path::unavailable;
     const bool screen_space_contact_shadows = optional_features && profile.screen_space_shadows &&
-                                              capabilities.screen_space_contact_shadows &&
-                                              capabilities.hzb_occlusion && capabilities.compute_shaders;
+                                              capabilities.screen_space_contact_shadows && capabilities.hzb_occlusion &&
+                                              capabilities.compute_shaders;
     result.screen_space_shadows = screen_space_contact_shadows;
     const bool screen_space_lighting = optional_features && !config.force_disable_dynamic_gi &&
                                        capabilities.screen_space_indirect_lighting && capabilities.hzb_occlusion &&
