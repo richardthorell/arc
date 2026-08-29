@@ -59,6 +59,7 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
     REQUIRE(source.find("surface.clearCoat = arc_node_clear_coat_value") != std::string::npos);
     REQUIRE(source.find("surface.transmission = arc_node_transmission_value") != std::string::npos);
     REQUIRE(source.find("arcFrame.timeSeconds") != std::string::npos);
+    REQUIRE(source.find("Texture2D<float4> arcMaterialTextures[2];") != std::string::npos);
     REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcMaterialTextures[0].Sample") != std::string::npos);
     REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcMaterialTextures[1].Sample") != std::string::npos);
     REQUIRE(source.find("float3 arc_node_tinted_result =") != std::string::npos);

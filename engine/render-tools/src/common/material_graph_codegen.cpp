@@ -920,7 +920,8 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         }
         if (compilation.descriptor.requirements.uses_texture_sampling)
         {
-            source.append("Texture2D<float4> arcMaterialTextures[];");
+            source.append("Texture2D<float4> arcMaterialTextures[" +
+                          std::to_string(compilation.descriptor.textures.size()) + "];");
             source.append("SamplerState arcMaterialSampler;");
         }
 
