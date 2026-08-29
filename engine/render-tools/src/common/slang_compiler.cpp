@@ -440,12 +440,13 @@ shader_reflection parse_reflection(const std::filesystem::path& path, const shad
             resource.kind = reflected_resource_kind(*resource_type);
             if (parameter.contains("binding") && parameter["binding"].is_object())
             {
-                resource.binding = parameter["binding"].value("index", parameter["binding"].value("binding", 0u));
-                resource.set = parameter["binding"].value("space", 0u);
+                const auto& binding = parameter["binding"];
+                resource.binding = binding.value("index", binding.value("binding", binding.value("offset", 0u)));
+                resource.set = binding.value("space", 0u);
             }
             else
             {
-                resource.binding = parameter.value("binding", 0u);
+                resource.binding = parameter.value("binding", parameter.value("offset", 0u));
                 resource.set = parameter.value("space", 0u);
             }
             if (!resource.name.empty()) reflection.resources.push_back(std::move(resource));
