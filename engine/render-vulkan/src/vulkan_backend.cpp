@@ -4,6 +4,7 @@
 #include <arc/render/lighting.h>
 #include <arc/render/render_world.h>
 #include <arc/render/resources.h>
+#include <arc/render/virtual_shadow.h>
 
 #include "builtin_shaders.h"
 #include "vulkan_pick_utils.h"
@@ -433,6 +434,7 @@ public:
         destroy_temporal_resources();
         destroy_hzb_resources();
         destroy_mesh_pipeline();
+        destroy_virtual_shadow_resources(virtual_shadow_resources_);
         destroy_shadow_resources();
         destroy_local_shadow_resources();
         destroy_white_texture();
@@ -473,12 +475,37 @@ public:
     {
         const float previous_scale = resolved_config_.render_scale;
         const std::uint32_t previous_local_shadow_atlas = resolved_config_.local_shadow_atlas_resolution;
+        const std::uint64_t previous_virtual_shadow_budget = resolved_config_.virtual_shadow_budget_bytes;
         resolved_config_ = config;
         if (!local_shadow_allocator_ || previous_local_shadow_atlas != config.local_shadow_atlas_resolution)
         {
             local_shadow_allocator_ =
                 std::make_unique<shadow_atlas_allocator>(config.local_shadow_atlas_resolution, 128u, 2u);
             local_shadow_static_signatures_.clear();
+        }
+        if (config.features.virtual_shadow_maps)
+        {
+            if (!virtual_shadow_cache_ || previous_virtual_shadow_budget != config.virtual_shadow_budget_bytes)
+            {
+                virtual_shadow_cache_ = std::make_unique<virtual_shadow_cache>(
+                    config.virtual_shadow_budget_bytes, capabilities_.memory_budget,
+                    virtual_shadow_depth_format::d16_unorm);
+                virtual_shadow_lights_.clear();
+                retire_virtual_shadow_resources();
+            }
+            if (!ensure_virtual_shadow_resources())
+            {
+                resolved_config_.features.virtual_shadow_maps = false;
+                resolved_config_.features.virtual_shadow_virtual_geometry = false;
+                resolved_config_.fallback_reasons.emplace_back(
+                    "Vulkan could not allocate the virtual shadow page pool; using conventional shadows");
+            }
+        }
+        else if (virtual_shadow_resources_.static_image != VK_NULL_HANDLE)
+        {
+            retire_virtual_shadow_resources();
+            virtual_shadow_cache_.reset();
+            virtual_shadow_lights_.clear();
         }
         if (config.features.timeline_semaphores && upload_timeline_ == VK_NULL_HANDLE)
         {
@@ -497,7 +524,7 @@ public:
             }
         }
         upload_timeline_enabled_ = config.features.timeline_semaphores && upload_timeline_ != VK_NULL_HANDLE;
-        last_profile_.configuration = config;
+        last_profile_.configuration = resolved_config_;
         if (native_swapchain_initialized_ && previous_scale != config.render_scale && output_viewport_width_ > 0 &&
             output_viewport_height_ > 0)
         {
@@ -1559,6 +1586,46 @@ private:
         std::uint64_t static_signature{};
         bool static_layers_valid{};
     };
+
+    struct vulkan_virtual_shadow_resources
+    {
+        VkImage static_image{};
+        VmaAllocation static_allocation{};
+        VkImageView static_view{};
+        VkImage dynamic_image{};
+        VmaAllocation dynamic_allocation{};
+        VkImageView dynamic_view{};
+        VkSampler sampler{};
+        VkFormat format{VK_FORMAT_UNDEFINED};
+        VkImageLayout static_layout{VK_IMAGE_LAYOUT_UNDEFINED};
+        VkImageLayout dynamic_layout{VK_IMAGE_LAYOUT_UNDEFINED};
+        gpu_buffer page_table;
+        gpu_buffer requests;
+        gpu_buffer feedback;
+        VkDeviceSize page_table_capacity{};
+        std::uint32_t atlas_extent{};
+        std::uint32_t physical_page_capacity{};
+    };
+
+    struct virtual_shadow_light_state
+    {
+        virtual_shadow_address_space_handle address_space{};
+        std::uint64_t last_seen_frame{};
+    };
+
+    struct gpu_virtual_shadow_page_mapping
+    {
+        std::uint32_t address_space_index{};
+        std::uint32_t address_space_generation{};
+        std::uint32_t physical_page_index{};
+        std::uint32_t physical_page_generation{};
+        std::uint32_t packed_coordinate{};
+        std::uint32_t flags{};
+        std::uint32_t content_revision_low{};
+        std::uint32_t content_revision_high{};
+    };
+
+    static_assert(sizeof(gpu_virtual_shadow_page_mapping) == 32);
 
     struct object_pick_readback
     {
@@ -5321,6 +5388,376 @@ private:
         return true;
     }
 
+    void destroy_virtual_shadow_resources(vulkan_virtual_shadow_resources& resources) noexcept
+    {
+        destroy_buffer(resources.page_table);
+        destroy_buffer(resources.requests);
+        destroy_buffer(resources.feedback);
+        if (resources.sampler != VK_NULL_HANDLE) vkDestroySampler(device_, resources.sampler, nullptr);
+        if (resources.static_view != VK_NULL_HANDLE) vkDestroyImageView(device_, resources.static_view, nullptr);
+        if (resources.dynamic_view != VK_NULL_HANDLE) vkDestroyImageView(device_, resources.dynamic_view, nullptr);
+        if (resources.static_image != VK_NULL_HANDLE)
+            vmaDestroyImage(allocator_, resources.static_image, resources.static_allocation);
+        if (resources.dynamic_image != VK_NULL_HANDLE)
+            vmaDestroyImage(allocator_, resources.dynamic_image, resources.dynamic_allocation);
+        resources = {};
+    }
+
+    void retire_virtual_shadow_resources()
+    {
+        if (virtual_shadow_resources_.static_image == VK_NULL_HANDLE &&
+            virtual_shadow_resources_.page_table.buffer == VK_NULL_HANDLE)
+            return;
+        auto retired = virtual_shadow_resources_;
+        virtual_shadow_resources_ = {};
+        deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                 [this, retired]() mutable { destroy_virtual_shadow_resources(retired); });
+    }
+
+    bool ensure_virtual_shadow_resources()
+    {
+        if (!virtual_shadow_cache_ || virtual_shadow_cache_->physical_page_capacity() == 0) return false;
+        const std::uint32_t page_capacity = virtual_shadow_cache_->physical_page_capacity();
+        const std::uint32_t physical_page_extent =
+            virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
+        const std::uint32_t pages_per_axis = static_cast<std::uint32_t>(
+            std::ceil(std::sqrt(static_cast<double>(page_capacity))));
+        const std::uint32_t atlas_extent = pages_per_axis * physical_page_extent;
+        if (atlas_extent == 0 || atlas_extent > capabilities_.max_texture_dimension_2d) return false;
+        if (virtual_shadow_resources_.static_image != VK_NULL_HANDLE &&
+            virtual_shadow_resources_.physical_page_capacity == page_capacity &&
+            virtual_shadow_resources_.atlas_extent == atlas_extent)
+            return true;
+
+        retire_virtual_shadow_resources();
+        vulkan_virtual_shadow_resources resources{};
+        VkFormatProperties d16_properties{};
+        vkGetPhysicalDeviceFormatProperties(physical_device_, VK_FORMAT_D16_UNORM, &d16_properties);
+        const VkFormatFeatureFlags required =
+            VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+        resources.format = (d16_properties.optimalTilingFeatures & required) == required ? VK_FORMAT_D16_UNORM
+                                                                                         : VK_FORMAT_D32_SFLOAT;
+        VkFormatProperties selected_properties{};
+        vkGetPhysicalDeviceFormatProperties(physical_device_, resources.format, &selected_properties);
+        if ((selected_properties.optimalTilingFeatures & required) != required) return false;
+
+        const auto create_depth_atlas = [&](VkImage& image, VmaAllocation& allocation, VkImageView& view) -> bool
+        {
+            VkImageCreateInfo image_info{};
+            image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+            image_info.imageType = VK_IMAGE_TYPE_2D;
+            image_info.format = resources.format;
+            image_info.extent = {atlas_extent, atlas_extent, 1};
+            image_info.mipLevels = 1;
+            image_info.arrayLayers = 1;
+            image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+            image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+            image_info.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                               VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+            VmaAllocationCreateInfo allocation_info{};
+            allocation_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+            if (vmaCreateImage(allocator_, &image_info, &allocation_info, &image, &allocation, nullptr) != VK_SUCCESS)
+                return false;
+            VkImageViewCreateInfo view_info{};
+            view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            view_info.image = image;
+            view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            view_info.format = resources.format;
+            view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+            view_info.subresourceRange.levelCount = 1;
+            view_info.subresourceRange.layerCount = 1;
+            return vkCreateImageView(device_, &view_info, nullptr, &view) == VK_SUCCESS;
+        };
+        if (!create_depth_atlas(resources.static_image, resources.static_allocation, resources.static_view) ||
+            !create_depth_atlas(resources.dynamic_image, resources.dynamic_allocation, resources.dynamic_view))
+        {
+            destroy_virtual_shadow_resources(resources);
+            return false;
+        }
+
+        VkSamplerCreateInfo sampler{};
+        sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        const bool linear_filter =
+            (selected_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0;
+        sampler.magFilter = linear_filter ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+        sampler.minFilter = sampler.magFilter;
+        sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        sampler.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        sampler.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+        sampler.compareEnable = VK_TRUE;
+        sampler.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+        if (vkCreateSampler(device_, &sampler, nullptr, &resources.sampler) != VK_SUCCESS)
+        {
+            destroy_virtual_shadow_resources(resources);
+            return false;
+        }
+
+        resources.page_table_capacity = static_cast<VkDeviceSize>(page_capacity) *
+                                        sizeof(gpu_virtual_shadow_page_mapping);
+        const VkDeviceSize request_capacity =
+            static_cast<VkDeviceSize>(std::max(4096u, resolved_config_.virtual_shadow_page_render_budget * 2u)) *
+            sizeof(virtual_shadow_page_request);
+        if (!create_buffer(resources.page_table_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, resources.page_table) ||
+            !create_buffer(request_capacity, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VMA_MEMORY_USAGE_GPU_ONLY, resources.requests) ||
+            !create_buffer(request_capacity, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_TO_CPU,
+                           resources.feedback))
+        {
+            destroy_virtual_shadow_resources(resources);
+            return false;
+        }
+        resources.atlas_extent = atlas_extent;
+        resources.physical_page_capacity = page_capacity;
+        virtual_shadow_resources_ = resources;
+        return true;
+    }
+
+    static std::uint64_t virtual_shadow_light_key(shadow_light_kind kind, render_object_id object) noexcept
+    {
+        std::uint64_t key = light_shadow_key(object);
+        key ^= static_cast<std::uint64_t>(kind) + 0x9e3779b97f4a7c15ull + (key << 6u) + (key >> 2u);
+        return key;
+    }
+
+    void prepare_virtual_shadow_cache(std::uint64_t frame_index)
+    {
+        pending_virtual_shadow_pages_.clear();
+        if (!resolved_config_.features.virtual_shadow_maps || !virtual_shadow_cache_) return;
+
+        std::vector<virtual_shadow_page_request> requests;
+        const auto append_light = [&](shadow_light_kind kind, render_object_id object, render_mobility mobility,
+                                      const shadow_settings& settings)
+        {
+            if (!object.valid() || !settings.enabled || settings.map_method == shadow_map_method::conventional) return;
+            const std::uint64_t key = virtual_shadow_light_key(kind, object);
+            auto found = virtual_shadow_lights_.find(key);
+            if (found == virtual_shadow_lights_.end())
+            {
+                const auto address_space = virtual_shadow_cache_->create_address_space(
+                    {.light_kind = kind,
+                     .light_key = key,
+                     .mobility = mobility,
+                     .virtual_resolution = kind == shadow_light_kind::directional ? 16384u :
+                                                                                   std::max(settings.resolution, 2048u),
+                     .level_count = virtual_shadow_directional_clip_levels,
+                     .priority = settings.priority});
+                if (!address_space) return;
+                found = virtual_shadow_lights_.emplace(key, virtual_shadow_light_state{*address_space, frame_index}).first;
+            }
+            found->second.last_seen_frame = frame_index;
+            const auto* descriptor = virtual_shadow_cache_->address_space(found->second.address_space);
+            if (!descriptor) return;
+            const std::uint8_t root_level = static_cast<std::uint8_t>(descriptor->level_count - 1u);
+            const auto append_layer = [&](virtual_shadow_page_layer layer, std::uint8_t face)
+            {
+                const std::uint64_t revision = layer == virtual_shadow_page_layer::dynamic_depth
+                                                   ? shadow_resource_revision_ ^ frame_index
+                                                   : shadow_resource_revision_;
+                requests.push_back({.key = {.address_space = found->second.address_space,
+                                            .coordinate = {.x = 0, .y = 0, .level = root_level, .face = face},
+                                            .layer = layer},
+                                    .frame_index = frame_index,
+                                    .content_revision = revision,
+                                    .projected_coverage = 1.0f,
+                                    .light_priority = settings.priority,
+                                    .coarse_page = true});
+            };
+            for (std::uint8_t face = 0; face < descriptor->face_count; ++face)
+            {
+                if (mobility != render_mobility::movable)
+                    append_layer(virtual_shadow_page_layer::static_depth, face);
+                if (mobility != render_mobility::static_object)
+                    append_layer(virtual_shadow_page_layer::dynamic_depth, face);
+            }
+        };
+
+        for (const auto& light : frame_directional_lights_)
+            if (light.enabled && light.casts_shadows)
+                append_light(shadow_light_kind::directional, light.object_id, light.mobility, light.shadow);
+        for (const auto& light : frame_point_lights_)
+            if (light.enabled && light.casts_shadows)
+                append_light(shadow_light_kind::point, light.object_id, light.mobility, light.shadow);
+        for (const auto& light : frame_spot_lights_)
+            if (light.enabled && light.casts_shadows)
+                append_light(shadow_light_kind::spot, light.object_id, light.mobility, light.shadow);
+
+        for (auto iterator = virtual_shadow_lights_.begin(); iterator != virtual_shadow_lights_.end();)
+        {
+            if (iterator->second.last_seen_frame == frame_index)
+            {
+                ++iterator;
+                continue;
+            }
+            const bool destroyed = virtual_shadow_cache_->destroy_address_space(iterator->second.address_space);
+            (void)destroyed; // Stale light cleanup is best-effort; generation checks reject already-retired spaces.
+            iterator = virtual_shadow_lights_.erase(iterator);
+        }
+
+        const auto result = virtual_shadow_cache_->resolve_requests(requests, frame_index);
+        pending_virtual_shadow_pages_ = result.render_pages;
+        if (pending_virtual_shadow_pages_.size() > resolved_config_.virtual_shadow_page_render_budget)
+            pending_virtual_shadow_pages_.resize(resolved_config_.virtual_shadow_page_render_budget);
+        for (const auto& mapping : pending_virtual_shadow_pages_)
+        {
+            const bool marked = virtual_shadow_cache_->set_in_flight(mapping.key, true);
+            (void)marked; // A concurrent invalidation may have retired the request before submission.
+        }
+
+        const auto stats = virtual_shadow_cache_->statistics();
+        auto& profile = last_profile_.shadows;
+        profile.virtual_shadow_maps = true;
+        profile.virtual_address_space_count = stats.address_space_count;
+        profile.virtual_page_capacity = stats.physical_page_capacity;
+        profile.virtual_resident_pages = stats.resident_pages;
+        profile.virtual_dirty_pages = stats.dirty_pages;
+        profile.virtual_reused_pages = result.cache_hits;
+        profile.virtual_evictions = stats.eviction_count;
+        profile.virtual_parent_fallbacks = stats.parent_fallbacks;
+        profile.virtual_failed_requests = stats.failed_requests;
+        profile.virtual_memory_bytes = stats.physical_memory_bytes;
+    }
+
+    void transition_virtual_shadow_image(VkCommandBuffer command_buffer, VkImage image, VkImageLayout& current_layout,
+                                         VkImageLayout new_layout)
+    {
+        if (image == VK_NULL_HANDLE || current_layout == new_layout) return;
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = current_layout;
+        barrier.newLayout = new_layout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.layerCount = 1;
+        VkPipelineStageFlags source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkPipelineStageFlags destination_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        if (current_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            source_stage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        }
+        else if (current_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+        {
+            barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            source_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        }
+        if (new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL)
+        {
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        }
+        else
+        {
+            barrier.dstAccessMask =
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        }
+        vkCmdPipelineBarrier(command_buffer, source_stage, destination_stage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        current_layout = new_layout;
+    }
+
+    void clear_virtual_shadow_render_pages(VkCommandBuffer command_buffer, virtual_shadow_page_layer layer)
+    {
+        auto& resources = virtual_shadow_resources_;
+        VkImage image = layer == virtual_shadow_page_layer::static_depth ? resources.static_image :
+                                                                          resources.dynamic_image;
+        VkImageView view = layer == virtual_shadow_page_layer::static_depth ? resources.static_view :
+                                                                             resources.dynamic_view;
+        auto& layout = layer == virtual_shadow_page_layer::static_depth ? resources.static_layout :
+                                                                         resources.dynamic_layout;
+        if (image == VK_NULL_HANDLE || view == VK_NULL_HANDLE || pending_virtual_shadow_pages_.empty()) return;
+        transition_virtual_shadow_image(command_buffer, image, layout,
+                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        VkRenderingAttachmentInfo depth_attachment{};
+        depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depth_attachment.imageView = view;
+        depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+        depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        VkRenderingInfo rendering{};
+        rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        rendering.renderArea.extent = {resources.atlas_extent, resources.atlas_extent};
+        rendering.layerCount = 1;
+        rendering.pDepthAttachment = &depth_attachment;
+        cmd_begin_rendering(command_buffer, &rendering);
+        const std::uint32_t physical_extent =
+            virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
+        const std::uint32_t pages_per_axis = resources.atlas_extent / physical_extent;
+        VkClearAttachment attachment{};
+        attachment.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        attachment.clearValue.depthStencil.depth = 1.0f;
+        for (const auto& mapping : pending_virtual_shadow_pages_)
+        {
+            if (mapping.key.layer != layer || !mapping.physical_page.valid()) continue;
+            const std::uint32_t x = mapping.physical_page.index % pages_per_axis;
+            const std::uint32_t y = mapping.physical_page.index / pages_per_axis;
+            VkClearRect rect{};
+            rect.rect.offset = {static_cast<std::int32_t>(x * physical_extent),
+                                static_cast<std::int32_t>(y * physical_extent)};
+            rect.rect.extent = {physical_extent, physical_extent};
+            rect.layerCount = 1;
+            vkCmdClearAttachments(command_buffer, 1, &attachment, 1, &rect);
+        }
+        cmd_end_rendering(command_buffer);
+    }
+
+    void publish_virtual_shadow_pages(VkCommandBuffer command_buffer)
+    {
+        if (!virtual_shadow_cache_) return;
+        for (const auto& mapping : pending_virtual_shadow_pages_)
+        {
+            const bool published = virtual_shadow_cache_->publish(mapping.key, mapping.content_revision);
+            (void)published; // Stale generations are intentionally discarded instead of being published.
+        }
+        last_profile_.shadows.virtual_rendered_pages = static_cast<std::uint32_t>(pending_virtual_shadow_pages_.size());
+        pending_virtual_shadow_pages_.clear();
+
+        const auto mappings = virtual_shadow_cache_->mappings();
+        const std::size_t count = std::min<std::size_t>(
+            mappings.size(), virtual_shadow_resources_.page_table_capacity / sizeof(gpu_virtual_shadow_page_mapping));
+        if (count > 0 && virtual_shadow_resources_.page_table.allocation != VK_NULL_HANDLE)
+        {
+            void* mapped{};
+            if (vmaMapMemory(allocator_, virtual_shadow_resources_.page_table.allocation, &mapped) == VK_SUCCESS)
+            {
+                auto* output = static_cast<gpu_virtual_shadow_page_mapping*>(mapped);
+                for (std::size_t index = 0; index < count; ++index)
+                {
+                    const auto& input = mappings[index];
+                    output[index] = {
+                        .address_space_index = input.key.address_space.index,
+                        .address_space_generation = input.key.address_space.generation,
+                        .physical_page_index = input.physical_page.index,
+                        .physical_page_generation = input.physical_page.generation,
+                        .packed_coordinate = static_cast<std::uint32_t>(input.key.coordinate.x) |
+                                             (static_cast<std::uint32_t>(input.key.coordinate.y) << 12u) |
+                                             (static_cast<std::uint32_t>(input.key.coordinate.level) << 24u) |
+                                             (static_cast<std::uint32_t>(input.key.coordinate.face) << 28u),
+                        .flags = (input.resident ? 1u : 0u) | (input.pinned ? 2u : 0u) |
+                                 (input.key.layer == virtual_shadow_page_layer::dynamic_depth ? 4u : 0u),
+                        .content_revision_low = static_cast<std::uint32_t>(input.content_revision),
+                        .content_revision_high = static_cast<std::uint32_t>(input.content_revision >> 32u)};
+                }
+                vmaFlushAllocation(allocator_, virtual_shadow_resources_.page_table.allocation, 0,
+                                   count * sizeof(gpu_virtual_shadow_page_mapping));
+                vmaUnmapMemory(allocator_, virtual_shadow_resources_.page_table.allocation);
+            }
+        }
+        transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.static_image,
+                                        virtual_shadow_resources_.static_layout,
+                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.dynamic_image,
+                                        virtual_shadow_resources_.dynamic_layout,
+                                        VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        const auto stats = virtual_shadow_cache_->statistics();
+        last_profile_.shadows.virtual_resident_pages = stats.resident_pages;
+        last_profile_.shadows.virtual_dirty_pages = stats.dirty_pages;
+    }
+
     void destroy_shadow_resources() noexcept
     {
         for (auto& view : shadow_atlas_.cascade_views)
@@ -8347,6 +8784,7 @@ private:
         bool point_shadows_executed{};
         bool spot_shadows_executed{};
         bool gpu_visibility_executed{};
+        bool virtual_shadow_pages_published{};
         frame_fxaa_enabled_ = std::any_of(last_profile_.graph.passes.begin(), last_profile_.graph.passes.end(),
                                           [](const auto& pass) { return pass.builtin == builtin_render_pass::fxaa; });
 
@@ -8355,6 +8793,19 @@ private:
             const auto scope = begin_gpu_scope(command_buffer, pass.name.c_str());
             switch (pass.builtin)
             {
+                case builtin_render_pass::virtual_shadow_page_marking:
+                    prepare_virtual_shadow_cache(last_profile_.frame_index);
+                    break;
+                case builtin_render_pass::virtual_shadow_static_render:
+                    clear_virtual_shadow_render_pages(command_buffer, virtual_shadow_page_layer::static_depth);
+                    break;
+                case builtin_render_pass::virtual_shadow_dynamic_render:
+                    clear_virtual_shadow_render_pages(command_buffer, virtual_shadow_page_layer::dynamic_depth);
+                    break;
+                case builtin_render_pass::virtual_shadow_page_table_publication:
+                    publish_virtual_shadow_pages(command_buffer);
+                    virtual_shadow_pages_published = true;
+                    break;
                 case builtin_render_pass::directional_shadow_static:
                 case builtin_render_pass::directional_shadow_dynamic:
                     if (!directional_shadows_executed)
@@ -8447,6 +8898,15 @@ private:
             transition_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
         if (!point_shadows_executed && !spot_shadows_executed)
             transition_local_shadow_atlas(command_buffer, VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        if (resolved_config_.features.virtual_shadow_maps && !virtual_shadow_pages_published)
+        {
+            transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.static_image,
+                                            virtual_shadow_resources_.static_layout,
+                                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+            transition_virtual_shadow_image(command_buffer, virtual_shadow_resources_.dynamic_image,
+                                            virtual_shadow_resources_.dynamic_layout,
+                                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
+        }
     }
 
     void prepare_frame_gpu_resources()
@@ -9921,6 +10381,10 @@ private:
     vulkan_local_shadow_atlas local_shadow_atlas_;
     vulkan_shadow_cache shadow_cache_;
     std::unique_ptr<shadow_atlas_allocator> local_shadow_allocator_;
+    vulkan_virtual_shadow_resources virtual_shadow_resources_;
+    std::unique_ptr<virtual_shadow_cache> virtual_shadow_cache_;
+    std::unordered_map<std::uint64_t, virtual_shadow_light_state> virtual_shadow_lights_;
+    std::vector<virtual_shadow_page_mapping> pending_virtual_shadow_pages_;
     std::vector<active_local_shadow> active_local_shadows_;
     std::unordered_map<std::uint64_t, std::uint64_t> local_shadow_static_signatures_;
     std::unordered_map<std::uint64_t, std::uint64_t> static_shadow_transform_hashes_;

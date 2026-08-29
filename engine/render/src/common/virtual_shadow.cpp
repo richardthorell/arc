@@ -14,7 +14,8 @@ std::uint64_t physical_page_bytes(virtual_shadow_depth_format format) noexcept
 {
     const std::uint64_t physical_extent = virtual_shadow_page_texels + virtual_shadow_page_guard_texels * 2u;
     const std::uint64_t bytes_per_texel = format == virtual_shadow_depth_format::d16_unorm ? 2u : 4u;
-    return physical_extent * physical_extent * bytes_per_texel;
+    // One physical slot reserves matching static and dynamic overlay tiles.
+    return physical_extent * physical_extent * bytes_per_texel * 2u;
 }
 
 bool same_address_space(virtual_shadow_address_space_handle lhs, virtual_shadow_address_space_handle rhs) noexcept
@@ -144,6 +145,11 @@ virtual_shadow_cache::find_resident_or_ancestor(const virtual_shadow_page_key& r
         key.coordinate = virtual_shadow_parent_page(key.coordinate);
     }
     return nullptr;
+}
+
+std::span<const virtual_shadow_page_mapping> virtual_shadow_cache::mappings() const noexcept
+{
+    return mappings_;
 }
 
 std::optional<std::uint32_t> virtual_shadow_cache::eviction_candidate(std::uint64_t frame_index) const noexcept

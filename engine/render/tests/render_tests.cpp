@@ -1104,11 +1104,11 @@ TEST_CASE("virtual shadow address spaces normalize light topology and invalidate
 
 TEST_CASE("virtual shadow page requests are deterministic and retain coarse fallback")
 {
-    constexpr std::uint64_t one_d16_page =
+    constexpr std::uint64_t one_d16_page_pair =
         static_cast<std::uint64_t>(arc::render::virtual_shadow_page_texels +
                                    arc::render::virtual_shadow_page_guard_texels * 2u) *
-        (arc::render::virtual_shadow_page_texels + arc::render::virtual_shadow_page_guard_texels * 2u) * 2u;
-    arc::render::virtual_shadow_cache cache(one_d16_page * 2u);
+        (arc::render::virtual_shadow_page_texels + arc::render::virtual_shadow_page_guard_texels * 2u) * 4u;
+    arc::render::virtual_shadow_cache cache(one_d16_page_pair * 2u);
     const auto light = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
                                                     .light_key = 42,
                                                     .virtual_resolution = 2048,
@@ -1147,11 +1147,11 @@ TEST_CASE("virtual shadow page requests are deterministic and retain coarse fall
 
 TEST_CASE("virtual shadow cache protects recent and pinned pages under pressure")
 {
-    constexpr std::uint64_t one_d16_page =
+    constexpr std::uint64_t one_d16_page_pair =
         static_cast<std::uint64_t>(arc::render::virtual_shadow_page_texels +
                                    arc::render::virtual_shadow_page_guard_texels * 2u) *
-        (arc::render::virtual_shadow_page_texels + arc::render::virtual_shadow_page_guard_texels * 2u) * 2u;
-    arc::render::virtual_shadow_cache cache(one_d16_page * 2u);
+        (arc::render::virtual_shadow_page_texels + arc::render::virtual_shadow_page_guard_texels * 2u) * 4u;
+    arc::render::virtual_shadow_cache cache(one_d16_page_pair * 2u);
     const auto light = cache.create_address_space({.light_kind = arc::render::shadow_light_kind::spot,
                                                     .light_key = 71,
                                                     .level_count = 5});

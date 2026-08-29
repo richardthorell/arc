@@ -213,6 +213,8 @@ public:
     [[nodiscard]] const virtual_shadow_page_mapping* find(const virtual_shadow_page_key& key) const noexcept;
     [[nodiscard]] const virtual_shadow_page_mapping*
     find_resident_or_ancestor(const virtual_shadow_page_key& key) const noexcept;
+    /** @brief Borrow all current mappings until the cache is next mutated. */
+    [[nodiscard]] std::span<const virtual_shadow_page_mapping> mappings() const noexcept;
 
     [[nodiscard]] bool publish(const virtual_shadow_page_key& key, std::uint64_t content_revision) noexcept;
     [[nodiscard]] bool set_in_flight(const virtual_shadow_page_key& key, bool in_flight) noexcept;
