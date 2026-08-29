@@ -328,7 +328,7 @@ shader_resource_kind reflected_resource_kind(const nlohmann::json& type)
                                [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
         if (shape.find("texture") != std::string::npos)
             return access.find("write") != std::string::npos ? shader_resource_kind::storage_texture
-                                                              : shader_resource_kind::sampled_texture;
+                                                             : shader_resource_kind::sampled_texture;
         if (shape.find("structured") != std::string::npos) return shader_resource_kind::structured_buffer;
     }
     return resource_kind(kind);
