@@ -698,8 +698,9 @@ private:
                 throw std::runtime_error("material output nodes cannot be emitted as expressions");
         }
 
-        const bool literal_node = node.kind == material_ir_node_kind::constant || node.kind == material_ir_node_kind::vector2 ||
-                                  node.kind == material_ir_node_kind::vector3 || node.kind == material_ir_node_kind::vector4;
+        const bool literal_node =
+            node.kind == material_ir_node_kind::constant || node.kind == material_ir_node_kind::vector2 ||
+            node.kind == material_ir_node_kind::vector3 || node.kind == material_ir_node_kind::vector4;
         if (node.exposed_parameter && node.kind != material_ir_node_kind::texture_sample && !literal_node)
             expression = "arcMaterialParameters." + parameter_field(node.parameter_id);
 
