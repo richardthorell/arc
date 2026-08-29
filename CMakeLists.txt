@@ -51,7 +51,11 @@ if(ARC_ENABLE_COVERAGE)
     add_link_options(-fprofile-instr-generate -fcoverage-mapping)
 endif()
 
+set(_arc_saved_position_independent_code "${CMAKE_POSITION_INDEPENDENT_CODE}")
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory(third_party)
+set(CMAKE_POSITION_INDEPENDENT_CODE "${_arc_saved_position_independent_code}")
+unset(_arc_saved_position_independent_code)
 
 add_subdirectory(engine)
 
