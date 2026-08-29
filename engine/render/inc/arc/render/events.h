@@ -161,6 +161,7 @@ struct shadow_settings
     bool contact_shadows{true};
     float contact_shadow_length{0.5f};
     shadow_cache_mode cache_mode{shadow_cache_mode::automatic};
+    shadow_map_method map_method{shadow_map_method::auto_select};
 };
 
 /**

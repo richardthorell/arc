@@ -28,6 +28,14 @@ enum class shadow_cache_mode : std::uint8_t
     static_only
 };
 
+/** @brief Shadow-map representation requested by an authored light. */
+enum class shadow_map_method : std::uint8_t
+{
+    auto_select,
+    conventional,
+    virtualized
+};
+
 enum class shadow_light_kind : std::uint8_t
 {
     directional,
