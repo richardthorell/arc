@@ -253,6 +253,74 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                             .format = render_format::d32_float,
                             .persistent = true});
 
+    render_graph_resource_handle virtual_shadow_page_table{};
+    render_graph_resource_handle virtual_shadow_static_pages{};
+    render_graph_resource_handle virtual_shadow_dynamic_pages{};
+    render_graph_resource_handle virtual_shadow_requests{};
+    render_graph_resource_handle virtual_shadow_compacted_requests{};
+    render_graph_resource_handle virtual_shadow_render_pages{};
+    render_graph_resource_handle virtual_shadow_casters{};
+    render_graph_resource_handle virtual_shadow_feedback{};
+    if (config.features.virtual_shadow_maps)
+    {
+        constexpr std::uint64_t maximum_virtual_shadow_requests = 65536;
+        constexpr std::uint64_t virtual_shadow_request_stride = 32;
+        constexpr std::uint64_t virtual_shadow_mapping_stride = 32;
+        constexpr std::uint32_t physical_atlas_extent = 8192;
+        virtual_shadow_page_table = graph.add_resource({.name = "virtual_shadow_page_table",
+                                                        .kind = render_resource_kind::buffer,
+                                                        .byte_size = 64ull * 1024ull * 1024ull,
+                                                        .element_stride = virtual_shadow_mapping_stride,
+                                                        .lifetime = render_resource_lifetime_class::per_world,
+                                                        .persistent_key = "shadow.virtual.page_table",
+                                                        .persistent = true});
+        virtual_shadow_static_pages = graph.add_resource({.name = "virtual_shadow_static_pages",
+                                                          .kind = render_resource_kind::depth_texture,
+                                                          .extent = {physical_atlas_extent, physical_atlas_extent, 1},
+                                                          .extent_mode = render_extent_mode::absolute,
+                                                          .format = render_format::d16_unorm,
+                                                          .lifetime = render_resource_lifetime_class::per_world,
+                                                          .persistent_key = "shadow.virtual.static_pages",
+                                                          .persistent = true});
+        virtual_shadow_dynamic_pages = graph.add_resource({.name = "virtual_shadow_dynamic_pages",
+                                                           .kind = render_resource_kind::depth_texture,
+                                                           .extent = {physical_atlas_extent, physical_atlas_extent, 1},
+                                                           .extent_mode = render_extent_mode::absolute,
+                                                           .format = render_format::d16_unorm,
+                                                           .lifetime = render_resource_lifetime_class::per_world,
+                                                           .persistent_key = "shadow.virtual.dynamic_pages",
+                                                           .persistent = true});
+        virtual_shadow_requests = graph.add_resource({.name = "virtual_shadow_page_requests",
+                                                      .kind = render_resource_kind::buffer,
+                                                      .byte_size = maximum_virtual_shadow_requests *
+                                                                   virtual_shadow_request_stride,
+                                                      .element_stride = virtual_shadow_request_stride});
+        virtual_shadow_compacted_requests =
+            graph.add_resource({.name = "virtual_shadow_compacted_requests",
+                                .kind = render_resource_kind::buffer,
+                                .byte_size = maximum_virtual_shadow_requests * virtual_shadow_request_stride,
+                                .element_stride = virtual_shadow_request_stride});
+        virtual_shadow_render_pages = graph.add_resource({.name = "virtual_shadow_render_pages",
+                                                          .kind = render_resource_kind::buffer,
+                                                          .byte_size = maximum_virtual_shadow_requests *
+                                                                       virtual_shadow_mapping_stride,
+                                                          .element_stride = virtual_shadow_mapping_stride});
+        virtual_shadow_casters = graph.add_resource({.name = "virtual_shadow_page_casters",
+                                                     .kind = render_resource_kind::buffer,
+                                                     .byte_size = 64ull * 1024ull * 1024ull,
+                                                     .element_stride = 16});
+        virtual_shadow_feedback = graph.add_resource({.name = "virtual_shadow_feedback_readback",
+                                                      .kind = render_resource_kind::buffer,
+                                                      .byte_size = maximum_virtual_shadow_requests *
+                                                                   virtual_shadow_request_stride,
+                                                      .element_stride = virtual_shadow_request_stride,
+                                                      .memory = render_memory_class::readback,
+                                                      .lifetime = render_resource_lifetime_class::per_world,
+                                                      .persistent_key = "shadow.virtual.feedback",
+                                                      .exported = true,
+                                                      .persistent = true});
+    }
+
     render_graph_resource_handle gpu_scene_instances{};
     render_graph_resource_handle gpu_visible_instances{};
     render_graph_resource_handle gpu_indirect_commands{};
@@ -907,6 +975,147 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
                                     .write = true}}});
     }
 
+    if (config.features.virtual_shadow_maps)
+    {
+        std::vector<render_resource_access> marking_reads;
+        if (gpu_scene_instances.valid())
+            marking_reads.push_back({.handle = gpu_scene_instances,
+                                     .kind = render_resource_kind::buffer,
+                                     .usage = render_resource_usage::storage_buffer});
+        if (depth_pyramid.valid())
+            marking_reads.push_back({.handle = depth_pyramid,
+                                     .kind = render_resource_kind::color_texture,
+                                     .usage = render_resource_usage::sampled,
+                                     .history = render_history_access::previous});
+        graph.add_pass({.name = "virtual shadow page marking",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_shadow_page_marking,
+                        .reads = std::move(marking_reads),
+                        .writes = {{.handle = virtual_shadow_requests,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "virtual shadow request compaction",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_shadow_request_compaction,
+                        .reads = {{.handle = virtual_shadow_requests,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = virtual_shadow_compacted_requests,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "virtual shadow page allocation",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_shadow_page_allocation,
+                        .reads = {{.handle = virtual_shadow_compacted_requests,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = virtual_shadow_page_table,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true},
+                                   {.handle = virtual_shadow_render_pages,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "virtual shadow page invalidation",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_shadow_page_invalidation,
+                        .reads = {{.handle = virtual_shadow_page_table,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = virtual_shadow_render_pages,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        std::vector<render_resource_access> caster_reads{{.handle = virtual_shadow_page_table,
+                                                          .kind = render_resource_kind::buffer,
+                                                          .usage = render_resource_usage::storage_buffer},
+                                                         {.handle = virtual_shadow_render_pages,
+                                                          .kind = render_resource_kind::buffer,
+                                                          .usage = render_resource_usage::storage_buffer}};
+        if (gpu_scene_instances.valid())
+            caster_reads.push_back({.handle = gpu_scene_instances,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer});
+        if (config.features.virtual_shadow_virtual_geometry && virtual_shadow_clusters.valid())
+            caster_reads.push_back({.handle = virtual_shadow_clusters,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer});
+        graph.add_pass({.name = "virtual shadow caster culling",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_shadow_caster_culling,
+                        .reads = std::move(caster_reads),
+                        .writes = {{.handle = virtual_shadow_casters,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "virtual shadow static page rendering",
+                        .kind = render_pass_kind::custom,
+                        .builtin = builtin_render_pass::virtual_shadow_static_render,
+                        .reads = {{.handle = virtual_shadow_casters,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = virtual_shadow_static_pages,
+                                    .kind = render_resource_kind::depth_texture,
+                                    .usage = render_resource_usage::depth_attachment,
+                                    .write = true,
+                                    .load_op = render_load_op::load}}});
+        graph.add_pass({.name = "virtual shadow dynamic page rendering",
+                        .kind = render_pass_kind::custom,
+                        .builtin = builtin_render_pass::virtual_shadow_dynamic_render,
+                        .reads = {{.handle = virtual_shadow_casters,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = virtual_shadow_dynamic_pages,
+                                    .kind = render_resource_kind::depth_texture,
+                                    .usage = render_resource_usage::depth_attachment,
+                                    .write = true,
+                                    .load_op = render_load_op::load}}});
+        graph.add_pass({.name = "virtual shadow border replication",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_shadow_border_replication,
+                        .reads = {{.handle = virtual_shadow_static_pages,
+                                   .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled},
+                                  {.handle = virtual_shadow_dynamic_pages,
+                                   .kind = render_resource_kind::depth_texture,
+                                   .usage = render_resource_usage::sampled}},
+                        .writes = {{.handle = virtual_shadow_page_table,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "virtual shadow page-table publication",
+                        .queue = compute_queue,
+                        .kind = render_pass_kind::compute,
+                        .builtin = builtin_render_pass::virtual_shadow_page_table_publication,
+                        .reads = {{.handle = virtual_shadow_render_pages,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::storage_buffer}},
+                        .writes = {{.handle = virtual_shadow_page_table,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::storage_buffer,
+                                    .write = true}}});
+        graph.add_pass({.name = "virtual shadow feedback readback",
+                        .queue = render_queue_type::transfer,
+                        .kind = render_pass_kind::custom,
+                        .builtin = builtin_render_pass::virtual_shadow_feedback_readback,
+                        .reads = {{.handle = virtual_shadow_compacted_requests,
+                                   .kind = render_resource_kind::buffer,
+                                   .usage = render_resource_usage::transfer_src}},
+                        .writes = {{.handle = virtual_shadow_feedback,
+                                    .kind = render_resource_kind::buffer,
+                                    .usage = render_resource_usage::transfer_dst,
+                                    .write = true}}});
+    }
+
     std::vector<render_resource_access> shadow_reads;
     if (virtual_shadow_clusters.valid())
         shadow_reads.push_back({.handle = virtual_shadow_clusters,
@@ -1049,6 +1258,18 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
             forward_reads.push_back({.handle = cloud_shadow,
                                      .kind = render_resource_kind::color_texture,
                                      .usage = render_resource_usage::sampled});
+        if (virtual_shadow_page_table.valid())
+        {
+            forward_reads.push_back({.handle = virtual_shadow_page_table,
+                                     .kind = render_resource_kind::buffer,
+                                     .usage = render_resource_usage::storage_buffer});
+            forward_reads.push_back({.handle = virtual_shadow_static_pages,
+                                     .kind = render_resource_kind::depth_texture,
+                                     .usage = render_resource_usage::sampled});
+            forward_reads.push_back({.handle = virtual_shadow_dynamic_pages,
+                                     .kind = render_resource_kind::depth_texture,
+                                     .usage = render_resource_usage::sampled});
+        }
         if (environment_irradiance.valid())
         {
             forward_reads.push_back({.handle = environment_irradiance,
@@ -1258,6 +1479,18 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
             lighting_reads.push_back({.handle = filtered_screen_shadow,
                                       .kind = render_resource_kind::color_texture,
                                       .usage = render_resource_usage::sampled});
+        if (virtual_shadow_page_table.valid())
+        {
+            lighting_reads.push_back({.handle = virtual_shadow_page_table,
+                                      .kind = render_resource_kind::buffer,
+                                      .usage = render_resource_usage::storage_buffer});
+            lighting_reads.push_back({.handle = virtual_shadow_static_pages,
+                                      .kind = render_resource_kind::depth_texture,
+                                      .usage = render_resource_usage::sampled});
+            lighting_reads.push_back({.handle = virtual_shadow_dynamic_pages,
+                                      .kind = render_resource_kind::depth_texture,
+                                      .usage = render_resource_usage::sampled});
+        }
         if (object_id.valid())
             lighting_reads.push_back({.handle = object_id,
                                       .kind = render_resource_kind::color_texture,
@@ -1650,6 +1883,18 @@ render_graph make_scene_draw_graph(std::string_view target_name, const resolved_
         transparent_reads.push_back({.handle = cloud_shadow,
                                      .kind = render_resource_kind::color_texture,
                                      .usage = render_resource_usage::sampled});
+    if (virtual_shadow_page_table.valid())
+    {
+        transparent_reads.push_back({.handle = virtual_shadow_page_table,
+                                     .kind = render_resource_kind::buffer,
+                                     .usage = render_resource_usage::storage_buffer});
+        transparent_reads.push_back({.handle = virtual_shadow_static_pages,
+                                     .kind = render_resource_kind::depth_texture,
+                                     .usage = render_resource_usage::sampled});
+        transparent_reads.push_back({.handle = virtual_shadow_dynamic_pages,
+                                     .kind = render_resource_kind::depth_texture,
+                                     .usage = render_resource_usage::sampled});
+    }
     graph.add_pass({.name = "forward transparent",
                     .kind = render_pass_kind::custom,
                     .builtin = builtin_render_pass::forward_transparent,

@@ -126,6 +126,11 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
     result.max_local_shadow_resolution = profile.max_local_shadow_resolution;
     result.screen_space_shadows = profile.screen_space_shadows;
     result.screen_space_shadow_scale = profile.screen_space_shadow_scale;
+    result.virtual_shadow_budget_bytes = profile.virtual_shadow_budget_bytes;
+    result.virtual_shadow_page_render_budget = profile.virtual_shadow_page_render_budget;
+    if (capabilities.memory_budget != 0 && result.virtual_shadow_budget_bytes != 0)
+        result.virtual_shadow_budget_bytes =
+            std::min(result.virtual_shadow_budget_bytes, capabilities.memory_budget * 8u / 100u);
     result.geometry_error_threshold = profile.geometry_error_threshold;
     result.shadow_resolution_scale = profile.maximum_shadow_resolution_scale;
     result.volumetric_resolution_scale = profile.maximum_volumetric_resolution_scale;
@@ -162,6 +167,17 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         virtual_geometry_common && capabilities.virtual_geometry_mesh_shader ? virtual_geometry_raster_path::mesh_shader
         : virtual_geometry_common && capabilities.virtual_geometry_compute   ? virtual_geometry_raster_path::compute
                                                                            : virtual_geometry_raster_path::unavailable;
+    const bool virtual_shadow_maps = optional_features && result.quality == render_quality_tier::ultra && gpu_driven &&
+                                     capabilities.virtual_shadow_allocation && capabilities.virtual_shadow_feedback &&
+                                     capabilities.virtual_shadow_rendering && capabilities.virtual_shadow_sampling &&
+                                     capabilities.compute_shaders && capabilities.storage_buffers;
+    const bool virtual_shadow_virtual_geometry =
+        virtual_shadow_maps && capabilities.virtual_shadow_virtual_geometry &&
+        virtual_geometry_path != virtual_geometry_raster_path::unavailable;
+    const bool screen_space_contact_shadows = optional_features && profile.screen_space_shadows &&
+                                              capabilities.screen_space_contact_shadows &&
+                                              capabilities.hzb_occlusion && capabilities.compute_shaders;
+    result.screen_space_shadows = screen_space_contact_shadows;
     const bool screen_space_lighting = optional_features && !config.force_disable_dynamic_gi &&
                                        capabilities.screen_space_indirect_lighting && capabilities.hzb_occlusion &&
                                        capabilities.temporal_resolve && capabilities.storage_images;
@@ -210,6 +226,9 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                                         profile.prefer_async_compute && capabilities.dedicated_compute_queue,
                        .virtual_geometry = virtual_geometry_path != virtual_geometry_raster_path::unavailable,
                        .virtual_geometry_path = virtual_geometry_path,
+                       .virtual_shadow_maps = virtual_shadow_maps,
+                       .virtual_shadow_virtual_geometry = virtual_shadow_virtual_geometry,
+                       .screen_space_contact_shadows = screen_space_contact_shadows,
                        .software_ray_tracing = capabilities.software_ray_tracing,
                        .hardware_ray_tracing = capabilities.ray_tracing,
                        .screen_space_gi = screen_space_lighting && result.quality != render_quality_tier::low,
@@ -263,6 +282,13 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
         result.fallback_reasons.push_back(
             "virtual geometry requires executable traversal, HZB, bindless material access, streaming, and a "
             "compute or mesh-shader raster path; using conventional LOD geometry");
+    if (result.quality == render_quality_tier::ultra && !virtual_shadow_maps)
+        result.fallback_reasons.push_back(
+            "virtual shadow maps require executable allocation, feedback, rendering, sampling, compute, and storage "
+            "paths; using cascaded and local-atlas shadows");
+    if (profile.screen_space_shadows && !screen_space_contact_shadows)
+        result.fallback_reasons.push_back(
+            "screen-space contact shadows require executable HZB and compute paths; using mapped shadows only");
     if (result.quality == render_quality_tier::medium && !screen_space_lighting)
         result.fallback_reasons.push_back(
             "screen-space GI/reflections require executable HZB, temporal resolve, and storage images; using probes");

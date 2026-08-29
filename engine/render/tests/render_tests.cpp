@@ -811,6 +811,65 @@ TEST_CASE("GPU-driven scene graph declares visibility indirect and temporal hist
                         [](const auto& history) { return history.persistent_key == "view.depth_hzb"; }));
 }
 
+TEST_CASE("Ultra virtual shadow graph declares page feedback cache and lighting dependencies")
+{
+    using namespace arc::render;
+    resolved_render_config config;
+    config.quality = render_quality_tier::ultra;
+    config.path = render_path::deferred;
+    config.features.virtual_shadow_maps = true;
+    config.features.screen_space_contact_shadows = true;
+    config.screen_space_shadows = true;
+    config.screen_space_shadow_scale = 1.0f;
+
+    const auto compiled = make_scene_draw_graph("vsm", config, true).compile().value();
+    const auto pass_index = [&](builtin_render_pass expected)
+    {
+        for (std::size_t index = 0; index < compiled.passes.size(); ++index)
+            if (compiled.passes[index].builtin == expected) return index;
+        return compiled.passes.size();
+    };
+    const auto marking = pass_index(builtin_render_pass::virtual_shadow_page_marking);
+    const auto allocation = pass_index(builtin_render_pass::virtual_shadow_page_allocation);
+    const auto culling = pass_index(builtin_render_pass::virtual_shadow_caster_culling);
+    const auto static_render = pass_index(builtin_render_pass::virtual_shadow_static_render);
+    const auto dynamic_render = pass_index(builtin_render_pass::virtual_shadow_dynamic_render);
+    const auto publication = pass_index(builtin_render_pass::virtual_shadow_page_table_publication);
+    const auto feedback = pass_index(builtin_render_pass::virtual_shadow_feedback_readback);
+    const auto lighting = pass_index(builtin_render_pass::deferred_lighting);
+    REQUIRE(marking < allocation);
+    REQUIRE(allocation < culling);
+    REQUIRE(culling < static_render);
+    REQUIRE(culling < dynamic_render);
+    REQUIRE(static_render < publication);
+    REQUIRE(dynamic_render < publication);
+    REQUIRE(publication < lighting);
+    REQUIRE(feedback < compiled.passes.size());
+    REQUIRE(pass_index(builtin_render_pass::screen_space_shadow) < lighting);
+    REQUIRE(pass_index(builtin_render_pass::screen_space_shadow_filter) < lighting);
+
+    const auto resource = [&](std::string_view name) -> const render_graph_resource*
+    {
+        const auto found = std::find_if(compiled.resources.begin(), compiled.resources.end(),
+                                        [name](const auto& value) { return value.name == name; });
+        return found == compiled.resources.end() ? nullptr : &*found;
+    };
+    const auto* static_pages = resource("virtual_shadow_static_pages");
+    const auto* dynamic_pages = resource("virtual_shadow_dynamic_pages");
+    const auto* page_table = resource("virtual_shadow_page_table");
+    const auto* readback = resource("virtual_shadow_feedback_readback");
+    REQUIRE(static_pages != nullptr);
+    REQUIRE(dynamic_pages != nullptr);
+    REQUIRE(page_table != nullptr);
+    REQUIRE(readback != nullptr);
+    REQUIRE(static_pages->format == render_format::d16_unorm);
+    REQUIRE(static_pages->persistent);
+    REQUIRE(dynamic_pages->persistent);
+    REQUIRE(page_table->lifetime == render_resource_lifetime_class::per_world);
+    REQUIRE(readback->memory == render_memory_class::readback);
+    REQUIRE(readback->exported);
+}
+
 TEST_CASE("environment lighting graph schedules scalable IBL generation")
 {
     arc::render::resolved_render_config config;
@@ -1349,6 +1408,8 @@ TEST_CASE("render quality profiles expose immutable implemented tier policy")
     REQUIRE(&ultra == &ultra_render_quality_profile);
     REQUIRE(ultra.max_point_lights == 128);
     REQUIRE(ultra.gi_trace_budget == 4);
+    REQUIRE(ultra.virtual_shadow_budget_bytes == 512ull * 1024ull * 1024ull);
+    REQUIRE(ultra.virtual_shadow_page_render_budget == 2048);
     REQUIRE(ultra.target_frame_time_ms == Catch::Approx(1000.0f / 30.0f));
 }
 
@@ -1372,6 +1433,12 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     capabilities.descriptor_indexing = true;
     capabilities.virtual_geometry_compute = true;
     capabilities.virtual_geometry_streaming = true;
+    capabilities.virtual_shadow_allocation = true;
+    capabilities.virtual_shadow_feedback = true;
+    capabilities.virtual_shadow_rendering = true;
+    capabilities.virtual_shadow_sampling = true;
+    capabilities.virtual_shadow_virtual_geometry = true;
+    capabilities.screen_space_contact_shadows = true;
     capabilities.screen_space_indirect_lighting = true;
     capabilities.surface_cache = true;
     capabilities.radiance_cache = true;
@@ -1397,6 +1464,10 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE_FALSE(resolved.features.virtual_geometry);
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::unavailable);
     REQUIRE(resolved.features.software_ray_tracing);
+    REQUIRE(resolved.features.virtual_shadow_maps);
+    REQUIRE_FALSE(resolved.features.virtual_shadow_virtual_geometry);
+    REQUIRE(resolved.features.screen_space_contact_shadows);
+    REQUIRE(resolved.virtual_shadow_budget_bytes == 512ull * 1024ull * 1024ull);
     REQUIRE(resolved.features.hardware_ray_tracing);
     REQUIRE(resolved.features.screen_space_gi);
     REQUIRE(resolved.features.screen_space_reflections);
@@ -1414,6 +1485,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     const auto high = resolve_render_config(config, capabilities);
     REQUIRE_FALSE(high.features.virtual_geometry);
     REQUIRE(high.features.virtual_geometry_path == virtual_geometry_raster_path::unavailable);
+    REQUIRE_FALSE(high.features.virtual_shadow_maps);
     config.quality = render_quality_tier::ultra;
 
     capabilities.gpu_visibility_compaction = true;
@@ -1432,6 +1504,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     REQUIRE(resolved.features.gpu_terrain_traversal);
     REQUIRE(resolved.features.virtual_geometry);
     REQUIRE(resolved.features.virtual_geometry_path == virtual_geometry_raster_path::compute);
+    REQUIRE(resolved.features.virtual_shadow_virtual_geometry);
 
     config.force_disable_gpu_driven = true;
     config.force_disable_temporal = true;
@@ -1442,6 +1515,7 @@ TEST_CASE("renderer resolves GPU-driven temporal features and their forced fallb
     resolved = resolve_render_config(config, capabilities);
     REQUIRE_FALSE(resolved.features.gpu_driven_rendering);
     REQUIRE_FALSE(resolved.features.virtual_geometry);
+    REQUIRE_FALSE(resolved.features.virtual_shadow_maps);
     REQUIRE_FALSE(resolved.features.temporal_antialiasing);
     REQUIRE_FALSE(resolved.features.async_compute);
     REQUIRE_FALSE(resolved.features.screen_space_gi);

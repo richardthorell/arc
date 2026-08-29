@@ -125,6 +125,16 @@ enum class builtin_render_pass : std::uint8_t
     directional_shadow_dynamic,
     point_shadow,
     spot_shadow,
+    virtual_shadow_page_marking,
+    virtual_shadow_request_compaction,
+    virtual_shadow_page_allocation,
+    virtual_shadow_page_invalidation,
+    virtual_shadow_caster_culling,
+    virtual_shadow_static_render,
+    virtual_shadow_dynamic_render,
+    virtual_shadow_border_replication,
+    virtual_shadow_page_table_publication,
+    virtual_shadow_feedback_readback,
     depth_pyramid,
     screen_space_shadow,
     screen_space_shadow_filter,
@@ -257,6 +267,7 @@ enum class render_format : std::uint8_t
     r32_uint,
     r32_float,
     d24_unorm_s8_uint,
+    d16_unorm,
     d32_float
 };
 

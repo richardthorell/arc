@@ -30,6 +30,8 @@ std::uint64_t format_bytes_per_pixel(render_format format) noexcept
             return 4;
         case render_format::r8_unorm:
             return 1;
+        case render_format::d16_unorm:
+            return 2;
         default:
             return 0;
     }
@@ -649,6 +651,8 @@ std::string_view render_format_name(render_format format) noexcept
             return "r32f";
         case render_format::d24_unorm_s8_uint:
             return "d24s8";
+        case render_format::d16_unorm:
+            return "d16";
         case render_format::d32_float:
             return "d32f";
         default:

@@ -114,6 +114,8 @@ struct render_quality_profile
     std::uint32_t max_local_shadow_resolution{1024};
     bool screen_space_shadows{true};
     float screen_space_shadow_scale{0.5f};
+    std::uint64_t virtual_shadow_budget_bytes{};
+    std::uint32_t virtual_shadow_page_render_budget{};
     float target_frame_time_ms{default_target_frame_time_ms};
     float geometry_error_threshold{1.0f};
     float minimum_geometry_error_threshold{0.5f};
@@ -212,6 +214,9 @@ inline constexpr render_quality_profile ultra_render_quality_profile{.quality = 
                                                                      .max_local_shadow_resolution = 2048,
                                                                      .screen_space_shadows = true,
                                                                      .screen_space_shadow_scale = 1.0f,
+                                                                     .virtual_shadow_budget_bytes =
+                                                                         512ull * 1024ull * 1024ull,
+                                                                     .virtual_shadow_page_render_budget = 2048,
                                                                      .target_frame_time_ms = 1000.0f / 30.0f,
                                                                      .geometry_error_threshold = 0.5f,
                                                                      .minimum_geometry_error_threshold = 0.25f,
@@ -300,6 +305,18 @@ struct render_capabilities
     bool virtual_geometry_mesh_shader{};
     /** @brief Backend can safely request, upload, and retire virtual-geometry pages. */
     bool virtual_geometry_streaming{};
+    /** @brief Backend can allocate and retain generational physical VSM pages. */
+    bool virtual_shadow_allocation{};
+    /** @brief Backend can mark, compact, and asynchronously read VSM page feedback. */
+    bool virtual_shadow_feedback{};
+    /** @brief Backend can render conventional geometry into selected VSM pages. */
+    bool virtual_shadow_rendering{};
+    /** @brief Backend lighting paths can resolve and sample VSM page tables. */
+    bool virtual_shadow_sampling{};
+    /** @brief Backend can submit virtual-geometry clusters as VSM casters. */
+    bool virtual_shadow_virtual_geometry{};
+    /** @brief Backend can execute HZB-based contact and screen-space shadows. */
+    bool screen_space_contact_shadows{};
     /** @brief Backend can execute ARC's HZB screen-space GI and reflection traces. */
     bool screen_space_indirect_lighting{};
     /** @brief Backend can capture and relight paged surface cards. */
@@ -357,6 +374,9 @@ struct render_feature_set
     bool async_compute{};
     bool virtual_geometry{};
     virtual_geometry_raster_path virtual_geometry_path{virtual_geometry_raster_path::unavailable};
+    bool virtual_shadow_maps{};
+    bool virtual_shadow_virtual_geometry{};
+    bool screen_space_contact_shadows{};
     bool software_ray_tracing{};
     bool hardware_ray_tracing{};
     bool screen_space_gi{};
@@ -404,6 +424,8 @@ struct resolved_render_config
     std::uint32_t max_local_shadow_resolution{standard_render_quality_profile.max_local_shadow_resolution};
     bool screen_space_shadows{standard_render_quality_profile.screen_space_shadows};
     float screen_space_shadow_scale{standard_render_quality_profile.screen_space_shadow_scale};
+    std::uint64_t virtual_shadow_budget_bytes{};
+    std::uint32_t virtual_shadow_page_render_budget{};
     float geometry_error_threshold{standard_render_quality_profile.geometry_error_threshold};
     float shadow_resolution_scale{1.0f};
     float volumetric_resolution_scale{1.0f};
@@ -780,6 +802,17 @@ struct render_shadow_profile
     std::uint32_t local_cache_misses{};
     bool static_cache_hit{};
     bool screen_space_shadows{};
+    bool virtual_shadow_maps{};
+    std::uint32_t virtual_address_space_count{};
+    std::uint32_t virtual_page_capacity{};
+    std::uint32_t virtual_resident_pages{};
+    std::uint32_t virtual_dirty_pages{};
+    std::uint32_t virtual_rendered_pages{};
+    std::uint32_t virtual_reused_pages{};
+    std::uint32_t virtual_evictions{};
+    std::uint32_t virtual_parent_fallbacks{};
+    std::uint32_t virtual_failed_requests{};
+    std::uint64_t virtual_memory_bytes{};
     std::string fallback_reason;
 };
 
