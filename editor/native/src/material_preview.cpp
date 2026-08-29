@@ -13,6 +13,7 @@
 #include <numbers>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace arc::editor
@@ -248,7 +249,7 @@ graph_texture_bindings load_graph_texture_bindings(const std::filesystem::path& 
     result.metallic = resolve_texture("metallic");
     result.roughness = resolve_texture("roughness");
     result.normal = resolve_texture("normal", true);
-    result.ambient_occlusion = resolve_texture("ambientOcclusion");
+    result.ambient_occlusion = resolve_texture("ao");
     result.emissive = resolve_texture("emissive");
     result.opacity = resolve_texture("opacity");
     return result;
