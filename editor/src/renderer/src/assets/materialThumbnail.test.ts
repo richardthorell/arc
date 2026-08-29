@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { materialThumbnailCacheKey, materialThumbnailViewportId, transparentPreviewPixels } from './materialThumbnail';
+import {
+  materialThumbnailCacheKey,
+  materialThumbnailViewportId,
+  opaquePixelBounds,
+  transparentPreviewPixels,
+} from './materialThumbnail';
 
 describe('material thumbnails', () => {
   it('uses the production material preview viewport identity with an isolated thumbnail instance', () => {
@@ -41,5 +46,16 @@ describe('material thumbnails', () => {
     expect(result[(width - 1) * 4 + 3]).toBe(0);
     expect(result[center + 3]).toBe(255);
     expect(result[enclosed + 3]).toBe(255);
+  });
+
+  it('finds the rendered object bounds independently of its source-frame position', () => {
+    const width = 8;
+    const height = 6;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let y = 3; y <= 4; y += 1) {
+      for (let x = 5; x <= 7; x += 1) pixels[(y * width + x) * 4 + 3] = 255;
+    }
+
+    expect(opaquePixelBounds(pixels, width, height)).toEqual({ x: 5, y: 3, width: 3, height: 2 });
   });
 });

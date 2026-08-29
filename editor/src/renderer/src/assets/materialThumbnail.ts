@@ -16,6 +16,13 @@ type MaterialThumbnailRequest = {
   maxSize?: number;
 };
 
+type PixelBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 const thumbnailCache = new Map<string, Promise<string | null>>();
 let queue: Promise<void> = Promise.resolve();
 let thumbnailInstance = 0;
@@ -91,13 +98,42 @@ export function transparentPreviewPixels(
   return pixels;
 }
 
-const waitForPreviewFrame = async (viewportId: string) => {
+export function opaquePixelBounds(
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  minimumAlpha = 16,
+): PixelBounds | null {
+  if (width <= 0 || height <= 0 || pixels.length < width * height * 4) return null;
+
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (pixels[(y * width + x) * 4 + 3] < minimumAlpha) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+const queryViewportState = async (viewportId: string) =>
+  (await window.arc.host.query('viewport.state', { viewportId })) as HostResponse<ViewportState>;
+
+const waitForPreviewFrame = async (viewportId: string, minimumFrameIndex: number) => {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const response = (await window.arc.host.query('viewport.state', { viewportId })) as HostResponse<ViewportState>;
+    const response = await queryViewportState(viewportId);
     if (response.succeeded && response.payload?.assetPreviewError) throw new Error(response.payload.assetPreviewError);
-    if (response.succeeded && response.payload?.submitted && (response.payload.frameIndex ?? 0) > 0) {
-      // Let the shared-texture receiver copy a completed native frame into the hidden canvas.
-      await sleep(50);
+    if (response.succeeded && response.payload?.submitted && (response.payload.frameIndex ?? 0) >= minimumFrameIndex) {
+      // Let the shared-texture receiver copy the completed native frame into the hidden canvas.
+      await sleep(75);
       return;
     }
     await sleep(25);
@@ -130,6 +166,8 @@ const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnai
 
   try {
     await window.arc.viewport.create({ viewportId, x: 0, y: 0, width: renderSize, height: renderSize });
+    const stateBeforeOptions = await queryViewportState(viewportId);
+    const baselineFrameIndex = stateBeforeOptions.payload?.frameIndex ?? 0;
     await window.arc.host.command('viewport.setRenderOptions', {
       viewportId,
       renderMode: 'shaded',
@@ -149,7 +187,10 @@ const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnai
         decals: false,
       },
     });
-    await waitForPreviewFrame(viewportId);
+    // Surface creation can publish before the material-preview scene has propagated
+    // to the shared texture. Capture a few realtime frames later so the thumbnail
+    // reflects the realized material instead of the primitive fallback.
+    await waitForPreviewFrame(viewportId, baselineFrameIndex + 3);
 
     const context = canvas.getContext('2d');
     if (!context) return null;
@@ -173,7 +214,27 @@ const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnai
     outputContext.clearRect(0, 0, outputSize, outputSize);
     outputContext.imageSmoothingEnabled = true;
     outputContext.imageSmoothingQuality = 'high';
-    outputContext.drawImage(source, 0, 0, outputSize, outputSize);
+
+    const bounds = opaquePixelBounds(transparent, renderSize, renderSize);
+    if (bounds) {
+      const availableSize = outputSize * 0.84;
+      const scale = Math.min(availableSize / bounds.width, availableSize / bounds.height);
+      const drawWidth = bounds.width * scale;
+      const drawHeight = bounds.height * scale;
+      outputContext.drawImage(
+        source,
+        bounds.x,
+        bounds.y,
+        bounds.width,
+        bounds.height,
+        (outputSize - drawWidth) * 0.5,
+        (outputSize - drawHeight) * 0.5,
+        drawWidth,
+        drawHeight,
+      );
+    } else {
+      outputContext.drawImage(source, 0, 0, outputSize, outputSize);
+    }
     return output.toDataURL('image/png');
   } catch {
     return null;
