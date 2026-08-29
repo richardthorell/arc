@@ -164,6 +164,7 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
         REQUIRE(resource.set == 0);
         REQUIRE(descriptor_bindings.emplace(resource.set, resource.binding).second);
     }
+    REQUIRE(descriptor_bindings.size() == result.value().reflection.resources.size());
 }
 
 TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")
