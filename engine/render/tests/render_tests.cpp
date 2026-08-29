@@ -1186,6 +1186,18 @@ TEST_CASE("virtual shadow clipmap origins snap at physical page granularity")
             arc::render::virtual_shadow_page_coordinate{3, 5, 2, 2});
 }
 
+TEST_CASE("virtual shadow requests always retain a conventional executable fallback")
+{
+    using arc::render::resolve_shadow_map_method;
+    using arc::render::shadow_map_method;
+
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::auto_select, true) == shadow_map_method::virtualized);
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::virtualized, true) == shadow_map_method::virtualized);
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::conventional, true) == shadow_map_method::conventional);
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::auto_select, false) == shadow_map_method::conventional);
+    REQUIRE(resolve_shadow_map_method(shadow_map_method::virtualized, false) == shadow_map_method::conventional);
+}
+
 TEST_CASE("render world preparation culls sorts batches and emits indirect commands")
 {
     arc::render::render_world_packet packet;

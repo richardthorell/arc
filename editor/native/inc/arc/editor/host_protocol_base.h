@@ -427,6 +427,7 @@ struct host_light_snapshot
     bool contact_shadows{true};
     float contact_shadow_length{0.5f};
     std::uint8_t shadow_cache_mode{};
+    std::uint8_t shadow_map_method{};
     std::uint32_t cascade_count{4};
     float shadow_distance{200.0f};
     float cascade_split_lambda{0.65f};

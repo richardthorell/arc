@@ -430,6 +430,7 @@ bool light_value(std::string_view json, std::string_view key, host_light_snapsho
     };
     std::uint32_t shadow_filter = out.shadow_filter;
     std::uint32_t cache_mode = out.shadow_cache_mode;
+    std::uint32_t map_method = out.shadow_map_method;
     const bool valid =
         optional_number("shadowResolution", out.shadow_resolution) &&
         optional_number("shadowPriority", out.shadow_priority) &&
@@ -437,13 +438,15 @@ bool light_value(std::string_view json, std::string_view key, host_light_snapsho
         optional_number("shadowNormalBias", out.shadow_normal_bias) && optional_number("shadowFilter", shadow_filter) &&
         optional_bool("contactShadows", out.contact_shadows) &&
         optional_number("contactShadowLength", out.contact_shadow_length) &&
-        optional_number("shadowCacheMode", cache_mode) && optional_number("cascadeCount", out.cascade_count) &&
+        optional_number("shadowCacheMode", cache_mode) && optional_number("shadowMapMethod", map_method) &&
+        optional_number("cascadeCount", out.cascade_count) &&
         optional_number("shadowDistance", out.shadow_distance) &&
         optional_number("cascadeSplitLambda", out.cascade_split_lambda) &&
         optional_number("cascadeBlendFraction", out.cascade_blend_fraction) &&
         optional_bool("stableCascades", out.stable_cascades);
     out.shadow_filter = static_cast<std::uint8_t>(shadow_filter);
     out.shadow_cache_mode = static_cast<std::uint8_t>(cache_mode);
+    out.shadow_map_method = static_cast<std::uint8_t>(map_method);
     return valid;
 }
 
@@ -1342,6 +1345,7 @@ std::string to_json(const host_light_snapshot& light)
            << ",\"contactShadows\":" << bool_json(light.contact_shadows)
            << ",\"contactShadowLength\":" << light.contact_shadow_length
            << ",\"shadowCacheMode\":" << static_cast<unsigned>(light.shadow_cache_mode)
+           << ",\"shadowMapMethod\":" << static_cast<unsigned>(light.shadow_map_method)
            << ",\"cascadeCount\":" << light.cascade_count << ",\"shadowDistance\":" << light.shadow_distance
            << ",\"cascadeSplitLambda\":" << light.cascade_split_lambda
            << ",\"cascadeBlendFraction\":" << light.cascade_blend_fraction

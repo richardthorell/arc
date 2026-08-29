@@ -822,6 +822,7 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     sun_light.shadow.priority = 700;
     sun_light.shadow.contact_shadows = true;
     sun_light.shadow.contact_shadow_length = 0.8f;
+    sun_light.shadow.map_method = arc::render::shadow_map_method::virtualized;
     sun_light.cascades.cascade_count = 3;
     sun_light.cascades.maximum_distance = 175.0f;
     sun_light.cascades.split_lambda = 0.72f;
@@ -866,6 +867,7 @@ TEST_CASE("render scene extracts active lights and skips inactive renderers")
     REQUIRE(light.shadow.priority == 700);
     REQUIRE(light.shadow.contact_shadows);
     REQUIRE(light.shadow.contact_shadow_length == Catch::Approx(0.8f));
+    REQUIRE(light.shadow.map_method == arc::render::shadow_map_method::virtualized);
     REQUIRE(light.cascades.cascade_count == 3);
     REQUIRE(light.cascades.maximum_distance == Catch::Approx(175.0f));
     REQUIRE(light.cascades.split_lambda == Catch::Approx(0.72f));

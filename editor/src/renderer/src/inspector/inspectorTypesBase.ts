@@ -53,6 +53,7 @@ export type InspectorLight = {
   contactShadows: boolean;
   contactShadowLength: number;
   shadowCacheMode: number;
+  shadowMapMethod: number;
   cascadeCount: number;
   shadowDistance: number;
   cascadeSplitLambda: number;
@@ -229,6 +230,7 @@ const hostSelectedEntitySchema = z.object({
       contactShadows: z.boolean().default(true),
       contactShadowLength: finiteNumber.nonnegative().default(0.5),
       shadowCacheMode: z.number().int().min(0).max(2).default(0),
+      shadowMapMethod: z.number().int().min(0).max(2).default(0),
       cascadeCount: z.number().int().min(1).max(4).default(4),
       shadowDistance: finiteNumber.positive().default(200),
       cascadeSplitLambda: finiteNumber.min(0).max(1).default(0.65),

@@ -154,6 +154,7 @@ const areaLightSnapshot = (): InspectorEntitySnapshot => ({
     contactShadows: true,
     contactShadowLength: 0.5,
     shadowCacheMode: 0,
+    shadowMapMethod: 0,
     cascadeCount: 4,
     shadowDistance: 200,
     cascadeSplitLambda: 0.65,

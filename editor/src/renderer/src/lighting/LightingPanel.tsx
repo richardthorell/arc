@@ -106,7 +106,20 @@ export function LightingPanel({
             {diagnostics?.shadows.localCacheHits ?? 0} hits / {diagnostics?.shadows.localCacheMisses ?? 0} misses
           </dd>
           <dt>Screen space</dt>
-          <dd>{diagnostics?.shadows.screenSpace ? 'Enabled' : 'Disabled'}</dd>
+          <dd>{diagnostics?.shadows.screenSpaceShadows ? 'Enabled' : 'Disabled'}</dd>
+          <dt>Virtual maps</dt>
+          <dd>{diagnostics?.shadows.virtualShadowMaps ? 'Enabled' : 'Conventional fallback'}</dd>
+          <dt>VSM pages</dt>
+          <dd>
+            {diagnostics?.shadows.virtualResidentPages ?? 0} / {diagnostics?.shadows.virtualPageCapacity ?? 0} resident
+          </dd>
+          <dt>VSM frame</dt>
+          <dd>
+            {diagnostics?.shadows.virtualRenderedPages ?? 0} rendered / {diagnostics?.shadows.virtualReusedPages ?? 0}{' '}
+            reused
+          </dd>
+          <dt>VSM fallback</dt>
+          <dd>{diagnostics?.shadows.virtualParentFallbacks ?? 0} parent pages</dd>
         </dl>
       </section>
       <section className="lighting-section">

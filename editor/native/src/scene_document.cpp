@@ -459,7 +459,10 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
              (!finite_number(shadow, "contactShadowLength") || shadow["contactShadowLength"].get<double>() < 0.0)) ||
             (shadow.contains("cacheMode") &&
              (!shadow["cacheMode"].is_number_integer() || shadow["cacheMode"].get<int>() < 0 ||
-              shadow["cacheMode"].get<int>() > 2)))
+              shadow["cacheMode"].get<int>() > 2)) ||
+            (shadow.contains("mapMethod") &&
+             (!shadow["mapMethod"].is_number_integer() || shadow["mapMethod"].get<int>() < 0 ||
+              shadow["mapMethod"].get<int>() > 2)))
             return fail("has invalid shadow settings");
     }
     if (name == "DirectionalLight" && value.contains("cascades"))
@@ -695,7 +698,8 @@ json serialize_light_common(const math::vector3f& color, float intensity, bool s
               {"priority", shadow.priority},
               {"contactShadows", shadow.contact_shadows},
               {"contactShadowLength", shadow.contact_shadow_length},
-              {"cacheMode", static_cast<int>(shadow.cache_mode)}}}};
+              {"cacheMode", static_cast<int>(shadow.cache_mode)},
+              {"mapMethod", static_cast<int>(shadow.map_method)}}}};
 }
 
 void deserialize_light_common(const json& source, math::vector3f& color, float& intensity, bool& shadows, bool& enabled,
@@ -721,6 +725,7 @@ void deserialize_light_common(const json& source, math::vector3f& color, float& 
         shadow.contact_shadows = found->value("contactShadows", true);
         shadow.contact_shadow_length = found->value("contactShadowLength", 0.5f);
         shadow.cache_mode = static_cast<render::shadow_cache_mode>(found->value("cacheMode", 0));
+        shadow.map_method = static_cast<render::shadow_map_method>(found->value("mapMethod", 0));
     }
 }
 

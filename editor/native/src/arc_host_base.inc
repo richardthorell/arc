@@ -660,6 +660,7 @@ void copy_shadow_to_host(host_light_snapshot& target, const render::shadow_setti
     target.contact_shadows = source.contact_shadows;
     target.contact_shadow_length = source.contact_shadow_length;
     target.shadow_cache_mode = static_cast<std::uint8_t>(source.cache_mode);
+    target.shadow_map_method = static_cast<std::uint8_t>(source.map_method);
 }
 
 void copy_shadow_from_host(render::shadow_settings& target, const host_light_snapshot& source) noexcept
@@ -674,6 +675,7 @@ void copy_shadow_from_host(render::shadow_settings& target, const host_light_sna
     target.contact_shadows = source.contact_shadows;
     target.contact_shadow_length = source.contact_shadow_length;
     target.cache_mode = static_cast<render::shadow_cache_mode>(source.shadow_cache_mode);
+    target.map_method = static_cast<render::shadow_map_method>(source.shadow_map_method);
 }
 
 host_light_snapshot to_host_light(const scene::directional_light_component& light) noexcept
@@ -759,6 +761,7 @@ bool valid_light(const host_light_snapshot& light) noexcept
         light.shadow_filter <= static_cast<std::uint8_t>(render::shadow_filter::pcss) &&
         std::isfinite(light.contact_shadow_length) && light.contact_shadow_length >= 0.0f &&
         light.shadow_cache_mode <= static_cast<std::uint8_t>(render::shadow_cache_mode::static_only) &&
+        light.shadow_map_method <= static_cast<std::uint8_t>(render::shadow_map_method::virtualized) &&
         light.cascade_count >= 1u && light.cascade_count <= render::maximum_directional_shadow_cascades &&
         std::isfinite(light.shadow_distance) && light.shadow_distance > 0.0f &&
         std::isfinite(light.cascade_split_lambda) && light.cascade_split_lambda >= 0.0f &&
@@ -4223,6 +4226,20 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"localCacheMisses\":" + std::to_string(profile.shadows.local_cache_misses) +
                     ",\"staticCacheHit\":" + std::string(profile.shadows.static_cache_hit ? "true" : "false") +
                     ",\"screenSpaceShadows\":" + std::string(profile.shadows.screen_space_shadows ? "true" : "false") +
+                    ",\"virtualShadowMaps\":" + std::string(profile.shadows.virtual_shadow_maps ? "true" : "false") +
+                    ",\"virtualAddressSpaces\":" +
+                    std::to_string(profile.shadows.virtual_address_space_count) +
+                    ",\"virtualPageCapacity\":" + std::to_string(profile.shadows.virtual_page_capacity) +
+                    ",\"virtualResidentPages\":" + std::to_string(profile.shadows.virtual_resident_pages) +
+                    ",\"virtualDirtyPages\":" + std::to_string(profile.shadows.virtual_dirty_pages) +
+                    ",\"virtualRenderedPages\":" + std::to_string(profile.shadows.virtual_rendered_pages) +
+                    ",\"virtualReusedPages\":" + std::to_string(profile.shadows.virtual_reused_pages) +
+                    ",\"virtualEvictions\":" + std::to_string(profile.shadows.virtual_evictions) +
+                    ",\"virtualParentFallbacks\":" +
+                    std::to_string(profile.shadows.virtual_parent_fallbacks) +
+                    ",\"virtualFailedRequests\":" +
+                    std::to_string(profile.shadows.virtual_failed_requests) +
+                    ",\"virtualMemoryBytes\":" + std::to_string(profile.shadows.virtual_memory_bytes) +
                     ",\"fallback\":" + to_json_string(profile.shadows.fallback_reason) +
                     "},\"gpuScene\":{\"enabled\":" + std::string(profile.gpu_scene.enabled ? "true" : "false") +
                     ",\"hzbOcclusion\":" + std::string(profile.gpu_scene.hzb_occlusion ? "true" : "false") +

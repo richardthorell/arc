@@ -168,6 +168,19 @@ const commonLightFieldsFor = (unitOptions: Array<{ value: string; label: string 
     visible: (snapshot) => snapshot.light?.castsShadows ?? false,
     tooltip: '0 Automatic, 1 Always Update, 2 Static Only.',
   },
+  {
+    id: 'shadowMapMethod',
+    label: 'Shadow Map (0-2)',
+    path: 'light.shadowMapMethod',
+    type: 'number',
+    precision: 0,
+    step: 1,
+    scrubSensitivity: 0.2,
+    min: 0,
+    max: 2,
+    visible: (snapshot) => snapshot.light?.castsShadows ?? false,
+    tooltip: '0 Automatic, 1 Conventional, 2 Virtualized. Virtual shadows require the complete Ultra path.',
+  },
 ];
 
 export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> = [

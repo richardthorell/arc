@@ -10731,6 +10731,15 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.virtual_geometry_compute = false;
     capabilities.virtual_geometry_mesh_shader = false;
     capabilities.virtual_geometry_streaming = false;
+    // VSM support is advertised only after allocation, feedback, caster rendering,
+    // sampling, and contact-shadow pipelines are all executable. Resource plumbing
+    // alone must not cause Ultra to select an incomplete path.
+    capabilities.virtual_shadow_allocation = false;
+    capabilities.virtual_shadow_feedback = false;
+    capabilities.virtual_shadow_rendering = false;
+    capabilities.virtual_shadow_sampling = false;
+    capabilities.virtual_shadow_virtual_geometry = false;
+    capabilities.screen_space_contact_shadows = false;
     capabilities.sampler_anisotropy = features.features.samplerAnisotropy == VK_TRUE;
     capabilities.texture_compression_bc = features.features.textureCompressionBC == VK_TRUE;
     capabilities.synchronization2 = synchronization2.synchronization2 == VK_TRUE;

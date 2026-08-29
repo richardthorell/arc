@@ -36,6 +36,19 @@ enum class shadow_map_method : std::uint8_t
     virtualized
 };
 
+/**
+ * @brief Resolves an authored shadow-map request against the executable VSM path.
+ * @param requested Authored representation policy.
+ * @param virtual_shadow_maps_available Whether the complete VSM path is executable for the current view.
+ * @return The representation to execute. Unavailable virtual shadows always resolve to conventional maps.
+ */
+[[nodiscard]] constexpr shadow_map_method resolve_shadow_map_method(shadow_map_method requested,
+                                                                    bool virtual_shadow_maps_available) noexcept
+{
+    if (requested == shadow_map_method::conventional) return shadow_map_method::conventional;
+    return virtual_shadow_maps_available ? shadow_map_method::virtualized : shadow_map_method::conventional;
+}
+
 enum class shadow_light_kind : std::uint8_t
 {
     directional,

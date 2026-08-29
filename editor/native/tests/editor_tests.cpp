@@ -2239,6 +2239,7 @@ TEST_CASE("physical light snapshots edit atomically and round trip through JSON"
     updated.shadow_strength = 0.9f;
     updated.contact_shadows = true;
     updated.contact_shadow_length = 1.25f;
+    updated.shadow_map_method = 2;
     updated.cascade_count = 3;
     updated.shadow_distance = 180.0f;
     updated.cascade_split_lambda = 0.7f;
