@@ -50,7 +50,15 @@
   white-space: nowrap;
 }
 
-.editor-document-tab-main > span {
+.editor-document-tab-main > .editor-document-tab-icon {
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  flex: 0 0 15px;
+  overflow: visible;
+}
+
+.editor-document-tab-main > .editor-document-tab-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

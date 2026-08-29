@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
+import { DocumentTypeIcon } from '../assets/DocumentTypeIcon';
 import { UiButton } from '../ui';
 import { closeEditorDocumentInStore } from './editorDocuments';
 import type { EditorDocument, EditorRegistry } from './editorTypes';
@@ -43,7 +44,6 @@ export function EditorDocumentTabs({
       <div className="editor-document-tabs" role="tablist" aria-label="Open documents">
         {documents.map((document) => {
           const registration = registry[document.kind];
-          const Icon = registration.icon;
           const active = document.id === activeDocumentId;
           const closeable = registration.closeable ?? registration.allowMultiple;
           return (
@@ -63,8 +63,8 @@ export function EditorDocumentTabs({
                   .join('\n')}
                 type="button"
               >
-                <Icon size={13} />
-                <span>{document.title}</span>
+                <DocumentTypeIcon className="editor-document-tab-icon" kind={document.kind} size={15} />
+                <span className="editor-document-tab-title">{document.title}</span>
                 {document.readOnly && <small>RO</small>}
                 {document.recovered && <small>Recovered</small>}
                 {document.dirty && <b aria-label="Unsaved changes">●</b>}
