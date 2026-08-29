@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <set>
 #include <string>
 #include <string_view>
 
@@ -59,6 +60,10 @@ TEST_CASE("Material IR codegen deterministically implements the full material AB
     REQUIRE(source.find("surface.clearCoat = arc_node_clear_coat_value") != std::string::npos);
     REQUIRE(source.find("surface.transmission = arc_node_transmission_value") != std::string::npos);
     REQUIRE(source.find("arcFrame.timeSeconds") != std::string::npos);
+    REQUIRE(source.find("ConstantBuffer<ArcMaterialParameters> arcMaterialParameters;") != std::string::npos);
+    REQUIRE(source.find("ConstantBuffer<ArcFrame> arcFrame;") != std::string::npos);
+    REQUIRE(source.find("ParameterBlock<ArcMaterialParameters>") == std::string::npos);
+    REQUIRE(source.find("ParameterBlock<ArcFrame>") == std::string::npos);
     REQUIRE(source.find("Texture2D<float4> arcMaterialTextures[2];") != std::string::npos);
     REQUIRE(source.find("float3 arc_node_a_texture_rgb = arcMaterialTextures[0].Sample") != std::string::npos);
     REQUIRE(source.find("float3 arc_node_z_texture_rgb = arcMaterialTextures[1].Sample") != std::string::npos);
@@ -87,19 +92,19 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
     constexpr std::string_view graph = R"({
       "version":1,
       "nodes":[
-        {"id":"base-color","type":"vector3","values":{"value":[0.25,0.5,0.75]},
-         "parameter":{"exposed":true,"name":"Base Color"}},
-        {"id":"roughness","type":"constant","values":{"value":0.35}},
-        {"id":"sheen","type":"constant","values":{"value":0.15}},
+        {"id":"base-color","type":"textureSample","values":{}},
+        {"id":"roughness","type":"constant","values":{"value":0.35},
+         "parameter":{"exposed":true,"name":"Roughness"}},
+        {"id":"clock","type":"time","values":{}},
         {"id":"material-output","type":"output","values":{}}
       ],
       "connections":[
-        {"id":"1","from":{"nodeId":"base-color","pin":"value"},
+        {"id":"1","from":{"nodeId":"base-color","pin":"rgb"},
          "to":{"nodeId":"material-output","pin":"baseColor"}},
         {"id":"2","from":{"nodeId":"roughness","pin":"value"},
          "to":{"nodeId":"material-output","pin":"roughness"}},
-        {"id":"3","from":{"nodeId":"sheen","pin":"value"},
-         "to":{"nodeId":"material-output","pin":"sheen"}}
+        {"id":"3","from":{"nodeId":"clock","pin":"time"},
+         "to":{"nodeId":"material-output","pin":"metallic"}}
       ]
     })";
 
@@ -129,6 +134,37 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
         FAIL(failure);
     }
     REQUIRE_FALSE(result.value().bytecode.empty());
+
+    const auto find_resource = [&](std::string_view name)
+    {
+        return std::ranges::find_if(result.value().reflection.resources,
+                                    [name](const arc::render::shader_resource_descriptor& resource)
+                                    { return resource.name == name; });
+    };
+    const auto texture = find_resource("arcMaterialTextures");
+    REQUIRE(texture != result.value().reflection.resources.end());
+    REQUIRE(texture->kind == arc::render::shader_resource_kind::sampled_texture);
+    REQUIRE(texture->count == 1);
+
+    const auto sampler = find_resource("arcMaterialSampler");
+    REQUIRE(sampler != result.value().reflection.resources.end());
+    REQUIRE(sampler->kind == arc::render::shader_resource_kind::sampler);
+
+    const auto parameters = find_resource("arcMaterialParameters");
+    REQUIRE(parameters != result.value().reflection.resources.end());
+    REQUIRE(parameters->kind == arc::render::shader_resource_kind::constant_buffer);
+
+    const auto frame = find_resource("arcFrame");
+    REQUIRE(frame != result.value().reflection.resources.end());
+    REQUIRE(frame->kind == arc::render::shader_resource_kind::constant_buffer);
+
+    std::set<std::pair<std::uint32_t, std::uint32_t>> descriptor_bindings;
+    for (const auto& resource : result.value().reflection.resources)
+    {
+        REQUIRE(resource.set == 0);
+        REQUIRE(descriptor_bindings.emplace(resource.set, resource.binding).second);
+    }
+    REQUIRE(descriptor_bindings.size() == result.value().reflection.resources.size());
 }
 
 TEST_CASE("Material shader codegen rejects incompatible IR or ABI versions")

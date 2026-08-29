@@ -313,6 +313,27 @@ std::string reflected_kind(const nlohmann::json& value)
     return {};
 }
 
+shader_resource_kind reflected_resource_kind(const nlohmann::json& type)
+{
+    auto kind = reflected_kind(type);
+    std::ranges::transform(kind, kind.begin(),
+                           [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    if (kind == "resource" && type.is_object())
+    {
+        auto shape = type.value("baseShape", type.value("shape", std::string{}));
+        auto access = type.value("access", std::string{});
+        std::ranges::transform(shape, shape.begin(),
+                               [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        std::ranges::transform(access, access.begin(),
+                               [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        if (shape.find("texture") != std::string::npos)
+            return access.find("write") != std::string::npos ? shader_resource_kind::storage_texture
+                                                             : shader_resource_kind::sampled_texture;
+        if (shape.find("structured") != std::string::npos) return shader_resource_kind::structured_buffer;
+    }
+    return resource_kind(kind);
+}
+
 shader_parameter_type reflected_parameter_type(const nlohmann::json& type)
 {
     auto kind = reflected_kind(type);
@@ -416,15 +437,16 @@ shader_reflection parse_reflection(const std::filesystem::path& path, const shad
                 if (!resource_type->contains("elementType") || !(*resource_type)["elementType"].is_object()) break;
                 resource_type = &(*resource_type)["elementType"];
             }
-            resource.kind = resource_kind(reflected_kind(*resource_type));
+            resource.kind = reflected_resource_kind(*resource_type);
             if (parameter.contains("binding") && parameter["binding"].is_object())
             {
-                resource.binding = parameter["binding"].value("index", parameter["binding"].value("binding", 0u));
-                resource.set = parameter["binding"].value("space", 0u);
+                const auto& binding = parameter["binding"];
+                resource.binding = binding.value("index", binding.value("binding", binding.value("offset", 0u)));
+                resource.set = binding.value("space", 0u);
             }
             else
             {
-                resource.binding = parameter.value("binding", 0u);
+                resource.binding = parameter.value("binding", parameter.value("offset", 0u));
                 resource.set = parameter.value("space", 0u);
             }
             if (!resource.name.empty()) reflection.resources.push_back(std::move(resource));
