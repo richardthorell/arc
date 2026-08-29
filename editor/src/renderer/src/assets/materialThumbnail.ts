@@ -131,11 +131,7 @@ const waitForPreviewFrame = async (viewportId: string, minimumFrameIndex: number
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const response = await queryViewportState(viewportId);
     if (response.succeeded && response.payload?.assetPreviewError) throw new Error(response.payload.assetPreviewError);
-    if (
-      response.succeeded &&
-      response.payload?.submitted &&
-      (response.payload.frameIndex ?? 0) >= minimumFrameIndex
-    ) {
+    if (response.succeeded && response.payload?.submitted && (response.payload.frameIndex ?? 0) >= minimumFrameIndex) {
       // Let the shared-texture receiver copy the completed native frame into the hidden canvas.
       await sleep(75);
       return;
