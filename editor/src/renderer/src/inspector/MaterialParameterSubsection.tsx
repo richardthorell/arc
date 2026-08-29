@@ -8,6 +8,7 @@ import {
   type MaterialGraphNode,
   type MaterialGraphValueType,
 } from '../material/materialGraphTypes';
+import { TexturePicker } from './AssetPicker';
 import type { HostEntityId, HostResponse, Vec4 } from './inspectorTypes';
 import { ColorControl, NumberControl, NumericInput } from './InspectorControls';
 
@@ -153,10 +154,6 @@ export function MaterialParameterSubsection({
       ),
     [assets, referenceMode, value],
   );
-  const textureAssets = useMemo(
-    () => assets.filter((asset) => asset.kind === 'texture' || asset.kind === 'environment'),
-    [assets],
-  );
   const materialPath = selected?.path ?? (referenceMode === 'path' && /\.arcmat$/i.test(value) ? value : '');
   const materialScope = selected?.scope === 'builtin' ? 'builtin' : 'project';
   const procedural = selected?.scope === 'procedural';
@@ -283,33 +280,22 @@ export function MaterialParameterSubsection({
 
             if (parameter.editorKind === 'texture') {
               const textureValue = effectiveTexture(parameter);
-              const hasTextureAsset = textureAssets.some((asset) => asset.path === textureValue);
               return (
                 <div className="inspector-material-parameter" key={parameter.nodeId}>
-                  <label className="inspector-property inspector-asset-property">
-                    <span className="inspector-property-label">{parameter.name}</span>
-                    <select
-                      aria-label={`Choose ${parameter.name} texture`}
-                      className="inspector-select"
-                      value={textureValue}
-                      onChange={(event) =>
-                        void commitOverride(parameter, {
-                          name: parameter.name,
-                          type: parameter.type,
-                          kind: parameter.editorKind,
-                          texture: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="">None</option>
-                      {textureValue && !hasTextureAsset && <option value={textureValue}>{textureValue}</option>}
-                      {textureAssets.map((asset) => (
-                        <option key={asset.guid || asset.id} value={asset.path}>
-                          {asset.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <TexturePicker
+                    allowEmpty
+                    assets={assets}
+                    label={parameter.name}
+                    value={textureValue}
+                    onChange={(texture) =>
+                      void commitOverride(parameter, {
+                        name: parameter.name,
+                        type: parameter.type,
+                        kind: parameter.editorKind,
+                        texture,
+                      })
+                    }
+                  />
                   {reset}
                 </div>
               );

@@ -412,10 +412,10 @@ procedural_mesh_component* ensure_procedural_or_material_parameter_component(edi
                                                                              ecs::entity entity)
 {
     pending_edit = {};
-    if (auto* procedural = ensure_procedural_mesh_component(scene, entity)) return procedural;
     if (!scene.scene.has<scene::mesh_renderer_component>(entity)) return nullptr;
     pending_edit.scene = &scene;
     pending_edit.entity = entity;
+    if (auto* procedural = ensure_procedural_mesh_component(scene, entity)) return procedural;
     return &pending_edit.dummy;
 }
 
