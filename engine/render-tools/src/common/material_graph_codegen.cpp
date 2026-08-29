@@ -908,7 +908,7 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
                     source.append("    " + std::string(slang_parameter_type(parameter.type)) + ' ' +
                                   parameter_field(parameter.id) + ';');
             source.append("};");
-            source.append("ParameterBlock<ArcMaterialParameters> arcMaterialParameters;");
+            source.append("ConstantBuffer<ArcMaterialParameters> arcMaterialParameters;");
         }
         if (compilation.descriptor.requirements.uses_time)
         {
@@ -916,7 +916,7 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
             source.append("{");
             source.append("    float timeSeconds;");
             source.append("};");
-            source.append("ParameterBlock<ArcFrame> arcFrame;");
+            source.append("ConstantBuffer<ArcFrame> arcFrame;");
         }
         if (compilation.descriptor.requirements.uses_texture_sampling)
         {
