@@ -329,7 +329,8 @@ public:
         append_value(distance_field_bytes, static_cast<std::uint32_t>(loaded.meshes.size()));
         std::vector<render::virtual_mesh_data> geometries;
         geometries.reserve(loaded.meshes.size());
-        for (const auto& mesh : loaded.meshes) geometries.push_back(render::build_virtual_mesh(mesh));
+        for (const auto& mesh : loaded.meshes)
+            geometries.push_back(render::build_virtual_mesh(mesh));
         for (std::size_t mesh_index = 0; mesh_index < loaded.meshes.size(); ++mesh_index)
         {
             const auto& mesh = loaded.meshes[mesh_index];
@@ -392,11 +393,12 @@ public:
         std::vector<render::virtual_geometry_artifact_source> virtual_sources;
         virtual_sources.reserve(loaded.meshes.size());
         for (std::size_t index = 0; index < loaded.meshes.size(); ++index)
-            virtual_sources.push_back({.name = loaded.meshes[index].name,
-                                       .material_index = static_cast<std::uint64_t>(loaded.meshes[index].material_index),
-                                       .geometry = &geometries[index]});
-        auto encoded_virtual = render::encode_virtual_geometry_artifact(
-            virtual_sources, artifact_link_hash(conventional_bytes));
+            virtual_sources.push_back(
+                {.name = loaded.meshes[index].name,
+                 .material_index = static_cast<std::uint64_t>(loaded.meshes[index].material_index),
+                 .geometry = &geometries[index]});
+        auto encoded_virtual =
+            render::encode_virtual_geometry_artifact(virtual_sources, artifact_link_hash(conventional_bytes));
         if (!encoded_virtual)
             return {.error = {.code = asset_error_code::import_failed,
                               .guid = context.asset.guid,

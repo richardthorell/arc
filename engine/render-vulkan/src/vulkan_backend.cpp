@@ -2839,9 +2839,8 @@ private:
         if (!staging) return false;
         std::memcpy(staging.bytes.data(), source, static_cast<std::size_t>(size));
         vmaFlushAllocation(allocator_, upload_staging_.allocation, static_cast<VkDeviceSize>(staging.offset), size);
-        const VkBufferCopy copy{.srcOffset = static_cast<VkDeviceSize>(staging.offset),
-                                .dstOffset = offset,
-                                .size = size};
+        const VkBufferCopy copy{
+            .srcOffset = static_cast<VkDeviceSize>(staging.offset), .dstOffset = offset, .size = size};
         vkCmdCopyBuffer(upload_command_buffer_, upload_staging_.buffer, destination.buffer, 1, &copy);
         upload_batch_has_work_ = true;
         return true;
@@ -3555,9 +3554,8 @@ private:
         const auto upload_table = [&](const auto& values, VkBufferUsageFlags usage, gpu_buffer& destination)
         {
             using value_type = typename std::decay_t<decltype(values)>::value_type;
-            return values.empty() ||
-                   upload_buffer(values.data(), buffer_size(values.size(), sizeof(value_type)),
-                                 usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, destination);
+            return values.empty() || upload_buffer(values.data(), buffer_size(values.size(), sizeof(value_type)),
+                                                   usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, destination);
         };
         if (!upload_table(tables.resources, 0, mesh.resources) || !upload_table(tables.nodes, 0, mesh.nodes) ||
             !upload_table(tables.clusters, 0, mesh.clusters_metadata) ||
@@ -3586,8 +3584,8 @@ private:
                            VMA_MEMORY_USAGE_GPU_ONLY, mesh.page_heap))
         {
             destroy_virtual_mesh_buffers(mesh);
-            arc::diagnostics::error("render.vulkan", "Failed to allocate virtual-geometry page heap for '" +
-                                                         event.label + "'");
+            arc::diagnostics::error("render.vulkan",
+                                    "Failed to allocate virtual-geometry page heap for '" + event.label + "'");
             return;
         }
 
@@ -3607,8 +3605,8 @@ private:
         if (!upload_table(mesh.page_records, VK_BUFFER_USAGE_TRANSFER_DST_BIT, mesh.page_table))
         {
             destroy_virtual_mesh_buffers(mesh);
-            arc::diagnostics::error("render.vulkan", "Failed to upload virtual-geometry page table for '" +
-                                                         event.label + "'");
+            arc::diagnostics::error("render.vulkan",
+                                    "Failed to upload virtual-geometry page table for '" + event.label + "'");
             return;
         }
 
@@ -3619,8 +3617,7 @@ private:
         {
             auto retired = std::move(found->second);
             deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
-                                     [this, retired]() mutable
-                                     { destroy_virtual_mesh_buffers(retired); });
+                                     [this, retired]() mutable { destroy_virtual_mesh_buffers(retired); });
         }
         virtual_meshes_[key] = std::move(mesh);
     }
@@ -3634,13 +3631,14 @@ private:
         auto& mesh = found->second;
         auto& page = mesh.page_records[event.upload.page_index];
         if (event.upload.decoded_bytes->size() != page.decoded_size) return;
-        if (!upload_buffer_region(event.upload.decoded_bytes->data(), event.upload.decoded_bytes->size(), mesh.page_heap,
-                                  mesh.page_offsets[event.upload.page_index]))
+        if (!upload_buffer_region(event.upload.decoded_bytes->data(), event.upload.decoded_bytes->size(),
+                                  mesh.page_heap, mesh.page_offsets[event.upload.page_index]))
             return;
         page.flags = static_cast<virtual_geometry_gpu_page_flag>(
             static_cast<std::uint32_t>(page.flags) |
             static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::resident));
-        const auto offset = static_cast<VkDeviceSize>(event.upload.page_index) * sizeof(virtual_geometry_gpu_page_record);
+        const auto offset =
+            static_cast<VkDeviceSize>(event.upload.page_index) * sizeof(virtual_geometry_gpu_page_record);
         if (!upload_buffer_region(&page, sizeof(page), mesh.page_table, offset))
             arc::diagnostics::warn("render.vulkan", "Failed to update virtual-geometry page-table residency");
     }
@@ -3652,8 +3650,7 @@ private:
         auto retired = std::move(found->second);
         virtual_meshes_.erase(found);
         deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
-                                 [this, retired]() mutable
-                                 { destroy_virtual_mesh_buffers(retired); });
+                                 [this, retired]() mutable { destroy_virtual_mesh_buffers(retired); });
     }
 
     void upload_texture(const texture_upload_event& event)

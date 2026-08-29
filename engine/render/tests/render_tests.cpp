@@ -2609,8 +2609,7 @@ TEST_CASE("virtual geometry artifact is deterministic page aligned and integrity
     REQUIRE(inspected.value().meshes[0].material_index == source.material_index);
     REQUIRE(inspected.value().meshes[0].pages.size() == geometry.pages.size());
     REQUIRE(std::all_of(inspected.value().meshes[0].pages.begin(), inspected.value().meshes[0].pages.end(),
-                        [](const auto& page)
-                        { return page.offset % virtual_geometry_artifact_page_alignment == 0; }));
+                        [](const auto& page) { return page.offset % virtual_geometry_artifact_page_alignment == 0; }));
     REQUIRE(std::any_of(inspected.value().meshes[0].pages.begin(), inspected.value().meshes[0].pages.end(),
                         [](const auto& page) { return page.root; }));
 
@@ -2691,15 +2690,14 @@ TEST_CASE("virtual geometry residency keeps roots and deduplicates prioritized p
     REQUIRE(residency.resident(handle, 7, 1));
     REQUIRE(residency.snapshot().resident_pages == 2);
 
-    const std::array gpu_requests{
-        arc::render::virtual_geometry_gpu_page_request{.resource_index = handle.index,
-                                                       .handle_generation = handle.generation,
-                                                       .resource_generation = 6,
-                                                       .page_index = 1},
-        arc::render::virtual_geometry_gpu_page_request{.resource_index = handle.index,
-                                                       .handle_generation = handle.generation,
-                                                       .resource_generation = 7,
-                                                       .page_index = 1}};
+    const std::array gpu_requests{arc::render::virtual_geometry_gpu_page_request{.resource_index = handle.index,
+                                                                                 .handle_generation = handle.generation,
+                                                                                 .resource_generation = 6,
+                                                                                 .page_index = 1},
+                                  arc::render::virtual_geometry_gpu_page_request{.resource_index = handle.index,
+                                                                                 .handle_generation = handle.generation,
+                                                                                 .resource_generation = 7,
+                                                                                 .page_index = 1}};
     residency.request_gpu(gpu_requests);
     REQUIRE(residency.snapshot().stale_requests == 1);
 }
@@ -2802,8 +2800,7 @@ TEST_CASE("virtual geometry reference traversal selects resident children or a h
     REQUIRE(gpu_fallback.feedback.overflow.page_request_overflow == 1);
 
     const auto overflow = traverse_virtual_geometry_gpu_reference(
-        {7, 3}, 11, 23, 5, geometry, all_resident, view,
-        {.maximum_visible_clusters = 1, .maximum_page_requests = 8});
+        {7, 3}, 11, 23, 5, geometry, all_resident, view, {.maximum_visible_clusters = 1, .maximum_page_requests = 8});
     REQUIRE(overflow.visible_clusters.empty());
     REQUIRE(overflow.feedback.overflow.visible_cluster_overflow == 1);
     REQUIRE(overflow.feedback.overflow.fallback_instance_count == 1);

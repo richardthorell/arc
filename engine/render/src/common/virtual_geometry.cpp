@@ -149,36 +149,34 @@ virtual_geometry_gpu_table_update make_virtual_geometry_gpu_table_update(virtual
                                 .generation = resource_generation});
     result.nodes.reserve(geometry.lod_nodes.size());
     for (const auto& node : geometry.lod_nodes)
-        result.nodes.push_back({.sphere = {node.sphere_center[0], node.sphere_center[1], node.sphere_center[2],
-                                           node.sphere_radius},
-                                .normal_cone = {node.cone_axis[0], node.cone_axis[1], node.cone_axis[2],
-                                                node.cone_cutoff},
-                                .geometric_error = node.error,
-                                .first_cluster = node.first_cluster,
-                                .cluster_count = node.cluster_count,
-                                .first_child = node.first_child,
-                                .child_count = node.child_count,
-                                .page_index = node.page_index,
-                                .level = node.level,
-                                .flags = node.flags});
+        result.nodes.push_back(
+            {.sphere = {node.sphere_center[0], node.sphere_center[1], node.sphere_center[2], node.sphere_radius},
+             .normal_cone = {node.cone_axis[0], node.cone_axis[1], node.cone_axis[2], node.cone_cutoff},
+             .geometric_error = node.error,
+             .first_cluster = node.first_cluster,
+             .cluster_count = node.cluster_count,
+             .first_child = node.first_child,
+             .child_count = node.child_count,
+             .page_index = node.page_index,
+             .level = node.level,
+             .flags = node.flags});
     result.clusters.reserve(geometry.clusters.size());
     for (const auto& cluster : geometry.clusters)
-        result.clusters.push_back({.sphere = {cluster.sphere_center[0], cluster.sphere_center[1],
-                                              cluster.sphere_center[2], cluster.sphere_radius},
-                                   .normal_cone = {cluster.cone_axis[0], cluster.cone_axis[1], cluster.cone_axis[2],
-                                                   cluster.cone_cutoff},
-                                   .bounds_min_error = {cluster.bounds_min[0], cluster.bounds_min[1],
-                                                        cluster.bounds_min[2], cluster.geometric_error},
-                                   .bounds_max = {cluster.bounds_max[0], cluster.bounds_max[1], cluster.bounds_max[2],
-                                                  0.0f},
-                                   .page_index = cluster.page_index,
-                                   .page_byte_offset = cluster.page_byte_offset,
-                                   .vertex_count = cluster.vertex_count,
-                                   .triangle_count = cluster.triangle_count,
-                                   .material_section = static_cast<std::uint32_t>(std::min<std::size_t>(
-                                       cluster.material_index, std::numeric_limits<std::uint32_t>::max())),
-                                   .hierarchy_node = cluster.hierarchy_node,
-                                   .flags = cluster.flags});
+        result.clusters.push_back(
+            {.sphere = {cluster.sphere_center[0], cluster.sphere_center[1], cluster.sphere_center[2],
+                        cluster.sphere_radius},
+             .normal_cone = {cluster.cone_axis[0], cluster.cone_axis[1], cluster.cone_axis[2], cluster.cone_cutoff},
+             .bounds_min_error = {cluster.bounds_min[0], cluster.bounds_min[1], cluster.bounds_min[2],
+                                  cluster.geometric_error},
+             .bounds_max = {cluster.bounds_max[0], cluster.bounds_max[1], cluster.bounds_max[2], 0.0f},
+             .page_index = cluster.page_index,
+             .page_byte_offset = cluster.page_byte_offset,
+             .vertex_count = cluster.vertex_count,
+             .triangle_count = cluster.triangle_count,
+             .material_section = static_cast<std::uint32_t>(
+                 std::min<std::size_t>(cluster.material_index, std::numeric_limits<std::uint32_t>::max())),
+             .hierarchy_node = cluster.hierarchy_node,
+             .flags = cluster.flags});
     result.children = geometry.hierarchy_children;
     result.roots = geometry.root_nodes;
     result.pages.reserve(geometry.pages.size());
@@ -186,20 +184,18 @@ virtual_geometry_gpu_table_update make_virtual_geometry_gpu_table_update(virtual
         result.pages.push_back({.stored_size = page.compressed_size,
                                 .decoded_size = page.uncompressed_size,
                                 .resource_generation = resource_generation,
-                                .flags = page.root ? static_cast<virtual_geometry_gpu_page_flag>(
-                                                       static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::root) |
-                                                       static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::resident))
-                                                   : virtual_geometry_gpu_page_flag::none});
+                                .flags = page.root
+                                             ? static_cast<virtual_geometry_gpu_page_flag>(
+                                                   static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::root) |
+                                                   static_cast<std::uint32_t>(virtual_geometry_gpu_page_flag::resident))
+                                             : virtual_geometry_gpu_page_flag::none});
     return result;
 }
 
-virtual_geometry_gpu_reference_result
-traverse_virtual_geometry_gpu_reference(virtual_mesh_handle resource, std::uint32_t resource_generation,
-                                        std::uint32_t instance_index, std::uint32_t material_index,
-                                        const virtual_mesh_data& geometry,
-                                        std::span<const std::uint8_t> resident_pages,
-                                        const virtual_geometry_reference_view& view,
-                                        virtual_geometry_traversal_limits limits)
+virtual_geometry_gpu_reference_result traverse_virtual_geometry_gpu_reference(
+    virtual_mesh_handle resource, std::uint32_t resource_generation, std::uint32_t instance_index,
+    std::uint32_t material_index, const virtual_mesh_data& geometry, std::span<const std::uint8_t> resident_pages,
+    const virtual_geometry_reference_view& view, virtual_geometry_traversal_limits limits)
 {
     virtual_geometry_gpu_reference_result result;
     const auto reference = traverse_virtual_geometry_reference(geometry, resident_pages, view);
@@ -208,8 +204,8 @@ traverse_virtual_geometry_gpu_reference(virtual_mesh_handle resource, std::uint3
     result.hzb_rejected = reference.hzb_rejected;
     result.projected_size_rejected = reference.projected_size_rejected;
     result.feedback.overflow.fallback_instance_count = 0;
-    const auto visible_count = std::min<std::size_t>(reference.visible_clusters.size(),
-                                                     limits.maximum_visible_clusters);
+    const auto visible_count =
+        std::min<std::size_t>(reference.visible_clusters.size(), limits.maximum_visible_clusters);
     result.visible_clusters.reserve(visible_count);
     for (std::size_t index = 0; index < visible_count; ++index)
     {
@@ -230,8 +226,7 @@ traverse_virtual_geometry_gpu_reference(virtual_mesh_handle resource, std::uint3
         result.visible_clusters.clear();
     }
 
-    const auto request_count = std::min<std::size_t>(reference.requested_pages.size(),
-                                                     limits.maximum_page_requests);
+    const auto request_count = std::min<std::size_t>(reference.requested_pages.size(), limits.maximum_page_requests);
     result.feedback.page_requests.reserve(request_count);
     for (std::size_t index = 0; index < request_count; ++index)
         result.feedback.page_requests.push_back({.resource_index = resource.index,
