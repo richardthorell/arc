@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Star } from 'lucide-react';
 
+import { DocumentTypeIcon } from '../assets/DocumentTypeIcon';
 import { loadMaterialSphereThumbnail } from '../assets/materialThumbnail';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
@@ -228,7 +229,10 @@ export function ContentAssetCard({
           <span className="content-asset-name" title={assetDisplayName(asset)}>
             {assetDisplayName(asset)}
           </span>
-          <small>{assetTypeLabels[asset.kind]}</small>
+          <small style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <DocumentTypeIcon kind={asset.kind} size={12} />
+            <span>{assetTypeLabels[asset.kind]}</span>
+          </small>
           <i aria-label={`Asset status: ${asset.status}`} className={`asset-state ${asset.status}`} />
         </span>
         <span className="content-asset-actions" onClick={(event) => event.stopPropagation()}>

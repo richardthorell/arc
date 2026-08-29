@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="96" viewBox="0 0 128 96" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <style>
+    path,rect,circle,polyline,polygon,line { stroke: #9fc8df; }
+    .accent { stroke: #63b3e6; }
+  </style>
+
+  <!-- scene / level -->
+  <g transform="translate(0 0)">
+    <polygon points="16,6 25,11 16,16 7,11"/>
+    <polyline points="7,11 7,21 16,26 16,16"/>
+    <polyline points="25,11 25,21 16,26"/>
+  </g>
+
+  <!-- material -->
+  <g transform="translate(32 0)">
+    <circle cx="16" cy="16" r="10"/>
+    <path class="accent" d="M9 20c3-8 7-11 14-11"/>
+    <circle cx="12" cy="11" r="1" fill="#9fc8df" stroke="none"/>
+  </g>
+
+  <!-- shader -->
+  <g transform="translate(64 0)">
+    <polyline points="12,9 6,16 12,23"/>
+    <polyline points="20,9 26,16 20,23"/>
+    <line class="accent" x1="18" y1="7" x2="14" y2="25"/>
+  </g>
+
+  <!-- texture / image -->
+  <g transform="translate(96 0)">
+    <rect x="5" y="6" width="22" height="20" rx="2"/>
+    <circle cx="21" cy="12" r="2"/>
+    <polyline class="accent" points="7,23 13,17 17,21 21,17 26,23"/>
+  </g>
+
+  <!-- mesh -->
+  <g transform="translate(0 32)">
+    <polygon points="16,5 27,25 5,25"/>
+    <line x1="16" y1="5" x2="16" y2="25"/>
+    <line class="accent" x1="5" y1="25" x2="22" y2="16"/>
+    <line x1="27" y1="25" x2="10" y2="16"/>
+  </g>
+
+  <!-- prefab -->
+  <g transform="translate(32 32)">
+    <rect x="5" y="5" width="10" height="10" rx="1"/>
+    <rect x="17" y="5" width="10" height="10" rx="1"/>
+    <rect class="accent" x="11" y="17" width="10" height="10" rx="1"/>
+  </g>
+
+  <!-- animation -->
+  <g transform="translate(64 32)">
+    <circle cx="16" cy="16" r="11"/>
+    <polygon class="accent" points="13,10 22,16 13,22"/>
+  </g>
+
+  <!-- audio -->
+  <g transform="translate(96 32)">
+    <polygon points="6,13 11,13 17,8 17,24 11,19 6,19"/>
+    <path class="accent" d="M21 12c3 2 3 6 0 8"/>
+    <path d="M24 9c5 4 5 10 0 14"/>
+  </g>
+
+  <!-- script -->
+  <g transform="translate(0 64)">
+    <path d="M8 5h11l5 5v17H8z"/>
+    <polyline points="19,5 19,10 24,10"/>
+    <polyline class="accent" points="14,15 11,18 14,21"/>
+    <polyline class="accent" points="18,15 21,18 18,21"/>
+  </g>
+
+  <!-- font -->
+  <g transform="translate(32 64)">
+    <path d="M8 25 16 7l8 18"/>
+    <line class="accent" x1="11" y1="19" x2="21" y2="19"/>
+  </g>
+
+  <!-- folder -->
+  <g transform="translate(64 64)">
+    <path d="M4 10h10l3 3h11v13H4z"/>
+    <path class="accent" d="M4 10V7h9l3 3"/>
+  </g>
+
+  <!-- settings -->
+  <g transform="translate(96 64)">
+    <circle cx="16" cy="16" r="5"/>
+    <circle class="accent" cx="16" cy="16" r="2"/>
+    <line x1="16" y1="4" x2="16" y2="8"/>
+    <line x1="16" y1="24" x2="16" y2="28"/>
+    <line x1="4" y1="16" x2="8" y2="16"/>
+    <line x1="24" y1="16" x2="28" y2="16"/>
+    <line x1="7.5" y1="7.5" x2="10.5" y2="10.5"/>
+    <line x1="21.5" y1="21.5" x2="24.5" y2="24.5"/>
+    <line x1="24.5" y1="7.5" x2="21.5" y2="10.5"/>
+    <line x1="10.5" y1="21.5" x2="7.5" y2="24.5"/>
+  </g>
+</svg>
