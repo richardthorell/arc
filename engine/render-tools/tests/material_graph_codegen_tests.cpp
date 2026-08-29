@@ -137,8 +137,9 @@ TEST_CASE("Material IR generated source compiles with the pinned Slang toolchain
 
     const auto find_resource = [&](std::string_view name)
     {
-        return std::ranges::find(result.value().reflection.resources, name,
-                                 &arc::render::shader_resource_descriptor::name);
+        return std::ranges::find_if(result.value().reflection.resources,
+                                    [name](const arc::render::shader_resource_descriptor& resource)
+                                    { return resource.name == name; });
     };
     const auto texture = find_resource("arcMaterialTextures");
     REQUIRE(texture != result.value().reflection.resources.end());
