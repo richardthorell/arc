@@ -4,16 +4,28 @@ type HostResponse<T = unknown> = {
   payload?: T;
 };
 
-type ViewportState = {
-  submitted?: boolean;
-  frameIndex?: number;
-  assetPreviewError?: string;
-};
-
 type MaterialThumbnailRequest = {
   guid: string;
   generation?: number;
   maxSize?: number;
+};
+
+type ProjectAsset = {
+  guid?: string;
+  path: string;
+  kind?: string;
+  generation?: number;
+};
+
+type ProjectAssetsSnapshot = {
+  assets?: ProjectAsset[];
+};
+
+type AssetThumbnailSnapshot = {
+  path: string;
+  width: number;
+  height: number;
+  dataUrl: string;
 };
 
 type PixelBounds = {
@@ -23,19 +35,193 @@ type PixelBounds = {
   height: number;
 };
 
-const thumbnailCache = new Map<string, Promise<string | null>>();
-let queue: Promise<void> = Promise.resolve();
-let thumbnailInstance = 0;
+type ThumbnailTrace = {
+  id: string;
+  startedAt: number;
+  mark: (event: string, details?: Record<string, unknown>) => void;
+};
 
-const sleep = (milliseconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+const thumbnailCache = new Map<string, Promise<string | null>>();
+const observedGenerations = new Map<string, number>();
+const maxConcurrentThumbnailRenders = 3;
+let activeThumbnailRenders = 0;
+const pendingThumbnailRenders: Array<() => void> = [];
+let thumbnailTraceSequence = 0;
+let projectAssetsPromise: Promise<Map<string, ProjectAsset>> | null = null;
+
+const persistentThumbnailDatabase = 'arc-material-thumbnails-v1';
+const persistentThumbnailStore = 'thumbnails';
+const persistentThumbnailVersion = 2;
+let persistentDatabasePromise: Promise<IDBDatabase | null> | null = null;
 
 const normalizedGuid = (guid: string) => guid.trim().replace(/[^a-zA-Z0-9-]/g, '');
+const normalizedGuidKey = (guid: string) => normalizedGuid(guid).toLocaleLowerCase();
+const thumbnailSize = (maxSize = 128) => Math.max(32, Math.min(256, Math.round(maxSize)));
+const persistentThumbnailPrefix = (guid: string) => `v${persistentThumbnailVersion}:${normalizedGuidKey(guid)}:`;
+const persistentThumbnailKey = (guid: string, maxSize = 128) =>
+  `${persistentThumbnailPrefix(guid)}${thumbnailSize(maxSize)}`;
 
+const traceNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+const createThumbnailTrace = (request: MaterialThumbnailRequest, key: string): ThumbnailTrace => {
+  const startedAt = traceNow();
+  const id = `${++thumbnailTraceSequence}:${normalizedGuid(request.guid).slice(0, 8) || 'unknown'}`;
+  const mark = (event: string, details: Record<string, unknown> = {}) => {
+    window.console.info(`[material-thumbnail ${id}] +${(traceNow() - startedAt).toFixed(1)}ms ${event}`, {
+      key,
+      ...details,
+    });
+  };
+  mark('request', {
+    guid: request.guid,
+    generation: request.generation ?? 0,
+    maxSize: request.maxSize ?? 128,
+    persistentKey: persistentThumbnailKey(request.guid, request.maxSize),
+  });
+  return { id, startedAt, mark };
+};
+
+const withThumbnailRenderSlot = async <T>(operation: () => Promise<T>, trace?: ThumbnailTrace): Promise<T> => {
+  if (activeThumbnailRenders >= maxConcurrentThumbnailRenders) {
+    trace?.mark('queue.wait', {
+      active: activeThumbnailRenders,
+      pending: pendingThumbnailRenders.length + 1,
+    });
+    await new Promise<void>((resolve) => pendingThumbnailRenders.push(resolve));
+  }
+  activeThumbnailRenders += 1;
+  trace?.mark('queue.acquired', {
+    active: activeThumbnailRenders,
+    pending: pendingThumbnailRenders.length,
+  });
+  try {
+    return await operation();
+  } finally {
+    activeThumbnailRenders -= 1;
+    trace?.mark('queue.released', {
+      active: activeThumbnailRenders,
+      pending: pendingThumbnailRenders.length,
+    });
+    pendingThumbnailRenders.shift()?.();
+  }
+};
+
+const openPersistentThumbnailDatabase = (): Promise<IDBDatabase | null> => {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  if (persistentDatabasePromise) return persistentDatabasePromise;
+
+  persistentDatabasePromise = new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(persistentThumbnailDatabase, 1);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains(persistentThumbnailStore))
+          database.createObjectStore(persistentThumbnailStore);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return persistentDatabasePromise;
+};
+
+const readPersistentThumbnail = async (key: string): Promise<string | null> => {
+  const database = await openPersistentThumbnailDatabase();
+  if (!database) return null;
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(persistentThumbnailStore, 'readonly');
+      const request = transaction.objectStore(persistentThumbnailStore).get(key);
+      request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+const writePersistentThumbnail = async (key: string, value: string): Promise<void> => {
+  const database = await openPersistentThumbnailDatabase();
+  if (!database) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const transaction = database.transaction(persistentThumbnailStore, 'readwrite');
+      transaction.objectStore(persistentThumbnailStore).put(value, key);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+};
+
+const deletePersistentThumbnailPrefix = async (prefix: string): Promise<void> => {
+  const database = await openPersistentThumbnailDatabase();
+  if (!database) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const transaction = database.transaction(persistentThumbnailStore, 'readwrite');
+      const store = transaction.objectStore(persistentThumbnailStore);
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (typeof cursor.key === 'string' && cursor.key.startsWith(prefix)) cursor.delete();
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+};
+
+const projectAssetsByGuid = async (): Promise<Map<string, ProjectAsset>> => {
+  if (!projectAssetsPromise) {
+    projectAssetsPromise = (async () => {
+      const response = (await window.arc.host.query('project.assets')) as HostResponse<ProjectAssetsSnapshot>;
+      if (!response.succeeded) return new Map<string, ProjectAsset>();
+      const assets = new Map<string, ProjectAsset>();
+      for (const asset of response.payload?.assets ?? []) {
+        if (!asset.guid) continue;
+        assets.set(normalizedGuidKey(asset.guid), asset);
+      }
+      return assets;
+    })().catch(() => {
+      projectAssetsPromise = null;
+      return new Map<string, ProjectAsset>();
+    });
+  }
+  return projectAssetsPromise;
+};
+
+const materialPathForGuid = async (guid: string): Promise<ProjectAsset | null> => {
+  const key = normalizedGuidKey(guid);
+  const assets = await projectAssetsByGuid();
+  const cached = assets.get(key);
+  if (cached) return cached;
+
+  // The project snapshot may predate a newly imported material. Refresh only on a miss.
+  projectAssetsPromise = null;
+  return (await projectAssetsByGuid()).get(key) ?? null;
+};
+
+// Kept stable for callers/tests that still use the old preview identity when
+// diagnosing material viewport rendering. Material thumbnails no longer create
+// a live viewport; they use the same native asset thumbnail renderer as pickers.
 export const materialThumbnailViewportId = (guid: string, instance: number) =>
   `asset-preview-material-${normalizedGuid(guid)}~thumbnail-${instance}`;
 
+// Runtime generations intentionally remain part of the in-memory key so an edit
+// refreshes immediately during the current editor session. Persistent entries use
+// a separate stable key because runtime generations are rebuilt across startups.
 export const materialThumbnailCacheKey = (guid: string, generation = 0, maxSize = 128) =>
-  `${normalizedGuid(guid)}:${generation}:${Math.max(32, Math.min(256, Math.round(maxSize)))}`;
+  `${normalizedGuid(guid)}:${generation}:${thumbnailSize(maxSize)}`;
 
 const colorDistance = (pixels: Uint8ClampedArray, offset: number, background: readonly number[]) =>
   Math.max(
@@ -44,11 +230,6 @@ const colorDistance = (pixels: Uint8ClampedArray, offset: number, background: re
     Math.abs(pixels[offset + 2] - background[2]),
   );
 
-/**
- * Removes the uniform preview clear color while preserving the isolated sphere.
- * The flood fill only enters pixels connected to an image edge, so a material
- * that happens to contain the clear color inside the sphere remains opaque.
- */
 export function transparentPreviewPixels(
   source: Uint8ClampedArray,
   width: number,
@@ -98,6 +279,36 @@ export function transparentPreviewPixels(
   return pixels;
 }
 
+export function maskMaterialSpherePixels(
+  source: Uint8ClampedArray,
+  width: number,
+  height: number,
+  sphereRadius = 0.82,
+): Uint8ClampedArray {
+  const pixels = new Uint8ClampedArray(source);
+  if (width <= 0 || height <= 0 || pixels.length < width * height * 4) return pixels;
+
+  const centerX = width * 0.5;
+  const centerY = height * 0.5;
+  const radius = Math.min(width, height) * 0.5 * sphereRadius;
+  const feather = Math.max(1, Math.min(width, height) / 192);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const dx = x + 0.5 - centerX;
+      const dy = y + 0.5 - centerY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      const offset = (y * width + x) * 4 + 3;
+      if (distance >= radius + feather) pixels[offset] = 0;
+      else if (distance > radius - feather) {
+        const coverage = Math.max(0, Math.min(1, (radius + feather - distance) / (feather * 2)));
+        pixels[offset] = Math.round(pixels[offset] * coverage);
+      }
+    }
+  }
+  return pixels;
+}
+
 export function opaquePixelBounds(
   pixels: Uint8ClampedArray,
   width: number,
@@ -124,153 +335,199 @@ export function opaquePixelBounds(
   return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
-const queryViewportState = async (viewportId: string) =>
-  (await window.arc.host.query('viewport.state', { viewportId })) as HostResponse<ViewportState>;
-
-const waitForPreviewFrame = async (viewportId: string, minimumFrameIndex: number) => {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    const response = await queryViewportState(viewportId);
-    if (response.succeeded && response.payload?.assetPreviewError) throw new Error(response.payload.assetPreviewError);
-    if (response.succeeded && response.payload?.submitted && (response.payload.frameIndex ?? 0) >= minimumFrameIndex) {
-      // Let the shared-texture receiver copy the completed native frame into the hidden canvas.
-      await sleep(75);
-      return;
-    }
-    await sleep(25);
-  }
-  throw new Error('Timed out while rendering the material thumbnail');
-};
-
-const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnailRequest): Promise<string | null> => {
-  if (!guid || !window.arc?.host || !window.arc?.viewport) return null;
-
-  const outputSize = Math.max(32, Math.min(256, Math.round(maxSize)));
-  const renderSize = Math.min(512, outputSize * 2);
-  const instance = ++thumbnailInstance;
-  const viewportId = materialThumbnailViewportId(guid, instance);
-  const canvas = document.createElement('canvas');
-  canvas.id = `arc-material-thumbnail-${instance}`;
-  canvas.width = renderSize;
-  canvas.height = renderSize;
-  canvas.setAttribute('aria-hidden', 'true');
-  Object.assign(canvas.style, {
-    position: 'absolute',
-    left: '-10000px',
-    top: '0',
-    width: `${renderSize}px`,
-    height: `${renderSize}px`,
-    pointerEvents: 'none',
+const loadImage = (dataUrl: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Material thumbnail image could not be decoded'));
+    image.src = dataUrl;
   });
-  document.body.appendChild(canvas);
-  window.arc.viewport.registerSurface(viewportId, canvas.id);
 
-  try {
-    await window.arc.viewport.create({ viewportId, x: 0, y: 0, width: renderSize, height: renderSize });
-    const stateBeforeOptions = await queryViewportState(viewportId);
-    const baselineFrameIndex = stateBeforeOptions.payload?.frameIndex ?? 0;
-    await window.arc.host.command('viewport.setRenderOptions', {
-      viewportId,
-      renderMode: 'shaded',
-      visualization: 'standard',
-      overlay: 'none',
-      shadows: true,
-      grid: false,
-      realtime: true,
-      cameraSpeed: 1,
-      antiAliasing: 'disabled',
-      environment: {
-        sky: false,
-        fog: false,
-        terrain: false,
-        water: false,
-        vegetation: false,
-        decals: false,
-      },
-    });
-    // Surface creation can publish before the material-preview scene has propagated
-    // to the shared texture. Capture a few realtime frames later so the thumbnail
-    // reflects the realized material instead of the primitive fallback.
-    await waitForPreviewFrame(viewportId, baselineFrameIndex + 3);
-
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    const frame = context.getImageData(0, 0, renderSize, renderSize);
-    const transparent = transparentPreviewPixels(frame.data, renderSize, renderSize);
-
-    const source = document.createElement('canvas');
-    source.width = renderSize;
-    source.height = renderSize;
-    const sourceContext = source.getContext('2d');
-    if (!sourceContext) return null;
-    const transparentImage = sourceContext.createImageData(renderSize, renderSize);
-    transparentImage.data.set(transparent);
-    sourceContext.putImageData(transparentImage, 0, 0);
-
-    const output = document.createElement('canvas');
-    output.width = outputSize;
-    output.height = outputSize;
-    const outputContext = output.getContext('2d');
-    if (!outputContext) return null;
-    outputContext.clearRect(0, 0, outputSize, outputSize);
-    outputContext.imageSmoothingEnabled = true;
-    outputContext.imageSmoothingQuality = 'high';
-
-    const bounds = opaquePixelBounds(transparent, renderSize, renderSize);
-    if (bounds) {
-      const availableSize = outputSize * 0.84;
-      const scale = Math.min(availableSize / bounds.width, availableSize / bounds.height);
-      const drawWidth = bounds.width * scale;
-      const drawHeight = bounds.height * scale;
-      outputContext.drawImage(
-        source,
-        bounds.x,
-        bounds.y,
-        bounds.width,
-        bounds.height,
-        (outputSize - drawWidth) * 0.5,
-        (outputSize - drawHeight) * 0.5,
-        drawWidth,
-        drawHeight,
-      );
-    } else {
-      outputContext.drawImage(source, 0, 0, outputSize, outputSize);
-    }
-    return output.toDataURL('image/png');
-  } catch {
+const renderMaterialThumbnail = async (
+  { guid, maxSize = 128 }: MaterialThumbnailRequest,
+  trace?: ThumbnailTrace,
+): Promise<string | null> => {
+  if (!guid || !window.arc?.host) {
+    trace?.mark('render.unavailable', { hasGuid: Boolean(guid), hasHost: Boolean(window.arc?.host) });
     return null;
-  } finally {
-    window.arc.viewport.unregisterSurface(viewportId);
-    await window.arc.viewport.detach(viewportId).catch(() => undefined);
-    canvas.remove();
   }
+
+  const outputSize = thumbnailSize(maxSize);
+  const renderSize = Math.min(256, outputSize * 2);
+  trace?.mark('asset.resolve.start', { sharedSnapshot: Boolean(projectAssetsPromise) });
+  const resolveStartedAt = traceNow();
+  const asset = await materialPathForGuid(guid);
+  trace?.mark('asset.resolve.end', {
+    durationMs: Number((traceNow() - resolveStartedAt).toFixed(1)),
+    path: asset?.path ?? null,
+  });
+  if (!asset?.path) return null;
+
+  trace?.mark('native.thumbnail.start', { path: asset.path, renderSize });
+  const nativeStartedAt = traceNow();
+  const response = (await window.arc.host.query('asset.thumbnail', {
+    path: asset.path,
+    maxSize: renderSize,
+  })) as HostResponse<AssetThumbnailSnapshot>;
+  trace?.mark('native.thumbnail.end', {
+    durationMs: Number((traceNow() - nativeStartedAt).toFixed(1)),
+    succeeded: response.succeeded,
+    error: response.error ?? null,
+    width: response.payload?.width ?? null,
+    height: response.payload?.height ?? null,
+    encodedBytes: response.payload?.dataUrl?.length ?? 0,
+  });
+  const dataUrl = response.succeeded ? response.payload?.dataUrl : null;
+  if (!dataUrl) return null;
+
+  trace?.mark('image.decode.start');
+  const decodeStartedAt = traceNow();
+  const image = await loadImage(dataUrl);
+  trace?.mark('image.decode.end', {
+    durationMs: Number((traceNow() - decodeStartedAt).toFixed(1)),
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+  });
+
+  const compositeStartedAt = traceNow();
+  trace?.mark('composite.start');
+  const sourceWidth = image.naturalWidth || response.payload?.width || renderSize;
+  const sourceHeight = image.naturalHeight || response.payload?.height || renderSize;
+  const source = document.createElement('canvas');
+  source.width = sourceWidth;
+  source.height = sourceHeight;
+  const sourceContext = source.getContext('2d');
+  if (!sourceContext) return null;
+  sourceContext.drawImage(image, 0, 0, sourceWidth, sourceHeight);
+
+  const frame = sourceContext.getImageData(0, 0, sourceWidth, sourceHeight);
+  const transparent = maskMaterialSpherePixels(frame.data, sourceWidth, sourceHeight);
+  const transparentImage = sourceContext.createImageData(sourceWidth, sourceHeight);
+  transparentImage.data.set(transparent);
+  sourceContext.clearRect(0, 0, sourceWidth, sourceHeight);
+  sourceContext.putImageData(transparentImage, 0, 0);
+
+  const output = document.createElement('canvas');
+  output.width = outputSize;
+  output.height = outputSize;
+  const outputContext = output.getContext('2d');
+  if (!outputContext) return null;
+  outputContext.clearRect(0, 0, outputSize, outputSize);
+  outputContext.imageSmoothingEnabled = true;
+  outputContext.imageSmoothingQuality = 'high';
+
+  const bounds = opaquePixelBounds(transparent, sourceWidth, sourceHeight);
+  if (bounds) {
+    const availableSize = outputSize * 0.82;
+    const scale = Math.min(availableSize / bounds.width, availableSize / bounds.height);
+    const drawWidth = bounds.width * scale;
+    const drawHeight = bounds.height * scale;
+    outputContext.drawImage(
+      source,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+      (outputSize - drawWidth) * 0.5,
+      (outputSize - drawHeight) * 0.5,
+      drawWidth,
+      drawHeight,
+    );
+  } else {
+    outputContext.drawImage(source, 0, 0, outputSize, outputSize);
+  }
+
+  const result = output.toDataURL('image/png');
+  trace?.mark('composite.end', {
+    durationMs: Number((traceNow() - compositeStartedAt).toFixed(1)),
+    outputSize,
+    outputBytes: result.length,
+    bounds,
+  });
+  return result;
 };
 
 export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): Promise<string | null> {
-  const key = materialThumbnailCacheKey(request.guid, request.generation, request.maxSize);
+  const guidKey = normalizedGuidKey(request.guid);
+  const generation = request.generation ?? 0;
+  const key = materialThumbnailCacheKey(request.guid, generation, request.maxSize);
+  const diskKey = persistentThumbnailKey(request.guid, request.maxSize);
+  const trace = createThumbnailTrace(request, key);
+  const previousGeneration = observedGenerations.get(guidKey);
+
+  if (previousGeneration !== undefined && previousGeneration !== generation) {
+    trace.mark('generation.changed', { previousGeneration, generation, diskKey });
+    for (const cachedKey of thumbnailCache.keys()) {
+      if (cachedKey.startsWith(`${normalizedGuid(request.guid)}:`)) thumbnailCache.delete(cachedKey);
+    }
+    void deletePersistentThumbnailPrefix(persistentThumbnailPrefix(request.guid));
+    projectAssetsPromise = null;
+  }
+  observedGenerations.set(guidKey, generation);
+
   for (const cachedKey of thumbnailCache.keys()) {
-    if (cachedKey.startsWith(`${normalizedGuid(request.guid)}:`) && cachedKey !== key) thumbnailCache.delete(cachedKey);
+    if (cachedKey.startsWith(`${normalizedGuid(request.guid)}:`) && cachedKey !== key) {
+      trace.mark('memory.invalidate-old-generation', { cachedKey });
+      thumbnailCache.delete(cachedKey);
+    }
   }
 
   const cached = thumbnailCache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    trace.mark('memory.hit');
+    void cached.then((value) => trace.mark('memory.hit.resolved', { hasThumbnail: Boolean(value) }));
+    return cached;
+  }
+  trace.mark('memory.miss');
 
-  let resolveTask!: (value: string | null) => void;
-  const task = new Promise<string | null>((resolve) => {
-    resolveTask = resolve;
-  });
+  const task = (async () => {
+    try {
+      trace.mark('disk.lookup.start', { diskKey });
+      const diskStartedAt = traceNow();
+      const persisted = await readPersistentThumbnail(diskKey);
+      trace.mark(persisted ? 'disk.hit' : 'disk.miss', {
+        diskKey,
+        durationMs: Number((traceNow() - diskStartedAt).toFixed(1)),
+        encodedBytes: persisted?.length ?? 0,
+      });
+      if (persisted) {
+        trace.mark('complete', { source: 'disk', totalMs: Number((traceNow() - trace.startedAt).toFixed(1)) });
+        return persisted;
+      }
+
+      const result = await withThumbnailRenderSlot(() => renderMaterialThumbnail(request, trace), trace);
+      if (!result) {
+        thumbnailCache.delete(key);
+        trace.mark('complete.empty', { totalMs: Number((traceNow() - trace.startedAt).toFixed(1)) });
+        return null;
+      }
+
+      trace.mark('disk.write.start', { diskKey, encodedBytes: result.length });
+      const writeStartedAt = traceNow();
+      await writePersistentThumbnail(diskKey, result);
+      trace.mark('disk.write.end', { diskKey, durationMs: Number((traceNow() - writeStartedAt).toFixed(1)) });
+      trace.mark('complete', { source: 'render', totalMs: Number((traceNow() - trace.startedAt).toFixed(1)) });
+      return result;
+    } catch (error) {
+      thumbnailCache.delete(key);
+      trace.mark('failed', {
+        totalMs: Number((traceNow() - trace.startedAt).toFixed(1)),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  })();
+
   thumbnailCache.set(key, task);
-
-  queue = queue
-    .catch(() => undefined)
-    .then(async () => {
-      const result = await renderMaterialThumbnail(request);
-      if (!result) thumbnailCache.delete(key);
-      resolveTask(result);
-    });
   return task;
 }
 
 export function invalidateMaterialSphereThumbnail(guid: string) {
-  const prefix = `${normalizedGuid(guid)}:`;
-  for (const key of thumbnailCache.keys()) if (key.startsWith(prefix)) thumbnailCache.delete(key);
+  const memoryPrefix = `${normalizedGuid(guid)}:`;
+  const diskPrefix = persistentThumbnailPrefix(guid);
+  window.console.info('[material-thumbnail] invalidate', { guid, memoryPrefix, diskPrefix });
+  observedGenerations.delete(normalizedGuidKey(guid));
+  projectAssetsPromise = null;
+  for (const key of thumbnailCache.keys()) if (key.startsWith(memoryPrefix)) thumbnailCache.delete(key);
+  void deletePersistentThumbnailPrefix(diskPrefix);
 }

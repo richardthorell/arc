@@ -633,6 +633,7 @@ export function AssetThumbnail({
   const elementRef = useRef<HTMLSpanElement>(null);
   const [source, setSource] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined');
   const primitiveKind = primitiveMeshKindOf(asset, path);
   useEffect(() => {
@@ -653,10 +654,14 @@ export function AssetThumbnail({
     let active = true;
     setSource(null);
     setFailed(false);
+    setLoading(false);
     if (!visible || !path || !provider || primitiveKind) return;
+    setLoading(true);
     const request = thumbnailRequest(provider, path);
     void request.then((value) => {
-      if (active) setSource(value);
+      if (!active) return;
+      setSource(value);
+      if (!value) setLoading(false);
     });
     return () => {
       active = false;
@@ -668,14 +673,23 @@ export function AssetThumbnail({
       {primitiveKind ? (
         <PrimitiveMeshIcon kind={primitiveKind} />
       ) : source && !failed ? (
-        <img alt="" draggable={false} onError={() => setFailed(true)} src={source} />
+        <img
+          alt=""
+          draggable={false}
+          onError={() => {
+            setFailed(true);
+            setLoading(false);
+          }}
+          onLoad={() => setLoading(false)}
+          src={source}
+        />
       ) : (
         <>
           <Image aria-hidden="true" size={17} />
           <em>{path ? extensionOf(path).slice(1, 5).toUpperCase() : '—'}</em>
         </>
       )}
-      {asset?.status === 'importing' && <i />}
+      {loading && <i />}
     </span>
   );
 }

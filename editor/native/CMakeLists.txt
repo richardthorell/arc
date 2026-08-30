@@ -53,6 +53,7 @@ target_link_libraries(arc-editor-host
     PRIVATE
         arc-third-party-json
         arc-third-party-png
+        arc-third-party-stb
         arc-render-tools
         ${CMAKE_DL_LIBS}
 )
