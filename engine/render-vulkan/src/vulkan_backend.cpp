@@ -778,10 +778,10 @@ public:
         return last_pick_result_;
     }
 
-    void request_frame_capture(render_frame_capture_request request) override
+    void request_frame_capture(const render_frame_capture_request& request) override
     {
         if (request.capture_id == 0) return;
-        pending_capture_request_ = std::move(request);
+        pending_capture_request_ = request;
     }
 
     render_frame_capture_result last_frame_capture() const override
