@@ -49,7 +49,7 @@ assets::asset_cook_result cook_failure(const assets::asset_cook_context& context
 } // namespace
 
 texture_import_settings_result parse_texture_import_settings(std::string_view canonical_json,
-                                                              std::uint32_t settings_version)
+                                                             std::uint32_t settings_version)
 {
     if (canonical_json.empty() || canonical_json == "{}" || settings_version < 2)
         return texture_import_settings_result::success({});
@@ -58,8 +58,7 @@ texture_import_settings_result parse_texture_import_settings(std::string_view ca
         return texture_import_settings_result::failure("texture import settings must be a JSON object");
     const auto field = document.find("streamingMode");
     if (field == document.end()) return texture_import_settings_result::success({});
-    if (!field->is_string())
-        return texture_import_settings_result::failure("texture streamingMode must be a string");
+    if (!field->is_string()) return texture_import_settings_result::failure("texture streamingMode must be a string");
     const auto mode = parse_mode(field->get<std::string>());
     if (!mode)
         return texture_import_settings_result::failure(
@@ -102,8 +101,7 @@ assets::asset_cook_result texture_cook_processor::cook(const assets::asset_cook_
                           .message = "texture cook was cancelled"}};
     const auto settings = parse_texture_import_settings(context.canonical_settings, context.settings_version);
     if (!settings) return cook_failure(context, settings.error());
-    if (!is_supported_texture_asset(context.source.source_path) ||
-        context.source.source_path.extension() == ".hdr")
+    if (!is_supported_texture_asset(context.source.source_path) || context.source.source_path.extension() == ".hdr")
         return cook_failure(context, "streamable texture cooking supports DDS, PNG, JPEG, TGA, and BMP 2D sources");
 
     auto loaded = load_texture_asset_bytes(context.source.bytes, context.source.source_path);

@@ -30,8 +30,7 @@ std::vector<std::byte> checker_bmp()
     write<std::uint16_t>(bytes, 26, 1);
     write<std::uint16_t>(bytes, 28, 24);
     write<std::uint32_t>(bytes, 34, 16);
-    const std::uint8_t pixels[16]{0, 0, 0, 255, 255, 255, 0, 0,
-                                  255, 255, 255, 0, 0, 0, 0, 0};
+    const std::uint8_t pixels[16]{0, 0, 0, 255, 255, 255, 0, 0, 255, 255, 255, 0, 0, 0, 0, 0};
     std::memcpy(bytes.data() + 54, pixels, sizeof(pixels));
     return bytes;
 }

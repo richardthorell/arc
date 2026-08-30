@@ -159,8 +159,7 @@ std::vector<std::byte> extract_tile(std::span<const std::byte> source, std::uint
             const auto source_y = wrap(origin_y + y, source_units_y);
             const auto source_offset =
                 (static_cast<std::size_t>(source_y) * source_units_x + source_x) * layout.unit_bytes;
-            const auto destination_offset =
-                (static_cast<std::size_t>(y) * output_units + x) * layout.unit_bytes;
+            const auto destination_offset = (static_cast<std::size_t>(y) * output_units + x) * layout.unit_bytes;
             std::memcpy(result.data() + destination_offset, source.data() + source_offset, layout.unit_bytes);
         }
     return result;
@@ -184,9 +183,9 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
 {
     if (texture.dimension != texture_dimension::texture_2d || texture.array_layers != 1 || texture.width == 0 ||
         texture.height == 0 || texture.mips.empty())
-        return texture_artifact_bytes_result::failure(failure(
-            texture_artifact_error_code::unsupported_texture,
-            "streamed texture artifacts require one ordinary 2D texture with a complete mip payload"));
+        return texture_artifact_bytes_result::failure(
+            failure(texture_artifact_error_code::unsupported_texture,
+                    "streamed texture artifacts require one ordinary 2D texture with a complete mip payload"));
     if (layout_for(texture.format).unit_bytes == 0)
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::unsupported_texture, "texture format is not pageable"));
@@ -254,8 +253,8 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
         return texture_artifact_bytes_result::failure(
             failure(texture_artifact_error_code::size_overflow, "texture artifact index is too large"));
 
-    std::uint64_t cursor = (table_end + texture_artifact_alignment - 1u) / texture_artifact_alignment *
-                           texture_artifact_alignment;
+    std::uint64_t cursor =
+        (table_end + texture_artifact_alignment - 1u) / texture_artifact_alignment * texture_artifact_alignment;
     for (auto& payload : mip_payloads)
     {
         payload.offset = cursor;
@@ -398,8 +397,8 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
         texture_artifact_tile_range range;
         if (!input.value(range.mip) || !input.value(range.x) || !input.value(range.y) || !input.value(range.width) ||
             !input.value(range.height) || !input.value(range.offset) || !input.value(range.stored_size) ||
-            !input.value(range.decoded_size) || !input.value(range.content_hash) || range.mip >= result.tail_first_mip ||
-            range.width != result.tile_size + result.tile_border * 2u ||
+            !input.value(range.decoded_size) || !input.value(range.content_hash) ||
+            range.mip >= result.tail_first_mip || range.width != result.tile_size + result.tile_border * 2u ||
             range.height != result.tile_size + result.tile_border * 2u ||
             !valid_range(range.offset, range.stored_size, result.table_end, bytes.size()))
             return texture_artifact_index_result::failure(
@@ -410,7 +409,7 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
 }
 
 texture_artifact_bytes_result read_texture_artifact_mip(std::span<const std::byte> bytes,
-                                                         const texture_artifact_index& index, std::uint32_t mip)
+                                                        const texture_artifact_index& index, std::uint32_t mip)
 {
     if (mip >= index.mips.size())
         return texture_artifact_bytes_result::failure(
@@ -427,7 +426,7 @@ texture_artifact_bytes_result read_texture_artifact_mip(std::span<const std::byt
 }
 
 texture_artifact_bytes_result read_texture_artifact_tile(std::span<const std::byte> bytes,
-                                                          const texture_artifact_index& index, std::uint32_t tile)
+                                                         const texture_artifact_index& index, std::uint32_t tile)
 {
     if (tile >= index.tiles.size())
         return texture_artifact_bytes_result::failure(
