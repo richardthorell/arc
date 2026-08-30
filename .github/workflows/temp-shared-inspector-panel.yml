@@ -1,0 +1,96 @@
+name: Temp Shared Inspector Panel Refactor
+
+on:
+  push:
+    branches: [feat/texture-editor-view]
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/texture-editor-view
+          fetch-depth: 0
+      - name: Refactor inspector surfaces onto UiPanel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          ui = Path('editor/src/renderer/src/ui/UiPanel.tsx')
+          text = ui.read_text()
+          text = text.replace(
+              "import type { HTMLAttributes, ReactNode } from 'react';\n",
+              "import type { HTMLAttributes, ReactNode } from 'react';\n\nimport './UiPanel.css';\n",
+              1,
+          )
+          text = text.replace(
+              "type UiPanelProps = HTMLAttributes<HTMLElement> & {\n  children: ReactNode;\n};",
+              "type UiPanelProps = HTMLAttributes<HTMLElement> & {\n  children: ReactNode;\n  variant?: 'default' | 'inspector';\n};",
+              1,
+          )
+          text = text.replace(
+              "export function UiPanel({ children, className, ...props }: UiPanelProps) {\n  return (\n    <section className={['ui-panel', className].filter(Boolean).join(' ')} {...props}>\n",
+              "export function UiPanel({ children, className, variant = 'default', ...props }: UiPanelProps) {\n  return (\n    <section className={['ui-panel', `ui-panel-${variant}`, className].filter(Boolean).join(' ')} {...props}>\n",
+              1,
+          )
+          ui.write_text(text)
+
+          css = Path('editor/src/renderer/src/ui/UiPanel.css')
+          css.write_text(""".ui-panel {\n  min-width: 0;\n  min-height: 0;\n}\n\n.ui-panel-inspector {\n  --inspector-bg: #171f26;\n  --inspector-bg-deep: #10171c;\n  --inspector-bg-field: #11181e;\n  --inspector-bg-header-top: #29323a;\n  --inspector-bg-header-bottom: #222a31;\n  --inspector-border: #2c363e;\n  --inspector-border-soft: #242d34;\n  --inspector-text: #cbd2d8;\n  --inspector-text-muted: #a2abb3;\n  --inspector-text-dim: #707a83;\n  --inspector-axis-x: #dc5548;\n  --inspector-axis-y: #76ad60;\n  --inspector-axis-z: #4f91d4;\n  --inspector-row-label: 108px;\n  --inspector-control-height: 24px;\n  --inspector-radius: 3px;\n  min-height: 100%;\n  color: var(--inspector-text);\n  background: var(--inspector-bg);\n  font-size: var(--arc-text-sm);\n  line-height: var(--arc-line-default);\n}\n""")
+
+          inspector = Path('editor/src/renderer/src/inspector/InspectorPanel.tsx')
+          text = inspector.read_text()
+          anchor = "import type { SceneEntity } from '../services/editorHostTypes';\n"
+          if anchor not in text:
+              raise SystemExit('InspectorPanel import anchor missing')
+          text = text.replace(anchor, anchor + "import { UiPanel } from '../ui';\n", 1)
+          if '<section className="data-inspector">' not in text:
+              raise SystemExit('InspectorPanel root missing')
+          text = text.replace('<section className="data-inspector">', '<UiPanel className="data-inspector" variant="inspector">', 1)
+          # Replace only the final root closing tag.
+          pos = text.rfind('</section>')
+          if pos < 0:
+              raise SystemExit('InspectorPanel closing section missing')
+          text = text[:pos] + '</UiPanel>' + text[pos + len('</section>'):]
+          inspector.write_text(text)
+
+          texture = Path('editor/src/renderer/src/texture/TextureEditor.tsx')
+          text = texture.read_text()
+          anchor = "import type { AssetItem } from '../services/editorHostTypes';\n"
+          if anchor not in text:
+              raise SystemExit('TextureEditor import anchor missing')
+          text = text.replace(anchor, anchor + "import { UiPanel } from '../ui';\n", 1)
+          old = '<aside aria-label="Texture details" className="data-inspector texture-inspector">'
+          new = '<UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">'
+          if old not in text:
+              raise SystemExit('Texture inspector root missing')
+          text = text.replace(old, new, 1)
+          text = text.replace('</aside>', '</UiPanel>', 1)
+          texture.write_text(text)
+
+          inspector_css = Path('editor/src/renderer/src/inspector/inspector.css')
+          text = inspector_css.read_text()
+          root_style = """.data-inspector {\n  min-height: 100%;\n  color: var(--inspector-text);\n  background: var(--inspector-bg);\n  font-size: var(--arc-text-sm);\n  line-height: var(--arc-line-default);\n}\n\n"""
+          if root_style not in text:
+              raise SystemExit('data-inspector root style missing')
+          inspector_css.write_text(text.replace(root_style, '', 1))
+          PY
+
+          npx prettier@3.9.6 --write \
+            editor/src/renderer/src/ui/UiPanel.tsx \
+            editor/src/renderer/src/ui/UiPanel.css \
+            editor/src/renderer/src/inspector/InspectorPanel.tsx \
+            editor/src/renderer/src/texture/TextureEditor.tsx
+
+          rm .github/workflows/temp-shared-inspector-panel.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add editor/src/renderer/src/ui/UiPanel.tsx editor/src/renderer/src/ui/UiPanel.css editor/src/renderer/src/inspector/InspectorPanel.tsx editor/src/renderer/src/inspector/inspector.css editor/src/renderer/src/texture/TextureEditor.tsx .github/workflows/temp-shared-inspector-panel.yml
+          git commit -m 'Refactor inspector surfaces onto shared UiPanel'
+          git push origin HEAD:feat/texture-editor-view
