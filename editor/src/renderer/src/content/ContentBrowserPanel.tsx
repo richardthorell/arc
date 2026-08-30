@@ -37,10 +37,7 @@ type Props = {
   onCommand: (command: CommandId) => void;
   onInstantiatePrefab: (path: string) => void;
   onAssetAction: (type: 'asset.reimport' | 'asset.cancelImport', guid: string) => void;
-  onTextureStreamingMode?: (
-    guid: string,
-    mode: 'resident' | 'streamed_mips' | 'virtual_tiles',
-  ) => void;
+  onTextureStreamingMode?: (guid: string, mode: 'resident' | 'streamed_mips' | 'virtual_tiles') => void;
   thumbnailProvider: AssetThumbnailProvider;
 };
 

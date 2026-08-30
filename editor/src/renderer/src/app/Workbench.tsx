@@ -1520,9 +1520,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               mode,
             })) as HostResponse;
             setLastCommand(
-              response.succeeded
-                ? `Texture mode changed to ${mode}`
-                : response.error || 'Texture mode change failed',
+              response.succeeded ? `Texture mode changed to ${mode}` : response.error || 'Texture mode change failed',
             );
             if (response.succeeded) await refreshProjectFromHost(undefined, false);
           }}
