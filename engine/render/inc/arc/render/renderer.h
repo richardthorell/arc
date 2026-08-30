@@ -356,7 +356,7 @@ public:
      */
     [[nodiscard]] render_object_pick_result last_object_pick() const;
 
-    void request_frame_capture(render_frame_capture_request request);
+    void request_frame_capture(const render_frame_capture_request& request);
     [[nodiscard]] render_frame_capture_result last_frame_capture() const;
 
     /**

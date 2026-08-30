@@ -314,15 +314,17 @@ void texture_residency_manager::note_feedback_overflow(std::uint32_t count) noex
 std::vector<texture_stream_load> texture_residency_manager::take_load_requests()
 {
     std::vector<texture_stream_load> result;
-    for (auto& [key, resource] : implementation_->resources)
+    for (const auto& [key, resource] : implementation_->resources)
     {
         const auto resource_handle = handle_from_resource_key(key);
+        const auto content_generation = resource.descriptor.content_generation;
+        const auto source = resource.descriptor.source;
         const auto append = [&](const implementation::subresource_entry& entry)
         {
             if (entry.state != texture_residency_state::requested) return;
             result.push_back({.resource = resource_handle,
-                              .content_generation = resource.descriptor.content_generation,
-                              .source = resource.descriptor.source,
+                              .content_generation = content_generation,
+                              .source = source,
                               .kind = entry.kind,
                               .mip = entry.mip,
                               .x = entry.x,

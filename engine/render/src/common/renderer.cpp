@@ -1455,9 +1455,9 @@ render_object_pick_result renderer::last_object_pick() const
     return backend_->last_object_pick();
 }
 
-void renderer::request_frame_capture(render_frame_capture_request request)
+void renderer::request_frame_capture(const render_frame_capture_request& request)
 {
-    if (backend_) backend_->request_frame_capture(std::move(request));
+    if (backend_) backend_->request_frame_capture(request);
 }
 
 render_frame_capture_result renderer::last_frame_capture() const
