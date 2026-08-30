@@ -1,0 +1,128 @@
+name: Temporary fix all tidy
+
+on:
+  push:
+    branches:
+      - fix/clang-format-main-20260830
+    paths:
+      - .github/workflows/temporary-fix-all-tidy.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/clang-format-main-20260830
+      - name: Install formatter
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Patch remaining tidy findings
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              Path('engine/render/inc/arc/render/texture.h'): [
+                  ('jobs::cancellation_token cancellation = {});',
+                   'const jobs::cancellation_token& cancellation = {});'),
+              ],
+              Path('engine/render/src/common/texture.cpp'): [
+                  ('jobs::cancellation_token cancellation)\n{',
+                   'const jobs::cancellation_token& cancellation)\n{'),
+              ],
+              Path('engine/render/inc/arc/render/texture_streaming_io.h'): [
+                  ('    void update(jobs::cancellation_token cancellation = {});',
+                   '    void update(const jobs::cancellation_token& cancellation = {});'),
+              ],
+              Path('engine/render/src/common/texture_streaming_io.cpp'): [
+                  ('void texture_streaming_controller::update(jobs::cancellation_token cancellation)',
+                   'void texture_streaming_controller::update(const jobs::cancellation_token& cancellation)'),
+              ],
+              Path('engine/render/src/common/renderer.cpp'): [
+                  ('void render_backend::request_frame_capture(render_frame_capture_request) {}',
+                   'void render_backend::request_frame_capture(const render_frame_capture_request&) {}'),
+              ],
+          }
+
+          for path, edits in replacements.items():
+              text = path.read_text()
+              for old, new in edits:
+                  if old not in text:
+                      raise SystemExit(f'missing expected text in {path}: {old!r}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text)
+
+          # Update the virtual declaration to match the no-op base implementation.
+          backend = Path('engine/render/inc/arc/render/render_backend.h')
+          text = backend.read_text()
+          old = 'virtual void request_frame_capture(render_frame_capture_request request);'
+          new = 'virtual void request_frame_capture(const render_frame_capture_request& request);'
+          if old not in text:
+              raise SystemExit('missing request_frame_capture declaration')
+          backend.write_text(text.replace(old, new, 1))
+
+          # Avoid clang-analyzer's enum-cast false positive for bitmask combinations.
+          graph = Path('engine/render/inc/arc/render/render_graph.h')
+          text = graph.read_text()
+          if '#include <bit>\n' not in text:
+              text = text.replace('#include <array>\n', '#include <array>\n#include <bit>\n', 1)
+          old = 'return static_cast<render_history_reset>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));'
+          new = 'return std::bit_cast<render_history_reset>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));'
+          if old not in text:
+              raise SystemExit('missing render_history_reset operator|')
+          graph.write_text(text.replace(old, new, 1))
+
+          # Use the canonical map key to construct the load handle so the analyzer can prove initialization.
+          streaming = Path('engine/render/src/common/texture_streaming.cpp')
+          text = streaming.read_text()
+          marker = '''std::uint64_t tile_key(std::uint32_t mip, std::uint32_t x, std::uint32_t y) noexcept
+          {
+              return (static_cast<std::uint64_t>(mip) << 48u) | (static_cast<std::uint64_t>(y) << 24u) | x;
+          }
+          '''
+          helper = marker + '''\ntexture_handle handle_from_resource_key(std::uint64_t key) noexcept
+          {
+              return {.index = static_cast<std::uint32_t>(key), .generation = static_cast<std::uint32_t>(key >> 32u)};
+          }
+          '''
+          if 'handle_from_resource_key' not in text:
+              if marker not in text:
+                  raise SystemExit('missing tile_key marker')
+              text = text.replace(marker, helper, 1)
+          old = 'for (auto& [_, resource] : implementation_->resources)\n    {\n        const auto append = [&](const implementation::subresource_entry& entry)'
+          new = 'for (auto& [key, resource] : implementation_->resources)\n    {\n        const auto resource_handle = handle_from_resource_key(key);\n        const auto append = [&](const implementation::subresource_entry& entry)'
+          if old not in text:
+              raise SystemExit('missing take_load_requests loop')
+          text = text.replace(old, new, 1)
+          old = '.resource = resource.handle,\n                              .content_generation = resource.descriptor.content_generation,'
+          new = '.resource = resource_handle,\n                              .content_generation = resource.descriptor.content_generation,'
+          # Replace the occurrence inside take_load_requests only, after its function begins.
+          start = text.index('std::vector<texture_stream_load> texture_residency_manager::take_load_requests()')
+          before, tail = text[:start], text[start:]
+          if old not in tail:
+              raise SystemExit('missing resource.handle in take_load_requests')
+          tail = tail.replace(old, new, 1)
+          streaming.write_text(before + tail)
+      - name: Format modified files
+        run: |
+          clang-format-18 -i \
+            engine/render/inc/arc/render/texture.h \
+            engine/render/src/common/texture.cpp \
+            engine/render/inc/arc/render/texture_streaming_io.h \
+            engine/render/src/common/texture_streaming_io.cpp \
+            engine/render/inc/arc/render/render_backend.h \
+            engine/render/src/common/renderer.cpp \
+            engine/render/inc/arc/render/render_graph.h \
+            engine/render/src/common/texture_streaming.cpp
+      - name: Remove temporary workflow
+        run: rm .github/workflows/temporary-fix-all-tidy.yml
+      - name: Commit fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix remaining clang-tidy findings'
+          git push origin HEAD:fix/clang-format-main-20260830
