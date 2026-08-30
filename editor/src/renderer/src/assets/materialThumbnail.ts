@@ -34,7 +34,22 @@ type PixelBounds = {
 };
 
 const thumbnailCache = new Map<string, Promise<string | null>>();
-let queue: Promise<void> = Promise.resolve();
+const maxConcurrentThumbnailRenders = 3;
+let activeThumbnailRenders = 0;
+const pendingThumbnailRenders: Array<() => void> = [];
+
+const withThumbnailRenderSlot = async <T>(operation: () => Promise<T>): Promise<T> => {
+  if (activeThumbnailRenders >= maxConcurrentThumbnailRenders) {
+    await new Promise<void>((resolve) => pendingThumbnailRenders.push(resolve));
+  }
+  activeThumbnailRenders += 1;
+  try {
+    return await operation();
+  } finally {
+    activeThumbnailRenders -= 1;
+    pendingThumbnailRenders.shift()?.();
+  }
+};
 
 const persistentThumbnailDatabase = 'arc-material-thumbnails-v1';
 const persistentThumbnailStore = 'thumbnails';
@@ -135,11 +150,6 @@ const colorDistance = (pixels: Uint8ClampedArray, offset: number, background: re
     Math.abs(pixels[offset + 2] - background[2]),
   );
 
-/**
- * Removes a uniform preview clear color while preserving an isolated object.
- * The flood fill only enters pixels connected to an image edge, so matching
- * colors enclosed by the object remain opaque.
- */
 export function transparentPreviewPixels(
   source: Uint8ClampedArray,
   width: number,
@@ -189,11 +199,6 @@ export function transparentPreviewPixels(
   return pixels;
 }
 
-/**
- * The native material preview uses a centered sphere with radius 0.82 in NDC.
- * Masking from that known geometry gives us a clean transparent background even
- * though the native studio background is intentionally graded instead of flat.
- */
 export function maskMaterialSpherePixels(
   source: Uint8ClampedArray,
   width: number,
@@ -341,34 +346,25 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
   const cached = thumbnailCache.get(key);
   if (cached) return cached;
 
-  let resolveTask!: (value: string | null) => void;
-  const task = new Promise<string | null>((resolve) => {
-    resolveTask = resolve;
-  });
-  thumbnailCache.set(key, task);
+  const task = (async () => {
+    try {
+      const persisted = await readPersistentThumbnail(key);
+      if (persisted) return persisted;
 
-  queue = queue
-    .catch(() => undefined)
-    .then(async () => {
-      try {
-        const persisted = await readPersistentThumbnail(key);
-        if (persisted) {
-          resolveTask(persisted);
-          return;
-        }
-
-        const result = await renderMaterialThumbnail(request);
-        if (!result) {
-          thumbnailCache.delete(key);
-        } else {
-          await writePersistentThumbnail(key, result);
-        }
-        resolveTask(result);
-      } catch {
+      const result = await withThumbnailRenderSlot(() => renderMaterialThumbnail(request));
+      if (!result) {
         thumbnailCache.delete(key);
-        resolveTask(null);
+        return null;
       }
-    });
+      await writePersistentThumbnail(key, result);
+      return result;
+    } catch {
+      thumbnailCache.delete(key);
+      return null;
+    }
+  })();
+
+  thumbnailCache.set(key, task);
   return task;
 }
 
