@@ -96,7 +96,7 @@ struct texture_stream_upload
 };
 
 /** @brief Backend acknowledgement for a generation-safe upload. */
-struct texture_stream_upload_result
+struct [[nodiscard]] texture_stream_upload_result
 {
     texture_handle resource{};
     std::uint32_t content_generation{};
