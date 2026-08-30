@@ -643,7 +643,7 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         auto texture_gpu_budget =
             config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes : texture_quality_budget;
         if (adapter_memory != 0)
-            texture_gpu_budget = std::min(texture_gpu_budget, std::max(128ull * mebibyte, adapter_memory / 4u));
+            texture_gpu_budget = std::min(texture_gpu_budget, std::max(std::uint64_t{128} * mebibyte, adapter_memory / 4u));
         const auto quality_upload_budget = resolved_config_.quality == render_quality_tier::low     ? 32ull * mebibyte
                                            : resolved_config_.quality == render_quality_tier::ultra ? 128ull * mebibyte
                                                                                                     : 64ull * mebibyte;
