@@ -52,7 +52,7 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
  */
 jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_service& files,
                                                                std::filesystem::path path,
-                                                               jobs::cancellation_token cancellation = {});
+                                                               const jobs::cancellation_token& cancellation = {});
 
 /**
  * @brief Return whether an extension is accepted by the renderer texture loader.

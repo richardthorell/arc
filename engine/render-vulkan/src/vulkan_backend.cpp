@@ -639,7 +639,8 @@ public:
         }
         if (!flush_upload_batch()) upload_batch_failed_ = true;
         if (upload_batch_failed_)
-            for (auto& result : frame_texture_upload_results_) result.succeeded = false;
+            for (auto& result : frame_texture_upload_results_)
+                result.succeeded = false;
         completed_texture_upload_results_.insert(completed_texture_upload_results_.end(),
                                                  frame_texture_upload_results_.begin(),
                                                  frame_texture_upload_results_.end());
@@ -777,10 +778,10 @@ public:
         return last_pick_result_;
     }
 
-    void request_frame_capture(render_frame_capture_request request) override
+    void request_frame_capture(const render_frame_capture_request& request) override
     {
         if (request.capture_id == 0) return;
-        pending_capture_request_ = std::move(request);
+        pending_capture_request_ = request;
     }
 
     render_frame_capture_result last_frame_capture() const override
@@ -3822,10 +3823,8 @@ private:
             const auto& bytes = texture.streamed_mips[mip];
             if (!bytes) return false;
             const auto& artifact_mip = texture.streaming.artifact.mips[mip];
-            data.mips.push_back({.width = artifact_mip.width,
-                                 .height = artifact_mip.height,
-                                 .offset = offset,
-                                 .size = bytes->size()});
+            data.mips.push_back(
+                {.width = artifact_mip.width, .height = artifact_mip.height, .offset = offset, .size = bytes->size()});
             data.encoded.insert(data.encoded.end(), bytes->begin(), bytes->end());
             offset += bytes->size();
         }
@@ -3905,8 +3904,7 @@ private:
         }
 
         const std::uint64_t key = resource_key(event.handle);
-        if (auto found = textures_.find(key); found != textures_.end())
-            defer_texture_release(std::move(found->second));
+        if (auto found = textures_.find(key); found != textures_.end()) defer_texture_release(std::move(found->second));
         textures_[key] = std::move(texture);
     }
 

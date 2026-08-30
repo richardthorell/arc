@@ -82,9 +82,9 @@ public:
         pick_request = request;
         pick_requested = true;
     }
-    void request_frame_capture(arc::render::render_frame_capture_request request) override
+    void request_frame_capture(const arc::render::render_frame_capture_request& request) override
     {
-        capture_request = std::move(request);
+        capture_request = request;
         capture_requested = true;
     }
     arc::render::render_frame_capture_result last_frame_capture() const override

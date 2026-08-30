@@ -96,7 +96,7 @@ struct texture_stream_upload
 };
 
 /** @brief Backend acknowledgement for a generation-safe upload. */
-struct texture_stream_upload_result
+struct [[nodiscard]] texture_stream_upload_result
 {
     texture_handle resource{};
     std::uint32_t content_generation{};
@@ -175,9 +175,8 @@ public:
     void complete(const texture_stream_upload_result& result);
     void fail(const texture_stream_load& load);
     [[nodiscard]] std::vector<texture_stream_eviction> take_evictions();
-    [[nodiscard]] bool resident(texture_handle resource, std::uint32_t generation,
-                                texture_subresource_kind kind, std::uint32_t mip,
-                                std::uint32_t x = 0, std::uint32_t y = 0) const noexcept;
+    [[nodiscard]] bool resident(texture_handle resource, std::uint32_t generation, texture_subresource_kind kind,
+                                std::uint32_t mip, std::uint32_t x = 0, std::uint32_t y = 0) const noexcept;
     void note_parent_fallback() noexcept;
     [[nodiscard]] texture_residency_snapshot snapshot() const noexcept;
 

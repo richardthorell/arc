@@ -22,8 +22,8 @@ arc::render::texture_data make_rgba8_texture(std::uint32_t size)
     texture.color_space = arc::render::texture_color_space::linear;
     texture.semantic = arc::render::texture_semantic::metallic_roughness;
     texture.array_layers = 1;
-    for (std::uint32_t width = size, height = size;; width = std::max(1u, width / 2u),
-                                                     height = std::max(1u, height / 2u))
+    for (std::uint32_t width = size, height = size;;
+         width = std::max(1u, width / 2u), height = std::max(1u, height / 2u))
     {
         const auto offset = texture.pixels.size();
         for (std::uint32_t y = 0; y < height; ++y)
@@ -34,10 +34,8 @@ arc::render::texture_data make_rgba8_texture(std::uint32_t size)
                 texture.pixels.push_back(static_cast<std::byte>((x + y) & 0xffu));
                 texture.pixels.push_back(std::byte{0xff});
             }
-        texture.mips.push_back({.width = width,
-                                .height = height,
-                                .offset = offset,
-                                .size = texture.pixels.size() - offset});
+        texture.mips.push_back(
+            {.width = width, .height = height, .offset = offset, .size = texture.pixels.size() - offset});
         if (width == 1 && height == 1) break;
     }
     texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
@@ -59,26 +57,23 @@ arc::render::streamed_texture_descriptor make_streamed_descriptor()
     descriptor.mode = arc::render::texture_streaming_mode::streamed_mips;
     descriptor.source = 77;
     descriptor.content_generation = 3;
-    descriptor.artifact = {.schema_version = arc::render::texture_artifact_schema_version,
-                           .mode = arc::render::texture_streaming_mode::streamed_mips,
-                           .format = arc::render::texture_format::rgba8_unorm,
-                           .color_space = arc::render::texture_color_space::linear,
-                           .semantic = arc::render::texture_semantic::metallic_roughness,
-                           .width = 8,
-                           .height = 8,
-                           .mip_count = 4,
-                           .tail_first_mip = 2,
-                           .tile_size = arc::render::virtual_texture_tile_size,
-                           .tile_border = arc::render::virtual_texture_tile_border,
-                           .artifact_size = 16384,
-                           .mips = {{.width = 8, .height = 8, .offset = 4096, .stored_size = 256,
-                                    .decoded_size = 256, .content_hash = 1},
-                                    {.width = 4, .height = 4, .offset = 8192, .stored_size = 64,
-                                     .decoded_size = 64, .content_hash = 2},
-                                    {.width = 2, .height = 2, .offset = 12288, .stored_size = 16,
-                                     .decoded_size = 16, .content_hash = 3},
-                                    {.width = 1, .height = 1, .offset = 16384, .stored_size = 4,
-                                     .decoded_size = 4, .content_hash = 4}}};
+    descriptor.artifact = {
+        .schema_version = arc::render::texture_artifact_schema_version,
+        .mode = arc::render::texture_streaming_mode::streamed_mips,
+        .format = arc::render::texture_format::rgba8_unorm,
+        .color_space = arc::render::texture_color_space::linear,
+        .semantic = arc::render::texture_semantic::metallic_roughness,
+        .width = 8,
+        .height = 8,
+        .mip_count = 4,
+        .tail_first_mip = 2,
+        .tile_size = arc::render::virtual_texture_tile_size,
+        .tile_border = arc::render::virtual_texture_tile_border,
+        .artifact_size = 16384,
+        .mips = {{.width = 8, .height = 8, .offset = 4096, .stored_size = 256, .decoded_size = 256, .content_hash = 1},
+                 {.width = 4, .height = 4, .offset = 8192, .stored_size = 64, .decoded_size = 64, .content_hash = 2},
+                 {.width = 2, .height = 2, .offset = 12288, .stored_size = 16, .decoded_size = 16, .content_hash = 3},
+                 {.width = 1, .height = 1, .offset = 16384, .stored_size = 4, .decoded_size = 4, .content_hash = 4}}};
     return descriptor;
 }
 
@@ -102,8 +97,10 @@ TEST_CASE("texture artifacts are deterministic range-readable and include virtua
     CHECK(index.tiles.size() == 4);
     CHECK(index.tile_size == 128);
     CHECK(index.tile_border == 4);
-    for (const auto& mip : index.mips) CHECK(mip.offset % texture_artifact_alignment == 0);
-    for (const auto& tile : index.tiles) CHECK(tile.offset % texture_artifact_alignment == 0);
+    for (const auto& mip : index.mips)
+        CHECK(mip.offset % texture_artifact_alignment == 0);
+    for (const auto& tile : index.tiles)
+        CHECK(tile.offset % texture_artifact_alignment == 0);
 
     const auto tile = read_texture_artifact_tile(first.value(), index, 0);
     REQUIRE(tile.has_value());
@@ -163,9 +160,8 @@ TEST_CASE("texture residency deduplicates demand rejects stale work and evicts u
     REQUIRE(loads.size() == 2);
     CHECK(residency.snapshot().deduplicated_requests > 0);
 
-    const texture_mip_feedback stale{.resource = handle,
-                                     .content_generation = descriptor.content_generation + 1,
-                                     .desired_mip = 0};
+    const texture_mip_feedback stale{
+        .resource = handle, .content_generation = descriptor.content_generation + 1, .desired_mip = 0};
     residency.request(std::span(&stale, 1), {});
     CHECK(residency.snapshot().stale_requests == 1);
 

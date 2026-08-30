@@ -3,6 +3,7 @@
 #include <arc/core/result.h>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -347,7 +348,7 @@ struct hzb_snapshot
 
 [[nodiscard]] constexpr render_history_reset operator|(render_history_reset lhs, render_history_reset rhs) noexcept
 {
-    return static_cast<render_history_reset>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+    return std::bit_cast<render_history_reset>(static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
 }
 
 [[nodiscard]] constexpr render_history_reset operator&(render_history_reset lhs, render_history_reset rhs) noexcept

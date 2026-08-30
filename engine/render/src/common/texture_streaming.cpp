@@ -19,6 +19,11 @@ std::uint64_t tile_key(std::uint32_t mip, std::uint32_t x, std::uint32_t y) noex
     return (static_cast<std::uint64_t>(mip) << 48u) | (static_cast<std::uint64_t>(y) << 24u) | x;
 }
 
+texture_handle handle_from_resource_key(std::uint64_t key) noexcept
+{
+    return {.index = static_cast<std::uint32_t>(key), .generation = static_cast<std::uint32_t>(key >> 32u)};
+}
+
 float mip_priority(std::uint32_t mip_count, std::uint32_t mip, float coverage, bool pinned) noexcept
 {
     return (pinned ? 1'000'000.0f : 0.0f) + static_cast<float>(mip_count - std::min(mip, mip_count)) * 4096.0f +
@@ -27,8 +32,7 @@ float mip_priority(std::uint32_t mip_count, std::uint32_t mip, float coverage, b
 
 float tile_priority(std::uint32_t mip_count, std::uint32_t mip, float coverage) noexcept
 {
-    return static_cast<float>(mip_count - std::min(mip, mip_count)) * 4096.0f +
-           std::max(0.0f, coverage) * 1024.0f;
+    return static_cast<float>(mip_count - std::min(mip, mip_count)) * 4096.0f + std::max(0.0f, coverage) * 1024.0f;
 }
 
 } // namespace
@@ -57,6 +61,11 @@ struct texture_residency_manager::implementation
 
     struct resource_entry
     {
+        resource_entry(texture_handle resource, const streamed_texture_descriptor& streamed_descriptor)
+            : handle(resource), descriptor(streamed_descriptor)
+        {
+        }
+
         texture_handle handle{};
         streamed_texture_descriptor descriptor;
         std::vector<subresource_entry> mips;
@@ -96,8 +105,7 @@ struct texture_residency_manager::implementation
     {
         auto* resource = find_resource(handle, generation);
         if (!resource) return nullptr;
-        if (kind == texture_subresource_kind::mip)
-            return mip < resource->mips.size() ? &resource->mips[mip] : nullptr;
+        if (kind == texture_subresource_kind::mip) return mip < resource->mips.size() ? &resource->mips[mip] : nullptr;
         const auto found = resource->tile_lookup.find(tile_key(mip, x, y));
         return found == resource->tile_lookup.end() ? nullptr : &resource->tiles[found->second];
     }
@@ -107,8 +115,7 @@ struct texture_residency_manager::implementation
     {
         const auto* resource = find_resource(handle, generation);
         if (!resource) return nullptr;
-        if (kind == texture_subresource_kind::mip)
-            return mip < resource->mips.size() ? &resource->mips[mip] : nullptr;
+        if (kind == texture_subresource_kind::mip) return mip < resource->mips.size() ? &resource->mips[mip] : nullptr;
         const auto found = resource->tile_lookup.find(tile_key(mip, x, y));
         return found == resource->tile_lookup.end() ? nullptr : &resource->tiles[found->second];
     }
@@ -117,8 +124,7 @@ struct texture_residency_manager::implementation
     {
         entry.last_used_frame = frame_index;
         entry.priority = std::max(entry.priority, priority);
-        if (entry.state == texture_residency_state::resident)
-            return;
+        if (entry.state == texture_residency_state::resident) return;
         if (entry.state == texture_residency_state::requested || entry.state == texture_residency_state::loading ||
             entry.state == texture_residency_state::uploading)
         {
@@ -174,7 +180,8 @@ struct texture_residency_manager::implementation
                     }
                 };
                 if (finest_mip) consider(*finest_mip);
-                for (auto& tile : resource.tiles) consider(tile);
+                for (auto& tile : resource.tiles)
+                    consider(tile);
             }
             if (!victim || !victim_resource) break;
             evict(*victim_resource, *victim);
@@ -201,10 +208,10 @@ void texture_residency_manager::configure(texture_residency_config config)
 }
 
 void texture_residency_manager::register_resource(texture_handle resource,
-                                                   const streamed_texture_descriptor& descriptor)
+                                                  const streamed_texture_descriptor& descriptor)
 {
     unregister_resource(resource);
-    implementation::resource_entry entry{.handle = resource, .descriptor = descriptor};
+    implementation::resource_entry entry(resource, descriptor);
     entry.mips.reserve(descriptor.artifact.mips.size());
     for (std::uint32_t mip = 0; mip < descriptor.artifact.mips.size(); ++mip)
     {
@@ -277,12 +284,12 @@ void texture_residency_manager::request(std::span<const texture_mip_feedback> mi
             ++implementation_->stale_requests;
             continue;
         }
-        const auto desired = std::min(feedback.desired_mip,
-                                      static_cast<std::uint32_t>(resource->mips.empty() ? 0 : resource->mips.size() - 1));
+        const auto desired = std::min(
+            feedback.desired_mip, static_cast<std::uint32_t>(resource->mips.empty() ? 0 : resource->mips.size() - 1));
         for (std::uint32_t mip = desired; mip < resource->mips.size(); ++mip)
             implementation_->demand(resource->mips[mip],
-                                    mip_priority(resource->descriptor.artifact.mip_count, mip,
-                                                 feedback.screen_coverage, resource->mips[mip].pinned));
+                                    mip_priority(resource->descriptor.artifact.mip_count, mip, feedback.screen_coverage,
+                                                 resource->mips[mip].pinned));
     }
     for (const auto& feedback : tiles)
     {
@@ -294,8 +301,8 @@ void texture_residency_manager::request(std::span<const texture_mip_feedback> mi
             continue;
         }
         const auto* resource = implementation_->find_resource(feedback.resource, feedback.content_generation);
-        implementation_->demand(*entry, tile_priority(resource->descriptor.artifact.mip_count, feedback.mip,
-                                                       feedback.screen_coverage));
+        implementation_->demand(
+            *entry, tile_priority(resource->descriptor.artifact.mip_count, feedback.mip, feedback.screen_coverage));
     }
 }
 
@@ -307,14 +314,17 @@ void texture_residency_manager::note_feedback_overflow(std::uint32_t count) noex
 std::vector<texture_stream_load> texture_residency_manager::take_load_requests()
 {
     std::vector<texture_stream_load> result;
-    for (auto& [_, resource] : implementation_->resources)
+    for (const auto& [key, resource] : implementation_->resources)
     {
+        const auto resource_handle = handle_from_resource_key(key);
+        const auto content_generation = resource.descriptor.content_generation;
+        const auto source = resource.descriptor.source;
         const auto append = [&](const implementation::subresource_entry& entry)
         {
             if (entry.state != texture_residency_state::requested) return;
-            result.push_back({.resource = resource.handle,
-                              .content_generation = resource.descriptor.content_generation,
-                              .source = resource.descriptor.source,
+            result.push_back({.resource = resource_handle,
+                              .content_generation = content_generation,
+                              .source = source,
                               .kind = entry.kind,
                               .mip = entry.mip,
                               .x = entry.x,
@@ -324,8 +334,10 @@ std::vector<texture_stream_load> texture_residency_manager::take_load_requests()
                               .content_hash = entry.content_hash,
                               .priority = entry.priority});
         };
-        for (const auto& mip : resource.mips) append(mip);
-        for (const auto& tile : resource.tiles) append(tile);
+        for (const auto& mip : resource.mips)
+            append(mip);
+        for (const auto& tile : resource.tiles)
+            append(tile);
     }
     std::stable_sort(result.begin(), result.end(),
                      [](const auto& lhs, const auto& rhs)
@@ -351,7 +363,8 @@ std::vector<texture_stream_load> texture_residency_manager::take_load_requests()
 
 void texture_residency_manager::mark_loading(const texture_stream_load& load)
 {
-    if (auto* entry = implementation_->find(load.resource, load.content_generation, load.kind, load.mip, load.x, load.y);
+    if (auto* entry =
+            implementation_->find(load.resource, load.content_generation, load.kind, load.mip, load.x, load.y);
         entry && entry->state == texture_residency_state::requested)
         entry->state = texture_residency_state::loading;
 }
@@ -360,8 +373,8 @@ void texture_residency_manager::mark_uploading(const texture_stream_upload& uplo
 {
     if (auto* entry = implementation_->find(upload.resource, upload.content_generation, upload.kind, upload.mip,
                                             upload.x, upload.y);
-        entry && (entry->state == texture_residency_state::loading ||
-                  entry->state == texture_residency_state::requested))
+        entry &&
+        (entry->state == texture_residency_state::loading || entry->state == texture_residency_state::requested))
     {
         entry->state = texture_residency_state::uploading;
         entry->cpu_bytes = upload.stored_bytes;
@@ -370,8 +383,8 @@ void texture_residency_manager::mark_uploading(const texture_stream_upload& uplo
 
 void texture_residency_manager::complete(const texture_stream_upload_result& result)
 {
-    auto* entry = implementation_->find(result.resource, result.content_generation, result.kind, result.mip, result.x,
-                                        result.y);
+    auto* entry =
+        implementation_->find(result.resource, result.content_generation, result.kind, result.mip, result.x, result.y);
     if (!entry)
     {
         ++implementation_->stale_requests;
@@ -380,7 +393,8 @@ void texture_residency_manager::complete(const texture_stream_upload_result& res
     if (!result.succeeded)
     {
         entry->state = texture_residency_state::failed;
-        entry->retry_frame = implementation_->frame_index + std::min<std::uint64_t>(120u, 1ull << std::min(7u, ++entry->failures));
+        entry->retry_frame =
+            implementation_->frame_index + std::min<std::uint64_t>(120u, 1ull << std::min(7u, ++entry->failures));
         return;
     }
     implementation_->gpu_bytes -= std::min<std::uint64_t>(implementation_->gpu_bytes, entry->gpu_bytes);
@@ -396,11 +410,12 @@ void texture_residency_manager::complete(const texture_stream_upload_result& res
 
 void texture_residency_manager::fail(const texture_stream_load& load)
 {
-    if (auto* entry = implementation_->find(load.resource, load.content_generation, load.kind, load.mip, load.x, load.y))
+    if (auto* entry =
+            implementation_->find(load.resource, load.content_generation, load.kind, load.mip, load.x, load.y))
     {
         entry->state = texture_residency_state::failed;
-        entry->retry_frame = implementation_->frame_index +
-                             std::min<std::uint64_t>(120u, 1ull << std::min(7u, ++entry->failures));
+        entry->retry_frame =
+            implementation_->frame_index + std::min<std::uint64_t>(120u, 1ull << std::min(7u, ++entry->failures));
     }
 }
 
@@ -439,8 +454,9 @@ texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
                                       .stale_requests = implementation_->stale_requests,
                                       .feedback_overflow = implementation_->feedback_overflow,
                                       .parent_fallbacks = implementation_->parent_fallbacks,
-                                      .over_budget = implementation_->gpu_bytes > implementation_->config.gpu_budget_bytes ||
-                                                     implementation_->cpu_bytes > implementation_->config.cpu_cache_budget_bytes};
+                                      .over_budget =
+                                          implementation_->gpu_bytes > implementation_->config.gpu_budget_bytes ||
+                                          implementation_->cpu_bytes > implementation_->config.cpu_cache_budget_bytes};
     for (const auto& [_, resource] : implementation_->resources)
     {
         if (resource.descriptor.mode == texture_streaming_mode::streamed_mips) ++result.streamed_mip_resources;
@@ -459,8 +475,10 @@ texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
                 ++result.requested_subresources;
             if (entry.state == texture_residency_state::failed) ++result.failed_subresources;
         };
-        for (const auto& mip : resource.mips) accumulate(mip);
-        for (const auto& tile : resource.tiles) accumulate(tile);
+        for (const auto& mip : resource.mips)
+            accumulate(mip);
+        for (const auto& tile : resource.tiles)
+            accumulate(tile);
     }
     return result;
 }

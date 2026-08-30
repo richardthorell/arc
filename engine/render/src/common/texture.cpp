@@ -199,9 +199,11 @@ void store_rgba8_mip_chain(texture_data& texture, const unsigned char* decoded, 
                         const auto source_index = (static_cast<std::size_t>(source_y) * mip_width + source_x) * 4u;
                         for (std::uint32_t channel = 0; channel < 4; ++channel)
                         {
-                            float value = static_cast<float>(std::to_integer<unsigned char>(level[source_index + channel])) /
-                                          255.0f;
-                            if (texture.semantic == texture_semantic::normal && channel < 3) value = value * 2.0f - 1.0f;
+                            float value =
+                                static_cast<float>(std::to_integer<unsigned char>(level[source_index + channel])) /
+                                255.0f;
+                            if (texture.semantic == texture_semantic::normal && channel < 3)
+                                value = value * 2.0f - 1.0f;
                             else if (texture.color_space == texture_color_space::srgb && channel < 3)
                                 value = srgb_to_linear(value);
                             accumulated[channel] += value;
@@ -210,11 +212,11 @@ void store_rgba8_mip_chain(texture_data& texture, const unsigned char* decoded, 
                     }
                 }
                 const auto destination_index = (static_cast<std::size_t>(y) * next_width + x) * 4u;
-                for (auto& value : accumulated) value /= static_cast<float>(samples);
+                for (auto& value : accumulated)
+                    value /= static_cast<float>(samples);
                 if (texture.semantic == texture_semantic::normal)
                 {
-                    const float length = std::sqrt(accumulated[0] * accumulated[0] +
-                                                   accumulated[1] * accumulated[1] +
+                    const float length = std::sqrt(accumulated[0] * accumulated[0] + accumulated[1] * accumulated[1] +
                                                    accumulated[2] * accumulated[2]);
                     if (length > 0.00001f)
                         for (std::uint32_t channel = 0; channel < 3; ++channel)
@@ -225,10 +227,9 @@ void store_rgba8_mip_chain(texture_data& texture, const unsigned char* decoded, 
                 }
                 else
                     for (std::uint32_t channel = 0; channel < 3; ++channel)
-                        next[destination_index + channel] =
-                            normalized_byte(texture.color_space == texture_color_space::srgb
-                                                ? linear_to_srgb(accumulated[channel])
-                                                : accumulated[channel]);
+                        next[destination_index + channel] = normalized_byte(
+                            texture.color_space == texture_color_space::srgb ? linear_to_srgb(accumulated[channel])
+                                                                             : accumulated[channel]);
                 next[destination_index + 3] = normalized_byte(accumulated[3]);
             }
         }
@@ -540,7 +541,7 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
 
 jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_service& files,
                                                                std::filesystem::path path,
-                                                               jobs::cancellation_token cancellation)
+                                                               const jobs::cancellation_token& cancellation)
 {
     auto read = files.read_all(path, cancellation);
     return files.scheduler().submit_future({.name = "render.decode_texture",
@@ -560,8 +561,8 @@ jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_se
 bool is_supported_texture_asset(const std::filesystem::path& path)
 {
     const auto ext = lowercase(path.extension().string());
-    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" ||
-           ext == ".hdr" || ext == ".dds";
+    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" || ext == ".hdr" ||
+           ext == ".dds";
 }
 
 } // namespace arc::render

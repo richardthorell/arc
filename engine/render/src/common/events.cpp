@@ -150,9 +150,8 @@ void render_event_writer::texture_stream_register(texture_handle handle,
                                                   std::shared_ptr<const streamed_texture_descriptor> descriptor,
                                                   std::string label)
 {
-    push({.payload = texture_stream_register_event{.handle = handle,
-                                                   .descriptor = std::move(descriptor),
-                                                   .label = std::move(label)}});
+    push({.payload = texture_stream_register_event{
+              .handle = handle, .descriptor = std::move(descriptor), .label = std::move(label)}});
 }
 
 void render_event_writer::texture_stream_upload(arc::render::texture_stream_upload upload)
@@ -162,7 +161,7 @@ void render_event_writer::texture_stream_upload(arc::render::texture_stream_uplo
 
 void render_event_writer::texture_stream_evict(arc::render::texture_stream_eviction eviction)
 {
-    push({.payload = texture_stream_evict_event{.eviction = std::move(eviction)}});
+    push({.payload = texture_stream_evict_event{.eviction = eviction}});
 }
 
 void render_event_writer::texture_destroy(texture_handle handle)

@@ -66,7 +66,7 @@ public:
     texture_streaming_controller& operator=(texture_streaming_controller&&) noexcept;
     texture_streaming_controller(const texture_streaming_controller&) = delete;
     texture_streaming_controller& operator=(const texture_streaming_controller&) = delete;
-    void update(jobs::cancellation_token cancellation = {});
+    void update(const jobs::cancellation_token& cancellation = {});
     [[nodiscard]] texture_streaming_io_snapshot snapshot() const noexcept;
 
 private:

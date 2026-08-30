@@ -297,9 +297,8 @@ cook_result asset_cooker::cook(const cook_request& request)
             }
         std::sort(dependency_hashes.begin(), dependency_hashes.end());
         const auto& descriptor = processor->descriptor();
-        const auto absolute_source = snapshot->source_path.is_absolute()
-                                         ? snapshot->source_path
-                                         : registry.project_root / snapshot->source_path;
+        const auto absolute_source =
+            snapshot->source_path.is_absolute() ? snapshot->source_path : registry.project_root / snapshot->source_path;
         auto settings_version = 1u;
         std::string canonical_settings = "{}";
         if (const auto metadata = load_asset_metadata(metadata_path_for(absolute_source)); metadata)

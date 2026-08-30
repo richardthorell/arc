@@ -563,7 +563,7 @@ render_object_pick_result render_backend::last_object_pick() const
     return {};
 }
 
-void render_backend::request_frame_capture(render_frame_capture_request) {}
+void render_backend::request_frame_capture(const render_frame_capture_request&) {}
 
 render_frame_capture_result render_backend::last_frame_capture() const
 {
@@ -632,26 +632,27 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         if (const auto device_budget = backend_->capabilities().memory_budget; device_budget != 0)
             residency.gpu_budget_bytes = std::min(residency.gpu_budget_bytes, device_budget / 10u);
         virtual_geometry_residency_.configure(residency);
-        const auto texture_quality_budget =
+        const std::uint64_t texture_quality_budget =
             resolved_config_.quality == render_quality_tier::low      ? 256ull * mebibyte
             : resolved_config_.quality == render_quality_tier::medium ? 512ull * mebibyte
             : resolved_config_.quality == render_quality_tier::high   ? 1024ull * mebibyte
-                                                                       : 2048ull * mebibyte;
+                                                                      : 2048ull * mebibyte;
         const auto adapter_memory = backend_->capabilities().memory_budget != 0
                                         ? backend_->capabilities().memory_budget
                                         : backend_->capabilities().dedicated_video_memory;
-        auto texture_gpu_budget = config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes
-                                                                        : texture_quality_budget;
+        std::uint64_t texture_gpu_budget =
+            config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes : texture_quality_budget;
         if (adapter_memory != 0)
-            texture_gpu_budget = std::min(texture_gpu_budget, std::max(128ull * mebibyte, adapter_memory / 4u));
-        const auto quality_upload_budget = resolved_config_.quality == render_quality_tier::low       ? 32ull * mebibyte
+            texture_gpu_budget =
+                std::min(texture_gpu_budget, std::max(std::uint64_t{128} * mebibyte, adapter_memory / 4u));
+        const auto quality_upload_budget = resolved_config_.quality == render_quality_tier::low     ? 32ull * mebibyte
                                            : resolved_config_.quality == render_quality_tier::ultra ? 128ull * mebibyte
-                                                                                                     : 64ull * mebibyte;
+                                                                                                    : 64ull * mebibyte;
         texture_residency_.configure(
             {.gpu_budget_bytes = texture_gpu_budget,
              .cpu_cache_budget_bytes = config_.texture_cpu_cache_budget_bytes != 0
                                            ? config_.texture_cpu_cache_budget_bytes
-                                           : std::min(256ull * mebibyte, texture_gpu_budget / 4u),
+                                           : std::min(std::uint64_t{256} * mebibyte, texture_gpu_budget / 4u),
              .upload_budget_per_frame = config_.texture_upload_budget_per_frame != 0
                                             ? config_.texture_upload_budget_per_frame
                                             : quality_upload_budget,
@@ -1092,8 +1093,7 @@ bool renderer::update_streamed_texture(texture_handle handle, streamed_texture_d
     const auto key = renderer_resource_key(handle);
     const auto previous = streamed_texture_data_.find(key);
     if (previous == streamed_texture_data_.end()) return false;
-    descriptor.content_generation =
-        std::max(descriptor.content_generation, previous->second->content_generation + 1u);
+    descriptor.content_generation = std::max(descriptor.content_generation, previous->second->content_generation + 1u);
     if (descriptor.mode == texture_streaming_mode::virtual_tiles && backend_ &&
         !resolved_config_.features.virtual_textures)
         descriptor.mode = texture_streaming_mode::streamed_mips;
@@ -1138,7 +1138,8 @@ void renderer::submit_texture_feedback(const texture_feedback_readback& feedback
 std::vector<texture_stream_load> renderer::take_texture_stream_loads()
 {
     auto result = texture_residency_.take_load_requests();
-    for (const auto& load : result) texture_residency_.mark_loading(load);
+    for (const auto& load : result)
+        texture_residency_.mark_loading(load);
     return result;
 }
 
@@ -1146,8 +1147,7 @@ bool renderer::publish_texture_subresource(texture_stream_upload upload)
 {
     if (!upload.resource.valid() || !upload.bytes || upload.bytes->empty()) return false;
     const auto resource = streamed_texture_data_.find(renderer_resource_key(upload.resource));
-    if (resource == streamed_texture_data_.end() ||
-        resource->second->content_generation != upload.content_generation)
+    if (resource == streamed_texture_data_.end() || resource->second->content_generation != upload.content_generation)
         return false;
     const auto& artifact = resource->second->artifact;
     std::uint32_t expected_size{};
@@ -1160,12 +1160,9 @@ bool renderer::publish_texture_subresource(texture_stream_upload upload)
     }
     else
     {
-        const auto found = std::find_if(artifact.tiles.begin(), artifact.tiles.end(),
-                                        [&](const texture_artifact_tile_range& range)
-                                        {
-                                            return range.mip == upload.mip && range.x == upload.x &&
-                                                   range.y == upload.y;
-                                        });
+        const auto found =
+            std::find_if(artifact.tiles.begin(), artifact.tiles.end(), [&](const texture_artifact_tile_range& range)
+                         { return range.mip == upload.mip && range.x == upload.x && range.y == upload.y; });
         if (found == artifact.tiles.end()) return false;
         expected_size = found->stored_size;
         expected_hash = found->content_hash;
@@ -1458,9 +1455,9 @@ render_object_pick_result renderer::last_object_pick() const
     return backend_->last_object_pick();
 }
 
-void renderer::request_frame_capture(render_frame_capture_request request)
+void renderer::request_frame_capture(const render_frame_capture_request& request)
 {
-    if (backend_) backend_->request_frame_capture(std::move(request));
+    if (backend_) backend_->request_frame_capture(request);
 }
 
 render_frame_capture_result renderer::last_frame_capture() const
@@ -1478,13 +1475,15 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
             {render_submit_error_code::backend_unavailable, "no render backend attached"});
 
     submit_texture_feedback(backend_->take_texture_feedback());
-    for (const auto& result : backend_->take_texture_stream_upload_results()) texture_residency_.complete(result);
+    for (const auto& result : backend_->take_texture_stream_upload_results())
+        texture_residency_.complete(result);
     auto evictions = texture_residency_.take_evictions();
     if (!evictions.empty())
     {
         render_event_buffer buffer;
         render_event_writer writer(buffer);
-        for (auto& eviction : evictions) writer.texture_stream_evict(std::move(eviction));
+        for (auto& eviction : evictions)
+            writer.texture_stream_evict(eviction);
         frame_queue_.submit(std::move(buffer));
     }
     auto packet = frame_queue_.commit(frame_index);

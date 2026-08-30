@@ -97,13 +97,11 @@ using texture_artifact_index_result = core::result<texture_artifact_index, textu
 [[nodiscard]] texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte> bytes);
 
 /** @brief Integrity-check and copy one conventional mip payload. */
-[[nodiscard]] texture_artifact_bytes_result read_texture_artifact_mip(std::span<const std::byte> bytes,
-                                                                      const texture_artifact_index& index,
-                                                                      std::uint32_t mip);
+[[nodiscard]] texture_artifact_bytes_result
+read_texture_artifact_mip(std::span<const std::byte> bytes, const texture_artifact_index& index, std::uint32_t mip);
 
 /** @brief Integrity-check and copy one virtual tile payload. */
-[[nodiscard]] texture_artifact_bytes_result read_texture_artifact_tile(std::span<const std::byte> bytes,
-                                                                       const texture_artifact_index& index,
-                                                                       std::uint32_t tile);
+[[nodiscard]] texture_artifact_bytes_result
+read_texture_artifact_tile(std::span<const std::byte> bytes, const texture_artifact_index& index, std::uint32_t tile);
 
 } // namespace arc::render

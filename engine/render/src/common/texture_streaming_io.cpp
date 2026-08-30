@@ -31,14 +31,14 @@ filesystem_texture_artifact_source::filesystem_texture_artifact_source(io::async
 }
 
 void filesystem_texture_artifact_source::register_file(texture_stream_source_id source, std::filesystem::path path,
-                                                        std::uint64_t size)
+                                                       std::uint64_t size)
 {
     register_package_range(source, std::move(path), 0, size);
 }
 
 void filesystem_texture_artifact_source::register_package_range(texture_stream_source_id source,
-                                                                 std::filesystem::path package,
-                                                                 std::uint64_t base_offset, std::uint64_t size)
+                                                                std::filesystem::path package,
+                                                                std::uint64_t base_offset, std::uint64_t size)
 {
     if (source == 0 || package.empty() || size == 0) return;
     implementation_->sources[source] = {.path = std::move(package), .base = base_offset, .size = size};
@@ -50,8 +50,8 @@ void filesystem_texture_artifact_source::unregister(texture_stream_source_id sou
 }
 
 jobs::job_future<io::file_result<io::file_buffer>>
-filesystem_texture_artifact_source::read_range(texture_stream_source_id source, std::uint64_t offset,
-                                                std::size_t bytes, jobs::cancellation_token cancellation)
+filesystem_texture_artifact_source::read_range(texture_stream_source_id source, std::uint64_t offset, std::size_t bytes,
+                                               jobs::cancellation_token cancellation)
 {
     const auto found = implementation_->sources.find(source);
     if (found == implementation_->sources.end() || bytes == 0 || offset > found->second.size ||
@@ -88,7 +88,7 @@ struct texture_streaming_controller::implementation
 };
 
 texture_streaming_controller::texture_streaming_controller(renderer& renderer, texture_artifact_source& source,
-                                                             std::uint32_t maximum_in_flight)
+                                                           std::uint32_t maximum_in_flight)
     : implementation_(std::make_unique<implementation>())
 {
     implementation_->target = &renderer;
@@ -98,10 +98,10 @@ texture_streaming_controller::texture_streaming_controller(renderer& renderer, t
 
 texture_streaming_controller::~texture_streaming_controller() = default;
 texture_streaming_controller::texture_streaming_controller(texture_streaming_controller&&) noexcept = default;
-texture_streaming_controller& texture_streaming_controller::operator=(texture_streaming_controller&&) noexcept =
-    default;
+texture_streaming_controller&
+texture_streaming_controller::operator=(texture_streaming_controller&&) noexcept = default;
 
-void texture_streaming_controller::update(jobs::cancellation_token cancellation)
+void texture_streaming_controller::update(const jobs::cancellation_token& cancellation)
 {
     auto& state = *implementation_;
     for (std::size_t index = 0; index < state.pending.size();)
@@ -125,8 +125,8 @@ void texture_streaming_controller::update(jobs::cancellation_token cancellation)
                                          .mip = pending.load.mip,
                                          .x = pending.load.x,
                                          .y = pending.load.y,
-                                         .bytes = std::make_shared<const std::vector<std::byte>>(
-                                             std::move(result).value()),
+                                         .bytes =
+                                             std::make_shared<const std::vector<std::byte>>(std::move(result).value()),
                                          .stored_bytes = pending.load.byte_size};
             if (!state.target->publish_texture_subresource(std::move(upload)))
             {
@@ -150,9 +150,8 @@ void texture_streaming_controller::update(jobs::cancellation_token cancellation)
     {
         if (state.pending.size() >= state.maximum_in_flight) break;
         auto future = state.source->read_range(load.source, load.byte_offset, load.byte_size, cancellation);
-        state.pending.push_back({.load = std::move(load),
-                                 .future = std::move(future),
-                                 .started = std::chrono::steady_clock::now()});
+        state.pending.push_back(
+            {.load = load, .future = std::move(future), .started = std::chrono::steady_clock::now()});
     }
     state.statistics.in_flight_reads = static_cast<std::uint32_t>(state.pending.size());
 }
