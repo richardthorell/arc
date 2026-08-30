@@ -1483,7 +1483,7 @@ render_submit_result renderer::render_frame(std::uint64_t frame_index, const ren
         render_event_buffer buffer;
         render_event_writer writer(buffer);
         for (auto& eviction : evictions)
-            writer.texture_stream_evict(std::move(eviction));
+            writer.texture_stream_evict(eviction);
         frame_queue_.submit(std::move(buffer));
     }
     auto packet = frame_queue_.commit(frame_index);

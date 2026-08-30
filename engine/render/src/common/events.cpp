@@ -161,7 +161,7 @@ void render_event_writer::texture_stream_upload(arc::render::texture_stream_uplo
 
 void render_event_writer::texture_stream_evict(arc::render::texture_stream_eviction eviction)
 {
-    push({.payload = texture_stream_evict_event{.eviction = std::move(eviction)}});
+    push({.payload = texture_stream_evict_event{.eviction = eviction}});
 }
 
 void render_event_writer::texture_destroy(texture_handle handle)

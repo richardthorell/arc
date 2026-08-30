@@ -56,6 +56,11 @@ struct texture_residency_manager::implementation
 
     struct resource_entry
     {
+        resource_entry(texture_handle resource, const streamed_texture_descriptor& streamed_descriptor)
+            : handle(resource), descriptor(streamed_descriptor)
+        {
+        }
+
         texture_handle handle{};
         streamed_texture_descriptor descriptor;
         std::vector<subresource_entry> mips;
@@ -201,7 +206,7 @@ void texture_residency_manager::register_resource(texture_handle resource,
                                                   const streamed_texture_descriptor& descriptor)
 {
     unregister_resource(resource);
-    implementation::resource_entry entry{.handle = resource, .descriptor = descriptor};
+    implementation::resource_entry entry(resource, descriptor);
     entry.mips.reserve(descriptor.artifact.mips.size());
     for (std::uint32_t mip = 0; mip < descriptor.artifact.mips.size(); ++mip)
     {

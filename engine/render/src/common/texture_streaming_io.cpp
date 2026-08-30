@@ -151,7 +151,7 @@ void texture_streaming_controller::update(jobs::cancellation_token cancellation)
         if (state.pending.size() >= state.maximum_in_flight) break;
         auto future = state.source->read_range(load.source, load.byte_offset, load.byte_size, cancellation);
         state.pending.push_back(
-            {.load = std::move(load), .future = std::move(future), .started = std::chrono::steady_clock::now()});
+            {.load = load, .future = std::move(future), .started = std::chrono::steady_clock::now()});
     }
     state.statistics.in_flight_reads = static_cast<std::uint32_t>(state.pending.size());
 }
