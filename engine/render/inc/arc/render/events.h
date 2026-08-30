@@ -9,6 +9,7 @@
 #include <arc/render/virtual_mesh.h>
 #include <arc/render/virtual_geometry.h>
 #include <arc/render/terrain.h>
+#include <arc/render/texture_streaming.h>
 #include <arc/math/matrix.h>
 #include <arc/math/vector.h>
 #include <arc/geometric/box.h>
@@ -46,6 +47,10 @@ enum class render_event_type : std::uint8_t
     lighting_geometry_upload,
     lighting_geometry_destroy,
     texture_upload,
+    texture_stream_register,
+    texture_stream_upload,
+    texture_stream_evict,
+    texture_destroy,
     material_upload,
     environment_upload,
     environment_destroy,
@@ -255,6 +260,32 @@ struct texture_upload_event
     std::string label;
 };
 
+/** @brief Register immutable streamable-texture metadata with the backend. */
+struct texture_stream_register_event
+{
+    texture_handle handle{};
+    std::shared_ptr<const streamed_texture_descriptor> descriptor;
+    std::string label;
+};
+
+/** @brief Publish one validated mip or virtual tile on render affinity. */
+struct texture_stream_upload_event
+{
+    texture_stream_upload upload;
+};
+
+/** @brief Retire one non-pinned streamed subresource after frame protection. */
+struct texture_stream_evict_event
+{
+    texture_stream_eviction eviction;
+};
+
+/** @brief Retire a conventional or streamable texture resource. */
+struct texture_destroy_event
+{
+    texture_handle handle{};
+};
+
 /**
  * @brief Upload or replace a renderer material description.
  */
@@ -441,7 +472,9 @@ using render_event_payload =
     std::variant<mesh_upload_event, mesh_destroy_event, virtual_mesh_upload_event, virtual_mesh_destroy_event,
                  virtual_geometry_page_upload_event, terrain_upload_event, terrain_height_update_event,
                  terrain_weight_update_event, terrain_destroy_event, lighting_geometry_upload_event,
-                 lighting_geometry_destroy_event, texture_upload_event, material_upload_event, environment_upload_event,
+                 lighting_geometry_destroy_event, texture_upload_event, texture_stream_register_event,
+                 texture_stream_upload_event, texture_stream_evict_event, texture_destroy_event, material_upload_event,
+                 environment_upload_event,
                  environment_destroy_event, viewport_resize_event, draw_mesh_event, directional_light_event,
                  point_light_event, spot_light_event, area_light_event, gpu_scene_update_event,
                  lighting_scene_update_event, render_world_event, debug_marker_event>;
@@ -541,6 +574,19 @@ public:
      * @brief Append a texture upload request.
      */
     void texture_upload(texture_handle handle, std::shared_ptr<const texture_data> texture, std::string label = {});
+
+    /** @brief Append a streamable texture registration. */
+    void texture_stream_register(texture_handle handle, std::shared_ptr<const streamed_texture_descriptor> descriptor,
+                                 std::string label = {});
+
+    /** @brief Append a validated streamable subresource upload. */
+    void texture_stream_upload(arc::render::texture_stream_upload upload);
+
+    /** @brief Append a streamed subresource eviction. */
+    void texture_stream_evict(arc::render::texture_stream_eviction eviction);
+
+    /** @brief Append a texture retirement request. */
+    void texture_destroy(texture_handle handle);
 
     /**
      * @brief Append a material upload request.

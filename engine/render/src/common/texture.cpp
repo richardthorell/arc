@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 #include <fstream>
 #include <initializer_list>
 #include <string_view>
@@ -147,6 +148,22 @@ std::vector<std::byte> read_binary_file(const std::filesystem::path& path)
     return stream ? bytes : std::vector<std::byte>{};
 }
 
+float srgb_to_linear(float value) noexcept
+{
+    return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+float linear_to_srgb(float value) noexcept
+{
+    value = std::clamp(value, 0.0f, 1.0f);
+    return value <= 0.0031308f ? value * 12.92f : 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
+}
+
+std::byte normalized_byte(float value) noexcept
+{
+    return static_cast<std::byte>(static_cast<std::uint8_t>(std::clamp(std::lround(value * 255.0f), 0l, 255l)));
+}
+
 void store_rgba8_mip_chain(texture_data& texture, const unsigned char* decoded, std::uint32_t width,
                            std::uint32_t height)
 {
@@ -171,25 +188,48 @@ void store_rgba8_mip_chain(texture_data& texture, const unsigned char* decoded, 
         {
             for (std::uint32_t x = 0; x < next_width; ++x)
             {
-                for (std::uint32_t channel = 0; channel < 4; ++channel)
+                float accumulated[4]{};
+                std::uint32_t samples{};
+                for (std::uint32_t oy = 0; oy < 2; ++oy)
                 {
-                    std::uint32_t total{};
-                    std::uint32_t samples{};
-                    for (std::uint32_t oy = 0; oy < 2; ++oy)
+                    const auto source_y = std::min(mip_height - 1u, y * 2u + oy);
+                    for (std::uint32_t ox = 0; ox < 2; ++ox)
                     {
-                        const auto source_y = std::min(mip_height - 1u, y * 2u + oy);
-                        for (std::uint32_t ox = 0; ox < 2; ++ox)
+                        const auto source_x = std::min(mip_width - 1u, x * 2u + ox);
+                        const auto source_index = (static_cast<std::size_t>(source_y) * mip_width + source_x) * 4u;
+                        for (std::uint32_t channel = 0; channel < 4; ++channel)
                         {
-                            const auto source_x = std::min(mip_width - 1u, x * 2u + ox);
-                            const auto source_index =
-                                (static_cast<std::size_t>(source_y) * mip_width + source_x) * 4u + channel;
-                            total += std::to_integer<unsigned char>(level[source_index]);
-                            ++samples;
+                            float value = static_cast<float>(std::to_integer<unsigned char>(level[source_index + channel])) /
+                                          255.0f;
+                            if (texture.semantic == texture_semantic::normal && channel < 3) value = value * 2.0f - 1.0f;
+                            else if (texture.color_space == texture_color_space::srgb && channel < 3)
+                                value = srgb_to_linear(value);
+                            accumulated[channel] += value;
                         }
+                        ++samples;
                     }
-                    const auto destination_index = (static_cast<std::size_t>(y) * next_width + x) * 4u + channel;
-                    next[destination_index] = static_cast<std::byte>(total / samples);
                 }
+                const auto destination_index = (static_cast<std::size_t>(y) * next_width + x) * 4u;
+                for (auto& value : accumulated) value /= static_cast<float>(samples);
+                if (texture.semantic == texture_semantic::normal)
+                {
+                    const float length = std::sqrt(accumulated[0] * accumulated[0] +
+                                                   accumulated[1] * accumulated[1] +
+                                                   accumulated[2] * accumulated[2]);
+                    if (length > 0.00001f)
+                        for (std::uint32_t channel = 0; channel < 3; ++channel)
+                            accumulated[channel] /= length;
+                    next[destination_index] = normalized_byte(accumulated[0] * 0.5f + 0.5f);
+                    next[destination_index + 1] = normalized_byte(accumulated[1] * 0.5f + 0.5f);
+                    next[destination_index + 2] = normalized_byte(accumulated[2] * 0.5f + 0.5f);
+                }
+                else
+                    for (std::uint32_t channel = 0; channel < 3; ++channel)
+                        next[destination_index + channel] =
+                            normalized_byte(texture.color_space == texture_color_space::srgb
+                                                ? linear_to_srgb(accumulated[channel])
+                                                : accumulated[channel]);
+                next[destination_index + 3] = normalized_byte(accumulated[3]);
             }
         }
         level = std::move(next);
@@ -446,6 +486,7 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
         texture.format == texture_format::rgba8_srgb ? texture_color_space::srgb : texture_color_space::linear;
     texture.semantic = lowercase(path.extension().string()) == ".hdr" ? texture_semantic::environment
                                                                       : texture_semantic::generic_color;
+    apply_filename_color_space(texture, path);
 
 #if defined(ARC_RENDER_HAS_STB)
     int width{};
@@ -488,7 +529,6 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
 #else
     texture.encoded = std::move(bytes);
 #endif
-    apply_filename_color_space(texture, path);
     return {.texture = std::move(texture),
 #if defined(ARC_RENDER_HAS_STB)
             .message = "loaded decoded texture"
@@ -520,7 +560,8 @@ jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_se
 bool is_supported_texture_asset(const std::filesystem::path& path)
 {
     const auto ext = lowercase(path.extension().string());
-    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".hdr" || ext == ".dds";
+    return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" || ext == ".bmp" ||
+           ext == ".hdr" || ext == ".dds";
 }
 
 } // namespace arc::render

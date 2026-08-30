@@ -12,6 +12,7 @@
 #include <arc/render/virtual_mesh.h>
 #include <arc/render/virtual_geometry.h>
 #include <arc/render/terrain.h>
+#include <arc/render/texture_streaming.h>
 
 #include <memory>
 #include <unordered_map>
@@ -41,6 +42,14 @@ struct renderer_config
     bool force_disable_temporal{};
     bool force_disable_dynamic_gi{};
     bool force_disable_hardware_ray_tracing{};
+    bool force_disable_texture_streaming{};
+    bool force_disable_virtual_textures{};
+    /** Zero selects the quality- and adapter-resolved budget. */
+    std::uint64_t texture_gpu_budget_bytes{};
+    /** Zero selects min(256 MiB, GPU budget / 4). */
+    std::uint64_t texture_cpu_cache_budget_bytes{};
+    /** Zero selects the resolved quality-tier frame upload cap. */
+    std::uint64_t texture_upload_budget_per_frame{};
 };
 
 /**
@@ -218,6 +227,22 @@ public:
      */
     bool update_texture(texture_handle handle, texture_data texture);
 
+    /** @brief Create a streamable ordinary 2D texture from a validated artifact index. */
+    [[nodiscard]] texture_handle create_streamed_texture(streamed_texture_descriptor descriptor);
+
+    /** @brief Replace a streamable texture generation while retaining its handle. */
+    bool update_streamed_texture(texture_handle handle, streamed_texture_descriptor descriptor);
+
+    /** @brief Retire a resident or streamed texture and reject its outstanding work. */
+    bool destroy_texture(texture_handle handle);
+
+    [[nodiscard]] texture_residency_manager& texture_residency() noexcept;
+    [[nodiscard]] const texture_residency_manager& texture_residency() const noexcept;
+    void submit_texture_feedback(const texture_feedback_readback& feedback);
+    [[nodiscard]] std::vector<texture_stream_load> take_texture_stream_loads();
+    [[nodiscard]] bool publish_texture_subresource(texture_stream_upload upload);
+    void fail_texture_subresource(const texture_stream_load& load);
+
     /**
      * @brief Create a renderer-owned material resource and enqueue its upload.
      */
@@ -357,6 +382,7 @@ private:
     render_frame_queue frame_queue_;
     gpu_scene gpu_scene_;
     virtual_geometry_residency_manager virtual_geometry_residency_;
+    texture_residency_manager texture_residency_;
     lighting_scene lighting_scene_;
     handle_pool mesh_handles_;
     handle_pool virtual_mesh_handles_;
@@ -374,6 +400,7 @@ private:
     std::unordered_map<std::uint64_t, terrain_selection_scratch> terrain_selection_scratch_;
     std::unordered_map<std::uint64_t, std::uint32_t> virtual_mesh_content_generations_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
+    std::unordered_map<std::uint64_t, std::shared_ptr<const streamed_texture_descriptor>> streamed_texture_data_;
     std::unordered_map<std::uint64_t, lighting_geometry_handle> mesh_lighting_geometry_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const lighting_geometry_descriptor>> lighting_geometry_data_;
     std::unordered_map<std::uint64_t, temporal_view_state> temporal_views_;

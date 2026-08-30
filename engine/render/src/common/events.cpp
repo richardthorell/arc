@@ -22,6 +22,11 @@ render_event_type render_event::type() const noexcept
     if (std::holds_alternative<lighting_geometry_destroy_event>(payload))
         return render_event_type::lighting_geometry_destroy;
     if (std::holds_alternative<texture_upload_event>(payload)) return render_event_type::texture_upload;
+    if (std::holds_alternative<texture_stream_register_event>(payload))
+        return render_event_type::texture_stream_register;
+    if (std::holds_alternative<texture_stream_upload_event>(payload)) return render_event_type::texture_stream_upload;
+    if (std::holds_alternative<texture_stream_evict_event>(payload)) return render_event_type::texture_stream_evict;
+    if (std::holds_alternative<texture_destroy_event>(payload)) return render_event_type::texture_destroy;
     if (std::holds_alternative<material_upload_event>(payload)) return render_event_type::material_upload;
     if (std::holds_alternative<environment_upload_event>(payload)) return render_event_type::environment_upload;
     if (std::holds_alternative<environment_destroy_event>(payload)) return render_event_type::environment_destroy;
@@ -139,6 +144,30 @@ void render_event_writer::texture_upload(texture_handle handle, std::shared_ptr<
     render_event event{};
     event.payload = texture_upload_event{.handle = handle, .texture = std::move(texture), .label = std::move(label)};
     buffer_->push(std::move(event));
+}
+
+void render_event_writer::texture_stream_register(texture_handle handle,
+                                                  std::shared_ptr<const streamed_texture_descriptor> descriptor,
+                                                  std::string label)
+{
+    push({.payload = texture_stream_register_event{.handle = handle,
+                                                   .descriptor = std::move(descriptor),
+                                                   .label = std::move(label)}});
+}
+
+void render_event_writer::texture_stream_upload(arc::render::texture_stream_upload upload)
+{
+    push({.payload = texture_stream_upload_event{.upload = std::move(upload)}});
+}
+
+void render_event_writer::texture_stream_evict(arc::render::texture_stream_eviction eviction)
+{
+    push({.payload = texture_stream_evict_event{.eviction = std::move(eviction)}});
+}
+
+void render_event_writer::texture_destroy(texture_handle handle)
+{
+    push({.payload = texture_destroy_event{.handle = handle}});
 }
 
 void render_event_writer::material_upload(material_handle handle, std::shared_ptr<const material_descriptor> material,

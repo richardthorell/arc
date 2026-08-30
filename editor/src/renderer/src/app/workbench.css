@@ -1176,6 +1176,32 @@
   overflow-wrap: anywhere;
   color: #a9d5f4;
 }
+
+.content-texture-streaming {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #2f3d49;
+  border-radius: 4px;
+  background: #111920;
+}
+
+.content-texture-streaming label {
+  display: grid;
+  gap: 4px;
+}
+
+.content-texture-streaming select {
+  min-height: 28px;
+  border: 1px solid #3a4a58;
+  border-radius: 3px;
+  color: #d7e2ea;
+  background: #18232c;
+}
+
+.content-texture-streaming-error {
+  color: #ee9a90;
+}
 .content-asset-details details {
   display: grid;
   gap: 4px;

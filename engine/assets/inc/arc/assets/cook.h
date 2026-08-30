@@ -337,6 +337,7 @@ struct asset_cook_context
     asset_snapshot asset;
     source_asset_data source;
     cook_target target;
+    std::uint32_t settings_version{1};
     std::string canonical_settings{"{}"};
     std::vector<asset_snapshot> dependencies;
     jobs::cancellation_token cancellation;

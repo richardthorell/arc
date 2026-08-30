@@ -270,6 +270,12 @@ struct render_capabilities
     bool compute_shaders{};
     bool storage_buffers{};
     bool storage_images{};
+    /** @brief Backend can grow and shrink real images for conventional mip streaming. */
+    bool texture_mip_streaming{};
+    /** @brief Backend can asynchronously record desired texture mips/pages. */
+    bool virtual_texture_feedback{};
+    /** @brief Backend has executable software page-table virtual sampling. */
+    bool virtual_texture_sampling{};
     bool shader_draw_parameters{};
     /** @brief Backend has an executable GPU Scene visibility and indirect draw pipeline. */
     bool gpu_scene_indirect{};
@@ -373,6 +379,8 @@ struct render_feature_set
     anti_aliasing_method anti_aliasing{anti_aliasing_method::disabled};
     bool async_compute{};
     bool virtual_geometry{};
+    bool texture_streaming{};
+    bool virtual_textures{};
     virtual_geometry_raster_path virtual_geometry_path{virtual_geometry_raster_path::unavailable};
     bool virtual_shadow_maps{};
     bool virtual_shadow_virtual_geometry{};
@@ -959,6 +967,30 @@ struct render_terrain_profile
     double selection_milliseconds{};
 };
 
+/** @brief Per-frame common texture-streaming residency and budget telemetry. */
+struct render_texture_streaming_profile
+{
+    std::uint64_t gpu_budget_bytes{};
+    std::uint64_t gpu_resident_bytes{};
+    std::uint64_t cpu_budget_bytes{};
+    std::uint64_t cpu_cached_bytes{};
+    std::uint64_t upload_budget_bytes{};
+    std::uint64_t uploaded_bytes{};
+    std::uint32_t streamed_textures{};
+    std::uint32_t virtual_textures{};
+    std::uint32_t resident_mips{};
+    std::uint32_t resident_pages{};
+    std::uint32_t requested_subresources{};
+    std::uint32_t failed_subresources{};
+    std::uint32_t evictions{};
+    std::uint32_t deduplicated_requests{};
+    std::uint32_t stale_requests{};
+    std::uint32_t feedback_overflow{};
+    std::uint32_t parent_fallbacks{};
+    bool over_budget{};
+    std::string fallback_reason;
+};
+
 /**
  * @brief Backend frame profile data exposed to tools such as the editor profiler.
  */
@@ -974,6 +1006,7 @@ struct render_backend_frame_profile
     render_gpu_scene_profile gpu_scene;
     render_virtual_geometry_profile virtual_geometry;
     render_terrain_profile terrain;
+    render_texture_streaming_profile texture_streaming;
     render_indirect_lighting_profile indirect_lighting;
     render_temporal_profile temporal;
     resolved_render_config configuration;
@@ -1172,6 +1205,12 @@ public:
      * @brief Return the most recent backend frame profile.
      */
     [[nodiscard]] virtual render_backend_frame_profile last_frame_profile() const;
+
+    /** @brief Take feedback whose per-frame GPU readback fence has completed. */
+    [[nodiscard]] virtual texture_feedback_readback take_texture_feedback();
+
+    /** @brief Take generation-safe publication acknowledgements from the backend. */
+    [[nodiscard]] virtual std::vector<texture_stream_upload_result> take_texture_stream_upload_results();
 
     /**
      * @brief Request an async ObjectID readback at viewport pixel coordinates.

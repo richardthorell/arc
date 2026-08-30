@@ -1053,6 +1053,8 @@ std::string command_type(const host_command_payload& payload)
                 return "scene.openRecovery";
             else if constexpr (std::is_same_v<type, host_asset_reimport_command>)
                 return "asset.reimport";
+            else if constexpr (std::is_same_v<type, host_set_texture_streaming_mode_command>)
+                return "asset.setTextureStreamingMode";
             else if constexpr (std::is_same_v<type, host_shader_compile_command>)
                 return "shader.compile";
             else if constexpr (std::is_same_v<type, host_asset_cancel_import_command>)
@@ -2048,7 +2050,15 @@ std::string to_json(const host_project_assets_snapshot& snapshot)
         }
         json += "],\"readOnly\":" + bool_json(asset.read_only) +
                 ",\"imported\":" + bool_json(asset.imported) +
-                ",\"importRunning\":" + bool_json(asset.import_running) + '}';
+                ",\"importRunning\":" + bool_json(asset.import_running) +
+                ",\"width\":" + std::to_string(asset.width) + ",\"height\":" + std::to_string(asset.height) +
+                ",\"textureFormat\":" + quote(asset.texture_format) +
+                ",\"mipCount\":" + std::to_string(asset.mip_count) +
+                ",\"tileCount\":" + std::to_string(asset.tile_count) +
+                ",\"streamingMode\":" + quote(asset.streaming_mode) +
+                ",\"settingsVersion\":" + std::to_string(asset.settings_version) +
+                ",\"artifactSize\":" + std::to_string(asset.artifact_size) +
+                ",\"streamingEligibilityError\":" + quote(asset.streaming_eligibility_error) + '}';
     }
     json += "]}";
     return json;
@@ -2178,7 +2188,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         command.original_path = std::move(original_path);
         envelope.payload = std::move(command);
     }
-    else if (type == "asset.reimport" || type == "asset.cancelImport")
+    else if (type == "asset.reimport" || type == "asset.cancelImport" ||
+             type == "asset.setTextureStreamingMode")
     {
         std::string guid;
         if (!string_value(payload, "guid", guid) || guid.empty())
@@ -2188,6 +2199,17 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         }
         if (type == "asset.reimport")
             envelope.payload = host_asset_reimport_command{.guid = std::move(guid)};
+        else if (type == "asset.setTextureStreamingMode")
+        {
+            std::string mode;
+            if (!string_value(payload, "mode", mode) || mode.empty())
+            {
+                error = "Texture streaming mode command requires a mode";
+                return false;
+            }
+            envelope.payload = host_set_texture_streaming_mode_command{.guid = std::move(guid),
+                                                                        .mode = std::move(mode)};
+        }
         else
             envelope.payload = host_asset_cancel_import_command{.guid = std::move(guid)};
     }

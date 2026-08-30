@@ -202,6 +202,7 @@ cook_result asset_cooker::cook(const cook_request& request)
     cook_result result;
     result.manifest.target = request.target;
     result.manifest.roots = request.roots;
+    const auto registry = implementation_->assets->snapshot();
     if (request.roots.empty())
     {
         result.error = {.code = asset_error_code::invalid_request, .message = "Cook request has no root assets"};
@@ -296,6 +297,16 @@ cook_result asset_cooker::cook(const cook_request& request)
             }
         std::sort(dependency_hashes.begin(), dependency_hashes.end());
         const auto& descriptor = processor->descriptor();
+        const auto absolute_source = snapshot->source_path.is_absolute()
+                                         ? snapshot->source_path
+                                         : registry.project_root / snapshot->source_path;
+        auto settings_version = 1u;
+        std::string canonical_settings = "{}";
+        if (const auto metadata = load_asset_metadata(metadata_path_for(absolute_source)); metadata)
+        {
+            settings_version = metadata.value().settings_version;
+            canonical_settings = metadata.value().canonical_settings;
+        }
         const auto key = make_asset_build_key({.source_hash = snapshot->source_hash,
                                                .dependency_hashes = dependency_hashes,
                                                .importer = snapshot->importer,
@@ -304,7 +315,7 @@ cook_result asset_cooker::cook(const cook_request& request)
                                                .processor_version = descriptor.version,
                                                .schema = descriptor.schema,
                                                .schema_version = descriptor.schema_version,
-                                               .canonical_settings = "{}",
+                                               .canonical_settings = canonical_settings,
                                                .toolchain_fingerprint = processor->toolchain_fingerprint(),
                                                .target = request.target});
         build_hashes.push_back(key);
@@ -364,6 +375,8 @@ cook_result asset_cooker::cook(const cook_request& request)
         asset_cook_context context{.asset = *snapshot,
                                    .source = *loaded.asset,
                                    .target = request.target,
+                                   .settings_version = settings_version,
+                                   .canonical_settings = std::move(canonical_settings),
                                    .dependencies = std::move(dependencies),
                                    .cancellation = request.cancellation};
         auto cooked = processor->cook(context);

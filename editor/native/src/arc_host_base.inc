@@ -18,6 +18,7 @@
 #include <arc/framework/framework.h>
 #include <arc/project/project.h>
 #include <arc/render/render.h>
+#include <arc/render_tools/texture_cooker.h>
 #include <arc/scene/scene.h>
 
 #include <algorithm>
@@ -209,6 +210,7 @@ template <class Command> constexpr bool is_project_mutation() noexcept
            std::is_same_v<Command, host_save_scene_as_command> ||
            std::is_same_v<Command, host_reload_project_module_command> ||
            std::is_same_v<Command, host_asset_reimport_command> ||
+           std::is_same_v<Command, host_set_texture_streaming_mode_command> ||
            std::is_same_v<Command, host_asset_cancel_import_command> ||
            std::is_same_v<Command, host_asset_move_command> || std::is_same_v<Command, host_asset_rename_command>;
 }
@@ -2027,6 +2029,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                                to_json_string(classification) + ",\"message\":" + to_json_string(result.message) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_asset_reimport_command> ||
+                               std::is_same_v<command_type, host_set_texture_streaming_mode_command> ||
                                std::is_same_v<command_type, host_asset_cancel_import_command> ||
                                std::is_same_v<command_type, host_asset_move_command> ||
                                std::is_same_v<command_type, host_asset_rename_command>)
@@ -2042,6 +2045,34 @@ host_response arc_host::execute(const host_command_envelope& command)
                     const auto job = state_->asset_registry->reimport(*guid, assets::asset_streaming_priority::high);
                     if (!job.valid()) return fail("Asset could not be queued for reimport");
                     return success("{\"queued\":true}");
+                }
+                else if constexpr (std::is_same_v<command_type, host_set_texture_streaming_mode_command>)
+                {
+                    const auto asset = state_->asset_registry->find(*guid);
+                    if (!asset) return fail("Texture asset was not found");
+                    if (asset->read_only) return fail("Built-in assets are read-only");
+                    if (asset->type != assets::asset_types::texture_2d) return fail("Asset is not a 2D texture");
+                    render::tools::texture_import_settings settings;
+                    if (payload.mode == "resident")
+                        settings.streaming_mode = render::texture_streaming_mode::resident;
+                    else if (payload.mode == "streamed_mips")
+                        settings.streaming_mode = render::texture_streaming_mode::streamed_mips;
+                    else if (payload.mode == "virtual_tiles")
+                        settings.streaming_mode = render::texture_streaming_mode::virtual_tiles;
+                    else
+                        return fail("Unknown texture streaming mode");
+                    const auto absolute_source = state_->project.root / asset->source_path;
+                    const auto metadata_path = assets::metadata_path_for(absolute_source);
+                    auto metadata = assets::load_asset_metadata(metadata_path);
+                    if (!metadata) return fail(metadata.error().message);
+                    metadata.value().settings_version = render::tools::texture_import_settings::current_version;
+                    metadata.value().canonical_settings =
+                        render::tools::serialize_texture_import_settings(settings);
+                    const auto saved = assets::save_asset_metadata(metadata_path, metadata.value());
+                    if (!saved) return fail(saved.error().message);
+                    const auto job = state_->asset_registry->reimport(*guid, assets::asset_streaming_priority::high);
+                    if (!job.valid()) return fail("Texture could not be queued for reimport");
+                    return success("{\"queued\":true,\"mode\":" + to_json_string(payload.mode) + '}');
                 }
                 else if constexpr (std::is_same_v<command_type, host_asset_cancel_import_command>)
                 {
@@ -5004,6 +5035,28 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             if (type == arc::assets::asset_types::static_mesh) return "mesh";
             return "unknown";
         };
+        const auto texture_format_name = [](render::texture_format format)
+        {
+            switch (format)
+            {
+                case render::texture_format::rgba8_unorm: return "RGBA8 UNorm";
+                case render::texture_format::rgba8_srgb: return "RGBA8 sRGB";
+                case render::texture_format::rgba16f: return "RGBA16F";
+                case render::texture_format::rgba32f: return "RGBA32F";
+                case render::texture_format::bc1_rgba_unorm: return "BC1 UNorm";
+                case render::texture_format::bc1_rgba_srgb: return "BC1 sRGB";
+                case render::texture_format::bc2_rgba_unorm: return "BC2 UNorm";
+                case render::texture_format::bc2_rgba_srgb: return "BC2 sRGB";
+                case render::texture_format::bc3_rgba_unorm: return "BC3 UNorm";
+                case render::texture_format::bc3_rgba_srgb: return "BC3 sRGB";
+                case render::texture_format::bc4_r_unorm: return "BC4";
+                case render::texture_format::bc5_rg_unorm: return "BC5";
+                case render::texture_format::bc6h_rgb_ufloat: return "BC6H";
+                case render::texture_format::bc7_rgba_unorm: return "BC7 UNorm";
+                case render::texture_format::bc7_rgba_srgb: return "BC7 sRGB";
+            }
+            return "Unknown";
+        };
         for (const auto& asset : state_->asset_registry->search())
         {
             const bool running =
@@ -5025,6 +5078,53 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                                            .pins = asset.pins,
                                            .diagnostic = asset.diagnostics.empty() ? std::string{}
                                                                                    : asset.diagnostics.back().message};
+            if (asset.type == arc::assets::asset_types::texture_2d)
+            {
+                const auto metadata_path = assets::metadata_path_for(absolute_path);
+                if (const auto metadata = assets::load_asset_metadata(metadata_path); metadata)
+                {
+                    host_asset.settings_version = metadata.value().settings_version;
+                    const auto settings = render::tools::parse_texture_import_settings(
+                        metadata.value().canonical_settings, metadata.value().settings_version);
+                    if (settings)
+                        host_asset.streaming_mode =
+                            settings.value().streaming_mode == render::texture_streaming_mode::streamed_mips
+                                ? "streamed_mips"
+                            : settings.value().streaming_mode == render::texture_streaming_mode::virtual_tiles
+                                ? "virtual_tiles"
+                                : "resident";
+                    else
+                        host_asset.streaming_eligibility_error = settings.error();
+                }
+                if (!render::is_supported_texture_asset(absolute_path) || absolute_path.extension() == ".hdr")
+                    host_asset.streaming_eligibility_error =
+                        "Streaming supports DDS, PNG, JPEG, TGA, and BMP ordinary 2D textures";
+                else
+                {
+                    const auto texture = render::load_texture_asset(absolute_path);
+                    if (texture.succeeded())
+                    {
+                        host_asset.width = texture.texture.width;
+                        host_asset.height = texture.texture.height;
+                        host_asset.texture_format = texture_format_name(texture.texture.format);
+                        host_asset.mip_count = static_cast<std::uint32_t>(texture.texture.mips.size());
+                        if (host_asset.streaming_mode == "virtual_tiles")
+                            for (const auto& mip : texture.texture.mips)
+                            {
+                                if (mip.width <= render::virtual_texture_tile_size &&
+                                    mip.height <= render::virtual_texture_tile_size)
+                                    break;
+                                host_asset.tile_count +=
+                                    ((mip.width + render::virtual_texture_tile_size - 1u) /
+                                     render::virtual_texture_tile_size) *
+                                    ((mip.height + render::virtual_texture_tile_size - 1u) /
+                                     render::virtual_texture_tile_size);
+                            }
+                    }
+                    else
+                        host_asset.streaming_eligibility_error = texture.message;
+                }
+            }
             host_asset.dependencies.reserve(asset.dependencies.size());
             for (const auto dependency : asset.dependencies)
                 host_asset.dependencies.push_back(arc::assets::to_string(dependency));

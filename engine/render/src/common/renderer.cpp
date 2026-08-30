@@ -17,6 +17,7 @@ namespace
 {
 
 constexpr std::uint64_t gibibyte = 1024ull * 1024ull * 1024ull;
+constexpr std::uint64_t mebibyte = 1024ull * 1024ull;
 
 float halton(std::uint64_t index, std::uint32_t base) noexcept
 {
@@ -34,6 +35,30 @@ float halton(std::uint64_t index, std::uint32_t base) noexcept
 std::uint64_t renderer_resource_key(resource_handle handle) noexcept
 {
     return (static_cast<std::uint64_t>(handle.generation) << 32u) | handle.index;
+}
+
+std::uint64_t texture_content_hash(std::span<const std::byte> bytes) noexcept
+{
+    std::uint64_t hash = 1469598103934665603ull;
+    for (const auto value : bytes)
+    {
+        hash ^= std::to_integer<std::uint8_t>(value);
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+bool valid_streamed_texture_descriptor(const streamed_texture_descriptor& descriptor) noexcept
+{
+    const auto& texture = descriptor.texture;
+    const auto& artifact = descriptor.artifact;
+    return descriptor.mode != texture_streaming_mode::resident && descriptor.source != 0 &&
+           descriptor.content_generation != 0 && texture.dimension == texture_dimension::texture_2d &&
+           texture.depth == 1 && texture.width > 0 && texture.height > 0 && texture.mip_levels > 0 &&
+           artifact.schema_version == texture_artifact_schema_version && artifact.width == texture.width &&
+           artifact.height == texture.height && artifact.mip_count == texture.mip_levels &&
+           artifact.format == texture.format && artifact.mips.size() == artifact.mip_count &&
+           artifact.tail_first_mip < artifact.mip_count;
 }
 
 } // namespace
@@ -149,6 +174,11 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
             std::min(result.lighting_scene_gpu_budget_bytes, capabilities.memory_budget * percentage / 100u);
     }
     const bool optional_features = !config.force_disable_optional_features;
+    const bool texture_streaming = !config.force_disable_texture_streaming && capabilities.texture_mip_streaming;
+    const bool virtual_textures = texture_streaming && !config.force_disable_virtual_textures && optional_features &&
+                                  capabilities.virtual_texture_feedback && capabilities.virtual_texture_sampling &&
+                                  capabilities.compute_shaders && capabilities.storage_buffers &&
+                                  capabilities.descriptor_indexing;
     const bool gpu_scene_supported = capabilities.compute_shaders && capabilities.storage_buffers &&
                                      capabilities.shader_draw_parameters && capabilities.draw_indirect &&
                                      capabilities.gpu_scene_indirect;
@@ -224,6 +254,8 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                        .async_compute = optional_features && !config.force_disable_async_compute &&
                                         profile.prefer_async_compute && capabilities.dedicated_compute_queue,
                        .virtual_geometry = virtual_geometry_path != virtual_geometry_raster_path::unavailable,
+                       .texture_streaming = texture_streaming,
+                       .virtual_textures = virtual_textures,
                        .virtual_geometry_path = virtual_geometry_path,
                        .virtual_shadow_maps = virtual_shadow_maps,
                        .virtual_shadow_virtual_geometry = virtual_shadow_virtual_geometry,
@@ -245,6 +277,13 @@ resolved_render_config resolve_render_config(const renderer_config& config, cons
                        .ray_tracing = capabilities.ray_tracing,
                        .variable_rate_shading = optional_features && capabilities.variable_rate_shading,
                        .submission = submission};
+
+    if (!texture_streaming)
+        result.fallback_reasons.push_back(
+            "executable mip streaming is unavailable or disabled; streamable textures require resident upload");
+    if (!virtual_textures)
+        result.fallback_reasons.push_back(
+            "virtual-texture feedback or sampling is unavailable or disabled; using conventional mip streaming");
 
     if (config.force_disable_optional_features)
         result.fallback_reasons.push_back("optional GPU features were disabled by renderer configuration");
@@ -507,6 +546,16 @@ render_backend_frame_profile render_backend::last_frame_profile() const
     return {};
 }
 
+texture_feedback_readback render_backend::take_texture_feedback()
+{
+    return {};
+}
+
+std::vector<texture_stream_upload_result> render_backend::take_texture_stream_upload_results()
+{
+    return {};
+}
+
 void render_backend::request_object_pick(render_object_pick_request) {}
 
 render_object_pick_result render_backend::last_object_pick() const
@@ -583,6 +632,31 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         if (const auto device_budget = backend_->capabilities().memory_budget; device_budget != 0)
             residency.gpu_budget_bytes = std::min(residency.gpu_budget_bytes, device_budget / 10u);
         virtual_geometry_residency_.configure(residency);
+        const auto texture_quality_budget =
+            resolved_config_.quality == render_quality_tier::low      ? 256ull * mebibyte
+            : resolved_config_.quality == render_quality_tier::medium ? 512ull * mebibyte
+            : resolved_config_.quality == render_quality_tier::high   ? 1024ull * mebibyte
+                                                                       : 2048ull * mebibyte;
+        const auto adapter_memory = backend_->capabilities().memory_budget != 0
+                                        ? backend_->capabilities().memory_budget
+                                        : backend_->capabilities().dedicated_video_memory;
+        auto texture_gpu_budget = config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes
+                                                                        : texture_quality_budget;
+        if (adapter_memory != 0)
+            texture_gpu_budget = std::min(texture_gpu_budget, std::max(128ull * mebibyte, adapter_memory / 4u));
+        const auto quality_upload_budget = resolved_config_.quality == render_quality_tier::low       ? 32ull * mebibyte
+                                           : resolved_config_.quality == render_quality_tier::ultra ? 128ull * mebibyte
+                                                                                                     : 64ull * mebibyte;
+        texture_residency_.configure(
+            {.gpu_budget_bytes = texture_gpu_budget,
+             .cpu_cache_budget_bytes = config_.texture_cpu_cache_budget_bytes != 0
+                                           ? config_.texture_cpu_cache_budget_bytes
+                                           : std::min(256ull * mebibyte, texture_gpu_budget / 4u),
+             .upload_budget_per_frame = config_.texture_upload_budget_per_frame != 0
+                                            ? config_.texture_upload_budget_per_frame
+                                            : quality_upload_budget,
+             .maximum_requests_per_frame = 2048,
+             .protected_frame_count = 30});
         lighting_scene_config lighting_config;
         lighting_config.gpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes;
         lighting_config.compressed_cpu_budget_bytes = resolved_config_.lighting_scene_gpu_budget_bytes / 3u;
@@ -994,6 +1068,123 @@ bool renderer::update_texture(texture_handle handle, texture_data texture)
     return true;
 }
 
+texture_handle renderer::create_streamed_texture(streamed_texture_descriptor descriptor)
+{
+    if (!valid_streamed_texture_descriptor(descriptor)) return {};
+    if (descriptor.mode == texture_streaming_mode::virtual_tiles && backend_ &&
+        !resolved_config_.features.virtual_textures)
+        descriptor.mode = texture_streaming_mode::streamed_mips;
+
+    const texture_handle handle = texture_handles_.allocate();
+    auto shared_descriptor = std::make_shared<streamed_texture_descriptor>(std::move(descriptor));
+    streamed_texture_data_[renderer_resource_key(handle)] = shared_descriptor;
+    texture_residency_.register_resource(handle, *shared_descriptor);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.texture_stream_register(handle, shared_descriptor, shared_descriptor->texture.name);
+    frame_queue_.submit(std::move(buffer));
+    return handle;
+}
+
+bool renderer::update_streamed_texture(texture_handle handle, streamed_texture_descriptor descriptor)
+{
+    if (!texture_handles_.alive(handle) || !valid_streamed_texture_descriptor(descriptor)) return false;
+    const auto key = renderer_resource_key(handle);
+    const auto previous = streamed_texture_data_.find(key);
+    if (previous == streamed_texture_data_.end()) return false;
+    descriptor.content_generation =
+        std::max(descriptor.content_generation, previous->second->content_generation + 1u);
+    if (descriptor.mode == texture_streaming_mode::virtual_tiles && backend_ &&
+        !resolved_config_.features.virtual_textures)
+        descriptor.mode = texture_streaming_mode::streamed_mips;
+    auto shared_descriptor = std::make_shared<streamed_texture_descriptor>(std::move(descriptor));
+    previous->second = shared_descriptor;
+    texture_residency_.register_resource(handle, *shared_descriptor);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.texture_stream_register(handle, shared_descriptor, shared_descriptor->texture.name);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+bool renderer::destroy_texture(texture_handle handle)
+{
+    if (!texture_handles_.release(handle)) return false;
+    texture_residency_.unregister_resource(handle);
+    streamed_texture_data_.erase(renderer_resource_key(handle));
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.texture_destroy(handle);
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+texture_residency_manager& renderer::texture_residency() noexcept
+{
+    return texture_residency_;
+}
+
+const texture_residency_manager& renderer::texture_residency() const noexcept
+{
+    return texture_residency_;
+}
+
+void renderer::submit_texture_feedback(const texture_feedback_readback& feedback)
+{
+    texture_residency_.request(feedback.mips, feedback.tiles);
+    texture_residency_.note_feedback_overflow(feedback.overflow);
+}
+
+std::vector<texture_stream_load> renderer::take_texture_stream_loads()
+{
+    auto result = texture_residency_.take_load_requests();
+    for (const auto& load : result) texture_residency_.mark_loading(load);
+    return result;
+}
+
+bool renderer::publish_texture_subresource(texture_stream_upload upload)
+{
+    if (!upload.resource.valid() || !upload.bytes || upload.bytes->empty()) return false;
+    const auto resource = streamed_texture_data_.find(renderer_resource_key(upload.resource));
+    if (resource == streamed_texture_data_.end() ||
+        resource->second->content_generation != upload.content_generation)
+        return false;
+    const auto& artifact = resource->second->artifact;
+    std::uint32_t expected_size{};
+    std::uint64_t expected_hash{};
+    if (upload.kind == texture_subresource_kind::mip)
+    {
+        if (upload.mip >= artifact.mips.size()) return false;
+        expected_size = artifact.mips[upload.mip].stored_size;
+        expected_hash = artifact.mips[upload.mip].content_hash;
+    }
+    else
+    {
+        const auto found = std::find_if(artifact.tiles.begin(), artifact.tiles.end(),
+                                        [&](const texture_artifact_tile_range& range)
+                                        {
+                                            return range.mip == upload.mip && range.x == upload.x &&
+                                                   range.y == upload.y;
+                                        });
+        if (found == artifact.tiles.end()) return false;
+        expected_size = found->stored_size;
+        expected_hash = found->content_hash;
+    }
+    if (upload.bytes->size() != expected_size || texture_content_hash(*upload.bytes) != expected_hash) return false;
+    upload.stored_bytes = expected_size;
+    texture_residency_.mark_uploading(upload);
+    render_event_buffer buffer;
+    render_event_writer writer(buffer);
+    writer.texture_stream_upload(std::move(upload));
+    frame_queue_.submit(std::move(buffer));
+    return true;
+}
+
+void renderer::fail_texture_subresource(const texture_stream_load& load)
+{
+    texture_residency_.fail(load);
+}
+
 material_handle renderer::create_material(material_descriptor material)
 {
     const material_handle handle = material_handles_.allocate();
@@ -1211,6 +1402,30 @@ render_backend_frame_profile renderer::last_frame_profile() const
     if (!result.virtual_geometry.enabled && result.virtual_geometry.fallback_reason.empty())
         result.virtual_geometry.fallback_reason =
             "virtual geometry is unavailable for the resolved renderer configuration; using conventional LODs";
+    const auto textures = texture_residency_.snapshot();
+    result.texture_streaming = {.gpu_budget_bytes = textures.gpu_budget_bytes,
+                                .gpu_resident_bytes = textures.gpu_resident_bytes,
+                                .cpu_budget_bytes = textures.cpu_cache_budget_bytes,
+                                .cpu_cached_bytes = textures.cpu_cached_bytes,
+                                .upload_budget_bytes = textures.upload_budget_per_frame,
+                                .uploaded_bytes = textures.uploaded_bytes,
+                                .streamed_textures = textures.streamed_mip_resources,
+                                .virtual_textures = textures.virtual_texture_resources,
+                                .resident_mips = textures.resident_mips,
+                                .resident_pages = textures.resident_tiles,
+                                .requested_subresources = textures.requested_subresources,
+                                .failed_subresources = textures.failed_subresources,
+                                .evictions = textures.evictions,
+                                .deduplicated_requests = textures.deduplicated_requests,
+                                .stale_requests = textures.stale_requests,
+                                .feedback_overflow = textures.feedback_overflow,
+                                .parent_fallbacks = textures.parent_fallbacks,
+                                .over_budget = textures.over_budget,
+                                .fallback_reason = !resolved_config_.features.texture_streaming
+                                                       ? "texture streaming unavailable or disabled"
+                                                   : !resolved_config_.features.virtual_textures
+                                                       ? "virtual textures use conventional mip streaming"
+                                                       : std::string{}};
     const auto lighting = lighting_scene_.snapshot();
     result.indirect_lighting = {.enabled = resolved_config_.indirect_lighting_path != lighting_trace_path::baked_probe,
                                 .trace_path = resolved_config_.indirect_lighting_path,
@@ -1257,10 +1472,22 @@ render_frame_capture_result renderer::last_frame_capture() const
 render_submit_result renderer::render_frame(std::uint64_t frame_index, const render_graph& graph)
 {
     virtual_geometry_residency_.begin_frame(frame_index);
-    auto packet = frame_queue_.commit(frame_index);
+    texture_residency_.begin_frame(frame_index);
     if (!backend_)
         return render_submit_result::failure(
             {render_submit_error_code::backend_unavailable, "no render backend attached"});
+
+    submit_texture_feedback(backend_->take_texture_feedback());
+    for (const auto& result : backend_->take_texture_stream_upload_results()) texture_residency_.complete(result);
+    auto evictions = texture_residency_.take_evictions();
+    if (!evictions.empty())
+    {
+        render_event_buffer buffer;
+        render_event_writer writer(buffer);
+        for (auto& eviction : evictions) writer.texture_stream_evict(std::move(eviction));
+        frame_queue_.submit(std::move(buffer));
+    }
+    auto packet = frame_queue_.commit(frame_index);
 
     const bool temporal_graph = graph.find_resource("temporal_color_history") != nullptr;
     render_graph_compile_options graph_options{.frame_index = frame_index,

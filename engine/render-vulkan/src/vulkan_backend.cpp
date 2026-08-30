@@ -597,6 +597,14 @@ public:
             }
             else if (const auto* texture = std::get_if<texture_upload_event>(&event.payload))
                 upload_texture(*texture);
+            else if (const auto* streamed_registration = std::get_if<texture_stream_register_event>(&event.payload))
+                register_streamed_texture(*streamed_registration);
+            else if (const auto* streamed_upload = std::get_if<texture_stream_upload_event>(&event.payload))
+                upload_streamed_texture(*streamed_upload);
+            else if (const auto* streamed_eviction = std::get_if<texture_stream_evict_event>(&event.payload))
+                evict_streamed_texture(*streamed_eviction);
+            else if (const auto* destroyed_texture = std::get_if<texture_destroy_event>(&event.payload))
+                retire_texture(destroyed_texture->handle);
             else if (const auto* material = std::get_if<material_upload_event>(&event.payload))
             {
                 upload_material(*material);
@@ -630,6 +638,12 @@ public:
                 pending_debug_markers_.push_back(marker->label);
         }
         if (!flush_upload_batch()) upload_batch_failed_ = true;
+        if (upload_batch_failed_)
+            for (auto& result : frame_texture_upload_results_) result.succeeded = false;
+        completed_texture_upload_results_.insert(completed_texture_upload_results_.end(),
+                                                 frame_texture_upload_results_.begin(),
+                                                 frame_texture_upload_results_.end());
+        frame_texture_upload_results_.clear();
 
         last_profile_.graph = graph;
         last_profile_.summary.clear();
@@ -737,6 +751,20 @@ public:
     render_backend_frame_profile last_frame_profile() const override
     {
         return last_profile_;
+    }
+
+    texture_feedback_readback take_texture_feedback() override
+    {
+        auto result = std::move(completed_texture_feedback_);
+        completed_texture_feedback_ = {};
+        return result;
+    }
+
+    std::vector<texture_stream_upload_result> take_texture_stream_upload_results() override
+    {
+        auto result = std::move(completed_texture_upload_results_);
+        completed_texture_upload_results_.clear();
+        return result;
     }
 
     void request_object_pick(render_object_pick_request request) override
@@ -1503,6 +1531,8 @@ private:
     struct gpu_texture
     {
         texture_data data;
+        streamed_texture_descriptor streaming;
+        std::vector<std::shared_ptr<const std::vector<std::byte>>> streamed_mips;
         VkImage image{};
         VmaAllocation allocation{};
         VkImageView view{};
@@ -1510,6 +1540,8 @@ private:
         VkFormat format{};
         VkImageLayout layout{VK_IMAGE_LAYOUT_UNDEFINED};
         std::uint32_t mip_count{1};
+        std::uint32_t mip_window_base{};
+        bool streamable{};
     };
 
     struct gpu_environment
@@ -3720,6 +3752,139 @@ private:
                                  [this, retired]() mutable { destroy_virtual_mesh_buffers(retired); });
     }
 
+    void defer_texture_release(gpu_texture texture)
+    {
+        if (texture.image == VK_NULL_HANDLE && texture.view == VK_NULL_HANDLE && texture.sampler == VK_NULL_HANDLE)
+            return;
+        deferred_releases_.defer(last_profile_.frame_index + frame_resource_count(),
+                                 [this, texture = std::move(texture)]() mutable { destroy_texture(texture); });
+    }
+
+    void retire_texture(texture_handle handle)
+    {
+        const auto found = textures_.find(resource_key(handle));
+        if (found == textures_.end()) return;
+        auto retired = std::move(found->second);
+        textures_.erase(found);
+        defer_texture_release(std::move(retired));
+    }
+
+    void register_streamed_texture(const texture_stream_register_event& event)
+    {
+        if (!event.descriptor) return;
+        gpu_texture texture;
+        texture.streaming = *event.descriptor;
+        texture.streamable = true;
+        texture.mip_window_base = texture.streaming.artifact.mip_count;
+        texture.streamed_mips.resize(texture.streaming.artifact.mip_count);
+        texture.data.name = texture.streaming.texture.name;
+        texture.data.width = texture.streaming.texture.width;
+        texture.data.height = texture.streaming.texture.height;
+        texture.data.depth = texture.streaming.texture.depth;
+        texture.data.dimension = texture.streaming.texture.dimension;
+        texture.data.format = texture.streaming.texture.format;
+        texture.data.color_space = texture.streaming.texture.color_space;
+        texture.data.semantic = texture.streaming.texture.semantic;
+        texture.data.mip_levels = texture.streaming.texture.mip_levels;
+        const auto key = resource_key(event.handle);
+        if (const auto found = textures_.find(key); found != textures_.end())
+            defer_texture_release(std::move(found->second));
+        textures_[key] = std::move(texture);
+    }
+
+    bool rebuild_streamed_mip_window(gpu_texture& texture)
+    {
+        if (!texture.streamable || texture.streamed_mips.empty()) return false;
+        std::uint32_t base = static_cast<std::uint32_t>(texture.streamed_mips.size());
+        for (std::uint32_t mip = static_cast<std::uint32_t>(texture.streamed_mips.size()); mip > 0; --mip)
+        {
+            if (!texture.streamed_mips[mip - 1]) break;
+            base = mip - 1;
+        }
+        if (base == texture.streamed_mips.size()) return false;
+        if (base == texture.mip_window_base && texture.image != VK_NULL_HANDLE) return true;
+
+        texture_data data;
+        data.name = texture.streaming.texture.name;
+        data.width = std::max(1u, texture.streaming.texture.width >> base);
+        data.height = std::max(1u, texture.streaming.texture.height >> base);
+        data.depth = 1;
+        data.dimension = texture_dimension::texture_2d;
+        data.format = texture.streaming.texture.format;
+        data.color_space = texture.streaming.texture.color_space;
+        data.semantic = texture.streaming.texture.semantic;
+        data.array_layers = 1;
+        data.mip_levels = static_cast<std::uint32_t>(texture.streamed_mips.size()) - base;
+        data.mips.reserve(data.mip_levels);
+        std::size_t offset{};
+        for (std::uint32_t mip = base; mip < texture.streamed_mips.size(); ++mip)
+        {
+            const auto& bytes = texture.streamed_mips[mip];
+            if (!bytes) return false;
+            const auto& artifact_mip = texture.streaming.artifact.mips[mip];
+            data.mips.push_back({.width = artifact_mip.width,
+                                 .height = artifact_mip.height,
+                                 .offset = offset,
+                                 .size = bytes->size()});
+            data.encoded.insert(data.encoded.end(), bytes->begin(), bytes->end());
+            offset += bytes->size();
+        }
+
+        gpu_texture replacement;
+        replacement.streaming = texture.streaming;
+        replacement.streamed_mips = texture.streamed_mips;
+        replacement.streamable = true;
+        replacement.mip_window_base = base;
+        replacement.data = data;
+        if (!upload_texture_image(data, replacement)) return false;
+        auto retired = std::move(texture);
+        texture = std::move(replacement);
+        defer_texture_release(std::move(retired));
+        return true;
+    }
+
+    void upload_streamed_texture(const texture_stream_upload_event& event)
+    {
+        const auto& upload = event.upload;
+        texture_stream_upload_result result{.resource = upload.resource,
+                                            .content_generation = upload.content_generation,
+                                            .kind = upload.kind,
+                                            .mip = upload.mip,
+                                            .x = upload.x,
+                                            .y = upload.y};
+        const auto found = textures_.find(resource_key(upload.resource));
+        if (found == textures_.end() || !found->second.streamable || !upload.bytes ||
+            found->second.streaming.content_generation != upload.content_generation)
+        {
+            frame_texture_upload_results_.push_back(result);
+            return;
+        }
+        auto& texture = found->second;
+        if (upload.kind != texture_subresource_kind::mip || upload.mip >= texture.streamed_mips.size())
+        {
+            frame_texture_upload_results_.push_back(result);
+            return;
+        }
+        texture.streamed_mips[upload.mip] = upload.bytes;
+        result.succeeded = rebuild_streamed_mip_window(texture);
+        result.gpu_bytes = texture.streaming.artifact.mips[upload.mip].decoded_size;
+        frame_texture_upload_results_.push_back(result);
+    }
+
+    void evict_streamed_texture(const texture_stream_evict_event& event)
+    {
+        const auto& eviction = event.eviction;
+        const auto found = textures_.find(resource_key(eviction.resource));
+        if (found == textures_.end() || !found->second.streamable ||
+            found->second.streaming.content_generation != eviction.content_generation ||
+            eviction.kind != texture_subresource_kind::mip || eviction.mip >= found->second.streamed_mips.size())
+            return;
+        auto& texture = found->second;
+        texture.streamed_mips[eviction.mip].reset();
+        if (!rebuild_streamed_mip_window(texture))
+            arc::diagnostics::warn("render.vulkan", "Failed to shrink a streamed texture mip window");
+    }
+
     void upload_texture(const texture_upload_event& event)
     {
         if (!event.texture) return;
@@ -3740,7 +3905,8 @@ private:
         }
 
         const std::uint64_t key = resource_key(event.handle);
-        if (auto found = textures_.find(key); found != textures_.end()) destroy_texture(found->second);
+        if (auto found = textures_.find(key); found != textures_.end())
+            defer_texture_release(std::move(found->second));
         textures_[key] = std::move(texture);
     }
 
@@ -10334,6 +10500,9 @@ private:
     std::unordered_map<std::uint64_t, gpu_terrain> terrains_;
     std::unordered_map<std::uint32_t, terrain_topology> terrain_topologies_;
     std::unordered_map<std::uint64_t, gpu_texture> textures_;
+    texture_feedback_readback completed_texture_feedback_;
+    std::vector<texture_stream_upload_result> frame_texture_upload_results_;
+    std::vector<texture_stream_upload_result> completed_texture_upload_results_;
     std::unordered_map<std::uint64_t, gpu_material> materials_;
     std::unordered_map<std::uint64_t, gpu_environment> environments_;
     std::unordered_set<std::uint64_t> texture_semantic_diagnostics_;
@@ -10703,6 +10872,11 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.compute_shaders = capabilities.compute_queue;
     capabilities.storage_buffers = properties.limits.maxStorageBufferRange >= 128u * 1024u * 1024u;
     capabilities.storage_images = properties.limits.maxPerStageDescriptorStorageImages > 0;
+    capabilities.texture_mip_streaming = capabilities.graphics_queue && capabilities.transfer_queue;
+    // Software page-table sampling is advertised only once feedback compaction,
+    // cache publication, and the shared sampling ABI are all executable.
+    capabilities.virtual_texture_feedback = false;
+    capabilities.virtual_texture_sampling = false;
     capabilities.shader_draw_parameters = properties.apiVersion >= VK_API_VERSION_1_1;
     capabilities.gpu_scene_indirect =
         capabilities.compute_shaders && capabilities.storage_buffers && capabilities.draw_indirect;

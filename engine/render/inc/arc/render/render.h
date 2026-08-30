@@ -28,6 +28,9 @@
 #include <arc/render/shader.h>
 #include <arc/render/shadow.h>
 #include <arc/render/texture.h>
+#include <arc/render/texture_artifact.h>
+#include <arc/render/texture_streaming.h>
+#include <arc/render/texture_streaming_io.h>
 #include <arc/render/terrain.h>
 #include <arc/render/virtual_mesh.h>
 #include <arc/render/virtual_geometry.h>

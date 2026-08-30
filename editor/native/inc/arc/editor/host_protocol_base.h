@@ -718,6 +718,15 @@ struct host_asset_snapshot
     bool read_only{};
     bool imported{};
     bool import_running{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::string texture_format;
+    std::uint32_t mip_count{};
+    std::uint32_t tile_count{};
+    std::string streaming_mode{"resident"};
+    std::uint32_t settings_version{1};
+    std::uint64_t artifact_size{};
+    std::string streaming_eligibility_error;
 };
 
 struct host_project_assets_snapshot
@@ -867,6 +876,11 @@ struct host_open_recovery_scene_command
 struct host_asset_reimport_command
 {
     std::string guid;
+};
+struct host_set_texture_streaming_mode_command
+{
+    std::string guid;
+    std::string mode;
 };
 struct host_shader_compile_command
 {
@@ -1388,7 +1402,8 @@ struct host_viewport_capture_command
 using host_command_payload = std::variant<
     host_open_project_command, host_close_project_command, host_reload_project_module_command, host_open_scene_command,
     host_new_scene_command, host_save_scene_command, host_save_scene_as_command, host_autosave_scene_command,
-    host_open_recovery_scene_command, host_asset_reimport_command, host_shader_compile_command,
+    host_open_recovery_scene_command, host_asset_reimport_command, host_set_texture_streaming_mode_command,
+    host_shader_compile_command,
     host_asset_cancel_import_command, host_asset_move_command, host_asset_rename_command, host_create_entity_command,
     host_delete_entity_command, host_duplicate_entity_command, host_create_prefab_command,
     host_instantiate_prefab_command, host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,

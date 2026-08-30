@@ -164,6 +164,15 @@ type HostAssetSnapshot = {
   reverseDependencies: string[];
   imported: boolean;
   importRunning: boolean;
+  width: number;
+  height: number;
+  textureFormat: string;
+  mipCount: number;
+  tileCount: number;
+  streamingMode: 'resident' | 'streamed_mips' | 'virtual_tiles';
+  settingsVersion: number;
+  artifactSize: number;
+  streamingEligibilityError: string;
 };
 
 type HostProjectAssetsSnapshot = {
@@ -937,6 +946,15 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         diagnostic: asset.diagnostic,
         dependencies: asset.dependencies,
         reverseDependencies: asset.reverseDependencies,
+        width: asset.width,
+        height: asset.height,
+        textureFormat: asset.textureFormat,
+        mipLevels: asset.mipCount,
+        tileCount: asset.tileCount,
+        streamingMode: asset.streamingMode,
+        settingsVersion: asset.settingsVersion,
+        artifactSize: asset.artifactSize,
+        streamingEligibilityError: asset.streamingEligibilityError,
       })) ??
       project?.assets ??
       [];
@@ -1496,6 +1514,18 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             setLastCommand(response.succeeded ? `${type} completed` : response.error || `${type} failed`);
             if (response.succeeded) await refreshProjectFromHost(undefined, false);
           }}
+          onTextureStreamingMode={async (guid, mode) => {
+            const response = (await window.arc.host.command('asset.setTextureStreamingMode', {
+              guid,
+              mode,
+            })) as HostResponse;
+            setLastCommand(
+              response.succeeded
+                ? `Texture mode changed to ${mode}`
+                : response.error || 'Texture mode change failed',
+            );
+            if (response.succeeded) await refreshProjectFromHost(undefined, false);
+          }}
           thumbnailProvider={loadAssetThumbnail}
         />
       );
@@ -1571,6 +1601,16 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         onAssetAction={async (type, guid) => {
           const response = (await window.arc.host.command(type, { guid })) as HostResponse;
           setLastCommand(response.succeeded ? `${type} completed` : response.error || `${type} failed`);
+          if (response.succeeded) await refreshProjectFromHost(undefined, false);
+        }}
+        onTextureStreamingMode={async (guid, mode) => {
+          const response = (await window.arc.host.command('asset.setTextureStreamingMode', {
+            guid,
+            mode,
+          })) as HostResponse;
+          setLastCommand(
+            response.succeeded ? `Texture mode changed to ${mode}` : response.error || 'Texture mode change failed',
+          );
           if (response.succeeded) await refreshProjectFromHost(undefined, false);
         }}
         thumbnailProvider={loadAssetThumbnail}

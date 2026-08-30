@@ -9,6 +9,7 @@
 #include <arc/render_tools/material_asset.h>
 #include <arc/render_tools/material_graph.h>
 #include <arc/render_tools/material_pass_codegen.h>
+#include <arc/render_tools/texture_cooker.h>
 
 #include <filesystem>
 #include <string>

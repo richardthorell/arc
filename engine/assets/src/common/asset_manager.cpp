@@ -312,11 +312,12 @@ class source_blob_importer final : public asset_importer
 {
 public:
     source_blob_importer(asset_importer_id id, asset_type_id type, std::string name,
-                         std::vector<std::string> extensions)
+                         std::vector<std::string> extensions, std::uint32_t settings_version = 1)
     {
         descriptor_.id = id;
         descriptor_.name = std::move(name);
         descriptor_.extensions = std::move(extensions);
+        descriptor_.settings_version = settings_version;
         descriptor_.output_types.push_back(type);
     }
 
@@ -382,7 +383,7 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
         std::vector<std::string>{".slang", ".glsl", ".vert", ".frag", ".comp", ".hlsl", ".inc"}));
     result.push_back(std::make_unique<source_blob_importer>(
         importer_ids::texture, asset_types::texture_2d, "Texture",
-        std::vector<std::string>{".png", ".jpg", ".jpeg", ".dds", ".tga", ".bmp", ".ktx", ".ktx2"}));
+        std::vector<std::string>{".png", ".jpg", ".jpeg", ".dds", ".tga", ".bmp", ".ktx", ".ktx2"}, 2));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::environment, asset_types::environment,
                                                             "Environment", std::vector<std::string>{".hdr", ".exr"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::gltf, asset_types::imported_scene, "glTF",

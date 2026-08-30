@@ -51,6 +51,12 @@ export type AssetItem = {
   height?: number;
   depth?: number;
   mipLevels?: number;
+  textureFormat?: string;
+  tileCount?: number;
+  streamingMode?: 'resident' | 'streamed_mips' | 'virtual_tiles';
+  settingsVersion?: number;
+  artifactSize?: number;
+  streamingEligibilityError?: string;
   vertexCount?: number;
   triangleCount?: number;
 };
