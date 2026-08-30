@@ -36,6 +36,87 @@ type PixelBounds = {
 const thumbnailCache = new Map<string, Promise<string | null>>();
 let queue: Promise<void> = Promise.resolve();
 
+const persistentThumbnailDatabase = 'arc-material-thumbnails-v1';
+const persistentThumbnailStore = 'thumbnails';
+let persistentDatabasePromise: Promise<IDBDatabase | null> | null = null;
+
+const openPersistentThumbnailDatabase = (): Promise<IDBDatabase | null> => {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  if (persistentDatabasePromise) return persistentDatabasePromise;
+
+  persistentDatabasePromise = new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(persistentThumbnailDatabase, 1);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains(persistentThumbnailStore)) {
+          database.createObjectStore(persistentThumbnailStore);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+  return persistentDatabasePromise;
+};
+
+const readPersistentThumbnail = async (key: string): Promise<string | null> => {
+  const database = await openPersistentThumbnailDatabase();
+  if (!database) return null;
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(persistentThumbnailStore, 'readonly');
+      const request = transaction.objectStore(persistentThumbnailStore).get(key);
+      request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+};
+
+const writePersistentThumbnail = async (key: string, value: string): Promise<void> => {
+  const database = await openPersistentThumbnailDatabase();
+  if (!database) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const transaction = database.transaction(persistentThumbnailStore, 'readwrite');
+      transaction.objectStore(persistentThumbnailStore).put(value, key);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+};
+
+const deletePersistentThumbnailPrefix = async (prefix: string): Promise<void> => {
+  const database = await openPersistentThumbnailDatabase();
+  if (!database) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const transaction = database.transaction(persistentThumbnailStore, 'readwrite');
+      const store = transaction.objectStore(persistentThumbnailStore);
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (typeof cursor.key === 'string' && cursor.key.startsWith(prefix)) cursor.delete();
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+};
+
 const normalizedGuid = (guid: string) => guid.trim().replace(/[^a-zA-Z0-9-]/g, '');
 
 // Kept stable for callers/tests that still use the old preview identity when
@@ -270,8 +351,18 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
     .catch(() => undefined)
     .then(async () => {
       try {
+        const persisted = await readPersistentThumbnail(key);
+        if (persisted) {
+          resolveTask(persisted);
+          return;
+        }
+
         const result = await renderMaterialThumbnail(request);
-        if (!result) thumbnailCache.delete(key);
+        if (!result) {
+          thumbnailCache.delete(key);
+        } else {
+          await writePersistentThumbnail(key, result);
+        }
         resolveTask(result);
       } catch {
         thumbnailCache.delete(key);
@@ -284,4 +375,5 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
 export function invalidateMaterialSphereThumbnail(guid: string) {
   const prefix = `${normalizedGuid(guid)}:`;
   for (const key of thumbnailCache.keys()) if (key.startsWith(prefix)) thumbnailCache.delete(key);
+  void deletePersistentThumbnailPrefix(prefix);
 }
