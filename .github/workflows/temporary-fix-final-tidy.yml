@@ -1,0 +1,65 @@
+name: Temporary final tidy fix
+
+on:
+  push:
+    branches:
+      - fix/clang-format-main-20260830
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/clang-format-main-20260830
+          fetch-depth: 0
+      - name: Install formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Patch remaining tidy findings
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('engine/render/src/common/texture_streaming.cpp')
+          text = path.read_text()
+          old = '''    for (auto& [key, resource] : implementation_->resources)\n    {\n        const auto resource_handle = handle_from_resource_key(key);\n        const auto append = [&](const implementation::subresource_entry& entry)\n        {\n            if (entry.state != texture_residency_state::requested) return;\n            result.push_back({.resource = resource_handle,\n                              .content_generation = resource.descriptor.content_generation,\n                              .source = resource.descriptor.source,'''
+          new = '''    for (const auto& [key, resource] : implementation_->resources)\n    {\n        const auto resource_handle = handle_from_resource_key(key);\n        const auto content_generation = resource.descriptor.content_generation;\n        const auto source = resource.descriptor.source;\n        const auto append = [&](const implementation::subresource_entry& entry)\n        {\n            if (entry.state != texture_residency_state::requested) return;\n            result.push_back({.resource = resource_handle,\n                              .content_generation = content_generation,\n                              .source = source,'''
+          if old not in text:
+              raise SystemExit('texture_streaming.cpp target not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('engine/render/inc/arc/render/renderer.h')
+          text = path.read_text()
+          old = '    void request_frame_capture(render_frame_capture_request request);'
+          new = '    void request_frame_capture(const render_frame_capture_request& request);'
+          if old not in text:
+              raise SystemExit('renderer.h target not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('engine/render/src/common/renderer.cpp')
+          text = path.read_text()
+          old = '''void renderer::request_frame_capture(render_frame_capture_request request)\n{\n    if (backend_) backend_->request_frame_capture(std::move(request));\n}'''
+          new = '''void renderer::request_frame_capture(const render_frame_capture_request& request)\n{\n    if (backend_) backend_->request_frame_capture(request);\n}'''
+          if old not in text:
+              raise SystemExit('renderer.cpp target not found')
+          path.write_text(text.replace(old, new, 1))
+      - name: Format modified files
+        run: |
+          clang-format-18 -i \
+            engine/render/src/common/texture_streaming.cpp \
+            engine/render/inc/arc/render/renderer.h \
+            engine/render/src/common/renderer.cpp
+      - name: Remove temporary workflow
+        run: rm .github/workflows/temporary-fix-final-tidy.yml
+      - name: Commit fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add engine/render/src/common/texture_streaming.cpp engine/render/inc/arc/render/renderer.h engine/render/src/common/renderer.cpp .github/workflows/temporary-fix-final-tidy.yml
+          git commit -m 'fix(render): resolve remaining clang-tidy findings'
+          git push origin HEAD:fix/clang-format-main-20260830
