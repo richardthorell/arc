@@ -1,4 +1,4 @@
-import { StatusBar } from '../layout/StatusBar';
+import { UiStatusBar } from '../layout/UiStatusBar';
 
 import './UiLabStatusBar.css';
 
@@ -12,13 +12,13 @@ export function UiLabStatusBar() {
         </div>
       </header>
       <div className="ui-lab-grid">
-        <article className="ui-lab-card ui-lab-card-wide">
+        <article className="ui-lab-card ui-lab-card-wide ui-lab-status-bar-card">
           <header>
             <strong>Job progress</strong>
-            <code>StatusBar</code>
+            <code>UiStatusBar</code>
           </header>
           <div className="ui-lab-card-stage ui-lab-status-bar-stage">
-            <StatusBar jobProgress={{ completed: 5, total: 10 }} lastCommand="" startupState={null} />
+            <UiStatusBar jobProgress={{ completed: 5, total: 10 }} lastCommand="" startupState={null} />
           </div>
         </article>
       </div>
