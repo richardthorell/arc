@@ -40,7 +40,7 @@ type WorkspaceDockProps = {
 // up these defaults instead of restoring the older split sizes.
 const storageKey = (projectKey: string, name: string) => `arc.editor.workspace.v7.${projectKey}.${name}`;
 const editorWorkspaceStorageKey = (projectKey: string, kind: EditorDocumentKind) =>
-  storageKey(projectKey, `editor-${kind}`);
+  storageKey(projectKey, kind === 'texture' ? 'editor-texture-v2' : `editor-${kind}`);
 const workbenchLayoutStorageKey = 'arc.editor.workbench.layout.v2';
 const panelTabComponent = 'arc-panel-tab';
 const defaultBottomPanelHeight = 220;
