@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  maskMaterialSpherePixels,
   materialThumbnailCacheKey,
   materialThumbnailViewportId,
   opaquePixelBounds,
@@ -8,7 +9,7 @@ import {
 } from './materialThumbnail';
 
 describe('material thumbnails', () => {
-  it('uses the production material preview viewport identity with an isolated thumbnail instance', () => {
+  it('keeps stable cache and diagnostic viewport identities', () => {
     expect(materialThumbnailViewportId('1234-abcd', 7)).toBe('asset-preview-material-1234-abcd~thumbnail-7');
     expect(materialThumbnailCacheKey('1234-abcd', 4, 128)).toBe('1234-abcd:4:128');
   });
@@ -46,6 +47,24 @@ describe('material thumbnails', () => {
     expect(result[(width - 1) * 4 + 3]).toBe(0);
     expect(result[center + 3]).toBe(255);
     expect(result[enclosed + 3]).toBe(255);
+  });
+
+  it('uses the known material sphere geometry to remove a graded studio background', () => {
+    const width = 10;
+    const height = 10;
+    const pixels = new Uint8ClampedArray(width * height * 4);
+    for (let index = 0; index < width * height; index += 1) {
+      const offset = index * 4;
+      pixels[offset] = index;
+      pixels[offset + 1] = index + 10;
+      pixels[offset + 2] = index + 20;
+      pixels[offset + 3] = 255;
+    }
+
+    const result = maskMaterialSpherePixels(pixels, width, height);
+    expect(result[3]).toBe(0);
+    expect(result[(width * height - 1) * 4 + 3]).toBe(0);
+    expect(result[(5 * width + 5) * 4 + 3]).toBe(255);
   });
 
   it('finds the rendered object bounds independently of its source-frame position', () => {
