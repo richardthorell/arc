@@ -1,5 +1,5 @@
 import { createElement } from 'react';
-import { Circle, FileCode2, Globe2 } from 'lucide-react';
+import { Circle, FileCode2, Globe2, Image } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
 import { MaterialEditor } from '../material/MaterialEditor';
@@ -8,6 +8,7 @@ import { disposeMaterialDocument, saveMaterialDocument } from '../material/mater
 import { ShaderSourceEditor } from '../shader/ShaderSourceEditor';
 import { ShaderSourceEditorToolbar } from '../shader/ShaderSourceEditorToolbar';
 import { disposeShaderDocument, saveShaderDocument } from '../shader/shaderDocumentState';
+import { TextureEditor } from '../texture/TextureEditor';
 import { getActiveEditorDocument, openEditorDocumentInStore } from './editorDocuments';
 import type {
   EditorDocument,
@@ -192,6 +193,29 @@ const materialRegistration: EditorRegistration = {
   onClosed: (document) => disposeMaterialDocument(document.id),
 };
 
+const textureRegistration: EditorRegistration = {
+  kind: 'texture',
+  title: 'Texture Editor',
+  icon: Image,
+  allowMultiple: true,
+  closeable: true,
+  canOpenAsset: (asset) => asset.kind === 'texture',
+  createDocument: (asset) => ({
+    id: `texture:${asset.guid ?? asset.path}`,
+    kind: 'texture',
+    title: asset.name,
+    path: asset.path,
+    assetId: asset.id,
+    assetGuid: asset.guid,
+    assetScope: asset.scope,
+    assetSnapshot: asset,
+    dirty: false,
+    readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
+  }),
+  render: (document) => createElement(TextureEditor, { document }),
+  renderToolbar: () => null,
+};
+
 let currentRegistry: EditorRegistry | null = null;
 
 export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorRegistry => {
@@ -200,6 +224,7 @@ export const createEditorRegistry = (registrations: EditorRegistrySeed): EditorR
     level: { ...registrations.level, icon: Globe2 },
     shader: registrations.shader ?? shaderRegistration,
     material: registrations.material ?? materialRegistration,
+    texture: registrations.texture ?? textureRegistration,
   } as EditorRegistry;
   currentRegistry = registry;
   return registry;
