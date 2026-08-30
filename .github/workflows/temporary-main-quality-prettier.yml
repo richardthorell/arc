@@ -1,0 +1,41 @@
+name: Temporary Main Quality Prettier
+
+on:
+  push:
+    branches:
+      - fix/main-quality-electron-format
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/main-quality-electron-format
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Install editor dependencies
+        run: npm ci --prefix editor
+      - name: Apply Prettier fixes
+        working-directory: editor
+        run: npx prettier --write src/renderer/src/app/Workbench.tsx src/renderer/src/content/ContentBrowserPanel.tsx
+      - name: Verify editor formatting
+        working-directory: editor
+        run: npm run format:check
+      - name: Remove temporary workflow
+        run: rm .github/workflows/temporary-main-quality-prettier.yml
+      - name: Commit formatting fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/app/Workbench.tsx editor/src/renderer/src/content/ContentBrowserPanel.tsx .github/workflows/temporary-main-quality-prettier.yml
+          git commit -m "fix(editor): restore quality formatting"
+          git push origin HEAD:fix/main-quality-electron-format
