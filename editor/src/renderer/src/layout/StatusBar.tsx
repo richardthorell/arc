@@ -1,6 +1,7 @@
 import { Circle, GitBranch } from 'lucide-react';
 
 import type { StartupState } from '../app/workbenchTypes';
+import type { EditorJobProgress } from '../jobs/editorJobProgress';
 import { useEditorJobProgress } from '../jobs/editorJobProgress';
 
 import './statusBar.css';
@@ -10,10 +11,12 @@ type StatusBarProps = {
   activeScene?: string;
   lastCommand: string;
   aiControl?: string;
+  jobProgress?: EditorJobProgress;
 };
 
-export function StatusBar({ startupState, aiControl }: StatusBarProps) {
-  const jobs = useEditorJobProgress();
+export function StatusBar({ startupState, aiControl, jobProgress }: StatusBarProps) {
+  const liveJobs = useEditorJobProgress();
+  const jobs = jobProgress ?? liveJobs;
   const jobPercent = jobs && jobs.total > 0 ? Math.round((jobs.completed / jobs.total) * 100) : 0;
 
   return (
