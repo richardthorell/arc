@@ -13,9 +13,8 @@ describe('UiLabStatusBar', () => {
     render(<UiLabStatusBar />);
 
     expect(screen.getByText('Job (5 / 10)')).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'Editor jobs: 5 of 10 complete' })).toHaveAttribute(
-      'aria-valuenow',
-      '5',
-    );
+    const progress = screen.getByRole('progressbar', { name: 'Editor jobs: 5 of 10 complete' });
+    expect(progress).toHaveAttribute('aria-valuenow', '5');
+    expect(progress.querySelector('.status-job-progress-fill')).toHaveStyle({ width: '50%' });
   });
 });
