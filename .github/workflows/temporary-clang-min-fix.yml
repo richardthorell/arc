@@ -1,0 +1,59 @@
+name: Temporary Clang Min Fix
+
+on:
+  push:
+    branches: [fix/clang-format-main-20260830]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/clang-format-main-20260830
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+
+      - name: Fix budget types
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('engine/render/src/common/renderer.cpp')
+          s = p.read_text()
+          old = '''        const auto texture_quality_budget =
+            resolved_config_.quality == render_quality_tier::low      ? 256ull * mebibyte
+            : resolved_config_.quality == render_quality_tier::medium ? 512ull * mebibyte
+            : resolved_config_.quality == render_quality_tier::high   ? 1024ull * mebibyte
+                                                                      : 2048ull * mebibyte;'''
+          new = '''        const std::uint64_t texture_quality_budget =
+            resolved_config_.quality == render_quality_tier::low      ? 256ull * mebibyte
+            : resolved_config_.quality == render_quality_tier::medium ? 512ull * mebibyte
+            : resolved_config_.quality == render_quality_tier::high   ? 1024ull * mebibyte
+                                                                      : 2048ull * mebibyte;'''
+          if old not in s:
+              raise SystemExit('texture_quality_budget pattern not found')
+          s = s.replace(old, new, 1)
+          old2 = '''        auto texture_gpu_budget =
+            config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes : texture_quality_budget;'''
+          new2 = '''        std::uint64_t texture_gpu_budget =
+            config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes : texture_quality_budget;'''
+          if old2 not in s:
+              raise SystemExit('texture_gpu_budget pattern not found')
+          s = s.replace(old2, new2, 1)
+          p.write_text(s)
+          PY
+          clang-format-18 -i engine/render/src/common/renderer.cpp
+          rm .github/workflows/temporary-clang-min-fix.yml
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/render/src/common/renderer.cpp .github/workflows/temporary-clang-min-fix.yml
+          git commit -m "Fix Clang texture budget type mismatch"
+          git push origin HEAD:fix/clang-format-main-20260830
