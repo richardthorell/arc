@@ -3,10 +3,15 @@
 
 #include <nlohmann/json.hpp>
 
+#if defined(ARC_RENDER_HAS_STB)
+#include <stb_image.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -15,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace arc::editor
 {
@@ -27,6 +33,7 @@ constexpr float preview_sphere_radius = 0.82f;
 constexpr float minimum_roughness = 0.045f;
 constexpr float dielectric_reflectance = 0.04f;
 constexpr float preview_exposure = 1.15f;
+constexpr std::uint32_t preview_texture_max_size = 512u;
 
 color3 add(color3 a, color3 b) noexcept
 {
@@ -82,6 +89,8 @@ struct sampled_texture
     bool valid{};
 };
 
+using preview_texture_cache = std::map<std::filesystem::path, sampled_texture>;
+
 struct graph_texture_binding
 {
     std::string path;
@@ -116,15 +125,99 @@ struct loaded_graph_texture_bindings
     loaded_graph_texture_binding opacity;
 };
 
-sampled_texture load_preview_texture(const std::filesystem::path& root, const std::string& path)
+sampled_texture load_preview_texture_uncached(const std::filesystem::path& path)
 {
     if (path.empty()) return {};
-    const auto result = render::load_texture_asset(resolve_material_texture_path(root, path));
+
+#if defined(ARC_RENDER_HAS_STB)
+    const auto extension = path.extension().string();
+    if (extension != ".dds" && extension != ".DDS" && extension != ".hdr" && extension != ".HDR")
+    {
+        std::ifstream stream(path, std::ios::binary);
+        if (stream)
+        {
+            stream.seekg(0, std::ios::end);
+            const auto encoded_size = stream.tellg();
+            stream.seekg(0, std::ios::beg);
+            if (encoded_size > 0 && encoded_size <= static_cast<std::streamoff>(std::numeric_limits<int>::max()))
+            {
+                std::vector<stbi_uc> encoded(static_cast<std::size_t>(encoded_size));
+                stream.read(reinterpret_cast<char*>(encoded.data()), encoded_size);
+                if (stream)
+                {
+                    int width{};
+                    int height{};
+                    int channels{};
+                    stbi_uc* decoded = stbi_load_from_memory(encoded.data(), static_cast<int>(encoded.size()), &width,
+                                                             &height, &channels, STBI_rgb_alpha);
+                    if (decoded && width > 0 && height > 0)
+                    {
+                        const auto source_width = static_cast<std::uint32_t>(width);
+                        const auto source_height = static_cast<std::uint32_t>(height);
+                        const auto source_max = std::max(source_width, source_height);
+                        const float scale = source_max > preview_texture_max_size
+                                                ? static_cast<float>(preview_texture_max_size) /
+                                                      static_cast<float>(source_max)
+                                                : 1.0f;
+                        const auto target_width =
+                            std::max(1u, static_cast<std::uint32_t>(std::lround(source_width * scale)));
+                        const auto target_height =
+                            std::max(1u, static_cast<std::uint32_t>(std::lround(source_height * scale)));
+
+                        render::texture_data texture;
+                        texture.name = path.filename().string();
+                        texture.width = target_width;
+                        texture.height = target_height;
+                        texture.format = render::texture_format::rgba8_srgb;
+                        texture.mip_levels = 1;
+                        texture.pixels.resize(static_cast<std::size_t>(target_width) * target_height * 4u);
+
+                        for (std::uint32_t y = 0; y < target_height; ++y)
+                        {
+                            const auto source_y = std::min(
+                                source_height - 1u,
+                                static_cast<std::uint32_t>((static_cast<std::uint64_t>(y) * source_height) /
+                                                           target_height));
+                            for (std::uint32_t x = 0; x < target_width; ++x)
+                            {
+                                const auto source_x = std::min(
+                                    source_width - 1u,
+                                    static_cast<std::uint32_t>((static_cast<std::uint64_t>(x) * source_width) /
+                                                               target_width));
+                                const auto source_offset =
+                                    (static_cast<std::size_t>(source_y) * source_width + source_x) * 4u;
+                                const auto target_offset =
+                                    (static_cast<std::size_t>(y) * target_width + x) * 4u;
+                                std::memcpy(texture.pixels.data() + target_offset, decoded + source_offset, 4u);
+                            }
+                        }
+                        stbi_image_free(decoded);
+                        return {std::move(texture), true};
+                    }
+                    if (decoded) stbi_image_free(decoded);
+                }
+            }
+        }
+    }
+#endif
+
+    const auto result = render::load_texture_asset(path);
     if (!result.succeeded() || !result.texture.has_pixels()) return {};
     const bool supported = result.texture.format == render::texture_format::rgba8_unorm ||
                            result.texture.format == render::texture_format::rgba8_srgb ||
                            result.texture.format == render::texture_format::rgba32f;
     return {result.texture, supported};
+}
+
+sampled_texture load_preview_texture(const std::filesystem::path& root, const std::string& path,
+                                     preview_texture_cache& cache)
+{
+    if (path.empty()) return {};
+    const auto resolved = resolve_material_texture_path(root, path).lexically_normal();
+    if (const auto found = cache.find(resolved); found != cache.end()) return found->second;
+    auto loaded = load_preview_texture_uncached(resolved);
+    cache.emplace(resolved, loaded);
+    return loaded;
 }
 
 std::array<float, 4> sample(const sampled_texture& texture, float u, float v, bool color_data)
@@ -255,22 +348,24 @@ graph_texture_bindings load_graph_texture_bindings(const std::filesystem::path& 
     return result;
 }
 
-loaded_graph_texture_binding load_graph_binding(const std::filesystem::path& root, const graph_texture_binding& binding)
+loaded_graph_texture_binding load_graph_binding(const std::filesystem::path& root, const graph_texture_binding& binding,
+                                                preview_texture_cache& cache)
 {
-    return {.texture = load_preview_texture(root, binding.path), .pin = binding.pin};
+    return {.texture = load_preview_texture(root, binding.path, cache), .pin = binding.pin};
 }
 
 loaded_graph_texture_bindings load_graph_bindings(const std::filesystem::path& root,
-                                                  const graph_texture_bindings& bindings)
+                                                  const graph_texture_bindings& bindings,
+                                                  preview_texture_cache& cache)
 {
     return {
-        .base_color = load_graph_binding(root, bindings.base_color),
-        .metallic = load_graph_binding(root, bindings.metallic),
-        .roughness = load_graph_binding(root, bindings.roughness),
-        .normal = load_graph_binding(root, bindings.normal),
-        .ambient_occlusion = load_graph_binding(root, bindings.ambient_occlusion),
-        .emissive = load_graph_binding(root, bindings.emissive),
-        .opacity = load_graph_binding(root, bindings.opacity),
+        .base_color = load_graph_binding(root, bindings.base_color, cache),
+        .metallic = load_graph_binding(root, bindings.metallic, cache),
+        .roughness = load_graph_binding(root, bindings.roughness, cache),
+        .normal = load_graph_binding(root, bindings.normal, cache),
+        .ambient_occlusion = load_graph_binding(root, bindings.ambient_occlusion, cache),
+        .emissive = load_graph_binding(root, bindings.emissive, cache),
+        .opacity = load_graph_binding(root, bindings.opacity, cache),
     };
 }
 
@@ -348,12 +443,14 @@ material_preview_result render_material_preview(const material_asset& asset, con
         graph_bindings = load_graph_texture_bindings(asset.path);
     }
 
-    const auto base_map = load_preview_texture(asset_root, preview_asset.textures.base_color);
-    const auto metallic_roughness_map = load_preview_texture(asset_root, preview_asset.textures.metallic_roughness);
-    const auto normal_map = load_preview_texture(asset_root, preview_asset.textures.normal);
-    const auto ao_map = load_preview_texture(asset_root, preview_asset.textures.ao);
-    const auto emissive_map = load_preview_texture(asset_root, preview_asset.textures.emissive);
-    const auto graph_maps = load_graph_bindings(asset_root, graph_bindings);
+    preview_texture_cache texture_cache;
+    const auto base_map = load_preview_texture(asset_root, preview_asset.textures.base_color, texture_cache);
+    const auto metallic_roughness_map =
+        load_preview_texture(asset_root, preview_asset.textures.metallic_roughness, texture_cache);
+    const auto normal_map = load_preview_texture(asset_root, preview_asset.textures.normal, texture_cache);
+    const auto ao_map = load_preview_texture(asset_root, preview_asset.textures.ao, texture_cache);
+    const auto emissive_map = load_preview_texture(asset_root, preview_asset.textures.emissive, texture_cache);
+    const auto graph_maps = load_graph_bindings(asset_root, graph_bindings, texture_cache);
 
     render::texture_data output;
     output.name = preview_asset.name + " Preview";
