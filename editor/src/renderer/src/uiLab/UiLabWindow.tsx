@@ -6,6 +6,7 @@ import { UiLab } from './UiLab';
 import { UiLabDialogs } from './UiLabDialogs';
 import { UiLabMaterialControls, UiLabMaterialPanels } from './UiLabMaterialGallery';
 import { UiLabPanels } from './UiLabPanels';
+import { UiLabStatusBar } from './UiLabStatusBar';
 import { UiLabThemePicker } from './UiLabThemePicker';
 
 import './uiLabWindow.css';
@@ -44,6 +45,7 @@ export function UiLabWindow() {
             <UiLab />
             <div className="ui-lab-content ui-lab-material-extension">
               <UiLabMaterialControls />
+              <UiLabStatusBar />
             </div>
           </>
         )}
