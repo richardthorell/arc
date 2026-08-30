@@ -33,20 +33,57 @@ type PixelBounds = {
   height: number;
 };
 
+type ThumbnailTrace = {
+  id: string;
+  startedAt: number;
+  mark: (event: string, details?: Record<string, unknown>) => void;
+};
+
 const thumbnailCache = new Map<string, Promise<string | null>>();
 const maxConcurrentThumbnailRenders = 3;
 let activeThumbnailRenders = 0;
 const pendingThumbnailRenders: Array<() => void> = [];
+let thumbnailTraceSequence = 0;
 
-const withThumbnailRenderSlot = async <T>(operation: () => Promise<T>): Promise<T> => {
+const traceNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+const createThumbnailTrace = (request: MaterialThumbnailRequest, key: string): ThumbnailTrace => {
+  const startedAt = traceNow();
+  const id = `${++thumbnailTraceSequence}:${normalizedGuid(request.guid).slice(0, 8) || 'unknown'}`;
+  const mark = (event: string, details: Record<string, unknown> = {}) => {
+    window.console.info(`[material-thumbnail ${id}] +${(traceNow() - startedAt).toFixed(1)}ms ${event}`, {
+      key,
+      ...details,
+    });
+  };
+  mark('request', {
+    guid: request.guid,
+    generation: request.generation ?? 0,
+    maxSize: request.maxSize ?? 128,
+  });
+  return { id, startedAt, mark };
+};
+
+const withThumbnailRenderSlot = async <T>(operation: () => Promise<T>, trace?: ThumbnailTrace): Promise<T> => {
   if (activeThumbnailRenders >= maxConcurrentThumbnailRenders) {
+    trace?.mark('queue.wait', {
+      active: activeThumbnailRenders,
+      pending: pendingThumbnailRenders.length + 1,
+    });
     await new Promise<void>((resolve) => pendingThumbnailRenders.push(resolve));
   }
   activeThumbnailRenders += 1;
+  trace?.mark('queue.acquired', {
+    active: activeThumbnailRenders,
+    pending: pendingThumbnailRenders.length,
+  });
   try {
     return await operation();
   } finally {
     activeThumbnailRenders -= 1;
+    trace?.mark('queue.released', {
+      active: activeThumbnailRenders,
+      pending: pendingThumbnailRenders.length,
+    });
     pendingThumbnailRenders.shift()?.();
   }
 };
@@ -273,22 +310,54 @@ const materialPathForGuid = async (guid: string): Promise<{ path: string; genera
   return asset ? { path: asset.path, generation: asset.generation } : null;
 };
 
-const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnailRequest): Promise<string | null> => {
-  if (!guid || !window.arc?.host) return null;
+const renderMaterialThumbnail = async (
+  { guid, maxSize = 128 }: MaterialThumbnailRequest,
+  trace?: ThumbnailTrace,
+): Promise<string | null> => {
+  if (!guid || !window.arc?.host) {
+    trace?.mark('render.unavailable', { hasGuid: Boolean(guid), hasHost: Boolean(window.arc?.host) });
+    return null;
+  }
 
   const outputSize = Math.max(32, Math.min(256, Math.round(maxSize)));
   const renderSize = Math.min(256, outputSize * 2);
+  trace?.mark('asset.resolve.start');
+  const resolveStartedAt = traceNow();
   const asset = await materialPathForGuid(guid);
+  trace?.mark('asset.resolve.end', {
+    durationMs: Number((traceNow() - resolveStartedAt).toFixed(1)),
+    path: asset?.path ?? null,
+  });
   if (!asset?.path) return null;
 
+  trace?.mark('native.thumbnail.start', { path: asset.path, renderSize });
+  const nativeStartedAt = traceNow();
   const response = (await window.arc.host.query('asset.thumbnail', {
     path: asset.path,
     maxSize: renderSize,
   })) as HostResponse<AssetThumbnailSnapshot>;
+  trace?.mark('native.thumbnail.end', {
+    durationMs: Number((traceNow() - nativeStartedAt).toFixed(1)),
+    succeeded: response.succeeded,
+    error: response.error ?? null,
+    width: response.payload?.width ?? null,
+    height: response.payload?.height ?? null,
+    encodedBytes: response.payload?.dataUrl?.length ?? 0,
+  });
   const dataUrl = response.succeeded ? response.payload?.dataUrl : null;
   if (!dataUrl) return null;
 
+  trace?.mark('image.decode.start');
+  const decodeStartedAt = traceNow();
   const image = await loadImage(dataUrl);
+  trace?.mark('image.decode.end', {
+    durationMs: Number((traceNow() - decodeStartedAt).toFixed(1)),
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+  });
+
+  const compositeStartedAt = traceNow();
+  trace?.mark('composite.start');
   const sourceWidth = image.naturalWidth || response.payload?.width || renderSize;
   const sourceHeight = image.naturalHeight || response.payload?.height || renderSize;
   const source = document.createElement('canvas');
@@ -334,32 +403,67 @@ const renderMaterialThumbnail = async ({ guid, maxSize = 128 }: MaterialThumbnai
   } else {
     outputContext.drawImage(source, 0, 0, outputSize, outputSize);
   }
-  return output.toDataURL('image/png');
+  const result = output.toDataURL('image/png');
+  trace?.mark('composite.end', {
+    durationMs: Number((traceNow() - compositeStartedAt).toFixed(1)),
+    outputSize,
+    outputBytes: result.length,
+    bounds,
+  });
+  return result;
 };
 
 export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): Promise<string | null> {
   const key = materialThumbnailCacheKey(request.guid, request.generation, request.maxSize);
+  const trace = createThumbnailTrace(request, key);
   for (const cachedKey of thumbnailCache.keys()) {
-    if (cachedKey.startsWith(`${normalizedGuid(request.guid)}:`) && cachedKey !== key) thumbnailCache.delete(cachedKey);
+    if (cachedKey.startsWith(`${normalizedGuid(request.guid)}:`) && cachedKey !== key) {
+      trace.mark('memory.invalidate-old-generation', { cachedKey });
+      thumbnailCache.delete(cachedKey);
+    }
   }
 
   const cached = thumbnailCache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    trace.mark('memory.hit');
+    void cached.then((value) => trace.mark('memory.hit.resolved', { hasThumbnail: Boolean(value) }));
+    return cached;
+  }
+  trace.mark('memory.miss');
 
   const task = (async () => {
     try {
+      trace.mark('disk.lookup.start');
+      const diskStartedAt = traceNow();
       const persisted = await readPersistentThumbnail(key);
-      if (persisted) return persisted;
+      trace.mark(persisted ? 'disk.hit' : 'disk.miss', {
+        durationMs: Number((traceNow() - diskStartedAt).toFixed(1)),
+        encodedBytes: persisted?.length ?? 0,
+      });
+      if (persisted) {
+        trace.mark('complete', { source: 'disk', totalMs: Number((traceNow() - trace.startedAt).toFixed(1)) });
+        return persisted;
+      }
 
-      const result = await withThumbnailRenderSlot(() => renderMaterialThumbnail(request));
+      const result = await withThumbnailRenderSlot(() => renderMaterialThumbnail(request, trace), trace);
       if (!result) {
         thumbnailCache.delete(key);
+        trace.mark('complete.empty', { totalMs: Number((traceNow() - trace.startedAt).toFixed(1)) });
         return null;
       }
+
+      trace.mark('disk.write.start', { encodedBytes: result.length });
+      const writeStartedAt = traceNow();
       await writePersistentThumbnail(key, result);
+      trace.mark('disk.write.end', { durationMs: Number((traceNow() - writeStartedAt).toFixed(1)) });
+      trace.mark('complete', { source: 'render', totalMs: Number((traceNow() - trace.startedAt).toFixed(1)) });
       return result;
-    } catch {
+    } catch (error) {
       thumbnailCache.delete(key);
+      trace.mark('failed', {
+        totalMs: Number((traceNow() - trace.startedAt).toFixed(1)),
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   })();
@@ -370,6 +474,7 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
 
 export function invalidateMaterialSphereThumbnail(guid: string) {
   const prefix = `${normalizedGuid(guid)}:`;
+  window.console.info('[material-thumbnail] invalidate', { guid, prefix });
   for (const key of thumbnailCache.keys()) if (key.startsWith(prefix)) thumbnailCache.delete(key);
   void deletePersistentThumbnailPrefix(prefix);
 }
