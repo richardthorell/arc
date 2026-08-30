@@ -1,0 +1,28 @@
+.ui-panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.ui-panel-inspector {
+  --inspector-bg: #171f26;
+  --inspector-bg-deep: #10171c;
+  --inspector-bg-field: #11181e;
+  --inspector-bg-header-top: #29323a;
+  --inspector-bg-header-bottom: #222a31;
+  --inspector-border: #2c363e;
+  --inspector-border-soft: #242d34;
+  --inspector-text: #cbd2d8;
+  --inspector-text-muted: #a2abb3;
+  --inspector-text-dim: #707a83;
+  --inspector-axis-x: #dc5548;
+  --inspector-axis-y: #76ad60;
+  --inspector-axis-z: #4f91d4;
+  --inspector-row-label: 108px;
+  --inspector-control-height: 24px;
+  --inspector-radius: 3px;
+  min-height: 100%;
+  color: var(--inspector-text);
+  background: var(--inspector-bg);
+  font-size: var(--arc-text-sm);
+  line-height: var(--arc-line-default);
+}

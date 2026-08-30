@@ -3,6 +3,7 @@ import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
+import { UiPanel } from '../ui';
 
 import '../inspector/inspector.css';
 import './textureEditor.css';
@@ -56,7 +57,7 @@ function TextureProperty({ label, value }: { label: string; value: string }) {
 
 function TextureInspector({ asset }: { asset: AssetItem }) {
   return (
-    <aside aria-label="Texture details" className="data-inspector texture-inspector">
+    <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
       <header className="texture-inspector-header">
         <Image aria-hidden="true" size={18} />
         <div>
@@ -85,7 +86,7 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
         <TextureProperty label="Path" value={asset.path} />
         {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}
       </section>
-    </aside>
+    </UiPanel>
   );
 }
 

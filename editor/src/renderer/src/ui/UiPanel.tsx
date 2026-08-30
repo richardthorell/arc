@@ -1,7 +1,10 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 
+import './UiPanel.css';
+
 type UiPanelProps = HTMLAttributes<HTMLElement> & {
   children: ReactNode;
+  variant?: 'default' | 'inspector';
 };
 
 type UiPanelHeaderProps = HTMLAttributes<HTMLElement> & {
@@ -9,9 +12,9 @@ type UiPanelHeaderProps = HTMLAttributes<HTMLElement> & {
   children: ReactNode;
 };
 
-export function UiPanel({ children, className, ...props }: UiPanelProps) {
+export function UiPanel({ children, className, variant = 'default', ...props }: UiPanelProps) {
   return (
-    <section className={['ui-panel', className].filter(Boolean).join(' ')} {...props}>
+    <section className={['ui-panel', `ui-panel-${variant}`, className].filter(Boolean).join(' ')} {...props}>
       {children}
     </section>
   );

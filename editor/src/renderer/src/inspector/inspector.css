@@ -17,14 +17,6 @@
   --inspector-radius: 3px;
 }
 
-.data-inspector {
-  min-height: 100%;
-  color: var(--inspector-text);
-  background: var(--inspector-bg);
-  font-size: var(--arc-text-sm);
-  line-height: var(--arc-line-default);
-}
-
 .dock-right .dock-tabs {
   height: 31px;
   padding: 0 3px;
