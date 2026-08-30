@@ -10,13 +10,15 @@ type MaterialThumbnailRequest = {
   maxSize?: number;
 };
 
+type ProjectAsset = {
+  guid?: string;
+  path: string;
+  kind?: string;
+  generation?: number;
+};
+
 type ProjectAssetsSnapshot = {
-  assets?: Array<{
-    guid?: string;
-    path: string;
-    kind?: string;
-    generation?: number;
-  }>;
+  assets?: ProjectAsset[];
 };
 
 type AssetThumbnailSnapshot = {
@@ -40,10 +42,24 @@ type ThumbnailTrace = {
 };
 
 const thumbnailCache = new Map<string, Promise<string | null>>();
+const observedGenerations = new Map<string, number>();
 const maxConcurrentThumbnailRenders = 3;
 let activeThumbnailRenders = 0;
 const pendingThumbnailRenders: Array<() => void> = [];
 let thumbnailTraceSequence = 0;
+let projectAssetsPromise: Promise<Map<string, ProjectAsset>> | null = null;
+
+const persistentThumbnailDatabase = 'arc-material-thumbnails-v1';
+const persistentThumbnailStore = 'thumbnails';
+const persistentThumbnailVersion = 2;
+let persistentDatabasePromise: Promise<IDBDatabase | null> | null = null;
+
+const normalizedGuid = (guid: string) => guid.trim().replace(/[^a-zA-Z0-9-]/g, '');
+const normalizedGuidKey = (guid: string) => normalizedGuid(guid).toLocaleLowerCase();
+const thumbnailSize = (maxSize = 128) => Math.max(32, Math.min(256, Math.round(maxSize)));
+const persistentThumbnailPrefix = (guid: string) => `v${persistentThumbnailVersion}:${normalizedGuidKey(guid)}:`;
+const persistentThumbnailKey = (guid: string, maxSize = 128) =>
+  `${persistentThumbnailPrefix(guid)}${thumbnailSize(maxSize)}`;
 
 const traceNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 const createThumbnailTrace = (request: MaterialThumbnailRequest, key: string): ThumbnailTrace => {
@@ -59,6 +75,7 @@ const createThumbnailTrace = (request: MaterialThumbnailRequest, key: string): T
     guid: request.guid,
     generation: request.generation ?? 0,
     maxSize: request.maxSize ?? 128,
+    persistentKey: persistentThumbnailKey(request.guid, request.maxSize),
   });
   return { id, startedAt, mark };
 };
@@ -88,10 +105,6 @@ const withThumbnailRenderSlot = async <T>(operation: () => Promise<T>, trace?: T
   }
 };
 
-const persistentThumbnailDatabase = 'arc-material-thumbnails-v1';
-const persistentThumbnailStore = 'thumbnails';
-let persistentDatabasePromise: Promise<IDBDatabase | null> | null = null;
-
 const openPersistentThumbnailDatabase = (): Promise<IDBDatabase | null> => {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   if (persistentDatabasePromise) return persistentDatabasePromise;
@@ -101,9 +114,7 @@ const openPersistentThumbnailDatabase = (): Promise<IDBDatabase | null> => {
       const request = indexedDB.open(persistentThumbnailDatabase, 1);
       request.onupgradeneeded = () => {
         const database = request.result;
-        if (!database.objectStoreNames.contains(persistentThumbnailStore)) {
-          database.createObjectStore(persistentThumbnailStore);
-        }
+        if (!database.objectStoreNames.contains(persistentThumbnailStore)) database.createObjectStore(persistentThumbnailStore);
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => resolve(null);
@@ -169,7 +180,35 @@ const deletePersistentThumbnailPrefix = async (prefix: string): Promise<void> =>
   });
 };
 
-const normalizedGuid = (guid: string) => guid.trim().replace(/[^a-zA-Z0-9-]/g, '');
+const projectAssetsByGuid = async (): Promise<Map<string, ProjectAsset>> => {
+  if (!projectAssetsPromise) {
+    projectAssetsPromise = (async () => {
+      const response = (await window.arc.host.query('project.assets')) as HostResponse<ProjectAssetsSnapshot>;
+      if (!response.succeeded) return new Map<string, ProjectAsset>();
+      const assets = new Map<string, ProjectAsset>();
+      for (const asset of response.payload?.assets ?? []) {
+        if (!asset.guid) continue;
+        assets.set(normalizedGuidKey(asset.guid), asset);
+      }
+      return assets;
+    })().catch(() => {
+      projectAssetsPromise = null;
+      return new Map<string, ProjectAsset>();
+    });
+  }
+  return projectAssetsPromise;
+};
+
+const materialPathForGuid = async (guid: string): Promise<ProjectAsset | null> => {
+  const key = normalizedGuidKey(guid);
+  const assets = await projectAssetsByGuid();
+  const cached = assets.get(key);
+  if (cached) return cached;
+
+  // The project snapshot may predate a newly imported material. Refresh only on a miss.
+  projectAssetsPromise = null;
+  return (await projectAssetsByGuid()).get(key) ?? null;
+};
 
 // Kept stable for callers/tests that still use the old preview identity when
 // diagnosing material viewport rendering. Material thumbnails no longer create
@@ -177,8 +216,11 @@ const normalizedGuid = (guid: string) => guid.trim().replace(/[^a-zA-Z0-9-]/g, '
 export const materialThumbnailViewportId = (guid: string, instance: number) =>
   `asset-preview-material-${normalizedGuid(guid)}~thumbnail-${instance}`;
 
+// Runtime generations intentionally remain part of the in-memory key so an edit
+// refreshes immediately during the current editor session. Persistent entries use
+// a separate stable key because runtime generations are rebuilt across startups.
 export const materialThumbnailCacheKey = (guid: string, generation = 0, maxSize = 128) =>
-  `${normalizedGuid(guid)}:${generation}:${Math.max(32, Math.min(256, Math.round(maxSize)))}`;
+  `${normalizedGuid(guid)}:${generation}:${thumbnailSize(maxSize)}`;
 
 const colorDistance = (pixels: Uint8ClampedArray, offset: number, background: readonly number[]) =>
   Math.max(
@@ -300,16 +342,6 @@ const loadImage = (dataUrl: string) =>
     image.src = dataUrl;
   });
 
-const materialPathForGuid = async (guid: string): Promise<{ path: string; generation?: number } | null> => {
-  const response = (await window.arc.host.query('project.assets')) as HostResponse<ProjectAssetsSnapshot>;
-  if (!response.succeeded) return null;
-  const normalized = normalizedGuid(guid).toLocaleLowerCase();
-  const asset = response.payload?.assets?.find(
-    (candidate) => normalizedGuid(candidate.guid ?? '').toLocaleLowerCase() === normalized,
-  );
-  return asset ? { path: asset.path, generation: asset.generation } : null;
-};
-
 const renderMaterialThumbnail = async (
   { guid, maxSize = 128 }: MaterialThumbnailRequest,
   trace?: ThumbnailTrace,
@@ -319,9 +351,9 @@ const renderMaterialThumbnail = async (
     return null;
   }
 
-  const outputSize = Math.max(32, Math.min(256, Math.round(maxSize)));
+  const outputSize = thumbnailSize(maxSize);
   const renderSize = Math.min(256, outputSize * 2);
-  trace?.mark('asset.resolve.start');
+  trace?.mark('asset.resolve.start', { sharedSnapshot: Boolean(projectAssetsPromise) });
   const resolveStartedAt = traceNow();
   const asset = await materialPathForGuid(guid);
   trace?.mark('asset.resolve.end', {
@@ -403,6 +435,7 @@ const renderMaterialThumbnail = async (
   } else {
     outputContext.drawImage(source, 0, 0, outputSize, outputSize);
   }
+
   const result = output.toDataURL('image/png');
   trace?.mark('composite.end', {
     durationMs: Number((traceNow() - compositeStartedAt).toFixed(1)),
@@ -414,8 +447,23 @@ const renderMaterialThumbnail = async (
 };
 
 export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): Promise<string | null> {
-  const key = materialThumbnailCacheKey(request.guid, request.generation, request.maxSize);
+  const guidKey = normalizedGuidKey(request.guid);
+  const generation = request.generation ?? 0;
+  const key = materialThumbnailCacheKey(request.guid, generation, request.maxSize);
+  const diskKey = persistentThumbnailKey(request.guid, request.maxSize);
   const trace = createThumbnailTrace(request, key);
+  const previousGeneration = observedGenerations.get(guidKey);
+
+  if (previousGeneration !== undefined && previousGeneration !== generation) {
+    trace.mark('generation.changed', { previousGeneration, generation, diskKey });
+    for (const cachedKey of thumbnailCache.keys()) {
+      if (cachedKey.startsWith(`${normalizedGuid(request.guid)}:`)) thumbnailCache.delete(cachedKey);
+    }
+    void deletePersistentThumbnailPrefix(persistentThumbnailPrefix(request.guid));
+    projectAssetsPromise = null;
+  }
+  observedGenerations.set(guidKey, generation);
+
   for (const cachedKey of thumbnailCache.keys()) {
     if (cachedKey.startsWith(`${normalizedGuid(request.guid)}:`) && cachedKey !== key) {
       trace.mark('memory.invalidate-old-generation', { cachedKey });
@@ -433,10 +481,11 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
 
   const task = (async () => {
     try {
-      trace.mark('disk.lookup.start');
+      trace.mark('disk.lookup.start', { diskKey });
       const diskStartedAt = traceNow();
-      const persisted = await readPersistentThumbnail(key);
+      const persisted = await readPersistentThumbnail(diskKey);
       trace.mark(persisted ? 'disk.hit' : 'disk.miss', {
+        diskKey,
         durationMs: Number((traceNow() - diskStartedAt).toFixed(1)),
         encodedBytes: persisted?.length ?? 0,
       });
@@ -452,10 +501,10 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
         return null;
       }
 
-      trace.mark('disk.write.start', { encodedBytes: result.length });
+      trace.mark('disk.write.start', { diskKey, encodedBytes: result.length });
       const writeStartedAt = traceNow();
-      await writePersistentThumbnail(key, result);
-      trace.mark('disk.write.end', { durationMs: Number((traceNow() - writeStartedAt).toFixed(1)) });
+      await writePersistentThumbnail(diskKey, result);
+      trace.mark('disk.write.end', { diskKey, durationMs: Number((traceNow() - writeStartedAt).toFixed(1)) });
       trace.mark('complete', { source: 'render', totalMs: Number((traceNow() - trace.startedAt).toFixed(1)) });
       return result;
     } catch (error) {
@@ -473,8 +522,11 @@ export function loadMaterialSphereThumbnail(request: MaterialThumbnailRequest): 
 }
 
 export function invalidateMaterialSphereThumbnail(guid: string) {
-  const prefix = `${normalizedGuid(guid)}:`;
-  window.console.info('[material-thumbnail] invalidate', { guid, prefix });
-  for (const key of thumbnailCache.keys()) if (key.startsWith(prefix)) thumbnailCache.delete(key);
-  void deletePersistentThumbnailPrefix(prefix);
+  const memoryPrefix = `${normalizedGuid(guid)}:`;
+  const diskPrefix = persistentThumbnailPrefix(guid);
+  window.console.info('[material-thumbnail] invalidate', { guid, memoryPrefix, diskPrefix });
+  observedGenerations.delete(normalizedGuidKey(guid));
+  projectAssetsPromise = null;
+  for (const key of thumbnailCache.keys()) if (key.startsWith(memoryPrefix)) thumbnailCache.delete(key);
+  void deletePersistentThumbnailPrefix(diskPrefix);
 }
