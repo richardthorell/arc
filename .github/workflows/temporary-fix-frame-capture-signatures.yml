@@ -1,0 +1,53 @@
+name: Temporary fix frame capture signatures
+on:
+  push:
+    branches: [fix/clang-format-main-20260830]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/clang-format-main-20260830
+      - name: Install formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Fix frame capture signatures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          exts = {'.h','.hh','.hpp','.hxx','.inl','.c','.cc','.cpp','.cxx'}
+          roots = [Path('engine'), Path('editor/native'), Path('samples')]
+          replacements = {
+              'void request_frame_capture(arc::render::render_frame_capture_request request) override':
+              'void request_frame_capture(const arc::render::render_frame_capture_request& request) override',
+              'capture_request = std::move(request);': 'capture_request = request;',
+          }
+          changed=[]
+          for root in roots:
+              if not root.exists(): continue
+              for p in root.rglob('*'):
+                  if not p.is_file() or p.suffix not in exts: continue
+                  s=p.read_text()
+                  n=s
+                  for a,b in replacements.items(): n=n.replace(a,b)
+                  if n!=s:
+                      p.write_text(n)
+                      changed.append(str(p))
+          print('\n'.join(changed))
+          PY
+      - name: Format modified test
+        run: clang-format-18 -i engine/render/tests/render_tests.cpp
+      - name: Remove temporary workflow
+        run: rm .github/workflows/temporary-fix-frame-capture-signatures.yml
+      - name: Commit fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(render): align frame capture override signatures'
+          git push origin HEAD:fix/clang-format-main-20260830
