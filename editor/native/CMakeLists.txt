@@ -53,6 +53,8 @@ target_link_libraries(arc-editor-host
     PRIVATE
         arc-third-party-json
         arc-third-party-png
+        # Material thumbnails decode only a reduced preview level instead of
+        # asking the runtime texture loader to build a complete mip chain.
         arc-third-party-stb
         arc-render-tools
         ${CMAKE_DL_LIBS}
