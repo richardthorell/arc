@@ -6,6 +6,7 @@ import { DocumentTypeIcon } from '../assets/DocumentTypeIcon';
 import { loadMaterialSphereThumbnail } from '../assets/materialThumbnail';
 import { AssetThumbnail } from '../inspector/AssetPicker';
 import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
+import { trackEditorJob } from '../jobs/editorJobProgress';
 import type { AssetItem } from '../services/editorHostTypes';
 import { UiFloatingSurface } from '../ui';
 
@@ -145,11 +146,13 @@ export function ContentAssetCard({
   const cardThumbnailProvider = useMemo<AssetThumbnailProvider>(() => {
     if (asset.kind !== 'material' || !asset.guid) return thumbnailProvider;
     return () =>
-      loadMaterialSphereThumbnail({
-        guid: asset.guid!,
-        generation: asset.generation,
-        maxSize: 128,
-      });
+      trackEditorJob(() =>
+        loadMaterialSphereThumbnail({
+          guid: asset.guid!,
+          generation: asset.generation,
+          maxSize: 128,
+        }),
+      );
   }, [asset.generation, asset.guid, asset.kind, thumbnailProvider]);
 
   const cancelHover = () => {
