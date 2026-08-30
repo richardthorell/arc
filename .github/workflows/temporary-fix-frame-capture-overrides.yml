@@ -1,0 +1,44 @@
+name: Temporary fix frame capture overrides
+on:
+  push:
+    branches:
+      - fix/clang-format-main-20260830
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+      - name: Fix all stale frame capture overrides
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(grep -RIl --include='*.cpp' --include='*.h' 'request_frame_capture(render_frame_capture_request request)' engine || true)
+          printf 'Matching files:\n%s\n' "${files[*]:-none}"
+          if ((${#files[@]})); then
+            sed -i 's/request_frame_capture(render_frame_capture_request request)/request_frame_capture(const render_frame_capture_request\& request)/g' "${files[@]}"
+            sed -i 's/pending_capture_request_ = std::move(request);/pending_capture_request_ = request;/g' "${files[@]}"
+            clang-format-18 -i "${files[@]}"
+          fi
+          if grep -RIn --include='*.cpp' --include='*.h' 'request_frame_capture(render_frame_capture_request request)' engine; then
+            echo 'Stale overrides remain' >&2
+            exit 1
+          fi
+      - name: Remove temporary workflow
+        run: rm .github/workflows/temporary-fix-frame-capture-overrides.yml
+      - name: Commit fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'No changes'
+          else
+            git commit -m 'fix: update frame capture backend overrides'
+            git push
+          fi
