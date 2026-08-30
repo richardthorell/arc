@@ -632,7 +632,7 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         if (const auto device_budget = backend_->capabilities().memory_budget; device_budget != 0)
             residency.gpu_budget_bytes = std::min(residency.gpu_budget_bytes, device_budget / 10u);
         virtual_geometry_residency_.configure(residency);
-        const auto texture_quality_budget =
+        const std::uint64_t texture_quality_budget =
             resolved_config_.quality == render_quality_tier::low      ? 256ull * mebibyte
             : resolved_config_.quality == render_quality_tier::medium ? 512ull * mebibyte
             : resolved_config_.quality == render_quality_tier::high   ? 1024ull * mebibyte
@@ -640,10 +640,11 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
         const auto adapter_memory = backend_->capabilities().memory_budget != 0
                                         ? backend_->capabilities().memory_budget
                                         : backend_->capabilities().dedicated_video_memory;
-        auto texture_gpu_budget =
+        std::uint64_t texture_gpu_budget =
             config_.texture_gpu_budget_bytes != 0 ? config_.texture_gpu_budget_bytes : texture_quality_budget;
         if (adapter_memory != 0)
-            texture_gpu_budget = std::min(texture_gpu_budget, std::max(std::uint64_t{128} * mebibyte, adapter_memory / 4u));
+            texture_gpu_budget =
+                std::min(texture_gpu_budget, std::max(std::uint64_t{128} * mebibyte, adapter_memory / 4u));
         const auto quality_upload_budget = resolved_config_.quality == render_quality_tier::low     ? 32ull * mebibyte
                                            : resolved_config_.quality == render_quality_tier::ultra ? 128ull * mebibyte
                                                                                                     : 64ull * mebibyte;
