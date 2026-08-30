@@ -1,0 +1,57 @@
+name: Temporary Clang Format Fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.head_ref == 'fix/clang-format-main-20260830'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install clang-format 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+
+      - name: Format native sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(
+            find engine editor/native samples tools benchmarks tests \
+              -type f \
+              \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' \
+                 -o -name '*.h' -o -name '*.hh' -o -name '*.hpp' -o -name '*.hxx' \
+                 -o -name '*.inl' -o -name '*.ixx' -o -name '*.cppm' \) \
+              ! -path 'engine/render-vulkan/src/builtin_shaders.h' \
+              -print0
+          )
+          if (( ${#files[@]} > 0 )); then
+            clang-format-18 -i -- "${files[@]}"
+          fi
+          rm -f .github/workflows/temporary-clang-format-fix.yml
+
+      - name: Commit formatting fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No formatting changes were required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all
+          git commit -m 'Fix clang-format issues'
+          git push origin HEAD:${{ github.head_ref }}
