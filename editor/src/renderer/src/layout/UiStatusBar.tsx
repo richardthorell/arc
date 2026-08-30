@@ -1,6 +1,7 @@
 import { Circle, GitBranch } from 'lucide-react';
 
 import type { StartupState } from '../app/workbenchTypes';
+import type { EditorJobProgress } from '../jobs/editorJobProgress';
 import { useEditorJobProgress } from '../jobs/editorJobProgress';
 
 import './uiStatusBar.css';
@@ -10,7 +11,7 @@ type UiStatusBarProps = {
   activeScene?: string;
   lastCommand: string;
   aiControl?: string;
-  jobProgress?: { completed: number; total: number } | null;
+  jobProgress?: EditorJobProgress | null;
 };
 
 export function UiStatusBar({ startupState, aiControl, jobProgress }: UiStatusBarProps) {
