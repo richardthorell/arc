@@ -409,24 +409,22 @@ material_preview_result render_material_preview(const material_asset& asset, con
                 const color3 base_color = graph_maps.base_color.texture.valid
                                               ? color3{graph_base_sample[0], graph_base_sample[1], graph_base_sample[2]}
                                               : mul(base_factor, {base_sample[0], base_sample[1], base_sample[2]});
-                const float metallic = graph_maps.metallic.texture.valid
-                                           ? std::clamp(sample_scalar(graph_metallic_sample, graph_maps.metallic.pin),
-                                                        0.0f, 1.0f)
-                                           : std::clamp(material.metallic *
-                                                            (metallic_roughness_map.valid ? mr_sample[2] : 1.0f),
-                                                        0.0f, 1.0f);
-                const float roughness = graph_maps.roughness.texture.valid
-                                            ? std::clamp(sample_scalar(graph_roughness_sample, graph_maps.roughness.pin),
-                                                         minimum_roughness, 1.0f)
-                                            : std::clamp(material.roughness *
-                                                             (metallic_roughness_map.valid ? mr_sample[1] : 1.0f),
-                                                         minimum_roughness, 1.0f);
-                const float ao = graph_maps.ambient_occlusion.texture.valid
-                                     ? std::clamp(sample_scalar(graph_ao_sample, graph_maps.ambient_occlusion.pin), 0.0f,
-                                                  1.0f)
-                                     : std::clamp(1.0f + ((ao_map.valid ? ao_sample[0] : 1.0f) - 1.0f) *
-                                                             material.occlusion_strength,
-                                                  0.0f, 1.0f);
+                const float metallic =
+                    graph_maps.metallic.texture.valid
+                        ? std::clamp(sample_scalar(graph_metallic_sample, graph_maps.metallic.pin), 0.0f, 1.0f)
+                        : std::clamp(material.metallic * (metallic_roughness_map.valid ? mr_sample[2] : 1.0f), 0.0f,
+                                     1.0f);
+                const float roughness =
+                    graph_maps.roughness.texture.valid
+                        ? std::clamp(sample_scalar(graph_roughness_sample, graph_maps.roughness.pin), minimum_roughness,
+                                     1.0f)
+                        : std::clamp(material.roughness * (metallic_roughness_map.valid ? mr_sample[1] : 1.0f),
+                                     minimum_roughness, 1.0f);
+                const float ao =
+                    graph_maps.ambient_occlusion.texture.valid
+                        ? std::clamp(sample_scalar(graph_ao_sample, graph_maps.ambient_occlusion.pin), 0.0f, 1.0f)
+                        : std::clamp(1.0f + ((ao_map.valid ? ao_sample[0] : 1.0f) - 1.0f) * material.occlusion_strength,
+                                     0.0f, 1.0f);
                 const float base_energy = 1.0f - material.clear_coat_factor * dielectric_reflectance;
                 color = mul(mul(base_color, 0.055f * base_energy), ao);
                 color = add(color, mul(evaluate_light(normal, view, key_light, {4.3f, 3.9f, 3.45f}, base_color,
@@ -464,16 +462,15 @@ material_preview_result render_material_preview(const material_asset& asset, con
                 const float emissive_scale = material.emissive_luminance_nits > 0.0f
                                                  ? material.emissive_luminance_nits / 100.0f
                                                  : material.emissive_strength;
-                const color3 emissive = graph_maps.emissive.texture.valid
-                                            ? color3{graph_emissive_sample[0], graph_emissive_sample[1],
-                                                     graph_emissive_sample[2]}
-                                            : mul(emissive_factor,
-                                                  {emissive_sample[0], emissive_sample[1], emissive_sample[2]});
+                const color3 emissive =
+                    graph_maps.emissive.texture.valid
+                        ? color3{graph_emissive_sample[0], graph_emissive_sample[1], graph_emissive_sample[2]}
+                        : mul(emissive_factor, {emissive_sample[0], emissive_sample[1], emissive_sample[2]});
                 color = add(color, mul(emissive, emissive_scale));
-                const float opacity = graph_maps.opacity.texture.valid
-                                          ? std::clamp(sample_scalar(graph_opacity_sample, graph_maps.opacity.pin), 0.0f,
-                                                       1.0f)
-                                          : std::clamp(material.base_color[3] * base_sample[3], 0.0f, 1.0f);
+                const float opacity =
+                    graph_maps.opacity.texture.valid
+                        ? std::clamp(sample_scalar(graph_opacity_sample, graph_maps.opacity.pin), 0.0f, 1.0f)
+                        : std::clamp(material.base_color[3] * base_sample[3], 0.0f, 1.0f);
                 if (material.alpha_mode == render::material_alpha_mode::masked && opacity < material.alpha_cutoff)
                     color = background;
                 else if (material.alpha_mode == render::material_alpha_mode::blend)
