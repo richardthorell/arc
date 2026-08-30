@@ -155,10 +155,10 @@ sampled_texture load_preview_texture_uncached(const std::filesystem::path& path)
                         const auto source_width = static_cast<std::uint32_t>(width);
                         const auto source_height = static_cast<std::uint32_t>(height);
                         const auto source_max = std::max(source_width, source_height);
-                        const float scale = source_max > preview_texture_max_size
-                                                ? static_cast<float>(preview_texture_max_size) /
-                                                      static_cast<float>(source_max)
-                                                : 1.0f;
+                        const float scale =
+                            source_max > preview_texture_max_size
+                                ? static_cast<float>(preview_texture_max_size) / static_cast<float>(source_max)
+                                : 1.0f;
                         const auto target_width =
                             std::max(1u, static_cast<std::uint32_t>(std::lround(source_width * scale)));
                         const auto target_height =
@@ -174,20 +174,19 @@ sampled_texture load_preview_texture_uncached(const std::filesystem::path& path)
 
                         for (std::uint32_t y = 0; y < target_height; ++y)
                         {
-                            const auto source_y = std::min(
-                                source_height - 1u,
-                                static_cast<std::uint32_t>((static_cast<std::uint64_t>(y) * source_height) /
-                                                           target_height));
+                            const auto source_y =
+                                std::min(source_height - 1u,
+                                         static_cast<std::uint32_t>((static_cast<std::uint64_t>(y) * source_height) /
+                                                                    target_height));
                             for (std::uint32_t x = 0; x < target_width; ++x)
                             {
-                                const auto source_x = std::min(
-                                    source_width - 1u,
-                                    static_cast<std::uint32_t>((static_cast<std::uint64_t>(x) * source_width) /
-                                                               target_width));
+                                const auto source_x =
+                                    std::min(source_width - 1u,
+                                             static_cast<std::uint32_t>((static_cast<std::uint64_t>(x) * source_width) /
+                                                                        target_width));
                                 const auto source_offset =
                                     (static_cast<std::size_t>(source_y) * source_width + source_x) * 4u;
-                                const auto target_offset =
-                                    (static_cast<std::size_t>(y) * target_width + x) * 4u;
+                                const auto target_offset = (static_cast<std::size_t>(y) * target_width + x) * 4u;
                                 std::memcpy(texture.pixels.data() + target_offset, decoded + source_offset, 4u);
                             }
                         }
@@ -355,8 +354,7 @@ loaded_graph_texture_binding load_graph_binding(const std::filesystem::path& roo
 }
 
 loaded_graph_texture_bindings load_graph_bindings(const std::filesystem::path& root,
-                                                  const graph_texture_bindings& bindings,
-                                                  preview_texture_cache& cache)
+                                                  const graph_texture_bindings& bindings, preview_texture_cache& cache)
 {
     return {
         .base_color = load_graph_binding(root, bindings.base_color, cache),

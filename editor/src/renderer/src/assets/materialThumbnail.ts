@@ -114,7 +114,8 @@ const openPersistentThumbnailDatabase = (): Promise<IDBDatabase | null> => {
       const request = indexedDB.open(persistentThumbnailDatabase, 1);
       request.onupgradeneeded = () => {
         const database = request.result;
-        if (!database.objectStoreNames.contains(persistentThumbnailStore)) database.createObjectStore(persistentThumbnailStore);
+        if (!database.objectStoreNames.contains(persistentThumbnailStore))
+          database.createObjectStore(persistentThumbnailStore);
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => resolve(null);
