@@ -34,11 +34,7 @@ const hostActivityLabel = (type: string, message: string) => {
   return '';
 };
 
-export function useEditorActivityProgress(
-  startupState: StartupState | null,
-  activeScene?: string,
-  enabled = true,
-) {
+export function useEditorActivityProgress(startupState: StartupState | null, activeScene?: string, enabled = true) {
   const startupJob = useRef<EditorJobToken | null>(null);
   const buildJob = useRef<EditorJobToken | null>(null);
   const hostActivityJob = useRef<EditorJobToken | null>(null);

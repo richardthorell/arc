@@ -19,7 +19,8 @@ export function UiStatusBar({ startupState, activeScene, aiControl, jobProgress 
   useEditorActivityProgress(startupState, activeScene, jobProgress === undefined);
   const trackedJobs = useEditorJobProgress();
   const jobs = jobProgress === undefined ? trackedJobs : jobProgress;
-  const jobPercent = jobs && !jobs.indeterminate && jobs.total > 0 ? Math.round((jobs.completed / jobs.total) * 100) : 0;
+  const jobPercent =
+    jobs && !jobs.indeterminate && jobs.total > 0 ? Math.round((jobs.completed / jobs.total) * 100) : 0;
   const statusText = jobs
     ? jobs.indeterminate || jobs.total <= 0
       ? jobs.label
@@ -51,7 +52,10 @@ export function UiStatusBar({ startupState, activeScene, aiControl, jobProgress 
             className={`status-job-progress${jobs.indeterminate ? ' is-indeterminate' : ''}`}
             role="progressbar"
           >
-            <span className="status-job-progress-fill" style={jobs.indeterminate ? undefined : { width: `${jobPercent}%` }} />
+            <span
+              className="status-job-progress-fill"
+              style={jobs.indeterminate ? undefined : { width: `${jobPercent}%` }}
+            />
           </span>
         </span>
       )}

@@ -138,5 +138,4 @@ export const trackEditorJob = async <T>(
   }
 };
 
-export const useEditorJobProgress = () =>
-  useSyncExternalStore(subscribe, getEditorJobProgress, getEditorJobProgress);
+export const useEditorJobProgress = () => useSyncExternalStore(subscribe, getEditorJobProgress, getEditorJobProgress);
