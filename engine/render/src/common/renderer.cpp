@@ -563,7 +563,7 @@ render_object_pick_result render_backend::last_object_pick() const
     return {};
 }
 
-void render_backend::request_frame_capture(render_frame_capture_request) {}
+void render_backend::request_frame_capture(const render_frame_capture_request&) {}
 
 render_frame_capture_result render_backend::last_frame_capture() const
 {

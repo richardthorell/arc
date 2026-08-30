@@ -19,6 +19,11 @@ std::uint64_t tile_key(std::uint32_t mip, std::uint32_t x, std::uint32_t y) noex
     return (static_cast<std::uint64_t>(mip) << 48u) | (static_cast<std::uint64_t>(y) << 24u) | x;
 }
 
+texture_handle handle_from_resource_key(std::uint64_t key) noexcept
+{
+    return {.index = static_cast<std::uint32_t>(key), .generation = static_cast<std::uint32_t>(key >> 32u)};
+}
+
 float mip_priority(std::uint32_t mip_count, std::uint32_t mip, float coverage, bool pinned) noexcept
 {
     return (pinned ? 1'000'000.0f : 0.0f) + static_cast<float>(mip_count - std::min(mip, mip_count)) * 4096.0f +
@@ -309,12 +314,13 @@ void texture_residency_manager::note_feedback_overflow(std::uint32_t count) noex
 std::vector<texture_stream_load> texture_residency_manager::take_load_requests()
 {
     std::vector<texture_stream_load> result;
-    for (auto& [_, resource] : implementation_->resources)
+    for (auto& [key, resource] : implementation_->resources)
     {
+        const auto resource_handle = handle_from_resource_key(key);
         const auto append = [&](const implementation::subresource_entry& entry)
         {
             if (entry.state != texture_residency_state::requested) return;
-            result.push_back({.resource = resource.handle,
+            result.push_back({.resource = resource_handle,
                               .content_generation = resource.descriptor.content_generation,
                               .source = resource.descriptor.source,
                               .kind = entry.kind,

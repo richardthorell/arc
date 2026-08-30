@@ -101,7 +101,7 @@ texture_streaming_controller::texture_streaming_controller(texture_streaming_con
 texture_streaming_controller&
 texture_streaming_controller::operator=(texture_streaming_controller&&) noexcept = default;
 
-void texture_streaming_controller::update(jobs::cancellation_token cancellation)
+void texture_streaming_controller::update(const jobs::cancellation_token& cancellation)
 {
     auto& state = *implementation_;
     for (std::size_t index = 0; index < state.pending.size();)

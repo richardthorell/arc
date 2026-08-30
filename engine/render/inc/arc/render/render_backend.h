@@ -1225,7 +1225,7 @@ public:
     /**
      * @brief Queue an asynchronous capture of coherent channels from one rendered frame.
      */
-    virtual void request_frame_capture(render_frame_capture_request request);
+    virtual void request_frame_capture(const render_frame_capture_request& request);
 
     /**
      * @brief Return the latest completed frame capture.

@@ -541,7 +541,7 @@ texture_load_result load_texture_asset_bytes(std::vector<std::byte> bytes, const
 
 jobs::job_future<texture_load_result> load_texture_asset_async(io::async_file_service& files,
                                                                std::filesystem::path path,
-                                                               jobs::cancellation_token cancellation)
+                                                               const jobs::cancellation_token& cancellation)
 {
     auto read = files.read_all(path, cancellation);
     return files.scheduler().submit_future({.name = "render.decode_texture",
