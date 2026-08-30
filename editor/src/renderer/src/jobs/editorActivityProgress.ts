@@ -31,13 +31,22 @@ const hostActivityLabel = (type: string, message: string) => {
   return '';
 };
 
-export function useEditorActivityProgress(startupState: StartupState | null, activeScene?: string) {
+export function useEditorActivityProgress(
+  startupState: StartupState | null,
+  activeScene?: string,
+  enabled = true,
+) {
   const startupJob = useRef<EditorJobToken | null>(null);
   const buildJob = useRef<EditorJobToken | null>(null);
   const hostActivityJob = useRef<EditorJobToken | null>(null);
   const hostActivityTimer = useRef<number | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      startupJob.current?.finish();
+      startupJob.current = null;
+      return;
+    }
     if (!startupState) {
       if (!startupJob.current)
         startupJob.current = beginEditorJob('Starting editor', {
@@ -60,10 +69,10 @@ export function useEditorActivityProgress(startupState: StartupState | null, act
 
     startupJob.current?.finish();
     startupJob.current = null;
-  }, [activeScene, startupState]);
+  }, [activeScene, enabled, startupState]);
 
   useEffect(() => {
-    if (!window.arc?.build) return;
+    if (!enabled || !window.arc?.build) return;
 
     const accept = (snapshot: ArcBuildSnapshot | null) => {
       if (!snapshot || (snapshot.status !== 'queued' && snapshot.status !== 'running')) {
@@ -84,10 +93,10 @@ export function useEditorActivityProgress(startupState: StartupState | null, act
 
     void window.arc.build.snapshot().then(accept);
     return window.arc.build.onState(accept);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
-    if (!window.arc?.host?.onEvent) return;
+    if (!enabled || !window.arc?.host?.onEvent) return;
 
     const finishHostActivity = () => {
       hostActivityJob.current?.finish();
@@ -118,7 +127,7 @@ export function useEditorActivityProgress(startupState: StartupState | null, act
       unsubscribe?.();
       finishHostActivity();
     };
-  }, []);
+  }, [enabled]);
 
   useEffect(
     () => () => {
