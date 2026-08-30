@@ -652,7 +652,7 @@ void renderer::set_backend(std::unique_ptr<render_backend> backend)
             {.gpu_budget_bytes = texture_gpu_budget,
              .cpu_cache_budget_bytes = config_.texture_cpu_cache_budget_bytes != 0
                                            ? config_.texture_cpu_cache_budget_bytes
-                                           : std::min(256ull * mebibyte, texture_gpu_budget / 4u),
+                                           : std::min(std::uint64_t{256} * mebibyte, texture_gpu_budget / 4u),
              .upload_budget_per_frame = config_.texture_upload_budget_per_frame != 0
                                             ? config_.texture_upload_budget_per_frame
                                             : quality_upload_budget,
