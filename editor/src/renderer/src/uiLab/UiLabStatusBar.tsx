@@ -1,5 +1,7 @@
 import { StatusBar } from '../layout/StatusBar';
 
+import './UiLabStatusBar.css';
+
 export function UiLabStatusBar() {
   return (
     <section className="ui-lab-section">
