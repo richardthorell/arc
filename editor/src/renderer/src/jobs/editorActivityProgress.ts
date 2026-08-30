@@ -28,6 +28,9 @@ const hostActivityLabel = (type: string, message: string) => {
   if (normalized.includes('cook')) return message || 'Cooking assets';
   if (normalized.includes('shader') && normalized.includes('compil')) return message || 'Compiling shaders';
   if (normalized.includes('import')) return message || 'Importing assets';
+  if (type === 'project.opened') return 'Loading assets';
+  if (type === 'project.moduleReloaded') return 'Loading project modules';
+  if (type === 'asset.changed') return message || 'Processing assets';
   return '';
 };
 
