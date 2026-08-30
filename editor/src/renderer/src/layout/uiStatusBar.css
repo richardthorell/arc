@@ -1,0 +1,26 @@
+.status-jobs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 112px;
+  color: var(--arc-color-text-muted);
+  white-space: nowrap;
+}
+
+.status-job-progress {
+  display: block;
+  width: 58px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--arc-color-text-muted) 32%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--arc-color-border) 70%, transparent);
+}
+
+.status-job-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--arc-color-accent);
+  transition: width 120ms ease-out;
+}

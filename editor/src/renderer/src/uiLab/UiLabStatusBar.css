@@ -1,0 +1,12 @@
+.ui-lab-status-bar-card {
+  grid-column: 1 / -1;
+}
+
+.ui-lab-status-bar-stage {
+  min-height: 52px;
+  padding: 8px 10px;
+}
+
+.ui-lab-status-bar-stage .status-bar {
+  width: 100%;
+}
