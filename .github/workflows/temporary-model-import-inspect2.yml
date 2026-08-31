@@ -14,6 +14,7 @@ jobs:
           ref: feature/model-drag-drop-obj
       - name: Inspect
         run: |
-          grep -RInE "ufbx|\.fbx|\.gltf|\.glb|load.*mesh|import.*mesh|import.*scene|scene\.open" editor/native engine third_party --include='*.cpp' --include='*.h' --include='CMakeLists.txt' | head -n 1000 || true
-          echo '=== preload refs ==='
-          grep -RInE "importTexture|externalTexture|dataTransfer\.files" editor/src --include='*.ts' --include='*.tsx' | head -n 500 || true
+          echo '=== entity commands ==='
+          grep -RInE "entity\.create|createEntity|host_create_entity|setMaterial|__arc_mesh__|viewport\.pick" editor/src editor/native --include='*.ts' --include='*.tsx' --include='*.cpp' --include='*.h' | head -n 700 || true
+          echo '=== workbench create snippets ==='
+          grep -n -A20 -B20 "entity.create\|host.command('entity" editor/src/renderer/src/app/Workbench.tsx | head -n 500 || true
