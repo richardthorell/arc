@@ -1,0 +1,43 @@
+name: Temporary Texture Stage 2 Runner
+on:
+  push:
+    branches: [feat/texture-import-policy-stage2]
+permissions:
+  contents: write
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-import-policy-stage2
+          fetch-depth: 0
+      - name: Extract Stage 2 implementation
+        run: |
+          python3 -c "from pathlib import Path; t=Path('.github/workflows/temp-texture-stage2.yml').read_text(); b=t.split(\"python3 <<'PY'\\n\",1)[1].split('\\n          PY',1)[0]; Path('/tmp/stage2.py').write_text('\\n'.join((x[10:] if x.startswith('          ') else x) for x in b.splitlines()))"
+          python3 /tmp/stage2.py
+      - name: Format
+        run: |
+          clang-format -i engine/render/inc/arc/render/texture_artifact.h engine/render/src/common/texture_artifact.cpp engine/render-tools/inc/arc/render_tools/texture_cooker.h engine/render-tools/src/common/texture_cooker.cpp engine/render-tools/tests/texture_cooker_tests.cpp editor/native/inc/arc/editor/host_protocol_base.h editor/native/src/host_protocol_base.inc editor/native/src/arc_host_base.inc
+          cd editor
+          npx --yes prettier@3.9.6 --write src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/TextureEditor.tsx src/renderer/src/texture/TextureEditor.test.tsx src/renderer/src/texture/textureEditor.css
+      - name: Native validation
+        run: |
+          cmake -S . -B out/build/texture-stage2 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF
+          cmake --build out/build/texture-stage2 --target arc_render_tools_tests arc-editor-host -j2
+          ctest --test-dir out/build/texture-stage2 -R arc_render_tools_tests --output-on-failure
+      - name: Editor validation
+        run: |
+          cd editor
+          npm ci
+          npm run typecheck
+          npm test -- --run src/renderer/src/texture/TextureEditor.test.tsx src/renderer/src/editors/textureEditorRegistration.test.ts
+      - name: Commit Stage 2
+        if: success()
+        run: |
+          rm .github/workflows/temp-texture-stage2.yml .github/workflows/temp-texture-stage2-runner.yml .github/temp-texture-stage2-trigger
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add texture import policy Stage 2"
+          git push origin HEAD:feat/texture-import-policy-stage2
