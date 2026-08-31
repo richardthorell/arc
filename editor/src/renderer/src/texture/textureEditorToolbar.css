@@ -1,0 +1,90 @@
+.texture-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+}
+
+.texture-channel-group {
+  display: flex;
+  gap: 3px;
+}
+
+.texture-channel {
+  display: grid;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--arc-color-border);
+  border-radius: 3px;
+  color: var(--arc-color-text-dim);
+  background: var(--arc-color-bg-control);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.texture-channel.is-active {
+  color: #fff;
+}
+
+.texture-channel-r.is-active {
+  border-color: #dc2626;
+  background: #b91c1c;
+}
+
+.texture-channel-g.is-active {
+  border-color: #16a34a;
+  background: #15803d;
+}
+
+.texture-channel-b.is-active {
+  border-color: #2563eb;
+  background: #1d4ed8;
+}
+
+.texture-channel-a.is-active {
+  border-color: #71717a;
+  background: #52525b;
+}
+
+.texture-toolbar-separator {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 3px;
+  background: var(--arc-color-border-subtle);
+}
+
+.texture-editor-toolbar select {
+  width: 122px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: 3px;
+  color: var(--arc-color-text);
+  background: var(--arc-color-bg-control);
+  font: inherit;
+}
+
+.texture-zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  color: var(--arc-color-text-muted);
+  font-size: 12px;
+}
+
+.texture-zoom-control input {
+  width: 150px;
+}
+
+.texture-zoom-control output {
+  width: 46px;
+  color: var(--arc-color-text);
+  text-align: right;
+}
