@@ -1,5 +1,5 @@
 import type { EditorDocument } from '../editors/editorTypes';
-import { UiIconButton } from '../ui';
+import { UiButton, UiSelect } from '../ui';
 import {
   getTextureEditorViewState,
   setTextureEditorViewState,
@@ -17,6 +17,10 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
   const state = useTextureEditorViewState(document.id);
   const mipLevels = Math.max(1, document.assetSnapshot?.mipLevels ?? 1);
   const maxMip = mipLevels - 1;
+  const mipOptions = Array.from({ length: mipLevels }, (_, level) => ({
+    value: String(level),
+    label: `Mip Level ${level}`,
+  }));
   const setMipLevel = (value: number) =>
     setTextureEditorViewState(document.id, { mipLevel: Math.max(0, Math.min(maxMip, value)) });
   const toggleChannel = (channel: keyof typeof state.channels) =>
@@ -28,48 +32,50 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
     <div aria-label="Texture editor toolbar" className="texture-editor-toolbar">
       <div aria-label="Texture channels" className="texture-channel-group">
         {(['r', 'g', 'b', 'a'] as const).map((channel) => (
-          <button
+          <UiButton
+            active={state.channels[channel]}
             aria-pressed={state.channels[channel]}
-            className={`texture-channel texture-channel-${channel} ${state.channels[channel] ? 'is-active' : ''}`}
+            className={`texture-channel texture-channel-${channel}`}
             key={channel}
             onClick={() => toggleChannel(channel)}
             type="button"
+            variant="toolbar"
           >
             {channel.toUpperCase()}
-          </button>
+          </UiButton>
         ))}
       </div>
 
       <span aria-hidden="true" className="texture-toolbar-separator" />
 
-      <select
-        aria-label="Mip level"
+      <UiSelect
+        ariaLabel="Mip level"
+        className="texture-mip-select"
         disabled={mipLevels <= 1}
-        onChange={(event) => setMipLevel(Number(event.target.value))}
-        value={state.mipLevel}
-      >
-        {Array.from({ length: mipLevels }, (_, level) => (
-          <option key={level} value={level}>
-            Mip Level {level}
-          </option>
-        ))}
-      </select>
-      <UiIconButton
+        options={mipOptions}
+        value={String(state.mipLevel)}
+        onValueChange={(value) => setMipLevel(Number(value))}
+      />
+      <UiButton
+        aria-label="Increase mip level"
+        className="texture-mip-step"
         disabled={state.mipLevel >= maxMip}
-        label="Increase mip level"
         onClick={() => setMipLevel(state.mipLevel + 1)}
         type="button"
+        variant="toolbar"
       >
         +
-      </UiIconButton>
-      <UiIconButton
+      </UiButton>
+      <UiButton
+        aria-label="Decrease mip level"
+        className="texture-mip-step"
         disabled={state.mipLevel <= 0}
-        label="Decrease mip level"
         onClick={() => setMipLevel(state.mipLevel - 1)}
         type="button"
+        variant="toolbar"
       >
         −
-      </UiIconButton>
+      </UiButton>
 
       <span aria-hidden="true" className="texture-toolbar-separator" />
 
