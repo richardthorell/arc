@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent, UIEvent, WheelEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent, UIEvent, WheelEvent } from 'react';
 import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -35,10 +35,10 @@ type ViewportMetrics = {
   height: number;
 };
 
-type PanGesture = {
+type PanState = {
   pointerId: number;
-  clientX: number;
-  clientY: number;
+  startX: number;
+  startY: number;
   scrollLeft: number;
   scrollTop: number;
 };
@@ -46,6 +46,9 @@ type PanGesture = {
 const minZoom = 0.25;
 const maxZoom = 16;
 const previewPadding = 28;
+const defaultInspectorWidth = 400;
+const minInspectorWidth = 320;
+const maxInspectorWidth = 680;
 
 const extensionOf = (path: string) => {
   const fileName = path.replaceAll('\\', '/').split('/').at(-1) ?? path;
@@ -71,6 +74,7 @@ const dimensionsOf = (asset: AssetItem) => {
   return `${asset.width} × ${asset.height}${asset.depth && asset.depth > 1 ? ` × ${asset.depth}` : ''}`;
 };
 
+const textureTypeOf = (asset: AssetItem) => (asset.depth && asset.depth > 1 ? '3D Texture' : '2D Texture');
 const clampZoom = (value: number) => Math.min(maxZoom, Math.max(minZoom, value));
 
 const rulerInterval = (zoom: number) => {
@@ -106,29 +110,62 @@ function TextureProperty({ label, value }: { label: string; value: string }) {
 function TextureInspector({ asset }: { asset: AssetItem }) {
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
-      <header className="texture-inspector-header">
-        <Image aria-hidden="true" size={18} />
-        <div>
-          <strong>{asset.name}</strong>
-          <small>Texture</small>
-        </div>
-      </header>
-
       <div className="texture-inspector-sections">
         <UiPanelSection className="texture-inspector-section" title="Texture">
+          <TextureProperty label="Type" value={textureTypeOf(asset)} />
           <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
-          <TextureProperty label="Format" value={extensionOf(asset.path)} />
-          <TextureProperty
-            label="Mip Levels"
-            value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
-          />
+          <TextureProperty label="Depth / Layers" value={asset.depth === undefined ? '1' : String(asset.depth)} />
+          <TextureProperty label="Format" value={asset.textureFormat ?? extensionOf(asset.path)} />
+          <TextureProperty label="Color Space / sRGB" value="Not reported" />
+          <TextureProperty label="Alpha" value="Not reported" />
           <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
+        </UiPanelSection>
+
+        <UiPanelSection className="texture-inspector-section" title="Sampling">
+          <TextureProperty label="Wrap U" value="Not configured" />
+          <TextureProperty label="Wrap V" value="Not configured" />
+          <TextureProperty label="Filter Mode" value="Not configured" />
+          <TextureProperty label="Anisotropy" value="Not configured" />
+        </UiPanelSection>
+
+        <UiPanelSection className="texture-inspector-section" title="Mipmaps">
+          <TextureProperty label="Generate Mips" value={(asset.mipLevels ?? 1) > 1 ? 'Yes' : 'No'} />
+          <TextureProperty label="Mip Count" value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)} />
+          <TextureProperty label="Generation Filter" value="Not configured" />
+          <TextureProperty label="LOD Bias" value="Not configured" />
+          <TextureProperty label="Min / Max LOD" value="Not configured" />
+        </UiPanelSection>
+
+        <UiPanelSection className="texture-inspector-section" title="Compression">
+          <TextureProperty label="Compression Preset" value="Not configured" />
+          <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Not reported'} />
+          <TextureProperty label="Quality" value="Not configured" />
+          <TextureProperty label="Alpha Policy" value="Not configured" />
+          <TextureProperty label="Artifact Size" value={formatBytes(asset.artifactSize)} />
+        </UiPanelSection>
+
+        <UiPanelSection className="texture-inspector-section" title="Streaming">
+          <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
+          <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
+          <TextureProperty label="Tile Count" value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)} />
+          <TextureProperty label="Priority" value="Not configured" />
+          {asset.streamingEligibilityError && (
+            <TextureProperty label="Eligibility" value={asset.streamingEligibilityError} />
+          )}
+        </UiPanelSection>
+
+        <UiPanelSection className="texture-inspector-section" title="Import">
+          <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
+          <TextureProperty label="Source Path" value={asset.path} />
+          <TextureProperty
+            label="Settings Version"
+            value={asset.settingsVersion === undefined ? 'Not reported' : String(asset.settingsVersion)}
+          />
+          <TextureProperty label="Power-of-Two Policy" value="Not configured" />
         </UiPanelSection>
 
         <UiPanelSection className="texture-inspector-section" title="Asset">
           <TextureProperty label="Status" value={asset.status} />
-          <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
-          <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
           <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
           <TextureProperty label="Path" value={asset.path} />
           {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}
@@ -196,12 +233,14 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     [document],
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const panGestureRef = useRef<PanGesture | null>(null);
+  const panRef = useRef<PanState | null>(null);
+  const resizeRef = useRef<{ startX: number; width: number } | null>(null);
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [spacePressed, setSpacePressed] = useState(false);
-  const [isPanning, setIsPanning] = useState(false);
   const [viewport, setViewport] = useState<ViewportMetrics>({ scrollLeft: 0, scrollTop: 0, width: 0, height: 0 });
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [panning, setPanning] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(defaultInspectorWidth);
   const viewState = useTextureEditorViewState(document.id);
   const zoom = viewState.zoom;
   const mipScale = 1 / 2 ** viewState.mipLevel;
@@ -213,33 +252,6 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const canvasHeight = Math.max(viewport.height, renderedHeight + previewPadding * 2);
   const imageLeft = Math.max(previewPadding, (canvasWidth - renderedWidth) / 2);
   const imageTop = Math.max(previewPadding, (canvasHeight - renderedHeight) / 2);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== 'Space') return;
-      const target = event.target as HTMLElement | null;
-      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
-      event.preventDefault();
-      setSpacePressed(true);
-    };
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.code === 'Space') setSpacePressed(false);
-    };
-    const onBlur = () => {
-      setSpacePressed(false);
-      setIsPanning(false);
-      panGestureRef.current = null;
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
-    };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -295,6 +307,27 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     return () => observer.disconnect();
   }, [displayHeight, displayWidth, document.id, preview?.path]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Space' && !event.repeat) {
+        setSpaceHeld(true);
+        if (event.target instanceof HTMLElement && !['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) {
+          event.preventDefault();
+        }
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') setSpaceHeld(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', () => setSpaceHeld(false), { once: true });
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
+
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!preview) return;
     event.preventDefault();
@@ -314,46 +347,68 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     }));
   };
 
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    const shouldPan = event.button === 1 || (event.button === 0 && spacePressed);
-    if (!shouldPan) return;
-    const scroll = scrollRef.current;
-    if (!scroll) return;
-
+  const beginPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const shouldPan = event.button === 1 || (event.button === 0 && spaceHeld);
+    if (!shouldPan || !scrollRef.current) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    panGestureRef.current = {
+    panRef.current = {
       pointerId: event.pointerId,
-      clientX: event.clientX,
-      clientY: event.clientY,
-      scrollLeft: scroll.scrollLeft,
-      scrollTop: scroll.scrollTop,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: scrollRef.current.scrollLeft,
+      scrollTop: scrollRef.current.scrollTop,
     };
-    setIsPanning(true);
+    setPanning(true);
   };
 
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    const gesture = panGestureRef.current;
+  const movePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = panRef.current;
     const scroll = scrollRef.current;
-    if (!gesture || !scroll || gesture.pointerId !== event.pointerId) return;
-
-    event.preventDefault();
-    scroll.scrollLeft = gesture.scrollLeft - (event.clientX - gesture.clientX);
-    scroll.scrollTop = gesture.scrollTop - (event.clientY - gesture.clientY);
+    if (!pan || pan.pointerId !== event.pointerId || !scroll) return;
+    scroll.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
+    scroll.scrollTop = pan.scrollTop - (event.clientY - pan.startY);
   };
 
-  const endPan = (event: PointerEvent<HTMLDivElement>) => {
-    const gesture = panGestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+  const endPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (panRef.current?.pointerId !== event.pointerId) return;
+    panRef.current = null;
+    setPanning(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    panGestureRef.current = null;
-    setIsPanning(false);
+  };
+
+  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    resizeRef.current = { startX: event.clientX, width: inspectorWidth };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = resizeRef.current;
+    if (!resize) return;
+    const width = resize.width - (event.clientX - resize.startX);
+    setInspectorWidth(Math.min(maxInspectorWidth, Math.max(minInspectorWidth, width)));
+  };
+
+  const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    resizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   return (
-    <section className="texture-editor">
+    <section
+      className="texture-editor"
+      style={{ gridTemplateColumns: `minmax(0, 1fr) 6px ${inspectorWidth}px` }}
+    >
       <main className="texture-preview-pane">
-        <div className="texture-preview-stage">
+        <div
+          className={`texture-preview-stage ${spaceHeld ? 'is-pan-ready' : ''} ${panning ? 'is-panning' : ''}`}
+          onPointerCancel={endPan}
+          onPointerDown={beginPan}
+          onPointerMove={movePan}
+          onPointerUp={endPan}
+          onWheel={onWheel}
+        >
           <div aria-hidden="true" className="texture-ruler-corner" />
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-horizontal-viewport">
             {preview && (
@@ -363,17 +418,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-vertical-viewport">
             {preview && <VerticalRuler height={displayHeight} zoom={zoom} offset={imageTop - viewport.scrollTop} />}
           </div>
-          <div
-            className={`texture-preview-scroll ${spacePressed ? 'is-pan-ready' : ''} ${isPanning ? 'is-panning' : ''}`}
-            onAuxClick={(event) => event.preventDefault()}
-            onPointerCancel={endPan}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={endPan}
-            onScroll={onScroll}
-            onWheel={onWheel}
-            ref={scrollRef}
-          >
+          <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
             {preview?.dataUrl && !previewFailed ? (
               <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
                 <div
@@ -418,6 +463,15 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
           </div>
         </div>
       </main>
+      <div
+        aria-label="Resize texture details"
+        className="texture-inspector-resizer"
+        onPointerCancel={endResize}
+        onPointerDown={beginResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        role="separator"
+      />
       <TextureInspector asset={asset} />
     </section>
   );
