@@ -16,6 +16,28 @@ jobs:
         run: |
           python3 -c "from pathlib import Path; t=Path('.github/workflows/temp-texture-stage2.yml').read_text(); b=t.split(\"python3 <<'PY'\\n\",1)[1].split('\\n          PY',1)[0]; Path('/tmp/stage2.py').write_text('\\n'.join((x[10:] if x.startswith('          ') else x) for x in b.splitlines()))"
           python3 /tmp/stage2.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('engine/render-tools/src/common/texture_cooker.cpp')
+          text = path.read_text()
+          replacements = {
+              'return enum_value(value, {{"custom", texture_import_preset::custom},': 'return enum_value<texture_import_preset>(value, {{"custom", texture_import_preset::custom},',
+              'return enum_value(value, {{"generic_color", texture_semantic::generic_color},': 'return enum_value<texture_semantic>(value, {{"generic_color", texture_semantic::generic_color},',
+              'return enum_value(value, {{"linear", texture_color_space::linear},': 'return enum_value<texture_color_space>(value, {{"linear", texture_color_space::linear},',
+              'return enum_value(value, {{"resident", texture_streaming_mode::resident},': 'return enum_value<texture_streaming_mode>(value, {{"resident", texture_streaming_mode::resident},',
+              'return enum_value(value, {{"automatic", texture_compression_policy::automatic},': 'return enum_value<texture_compression_policy>(value, {{"automatic", texture_compression_policy::automatic},',
+              'return enum_value(value, {{"preserve", texture_power_of_two_policy::preserve},': 'return enum_value<texture_power_of_two_policy>(value, {{"preserve", texture_power_of_two_policy::preserve},',
+              'return enum_value(value, {{"nearest", texture_filter_mode::nearest},': 'return enum_value<texture_filter_mode>(value, {{"nearest", texture_filter_mode::nearest},',
+              'return enum_value(value,\n                      {{"nearest", texture_mip_filter_mode::nearest},': 'return enum_value<texture_mip_filter_mode>(value,\n                      {{"nearest", texture_mip_filter_mode::nearest},',
+              'return enum_value(value, {{"repeat", texture_address_mode::repeat},': 'return enum_value<texture_address_mode>(value, {{"repeat", texture_address_mode::repeat},',
+              'return enum_value(\n        value, {{"box", texture_mip_generation_filter::box},': 'return enum_value<texture_mip_generation_filter>(\n        value, {{"box", texture_mip_generation_filter::box},',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'enum call marker missing: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
       - name: Format
         run: |
           clang-format -i engine/render/inc/arc/render/texture_artifact.h engine/render/src/common/texture_artifact.cpp engine/render-tools/inc/arc/render_tools/texture_cooker.h engine/render-tools/src/common/texture_cooker.cpp engine/render-tools/tests/texture_cooker_tests.cpp editor/native/inc/arc/editor/host_protocol_base.h editor/native/src/host_protocol_base.inc editor/native/src/arc_host_base.inc
