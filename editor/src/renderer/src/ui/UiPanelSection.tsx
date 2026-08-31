@@ -14,6 +14,8 @@ export const UiPanelSection = forwardRef<HTMLElement, UiPanelSectionProps>(funct
   { title, collapsed = false, onToggle, actions, children, className, contentClassName, ...props },
   ref,
 ) {
+  const toggleLabel = typeof title === 'string' ? `${collapsed ? 'Expand' : 'Collapse'} ${title}` : undefined;
+
   return (
     <section
       className={['ui-panel-section', collapsed ? 'is-collapsed' : '', className].filter(Boolean).join(' ')}
@@ -22,7 +24,13 @@ export const UiPanelSection = forwardRef<HTMLElement, UiPanelSectionProps>(funct
     >
       <header className="ui-panel-section-header">
         {onToggle ? (
-          <button aria-expanded={!collapsed} className="ui-panel-section-toggle" onClick={onToggle} type="button">
+          <button
+            aria-expanded={!collapsed}
+            aria-label={toggleLabel}
+            className="ui-panel-section-toggle"
+            onClick={onToggle}
+            type="button"
+          >
             {collapsed ? <ChevronRight aria-hidden="true" size={15} /> : <ChevronDown aria-hidden="true" size={15} />}
             <span>{title}</span>
           </button>
