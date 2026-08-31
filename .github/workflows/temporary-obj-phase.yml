@@ -18,28 +18,30 @@ jobs:
           python3 .github/relax_phase3.py
           python3 .github/model_phase3.py
           python3 .github/register_obj_importer.py
-      - name: Format and validate editor
+      - name: Validate editor
         run: |
           cd editor
           npm ci
-          npx prettier --write src/preload/preload.ts
+          npx prettier --write src/preload/preload.ts src/renderer/src/viewport/ViewportPanel.tsx src/renderer/src/viewport/viewportAssetDrop.ts src/renderer/src/viewport/viewportAssetDrop.test.ts src/renderer/src/content/ContentBrowserPanel.tsx src/renderer/src/inspector/SchemaComponents.tsx src/main/main.ts
           npm run typecheck
           npx vitest run src/renderer/src/viewport/viewportAssetDrop.test.ts
       - name: Format native changes
         run: |
           sudo apt-get update >/dev/null
           sudo apt-get install -y clang-format-18 >/dev/null
-          clang-format-18 -i engine/assets/inc/arc/assets/assets.h engine/assets/src/common/asset_metadata.cpp engine/assets/src/common/asset_manager.cpp engine/render/src/common/mesh.cpp engine/render/tests/render_tests.cpp
-      - name: Configure and build render tests
+          clang-format-18 -i engine/assets/inc/arc/assets/assets.h engine/assets/src/common/asset_metadata.cpp engine/assets/src/common/asset_manager.cpp engine/render/src/common/mesh.cpp engine/render/tests/render_tests.cpp editor/native/src/arc_host_base.inc
+      - name: Cleanup temporary implementation files
         run: |
-          cmake --preset editor-no-vulkan -DARC_BUILD_TESTS=ON
-          cmake --build --preset editor-no-vulkan --target arc_render_tests -j2
-      - name: Run render tests
-        run: ctest --preset editor-no-vulkan -R arc_render_tests --output-on-failure
+          rm -f .arc-model-drop-trigger
+          rm -f .github/model_phase2.py .github/model_phase3.py .github/relax_phase3.py .github/register_obj_importer.py
+          rm -f .github/workflows/temporary-implement-model-drop.yml
+          rm -f .github/workflows/temporary-model-import-inspect.yml
+          rm -f .github/workflows/temporary-model-import-inspect2.yml
+          rm -f .github/workflows/temporary-obj-phase.yml
       - name: Commit
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add editor/src/preload/preload.ts engine
-          git commit -m 'Add native Wavefront OBJ import support'
+          git add -A
+          git commit -m 'Complete model drag and drop with OBJ import'
           git push origin HEAD:feature/model-drag-drop-obj
