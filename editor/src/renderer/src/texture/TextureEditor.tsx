@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { WheelEvent } from 'react';
 import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -213,6 +214,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     };
 
     fitPreview();
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(fitPreview);
     observer.observe(stage);
     return () => observer.disconnect();
@@ -225,7 +227,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
         ? `${asset.width} × ${asset.height}`
         : null;
 
-  const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+  const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!preview) return;
     event.preventDefault();
     const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
