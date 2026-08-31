@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { WheelEvent } from 'react';
+import type { UIEvent, WheelEvent } from 'react';
 import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -28,8 +28,16 @@ type RulerMark = {
   major: boolean;
 };
 
+type ViewportMetrics = {
+  scrollLeft: number;
+  scrollTop: number;
+  width: number;
+  height: number;
+};
+
 const minZoom = 0.05;
 const maxZoom = 16;
+const previewPadding = 28;
 
 const extensionOf = (path: string) => {
   const fileName = path.replaceAll('\\', '/').split('/').at(-1) ?? path;
@@ -122,10 +130,14 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
   );
 }
 
-function HorizontalRuler({ width, zoom }: { width: number; zoom: number }) {
+function HorizontalRuler({ width, zoom, offset }: { width: number; zoom: number; offset: number }) {
   const marks = rulerMarks(width, zoom);
   return (
-    <div aria-hidden="true" className="texture-ruler texture-ruler-horizontal" style={{ width: width * zoom }}>
+    <div
+      aria-hidden="true"
+      className="texture-ruler texture-ruler-horizontal"
+      style={{ width: width * zoom, transform: `translateX(${offset}px)` }}
+    >
       {marks.map((mark) => (
         <span
           className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
@@ -139,10 +151,14 @@ function HorizontalRuler({ width, zoom }: { width: number; zoom: number }) {
   );
 }
 
-function VerticalRuler({ height, zoom }: { height: number; zoom: number }) {
+function VerticalRuler({ height, zoom, offset }: { height: number; zoom: number; offset: number }) {
   const marks = rulerMarks(height, zoom);
   return (
-    <div aria-hidden="true" className="texture-ruler texture-ruler-vertical" style={{ height: height * zoom }}>
+    <div
+      aria-hidden="true"
+      className="texture-ruler texture-ruler-vertical"
+      style={{ height: height * zoom, transform: `translateY(${offset}px)` }}
+    >
       {marks.map((mark) => (
         <span
           className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
@@ -171,14 +187,21 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
       },
     [document],
   );
-  const stageRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [viewport, setViewport] = useState<ViewportMetrics>({ scrollLeft: 0, scrollTop: 0, width: 0, height: 0 });
   const viewState = useTextureEditorViewState(document.id);
   const zoom = viewState.zoom;
   const mipScale = 1 / 2 ** viewState.mipLevel;
   const displayWidth = Math.max(1, Math.round((preview?.width ?? 1) * mipScale));
   const displayHeight = Math.max(1, Math.round((preview?.height ?? 1) * mipScale));
+  const renderedWidth = displayWidth * zoom;
+  const renderedHeight = displayHeight * zoom;
+  const canvasWidth = Math.max(viewport.width, renderedWidth + previewPadding * 2);
+  const canvasHeight = Math.max(viewport.height, renderedHeight + previewPadding * 2);
+  const imageLeft = Math.max(previewPadding, (canvasWidth - renderedWidth) / 2);
+  const imageTop = Math.max(previewPadding, (canvasHeight - renderedHeight) / 2);
 
   useEffect(() => {
     let active = true;
@@ -209,12 +232,22 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   }, [asset.path, asset.generation]);
 
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage || !preview) return;
+    const scroll = scrollRef.current;
+    if (!scroll || !preview) return;
+
+    const updateViewport = () => {
+      setViewport({
+        scrollLeft: scroll.scrollLeft,
+        scrollTop: scroll.scrollTop,
+        width: scroll.clientWidth,
+        height: scroll.clientHeight,
+      });
+    };
 
     const fitPreview = () => {
-      const availableWidth = Math.max(1, stage.clientWidth - 80);
-      const availableHeight = Math.max(1, stage.clientHeight - 80);
+      updateViewport();
+      const availableWidth = Math.max(1, scroll.clientWidth - previewPadding * 2);
+      const availableHeight = Math.max(1, scroll.clientHeight - previewPadding * 2);
       setTextureEditorViewState(document.id, {
         zoom: clampZoom(Math.min(1, availableWidth / displayWidth, availableHeight / displayHeight)),
       });
@@ -223,7 +256,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     fitPreview();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(fitPreview);
-    observer.observe(stage);
+    observer.observe(scroll);
     return () => observer.disconnect();
   }, [displayHeight, displayWidth, document.id, preview?.path]);
 
@@ -234,55 +267,73 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     setTextureEditorViewState(document.id, { zoom: clampZoom(zoom * factor) });
   };
 
+  const onScroll = (event: UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    setViewport((current) => ({
+      ...current,
+      scrollLeft: target.scrollLeft,
+      scrollTop: target.scrollTop,
+      width: target.clientWidth,
+      height: target.clientHeight,
+    }));
+  };
+
   return (
     <section className="texture-editor">
       <main className="texture-preview-pane">
-        <div className="texture-preview-stage" onWheel={onWheel} ref={stageRef}>
-          {preview?.dataUrl && !previewFailed ? (
-            <div
-              className="texture-preview-canvas"
-              style={{
-                gridTemplateColumns: `28px ${displayWidth * zoom}px`,
-                gridTemplateRows: `22px ${displayHeight * zoom}px`,
-              }}
-            >
-              <div aria-hidden="true" className="texture-ruler-corner" />
-              <HorizontalRuler width={displayWidth} zoom={zoom} />
-              <VerticalRuler height={displayHeight} zoom={zoom} />
-              <div
-                className="texture-preview-image-frame"
-                style={{ width: displayWidth * zoom, height: displayHeight * zoom }}
-              >
-                <svg aria-hidden="true" className="texture-channel-filter-defs">
-                  <filter id={`texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`}>
-                    <feColorMatrix
-                      type="matrix"
-                      values={`${viewState.channels.r ? 1 : 0} 0 0 0 0  0 ${viewState.channels.g ? 1 : 0} 0 0 0  0 0 ${viewState.channels.b ? 1 : 0} 0 0  0 0 0 ${viewState.channels.a ? 1 : 0} ${viewState.channels.a ? 0 : 1}`}
-                    />
-                  </filter>
-                </svg>
-                <img
-                  alt={`${asset.name} texture preview`}
-                  draggable={false}
-                  height={displayHeight * zoom}
-                  src={preview.dataUrl}
-                  style={{ filter: `url(#texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')})` }}
-                  width={displayWidth * zoom}
-                />
+        <div className="texture-preview-stage" onWheel={onWheel}>
+          <div aria-hidden="true" className="texture-ruler-corner" />
+          <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-horizontal-viewport">
+            {preview && (
+              <HorizontalRuler width={displayWidth} zoom={zoom} offset={imageLeft - viewport.scrollLeft} />
+            )}
+          </div>
+          <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-vertical-viewport">
+            {preview && <VerticalRuler height={displayHeight} zoom={zoom} offset={imageTop - viewport.scrollTop} />}
+          </div>
+          <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
+            {preview?.dataUrl && !previewFailed ? (
+              <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
+                <div
+                  className="texture-preview-image-frame"
+                  style={{
+                    left: imageLeft,
+                    top: imageTop,
+                    width: renderedWidth,
+                    height: renderedHeight,
+                  }}
+                >
+                  <svg aria-hidden="true" className="texture-channel-filter-defs">
+                    <filter id={`texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`}>
+                      <feColorMatrix
+                        type="matrix"
+                        values={`${viewState.channels.r ? 1 : 0} 0 0 0 0  0 ${viewState.channels.g ? 1 : 0} 0 0 0  0 0 ${viewState.channels.b ? 1 : 0} 0 0  0 0 0 ${viewState.channels.a ? 1 : 0} ${viewState.channels.a ? 0 : 1}`}
+                      />
+                    </filter>
+                  </svg>
+                  <img
+                    alt={`${asset.name} texture preview`}
+                    draggable={false}
+                    height={renderedHeight}
+                    src={preview.dataUrl}
+                    style={{ filter: `url(#texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')})` }}
+                    width={renderedWidth}
+                  />
+                </div>
               </div>
-            </div>
-          ) : previewFailed ? (
-            <div className="texture-preview-empty">
-              <Image aria-hidden="true" size={34} />
-              <strong>Preview unavailable</strong>
-              <span>The texture metadata is still available in the details panel.</span>
-            </div>
-          ) : (
-            <div className="texture-preview-empty">
-              <Maximize2 aria-hidden="true" size={30} />
-              <strong>Loading texture…</strong>
-            </div>
-          )}
+            ) : previewFailed ? (
+              <div className="texture-preview-empty">
+                <Image aria-hidden="true" size={34} />
+                <strong>Preview unavailable</strong>
+                <span>The texture metadata is still available in the details panel.</span>
+              </div>
+            ) : (
+              <div className="texture-preview-empty">
+                <Maximize2 aria-hidden="true" size={30} />
+                <strong>Loading texture…</strong>
+              </div>
+            )}
+          </div>
         </div>
       </main>
       <TextureInspector asset={asset} />
