@@ -1,0 +1,102 @@
+name: Temp Finish Texture Toolbar
+
+on:
+  push:
+    branches: [feat/texture-editor-view]
+
+permissions:
+  contents: write
+
+jobs:
+  finish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/texture-editor-view
+          fetch-depth: 0
+      - name: Wire toolbar and shared sidebar sections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          reg = Path('editor/src/renderer/src/editors/editorRegistry.ts')
+          text = reg.read_text()
+          text = text.replace(
+              "import { TextureEditor } from '../texture/TextureEditor';\n",
+              "import { TextureEditor } from '../texture/TextureEditor';\nimport { TextureEditorToolbar } from '../texture/TextureEditorToolbar';\n",
+          )
+          text = text.replace(
+              "  render: (document) => createElement(TextureEditor, { document }),\n  renderToolbar: () => null,",
+              "  render: (document) => createElement(TextureEditor, { document }),\n  renderToolbar: (document) => createElement(TextureEditorToolbar, { document }),",
+          )
+          reg.write_text(text)
+
+          p = Path('editor/src/renderer/src/texture/TextureEditor.tsx')
+          text = p.read_text()
+          text = text.replace(
+              "import { UiPanel } from '../ui';\n",
+              "import { UiPanel, UiPanelSection } from '../ui';\nimport { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';\n",
+          )
+          text = text.replace(
+              "  const [zoom, setZoom] = useState(1);",
+              "  const viewState = useTextureEditorViewState(document.id);\n  const zoom = viewState.zoom;",
+          )
+          text = text.replace(
+              "      setZoom(clampZoom(Math.min(1, availableWidth / preview.width, availableHeight / preview.height)));",
+              "      setTextureEditorViewState(document.id, {\n        zoom: clampZoom(Math.min(1, availableWidth / preview.width, availableHeight / preview.height)),\n      });",
+          )
+          text = text.replace(
+              "  }, [preview?.path, preview?.width, preview?.height]);",
+              "  }, [document.id, preview?.path, preview?.width, preview?.height]);",
+          )
+          text = text.replace(
+              "    setZoom((current) => clampZoom(current * factor));",
+              "    setTextureEditorViewState(document.id, { zoom: clampZoom(zoom * factor) });",
+          )
+
+          start = text.find("\n  const previewDimensions =")
+          end = text.find("\n  const onWheel", start)
+          if start >= 0 and end >= 0:
+              text = text[:start] + text[end:]
+
+          old_meta = '''      <main className="texture-preview-pane">\n        <div className="texture-preview-meta">\n          <span>{extensionOf(asset.path)}</span>\n          {previewDimensions && <span>{previewDimensions}</span>}\n          {asset.mipLevels !== undefined && <span>{asset.mipLevels} mips</span>}\n          <span className="texture-zoom">{Math.round(zoom * 100)}%</span>\n          <span className={`texture-status texture-status-${asset.status}`}>{asset.status}</span>\n        </div>\n        <div className="texture-preview-stage" onWheel={onWheel} ref={stageRef}>'''
+          new_meta = '''      <main className="texture-preview-pane">\n        <div className="texture-preview-stage" onWheel={onWheel} ref={stageRef}>'''
+          text = text.replace(old_meta, new_meta)
+
+          old_sections = '''      <section className="texture-inspector-section">\n        <h3>Texture</h3>\n        <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />\n        <TextureProperty label="Format" value={extensionOf(asset.path)} />\n        <TextureProperty\n          label="Mip Levels"\n          value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}\n        />\n        <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />\n      </section>\n\n      <section className="texture-inspector-section">\n        <h3>Asset</h3>\n        <TextureProperty label="Status" value={asset.status} />\n        <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />\n        <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />\n        <TextureProperty label="Scope" value={asset.scope ?? 'project'} />\n        <TextureProperty label="Path" value={asset.path} />\n        {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}\n      </section>'''
+          new_sections = '''      <div className="texture-inspector-sections">\n        <UiPanelSection className="texture-inspector-section" title="Texture">\n          <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />\n          <TextureProperty label="Format" value={extensionOf(asset.path)} />\n          <TextureProperty\n            label="Mip Levels"\n            value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}\n          />\n          <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />\n        </UiPanelSection>\n\n        <UiPanelSection className="texture-inspector-section" title="Asset">\n          <TextureProperty label="Status" value={asset.status} />\n          <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />\n          <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />\n          <TextureProperty label="Scope" value={asset.scope ?? 'project'} />\n          <TextureProperty label="Path" value={asset.path} />\n          {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}\n        </UiPanelSection>\n      </div>'''
+          text = text.replace(old_sections, new_sections)
+
+          image_needle = '''                <img\n                  alt={`${asset.name} texture preview`}'''
+          filter_defs = '''                <svg aria-hidden="true" className="texture-channel-filter-defs">\n                  <filter id={`texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`}>\n                    <feColorMatrix\n                      type="matrix"\n                      values={`${viewState.channels.r ? 1 : 0} 0 0 0 0  0 ${viewState.channels.g ? 1 : 0} 0 0 0  0 0 ${viewState.channels.b ? 1 : 0} 0 0  0 0 0 ${viewState.channels.a ? 1 : 0} ${viewState.channels.a ? 0 : 1}`}\n                    />\n                  </filter>\n                </svg>\n                <img\n                  alt={`${asset.name} texture preview`}'''
+          text = text.replace(image_needle, filter_defs)
+          text = text.replace(
+              "                  src={preview.dataUrl}\n                  width={preview.width * zoom}",
+              "                  src={preview.dataUrl}\n                  style={{ filter: `url(#texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')})` }}\n                  width={preview.width * zoom}",
+          )
+          p.write_text(text)
+
+          css = Path('editor/src/renderer/src/texture/textureEditor.css')
+          text = css.read_text()
+          text = text.replace("  grid-template-rows: 32px minmax(0, 1fr);", "  grid-template-rows: minmax(0, 1fr);")
+          start = text.find('.texture-preview-meta {')
+          end = text.find('.texture-preview-stage {', start)
+          if start >= 0 and end >= 0:
+              text = text[:start] + text[end:]
+          old = '''.texture-inspector-section {\n  padding-bottom: 4px;\n  border-bottom: 1px solid var(--arc-color-border, #2b2f35);\n}\n\n.texture-inspector-section > h3 {\n  margin: 0;\n  padding: 7px 10px;\n  background: var(--arc-color-surface-raised, #202329);\n  color: var(--arc-color-text, #e7e9ed);\n  font-size: 11px;\n  font-weight: 600;\n}\n'''
+          new = '''.texture-inspector-sections {\n  display: grid;\n  gap: 2px;\n  padding: 4px;\n}\n\n.texture-inspector-section .ui-panel-section-content {\n  padding-bottom: 4px;\n}\n'''
+          text = text.replace(old, new)
+          if '.texture-channel-filter-defs' not in text:
+              text += '''\n.texture-channel-filter-defs {\n  position: absolute;\n  width: 0;\n  height: 0;\n  overflow: hidden;\n}\n'''
+          css.write_text(text)
+          PY
+
+          rm .github/workflows/temp-finish-texture-toolbar.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add editor/src/renderer/src/editors/editorRegistry.ts editor/src/renderer/src/texture/TextureEditor.tsx editor/src/renderer/src/texture/textureEditor.css .github/workflows/temp-finish-texture-toolbar.yml
+          git commit -m 'Wire texture toolbar and shared sidebar sections'
+          git push origin HEAD:feat/texture-editor-view
