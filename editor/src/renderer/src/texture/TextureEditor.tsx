@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { UIEvent, WheelEvent } from 'react';
+import type { PointerEvent, UIEvent, WheelEvent } from 'react';
 import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -33,6 +33,14 @@ type ViewportMetrics = {
   scrollTop: number;
   width: number;
   height: number;
+};
+
+type PanGesture = {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+  scrollLeft: number;
+  scrollTop: number;
 };
 
 const minZoom = 0.25;
@@ -188,8 +196,11 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     [document],
   );
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const panGestureRef = useRef<PanGesture | null>(null);
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [spacePressed, setSpacePressed] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
   const [viewport, setViewport] = useState<ViewportMetrics>({ scrollLeft: 0, scrollTop: 0, width: 0, height: 0 });
   const viewState = useTextureEditorViewState(document.id);
   const zoom = viewState.zoom;
@@ -202,6 +213,33 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const canvasHeight = Math.max(viewport.height, renderedHeight + previewPadding * 2);
   const imageLeft = Math.max(previewPadding, (canvasWidth - renderedWidth) / 2);
   const imageTop = Math.max(previewPadding, (canvasHeight - renderedHeight) / 2);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      setSpacePressed(true);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') setSpacePressed(false);
+    };
+    const onBlur = () => {
+      setSpacePressed(false);
+      setIsPanning(false);
+      panGestureRef.current = null;
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -260,6 +298,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!preview) return;
     event.preventDefault();
+    event.stopPropagation();
     const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
     setTextureEditorViewState(document.id, { zoom: clampZoom(zoom * factor) });
   };
@@ -275,10 +314,46 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     }));
   };
 
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    const shouldPan = event.button === 1 || (event.button === 0 && spacePressed);
+    if (!shouldPan) return;
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panGestureRef.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      scrollLeft: scroll.scrollLeft,
+      scrollTop: scroll.scrollTop,
+    };
+    setIsPanning(true);
+  };
+
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const gesture = panGestureRef.current;
+    const scroll = scrollRef.current;
+    if (!gesture || !scroll || gesture.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    scroll.scrollLeft = gesture.scrollLeft - (event.clientX - gesture.clientX);
+    scroll.scrollTop = gesture.scrollTop - (event.clientY - gesture.clientY);
+  };
+
+  const endPan = (event: PointerEvent<HTMLDivElement>) => {
+    const gesture = panGestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    panGestureRef.current = null;
+    setIsPanning(false);
+  };
+
   return (
     <section className="texture-editor">
       <main className="texture-preview-pane">
-        <div className="texture-preview-stage" onWheel={onWheel}>
+        <div className="texture-preview-stage">
           <div aria-hidden="true" className="texture-ruler-corner" />
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-horizontal-viewport">
             {preview && (
@@ -288,7 +363,17 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-vertical-viewport">
             {preview && <VerticalRuler height={displayHeight} zoom={zoom} offset={imageTop - viewport.scrollTop} />}
           </div>
-          <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
+          <div
+            className={`texture-preview-scroll ${spacePressed ? 'is-pan-ready' : ''} ${isPanning ? 'is-panning' : ''}`}
+            onAuxClick={(event) => event.preventDefault()}
+            onPointerCancel={endPan}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endPan}
+            onScroll={onScroll}
+            onWheel={onWheel}
+            ref={scrollRef}
+          >
             {preview?.dataUrl && !previewFailed ? (
               <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
                 <div
