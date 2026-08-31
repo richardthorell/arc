@@ -1,0 +1,145 @@
+name: Temp Collapse Texture Sections
+on:
+  push:
+    branches: [feat/texture-editor-view]
+    paths: [.github/workflows/temp-collapse-texture-sections.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/texture-editor-view
+      - name: Patch texture inspector sections
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('editor/src/renderer/src/texture/TextureEditor.tsx')
+          s = p.read_text()
+          start = s.index('function TextureInspector({ asset }: { asset: AssetItem }) {')
+          end = s.index('\nfunction HorizontalRuler', start)
+          new = '''function TextureInspector({ asset }: { asset: AssetItem }) {
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    texture: false,
+    sampling: false,
+    mipmaps: false,
+    compression: true,
+    streaming: true,
+    import: true,
+    asset: true,
+  });
+  const toggleSection = (section: string) =>
+    setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
+
+  return (
+    <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
+      <div className="texture-inspector-sections">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.texture}
+          onToggle={() => toggleSection('texture')}
+          title="Texture"
+        >
+          <TextureProperty label="Type" value={textureTypeOf(asset)} />
+          <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
+          <TextureProperty label="Depth / Layers" value={asset.depth === undefined ? '1' : String(asset.depth)} />
+          <TextureProperty label="Format" value={asset.textureFormat ?? extensionOf(asset.path)} />
+          <TextureProperty label="Color Space / sRGB" value="Not reported" />
+          <TextureProperty label="Alpha" value="Not reported" />
+          <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
+        </UiPanelSection>
+
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.sampling}
+          onToggle={() => toggleSection('sampling')}
+          title="Sampling"
+        >
+          <TextureProperty label="Wrap U" value="Not configured" />
+          <TextureProperty label="Wrap V" value="Not configured" />
+          <TextureProperty label="Filter Mode" value="Not configured" />
+          <TextureProperty label="Anisotropy" value="Not configured" />
+        </UiPanelSection>
+
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.mipmaps}
+          onToggle={() => toggleSection('mipmaps')}
+          title="Mipmaps"
+        >
+          <TextureProperty label="Generate Mips" value={(asset.mipLevels ?? 1) > 1 ? 'Yes' : 'No'} />
+          <TextureProperty label="Mip Count" value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)} />
+          <TextureProperty label="Generation Filter" value="Not configured" />
+          <TextureProperty label="LOD Bias" value="Not configured" />
+          <TextureProperty label="Min / Max LOD" value="Not configured" />
+        </UiPanelSection>
+
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.compression}
+          onToggle={() => toggleSection('compression')}
+          title="Compression"
+        >
+          <TextureProperty label="Compression Preset" value="Not configured" />
+          <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Not reported'} />
+          <TextureProperty label="Quality" value="Not configured" />
+          <TextureProperty label="Alpha Policy" value="Not configured" />
+          <TextureProperty label="Artifact Size" value={formatBytes(asset.artifactSize)} />
+        </UiPanelSection>
+
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.streaming}
+          onToggle={() => toggleSection('streaming')}
+          title="Streaming"
+        >
+          <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
+          <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
+          <TextureProperty label="Tile Count" value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)} />
+          <TextureProperty label="Priority" value="Not configured" />
+          {asset.streamingEligibilityError && (
+            <TextureProperty label="Eligibility" value={asset.streamingEligibilityError} />
+          )}
+        </UiPanelSection>
+
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.import}
+          onToggle={() => toggleSection('import')}
+          title="Import"
+        >
+          <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
+          <TextureProperty label="Source Path" value={asset.path} />
+          <TextureProperty
+            label="Settings Version"
+            value={asset.settingsVersion === undefined ? 'Not reported' : String(asset.settingsVersion)}
+          />
+          <TextureProperty label="Power-of-Two Policy" value="Not configured" />
+        </UiPanelSection>
+
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.asset}
+          onToggle={() => toggleSection('asset')}
+          title="Asset"
+        >
+          <TextureProperty label="Status" value={asset.status} />
+          <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
+          <TextureProperty label="Path" value={asset.path} />
+          {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}
+        </UiPanelSection>
+      </div>
+    </UiPanel>
+  );
+}
+'''
+          p.write_text(s[:start] + new + s[end:])
+          PY
+          rm .github/workflows/temp-collapse-texture-sections.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/texture/TextureEditor.tsx .github/workflows/temp-collapse-texture-sections.yml
+          git commit -m "Make texture detail sections collapsible"
+          git push
