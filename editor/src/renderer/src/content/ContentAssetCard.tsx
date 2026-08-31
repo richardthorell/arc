@@ -9,16 +9,7 @@ import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import { trackEditorJob } from '../jobs/editorJobProgress';
 import type { AssetItem } from '../services/editorHostTypes';
 import { UiFloatingSurface } from '../ui';
-
-const assetTypeLabels: Record<AssetItem['kind'], string> = {
-  scene: 'Scene',
-  mesh: 'Mesh',
-  material: 'Material',
-  texture: 'Texture',
-  shader: 'Shader',
-  prefab: 'Prefab',
-  folder: 'Folder',
-};
+import { assetDragType, assetPresentationIcon, assetPresentationLabel } from './assetPresentation';
 
 const TOOLTIP_DELAY_MS = 350;
 const TOOLTIP_GAP = 14;
@@ -90,7 +81,7 @@ function AssetHoverDetails({ asset }: { asset: AssetItem }) {
     <UiFloatingSurface className="content-asset-hover" role="tooltip" width={TOOLTIP_WIDTH}>
       <header>
         <strong>{assetDisplayName(asset)}</strong>
-        <span>{assetTypeLabels[asset.kind]}</span>
+        <span>{assetPresentationLabel(asset)}</span>
       </header>
       <div className="content-asset-hover-section">
         <AssetDetailRow label="Size" value={formatBytes(asset.sourceBytes)} />
@@ -208,7 +199,7 @@ export function ContentAssetCard({
           hideHover();
           event.dataTransfer.setData(
             'application/x-arc-asset',
-            JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path }),
+            JSON.stringify({ guid: asset.guid ?? '', type: assetDragType(asset), pathHint: asset.path }),
           );
           event.dataTransfer.effectAllowed = 'copy';
         }}
@@ -236,8 +227,8 @@ export function ContentAssetCard({
             {assetDisplayName(asset)}
           </span>
           <small style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <DocumentTypeIcon kind={asset.kind} size={12} />
-            <span>{assetTypeLabels[asset.kind]}</span>
+            <DocumentTypeIcon kind={assetPresentationIcon(asset)} size={12} />
+            <span>{assetPresentationLabel(asset)}</span>
           </small>
           <i aria-label={`Asset status: ${asset.status}`} className={`asset-state ${asset.status}`} />
         </span>

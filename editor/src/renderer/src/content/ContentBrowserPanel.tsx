@@ -14,6 +14,7 @@ import {
   type ShaderAssetTemplate,
 } from './assetCreation';
 import { ContentAssetCard } from './ContentAssetCard';
+import { assetPresentationKind, type AssetPresentationKind } from './assetPresentation';
 import { RemoteAssetBrowser } from './RemoteAssetBrowser';
 
 import './contentBrowser.css';
@@ -73,6 +74,7 @@ const readContentTreeWidth = () => {
 const assetTypeOptions = [
   { value: 'all', label: 'All types' },
   { value: 'scene', label: 'Scene' },
+  { value: 'model', label: 'Model' },
   { value: 'mesh', label: 'Mesh' },
   { value: 'material', label: 'Material' },
   { value: 'texture', label: 'Texture' },
@@ -221,7 +223,7 @@ export function ContentBrowserPanel({
 }: Props) {
   const [folder, setFolder] = useState('');
   const [search, setSearch] = useState('');
-  const [kind, setKind] = useState<AssetItem['kind'] | 'all'>('all');
+  const [kind, setKind] = useState<AssetPresentationKind | 'all'>('all');
   const [state, setState] = useState<AssetItem['status'] | 'all'>('all');
   const [sort, setSort] = useState<'name' | 'type' | 'state'>('name');
   const [view, setView] = useState<'grid' | 'list'>('grid');
@@ -307,14 +309,14 @@ export function ContentBrowserPanel({
             assetFolderNormalized.startsWith(`${folderNormalized}/`);
           return (
             inFolder &&
-            (kind === 'all' || asset.kind === kind) &&
+            (kind === 'all' || assetPresentationKind(asset) === kind) &&
             (state === 'all' || asset.status === state) &&
             (!search || `${asset.name} ${asset.path} ${asset.guid ?? ''}`.toLowerCase().includes(search.toLowerCase()))
           );
         })
         .sort((left, right) => {
-          const a = sort === 'name' ? left.name : sort === 'type' ? left.kind : left.status;
-          const b = sort === 'name' ? right.name : sort === 'type' ? right.kind : right.status;
+          const a = sort === 'name' ? left.name : sort === 'type' ? assetPresentationKind(left) : left.status;
+          const b = sort === 'name' ? right.name : sort === 'type' ? assetPresentationKind(right) : right.status;
           return a.localeCompare(b);
         }),
     [browserSource, contentRootName, folder, kind, scopedAssets, search, sort, state],
