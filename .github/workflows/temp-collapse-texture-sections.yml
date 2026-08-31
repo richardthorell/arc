@@ -1,10 +1,13 @@
 name: Temp Collapse Texture Sections
+
 on:
   push:
-    branches: [feat/texture-editor-view]
-    paths: [.github/workflows/temp-collapse-texture-sections.yml]
+    branches:
+      - feat/texture-editor-view
+
 permissions:
   contents: write
+
 jobs:
   patch:
     runs-on: ubuntu-latest
@@ -13,6 +16,7 @@ jobs:
         with:
           ref: feat/texture-editor-view
       - name: Patch texture inspector sections
+        shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -36,12 +40,7 @@ jobs:
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
       <div className="texture-inspector-sections">
-        <UiPanelSection
-          className="texture-inspector-section"
-          collapsed={collapsedSections.texture}
-          onToggle={() => toggleSection('texture')}
-          title="Texture"
-        >
+        <UiPanelSection className="texture-inspector-section" collapsed={collapsedSections.texture} onToggle={() => toggleSection('texture')} title="Texture">
           <TextureProperty label="Type" value={textureTypeOf(asset)} />
           <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
           <TextureProperty label="Depth / Layers" value={asset.depth === undefined ? '1' : String(asset.depth)} />
@@ -51,24 +50,14 @@ jobs:
           <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
         </UiPanelSection>
 
-        <UiPanelSection
-          className="texture-inspector-section"
-          collapsed={collapsedSections.sampling}
-          onToggle={() => toggleSection('sampling')}
-          title="Sampling"
-        >
+        <UiPanelSection className="texture-inspector-section" collapsed={collapsedSections.sampling} onToggle={() => toggleSection('sampling')} title="Sampling">
           <TextureProperty label="Wrap U" value="Not configured" />
           <TextureProperty label="Wrap V" value="Not configured" />
           <TextureProperty label="Filter Mode" value="Not configured" />
           <TextureProperty label="Anisotropy" value="Not configured" />
         </UiPanelSection>
 
-        <UiPanelSection
-          className="texture-inspector-section"
-          collapsed={collapsedSections.mipmaps}
-          onToggle={() => toggleSection('mipmaps')}
-          title="Mipmaps"
-        >
+        <UiPanelSection className="texture-inspector-section" collapsed={collapsedSections.mipmaps} onToggle={() => toggleSection('mipmaps')} title="Mipmaps">
           <TextureProperty label="Generate Mips" value={(asset.mipLevels ?? 1) > 1 ? 'Yes' : 'No'} />
           <TextureProperty label="Mip Count" value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)} />
           <TextureProperty label="Generation Filter" value="Not configured" />
@@ -76,12 +65,7 @@ jobs:
           <TextureProperty label="Min / Max LOD" value="Not configured" />
         </UiPanelSection>
 
-        <UiPanelSection
-          className="texture-inspector-section"
-          collapsed={collapsedSections.compression}
-          onToggle={() => toggleSection('compression')}
-          title="Compression"
-        >
+        <UiPanelSection className="texture-inspector-section" collapsed={collapsedSections.compression} onToggle={() => toggleSection('compression')} title="Compression">
           <TextureProperty label="Compression Preset" value="Not configured" />
           <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Not reported'} />
           <TextureProperty label="Quality" value="Not configured" />
@@ -89,12 +73,7 @@ jobs:
           <TextureProperty label="Artifact Size" value={formatBytes(asset.artifactSize)} />
         </UiPanelSection>
 
-        <UiPanelSection
-          className="texture-inspector-section"
-          collapsed={collapsedSections.streaming}
-          onToggle={() => toggleSection('streaming')}
-          title="Streaming"
-        >
+        <UiPanelSection className="texture-inspector-section" collapsed={collapsedSections.streaming} onToggle={() => toggleSection('streaming')} title="Streaming">
           <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
           <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
           <TextureProperty label="Tile Count" value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)} />
@@ -104,27 +83,14 @@ jobs:
           )}
         </UiPanelSection>
 
-        <UiPanelSection
-          className="texture-inspector-section"
-          collapsed={collapsedSections.import}
-          onToggle={() => toggleSection('import')}
-          title="Import"
-        >
+        <UiPanelSection className="texture-inspector-section" collapsed={collapsedSections.import} onToggle={() => toggleSection('import')} title="Import">
           <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
           <TextureProperty label="Source Path" value={asset.path} />
-          <TextureProperty
-            label="Settings Version"
-            value={asset.settingsVersion === undefined ? 'Not reported' : String(asset.settingsVersion)}
-          />
+          <TextureProperty label="Settings Version" value={asset.settingsVersion === undefined ? 'Not reported' : String(asset.settingsVersion)} />
           <TextureProperty label="Power-of-Two Policy" value="Not configured" />
         </UiPanelSection>
 
-        <UiPanelSection
-          className="texture-inspector-section"
-          collapsed={collapsedSections.asset}
-          onToggle={() => toggleSection('asset')}
-          title="Asset"
-        >
+        <UiPanelSection className="texture-inspector-section" collapsed={collapsedSections.asset} onToggle={() => toggleSection('asset')} title="Asset">
           <TextureProperty label="Status" value={asset.status} />
           <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
           <TextureProperty label="Path" value={asset.path} />
