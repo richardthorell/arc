@@ -33,7 +33,7 @@ jobs:
           npx --yes prettier@3.9.6 --write src/renderer/src/texture/TextureEditor.tsx src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/textureEditor.css
       - name: Build targeted native tests
         run: |
-          cmake --preset editor-no-vulkan
+          cmake --preset editor-no-vulkan -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
           cmake --build --preset editor-no-vulkan --target arc_render_tools_tests arc-editor-host -j2
           ctest --test-dir out/build/editor-no-vulkan -R arc_render_tools_tests --output-on-failure
       - name: Run texture editor tests
