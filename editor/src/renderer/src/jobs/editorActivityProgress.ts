@@ -69,9 +69,12 @@ export function useEditorActivityProgress(startupState: StartupState | null, act
         return;
       }
 
-      const update = { label, completed: 0, total: 0, indeterminate: true };
-      if (!buildJob.current) buildJob.current = beginEditorJob(label, { priority: 'foreground', ...update });
-      else buildJob.current.update(update);
+      if (!buildJob.current)
+        buildJob.current = beginEditorJob(label, {
+          priority: 'foreground',
+          indeterminate: true,
+        });
+      else buildJob.current.update({ label, indeterminate: true });
     };
 
     void window.arc.build.snapshot().then(accept);
