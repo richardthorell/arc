@@ -192,7 +192,8 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_set_mobility_command> || std::is_same_v<Command, host_set_camera_command> ||
            std::is_same_v<Command, host_set_light_command> || std::is_same_v<Command, host_set_mesh_renderer_command> ||
            std::is_same_v<Command, host_set_terrain_command> || std::is_same_v<Command, host_terrain_stroke_command> ||
-           std::is_same_v<Command, host_set_terrain_layer_command> || std::is_same_v<Command, host_create_terrain_command> ||
+           std::is_same_v<Command, host_set_terrain_layer_command> ||
+           std::is_same_v<Command, host_create_terrain_command> ||
            std::is_same_v<Command, host_generate_terrain_command> ||
            std::is_same_v<Command, host_import_terrain_heightmap_command> ||
            std::is_same_v<Command, host_resample_terrain_command> ||
@@ -211,6 +212,7 @@ template <class Command> constexpr bool is_project_mutation() noexcept
            std::is_same_v<Command, host_reload_project_module_command> ||
            std::is_same_v<Command, host_asset_reimport_command> ||
            std::is_same_v<Command, host_set_texture_streaming_mode_command> ||
+           std::is_same_v<Command, host_patch_texture_settings_command> ||
            std::is_same_v<Command, host_asset_cancel_import_command> ||
            std::is_same_v<Command, host_asset_move_command> || std::is_same_v<Command, host_asset_rename_command>;
 }
@@ -399,9 +401,9 @@ struct resolved_editor_asset
 };
 
 std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
-                                                           const assets::asset_manager* registry,
-                                                           const std::filesystem::path& project_root,
-                                                           const std::filesystem::path& reference)
+                                                          const assets::asset_manager* registry,
+                                                          const std::filesystem::path& project_root,
+                                                          const std::filesystem::path& reference)
 {
     if (reference.empty()) return std::nullopt;
     const auto normalized = arc::assets::normalize_asset_path(reference);
@@ -1508,9 +1510,7 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
         const auto relative_to_primary = record.path.lexically_relative(assets.root);
         const auto relative_to_project = record.path.lexically_relative(project_root);
         const auto stays_within = [](const std::filesystem::path& relative)
-        {
-            return !relative.empty() && *relative.begin() != std::filesystem::path("..");
-        };
+        { return !relative.empty() && *relative.begin() != std::filesystem::path(".."); };
         if (!assets.root.empty() && stays_within(relative_to_primary))
             snapshot.material_path = arc::assets::normalize_asset_path(relative_to_primary);
         else if (!project_root.empty() && stays_within(relative_to_project))
@@ -2030,6 +2030,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_asset_reimport_command> ||
                                std::is_same_v<command_type, host_set_texture_streaming_mode_command> ||
+                               std::is_same_v<command_type, host_patch_texture_settings_command> ||
                                std::is_same_v<command_type, host_asset_cancel_import_command> ||
                                std::is_same_v<command_type, host_asset_move_command> ||
                                std::is_same_v<command_type, host_asset_rename_command>)
@@ -2044,6 +2045,54 @@ host_response arc_host::execute(const host_command_envelope& command)
                     if (asset && asset->read_only) return fail("Built-in assets are read-only");
                     const auto job = state_->asset_registry->reimport(*guid, assets::asset_streaming_priority::high);
                     if (!job.valid()) return fail("Asset could not be queued for reimport");
+                    return success("{\"queued\":true}");
+                }
+                else if constexpr (std::is_same_v<command_type, host_patch_texture_settings_command>)
+                {
+                    const auto asset = state_->asset_registry->find(*guid);
+                    if (!asset) return fail("Texture asset was not found");
+                    if (asset->read_only) return fail("Built-in assets are read-only");
+                    if (asset->type != assets::asset_types::texture_2d) return fail("Asset is not a 2D texture");
+                    const auto metadata_path = assets::metadata_path_for(state_->project.root / asset->source_path);
+                    auto metadata = assets::load_asset_metadata(metadata_path);
+                    if (!metadata) return fail(metadata.error().message);
+                    auto parsed = render::tools::parse_texture_import_settings(metadata.value().canonical_settings,
+                                                                               metadata.value().settings_version);
+                    if (!parsed) return fail(parsed.error());
+                    auto settings = parsed.value();
+                    if (!payload.preset.empty())
+                    {
+                        const auto preset = render::tools::parse_texture_import_preset(payload.preset);
+                        if (!preset) return fail("Unknown texture preset");
+                        settings = render::tools::texture_import_settings_for_preset(*preset);
+                    }
+                    if (!payload.semantic.empty())
+                    {
+                        const auto semantic = render::tools::parse_texture_semantic(payload.semantic);
+                        if (!semantic) return fail("Unknown texture semantic");
+                        settings.semantic = *semantic;
+                        settings.preset = render::tools::texture_import_preset::custom;
+                    }
+                    if (!payload.color_space.empty())
+                    {
+                        const auto color_space = render::tools::parse_texture_color_space(payload.color_space);
+                        if (!color_space) return fail("Unknown texture color space");
+                        settings.color_space = *color_space;
+                        settings.preset = render::tools::texture_import_preset::custom;
+                    }
+                    if (!payload.streaming_mode.empty())
+                    {
+                        const auto mode = render::tools::parse_texture_streaming_mode(payload.streaming_mode);
+                        if (!mode) return fail("Unknown texture streaming mode");
+                        settings.streaming_mode = *mode;
+                        if (payload.preset.empty()) settings.preset = render::tools::texture_import_preset::custom;
+                    }
+                    metadata.value().settings_version = render::tools::texture_import_settings::current_version;
+                    metadata.value().canonical_settings = render::tools::serialize_texture_import_settings(settings);
+                    const auto saved = assets::save_asset_metadata(metadata_path, metadata.value());
+                    if (!saved) return fail(saved.error().message);
+                    const auto job = state_->asset_registry->reimport(*guid, assets::asset_streaming_priority::high);
+                    if (!job.valid()) return fail("Texture could not be queued for reimport");
                     return success("{\"queued\":true}");
                 }
                 else if constexpr (std::is_same_v<command_type, host_set_texture_streaming_mode_command>)
@@ -2066,8 +2115,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     auto metadata = assets::load_asset_metadata(metadata_path);
                     if (!metadata) return fail(metadata.error().message);
                     metadata.value().settings_version = render::tools::texture_import_settings::current_version;
-                    metadata.value().canonical_settings =
-                        render::tools::serialize_texture_import_settings(settings);
+                    metadata.value().canonical_settings = render::tools::serialize_texture_import_settings(settings);
                     const auto saved = assets::save_asset_metadata(metadata_path, metadata.value());
                     if (!saved) return fail(saved.error().message);
                     const auto job = state_->asset_registry->reimport(*guid, assets::asset_streaming_priority::high);
@@ -2100,10 +2148,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!source_path) return fail("Shader source path must remain inside the open project");
                 const auto stage = payload.stage == "vertex"    ? render::shader_stage::vertex
                                    : payload.stage == "compute" ? render::shader_stage::compute
-                                                                 : render::shader_stage::fragment;
-                const auto domain = payload.domain == "compute" ? render::shader_domain::compute
+                                                                : render::shader_stage::fragment;
+                const auto domain = payload.domain == "compute"       ? render::shader_domain::compute
                                     : payload.domain == "postProcess" ? render::shader_domain::post_process
-                                                                        : render::shader_domain::surface;
+                                                                      : render::shader_domain::surface;
                 std::string source = payload.source;
                 std::unordered_map<std::uint32_t, std::string> graph_line_nodes;
                 std::vector<render::shader_parameter_descriptor> graph_parameters;
@@ -2123,18 +2171,18 @@ host_response arc_host::execute(const host_command_envelope& command)
                 }
                 render::tools::slang_shader_compiler compiler;
                 render::shader_library_cache cache;
-                render::shader_compile_request request{
-                    .source_path = source_path->generic_string(),
-                    .source_override = std::move(source),
-                    .entry_point = payload.entry_point.empty() ? "main" : payload.entry_point,
-                    .profile = "spirv_1_5",
-                    .domain = domain,
-                    .stage = stage,
-                    .target = render::shader_target::spirv,
-                    .optimization = render::shader_optimization::development,
-                    .include_directories = {source_path->parent_path()},
-                    .generated_line_nodes = std::move(graph_line_nodes),
-                    .generate_debug_information = true};
+                render::shader_compile_request request{.source_path = source_path->generic_string(),
+                                                       .source_override = std::move(source),
+                                                       .entry_point =
+                                                           payload.entry_point.empty() ? "main" : payload.entry_point,
+                                                       .profile = "spirv_1_5",
+                                                       .domain = domain,
+                                                       .stage = stage,
+                                                       .target = render::shader_target::spirv,
+                                                       .optimization = render::shader_optimization::development,
+                                                       .include_directories = {source_path->parent_path()},
+                                                       .generated_line_nodes = std::move(graph_line_nodes),
+                                                       .generate_debug_information = true};
                 auto compiled = cache.compile_or_get(compiler, request);
                 nlohmann::json response;
                 response["compiler"] = compiler.fingerprint();
@@ -2145,11 +2193,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     for (const auto& diagnostic : diagnostics)
                         response["diagnostics"].push_back(
-                            {{"severity", diagnostic.severity == render::shader_diagnostic_severity::error
-                                              ? "error"
-                                              : diagnostic.severity == render::shader_diagnostic_severity::warning
-                                                  ? "warning"
-                                                  : "information"},
+                            {{"severity", diagnostic.severity == render::shader_diagnostic_severity::error ? "error"
+                                          : diagnostic.severity == render::shader_diagnostic_severity::warning
+                                              ? "warning"
+                                              : "information"},
                              {"code", diagnostic.code},
                              {"message", diagnostic.message},
                              {"path", diagnostic.location.path},
@@ -2172,15 +2219,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                 response["parameters"] = nlohmann::json::array();
                 for (const auto& parameter : compiled.value().reflection.parameters)
                     response["parameters"].push_back({{"id", parameter.id.representation()},
-                                                       {"name", parameter.name},
-                                                       {"offset", parameter.offset},
-                                                       {"size", parameter.size}});
+                                                      {"name", parameter.name},
+                                                      {"offset", parameter.offset},
+                                                      {"size", parameter.size}});
                 response["resources"] = nlohmann::json::array();
                 for (const auto& resource : compiled.value().reflection.resources)
                     response["resources"].push_back({{"name", resource.name},
-                                                      {"set", resource.set},
-                                                      {"binding", resource.binding},
-                                                      {"count", resource.count}});
+                                                     {"set", resource.set},
+                                                     {"binding", resource.binding},
+                                                     {"count", resource.count}});
                 return success(response.dump());
             }
             else if constexpr (std::is_same_v<command_type, host_runtime_resume_command>)
@@ -2890,9 +2937,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
                 if (!terrain) return fail("Entity does not have an editable terrain component", entity);
                 if (!std::isfinite(payload.shadow_lod_bias) || !std::isfinite(payload.maximum_shadow_distance) ||
-                    !std::isfinite(payload.geometric_error_multiplier) ||
-                    payload.shadow_lod_bias < -4.0f || payload.shadow_lod_bias > 8.0f ||
-                    payload.maximum_shadow_distance < 0.0f || payload.geometric_error_multiplier <= 0.0f ||
+                    !std::isfinite(payload.geometric_error_multiplier) || payload.shadow_lod_bias < -4.0f ||
+                    payload.shadow_lod_bias > 8.0f || payload.maximum_shadow_distance < 0.0f ||
+                    payload.geometric_error_multiplier <= 0.0f ||
                     (payload.patch_quads != 16u && payload.patch_quads != 32u && payload.patch_quads != 64u))
                     return fail("Terrain LOD or shadow values are outside supported ranges", entity);
                 terrain->enabled = payload.enabled;
@@ -2941,7 +2988,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 descriptor.patch_quads = payload.patch_quads;
                 descriptor.procedural_seed = payload.seed;
                 descriptor.source = payload.source == "procedural" ? scene::terrain_initial_source::procedural
-                                                                    : scene::terrain_initial_source::flat;
+                                                                   : scene::terrain_initial_source::flat;
                 const auto validation = scene::validate_terrain_creation(descriptor);
                 if (!validation.succeeded) return fail(validation.message);
                 const auto estimate = scene::estimate_terrain_memory(descriptor.sample_resolution);
@@ -2952,8 +2999,8 @@ host_response arc_host::execute(const host_command_envelope& command)
 
                 if (!state_->scene.terrain_material.valid())
                 {
-                    const auto asset_root = !state_->assets.root.empty() ? state_->assets.root
-                                                                         : state_->project.root / "Content";
+                    const auto asset_root =
+                        !state_->assets.root.empty() ? state_->assets.root : state_->project.root / "Content";
                     if (!create_default_terrain_material(state_->scene, *state_->renderer, asset_root).valid())
                         return fail("Default terrain material could not be created");
                 }
@@ -3003,8 +3050,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                                              .entity = to_host_entity(created)};
                 push_event(state_->events, state_->event_sequence, host_event_type::terrain_operation_changed,
                            "Terrain creation completed", created);
-                push_event(state_->events, state_->event_sequence, host_event_type::entity_created,
-                           "Created terrain", created);
+                push_event(state_->events, state_->event_sequence, host_event_type::entity_created, "Created terrain",
+                           created);
                 return success("{\"entity\":" + to_json(to_host_entity(created)) +
                                ",\"operationId\":" + std::to_string(state_->terrain_operation.operation_id) + '}');
             }
@@ -3017,11 +3064,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (estimate.history_bytes > 64ull * 1024ull * 1024ull)
                     return fail("Terrain generation exceeds the configured undo budget", entity);
                 auto staged = *terrain;
-                const auto generated = scene::generate_terrain(
-                    staged, {.generator_id = payload.generator_id,
-                             .seed = payload.seed,
-                             .minimum_elevation = payload.minimum_elevation,
-                             .maximum_elevation = payload.maximum_elevation});
+                const auto generated =
+                    scene::generate_terrain(staged, {.generator_id = payload.generator_id,
+                                                     .seed = payload.seed,
+                                                     .minimum_elevation = payload.minimum_elevation,
+                                                     .maximum_elevation = payload.maximum_elevation});
                 if (!generated.succeeded) return fail(generated.message, entity);
                 *terrain = std::move(staged);
                 state_->scene.terrain_render_proxies.erase(entity_guid_of(state_->scene, entity), *state_->renderer);
@@ -3044,15 +3091,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto loaded = load_terrain_heightmap(path, payload.raw_width, payload.raw_height, heightmap);
                 if (!loaded.succeeded) return fail(loaded.message, entity);
                 auto staged = *terrain;
-                const auto imported = scene::import_terrain_heightmap(
-                    staged, heightmap,
-                    {.target_resolution = payload.target_resolution,
-                     .physical_size = payload.physical_size,
-                     .minimum_elevation = payload.minimum_elevation,
-                     .maximum_elevation = payload.maximum_elevation,
-                     .flip_x = payload.flip_x,
-                     .flip_z = payload.flip_z,
-                     .normalize_source_range = payload.normalize});
+                const auto imported = scene::import_terrain_heightmap(staged, heightmap,
+                                                                      {.target_resolution = payload.target_resolution,
+                                                                       .physical_size = payload.physical_size,
+                                                                       .minimum_elevation = payload.minimum_elevation,
+                                                                       .maximum_elevation = payload.maximum_elevation,
+                                                                       .flip_x = payload.flip_x,
+                                                                       .flip_z = payload.flip_z,
+                                                                       .normalize_source_range = payload.normalize});
                 if (!imported.succeeded) return fail(imported.message, entity);
                 *terrain = std::move(staged);
                 state_->scene.terrain_render_proxies.erase(entity_guid_of(state_->scene, entity), *state_->renderer);
@@ -3070,11 +3116,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto* terrain = state_->scene.scene.try_get<scene::terrain_component>(entity);
                 if (!terrain) return fail("Heightmap export requires a terrain entity", entity);
                 const auto heightmap = scene::export_terrain_heightmap(
-                    *terrain, {.format = payload.path.extension() == ".png"
-                                             ? scene::terrain_heightmap_format::png16
-                                             : scene::terrain_heightmap_format::raw_r16_le,
-                               .minimum_elevation = payload.minimum_elevation,
-                               .maximum_elevation = payload.maximum_elevation});
+                    *terrain,
+                    {.format = payload.path.extension() == ".png" ? scene::terrain_heightmap_format::png16
+                                                                  : scene::terrain_heightmap_format::raw_r16_le,
+                     .minimum_elevation = payload.minimum_elevation,
+                     .maximum_elevation = payload.maximum_elevation});
                 const auto path = payload.path.is_absolute() ? payload.path : state_->project.root / payload.path;
                 const auto saved = save_terrain_heightmap(path, heightmap);
                 if (!saved.succeeded) return fail(saved.message, entity);
@@ -3173,9 +3219,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
                 const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, entity));
                 const auto* resource = proxy ? state_->renderer->terrain_data_for(proxy->handle) : nullptr;
-                const auto hit = resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin,
-                                                                   local_direction)
-                                          : scene::raycast_terrain(*terrain, local_origin, local_direction);
+                const auto hit =
+                    resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin, local_direction)
+                             : scene::raycast_terrain(*terrain, local_origin, local_direction);
                 if (!hit.hit)
                 {
                     state_->terrain_brush_local_position.reset();
@@ -3220,18 +3266,18 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto sample_interval = terrain->subdivisions > 0
                                                  ? terrain->size / static_cast<float>(terrain->subdivisions)
                                                  : terrain->size;
-                const auto spacing = std::max(0.0001f, std::min(state_->terrain_brush.radius * 0.25f,
-                                                               sample_interval));
+                const auto spacing = std::max(0.0001f, std::min(state_->terrain_brush.radius * 0.25f, sample_interval));
                 const auto stamp_count = std::max(1u, static_cast<std::uint32_t>(std::ceil(distance / spacing)));
                 const auto stamp_seconds = payload.elapsed_seconds / static_cast<float>(stamp_count);
                 for (std::uint32_t stamp_index = 1; stamp_index <= stamp_count; ++stamp_index)
                 {
                     const auto alpha = static_cast<float>(stamp_index) / static_cast<float>(stamp_count);
-                    merge_dirty(scene::apply_terrain_brush(*terrain, previous + offset * alpha,
-                                                           state_->terrain_brush, stamp_seconds));
+                    merge_dirty(scene::apply_terrain_brush(*terrain, previous + offset * alpha, state_->terrain_brush,
+                                                           stamp_seconds));
                 }
                 state_->terrain_stroke_previous_position = hit.position;
-                if (dirty.valid && !synchronize_terrain_render_resource(state_->scene, *state_->renderer, entity, &dirty))
+                if (dirty.valid &&
+                    !synchronize_terrain_render_resource(state_->scene, *state_->renderer, entity, &dirty))
                     return fail("Terrain runtime chunks could not be updated", entity);
                 return success("{\"hit\":true,\"revision\":" + std::to_string(terrain->content_revision) + '}');
             }
@@ -3266,9 +3312,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto local_direction = math::normalize(math::transform_vector(inverse_terrain, ray.direction));
                 const auto* proxy = state_->scene.terrain_render_proxies.find(entity_guid_of(state_->scene, entity));
                 const auto* resource = proxy ? state_->renderer->terrain_data_for(proxy->handle) : nullptr;
-                const auto hit = resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin,
-                                                                   local_direction)
-                                          : scene::raycast_terrain(*terrain, local_origin, local_direction);
+                const auto hit =
+                    resource ? scene::raycast_terrain(*terrain, resource->hierarchy, local_origin, local_direction)
+                             : scene::raycast_terrain(*terrain, local_origin, local_direction);
                 if (hit.hit)
                     state_->terrain_brush_local_position = hit.position;
                 else
@@ -3283,8 +3329,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
-                const auto resolved_material =
-                    resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root, payload.path);
+                const auto resolved_material = resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                                    state_->project.root, payload.path);
                 if (!resolved_material || !is_material_asset_path(resolved_material->path))
                     return fail("Material must be an .arcmat project or built-in asset", entity);
                 std::string message;
@@ -3630,13 +3676,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto source = ecs::parse_entity_guid(payload.source_entity);
                 const auto component = ecs::parse_component_type_id(payload.component_id);
                 if (!source || !component) return fail("Prefab override identity is invalid", entity);
-                const auto kind = payload.kind == "componentAdded"     ? ecs::prefab_override_kind::component_added
-                                  : payload.kind == "componentRemoved" ? ecs::prefab_override_kind::component_removed
-                                  : payload.kind == "sourceChildRemoved"
-                                      ? ecs::prefab_override_kind::source_child_removed
-                                  : payload.kind == "instanceChildAdded"
-                                      ? ecs::prefab_override_kind::instance_child_added
-                                      : ecs::prefab_override_kind::field;
+                const auto kind =
+                    payload.kind == "componentAdded"       ? ecs::prefab_override_kind::component_added
+                    : payload.kind == "componentRemoved"   ? ecs::prefab_override_kind::component_removed
+                    : payload.kind == "sourceChildRemoved" ? ecs::prefab_override_kind::source_child_removed
+                    : payload.kind == "instanceChildAdded" ? ecs::prefab_override_kind::instance_child_added
+                                                           : ecs::prefab_override_kind::field;
                 const ecs::prefab_override_key key{
                     .source_entity = *source, .component = *component, .field = payload.field_id, .kind = kind};
                 if (!ecs::revert_prefab_override(*instance, key)) return fail("Prefab override was not found", entity);
@@ -3695,8 +3740,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const float movement_scale = state_->viewport_options.camera_speed / 4.0f;
                 if (payload.pan_x != 0.0f || payload.pan_y != 0.0f)
                     state_->camera_controller.pan(payload.pan_x * movement_scale, payload.pan_y * movement_scale);
-                if (payload.forward != 0.0f)
-                    state_->camera_controller.move_forward(payload.forward * movement_scale);
+                if (payload.forward != 0.0f) state_->camera_controller.move_forward(payload.forward * movement_scale);
                 if (payload.zoom != 0.0f) state_->camera_controller.zoom(payload.zoom * movement_scale);
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))
@@ -3728,7 +3772,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->camera_controller.synchronize_from(*camera_transform);
                 if (const auto& changed = state_->history.last_terrain_change(); changed)
                     synchronize_terrain_render_resource(state_->scene, *state_->renderer,
-                                           find_entity_by_guid(state_->scene, changed->entity), &changed->region);
+                                                        find_entity_by_guid(state_->scene, changed->entity),
+                                                        &changed->region);
                 else
                     synchronize_all_terrain_resources(state_->scene, *state_->renderer);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Undo completed",
@@ -3743,7 +3788,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->camera_controller.synchronize_from(*camera_transform);
                 if (const auto& changed = state_->history.last_terrain_change(); changed)
                     synchronize_terrain_render_resource(state_->scene, *state_->renderer,
-                                           find_entity_by_guid(state_->scene, changed->entity), &changed->region);
+                                                        find_entity_by_guid(state_->scene, changed->entity),
+                                                        &changed->region);
                 else
                     synchronize_all_terrain_resources(state_->scene, *state_->renderer);
                 push_event(state_->events, state_->event_sequence, host_event_type::scene_changed, "Redo completed",
@@ -4258,18 +4304,15 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"staticCacheHit\":" + std::string(profile.shadows.static_cache_hit ? "true" : "false") +
                     ",\"screenSpaceShadows\":" + std::string(profile.shadows.screen_space_shadows ? "true" : "false") +
                     ",\"virtualShadowMaps\":" + std::string(profile.shadows.virtual_shadow_maps ? "true" : "false") +
-                    ",\"virtualAddressSpaces\":" +
-                    std::to_string(profile.shadows.virtual_address_space_count) +
+                    ",\"virtualAddressSpaces\":" + std::to_string(profile.shadows.virtual_address_space_count) +
                     ",\"virtualPageCapacity\":" + std::to_string(profile.shadows.virtual_page_capacity) +
                     ",\"virtualResidentPages\":" + std::to_string(profile.shadows.virtual_resident_pages) +
                     ",\"virtualDirtyPages\":" + std::to_string(profile.shadows.virtual_dirty_pages) +
                     ",\"virtualRenderedPages\":" + std::to_string(profile.shadows.virtual_rendered_pages) +
                     ",\"virtualReusedPages\":" + std::to_string(profile.shadows.virtual_reused_pages) +
                     ",\"virtualEvictions\":" + std::to_string(profile.shadows.virtual_evictions) +
-                    ",\"virtualParentFallbacks\":" +
-                    std::to_string(profile.shadows.virtual_parent_fallbacks) +
-                    ",\"virtualFailedRequests\":" +
-                    std::to_string(profile.shadows.virtual_failed_requests) +
+                    ",\"virtualParentFallbacks\":" + std::to_string(profile.shadows.virtual_parent_fallbacks) +
+                    ",\"virtualFailedRequests\":" + std::to_string(profile.shadows.virtual_failed_requests) +
                     ",\"virtualMemoryBytes\":" + std::to_string(profile.shadows.virtual_memory_bytes) +
                     ",\"fallback\":" + to_json_string(profile.shadows.fallback_reason) +
                     "},\"gpuScene\":{\"enabled\":" + std::string(profile.gpu_scene.enabled ? "true" : "false") +
@@ -4487,6 +4530,32 @@ host_response arc_host::query(const host_query_envelope& query) const
                 return {
                     .request_id = request_id, .succeeded = true, .payload_json = to_json(project_assets_snapshot())};
             }
+            else if constexpr (std::is_same_v<query_type, host_texture_settings_query>)
+            {
+                if (!state_->asset_registry)
+                    return {
+                        .request_id = request_id, .succeeded = false, .error = "No project asset registry is active"};
+                const auto guid = assets::parse_asset_guid(payload.guid);
+                if (!guid) return {.request_id = request_id, .succeeded = false, .error = "Invalid texture GUID"};
+                const auto asset = state_->asset_registry->find(*guid);
+                if (!asset || asset->type != assets::asset_types::texture_2d)
+                    return {.request_id = request_id, .succeeded = false, .error = "Texture asset was not found"};
+                const auto metadata =
+                    assets::load_asset_metadata(assets::metadata_path_for(state_->project.root / asset->source_path));
+                if (!metadata) return {.request_id = request_id, .succeeded = false, .error = metadata.error().message};
+                const auto settings = render::tools::parse_texture_import_settings(metadata.value().canonical_settings,
+                                                                                   metadata.value().settings_version);
+                if (!settings) return {.request_id = request_id, .succeeded = false, .error = settings.error()};
+                const auto& value = settings.value();
+                const auto json =
+                    "{\"settingsVersion\":" + std::to_string(metadata.value().settings_version) +
+                    ",\"preset\":" + to_json_string(render::tools::texture_import_preset_name(value.preset)) +
+                    ",\"semantic\":" + to_json_string(render::tools::texture_semantic_name(value.semantic)) +
+                    ",\"colorSpace\":" + to_json_string(render::tools::texture_color_space_name(value.color_space)) +
+                    ",\"streamingMode\":" +
+                    to_json_string(render::tools::texture_streaming_mode_name(value.streaming_mode)) + '}';
+                return {.request_id = request_id, .succeeded = true, .payload_json = json};
+            }
             else if constexpr (std::is_same_v<query_type, host_asset_thumbnail_query>)
             {
                 const auto thumbnail = asset_thumbnail(payload.path, payload.max_size);
@@ -4537,15 +4606,12 @@ host_response arc_host::query(const host_query_envelope& query) const
                         ",\"realtime\":" + std::string(state_->viewport_options.realtime ? "true" : "false") +
                         ",\"cameraSpeed\":" + std::to_string(state_->viewport_options.camera_speed) +
                         ",\"antiAliasing\":" +
-                        to_json_string(state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::disabled
-                                           ? "disabled"
-                                       : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::fxaa
-                                           ? "fxaa"
-                                       : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::taa
-                                           ? "taa"
-                                       : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::taau
-                                           ? "taau"
-                                           : "inherit") +
+                        to_json_string(
+                            state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::disabled ? "disabled"
+                            : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::fxaa   ? "fxaa"
+                            : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::taa    ? "taa"
+                            : state_->viewport_options.anti_aliasing == host_camera_anti_aliasing::taau   ? "taau"
+                                                                                                          : "inherit") +
                         ",\"environment\":{\"sky\":" +
                         std::string(state_->viewport_options.environment.sky ? "true" : "false") +
                         ",\"fog\":" + std::string(state_->viewport_options.environment.fog ? "true" : "false") +
@@ -4701,42 +4767,41 @@ host_scene_snapshot arc_host::scene_snapshot() const
                 sibling_order = root_orders[entity.index];
             }
         }
-        snapshot.entities.push_back({.entity = to_host_entity(entity),
-                                     .guid = ecs::to_string(entity_guid_of(state_->scene, entity)),
-                                     .parent_guid = std::move(parent_guid),
-                                     .sibling_order = sibling_order,
-                                     .name = entity_name(state_->scene, entity, "Entity"),
-                                     .kind = kind,
-                                     .document_guid = snapshot.scene_guid,
-                                     .layer = [&]
-                                     {
-                                         const auto* layer =
-                                             state_->scene.scene.try_get<scene::render_layer_component>(entity);
-                                         return layer && layer->mask == host_environment_render_layer
-                                                    ? std::string{"Environment"}
-                                                    : std::string{"Default"};
-                                     }(),
-                                     .active = entity_active(state_->scene, entity),
-                           .visible = entity_active(state_->scene, entity),
-                           .transform = [&]() -> std::optional<host_transform>
-                           {
-                               if (const auto* transform =
-                                       state_->scene.scene.try_get<scene::transform_component>(entity))
-                                   return to_host_transform(*transform);
-                               return std::nullopt;
-                           }(),
-                           .prefab_override_count = [&]
-                                     {
-                                         const auto* prefab =
-                                             state_->scene.scene.try_get<ecs::prefab_instance_component>(entity);
-                                         return prefab ? prefab->overrides.size() : std::size_t{};
-                                     }(),
-                                     .selected = [&]
-                                     {
-                                         const auto* selection =
-                                             state_->scene.scene.try_get<scene::selection_component>(entity);
-                                         return selection && selection->selected;
-                                     }()});
+        snapshot.entities.push_back(
+            {.entity = to_host_entity(entity),
+             .guid = ecs::to_string(entity_guid_of(state_->scene, entity)),
+             .parent_guid = std::move(parent_guid),
+             .sibling_order = sibling_order,
+             .name = entity_name(state_->scene, entity, "Entity"),
+             .kind = kind,
+             .document_guid = snapshot.scene_guid,
+             .layer =
+                 [&]
+             {
+                 const auto* layer = state_->scene.scene.try_get<scene::render_layer_component>(entity);
+                 return layer && layer->mask == host_environment_render_layer ? std::string{"Environment"}
+                                                                              : std::string{"Default"};
+             }(),
+             .active = entity_active(state_->scene, entity),
+             .visible = entity_active(state_->scene, entity),
+             .transform = [&]() -> std::optional<host_transform>
+             {
+                 if (const auto* transform = state_->scene.scene.try_get<scene::transform_component>(entity))
+                     return to_host_transform(*transform);
+                 return std::nullopt;
+             }(),
+             .prefab_override_count =
+                 [&]
+             {
+                 const auto* prefab = state_->scene.scene.try_get<ecs::prefab_instance_component>(entity);
+                 return prefab ? prefab->overrides.size() : std::size_t{};
+             }(),
+             .selected =
+                 [&]
+             {
+                 const auto* selection = state_->scene.scene.try_get<scene::selection_component>(entity);
+                 return selection && selection->selected;
+             }()});
     };
 
     for (const auto entity : state_->scene.scene.entities())
@@ -4870,8 +4935,8 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         terrain_snapshot.shadow_lod_bias = terrain->shadow_lod_bias;
         terrain_snapshot.maximum_shadow_distance = terrain->maximum_shadow_distance;
         terrain_snapshot.content_revision = terrain->content_revision;
-        terrain_snapshot.cpu_memory_bytes = terrain->heights.size() * sizeof(float) +
-                                            terrain->layer_weights.size() * sizeof(terrain->layer_weights[0]);
+        terrain_snapshot.cpu_memory_bytes =
+            terrain->heights.size() * sizeof(float) + terrain->layer_weights.size() * sizeof(terrain->layer_weights[0]);
         if (const auto* binding = find_asset_binding(state_->scene, entity_guid_of(state_->scene, selected)))
         {
             terrain_snapshot.material_guid = assets::to_string(binding->material.guid);
@@ -4923,11 +4988,12 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
                                                .source_missing = prefab->source_missing};
         for (const auto& value : prefab->overrides)
         {
-            const char* kind = value.key.kind == ecs::prefab_override_kind::component_added ? "componentAdded"
-                               : value.key.kind == ecs::prefab_override_kind::component_removed ? "componentRemoved"
-                               : value.key.kind == ecs::prefab_override_kind::source_child_removed ? "sourceChildRemoved"
-                               : value.key.kind == ecs::prefab_override_kind::instance_child_added ? "instanceChildAdded"
-                                                                                                    : "field";
+            const char* kind =
+                value.key.kind == ecs::prefab_override_kind::component_added        ? "componentAdded"
+                : value.key.kind == ecs::prefab_override_kind::component_removed    ? "componentRemoved"
+                : value.key.kind == ecs::prefab_override_kind::source_child_removed ? "sourceChildRemoved"
+                : value.key.kind == ecs::prefab_override_kind::instance_child_added ? "instanceChildAdded"
+                                                                                    : "field";
             snapshot.prefab->overrides.push_back({.source_entity = ecs::to_string(value.key.source_entity),
                                                   .component_id = ecs::to_string(value.key.component),
                                                   .field_id = value.key.field,
@@ -5039,21 +5105,36 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
         {
             switch (format)
             {
-                case render::texture_format::rgba8_unorm: return "RGBA8 UNorm";
-                case render::texture_format::rgba8_srgb: return "RGBA8 sRGB";
-                case render::texture_format::rgba16f: return "RGBA16F";
-                case render::texture_format::rgba32f: return "RGBA32F";
-                case render::texture_format::bc1_rgba_unorm: return "BC1 UNorm";
-                case render::texture_format::bc1_rgba_srgb: return "BC1 sRGB";
-                case render::texture_format::bc2_rgba_unorm: return "BC2 UNorm";
-                case render::texture_format::bc2_rgba_srgb: return "BC2 sRGB";
-                case render::texture_format::bc3_rgba_unorm: return "BC3 UNorm";
-                case render::texture_format::bc3_rgba_srgb: return "BC3 sRGB";
-                case render::texture_format::bc4_r_unorm: return "BC4";
-                case render::texture_format::bc5_rg_unorm: return "BC5";
-                case render::texture_format::bc6h_rgb_ufloat: return "BC6H";
-                case render::texture_format::bc7_rgba_unorm: return "BC7 UNorm";
-                case render::texture_format::bc7_rgba_srgb: return "BC7 sRGB";
+                case render::texture_format::rgba8_unorm:
+                    return "RGBA8 UNorm";
+                case render::texture_format::rgba8_srgb:
+                    return "RGBA8 sRGB";
+                case render::texture_format::rgba16f:
+                    return "RGBA16F";
+                case render::texture_format::rgba32f:
+                    return "RGBA32F";
+                case render::texture_format::bc1_rgba_unorm:
+                    return "BC1 UNorm";
+                case render::texture_format::bc1_rgba_srgb:
+                    return "BC1 sRGB";
+                case render::texture_format::bc2_rgba_unorm:
+                    return "BC2 UNorm";
+                case render::texture_format::bc2_rgba_srgb:
+                    return "BC2 sRGB";
+                case render::texture_format::bc3_rgba_unorm:
+                    return "BC3 UNorm";
+                case render::texture_format::bc3_rgba_srgb:
+                    return "BC3 sRGB";
+                case render::texture_format::bc4_r_unorm:
+                    return "BC4";
+                case render::texture_format::bc5_rg_unorm:
+                    return "BC5";
+                case render::texture_format::bc6h_rgb_ufloat:
+                    return "BC6H";
+                case render::texture_format::bc7_rgba_unorm:
+                    return "BC7 UNorm";
+                case render::texture_format::bc7_rgba_srgb:
+                    return "BC7 sRGB";
             }
             return "Unknown";
         };
@@ -5114,11 +5195,10 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                                 if (mip.width <= render::virtual_texture_tile_size &&
                                     mip.height <= render::virtual_texture_tile_size)
                                     break;
-                                host_asset.tile_count +=
-                                    ((mip.width + render::virtual_texture_tile_size - 1u) /
-                                     render::virtual_texture_tile_size) *
-                                    ((mip.height + render::virtual_texture_tile_size - 1u) /
-                                     render::virtual_texture_tile_size);
+                                host_asset.tile_count += ((mip.width + render::virtual_texture_tile_size - 1u) /
+                                                          render::virtual_texture_tile_size) *
+                                                         ((mip.height + render::virtual_texture_tile_size - 1u) /
+                                                          render::virtual_texture_tile_size);
                             }
                     }
                     else
@@ -5189,7 +5269,7 @@ std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::stri
                                                                        std::uint32_t max_size) const
 {
     const auto resolved = resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
-                                                std::filesystem::path{path});
+                                               std::filesystem::path{path});
     if (!resolved) return std::nullopt;
     render::texture_data preview;
     if (is_material_asset_path(resolved->path))
