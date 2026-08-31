@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -19,6 +19,15 @@ type HostAssetThumbnailSnapshot = {
   height: number;
   dataUrl: string;
 };
+
+type RulerMark = {
+  value: number;
+  position: number;
+  major: boolean;
+};
+
+const minZoom = 0.05;
+const maxZoom = 16;
 
 const extensionOf = (path: string) => {
   const fileName = path.replaceAll('\\', '/').split('/').at(-1) ?? path;
@@ -42,6 +51,27 @@ const formatBytes = (bytes: number | undefined) => {
 const dimensionsOf = (asset: AssetItem) => {
   if (asset.width === undefined || asset.height === undefined) return 'Not reported';
   return `${asset.width} × ${asset.height}${asset.depth && asset.depth > 1 ? ` × ${asset.depth}` : ''}`;
+};
+
+const clampZoom = (value: number) => Math.min(maxZoom, Math.max(minZoom, value));
+
+const rulerInterval = (zoom: number) => {
+  const candidates = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+  return candidates.find((candidate) => candidate * zoom >= 42) ?? candidates.at(-1)!;
+};
+
+const rulerMarks = (size: number, zoom: number): RulerMark[] => {
+  const majorInterval = rulerInterval(zoom);
+  const minorInterval = majorInterval / 5;
+  const count = Math.ceil(size / minorInterval);
+  return Array.from({ length: count + 1 }, (_, index) => {
+    const value = Math.min(size, index * minorInterval);
+    return {
+      value,
+      position: value * zoom,
+      major: index % 5 === 0,
+    };
+  });
 };
 
 function TextureProperty({ label, value }: { label: string; value: string }) {
@@ -90,6 +120,40 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
   );
 }
 
+function HorizontalRuler({ width, zoom }: { width: number; zoom: number }) {
+  const marks = rulerMarks(width, zoom);
+  return (
+    <div aria-hidden="true" className="texture-ruler texture-ruler-horizontal" style={{ width: width * zoom }}>
+      {marks.map((mark) => (
+        <span
+          className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
+          key={`${mark.value}-${mark.position}`}
+          style={{ left: mark.position }}
+        >
+          {mark.major && <em>{Math.round(mark.value)}</em>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function VerticalRuler({ height, zoom }: { height: number; zoom: number }) {
+  const marks = rulerMarks(height, zoom);
+  return (
+    <div aria-hidden="true" className="texture-ruler texture-ruler-vertical" style={{ height: height * zoom }}>
+      {marks.map((mark) => (
+        <span
+          className={mark.major ? 'texture-ruler-mark major' : 'texture-ruler-mark'}
+          key={`${mark.value}-${mark.position}`}
+          style={{ top: mark.position }}
+        >
+          {mark.major && <em>{Math.round(mark.value)}</em>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function TextureEditor({ document }: { document: EditorDocument }) {
   const asset = useMemo<AssetItem>(
     () =>
@@ -105,8 +169,10 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
       },
     [document],
   );
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -136,12 +202,35 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     };
   }, [asset.path, asset.generation]);
 
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || !preview) return;
+
+    const fitPreview = () => {
+      const availableWidth = Math.max(1, stage.clientWidth - 80);
+      const availableHeight = Math.max(1, stage.clientHeight - 80);
+      setZoom(clampZoom(Math.min(1, availableWidth / preview.width, availableHeight / preview.height)));
+    };
+
+    fitPreview();
+    const observer = new ResizeObserver(fitPreview);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [preview?.path, preview?.width, preview?.height]);
+
   const previewDimensions =
     preview?.width && preview?.height
       ? `${preview.width} × ${preview.height}`
       : asset.width !== undefined && asset.height !== undefined
         ? `${asset.width} × ${asset.height}`
         : null;
+
+  const onWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (!preview) return;
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+    setZoom((current) => clampZoom(current * factor));
+  };
 
   return (
     <section className="texture-editor">
@@ -150,11 +239,34 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
           <span>{extensionOf(asset.path)}</span>
           {previewDimensions && <span>{previewDimensions}</span>}
           {asset.mipLevels !== undefined && <span>{asset.mipLevels} mips</span>}
+          <span className="texture-zoom">{Math.round(zoom * 100)}%</span>
           <span className={`texture-status texture-status-${asset.status}`}>{asset.status}</span>
         </div>
-        <div className="texture-preview-stage">
+        <div className="texture-preview-stage" onWheel={onWheel} ref={stageRef}>
           {preview?.dataUrl && !previewFailed ? (
-            <img alt={`${asset.name} texture preview`} draggable={false} src={preview.dataUrl} />
+            <div
+              className="texture-preview-canvas"
+              style={{
+                gridTemplateColumns: `28px ${preview.width * zoom}px`,
+                gridTemplateRows: `22px ${preview.height * zoom}px`,
+              }}
+            >
+              <div aria-hidden="true" className="texture-ruler-corner" />
+              <HorizontalRuler width={preview.width} zoom={zoom} />
+              <VerticalRuler height={preview.height} zoom={zoom} />
+              <div
+                className="texture-preview-image-frame"
+                style={{ width: preview.width * zoom, height: preview.height * zoom }}
+              >
+                <img
+                  alt={`${asset.name} texture preview`}
+                  draggable={false}
+                  height={preview.height * zoom}
+                  src={preview.dataUrl}
+                  width={preview.width * zoom}
+                />
+              </div>
+            </div>
           ) : previewFailed ? (
             <div className="texture-preview-empty">
               <Image aria-hidden="true" size={34} />
