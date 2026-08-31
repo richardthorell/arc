@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Copy, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, Copy, Plus, Search, Trash2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton, UiColorControl, UiContextMenu, UiContextMenuItem, UiNodeCard, UiTextInput } from '../ui';
@@ -783,61 +783,97 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
             />
           </div>
           <div className="material-node-menu-items">
-            {searchingNodes ? (
-              availableNodes.map((definition) => (
-                <UiContextMenuItem
-                  key={definition.type}
-                  onClick={() => addNode(definition.type)}
-                  trailing={<small>{`${definition.category} / ${definition.subcategory}`}</small>}
-                >
-                  <strong>{definition.title}</strong>
-                </UiContextMenuItem>
-              ))
-            ) : !nodeMenuCategory ? (
-              visibleCategories.map((category) => (
-                <UiContextMenuItem
-                  key={category}
-                  onClick={() => {
-                    setNodeMenuCategory(category);
-                    setNodeMenuSubcategory(null);
-                  }}
-                  onMouseEnter={() => {
-                    setNodeMenuCategory(category);
-                    setNodeMenuSubcategory(null);
-                  }}
-                  trailing={<ChevronRight size={13} />}
-                >
-                  <strong>{category}</strong>
-                </UiContextMenuItem>
-              ))
-            ) : !nodeMenuSubcategory ? (
-              <>
-                <UiContextMenuItem onClick={() => setNodeMenuCategory(null)} leading={<ChevronLeft size={13} />}>
-                  All Categories
-                </UiContextMenuItem>
-                {visibleSubcategories.map((subcategory) => (
+            {searchingNodes
+              ? availableNodes.map((definition) => (
                   <UiContextMenuItem
-                    key={subcategory}
-                    onClick={() => setNodeMenuSubcategory(subcategory)}
-                    onMouseEnter={() => setNodeMenuSubcategory(subcategory)}
-                    trailing={<ChevronRight size={13} />}
+                    key={definition.type}
+                    onClick={() => addNode(definition.type)}
+                    trailing={<small>{`${definition.category} / ${definition.subcategory}`}</small>}
                   >
-                    <strong>{subcategory}</strong>
-                  </UiContextMenuItem>
-                ))}
-              </>
-            ) : (
-              <>
-                <UiContextMenuItem onClick={() => setNodeMenuSubcategory(null)} leading={<ChevronLeft size={13} />}>
-                  {nodeMenuCategory}
-                </UiContextMenuItem>
-                {visibleCategoryNodes.map((definition) => (
-                  <UiContextMenuItem key={definition.type} onClick={() => addNode(definition.type)}>
                     <strong>{definition.title}</strong>
                   </UiContextMenuItem>
-                ))}
-              </>
-            )}
+                ))
+              : visibleCategories.map((category) => {
+                  const categoryActive = nodeMenuCategory === category;
+                  const categorySubcategories = materialNodeSubcategoryOrder[category].filter((subcategory) =>
+                    availableNodes.some(
+                      (definition) => definition.category === category && definition.subcategory === subcategory,
+                    ),
+                  );
+                  const submenuDirection =
+                    addMenu && canvasRef.current && addMenu.screen[0] + 280 + 2 * 240 > canvasRef.current.clientWidth
+                      ? 'left'
+                      : 'right';
+
+                  return (
+                    <div
+                      className={`material-node-menu-cascade-entry material-node-menu-cascade-${submenuDirection}`}
+                      key={category}
+                      onMouseEnter={() => {
+                        setNodeMenuCategory(category);
+                        setNodeMenuSubcategory(null);
+                      }}
+                    >
+                      <UiContextMenuItem
+                        aria-expanded={categoryActive}
+                        aria-haspopup="menu"
+                        onClick={() => {
+                          setNodeMenuCategory(category);
+                          setNodeMenuSubcategory(null);
+                        }}
+                        trailing={<ChevronRight size={13} />}
+                      >
+                        <strong>{category}</strong>
+                      </UiContextMenuItem>
+                      {categoryActive && (
+                        <UiContextMenu
+                          aria-label={`${category} material node categories`}
+                          className="material-node-menu-submenu"
+                          maxHeight={380}
+                          width={240}
+                        >
+                          {categorySubcategories.map((subcategory) => {
+                            const subcategoryActive = nodeMenuSubcategory === subcategory;
+                            const subcategoryNodes = availableNodes.filter(
+                              (definition) =>
+                                definition.category === category && definition.subcategory === subcategory,
+                            );
+                            return (
+                              <div
+                                className={`material-node-menu-cascade-entry material-node-menu-cascade-${submenuDirection}`}
+                                key={subcategory}
+                                onMouseEnter={() => setNodeMenuSubcategory(subcategory)}
+                              >
+                                <UiContextMenuItem
+                                  aria-expanded={subcategoryActive}
+                                  aria-haspopup="menu"
+                                  onClick={() => setNodeMenuSubcategory(subcategory)}
+                                  trailing={<ChevronRight size={13} />}
+                                >
+                                  <strong>{subcategory}</strong>
+                                </UiContextMenuItem>
+                                {subcategoryActive && (
+                                  <UiContextMenu
+                                    aria-label={`${subcategory} material nodes`}
+                                    className="material-node-menu-submenu"
+                                    maxHeight={380}
+                                    width={240}
+                                  >
+                                    {subcategoryNodes.map((definition) => (
+                                      <UiContextMenuItem key={definition.type} onClick={() => addNode(definition.type)}>
+                                        <strong>{definition.title}</strong>
+                                      </UiContextMenuItem>
+                                    ))}
+                                  </UiContextMenu>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </UiContextMenu>
+                      )}
+                    </div>
+                  );
+                })}
           </div>
         </UiContextMenu>
       )}
