@@ -3856,11 +3856,25 @@ host_response arc_host::execute(const host_command_envelope& command)
                 const auto* transform =
                     state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity);
                 editor_pick_result cpu_fallback{};
+                editor_ray pick_ray{};
+                math::vector3f drop_position{};
                 if (camera && transform && viewport.valid())
-                    cpu_fallback = pick_scene_entity(state_->scene.scene, *state_->renderer,
-                                                     screen_ray_from_camera(*camera, *transform, viewport,
-                                                                            static_cast<float>(payload.x),
-                                                                            static_cast<float>(payload.y)));
+                {
+                    pick_ray = screen_ray_from_camera(*camera, *transform, viewport, static_cast<float>(payload.x),
+                                                      static_cast<float>(payload.y));
+                    cpu_fallback = pick_scene_entity(state_->scene.scene, *state_->renderer, pick_ray);
+                    if (cpu_fallback.entity.valid() && std::isfinite(cpu_fallback.distance) &&
+                        cpu_fallback.distance > 0.0f)
+                        drop_position = pick_ray.origin + pick_ray.direction * cpu_fallback.distance;
+                    else
+                    {
+                        const float denominator = pick_ray.direction[1];
+                        const float ground_distance =
+                            std::abs(denominator) > 1.0e-5f ? -pick_ray.origin[1] / denominator : -1.0f;
+                        drop_position = ground_distance > 0.0f ? pick_ray.origin + pick_ray.direction * ground_distance
+                                                               : pick_ray.origin + pick_ray.direction * 10.0f;
+                    }
+                }
                 state_->renderer->request_object_pick(pick_request_id, payload.x, payload.y);
 
                 if (state_->renderer->backend())
@@ -3871,7 +3885,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                                                      .y = payload.y,
                                                      .cpu_fallback = cpu_fallback,
                                                      .requested_after_frame = state_->viewport_frame_index};
-                    return success("{\"pending\":true}");
+                    return success("{\"pending\":true,\"worldPosition\":[" + std::to_string(drop_position[0]) + "," +
+                                   std::to_string(drop_position[1]) + "," + std::to_string(drop_position[2]) + "]}");
                 }
 
                 const auto previous_selection = state_->scene.selected_entity;
@@ -3883,7 +3898,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                     push_event(state_->events, state_->event_sequence, host_event_type::entity_selected,
                                cpu_fallback.entity.valid() ? "Viewport entity selected" : "Viewport selection cleared",
                                cpu_fallback.entity);
-                return success("{\"entity\":" + to_json(to_host_entity(cpu_fallback.entity)) + '}');
+                return success("{\"entity\":" + to_json(to_host_entity(cpu_fallback.entity)) + ",\"worldPosition\":[" +
+                               std::to_string(drop_position[0]) + "," + std::to_string(drop_position[1]) + "," +
+                               std::to_string(drop_position[2]) + "]}");
             }
             else if constexpr (std::is_same_v<command_type, host_viewport_capture_command>)
             {

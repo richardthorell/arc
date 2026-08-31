@@ -90,3 +90,62 @@ export async function assignDroppedMaterialToViewport(
 
   return { succeeded: false, error: lastError || 'Timed out while picking the material drop target' };
 }
+
+export type ViewportMeshDropResult = { succeeded: true; entity: HostEntityId } | { succeeded: false; error: string };
+
+const parseEntity = (payload: unknown): HostEntityId | undefined => {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const entity = (payload as { entity?: HostEntityId }).entity;
+  return validEntity(entity) ? entity : undefined;
+};
+
+const parseWorldPosition = (payload: unknown): [number, number, number] | undefined => {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as { worldPosition?: unknown }).worldPosition;
+  if (!Array.isArray(value) || value.length !== 3 || !value.every((entry) => typeof entry === 'number'))
+    return undefined;
+  return value as [number, number, number];
+};
+
+export async function instantiateDroppedMeshInViewport(
+  host: HostBridge,
+  request: { viewportId: string; x: number; y: number; path: string },
+): Promise<ViewportMeshDropResult> {
+  const pick = (await host.command('viewport.pick', {
+    viewportId: request.viewportId,
+    x: request.x,
+    y: request.y,
+  })) as HostResponse;
+  if (pick?.succeeded === false) return { succeeded: false, error: pick.error || 'Viewport placement failed' };
+
+  const created = (await host.command('entity.create', { kind: 'empty' })) as HostResponse;
+  if (created?.succeeded === false) return { succeeded: false, error: created.error || 'Could not create mesh entity' };
+  const entity = parseEntity(created?.payload);
+  if (!entity) return { succeeded: false, error: 'Host did not return the created mesh entity' };
+
+  const assignment = (await host.command('entity.setMaterial', {
+    entity,
+    path: `__arc_mesh__/${request.path}`,
+  })) as HostResponse;
+  if (assignment?.succeeded === false) {
+    await host.command('entity.delete', { entity }).catch(() => undefined);
+    return { succeeded: false, error: assignment.error || 'Could not assign the dropped mesh' };
+  }
+
+  const worldPosition = parseWorldPosition(pick?.payload);
+  if (worldPosition) {
+    const transformed = (await host.command('entity.setTransform', {
+      entity,
+      transform: { position: worldPosition, rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+    })) as HostResponse;
+    if (transformed?.succeeded === false)
+      return { succeeded: false, error: transformed.error || 'Could not place the dropped mesh' };
+  }
+
+  const fileName = request.path.replaceAll('\\', '/').split('/').at(-1) ?? request.path;
+  const name = fileName.replace(/\.[^.]+$/, '') || 'Mesh';
+  const renamed = (await host.command('entity.rename', { entity, name })) as HostResponse;
+  if (renamed?.succeeded === false)
+    return { succeeded: false, error: renamed.error || 'Could not name the dropped mesh' };
+  return { succeeded: true, entity };
+}
