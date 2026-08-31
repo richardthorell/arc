@@ -1,121 +1,23 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Star } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { File, FileCode2, FileImage, FileType2, Layers3, Star } from 'lucide-react';
 
-import { DocumentTypeIcon } from '../assets/DocumentTypeIcon';
 import { loadMaterialSphereThumbnail } from '../assets/materialThumbnail';
-import { AssetThumbnail } from '../inspector/AssetPicker';
-import type { AssetThumbnailProvider } from '../inspector/AssetPicker';
 import { trackEditorJob } from '../jobs/editorJobProgress';
-import type { AssetItem } from '../services/editorHostTypes';
-import { UiFloatingSurface } from '../ui';
+import type { AssetItem, AssetThumbnailProvider } from './contentBrowserTypes';
 
-const assetTypeLabels: Record<AssetItem['kind'], string> = {
-  scene: 'Scene',
-  mesh: 'Mesh',
-  material: 'Material',
-  texture: 'Texture',
-  shader: 'Shader',
-  prefab: 'Prefab',
-  folder: 'Folder',
-};
+import './contentAssetCard.css';
 
-const TOOLTIP_DELAY_MS = 350;
-const TOOLTIP_GAP = 14;
-const TOOLTIP_MARGIN = 8;
-const TOOLTIP_WIDTH = 276;
+const TOOLTIP_DELAY_MS = 550;
 
 type HoverPoint = { x: number; y: number };
-type HoverSize = { width: number; height: number };
-type HoverViewport = { width: number; height: number };
 
-export const assetHoverPosition = (point: HoverPoint, size: HoverSize, viewport: HoverViewport) => {
-  const left = Math.min(point.x + TOOLTIP_GAP, Math.max(TOOLTIP_MARGIN, viewport.width - size.width - TOOLTIP_MARGIN));
-  const downTop = point.y + TOOLTIP_GAP;
-  const fitsBelow = downTop + size.height <= viewport.height - TOOLTIP_MARGIN;
-  const top = fitsBelow ? downTop : Math.max(TOOLTIP_MARGIN, point.y - TOOLTIP_GAP - size.height);
-  return { left, top };
+const fallbackIcon = (kind: AssetItem['kind']) => {
+  if (kind === 'texture') return <FileImage size={32} strokeWidth={1.4} />;
+  if (kind === 'material') return <Layers3 size={32} strokeWidth={1.4} />;
+  if (kind === 'shader') return <FileCode2 size={32} strokeWidth={1.4} />;
+  if (kind === 'scene') return <FileType2 size={32} strokeWidth={1.4} />;
+  return <File size={32} strokeWidth={1.4} />;
 };
-
-const fileNameFromPath = (path: string) => path.replaceAll('\\', '/').split('/').at(-1) ?? path;
-
-export const assetFileExtension = (asset: AssetItem) => {
-  const fileName = fileNameFromPath(asset.path);
-  const dot = fileName.lastIndexOf('.');
-  return dot > 0 && dot < fileName.length - 1 ? fileName.slice(dot + 1).toLocaleLowerCase() : '';
-};
-
-export const assetDisplayName = (asset: AssetItem) => {
-  const extension = assetFileExtension(asset);
-  const suffix = extension ? `.${extension}` : '';
-  const name = asset.name.trim() || fileNameFromPath(asset.path);
-  return suffix && name.toLocaleLowerCase().endsWith(suffix) ? name.slice(0, -suffix.length) : name;
-};
-
-const formatBytes = (bytes: number | undefined) => {
-  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return 'Not reported';
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value >= 10 ? value.toFixed(1) : value.toFixed(2)} ${units[unit]}`;
-};
-
-const formatCount = (value: number | undefined) =>
-  value === undefined || !Number.isFinite(value) ? null : Math.max(0, Math.round(value)).toLocaleString();
-
-function AssetDetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="content-asset-hover-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function AssetHoverDetails({ asset }: { asset: AssetItem }) {
-  const extension = assetFileExtension(asset);
-  const dimensions =
-    asset.width !== undefined && asset.height !== undefined
-      ? `${asset.width} × ${asset.height}${asset.depth && asset.depth > 1 ? ` × ${asset.depth}` : ''}`
-      : null;
-  const vertices = formatCount(asset.vertexCount);
-  const triangles = formatCount(asset.triangleCount);
-
-  return (
-    <UiFloatingSurface className="content-asset-hover" role="tooltip" width={TOOLTIP_WIDTH}>
-      <header>
-        <strong>{assetDisplayName(asset)}</strong>
-        <span>{assetTypeLabels[asset.kind]}</span>
-      </header>
-      <div className="content-asset-hover-section">
-        <AssetDetailRow label="Size" value={formatBytes(asset.sourceBytes)} />
-        <AssetDetailRow label="Extension" value={extension ? `.${extension}` : 'None'} />
-        <AssetDetailRow label="Status" value={asset.status} />
-        <AssetDetailRow label="Path" value={asset.path} />
-      </div>
-      {(dimensions || asset.mipLevels !== undefined || vertices || triangles) && (
-        <div className="content-asset-hover-section asset-specific">
-          {dimensions && <AssetDetailRow label="Dimensions" value={dimensions} />}
-          {asset.mipLevels !== undefined && <AssetDetailRow label="Mip levels" value={String(asset.mipLevels)} />}
-          {vertices && <AssetDetailRow label="Vertices" value={vertices} />}
-          {triangles && <AssetDetailRow label="Triangles" value={triangles} />}
-        </div>
-      )}
-      {(asset.importerId || asset.residency || asset.readOnly) && (
-        <div className="content-asset-hover-section secondary">
-          {asset.importerId && <AssetDetailRow label="Importer" value={asset.importerId} />}
-          {asset.residency && <AssetDetailRow label="Residency" value={asset.residency} />}
-          {asset.readOnly && <AssetDetailRow label="Source" value="Engine · Read-only" />}
-        </div>
-      )}
-    </UiFloatingSurface>
-  );
-}
 
 export function ContentAssetCard({
   asset,
@@ -146,12 +48,15 @@ export function ContentAssetCard({
   const cardThumbnailProvider = useMemo<AssetThumbnailProvider>(() => {
     if (asset.kind !== 'material' || !asset.guid) return thumbnailProvider;
     return () =>
-      trackEditorJob(() =>
-        loadMaterialSphereThumbnail({
-          guid: asset.guid!,
-          generation: asset.generation,
-          maxSize: 128,
-        }),
+      trackEditorJob(
+        'Rendering material thumbnail',
+        () =>
+          loadMaterialSphereThumbnail({
+            guid: asset.guid!,
+            generation: asset.generation,
+            maxSize: 128,
+          }),
+        { priority: 'background' },
       );
   }, [asset.generation, asset.guid, asset.kind, thumbnailProvider]);
 
@@ -169,94 +74,140 @@ export function ContentAssetCard({
     }, TOOLTIP_DELAY_MS);
   };
 
-  const hideHover = () => {
-    cancelHover();
-    setDetailsVisible(false);
-  };
-
-  useLayoutEffect(() => {
-    if (!detailsVisible || !tooltipRef.current) return;
-    const rect = tooltipRef.current.getBoundingClientRect();
-    setTooltipPosition(
-      assetHoverPosition(
-        hoverPoint,
-        { width: rect.width || TOOLTIP_WIDTH, height: rect.height },
-        { width: window.innerWidth, height: window.innerHeight },
-      ),
-    );
+  useEffect(() => {
+    if (!detailsVisible) return;
+    const tooltip = tooltipRef.current;
+    if (!tooltip) return;
+    const rect = tooltip.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.max(margin, Math.min(hoverPoint.x + 12, window.innerWidth - rect.width - margin));
+    const top = Math.max(margin, Math.min(hoverPoint.y + 12, window.innerHeight - rect.height - margin));
+    setTooltipPosition({ left, top });
   }, [detailsVisible, hoverPoint]);
 
+  useEffect(
+    () => () => {
+      cancelHover();
+    },
+    [],
+  );
+
   return (
-    <>
-      <div
-        ref={cardRef}
-        aria-describedby={detailsVisible ? tooltipId : undefined}
-        aria-selected={selected}
-        className={`content-asset ${selected ? 'selected' : ''}`}
-        draggable={Boolean(asset.guid)}
-        role="option"
-        tabIndex={0}
-        onBlur={(event) => {
-          if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget as Node)) hideHover();
-        }}
-        onClick={(event) => onSelect(event.ctrlKey || event.metaKey)}
-        onDoubleClick={onActivate}
-        onDragStart={(event) => {
-          hideHover();
-          event.dataTransfer.setData(
-            'application/x-arc-asset',
-            JSON.stringify({ guid: asset.guid ?? '', type: asset.kind, pathHint: asset.path }),
-          );
-          event.dataTransfer.effectAllowed = 'copy';
-        }}
-        onFocus={() => {
-          const rect = cardRef.current?.getBoundingClientRect();
-          if (rect) scheduleHover({ x: rect.right, y: rect.top + rect.height / 2 });
-        }}
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    <div
+      aria-describedby={detailsVisible ? tooltipId : undefined}
+      className={`content-asset ${selected ? 'selected' : ''}`}
+      draggable
+      onClick={(event) => onSelect(event.metaKey || event.ctrlKey || event.shiftKey)}
+      onDoubleClick={onActivate}
+      onDragStart={(event) => {
+        event.dataTransfer.setData('text/arc-asset-id', asset.id);
+        event.dataTransfer.effectAllowed = 'copyMove';
+      }}
+      onMouseEnter={(event) => scheduleHover({ x: event.clientX, y: event.clientY })}
+      onMouseLeave={() => {
+        cancelHover();
+        setDetailsVisible(false);
+      }}
+      onMouseMove={(event) => {
+        if (!detailsVisible) setHoverPoint({ x: event.clientX, y: event.clientY });
+      }}
+      ref={cardRef}
+      role="option"
+      aria-selected={selected}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') onActivate();
+        if (event.key === ' ') {
           event.preventDefault();
-          onSelect(event.ctrlKey || event.metaKey);
+          onSelect(event.metaKey || event.ctrlKey || event.shiftKey);
+        }
+      }}
+    >
+      <span className="content-asset-preview">
+        <AssetThumbnail asset={asset} provider={cardThumbnailProvider} />
+      </span>
+      <span className="content-asset-name">{asset.name}</span>
+      <small>{asset.kind}</small>
+      <button
+        aria-label={favorite ? `Remove ${asset.name} from favorites` : `Add ${asset.name} to favorites`}
+        className={`content-asset-favorite ${favorite ? 'active' : ''}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onFavorite();
         }}
-        onMouseEnter={(event) => scheduleHover({ x: event.clientX, y: event.clientY })}
-        onMouseLeave={hideHover}
-        onMouseMove={(event) => {
-          const point = { x: event.clientX, y: event.clientY };
-          setHoverPoint(point);
-        }}
+        type="button"
       >
-        <span className="content-asset-preview">
-          <AssetThumbnail asset={asset} path={asset.path} provider={cardThumbnailProvider} />
-        </span>
-        <span className="content-asset-info">
-          <span className="content-asset-name" title={assetDisplayName(asset)}>
-            {assetDisplayName(asset)}
-          </span>
-          <small style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <DocumentTypeIcon kind={asset.kind} size={12} />
-            <span>{assetTypeLabels[asset.kind]}</span>
-          </small>
-          <i aria-label={`Asset status: ${asset.status}`} className={`asset-state ${asset.status}`} />
-        </span>
-        <span className="content-asset-actions" onClick={(event) => event.stopPropagation()}>
-          <button aria-label="Favorite" className={favorite ? 'active' : ''} onClick={onFavorite}>
-            <Star size={12} />
-          </button>
-          {asset.guid && !asset.readOnly && <button onClick={onReimport}>Reimport</button>}
-        </span>
-      </div>
-      {detailsVisible &&
-        createPortal(
-          <div
-            ref={tooltipRef}
-            id={tooltipId}
-            className="content-asset-hover-portal"
-            style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
-          >
-            <AssetHoverDetails asset={asset} />
-          </div>,
-          document.body,
-        )}
-    </>
+        <Star size={13} fill={favorite ? 'currentColor' : 'none'} />
+      </button>
+      {detailsVisible && (
+        <div
+          className="content-asset-tooltip"
+          id={tooltipId}
+          ref={tooltipRef}
+          role="tooltip"
+          style={{ left: tooltipPosition.left, top: tooltipPosition.top }}
+        >
+          <strong>{asset.name}</strong>
+          <span>{asset.kind}</span>
+          {asset.path && <span>{asset.path}</span>}
+          {asset.status && <span>Status: {asset.status}</span>}
+          {asset.kind === 'texture' && (
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                setDetailsVisible(false);
+                onReimport();
+              }}
+              type="button"
+            >
+              Reimport
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssetThumbnail({ asset, provider }: { asset: AssetItem; provider: AssetThumbnailProvider }) {
+  const [source, setSource] = useState<string | null>(asset.thumbnail ?? null);
+  const [visible, setVisible] = useState(false);
+  const containerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setVisible(true);
+        observer.disconnect();
+      },
+      { rootMargin: '96px' },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void provider(asset).then((thumbnail) => {
+      if (!cancelled && thumbnail) setSource(thumbnail);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [asset, provider, visible]);
+
+  return (
+    <span className="content-asset-thumbnail" ref={containerRef}>
+      {source ? <img alt="" draggable={false} src={source} /> : fallbackIcon(asset.kind)}
+      {asset.status === 'importing' && <i />}
+    </span>
   );
 }
