@@ -176,6 +176,9 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const [previewFailed, setPreviewFailed] = useState(false);
   const viewState = useTextureEditorViewState(document.id);
   const zoom = viewState.zoom;
+  const mipScale = 1 / 2 ** viewState.mipLevel;
+  const displayWidth = Math.max(1, Math.round((preview?.width ?? 1) * mipScale));
+  const displayHeight = Math.max(1, Math.round((preview?.height ?? 1) * mipScale));
 
   useEffect(() => {
     let active = true;
@@ -213,7 +216,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
       const availableWidth = Math.max(1, stage.clientWidth - 80);
       const availableHeight = Math.max(1, stage.clientHeight - 80);
       setTextureEditorViewState(document.id, {
-        zoom: clampZoom(Math.min(1, availableWidth / preview.width, availableHeight / preview.height)),
+        zoom: clampZoom(Math.min(1, availableWidth / displayWidth, availableHeight / displayHeight)),
       });
     };
 
@@ -222,7 +225,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     const observer = new ResizeObserver(fitPreview);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [document.id, preview?.path, preview?.width, preview?.height]);
+  }, [displayHeight, displayWidth, document.id, preview?.path]);
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!preview) return;
@@ -239,16 +242,16 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
             <div
               className="texture-preview-canvas"
               style={{
-                gridTemplateColumns: `28px ${preview.width * zoom}px`,
-                gridTemplateRows: `22px ${preview.height * zoom}px`,
+                gridTemplateColumns: `28px ${displayWidth * zoom}px`,
+                gridTemplateRows: `22px ${displayHeight * zoom}px`,
               }}
             >
               <div aria-hidden="true" className="texture-ruler-corner" />
-              <HorizontalRuler width={preview.width} zoom={zoom} />
-              <VerticalRuler height={preview.height} zoom={zoom} />
+              <HorizontalRuler width={displayWidth} zoom={zoom} />
+              <VerticalRuler height={displayHeight} zoom={zoom} />
               <div
                 className="texture-preview-image-frame"
-                style={{ width: preview.width * zoom, height: preview.height * zoom }}
+                style={{ width: displayWidth * zoom, height: displayHeight * zoom }}
               >
                 <svg aria-hidden="true" className="texture-channel-filter-defs">
                   <filter id={`texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`}>
@@ -261,10 +264,10 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
                 <img
                   alt={`${asset.name} texture preview`}
                   draggable={false}
-                  height={preview.height * zoom}
+                  height={displayHeight * zoom}
                   src={preview.dataUrl}
                   style={{ filter: `url(#texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')})` }}
-                  width={preview.width * zoom}
+                  width={displayWidth * zoom}
                 />
               </div>
             </div>

@@ -174,62 +174,60 @@ export function SchemaComponentCard<TContext extends object>({
       ref={componentRef}
       title={schema.title}
     >
-
-          {showMeshAsset && (
-            <AssetPicker
-              allowEmpty={false}
-              allowedExtensions={meshAssetExtensions}
-              assetKinds={['mesh', 'scene']}
-              assetTypeLabel="Mesh"
-              assets={meshAssets}
-              label="Mesh"
-              mixed={mixedFields.includes('meshRenderer.meshPath')}
+      {showMeshAsset && (
+        <AssetPicker
+          allowEmpty={false}
+          allowedExtensions={meshAssetExtensions}
+          assetKinds={['mesh', 'scene']}
+          assetTypeLabel="Mesh"
+          assets={meshAssets}
+          label="Mesh"
+          mixed={mixedFields.includes('meshRenderer.meshPath')}
+          thumbnailProvider={thumbnailProvider}
+          value={(getPathValue(context, 'meshRenderer.meshPath') as string) || ''}
+          onChange={(path) => {
+            const assignment = path.startsWith(primitiveMeshUriPrefix)
+              ? `${primitiveAssignmentPrefix}${path.slice(primitiveMeshUriPrefix.length)}`
+              : `${meshAssignmentPrefix}${path}`;
+            onValue('meshRenderer.materialPath', assignment, true);
+          }}
+        />
+      )}
+      {proceduralMesh && selectionCount === 1 && (
+        <ProceduralMeshControls
+          mesh={proceduralMesh}
+          onValue={(parameter, value, settled) =>
+            onValue('meshRenderer.materialPath', `${primitiveParameterPrefix}${parameter}/${value}`, settled)
+          }
+        />
+      )}
+      {visibleFields.map((field) => {
+        const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
+        return (
+          <div className="inspector-schema-field" key={field.id} title={field.tooltip}>
+            <SchemaField
+              assets={assets}
+              context={context}
+              field={field}
+              linked={linked}
               thumbnailProvider={thumbnailProvider}
-              value={(getPathValue(context, 'meshRenderer.meshPath') as string) || ''}
-              onChange={(path) => {
-                const assignment = path.startsWith(primitiveMeshUriPrefix)
-                  ? `${primitiveAssignmentPrefix}${path.slice(primitiveMeshUriPrefix.length)}`
-                  : `${meshAssignmentPrefix}${path}`;
-                onValue('meshRenderer.materialPath', assignment, true);
-              }}
-            />
-          )}
-          {proceduralMesh && selectionCount === 1 && (
-            <ProceduralMeshControls
-              mesh={proceduralMesh}
-              onValue={(parameter, value, settled) =>
-                onValue('meshRenderer.materialPath', `${primitiveParameterPrefix}${parameter}/${value}`, settled)
+              onToggleLinked={() =>
+                setUnlinkedFields((current) => {
+                  const next = new Set(current);
+                  if (next.has(field.path)) next.delete(field.path);
+                  else next.add(field.path);
+                  return next;
+                })
               }
+              onValue={(value, settled) => onValue(field.path, value, settled)}
+              onAction={(action) => onAction?.(action)}
             />
-          )}
-          {visibleFields.map((field) => {
-            const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
-            return (
-              <div className="inspector-schema-field" key={field.id} title={field.tooltip}>
-                <SchemaField
-                  assets={assets}
-                  context={context}
-                  field={field}
-                  linked={linked}
-                  thumbnailProvider={thumbnailProvider}
-                  onToggleLinked={() =>
-                    setUnlinkedFields((current) => {
-                      const next = new Set(current);
-                      if (next.has(field.path)) next.delete(field.path);
-                      else next.add(field.path);
-                      return next;
-                    })
-                  }
-                  onValue={(value, settled) => onValue(field.path, value, settled)}
-                  onAction={(action) => onAction?.(action)}
-                />
-              </div>
-            );
-          })}
-          {!visibleFields.length && !showMeshAsset && (
-            <div className="inspector-component-empty">No settings are active for this mode.</div>
-          )}
-
+          </div>
+        );
+      })}
+      {!visibleFields.length && !showMeshAsset && (
+        <div className="inspector-component-empty">No settings are active for this mode.</div>
+      )}
     </UiPanelSection>
   );
 }
