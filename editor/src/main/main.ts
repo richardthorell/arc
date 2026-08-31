@@ -14,8 +14,14 @@ import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import type { ArcBuildRequest } from '../common/buildTypes';
 import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';
+import { PerformanceDiagnostics } from './performanceDiagnostics';
 
 const isDevelopment = !app.isPackaged;
+const performanceDiagnostics = new PerformanceDiagnostics({
+  enabled: isDevelopment || process.env.ARC_EDITOR_PERF === '1' || app.commandLine.hasSwitch('perf-diagnostics'),
+  slowOperationMs: Number(process.env.ARC_EDITOR_PERF_SLOW_MS ?? 50),
+});
+performanceDiagnostics.mark('main process started');
 const isCiSmoke =
   Boolean(process.env.ARC_CI_SMOKE_LOG) || process.argv.includes('--ci-smoke') || app.commandLine.hasSwitch('ci-smoke');
 const isQuickStart = process.argv.includes('--quick-start') || app.commandLine.hasSwitch('quick-start');
@@ -326,7 +332,7 @@ export class ArcHostClient {
   private requestId = 1;
   private readonly pending = new Map<
     number,
-    { resolve: (value: HostResponse) => void; reject: (reason: Error) => void }
+    { resolve: (value: HostResponse) => void; reject: (reason: Error) => void; finishTiming: () => number }
   >();
   private lastError = '';
   private pendingRuntimeTick: HostEvent | null = null;
@@ -459,7 +465,11 @@ export class ArcHostClient {
     const requestId = this.requestId++;
     const envelope = { ...message, requestId };
     return new Promise((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
+      this.pending.set(requestId, {
+        resolve,
+        reject,
+        finishTiming: performanceDiagnostics.begin(`host ${message.kind} ${message.type}`),
+      });
       child.stdin.write(`${JSON.stringify(envelope)}\n`, (error) => {
         if (error) {
           this.pending.delete(requestId);
@@ -518,6 +528,7 @@ export class ArcHostClient {
       return;
     }
     this.pending.delete(maybeResponse.requestId);
+    pending.finishTiming();
     pending.resolve(maybeResponse as HostResponse);
   }
 }
@@ -620,6 +631,7 @@ const finishCiSmoke = (exitCode: number, message?: string): void => {
 };
 
 const createMainWindow = (): void => {
+  performanceDiagnostics.mark('window creation started');
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 1000,
@@ -637,6 +649,9 @@ const createMainWindow = (): void => {
       sandbox: false,
     },
   });
+
+  performanceDiagnostics.mark('BrowserWindow created');
+  mainWindow.webContents.once('did-finish-load', () => performanceDiagnostics.mark('renderer did-finish-load'));
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     const rendererOrigin = MAIN_WINDOW_VITE_DEV_SERVER_URL
@@ -716,8 +731,10 @@ const createMainWindow = (): void => {
 };
 
 void app.whenReady().then(async () => {
+  performanceDiagnostics.mark('app ready');
   Menu.setApplicationMenu(null);
   hostClient = new ArcHostClient();
+  performanceDiagnostics.mark('native host spawn requested');
   projectService = new ProjectService({
     userDataPath: app.getPath('userData'),
     currentEngineVersion: app.getVersion(),
@@ -747,6 +764,7 @@ void app.whenReady().then(async () => {
     app.getVersion(),
     () => settingsService?.snapshot().values['extensions.allowProjectExtensions'] !== false,
   );
+  performanceDiagnostics.mark('core services constructed');
   recoveryService = new RecoveryService(
     path.join(app.getPath('userData'), 'bootstrap-recovery'),
     hostClient,
@@ -763,11 +781,13 @@ void app.whenReady().then(async () => {
   });
   const suppliedProject = process.argv.find((argument) => argument.toLowerCase().endsWith('.arcproject'));
   if (suppliedProject || isQuickStart) {
-    const opened = suppliedProject
-      ? await projectService.open(suppliedProject)
-      : await projectService.openOrCreateQuickStartProject(
-          process.env.ARC_EDITOR_QUICK_START_PROJECT ?? path.join(app.getPath('userData'), 'QuickStartProject'),
-        );
+    const opened = await performanceDiagnostics.measure('startup project open', () =>
+      suppliedProject
+        ? projectService!.open(suppliedProject)
+        : projectService!.openOrCreateQuickStartProject(
+            process.env.ARC_EDITOR_QUICK_START_PROJECT ?? path.join(app.getPath('userData'), 'QuickStartProject'),
+          ),
+    );
     if (opened.succeeded && opened.project) {
       recoveryService.start(opened.project);
       buildService.watchProject();
@@ -795,7 +815,7 @@ void app.whenReady().then(async () => {
       onStatus: (status) => activeWindow()?.webContents.send('ai-gateway:status', status),
     });
     try {
-      await aiGateway.start();
+      await performanceDiagnostics.measure('AI gateway startup', () => aiGateway!.start());
     } catch (error) {
       sendHostLog({
         level: 'error',
