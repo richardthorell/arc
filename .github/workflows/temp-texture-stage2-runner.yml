@@ -20,22 +20,30 @@ jobs:
           from pathlib import Path
           path = Path('engine/render-tools/src/common/texture_cooker.cpp')
           text = path.read_text()
-          replacements = {
-              'return enum_value(value, {{"custom", texture_import_preset::custom},': 'return enum_value<texture_import_preset>(value, {{"custom", texture_import_preset::custom},',
-              'return enum_value(value, {{"generic_color", texture_semantic::generic_color},': 'return enum_value<texture_semantic>(value, {{"generic_color", texture_semantic::generic_color},',
-              'return enum_value(value, {{"linear", texture_color_space::linear},': 'return enum_value<texture_color_space>(value, {{"linear", texture_color_space::linear},',
-              'return enum_value(value, {{"resident", texture_streaming_mode::resident},': 'return enum_value<texture_streaming_mode>(value, {{"resident", texture_streaming_mode::resident},',
-              'return enum_value(value, {{"automatic", texture_compression_policy::automatic},': 'return enum_value<texture_compression_policy>(value, {{"automatic", texture_compression_policy::automatic},',
-              'return enum_value(value, {{"preserve", texture_power_of_two_policy::preserve},': 'return enum_value<texture_power_of_two_policy>(value, {{"preserve", texture_power_of_two_policy::preserve},',
-              'return enum_value(value, {{"nearest", texture_filter_mode::nearest},': 'return enum_value<texture_filter_mode>(value, {{"nearest", texture_filter_mode::nearest},',
-              'return enum_value(value,\n                      {{"nearest", texture_mip_filter_mode::nearest},': 'return enum_value<texture_mip_filter_mode>(value,\n                      {{"nearest", texture_mip_filter_mode::nearest},',
-              'return enum_value(value, {{"repeat", texture_address_mode::repeat},': 'return enum_value<texture_address_mode>(value, {{"repeat", texture_address_mode::repeat},',
-              'return enum_value(\n        value, {{"box", texture_mip_generation_filter::box},': 'return enum_value<texture_mip_generation_filter>(\n        value, {{"box", texture_mip_generation_filter::box},',
+          functions = {
+              'parse_texture_import_preset': 'texture_import_preset',
+              'parse_texture_semantic': 'texture_semantic',
+              'parse_texture_color_space': 'texture_color_space',
+              'parse_texture_streaming_mode': 'texture_streaming_mode',
+              'parse_texture_compression_policy': 'texture_compression_policy',
+              'parse_texture_power_of_two_policy': 'texture_power_of_two_policy',
+              'parse_texture_filter_mode': 'texture_filter_mode',
+              'parse_texture_mip_filter_mode': 'texture_mip_filter_mode',
+              'parse_texture_address_mode': 'texture_address_mode',
+              'parse_texture_mip_generation_filter': 'texture_mip_generation_filter',
           }
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f'enum call marker missing: {old}')
-              text = text.replace(old, new, 1)
+          for function, enum_type in functions.items():
+              start = text.find(function + '(')
+              if start < 0:
+                  raise SystemExit(f'enum function missing: {function}')
+              end = text.find('\n}', start)
+              if end < 0:
+                  raise SystemExit(f'enum function end missing: {function}')
+              chunk = text[start:end]
+              if 'return enum_value(' not in chunk:
+                  raise SystemExit(f'enum call missing: {function}')
+              chunk = chunk.replace('return enum_value(', f'return enum_value<{enum_type}>(', 1)
+              text = text[:start] + chunk + text[end:]
           path.write_text(text)
           PY
       - name: Format
