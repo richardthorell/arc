@@ -18,6 +18,7 @@ jobs:
           python3 /tmp/stage2.py
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('engine/render-tools/src/common/texture_cooker.cpp')
           text = path.read_text()
@@ -46,32 +47,36 @@ jobs:
               chunk = chunk.replace('return enum_value(', f'return enum_value<{enum_type}>(', 1)
               text = text[:start] + chunk + text[end:]
 
-          text = text.replace('''bool power_of_two(std::uint32_t value) noexcept\n{\n    return value != 0 && (value & (value - 1u)) == 0;\n}\n\n''', '')
-          old = '''                if (length > 0.00001f)\n                    for (std::uint32_t channel = 0; channel < 3u; ++channel) accumulated[channel] /= length;\n                next[destination] = byte_channel(accumulated[0] * 0.5f + 0.5f);'''
-          new = '''                if (length > 0.00001f)\n                    for (std::uint32_t channel = 0; channel < 3u; ++channel) accumulated[channel] /= length;\n                else\n                {\n                    accumulated[0] = 0.0f;\n                    accumulated[1] = 0.0f;\n                    accumulated[2] = 1.0f;\n                }\n                next[destination] = byte_channel(accumulated[0] * 0.5f + 0.5f);'''
-          if old not in text:
+          text = re.sub(r'bool power_of_two\(std::uint32_t value\) noexcept\s*\{.*?\}\s*', '', text, count=1, flags=re.S)
+          normal_pattern = re.compile(
+              r'if \(length > 0\.00001f\)\s*for \(std::uint32_t channel = 0; channel < 3u; \+\+channel\)\s*accumulated\[channel\] /= length;\s*next\[destination\] = byte_channel\(accumulated\[0\] \* 0\.5f \+ 0\.5f\);',
+              re.S,
+          )
+          normal_replacement = '''if (length > 0.00001f)\n                for (std::uint32_t channel = 0; channel < 3u; ++channel) accumulated[channel] /= length;\n            else\n            {\n                accumulated[0] = 0.0f;\n                accumulated[1] = 0.0f;\n                accumulated[2] = 1.0f;\n            }\n            next[destination] = byte_channel(accumulated[0] * 0.5f + 0.5f);'''
+          text, count = normal_pattern.subn(normal_replacement, text, count=1)
+          if count != 1:
               raise SystemExit('normal fallback marker missing')
-          path.write_text(text.replace(old, new, 1))
+          path.write_text(text)
 
           path = Path('engine/render/src/common/texture_artifact.cpp')
           text = path.read_text()
-          if 'constexpr std::uint32_t header_bytes = 160;' not in text:
-              raise SystemExit('artifact header size marker missing')
-          text = text.replace('constexpr std::uint32_t header_bytes = 160;', 'constexpr std::uint32_t header_bytes = 156;', 1)
-          if 'output.patch(152, table_hash);' not in text:
-              raise SystemExit('artifact hash offset marker missing')
-          text = text.replace('output.patch(152, table_hash);', 'output.patch(148, table_hash);', 1)
+          text, header_count = re.subn(r'constexpr std::uint32_t header_bytes = 160;', 'constexpr std::uint32_t header_bytes = 156;', text, count=1)
+          text, hash_count = re.subn(r'output\.patch\(152, table_hash\);', 'output.patch(148, table_hash);', text, count=1)
+          if header_count != 1 or hash_count != 1:
+              raise SystemExit('artifact header fix markers missing')
           path.write_text(text)
 
           path = Path('editor/native/src/arc_host_base.inc')
           text = path.read_text()
-          old = '''                    const auto parse_setting = [&](const std::string& source, auto parser, auto& target, const char* error)\n                    {'''
-          new = '''                    const auto parse_setting = [&](const std::string& source, auto parser, auto& target)\n                    {'''
-          if old not in text:
+          text, count = re.subn(
+              r'const auto parse_setting = \[&\]\(const std::string& source, auto parser, auto& target, const char\* error\)',
+              'const auto parse_setting = [&](const std::string& source, auto parser, auto& target)',
+              text,
+              count=1,
+          )
+          if count != 1:
               raise SystemExit('parse_setting marker missing')
-          text = text.replace(old, new, 1)
-          for label in ('compression', 'powerOfTwo', 'minFilter', 'magFilter', 'mipFilter', 'wrapU', 'wrapV', 'mipGenerationFilter'):
-              text = text.replace(f', settings.{ {"compression":"compression","powerOfTwo":"power_of_two","minFilter":"min_filter","magFilter":"mag_filter","mipFilter":"mip_filter","wrapU":"wrap_u","wrapV":"wrap_v","mipGenerationFilter":"mip_generation_filter"}[label] }, "{label}")', f', settings.{ {"compression":"compression","powerOfTwo":"power_of_two","minFilter":"min_filter","magFilter":"mag_filter","mipFilter":"mip_filter","wrapU":"wrap_u","wrapV":"wrap_v","mipGenerationFilter":"mip_generation_filter"}[label] })')
+          text = re.sub(r'(parse_setting\([^;]*?,\s*settings\.[a-z_]+),\s*"[A-Za-z]+"\)', r'\1)', text)
           path.write_text(text)
           PY
       - name: Format
