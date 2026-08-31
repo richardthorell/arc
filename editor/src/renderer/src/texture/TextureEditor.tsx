@@ -108,10 +108,27 @@ function TextureProperty({ label, value }: { label: string; value: string }) {
 }
 
 function TextureInspector({ asset }: { asset: AssetItem }) {
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    texture: false,
+    sampling: false,
+    mipmaps: false,
+    compression: true,
+    streaming: true,
+    import: true,
+    asset: true,
+  });
+  const toggleSection = (section: string) =>
+    setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
+
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
       <div className="texture-inspector-sections">
-        <UiPanelSection className="texture-inspector-section" title="Texture">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.texture}
+          onToggle={() => toggleSection('texture')}
+          title="Texture"
+        >
           <TextureProperty label="Type" value={textureTypeOf(asset)} />
           <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
           <TextureProperty label="Depth / Layers" value={asset.depth === undefined ? '1' : String(asset.depth)} />
@@ -121,14 +138,24 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
         </UiPanelSection>
 
-        <UiPanelSection className="texture-inspector-section" title="Sampling">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.sampling}
+          onToggle={() => toggleSection('sampling')}
+          title="Sampling"
+        >
           <TextureProperty label="Wrap U" value="Not configured" />
           <TextureProperty label="Wrap V" value="Not configured" />
           <TextureProperty label="Filter Mode" value="Not configured" />
           <TextureProperty label="Anisotropy" value="Not configured" />
         </UiPanelSection>
 
-        <UiPanelSection className="texture-inspector-section" title="Mipmaps">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.mipmaps}
+          onToggle={() => toggleSection('vmipmaps')}
+          title="Mipmaps"
+        >
           <TextureProperty label="Generate Mips" value={(asset.mipLevels ?? 1) > 1 ? 'Yes' : 'No'} />
           <TextureProperty label="Mip Count" value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)} />
           <TextureProperty label="Generation Filter" value="Not configured" />
@@ -136,7 +163,12 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           <TextureProperty label="Min / Max LOD" value="Not configured" />
         </UiPanelSection>
 
-        <UiPanelSection className="texture-inspector-section" title="Compression">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.compression}
+          onToggle={() => toggleSection('compression')}
+          title="Compression"
+        >
           <TextureProperty label="Compression Preset" value="Not configured" />
           <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Not reported'} />
           <TextureProperty label="Quality" value="Not configured" />
@@ -144,7 +176,12 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           <TextureProperty label="Artifact Size" value={formatBytes(asset.artifactSize)} />
         </UiPanelSection>
 
-        <UiPanelSection className="texture-inspector-section" title="Streaming">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.streaming}
+          onToggle={() => toggleSection('tstreaming')}
+          title="Streaming"
+        >
           <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
           <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
           <TextureProperty label="Tile Count" value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)} />
@@ -154,7 +191,12 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           )}
         </UiPanelSection>
 
-        <UiPanelSection className="texture-inspector-section" title="Import">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.import}
+          onToggle={() => toggleSection('import')}
+          title="Import"
+        >
           <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
           <TextureProperty label="Source Path" value={asset.path} />
           <TextureProperty
@@ -164,7 +206,12 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           <TextureProperty label="Power-of-Two Policy" value="Not configured" />
         </UiPanelSection>
 
-        <UiPanelSection className="texture-inspector-section" title="Asset">
+        <UiPanelSection
+          className="texture-inspector-section"
+          collapsed={collapsedSections.asset}
+          onToggle={() => toggleSection('asset')}
+          title="Asset"
+        >
           <TextureProperty label="Status" value={asset.status} />
           <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
           <TextureProperty label="Path" value={asset.path} />
