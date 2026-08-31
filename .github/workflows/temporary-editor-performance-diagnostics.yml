@@ -1,5 +1,5 @@
 name: Temporary editor performance diagnostics
-on:
+'on':
   push:
     branches:
       - diagnostics/editor-performance
@@ -12,160 +12,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: diagnostics/editor-performance
-      - name: Add diagnostics
+      - name: Apply diagnostics patch
+        run: python3 .github/patch_editor_perf.py
+      - name: Validate editor
+        working-directory: editor
         run: |
-          cat > editor/src/main/performanceDiagnostics.ts <<'EOF'
-          const nowNs = () => process.hrtime.bigint();
-          const msBetween = (start: bigint, end = nowNs()) => Number(end - start) / 1_000_000;
-
-          export type PerformanceDiagnosticsOptions = {
-            enabled: boolean;
-            slowOperationMs?: number;
-            logger?: (message: string) => void;
-          };
-
-          export class PerformanceDiagnostics {
-            private readonly processStartedAt = nowNs();
-            private readonly enabled: boolean;
-            private readonly slowOperationMs: number;
-            private readonly logger: (message: string) => void;
-
-            constructor(options: PerformanceDiagnosticsOptions) {
-              this.enabled = options.enabled;
-              this.slowOperationMs = options.slowOperationMs ?? 50;
-              this.logger = options.logger ?? console.info;
-            }
-
-            mark(label: string, detail = ''): void {
-              if (!this.enabled) return;
-              const suffix = detail ? ` ${detail}` : '';
-              this.logger(`[ARC PERF] +${msBetween(this.processStartedAt).toFixed(1)}ms ${label}${suffix}`);
-            }
-
-            begin(operation: string): () => number {
-              if (!this.enabled) return () => 0;
-              const startedAt = nowNs();
-              return () => {
-                const durationMs = msBetween(startedAt);
-                if (durationMs >= this.slowOperationMs)
-                  this.logger(`[ARC PERF] slow ${operation} ${durationMs.toFixed(1)}ms`);
-                return durationMs;
-              };
-            }
-
-            async measure<T>(operation: string, task: () => Promise<T>): Promise<T> {
-              const finish = this.begin(operation);
-              try {
-                return await task();
-              } finally {
-                finish();
-              }
-            }
-          }
-          EOF
-
-          cat > editor/src/main/performanceDiagnostics.test.ts <<'EOF'
-          import { describe, expect, it, vi } from 'vitest';
-          import { PerformanceDiagnostics } from './performanceDiagnostics';
-
-          describe('PerformanceDiagnostics', () => {
-            it('stays silent when disabled', () => {
-              const logger = vi.fn();
-              const diagnostics = new PerformanceDiagnostics({ enabled: false, logger });
-              diagnostics.mark('startup');
-              diagnostics.begin('query')();
-              expect(logger).not.toHaveBeenCalled();
-            });
-
-            it('records startup marks when enabled', () => {
-              const logger = vi.fn();
-              const diagnostics = new PerformanceDiagnostics({ enabled: true, slowOperationMs: 0, logger });
-              diagnostics.mark('app.ready');
-              expect(logger).toHaveBeenCalledWith(expect.stringContaining('[ARC PERF]'));
-              expect(logger).toHaveBeenCalledWith(expect.stringContaining('app.ready'));
-            });
-          });
-          EOF
-
-          cat > editor/src/renderer/src/performanceDiagnostics.ts <<'EOF'
-          const enabled = import.meta.env.DEV || new URLSearchParams(window.location.search).has('perf');
-          const startedAt = performance.now();
-
-          const log = (message: string) => {
-            if (enabled) console.info(`[ARC PERF] ${message}`);
-          };
-
-          export const installRendererPerformanceDiagnostics = (): void => {
-            if (!enabled) return;
-            log('renderer bootstrap started');
-
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => log(`renderer first settled paint ${Math.round(performance.now() - startedAt)}ms`));
-            });
-
-            if (!('PerformanceObserver' in window)) return;
-            try {
-              const observer = new PerformanceObserver((list) => {
-                for (const entry of list.getEntries()) {
-                  if (entry.duration >= 50)
-                    log(`long task ${entry.duration.toFixed(1)}ms at +${entry.startTime.toFixed(1)}ms`);
-                }
-              });
-              observer.observe({ entryTypes: ['longtask'] });
-            } catch {
-              // Long-task observation is diagnostic-only and not supported by every runtime.
-            }
-          };
-          EOF
-
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('editor/src/main/main.ts')
-          s=p.read_text()
-          s=s.replace("import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';\n", "import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';\nimport { PerformanceDiagnostics } from './performanceDiagnostics';\n")
-          s=s.replace("const isDevelopment = !app.isPackaged;\n", "const isDevelopment = !app.isPackaged;\nconst performanceDiagnostics = new PerformanceDiagnostics({\n  enabled: isDevelopment || process.env.ARC_EDITOR_PERF === '1' || app.commandLine.hasSwitch('perf-diagnostics'),\n  slowOperationMs: Number(process.env.ARC_EDITOR_PERF_SLOW_MS ?? 50),\n});\nperformanceDiagnostics.mark('main process started');\n")
-          s=s.replace("{ resolve: (value: HostResponse) => void; reject: (reason: Error) => void }\n", "{ resolve: (value: HostResponse) => void; reject: (reason: Error) => void; finishTiming: () => number }\n")
-          s=s.replace("this.pending.set(requestId, { resolve, reject });\n", "this.pending.set(requestId, {\n        resolve,\n        reject,\n        finishTiming: performanceDiagnostics.begin(`host ${message.kind} ${message.type}`),\n      });\n")
-          s=s.replace("this.pending.delete(maybeResponse.requestId);\n    pending.resolve(maybeResponse as HostResponse);\n", "this.pending.delete(maybeResponse.requestId);\n    pending.finishTiming();\n    pending.resolve(maybeResponse as HostResponse);\n")
-          s=s.replace("const createMainWindow = (): void => {\n", "const createMainWindow = (): void => {\n  performanceDiagnostics.mark('window creation started');\n")
-          s=s.replace("  mainWindow.webContents.setWindowOpenHandler", "  performanceDiagnostics.mark('BrowserWindow created');\n  mainWindow.webContents.once('did-finish-load', () => performanceDiagnostics.mark('renderer did-finish-load'));\n\n  mainWindow.webContents.setWindowOpenHandler")
-          s=s.replace("void app.whenReady().then(async () => {\n  Menu.setApplicationMenu(null);\n", "void app.whenReady().then(async () => {\n  performanceDiagnostics.mark('app ready');\n  Menu.setApplicationMenu(null);\n")
-          s=s.replace("  hostClient = new ArcHostClient();\n", "  hostClient = new ArcHostClient();\n  performanceDiagnostics.mark('native host spawn requested');\n",1)
-          s=s.replace("  recoveryService = new RecoveryService(\n", "  performanceDiagnostics.mark('core services constructed');\n  recoveryService = new RecoveryService(\n",1)
-          old="""    const opened = suppliedProject
-      ? await projectService.open(suppliedProject)
-      : await projectService.openOrCreateQuickStartProject(
-          process.env.ARC_EDITOR_QUICK_START_PROJECT ?? path.join(app.getPath('userData'), 'QuickStartProject'),
-        );
-"""
-          new="""    const opened = await performanceDiagnostics.measure('startup project open', () =>
-      suppliedProject
-        ? projectService!.open(suppliedProject)
-        : projectService!.openOrCreateQuickStartProject(
-            process.env.ARC_EDITOR_QUICK_START_PROJECT ?? path.join(app.getPath('userData'), 'QuickStartProject'),
-          ),
-    );
-"""
-          if old not in s: raise SystemExit('startup project block not found')
-          s=s.replace(old,new,1)
-          s=s.replace("      await aiGateway.start();\n", "      await performanceDiagnostics.measure('AI gateway startup', () => aiGateway!.start());\n",1)
-          p.write_text(s)
-
-          p=Path('editor/src/renderer/src/main.tsx')
-          s=p.read_text()
-          s=s.replace("import { App } from './App';\n", "import { App } from './App';\nimport { installRendererPerformanceDiagnostics } from './performanceDiagnostics';\n\ninstallRendererPerformanceDiagnostics();\n")
-          p.write_text(s)
-          PY
-      - name: Format and validate
-        run: |
-          cd editor
           npm ci
           npx prettier --write src/main/main.ts src/main/performanceDiagnostics.ts src/main/performanceDiagnostics.test.ts src/renderer/src/main.tsx src/renderer/src/performanceDiagnostics.ts
           npm run typecheck
           npx vitest run src/main/performanceDiagnostics.test.ts
       - name: Cleanup and commit
         run: |
-          rm .github/workflows/temporary-editor-performance-diagnostics.yml
+          rm .github/workflows/temporary-editor-performance-diagnostics.yml .github/patch_editor_perf.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
