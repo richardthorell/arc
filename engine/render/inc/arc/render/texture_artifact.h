@@ -12,7 +12,7 @@
 namespace arc::render
 {
 
-inline constexpr std::uint32_t texture_artifact_schema_version = 1;
+inline constexpr std::uint32_t texture_artifact_schema_version = 2;
 inline constexpr std::uint32_t texture_artifact_alignment = 4096;
 inline constexpr std::uint32_t virtual_texture_tile_size = 128;
 inline constexpr std::uint32_t virtual_texture_tile_border = 4;
@@ -23,6 +23,68 @@ enum class texture_streaming_mode : std::uint8_t
     resident,
     streamed_mips,
     virtual_tiles
+};
+
+enum class texture_filter_mode : std::uint8_t
+{
+    nearest,
+    linear
+};
+
+enum class texture_mip_filter_mode : std::uint8_t
+{
+    nearest,
+    linear
+};
+
+enum class texture_address_mode : std::uint8_t
+{
+    repeat,
+    clamp_to_edge,
+    mirrored_repeat
+};
+
+enum class texture_power_of_two_policy : std::uint8_t
+{
+    preserve,
+    resize_down,
+    resize_up
+};
+
+enum class texture_compression_policy : std::uint8_t
+{
+    automatic,
+    color,
+    normal,
+    mask,
+    hdr,
+    uncompressed
+};
+
+/** @brief Resolved deterministic import policy embedded into a cooked texture artifact. */
+struct texture_artifact_metadata
+{
+    std::uint32_t source_width{};
+    std::uint32_t source_height{};
+    std::uint32_t requested_max_size{};
+    std::uint32_t resolved_max_size{};
+    texture_power_of_two_policy power_of_two{texture_power_of_two_policy::preserve};
+    texture_compression_policy compression{texture_compression_policy::automatic};
+    texture_filter_mode min_filter{texture_filter_mode::linear};
+    texture_filter_mode mag_filter{texture_filter_mode::linear};
+    texture_mip_filter_mode mip_filter{texture_mip_filter_mode::linear};
+    texture_address_mode wrap_u{texture_address_mode::repeat};
+    texture_address_mode wrap_v{texture_address_mode::repeat};
+    float anisotropy{1.0f};
+    float lod_bias{};
+    float minimum_lod{};
+    float maximum_lod{1000.0f};
+    float alpha_coverage_threshold{0.5f};
+    bool generated_mips{};
+    bool resized{};
+    bool power_of_two_adjusted{};
+    bool normal_mips_renormalized{};
+    bool alpha_coverage_preserved{};
 };
 
 enum class texture_artifact_error_code : std::uint8_t
@@ -84,6 +146,7 @@ struct texture_artifact_index
     std::uint64_t artifact_size{};
     std::vector<texture_artifact_mip_range> mips;
     std::vector<texture_artifact_tile_range> tiles;
+    texture_artifact_metadata metadata{};
 };
 
 using texture_artifact_bytes_result = core::result<std::vector<std::byte>, texture_artifact_error>;
@@ -91,7 +154,8 @@ using texture_artifact_index_result = core::result<texture_artifact_index, textu
 
 /** @brief Encode a deterministic range-readable texture artifact. */
 [[nodiscard]] texture_artifact_bytes_result encode_texture_artifact(const texture_data& texture,
-                                                                    texture_streaming_mode mode);
+                                                                    texture_streaming_mode mode,
+                                                                    texture_artifact_metadata metadata = {});
 
 /** @brief Validate a complete texture artifact and return its range index. */
 [[nodiscard]] texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte> bytes);

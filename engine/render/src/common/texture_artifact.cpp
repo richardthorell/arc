@@ -10,7 +10,7 @@ namespace
 {
 
 constexpr std::uint64_t artifact_magic = 0x3158455443524141ull; // "AARCTEX1" little endian.
-constexpr std::uint32_t header_bytes = 88;
+constexpr std::uint32_t header_bytes = 156;
 constexpr std::uint32_t mip_entry_bytes = 32;
 constexpr std::uint32_t tile_entry_bytes = 44;
 
@@ -179,7 +179,8 @@ bool valid_range(std::uint64_t offset, std::uint32_t size, std::uint64_t lower, 
 
 } // namespace
 
-texture_artifact_bytes_result encode_texture_artifact(const texture_data& texture, texture_streaming_mode mode)
+texture_artifact_bytes_result encode_texture_artifact(const texture_data& texture, texture_streaming_mode mode,
+                                                      texture_artifact_metadata metadata)
 {
     if (texture.dimension != texture_dimension::texture_2d || texture.array_layers != 1 || texture.width == 0 ||
         texture.height == 0 || texture.mips.empty())
@@ -288,6 +289,32 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
     output.value(virtual_texture_tile_border);
     output.value(static_cast<std::uint32_t>(mip_payloads.size()));
     output.value(static_cast<std::uint32_t>(tile_payloads.size()));
+    if (metadata.source_width == 0) metadata.source_width = texture.width;
+    if (metadata.source_height == 0) metadata.source_height = texture.height;
+    if (metadata.resolved_max_size == 0) metadata.resolved_max_size = std::max(texture.width, texture.height);
+    output.value(metadata.source_width);
+    output.value(metadata.source_height);
+    output.value(metadata.requested_max_size);
+    output.value(metadata.resolved_max_size);
+    output.value(static_cast<std::uint32_t>(metadata.power_of_two));
+    output.value(static_cast<std::uint32_t>(metadata.compression));
+    output.value(static_cast<std::uint32_t>(metadata.min_filter));
+    output.value(static_cast<std::uint32_t>(metadata.mag_filter));
+    output.value(static_cast<std::uint32_t>(metadata.mip_filter));
+    output.value(static_cast<std::uint32_t>(metadata.wrap_u));
+    output.value(static_cast<std::uint32_t>(metadata.wrap_v));
+    output.value(metadata.anisotropy);
+    output.value(metadata.lod_bias);
+    output.value(metadata.minimum_lod);
+    output.value(metadata.maximum_lod);
+    output.value(metadata.alpha_coverage_threshold);
+    std::uint32_t processing_flags{};
+    if (metadata.generated_mips) processing_flags |= 1u << 0u;
+    if (metadata.resized) processing_flags |= 1u << 1u;
+    if (metadata.power_of_two_adjusted) processing_flags |= 1u << 2u;
+    if (metadata.normal_mips_renormalized) processing_flags |= 1u << 3u;
+    if (metadata.alpha_coverage_preserved) processing_flags |= 1u << 4u;
+    output.value(processing_flags);
     output.value(table_end);
     output.value(cursor);
     output.value(std::uint64_t{});
@@ -313,7 +340,7 @@ texture_artifact_bytes_result encode_texture_artifact(const texture_data& textur
         output.value(tile.range.content_hash);
     }
     const auto table_hash = hash_bytes(std::span(output.data()).subspan(header_bytes, table_end - header_bytes));
-    output.patch(80, table_hash);
+    output.patch(148, table_hash);
     output.align(texture_artifact_alignment);
     for (const auto& payload : mip_payloads)
     {
@@ -341,14 +368,28 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     std::uint32_t semantic{};
     std::uint32_t mip_entries{};
     std::uint32_t tile_entries{};
+    std::uint32_t power_of_two{};
+    std::uint32_t compression{};
+    std::uint32_t min_filter{};
+    std::uint32_t mag_filter{};
+    std::uint32_t mip_filter{};
+    std::uint32_t wrap_u{};
+    std::uint32_t wrap_v{};
+    std::uint32_t processing_flags{};
     std::uint64_t table_hash{};
     texture_artifact_index result;
     if (!input.value(magic) || !input.value(schema) || !input.value(declared_header) || !input.value(mode) ||
         !input.value(format) || !input.value(color_space) || !input.value(semantic) || !input.value(result.width) ||
         !input.value(result.height) || !input.value(result.mip_count) || !input.value(result.tail_first_mip) ||
         !input.value(result.tile_size) || !input.value(result.tile_border) || !input.value(mip_entries) ||
-        !input.value(tile_entries) || !input.value(result.table_end) || !input.value(result.artifact_size) ||
-        !input.value(table_hash))
+        !input.value(tile_entries) || !input.value(result.metadata.source_width) ||
+        !input.value(result.metadata.source_height) || !input.value(result.metadata.requested_max_size) ||
+        !input.value(result.metadata.resolved_max_size) || !input.value(power_of_two) || !input.value(compression) ||
+        !input.value(min_filter) || !input.value(mag_filter) || !input.value(mip_filter) || !input.value(wrap_u) ||
+        !input.value(wrap_v) || !input.value(result.metadata.anisotropy) || !input.value(result.metadata.lod_bias) ||
+        !input.value(result.metadata.minimum_lod) || !input.value(result.metadata.maximum_lod) ||
+        !input.value(result.metadata.alpha_coverage_threshold) || !input.value(processing_flags) ||
+        !input.value(result.table_end) || !input.value(result.artifact_size) || !input.value(table_hash))
         return texture_artifact_index_result::failure(
             failure(texture_artifact_error_code::invalid_data, "texture artifact header is truncated"));
     if (magic != artifact_magic)
@@ -360,7 +401,14 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     if (mode > static_cast<std::uint32_t>(texture_streaming_mode::virtual_tiles) ||
         format > static_cast<std::uint32_t>(texture_format::bc7_rgba_srgb) ||
         color_space > static_cast<std::uint32_t>(texture_color_space::srgb) ||
-        semantic > static_cast<std::uint32_t>(texture_semantic::environment) || result.width == 0 ||
+        semantic > static_cast<std::uint32_t>(texture_semantic::environment) ||
+        power_of_two > static_cast<std::uint32_t>(texture_power_of_two_policy::resize_up) ||
+        compression > static_cast<std::uint32_t>(texture_compression_policy::uncompressed) ||
+        min_filter > static_cast<std::uint32_t>(texture_filter_mode::linear) ||
+        mag_filter > static_cast<std::uint32_t>(texture_filter_mode::linear) ||
+        mip_filter > static_cast<std::uint32_t>(texture_mip_filter_mode::linear) ||
+        wrap_u > static_cast<std::uint32_t>(texture_address_mode::mirrored_repeat) ||
+        wrap_v > static_cast<std::uint32_t>(texture_address_mode::mirrored_repeat) || result.width == 0 ||
         result.height == 0 || result.mip_count == 0 || mip_entries != result.mip_count ||
         result.tail_first_mip >= result.mip_count || result.table_end < header_bytes ||
         result.table_end > bytes.size() || result.artifact_size != bytes.size())
@@ -379,6 +427,18 @@ texture_artifact_index_result inspect_texture_artifact(std::span<const std::byte
     result.format = static_cast<texture_format>(format);
     result.color_space = static_cast<texture_color_space>(color_space);
     result.semantic = static_cast<texture_semantic>(semantic);
+    result.metadata.power_of_two = static_cast<texture_power_of_two_policy>(power_of_two);
+    result.metadata.compression = static_cast<texture_compression_policy>(compression);
+    result.metadata.min_filter = static_cast<texture_filter_mode>(min_filter);
+    result.metadata.mag_filter = static_cast<texture_filter_mode>(mag_filter);
+    result.metadata.mip_filter = static_cast<texture_mip_filter_mode>(mip_filter);
+    result.metadata.wrap_u = static_cast<texture_address_mode>(wrap_u);
+    result.metadata.wrap_v = static_cast<texture_address_mode>(wrap_v);
+    result.metadata.generated_mips = (processing_flags & (1u << 0u)) != 0;
+    result.metadata.resized = (processing_flags & (1u << 1u)) != 0;
+    result.metadata.power_of_two_adjusted = (processing_flags & (1u << 2u)) != 0;
+    result.metadata.normal_mips_renormalized = (processing_flags & (1u << 3u)) != 0;
+    result.metadata.alpha_coverage_preserved = (processing_flags & (1u << 4u)) != 0;
     result.mips.reserve(mip_entries);
     for (std::uint32_t mip = 0; mip < mip_entries; ++mip)
     {
