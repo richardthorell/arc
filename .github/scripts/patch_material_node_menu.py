@@ -199,6 +199,10 @@ css_path.write_text(css)
 
 test_path = Path('editor/src/renderer/src/material/MaterialGraphEditor.test.tsx')
 tests = test_path.read_text()
+tests = tests.replace(
+    "    const item = within(menu).getByRole('menuitem', { name: /Constant/ });",
+    "    const constantsMenu = screen.getByRole('menu', { name: 'Constants material nodes' });\n    const item = within(constantsMenu).getByRole('menuitem', { name: 'Constant' });",
+)
 old_test = '''  it('opens material categories and subcategories on hover', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
