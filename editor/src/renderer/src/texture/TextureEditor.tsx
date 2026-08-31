@@ -157,7 +157,10 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           title="Mipmaps"
         >
           <TextureProperty label="Generate Mips" value={(asset.mipLevels ?? 1) > 1 ? 'Yes' : 'No'} />
-          <TextureProperty label="Mip Count" value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)} />
+          <TextureProperty
+            label="Mip Count"
+            value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
+          />
           <TextureProperty label="Generation Filter" value="Not configured" />
           <TextureProperty label="LOD Bias" value="Not configured" />
           <TextureProperty label="Min / Max LOD" value="Not configured" />
@@ -184,7 +187,10 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
         >
           <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
           <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
-          <TextureProperty label="Tile Count" value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)} />
+          <TextureProperty
+            label="Tile Count"
+            value={asset.tileCount === undefined ? 'Not reported' : String(asset.tileCount)}
+          />
           <TextureProperty label="Priority" value="Not configured" />
           {asset.streamingEligibilityError && (
             <TextureProperty label="Eligibility" value={asset.streamingEligibilityError} />
@@ -421,7 +427,8 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     if (panRef.current?.pointerId !== event.pointerId) return;
     panRef.current = null;
     setPanning(false);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -439,14 +446,12 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
 
   const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     resizeRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   return (
-    <section
-      className="texture-editor"
-      style={{ gridTemplateColumns: `minmax(0, 1fr) 6px ${inspectorWidth}px` }}
-    >
+    <section className="texture-editor" style={{ gridTemplateColumns: `minmax(0, 1fr) 6px ${inspectorWidth}px` }}>
       <main className="texture-preview-pane">
         <div
           className={`texture-preview-stage ${spaceHeld ? 'is-pan-ready' : ''} ${panning ? 'is-panning' : ''}`}
@@ -458,9 +463,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
         >
           <div aria-hidden="true" className="texture-ruler-corner" />
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-horizontal-viewport">
-            {preview && (
-              <HorizontalRuler width={displayWidth} zoom={zoom} offset={imageLeft - viewport.scrollLeft} />
-            )}
+            {preview && <HorizontalRuler width={displayWidth} zoom={zoom} offset={imageLeft - viewport.scrollLeft} />}
           </div>
           <div aria-hidden="true" className="texture-ruler-viewport texture-ruler-vertical-viewport">
             {preview && <VerticalRuler height={displayHeight} zoom={zoom} offset={imageTop - viewport.scrollTop} />}
