@@ -76,6 +76,15 @@
     -12px 0;
 }
 
+.texture-preview-scroll.is-pan-ready {
+  cursor: grab;
+}
+
+.texture-preview-scroll.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .texture-preview-canvas {
   position: relative;
   min-width: 100%;
