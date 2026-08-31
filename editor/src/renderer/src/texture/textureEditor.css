@@ -18,11 +18,51 @@
 
 .texture-preview-stage {
   display: grid;
-  place-items: center;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: 22px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: #151a1f;
+}
+
+.texture-ruler-corner,
+.texture-ruler-viewport {
+  z-index: 3;
+  overflow: hidden;
+  background: #151a1f;
+  color: var(--arc-color-text-dim, #727b86);
+}
+
+.texture-ruler-corner {
+  grid-column: 1;
+  grid-row: 1;
+  border-right: 1px solid #2a3239;
+  border-bottom: 1px solid #2a3239;
+}
+
+.texture-ruler-horizontal-viewport {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  border-bottom: 1px solid #2a3239;
+}
+
+.texture-ruler-vertical-viewport {
+  grid-column: 1;
+  grid-row: 2;
+  position: relative;
+  border-right: 1px solid #2a3239;
+}
+
+.texture-preview-scroll {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 28px;
   overscroll-behavior: contain;
   background-color: #17191d;
   background-image:
@@ -37,49 +77,27 @@
 }
 
 .texture-preview-canvas {
-  display: grid;
-  align-items: start;
-  justify-items: start;
-  width: max-content;
-  height: max-content;
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
   user-select: none;
 }
 
-.texture-ruler-corner,
 .texture-ruler {
-  position: sticky;
-  z-index: 2;
-  background: #151a1f;
-  color: var(--arc-color-text-dim, #727b86);
-}
-
-.texture-ruler-corner {
+  position: absolute;
   top: 0;
   left: 0;
-  width: 28px;
-  height: 22px;
-  border-right: 1px solid #2a3239;
-  border-bottom: 1px solid #2a3239;
-  z-index: 3;
-}
-
-.texture-ruler {
-  position: relative;
-  overflow: hidden;
   font-size: 9px;
   font-variant-numeric: tabular-nums;
+  will-change: transform;
 }
 
 .texture-ruler-horizontal {
-  top: 0;
   height: 22px;
-  border-bottom: 1px solid #2a3239;
 }
 
 .texture-ruler-vertical {
-  left: 0;
   width: 28px;
-  border-right: 1px solid #2a3239;
 }
 
 .texture-ruler-mark {
@@ -128,7 +146,7 @@
 }
 
 .texture-preview-image-frame {
-  position: relative;
+  position: absolute;
   overflow: hidden;
   background: #0f1215;
   box-shadow: 0 10px 32px rgb(0 0 0 / 32%);
@@ -144,7 +162,10 @@
 
 .texture-preview-empty {
   display: grid;
+  min-width: 100%;
+  min-height: 100%;
   justify-items: center;
+  align-content: center;
   gap: 8px;
   max-width: 300px;
   padding: 24px;
