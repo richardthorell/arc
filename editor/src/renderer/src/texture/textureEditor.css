@@ -42,6 +42,11 @@
   content: none;
 }
 
+.texture-preview-meta .texture-zoom {
+  color: var(--arc-color-text, #e7e9ed);
+  font-variant-numeric: tabular-nums;
+}
+
 .texture-preview-stage {
   display: grid;
   place-items: center;
@@ -49,6 +54,7 @@
   min-height: 0;
   overflow: auto;
   padding: 28px;
+  overscroll-behavior: contain;
   background-color: #17191d;
   background-image:
     linear-gradient(45deg, #22252a 25%, transparent 25%), linear-gradient(-45deg, #22252a 25%, transparent 25%),
@@ -61,13 +67,110 @@
     -12px 0;
 }
 
-.texture-preview-stage > img {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  image-rendering: auto;
+.texture-preview-canvas {
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  width: max-content;
+  height: max-content;
+  user-select: none;
+}
+
+.texture-ruler-corner,
+.texture-ruler {
+  position: sticky;
+  z-index: 2;
+  background: #151a1f;
+  color: var(--arc-color-text-dim, #727b86);
+}
+
+.texture-ruler-corner {
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 22px;
+  border-right: 1px solid #2a3239;
+  border-bottom: 1px solid #2a3239;
+  z-index: 3;
+}
+
+.texture-ruler {
+  position: relative;
+  overflow: hidden;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.texture-ruler-horizontal {
+  top: 0;
+  height: 22px;
+  border-bottom: 1px solid #2a3239;
+}
+
+.texture-ruler-vertical {
+  left: 0;
+  width: 28px;
+  border-right: 1px solid #2a3239;
+}
+
+.texture-ruler-mark {
+  position: absolute;
+  background: #4b555f;
+}
+
+.texture-ruler-horizontal .texture-ruler-mark {
+  bottom: 0;
+  width: 1px;
+  height: 5px;
+}
+
+.texture-ruler-horizontal .texture-ruler-mark.major {
+  height: 10px;
+}
+
+.texture-ruler-vertical .texture-ruler-mark {
+  right: 0;
+  width: 5px;
+  height: 1px;
+}
+
+.texture-ruler-vertical .texture-ruler-mark.major {
+  width: 10px;
+}
+
+.texture-ruler-mark em {
+  position: absolute;
+  color: #8f99a3;
+  font-style: normal;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.texture-ruler-horizontal .texture-ruler-mark em {
+  top: 2px;
+  left: 3px;
+}
+
+.texture-ruler-vertical .texture-ruler-mark em {
+  top: 3px;
+  right: 11px;
+  transform: rotate(-90deg);
+  transform-origin: top right;
+}
+
+.texture-preview-image-frame {
+  position: relative;
+  overflow: hidden;
+  background: #0f1215;
   box-shadow: 0 10px 32px rgb(0 0 0 / 32%);
+}
+
+.texture-preview-image-frame > img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  image-rendering: auto;
 }
 
 .texture-preview-empty {
