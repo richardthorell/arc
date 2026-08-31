@@ -35,7 +35,7 @@ type ViewportMetrics = {
   height: number;
 };
 
-const minZoom = 0.05;
+const minZoom = 0.25;
 const maxZoom = 16;
 const previewPadding = 28;
 
@@ -244,18 +244,15 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
       });
     };
 
-    const fitPreview = () => {
-      updateViewport();
-      const availableWidth = Math.max(1, scroll.clientWidth - previewPadding * 2);
-      const availableHeight = Math.max(1, scroll.clientHeight - previewPadding * 2);
-      setTextureEditorViewState(document.id, {
-        zoom: clampZoom(Math.min(1, availableWidth / displayWidth, availableHeight / displayHeight)),
-      });
-    };
+    updateViewport();
+    const availableWidth = Math.max(1, scroll.clientWidth - previewPadding * 2);
+    const availableHeight = Math.max(1, scroll.clientHeight - previewPadding * 2);
+    setTextureEditorViewState(document.id, {
+      zoom: clampZoom(Math.min(1, availableWidth / displayWidth, availableHeight / displayHeight)),
+    });
 
-    fitPreview();
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(fitPreview);
+    const observer = new ResizeObserver(updateViewport);
     observer.observe(scroll);
     return () => observer.disconnect();
   }, [displayHeight, displayWidth, document.id, preview?.path]);
