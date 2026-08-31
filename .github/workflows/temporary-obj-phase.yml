@@ -13,46 +13,11 @@ jobs:
         with:
           ref: feature/model-drag-drop-obj
           fetch-depth: 0
-      - name: Relax obsolete source probes
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('.github/model_phase3.py')
-          text = p.read_text()
-          text = text.replace(
-              '        raise RuntimeError(f"missing pattern in {path}: {old[:120]}")',
-              '        print(f"skipping unmatched pattern in {path}: {old[:80]}"); return',
-          )
-          p.write_text(text)
-          PY
       - name: Apply OBJ patch
-        run: python3 .github/model_phase3.py
-      - name: Register OBJ importer
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          metadata = Path('engine/assets/src/common/asset_metadata.cpp')
-          text = metadata.read_text()
-          if 'extension == ".obj"' not in text:
-              marker = '    if (extension == ".fbx") return std::pair{asset_types::imported_scene, importer_ids::fbx};\n'
-              if marker not in text:
-                  raise RuntimeError('FBX metadata classifier marker missing')
-              text = text.replace(marker, marker + '    if (extension == ".obj") return std::pair{asset_types::imported_scene, importer_ids::obj};\n', 1)
-              metadata.write_text(text)
-
-          manager = Path('engine/assets/src/common/asset_manager.cpp')
-          text = manager.read_text()
-          if 'Wavefront OBJ' not in text:
-              marker = '''    result.push_back(std::make_unique<source_blob_importer>(importer_ids::fbx, asset_types::imported_scene, "FBX",
-                                                            std::vector<std::string>{".fbx"}));
-'''
-              if marker not in text:
-                  raise RuntimeError('FBX default importer marker missing')
-              addition = '''    result.push_back(std::make_unique<source_blob_importer>(importer_ids::obj, asset_types::imported_scene,
-                                                            "Wavefront OBJ", std::vector<std::string>{".obj"}));
-'''
-              manager.write_text(text.replace(marker, marker + addition, 1))
-          PY
+          python3 .github/relax_phase3.py
+          python3 .github/model_phase3.py
+          python3 .github/register_obj_importer.py
       - name: Format and validate editor
         run: |
           cd editor
