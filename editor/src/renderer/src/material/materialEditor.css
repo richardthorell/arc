@@ -273,6 +273,28 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   padding: 0;
+  overflow: visible;
+}
+
+.material-node-menu-cascade-entry {
+  position: relative;
+}
+
+.material-node-menu-submenu.ui-context-menu {
+  z-index: 22;
+  top: -4px;
+  display: block;
+  padding: 4px;
+  overflow-x: visible;
+  overflow-y: auto;
+}
+
+.material-node-menu-cascade-right > .material-node-menu-submenu {
+  left: calc(100% - 2px);
+}
+
+.material-node-menu-cascade-left > .material-node-menu-submenu {
+  right: calc(100% - 2px);
 }
 
 .material-node-menu-search {
@@ -291,7 +313,7 @@
 
 .material-node-menu-items {
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
   overscroll-behavior: contain;
   padding: 4px;
 }

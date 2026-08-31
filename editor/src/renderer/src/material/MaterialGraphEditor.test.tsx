@@ -35,7 +35,8 @@ describe('MaterialGraphEditor menus', () => {
     const menu = screen.getByRole('menu', { name: 'Add material node' });
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Values/ }));
     fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Constants/ }));
-    const item = within(menu).getByRole('menuitem', { name: /Constant/ });
+    const constantsMenu = screen.getByRole('menu', { name: 'Constants material nodes' });
+    const item = within(constantsMenu).getByRole('menuitem', { name: 'Constant' });
 
     materialState.replaceMaterialGraph.mockClear();
     fireEvent.wheel(item, { clientX: 80, clientY: 100, deltaY: 120 });
@@ -49,23 +50,29 @@ describe('MaterialGraphEditor menus', () => {
     expect(materialState.replaceMaterialGraph).toHaveBeenCalledTimes(1);
   });
 
-  it('opens material categories and subcategories on hover', () => {
+  it('opens material categories and subcategories as cascading side menus', () => {
     render(<MaterialGraphEditor document={document} graph={createDefaultMaterialGraph()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Add Node' }));
     const menu = screen.getByRole('menu', { name: 'Add material node' });
     const math = within(menu).getByRole('menuitem', { name: /Math/ });
-    expect(within(menu).queryByRole('menuitem', { name: /Arithmetic/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menu', { name: 'Math material node categories' })).not.toBeInTheDocument();
 
-    fireEvent.mouseEnter(math);
-    expect(within(menu).getByRole('menuitem', { name: /Arithmetic/ })).toBeInTheDocument();
-    expect(within(menu).getByRole('menuitem', { name: /Trigonometry/ })).toBeInTheDocument();
-    expect(within(menu).getByRole('menuitem', { name: /Measurement/ })).toBeInTheDocument();
+    fireEvent.mouseEnter(math.closest('.material-node-menu-cascade-entry')!);
+    const categoryMenu = screen.getByRole('menu', { name: 'Math material node categories' });
+    expect(categoryMenu).toHaveClass('material-node-menu-submenu');
+    expect(within(menu).getByRole('menuitem', { name: /Values/ })).toBeInTheDocument();
+    expect(within(categoryMenu).getByRole('menuitem', { name: /Arithmetic/ })).toBeInTheDocument();
+    expect(within(categoryMenu).getByRole('menuitem', { name: /Trigonometry/ })).toBeInTheDocument();
+    expect(within(categoryMenu).getByRole('menuitem', { name: /Measurement/ })).toBeInTheDocument();
 
-    fireEvent.mouseEnter(within(menu).getByRole('menuitem', { name: /Arithmetic/ }));
-    expect(within(menu).getByRole('menuitem', { name: 'Add' })).toBeInTheDocument();
-    expect(within(menu).getByRole('menuitem', { name: /Fmod/ })).toBeInTheDocument();
-    expect(within(menu).getByRole('menuitem', { name: /One Minus/ })).toBeInTheDocument();
+    const arithmetic = within(categoryMenu).getByRole('menuitem', { name: /Arithmetic/ });
+    fireEvent.mouseEnter(arithmetic.closest('.material-node-menu-cascade-entry')!);
+    const commandMenu = screen.getByRole('menu', { name: 'Arithmetic material nodes' });
+    expect(commandMenu).toHaveClass('material-node-menu-submenu');
+    expect(within(commandMenu).getByRole('menuitem', { name: 'Add' })).toBeInTheDocument();
+    expect(within(commandMenu).getByRole('menuitem', { name: /Fmod/ })).toBeInTheDocument();
+    expect(within(commandMenu).getByRole('menuitem', { name: /One Minus/ })).toBeInTheDocument();
   });
 
   it('offers the unified Color node under Values', () => {
