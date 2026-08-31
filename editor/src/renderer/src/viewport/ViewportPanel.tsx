@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { DragEvent, PointerEvent, WheelEvent } from 'react';
+import type { DragEvent, KeyboardEvent, PointerEvent, WheelEvent } from 'react';
 import { Box, Camera, Eye, EyeOff, Focus, Maximize2, RefreshCw } from 'lucide-react';
 
 import type { CommandId } from '../app/workbenchTypes';
@@ -10,6 +10,7 @@ import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } fro
 
 import './viewport.css';
 import { toViewportPixels } from './viewportCoordinates';
+import { viewportFlyMovement, viewportFlyMovementCodes } from './viewportFlyNavigation';
 import { normalizeViewportWheel } from './viewportWheel';
 
 type ViewportPanelProps = {
@@ -134,6 +135,10 @@ export function ViewportPanel({
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const surfaceId = `arc-viewport-surface-${viewportId.replaceAll(/[^a-zA-Z0-9_-]/g, '-')}`;
   const dragRef = useRef<DragState | null>(null);
+  const flyNavigationActiveRef = useRef(false);
+  const movementKeysRef = useRef(new Set<string>());
+  const consumedMovementKeysRef = useRef(new Set<string>());
+  const movementLastTickRef = useRef<number | null>(null);
   const lastAttachAttemptRef = useRef(0);
   const viewportAttachedRef = useRef(false);
   const lastViewportBoundsRef = useRef('');
@@ -368,6 +373,34 @@ export function ViewportPanel({
     });
   };
 
+  useEffect(() => {
+    if (!viewportActive) {
+      flyNavigationActiveRef.current = false;
+      movementKeysRef.current.clear();
+      consumedMovementKeysRef.current.clear();
+      movementLastTickRef.current = null;
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      if (!flyNavigationActiveRef.current || movementKeysRef.current.size === 0) {
+        movementLastTickRef.current = now;
+        return;
+      }
+      const previous = movementLastTickRef.current ?? now;
+      movementLastTickRef.current = now;
+      const deltaSeconds = Math.min(Math.max((now - previous) / 1000, 0), 0.05);
+      const movement = viewportFlyMovement(movementKeysRef.current, deltaSeconds * 4);
+      if (!movement) return;
+      void window.arc.viewport.cameraInput({ ...movement, viewportId }).catch((error) => {
+        setViewportError(error instanceof Error ? error.message : String(error));
+      });
+    }, 16);
+
+    return () => window.clearInterval(timer);
+  }, [viewportActive, viewportId]);
+
   const pointerCoordinates = (clientX: number, clientY: number) => {
     const rect = bodyRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
@@ -452,6 +485,10 @@ export function ViewportPanel({
     onFocusChange?.(true);
     if (!viewportActive) return;
     event.currentTarget.setPointerCapture(event.pointerId);
+    if (event.button === 2) {
+      flyNavigationActiveRef.current = true;
+      movementLastTickRef.current = performance.now();
+    }
     if (streamedAvailable) {
       sendPointer(event, 'down');
       return;
@@ -495,6 +532,40 @@ export function ViewportPanel({
     if (dragRef.current?.pointerId === event.pointerId) {
       dragRef.current = null;
     }
+    if (event.button === 2) {
+      flyNavigationActiveRef.current = false;
+      movementKeysRef.current.clear();
+      movementLastTickRef.current = null;
+    }
+  };
+
+  const onViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (flyNavigationActiveRef.current && viewportFlyMovementCodes.has(event.code)) {
+      event.preventDefault();
+      movementKeysRef.current.add(event.code);
+      consumedMovementKeysRef.current.add(event.code);
+      return;
+    }
+    if (!streamedAvailable) return;
+    void window.arc.viewport.key({
+      viewportId,
+      key: event.key,
+      down: true,
+      repeat: event.repeat,
+      alt: event.altKey,
+      shift: event.shiftKey,
+      control: event.ctrlKey,
+    });
+  };
+
+  const onViewportKeyUp = (event: KeyboardEvent<HTMLDivElement>) => {
+    movementKeysRef.current.delete(event.code);
+    if (consumedMovementKeysRef.current.delete(event.code)) {
+      event.preventDefault();
+      return;
+    }
+    if (!streamedAvailable) return;
+    void window.arc.viewport.key({ viewportId, key: event.key, down: false });
   };
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
@@ -832,7 +903,13 @@ export function ViewportPanel({
         ref={bodyRef}
         className={viewportActive ? 'arc-viewport-body native-active' : 'arc-viewport-body'}
         onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange?.(false);
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            flyNavigationActiveRef.current = false;
+            movementKeysRef.current.clear();
+            consumedMovementKeysRef.current.clear();
+            movementLastTickRef.current = null;
+            onFocusChange?.(false);
+          }
         }}
         onFocus={() => onFocusChange?.(true)}
         onDragOver={onAssetDragOver}
@@ -842,22 +919,8 @@ export function ViewportPanel({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onPointerLeave={(event) => streamedAvailable && sendPointer(event, 'leave')}
-        onKeyDown={(event) => {
-          if (!streamedAvailable) return;
-          void window.arc.viewport.key({
-            viewportId,
-            key: event.key,
-            down: true,
-            repeat: event.repeat,
-            alt: event.altKey,
-            shift: event.shiftKey,
-            control: event.ctrlKey,
-          });
-        }}
-        onKeyUp={(event) => {
-          if (!streamedAvailable) return;
-          void window.arc.viewport.key({ viewportId, key: event.key, down: false });
-        }}
+        onKeyDown={onViewportKeyDown}
+        onKeyUp={onViewportKeyUp}
         onWheel={onWheel}
         onContextMenu={(event) => event.preventDefault()}
         tabIndex={0}

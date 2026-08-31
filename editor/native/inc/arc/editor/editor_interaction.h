@@ -113,6 +113,14 @@ public:
     void move_forward(float delta_y) noexcept;
 
     /**
+     * @brief Translate the free camera along camera-right, world-up, and camera-forward axes.
+     *
+     * Values are world-space distances. The persistent orbit focus remains unchanged so
+     * Alt + orbit can still return to the authored focus point after fly navigation.
+     */
+    void move(float right, float up, float forward) noexcept;
+
+    /**
      * @brief Dolly along the look direction without crossing a focused pivot ahead.
      */
     void zoom(float wheel_delta) noexcept;
