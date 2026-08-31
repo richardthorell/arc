@@ -490,19 +490,6 @@ export function MaterialGraphEditor({ document, graph }: { document: EditorDocum
   const visibleCategories = materialNodeCategoryOrder.filter((category): category is AddMenuCategory =>
     availableNodes.some((definition) => definition.category === category),
   );
-  const visibleSubcategories = nodeMenuCategory
-    ? materialNodeSubcategoryOrder[nodeMenuCategory].filter((subcategory) =>
-        availableNodes.some(
-          (definition) => definition.category === nodeMenuCategory && definition.subcategory === subcategory,
-        ),
-      )
-    : [];
-  const visibleCategoryNodes =
-    nodeMenuCategory && nodeMenuSubcategory
-      ? availableNodes.filter(
-          (definition) => definition.category === nodeMenuCategory && definition.subcategory === nodeMenuSubcategory,
-        )
-      : [];
   const searchingNodes = nodeSearch.trim().length > 0;
   const pinPosition = (node: MaterialGraphNode, pin: string, output: boolean) =>
     pinPositions.get(materialPinKey(node.id, pin, output)) ?? fallbackPinPosition(node, pin, output);
