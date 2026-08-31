@@ -1,0 +1,20 @@
+name: Temporary model import inspect
+on:
+  push:
+    branches:
+      - feature/model-drag-drop-obj
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/model-drag-drop-obj
+      - name: Inspect model and file drop paths
+        run: |
+          echo '=== importer references ==='
+          rg -n "ufbx|gltf|glb|fbx|obj|importScene|openScene|copyFile|copy.*asset|external file|dataTransfer\.files|asset\.reimport|scene\.open" editor engine third_party | head -n 500
+          echo '=== import-related filenames ==='
+          find editor engine -type f | grep -Ei 'import|mesh|model|scene|asset' | sort | head -n 500
