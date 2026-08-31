@@ -9,6 +9,7 @@ import { ShaderSourceEditor } from '../shader/ShaderSourceEditor';
 import { ShaderSourceEditorToolbar } from '../shader/ShaderSourceEditorToolbar';
 import { disposeShaderDocument, saveShaderDocument } from '../shader/shaderDocumentState';
 import { TextureEditor } from '../texture/TextureEditor';
+import { TextureEditorToolbar } from '../texture/TextureEditorToolbar';
 import { getActiveEditorDocument, openEditorDocumentInStore } from './editorDocuments';
 import type {
   EditorDocument,
@@ -213,7 +214,7 @@ const textureRegistration: EditorRegistration = {
     readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
   }),
   render: (document) => createElement(TextureEditor, { document }),
-  renderToolbar: () => null,
+  renderToolbar: (document) => createElement(TextureEditorToolbar, { document }),
 };
 
 let currentRegistry: EditorRegistry | null = null;

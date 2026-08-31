@@ -4,7 +4,8 @@ import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiPanel } from '../ui';
+import { UiPanel, UiPanelSection } from '../ui';
+import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 
 import '../inspector/inspector.css';
 import './textureEditor.css';
@@ -97,26 +98,26 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
         </div>
       </header>
 
-      <section className="texture-inspector-section">
-        <h3>Texture</h3>
-        <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
-        <TextureProperty label="Format" value={extensionOf(asset.path)} />
-        <TextureProperty
-          label="Mip Levels"
-          value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
-        />
-        <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
-      </section>
+      <div className="texture-inspector-sections">
+        <UiPanelSection className="texture-inspector-section" title="Texture">
+          <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
+          <TextureProperty label="Format" value={extensionOf(asset.path)} />
+          <TextureProperty
+            label="Mip Levels"
+            value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
+          />
+          <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
+        </UiPanelSection>
 
-      <section className="texture-inspector-section">
-        <h3>Asset</h3>
-        <TextureProperty label="Status" value={asset.status} />
-        <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
-        <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
-        <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
-        <TextureProperty label="Path" value={asset.path} />
-        {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}
-      </section>
+        <UiPanelSection className="texture-inspector-section" title="Asset">
+          <TextureProperty label="Status" value={asset.status} />
+          <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
+          <TextureProperty label="Importer" value={asset.importerId ?? 'Not reported'} />
+          <TextureProperty label="Scope" value={asset.scope ?? 'project'} />
+          <TextureProperty label="Path" value={asset.path} />
+          {asset.guid && <TextureProperty label="GUID" value={asset.guid} />}
+        </UiPanelSection>
+      </div>
     </UiPanel>
   );
 }
@@ -173,7 +174,8 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  const viewState = useTextureEditorViewState(document.id);
+  const zoom = viewState.zoom;
 
   useEffect(() => {
     let active = true;
@@ -210,7 +212,9 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     const fitPreview = () => {
       const availableWidth = Math.max(1, stage.clientWidth - 80);
       const availableHeight = Math.max(1, stage.clientHeight - 80);
-      setZoom(clampZoom(Math.min(1, availableWidth / preview.width, availableHeight / preview.height)));
+      setTextureEditorViewState(document.id, {
+        zoom: clampZoom(Math.min(1, availableWidth / preview.width, availableHeight / preview.height)),
+      });
     };
 
     fitPreview();
@@ -218,32 +222,18 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     const observer = new ResizeObserver(fitPreview);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [preview?.path, preview?.width, preview?.height]);
-
-  const previewDimensions =
-    preview?.width && preview?.height
-      ? `${preview.width} × ${preview.height}`
-      : asset.width !== undefined && asset.height !== undefined
-        ? `${asset.width} × ${asset.height}`
-        : null;
+  }, [document.id, preview?.path, preview?.width, preview?.height]);
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (!preview) return;
     event.preventDefault();
     const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-    setZoom((current) => clampZoom(current * factor));
+    setTextureEditorViewState(document.id, { zoom: clampZoom(zoom * factor) });
   };
 
   return (
     <section className="texture-editor">
       <main className="texture-preview-pane">
-        <div className="texture-preview-meta">
-          <span>{extensionOf(asset.path)}</span>
-          {previewDimensions && <span>{previewDimensions}</span>}
-          {asset.mipLevels !== undefined && <span>{asset.mipLevels} mips</span>}
-          <span className="texture-zoom">{Math.round(zoom * 100)}%</span>
-          <span className={`texture-status texture-status-${asset.status}`}>{asset.status}</span>
-        </div>
         <div className="texture-preview-stage" onWheel={onWheel} ref={stageRef}>
           {preview?.dataUrl && !previewFailed ? (
             <div
@@ -260,11 +250,20 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
                 className="texture-preview-image-frame"
                 style={{ width: preview.width * zoom, height: preview.height * zoom }}
               >
+                <svg aria-hidden="true" className="texture-channel-filter-defs">
+                  <filter id={`texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')}`}>
+                    <feColorMatrix
+                      type="matrix"
+                      values={`${viewState.channels.r ? 1 : 0} 0 0 0 0  0 ${viewState.channels.g ? 1 : 0} 0 0 0  0 0 ${viewState.channels.b ? 1 : 0} 0 0  0 0 0 ${viewState.channels.a ? 1 : 0} ${viewState.channels.a ? 0 : 1}`}
+                    />
+                  </filter>
+                </svg>
                 <img
                   alt={`${asset.name} texture preview`}
                   draggable={false}
                   height={preview.height * zoom}
                   src={preview.dataUrl}
+                  style={{ filter: `url(#texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')})` }}
                   width={preview.width * zoom}
                 />
               </div>
