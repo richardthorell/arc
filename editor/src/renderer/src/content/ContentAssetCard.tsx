@@ -146,12 +146,15 @@ export function ContentAssetCard({
   const cardThumbnailProvider = useMemo<AssetThumbnailProvider>(() => {
     if (asset.kind !== 'material' || !asset.guid) return thumbnailProvider;
     return () =>
-      trackEditorJob(() =>
-        loadMaterialSphereThumbnail({
-          guid: asset.guid!,
-          generation: asset.generation,
-          maxSize: 128,
-        }),
+      trackEditorJob(
+        'Rendering material thumbnail',
+        () =>
+          loadMaterialSphereThumbnail({
+            guid: asset.guid!,
+            generation: asset.generation,
+            maxSize: 128,
+          }),
+        { priority: 'background' },
       );
   }, [asset.generation, asset.guid, asset.kind, thumbnailProvider]);
 
