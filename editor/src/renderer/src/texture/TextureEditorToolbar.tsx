@@ -9,7 +9,7 @@ import {
 
 import './textureEditorToolbar.css';
 
-const minZoom = 0.05;
+const minZoom = 0.25;
 const maxZoom = 16;
 const clampZoom = (value: number) => Math.min(maxZoom, Math.max(minZoom, value));
 
@@ -84,7 +84,7 @@ export function TextureEditorToolbar({ document }: { document: EditorDocument })
         <input
           aria-label="Texture zoom"
           max={1600}
-          min={5}
+          min={25}
           onChange={(event) =>
             setTextureEditorViewState(document.id, {
               zoom: clampZoom(Number(event.target.value) / 100),
