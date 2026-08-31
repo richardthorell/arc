@@ -1,0 +1,57 @@
+name: Temporary material menu lint fix
+
+on:
+  push:
+    branches:
+      - fix/material-node-menu-cascade
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/material-node-menu-cascade
+          fetch-depth: 0
+      - name: Remove obsolete material menu selectors
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('editor/src/renderer/src/material/MaterialGraphEditor.tsx')
+          text = path.read_text()
+          old = '''  const visibleSubcategories = nodeMenuCategory
+    ? materialNodeSubcategoryOrder[nodeMenuCategory].filter((subcategory) =>
+        availableNodes.some(
+          (definition) => definition.category === nodeMenuCategory && definition.subcategory === subcategory,
+        ),
+      )
+    : [];
+  const visibleCategoryNodes =
+    nodeMenuCategory && nodeMenuSubcategory
+      ? availableNodes.filter(
+          (definition) => definition.category === nodeMenuCategory && definition.subcategory === nodeMenuSubcategory,
+        )
+      : [];
+'''
+          if old not in text:
+              raise SystemExit('obsolete menu selector block not found')
+          path.write_text(text.replace(old, ''))
+      - name: Verify lint
+        working-directory: editor
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test -- src/renderer/src/material/MaterialGraphEditor.test.tsx
+      - name: Remove temporary workflow
+        run: rm .github/workflows/temporary-fix-material-menu-lint.yml
+      - name: Commit lint fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add editor/src/renderer/src/material/MaterialGraphEditor.tsx .github/workflows/temporary-fix-material-menu-lint.yml
+          git commit -m "Fix material node menu lint errors"
+          git push
