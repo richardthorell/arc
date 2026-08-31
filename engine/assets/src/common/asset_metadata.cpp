@@ -218,6 +218,7 @@ classify_asset_path(const std::filesystem::path& path) noexcept
         return std::pair{asset_types::texture_2d, importer_ids::texture};
     if (extension == ".glb" || extension == ".gltf") return std::pair{asset_types::imported_scene, importer_ids::gltf};
     if (extension == ".fbx") return std::pair{asset_types::imported_scene, importer_ids::fbx};
+    if (extension == ".obj") return std::pair{asset_types::imported_scene, importer_ids::obj};
     if (extension == ".bin") return std::pair{asset_types::binary_blob, importer_ids::binary};
     if (extension == ".arcanim") return std::pair{asset_types::animation_clip, importer_ids::animation};
     if (extension == ".arccollision") return std::pair{asset_types::collision, importer_ids::collision};

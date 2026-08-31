@@ -22,6 +22,7 @@ import {
   isSupportedTexturePath,
   type ExternalTextureImportResult,
 } from './externalTextureImport';
+import { importExternalModel, isSupportedModelPath, type ExternalModelImportResult } from './externalModelImport';
 
 export type ArcStartupState = {
   appVersion: string;
@@ -200,7 +201,16 @@ const importDroppedTexture = async (file: File): Promise<ExternalTextureImportRe
   return importExternalTexture(sourcePath, project);
 };
 
-const waitForImportedTexture = async (relativePath: string): Promise<ImportedHostAsset> => {
+const importDroppedModel = async (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> => {
+  const sourcePath = webUtils.getPathForFile(file);
+  if (!sourcePath) throw new Error(`Could not resolve dropped file '${file.name}'`);
+  const snapshot = (await ipcRenderer.invoke('project:snapshot')) as ArcProjectBrowserSnapshot | null;
+  const project = snapshot?.activeProject;
+  if (!project) throw new Error('Open an ARC project before importing models');
+  return importExternalModel(sourcePath, project, destinationFolder);
+};
+
+const waitForImportedAsset = async (relativePath: string, label = 'asset'): Promise<ImportedHostAsset> => {
   const deadline = Date.now() + 15_000;
   const normalized = normalizedAssetPath(relativePath);
   while (Date.now() < deadline) {
@@ -209,25 +219,38 @@ const waitForImportedTexture = async (relativePath: string): Promise<ImportedHos
     if (response?.succeeded && response.payload?.assets) {
       const asset = response.payload.assets.find((candidate) => normalizedAssetPath(candidate.path) === normalized);
       if (asset?.state === 'ready') return asset;
-      if (asset?.state === 'failed') throw new Error(asset.diagnostic || `Texture import failed: ${relativePath}`);
+      if (asset?.state === 'failed') throw new Error(asset.diagnostic || `${label} import failed: ${relativePath}`);
     }
     await sleep(75);
   }
-  throw new Error(`Timed out waiting for texture import: ${relativePath}`);
+  throw new Error(`Timed out waiting for ${label} import: ${relativePath}`);
 };
 
-const replayImportedAssetDrop = (target: Element, asset: ImportedHostAsset): void => {
+const replayImportedAssetDrop = (
+  target: Element,
+  asset: ImportedHostAsset,
+  type = asset.typeId,
+  coordinates?: { clientX: number; clientY: number },
+): void => {
   if (!target.isConnected) return;
   const transfer = new DataTransfer();
   transfer.setData(
     arcAssetDragMime,
     JSON.stringify({
       guid: asset.guid,
-      type: asset.typeId,
+      type,
       pathHint: asset.path,
     }),
   );
-  target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  target.dispatchEvent(
+    new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: transfer,
+      clientX: coordinates?.clientX ?? 0,
+      clientY: coordinates?.clientY ?? 0,
+    }),
+  );
 };
 
 const externalTextureFiles = (event: DragEvent): File[] =>
@@ -236,7 +259,13 @@ const externalTextureFiles = (event: DragEvent): File[] =>
     return Boolean(sourcePath && isSupportedTexturePath(sourcePath));
   });
 
-const installExternalTextureDropHandling = (): void => {
+const externalModelFiles = (event: DragEvent): File[] =>
+  Array.from(event.dataTransfer?.files ?? []).filter((file) => {
+    const sourcePath = webUtils.getPathForFile(file);
+    return Boolean(sourcePath && isSupportedModelPath(sourcePath));
+  });
+
+const installExternalAssetDropHandling = (): void => {
   window.addEventListener('dragover', (event) => {
     if (!event.dataTransfer?.types.includes('Files')) return;
     event.preventDefault();
@@ -245,10 +274,15 @@ const installExternalTextureDropHandling = (): void => {
 
   window.addEventListener('drop', (event) => {
     const files = externalTextureFiles(event);
-    if (!files.length) return;
+    const modelFiles = externalModelFiles(event);
+    if (!files.length && !modelFiles.length) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (modelFiles.length && target?.closest('.content-browser-v2')) return;
     event.preventDefault();
 
-    const pickerTarget = event.target instanceof Element ? event.target.closest('.asset-reference-control') : null;
+    const pickerTarget = target?.closest('.asset-reference-control') ?? null;
+    const viewportTarget = target?.closest('.arc-viewport-body') ?? null;
+    const dropCoordinates = { clientX: event.clientX, clientY: event.clientY };
     void (async () => {
       try {
         let pickerImport: ExternalTextureImportResult | null = null;
@@ -256,15 +290,24 @@ const installExternalTextureDropHandling = (): void => {
           const imported = await importDroppedTexture(file);
           pickerImport ??= pickerTarget ? imported : null;
         }
-        if (!pickerTarget || !pickerImport) return;
+        if (pickerTarget && pickerImport) {
+          const asset = await waitForImportedAsset(pickerImport.path, 'texture');
+          // Asset publication emits asset.changed; give React one refresh turn so the
+          // existing AssetPicker candidate list contains the newly imported texture.
+          await sleep(75);
+          replayImportedAssetDrop(pickerTarget, asset);
+        }
 
-        const asset = await waitForImportedTexture(pickerImport.path);
-        // Asset publication emits asset.changed; give React one refresh turn so the
-        // existing AssetPicker candidate list contains the newly imported texture.
-        await sleep(75);
-        replayImportedAssetDrop(pickerTarget, asset);
+        if (viewportTarget) {
+          for (const file of modelFiles) {
+            const imported = await importDroppedModel(file);
+            const modelAsset = await waitForImportedAsset(imported.path, 'model');
+            await sleep(75);
+            replayImportedAssetDrop(viewportTarget, modelAsset, 'mesh', dropCoordinates);
+          }
+        }
       } catch (error) {
-        console.error('[ARC] External texture import failed', error);
+        console.error('[ARC] External asset import failed', error);
       }
     })();
   });
@@ -305,6 +348,8 @@ const arcApi = {
     writeText: (path: string, text: string): Promise<{ succeeded: boolean }> =>
       ipcRenderer.invoke('project:writeText', path, text),
     importTexture: (file: File): Promise<ExternalTextureImportResult> => importDroppedTexture(file),
+    importModel: (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> =>
+      importDroppedModel(file, destinationFolder),
   },
   settings: {
     snapshot: (): Promise<EditorSettingsSnapshot | null> => ipcRenderer.invoke('settings:snapshot'),
@@ -432,6 +477,6 @@ const arcApi = {
 };
 
 contextBridge.exposeInMainWorld('arc', arcApi);
-installExternalTextureDropHandling();
+installExternalAssetDropHandling();
 
 export type ArcApi = typeof arcApi;

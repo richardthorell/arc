@@ -14,7 +14,7 @@ const meshAssignmentPrefix = '__arc_mesh__/';
 const primitiveAssignmentPrefix = '__arc_primitive__/';
 const primitiveParameterPrefix = '__arc_primitive_parameter__/';
 const primitiveMeshUriPrefix = 'arc://primitive/';
-const meshAssetExtensions = ['.glb', '.gltf', '.fbx'] as const;
+const meshAssetExtensions = ['.glb', '.gltf', '.fbx', '.obj'] as const;
 const proceduralMeshAssets: ReadonlyArray<AssetPickerItem> = [
   {
     id: 'arc-primitive-plane',

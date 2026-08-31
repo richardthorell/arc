@@ -1052,7 +1052,7 @@ void app.whenReady().then(async () => {
       buttonLabel: options.append ? 'Import' : 'Open',
       properties: ['openFile'],
       filters: [
-        { name: 'Scene Assets', extensions: ['arcscene', 'glb', 'gltf', 'fbx', 'scene'] },
+        { name: 'Scene Assets', extensions: ['arcscene', 'glb', 'gltf', 'fbx', 'obj', 'scene'] },
         { name: 'All Files', extensions: ['*'] },
       ],
     });

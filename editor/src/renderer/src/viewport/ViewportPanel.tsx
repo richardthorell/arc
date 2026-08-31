@@ -6,7 +6,7 @@ import type { CommandId } from '../app/workbenchTypes';
 import type { StartupState } from '../app/workbenchTypes';
 import type { ProjectSnapshot } from '../services/editorHostTypes';
 import { arcAssetDragMime, arcEnvironmentDragMime, readArcAssetDragPayload } from '../services/assetDragPayload';
-import { assignDroppedMaterialToViewport } from './viewportAssetDrop';
+import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';
 
 import './viewport.css';
 import { toViewportPixels } from './viewportCoordinates';
@@ -386,7 +386,11 @@ export function ViewportPanel({
 
   const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {
     if (!viewportActive) return;
+    const externalModel =
+      event.dataTransfer.types.includes('Files') &&
+      Array.from(event.dataTransfer.files).some((file) => /\.(fbx|glb|gltf|obj)$/i.test(file.name));
     if (
+      !externalModel &&
       !event.dataTransfer.types.includes(arcAssetDragMime) &&
       !event.dataTransfer.types.includes(arcEnvironmentDragMime)
     )
@@ -398,20 +402,31 @@ export function ViewportPanel({
   const onAssetDrop = (event: DragEvent<HTMLDivElement>) => {
     if (!viewportActive) return;
     const dropped = readArcAssetDragPayload(event.dataTransfer);
-    if (!dropped || dropped.type !== 'material') return;
+    if (!dropped) return;
+    const position = pointerCoordinates(event.clientX, event.clientY);
+    if (dropped.type === 'material') {
+      event.preventDefault();
+      event.stopPropagation();
+      void assignDroppedMaterialToViewport(window.arc.host, {
+        viewportId,
+        ...position,
+        path: dropped.pathHint,
+      }).then((result) => {
+        if (result.succeeded) setViewportError('');
+        else if (result.error !== 'No scene object at the drop position') setViewportError(result.error);
+      });
+      return;
+    }
+    if (dropped.type !== 'mesh' && dropped.type !== 'scene') return;
     event.preventDefault();
     event.stopPropagation();
-    const position = pointerCoordinates(event.clientX, event.clientY);
-    void assignDroppedMaterialToViewport(window.arc.host, {
+    void instantiateDroppedMeshInViewport(window.arc.host, {
       viewportId,
       ...position,
       path: dropped.pathHint,
     }).then((result) => {
-      if (result.succeeded) {
-        setViewportError('');
-      } else if (result.error !== 'No scene object at the drop position') {
-        setViewportError(result.error);
-      }
+      if (result.succeeded) setViewportError('');
+      else setViewportError(result.error);
     });
   };
 
