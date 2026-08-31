@@ -14,7 +14,9 @@ jobs:
           ref: feature/model-drag-drop-obj
       - name: Inspect
         run: |
-          echo '=== entity commands ==='
-          grep -RInE "entity\.create|createEntity|host_create_entity|setMaterial|__arc_mesh__|viewport\.pick" editor/src editor/native --include='*.ts' --include='*.tsx' --include='*.cpp' --include='*.h' | head -n 700 || true
-          echo '=== workbench create snippets ==='
-          grep -n -A20 -B20 "entity.create\|host.command('entity" editor/src/renderer/src/app/Workbench.tsx | head -n 500 || true
+          echo '=== create execution ==='
+          grep -RIn -A40 -B15 "host_create_entity_command" editor/native/src editor/native/inc | head -n 900 || true
+          echo '=== pick execution ==='
+          grep -RInE -A45 -B20 "viewport\.pick|object_pick|pick_result|request_object_pick" editor/native engine/render editor/src | head -n 1200 || true
+          echo '=== transform payload ==='
+          grep -RIn -A20 -B10 "entity.setTransform" editor/src editor/native | head -n 500 || true
