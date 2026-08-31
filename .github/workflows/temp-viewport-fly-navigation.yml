@@ -1,0 +1,136 @@
+name: Temporary Viewport Fly Navigation
+
+on:
+  push:
+    branches:
+      - feat/viewport-fly-navigation
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/viewport-fly-navigation
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Implement viewport fly navigation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise RuntimeError(f"Expected text not found in {path}: {old[:100]!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace(
+              "editor/native/inc/arc/editor/editor_interaction.h",
+              """    void move_forward(float delta_y) noexcept;\n\n    /**\n     * @brief Dolly along the look direction without crossing a focused pivot ahead.\n""",
+              """    void move_forward(float delta_y) noexcept;\n\n    /**\n     * @brief Translate the free camera along camera-right, world-up, and camera-forward axes.\n     *\n     * Values are world-space distances. The persistent orbit focus remains unchanged so\n     * Alt + orbit can still return to the authored focus point after fly navigation.\n     */\n    void move(float right, float up, float forward) noexcept;\n\n    /**\n     * @brief Dolly along the look direction without crossing a focused pivot ahead.\n""",
+          )
+
+          replace(
+              "editor/native/src/editor_interaction.cpp",
+              """void editor_camera_controller::zoom(float wheel_delta) noexcept\n{\n""",
+              """void editor_camera_controller::move(float right, float up, float forward) noexcept\n{\n    if (!std::isfinite(right) || !std::isfinite(up) || !std::isfinite(forward)) return;\n    const auto basis = basis_from_yaw_pitch(yaw_, pitch_);\n    constexpr math::vector3f world_up{0.0f, 1.0f, 0.0f};\n    math::vector3f translation = math::mul(basis.right, right);\n    translation = math::add(translation, math::mul(world_up, up));\n    translation = math::add(translation, math::mul(basis.forward, forward));\n    position_ = math::add(position_, translation);\n}\n\nvoid editor_camera_controller::zoom(float wheel_delta) noexcept\n{\n""",
+          )
+
+          replace(
+              "editor/native/inc/arc/editor/host_protocol_base.h",
+              """    float pan_y{};\n    float forward{};\n    float zoom{};\n""",
+              """    float pan_y{};\n    float forward{};\n    float move_right{};\n    float move_up{};\n    float move_forward{};\n    float zoom{};\n""",
+          )
+
+          replace(
+              "editor/native/src/host_protocol_base.inc",
+              """        number_value(payload, \"panY\", command.pan_y);\n        number_value(payload, \"forward\", command.forward);\n        number_value(payload, \"zoom\", command.zoom);\n""",
+              """        number_value(payload, \"panY\", command.pan_y);\n        number_value(payload, \"forward\", command.forward);\n        number_value(payload, \"moveRight\", command.move_right);\n        number_value(payload, \"moveUp\", command.move_up);\n        number_value(payload, \"moveForward\", command.move_forward);\n        number_value(payload, \"zoom\", command.zoom);\n""",
+          )
+
+          replace(
+              "editor/native/src/arc_host_base.inc",
+              """                if (payload.pan_x != 0.0f || payload.pan_y != 0.0f)\n                    state_->camera_controller.pan(payload.pan_x * movement_scale, payload.pan_y * movement_scale);\n                if (payload.forward != 0.0f) state_->camera_controller.move_forward(payload.forward * movement_scale);\n                if (payload.zoom != 0.0f) state_->camera_controller.zoom(payload.zoom * movement_scale);\n""",
+              """                if (payload.pan_x != 0.0f || payload.pan_y != 0.0f)\n                    state_->camera_controller.pan(payload.pan_x * movement_scale, payload.pan_y * movement_scale);\n                if (payload.forward != 0.0f) state_->camera_controller.move_forward(payload.forward * movement_scale);\n                if (payload.move_right != 0.0f || payload.move_up != 0.0f || payload.move_forward != 0.0f)\n                    state_->camera_controller.move(payload.move_right * movement_scale, payload.move_up * movement_scale,\n                                                   payload.move_forward * movement_scale);\n                if (payload.zoom != 0.0f) state_->camera_controller.zoom(payload.zoom * movement_scale);\n""",
+          )
+
+          replace(
+              "editor/src/preload/preload.ts",
+              """  panY?: number;\n  forward?: number;\n  zoom?: number;\n""",
+              """  panY?: number;\n  forward?: number;\n  moveRight?: number;\n  moveUp?: number;\n  moveForward?: number;\n  zoom?: number;\n""",
+          )
+
+          Path("editor/src/renderer/src/viewport/viewportFlyNavigation.ts").write_text("""export type ViewportFlyMovement = {\n  moveRight: number;\n  moveUp: number;\n  moveForward: number;\n};\n\nexport const viewportFlyMovementCodes = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE']);\n\nexport function viewportFlyMovement(keys: ReadonlySet<string>, distance: number): ViewportFlyMovement | null {\n  const right = Number(keys.has('KeyD')) - Number(keys.has('KeyA'));\n  const up = Number(keys.has('KeyE')) - Number(keys.has('KeyQ'));\n  const forward = Number(keys.has('KeyW')) - Number(keys.has('KeyS'));\n  const length = Math.hypot(right, up, forward);\n  if (length === 0 || !Number.isFinite(distance) || distance <= 0) return null;\n  const scale = distance / length;\n  return { moveRight: right * scale, moveUp: up * scale, moveForward: forward * scale };\n}\n""")
+
+          Path("editor/src/renderer/src/viewport/viewportFlyNavigation.test.ts").write_text("""import { describe, expect, it } from 'vitest';\n\nimport { viewportFlyMovement } from './viewportFlyNavigation';\n\ndescribe('viewportFlyMovement', () => {\n  it('maps WASD and QE to right, forward, and world-up movement', () => {\n    expect(viewportFlyMovement(new Set(['KeyW']), 4)).toEqual({ moveRight: 0, moveUp: 0, moveForward: 4 });\n    expect(viewportFlyMovement(new Set(['KeyS']), 4)).toEqual({ moveRight: 0, moveUp: 0, moveForward: -4 });\n    expect(viewportFlyMovement(new Set(['KeyD']), 4)).toEqual({ moveRight: 4, moveUp: 0, moveForward: 0 });\n    expect(viewportFlyMovement(new Set(['KeyA']), 4)).toEqual({ moveRight: -4, moveUp: 0, moveForward: 0 });\n    expect(viewportFlyMovement(new Set(['KeyE']), 4)).toEqual({ moveRight: 0, moveUp: 4, moveForward: 0 });\n    expect(viewportFlyMovement(new Set(['KeyQ']), 4)).toEqual({ moveRight: 0, moveUp: -4, moveForward: 0 });\n  });\n\n  it('normalizes diagonal movement so it does not move faster', () => {\n    const movement = viewportFlyMovement(new Set(['KeyW', 'KeyD', 'KeyE']), 6);\n    expect(movement).not.toBeNull();\n    expect(Math.hypot(movement!.moveRight, movement!.moveUp, movement!.moveForward)).toBeCloseTo(6);\n  });\n\n  it('cancels opposing keys', () => {\n    expect(viewportFlyMovement(new Set(['KeyW', 'KeyS']), 4)).toBeNull();\n  });\n});\n""")
+
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """import type { DragEvent, PointerEvent, WheelEvent } from 'react';\n""",
+              """import type { DragEvent, KeyboardEvent, PointerEvent, WheelEvent } from 'react';\n""",
+          )
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """import { normalizeViewportWheel } from './viewportWheel';\n""",
+              """import { viewportFlyMovement, viewportFlyMovementCodes } from './viewportFlyNavigation';\nimport { normalizeViewportWheel } from './viewportWheel';\n""",
+          )
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """  const dragRef = useRef<DragState | null>(null);\n  const lastAttachAttemptRef = useRef(0);\n""",
+              """  const dragRef = useRef<DragState | null>(null);\n  const flyNavigationActiveRef = useRef(false);\n  const movementKeysRef = useRef(new Set<string>());\n  const consumedMovementKeysRef = useRef(new Set<string>());\n  const movementLastTickRef = useRef<number | null>(null);\n  const lastAttachAttemptRef = useRef(0);\n""",
+          )
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """  const pointerCoordinates = (clientX: number, clientY: number) => {\n""",
+              """  useEffect(() => {\n    if (!viewportActive) {\n      flyNavigationActiveRef.current = false;\n      movementKeysRef.current.clear();\n      consumedMovementKeysRef.current.clear();\n      movementLastTickRef.current = null;\n      return;\n    }\n\n    const timer = window.setInterval(() => {\n      const now = performance.now();\n      if (!flyNavigationActiveRef.current || movementKeysRef.current.size === 0) {\n        movementLastTickRef.current = now;\n        return;\n      }\n      const previous = movementLastTickRef.current ?? now;\n      movementLastTickRef.current = now;\n      const deltaSeconds = Math.min(Math.max((now - previous) / 1000, 0), 0.05);\n      const movement = viewportFlyMovement(movementKeysRef.current, deltaSeconds * 4);\n      if (!movement) return;\n      void window.arc.viewport.cameraInput({ ...movement, viewportId }).catch((error) => {\n        setViewportError(error instanceof Error ? error.message : String(error));\n      });\n    }, 16);\n\n    return () => window.clearInterval(timer);\n  }, [viewportActive, viewportId]);\n\n  const pointerCoordinates = (clientX: number, clientY: number) => {\n""",
+          )
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """    event.currentTarget.setPointerCapture(event.pointerId);\n    if (streamedAvailable) {\n""",
+              """    event.currentTarget.setPointerCapture(event.pointerId);\n    if (event.button === 2) {\n      flyNavigationActiveRef.current = true;\n      movementLastTickRef.current = performance.now();\n    }\n    if (streamedAvailable) {\n""",
+          )
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {\n    if (streamedAvailable) sendPointer(event, 'up');\n    if (dragRef.current?.pointerId === event.pointerId) {\n      dragRef.current = null;\n    }\n  };\n\n  const onWheel = (event: WheelEvent<HTMLDivElement>) => {\n""",
+              """  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {\n    if (streamedAvailable) sendPointer(event, 'up');\n    if (dragRef.current?.pointerId === event.pointerId) {\n      dragRef.current = null;\n    }\n    if (event.button === 2) {\n      flyNavigationActiveRef.current = false;\n      movementKeysRef.current.clear();\n      movementLastTickRef.current = null;\n    }\n  };\n\n  const onViewportKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {\n    if (flyNavigationActiveRef.current && viewportFlyMovementCodes.has(event.code)) {\n      event.preventDefault();\n      movementKeysRef.current.add(event.code);\n      consumedMovementKeysRef.current.add(event.code);\n      return;\n    }\n    if (!streamedAvailable) return;\n    void window.arc.viewport.key({\n      viewportId,\n      key: event.key,\n      down: true,\n      repeat: event.repeat,\n      alt: event.altKey,\n      shift: event.shiftKey,\n      control: event.ctrlKey,\n    });\n  };\n\n  const onViewportKeyUp = (event: KeyboardEvent<HTMLDivElement>) => {\n    movementKeysRef.current.delete(event.code);\n    if (consumedMovementKeysRef.current.delete(event.code)) {\n      event.preventDefault();\n      return;\n    }\n    if (!streamedAvailable) return;\n    void window.arc.viewport.key({ viewportId, key: event.key, down: false });\n  };\n\n  const onWheel = (event: WheelEvent<HTMLDivElement>) => {\n""",
+          )
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """        onBlur={(event) => {\n          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFocusChange?.(false);\n        }}\n""",
+              """        onBlur={(event) => {\n          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {\n            flyNavigationActiveRef.current = false;\n            movementKeysRef.current.clear();\n            consumedMovementKeysRef.current.clear();\n            movementLastTickRef.current = null;\n            onFocusChange?.(false);\n          }\n        }}\n""",
+          )
+          replace(
+              "editor/src/renderer/src/viewport/ViewportPanel.tsx",
+              """        onKeyDown={(event) => {\n          if (!streamedAvailable) return;\n          void window.arc.viewport.key({\n            viewportId,\n            key: event.key,\n            down: true,\n            repeat: event.repeat,\n            alt: event.altKey,\n            shift: event.shiftKey,\n            control: event.ctrlKey,\n          });\n        }}\n        onKeyUp={(event) => {\n          if (!streamedAvailable) return;\n          void window.arc.viewport.key({ viewportId, key: event.key, down: false });\n        }}\n""",
+              """        onKeyDown={onViewportKeyDown}\n        onKeyUp={onViewportKeyUp}\n""",
+          )
+
+          Path(".github/workflows/temp-viewport-fly-navigation.yml").unlink()
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Format changed editor files
+        working-directory: editor
+        run: npx prettier --write src/preload/preload.ts src/renderer/src/viewport/ViewportPanel.tsx src/renderer/src/viewport/viewportFlyNavigation.ts src/renderer/src/viewport/viewportFlyNavigation.test.ts
+      - name: Validate editor
+        working-directory: editor
+        run: |
+          npm run typecheck
+          npm test -- src/renderer/src/viewport/viewportFlyNavigation.test.ts src/renderer/src/viewport/ViewportPanel.test.tsx
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add Unreal-style viewport fly navigation"
+          git push origin HEAD:feat/viewport-fly-navigation
