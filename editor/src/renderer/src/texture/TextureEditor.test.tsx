@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { EditorDocument } from '../editors/editorTypes';
@@ -61,8 +61,13 @@ describe('TextureEditor', () => {
     expect(screen.getByRole('complementary', { name: 'Texture details' })).toBeInTheDocument();
     expect(screen.getByText('2048 × 1024')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByText('texture.image')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Expand Streaming'));
     expect(screen.getByText('device')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Expand Import'));
+    expect(screen.getByText('texture.image')).toBeInTheDocument();
+
     expect(await screen.findByAltText('T_Rock.png texture preview')).toHaveAttribute(
       'src',
       'data:image/png;base64,preview',
