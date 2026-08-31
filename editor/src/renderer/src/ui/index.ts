@@ -6,6 +6,7 @@ export { UiFloatingSurface } from './UiFloatingSurface';
 export { UiIconButton } from './UiIconButton';
 export { UiNodeCard } from './UiNodeCard';
 export { UiPanel, UiPanelHeader } from './UiPanel';
+export { UiPanelSection } from './UiPanelSection';
 export { UiSelect } from './UiSelect';
 export { UiSelectButton } from './UiSelectButton';
 export { UiTab, UiTabs } from './UiTabs';
