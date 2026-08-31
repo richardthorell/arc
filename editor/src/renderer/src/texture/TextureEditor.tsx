@@ -358,7 +358,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     const observer = new ResizeObserver(updateViewport);
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [displayHeight, displayWidth, document.id, preview?.path]);
+  }, [displayHeight, displayWidth, document.id, preview]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
