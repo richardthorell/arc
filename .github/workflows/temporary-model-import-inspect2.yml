@@ -1,0 +1,19 @@
+name: Temporary model import inspect 2
+on:
+  push:
+    branches:
+      - feature/model-drag-drop-obj
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/model-drag-drop-obj
+      - name: Inspect
+        run: |
+          grep -RInE "ufbx|\.fbx|\.gltf|\.glb|load.*mesh|import.*mesh|import.*scene|scene\.open" editor/native engine third_party --include='*.cpp' --include='*.h' --include='CMakeLists.txt' | head -n 1000 || true
+          echo '=== preload refs ==='
+          grep -RInE "importTexture|externalTexture|dataTransfer\.files" editor/src --include='*.ts' --include='*.tsx' | head -n 500 || true
