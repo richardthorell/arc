@@ -1,0 +1,499 @@
+name: Temporary implement model drop
+on:
+  push:
+    branches:
+      - feature/model-drag-drop-obj
+permissions:
+  contents: write
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/model-drag-drop-obj
+          fetch-depth: 0
+      - name: Apply implementation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise RuntimeError(f'pattern missing in {path}: {old[:120]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Preload: expose external model import and replay model drops into the renderer.
+          replace('editor/src/preload/preload.ts',
+          "} from './externalTextureImport';\n",
+          "} from './externalTextureImport';\nimport {\n  importExternalModel,\n  isSupportedModelPath,\n  type ExternalModelImportResult,\n} from './externalModelImport';\n")
+
+          replace('editor/src/preload/preload.ts',
+          "const waitForImportedTexture = async (relativePath: string): Promise<ImportedHostAsset> => {\n",
+          "const importDroppedModel = async (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> => {\n  const sourcePath = webUtils.getPathForFile(file);\n  if (!sourcePath) throw new Error(`Could not resolve dropped file '${file.name}'`);\n  const snapshot = (await ipcRenderer.invoke('project:snapshot')) as ArcProjectBrowserSnapshot | null;\n  const project = snapshot?.activeProject;\n  if (!project) throw new Error('Open an ARC project before importing models');\n  return importExternalModel(sourcePath, project, destinationFolder);\n};\n\nconst waitForImportedAsset = async (relativePath: string, label = 'asset'): Promise<ImportedHostAsset> => {\n")
+          replace('editor/src/preload/preload.ts',
+          "if (asset?.state === 'failed') throw new Error(asset.diagnostic || `Texture import failed: ${relativePath}`);",
+          "if (asset?.state === 'failed') throw new Error(asset.diagnostic || `${label} import failed: ${relativePath}`);")
+          replace('editor/src/preload/preload.ts',
+          "throw new Error(`Timed out waiting for texture import: ${relativePath}`);\n};\n\nconst replayImportedAssetDrop = (target: Element, asset: ImportedHostAsset): void => {",
+          "throw new Error(`Timed out waiting for ${label} import: ${relativePath}`);\n};\n\nconst replayImportedAssetDrop = (\n  target: Element,\n  asset: ImportedHostAsset,\n  type = asset.typeId,\n  coordinates?: { clientX: number; clientY: number },\n): void => {")
+          replace('editor/src/preload/preload.ts',
+          "      type: asset.typeId,\n",
+          "      type,\n")
+          replace('editor/src/preload/preload.ts',
+          "  target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));\n};",
+          "  target.dispatchEvent(\n    new DragEvent('drop', {\n      bubbles: true,\n      cancelable: true,\n      dataTransfer: transfer,\n      clientX: coordinates?.clientX ?? 0,\n      clientY: coordinates?.clientY ?? 0,\n    }),\n  );\n};")
+          replace('editor/src/preload/preload.ts',
+          "const installExternalTextureDropHandling = (): void => {",
+          "const externalModelFiles = (event: DragEvent): File[] =>\n  Array.from(event.dataTransfer?.files ?? []).filter((file) => {\n    const sourcePath = webUtils.getPathForFile(file);\n    return Boolean(sourcePath && isSupportedModelPath(sourcePath));\n  });\n\nconst installExternalAssetDropHandling = (): void => {")
+          replace('editor/src/preload/preload.ts',
+          "  window.addEventListener('drop', (event) => {\n    const files = externalTextureFiles(event);\n    if (!files.length) return;\n    event.preventDefault();\n\n    const pickerTarget = event.target instanceof Element ? event.target.closest('.asset-reference-control') : null;\n    void (async () => {\n      try {\n        let pickerImport: ExternalTextureImportResult | null = null;\n        for (const file of files) {\n          const imported = await importDroppedTexture(file);\n          pickerImport ??= pickerTarget ? imported : null;\n        }\n        if (!pickerTarget || !pickerImport) return;\n\n        const asset = await waitForImportedTexture(pickerImport.path);\n        // Asset publication emits asset.changed; give React one refresh turn so the\n        // existing AssetPicker candidate list contains the newly imported texture.\n        await sleep(75);\n        replayImportedAssetDrop(pickerTarget, asset);\n      } catch (error) {\n        console.error('[ARC] External texture import failed', error);\n      }\n    })();\n  });",
+          "  window.addEventListener('drop', (event) => {\n    const textureFiles = externalTextureFiles(event);\n    const modelFiles = externalModelFiles(event);\n    if (!textureFiles.length && !modelFiles.length) return;\n\n    const target = event.target instanceof Element ? event.target : null;\n    // The Content Browser owns model drops so it can honor the currently selected folder.\n    if (modelFiles.length && target?.closest('.content-browser-v2')) return;\n    event.preventDefault();\n\n    const pickerTarget = target?.closest('.asset-reference-control') ?? null;\n    const viewportTarget = target?.closest('.arc-viewport-body') ?? null;\n    const coordinates = { clientX: event.clientX, clientY: event.clientY };\n    void (async () => {\n      try {\n        let pickerImport: ExternalTextureImportResult | null = null;\n        for (const file of textureFiles) {\n          const imported = await importDroppedTexture(file);\n          pickerImport ??= pickerTarget ? imported : null;\n        }\n        if (pickerTarget && pickerImport) {\n          const asset = await waitForImportedAsset(pickerImport.path, 'texture');\n          await sleep(75);\n          replayImportedAssetDrop(pickerTarget, asset);\n        }\n\n        if (viewportTarget && modelFiles.length) {\n          for (const file of modelFiles) {\n            const imported = await importDroppedModel(file);\n            const asset = await waitForImportedAsset(imported.path, 'model');\n            await sleep(75);\n            replayImportedAssetDrop(viewportTarget, asset, 'mesh', coordinates);\n          }\n        }\n      } catch (error) {\n        console.error('[ARC] External asset import failed', error);\n      }\n    })();\n  });")
+          replace('editor/src/preload/preload.ts',
+          "    importTexture: (file: File): Promise<ExternalTextureImportResult> => importDroppedTexture(file),\n",
+          "    importTexture: (file: File): Promise<ExternalTextureImportResult> => importDroppedTexture(file),\n    importModel: (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> =>\n      importDroppedModel(file, destinationFolder),\n")
+          replace('editor/src/preload/preload.ts',
+          "installExternalTextureDropHandling();",
+          "installExternalAssetDropHandling();")
+
+          # Content Browser: copy dropped models into the active content folder rather than reopening a dialog.
+          replace('editor/src/renderer/src/content/ContentBrowserPanel.tsx',
+          "const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;\n",
+          "const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;\nconst modelFileExtensions = new Set(['fbx', 'glb', 'gltf', 'obj']);\nconst isModelFile = (file: File) => modelFileExtensions.has(file.name.split('.').at(-1)?.toLocaleLowerCase() ?? '');\n")
+          replace('editor/src/renderer/src/content/ContentBrowserPanel.tsx',
+          "      onDrop={(event) => {\n        if (!activeOnlineSource && event.dataTransfer.files.length > 0) onCommand('file.importScene');\n      }}",
+          "      onDrop={(event) => {\n        if (activeOnlineSource || !project) return;\n        const files = Array.from(event.dataTransfer.files).filter(isModelFile);\n        if (!files.length) return;\n        event.preventDefault();\n        event.stopPropagation();\n        const destination = projectFolderPath(folder);\n        void Promise.all(files.map((file) => window.arc.projects.importModel(file, destination))).catch((error) =>\n          console.error('[ARC] Model import failed', error),\n        );\n      }}")
+
+          # Viewport: accept mesh/scene assets in addition to the existing material behavior.
+          replace('editor/src/renderer/src/viewport/ViewportPanel.tsx',
+          "import { assignDroppedMaterialToViewport } from './viewportAssetDrop';",
+          "import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';")
+          replace('editor/src/renderer/src/viewport/ViewportPanel.tsx',
+          "  const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {\n    if (!viewportActive) return;\n    if (\n      !event.dataTransfer.types.includes(arcAssetDragMime) &&\n      !event.dataTransfer.types.includes(arcEnvironmentDragMime)\n    )\n      return;",
+          "  const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {\n    if (!viewportActive) return;\n    const hasExternalModel =\n      event.dataTransfer.types.includes('Files') &&\n      Array.from(event.dataTransfer.files).some((file) => /\\.(fbx|glb|gltf|obj)$/i.test(file.name));\n    if (\n      !hasExternalModel &&\n      !event.dataTransfer.types.includes(arcAssetDragMime) &&\n      !event.dataTransfer.types.includes(arcEnvironmentDragMime)\n    )\n      return;")
+          replace('editor/src/renderer/src/viewport/ViewportPanel.tsx',
+          "    const dropped = readArcAssetDragPayload(event.dataTransfer);\n    if (!dropped || dropped.type !== 'material') return;\n    event.preventDefault();\n    event.stopPropagation();\n    const position = pointerCoordinates(event.clientX, event.clientY);\n    void assignDroppedMaterialToViewport(window.arc.host, {\n      viewportId,\n      ...position,\n      path: dropped.pathHint,\n    }).then((result) => {\n      if (result.succeeded) {\n        setViewportError('');\n      } else if (result.error !== 'No scene object at the drop position') {\n        setViewportError(result.error);\n      }\n    });",
+          "    const dropped = readArcAssetDragPayload(event.dataTransfer);\n    if (!dropped) return;\n    const position = pointerCoordinates(event.clientX, event.clientY);\n    if (dropped.type === 'material') {\n      event.preventDefault();\n      event.stopPropagation();\n      void assignDroppedMaterialToViewport(window.arc.host, {\n        viewportId,\n        ...position,\n        path: dropped.pathHint,\n      }).then((result) => {\n        if (result.succeeded) {\n          setViewportError('');\n        } else if (result.error !== 'No scene object at the drop position') {\n          setViewportError(result.error);\n        }\n      });\n      return;\n    }\n    if (dropped.type !== 'mesh' && dropped.type !== 'scene') return;\n    event.preventDefault();\n    event.stopPropagation();\n    void instantiateDroppedMeshInViewport(window.arc.host, {\n      viewportId,\n      ...position,\n      path: dropped.pathHint,\n    }).then((result) => {\n      if (result.succeeded) setViewportError('');\n      else setViewportError(result.error);\n    });")
+
+          # Mesh-drop helper: get native world drop point, create/select entity, assign mesh, place and rename it.
+          p = Path('editor/src/renderer/src/viewport/viewportAssetDrop.ts')
+          text = p.read_text()
+          text += r'''
+
+const meshAssignmentPrefix = '__arc_mesh__/';
+
+const entityFromPayload = (payload: unknown): HostEntityId | null => {
+  if (!payload || typeof payload !== 'object') return null;
+  const entity = (payload as { entity?: HostEntityId }).entity;
+  return entity && Number.isInteger(entity.index) && Number.isInteger(entity.generation) ? entity : null;
+};
+
+const worldPositionFromPayload = (payload: unknown): [number, number, number] | null => {
+  if (!payload || typeof payload !== 'object') return null;
+  const position = (payload as { worldPosition?: unknown }).worldPosition;
+  if (!Array.isArray(position) || position.length !== 3 || !position.every((value) => typeof value === 'number')) return null;
+  return position as [number, number, number];
+};
+
+export async function instantiateDroppedMeshInViewport(
+  host: HostBridge,
+  request: ViewportAssetDropRequest,
+): Promise<ViewportAssetDropResult> {
+  try {
+    const pick = (await host.command('viewport.pick', {
+      viewportId: request.viewportId,
+      x: request.x,
+      y: request.y,
+    })) as HostResponse;
+    if (pick?.succeeded === false) return { succeeded: false, error: pick.error || 'Viewport placement failed' };
+    const worldPosition = worldPositionFromPayload(pick?.payload);
+
+    const created = (await host.command('entity.create', { kind: 'empty' })) as HostResponse;
+    if (created?.succeeded === false) return { succeeded: false, error: created.error || 'Could not create mesh entity' };
+    const entity = entityFromPayload(created?.payload);
+    if (!entity) return { succeeded: false, error: 'Host did not return the created mesh entity' };
+
+    const assigned = (await host.command('entity.setMaterial', {
+      entity,
+      path: `${meshAssignmentPrefix}${request.path}`,
+    })) as HostResponse;
+    if (assigned?.succeeded === false) return { succeeded: false, error: assigned.error || 'Could not assign mesh asset' };
+
+    if (worldPosition) {
+      const transformed = (await host.command('entity.setTransform', {
+        entity,
+        transform: {
+          position: worldPosition,
+          rotation: [0, 0, 0, 1],
+          scale: [1, 1, 1],
+        },
+      })) as HostResponse;
+      if (transformed?.succeeded === false)
+        return { succeeded: false, error: transformed.error || 'Could not place mesh entity' };
+    }
+
+    const fileName = request.path.replaceAll('\\', '/').split('/').at(-1) ?? request.path;
+    const name = fileName.replace(/\.[^.]+$/, '') || 'Mesh';
+    const renamed = (await host.command('entity.rename', { entity, name })) as HostResponse;
+    if (renamed?.succeeded === false) return { succeeded: false, error: renamed.error || 'Could not name mesh entity' };
+    return { succeeded: true };
+  } catch (error) {
+    return { succeeded: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+'''
+          p.write_text(text)
+
+          # OBJ is a first-class imported-scene source.
+          replace('engine/assets/inc/arc/assets/assets.h',
+          "inline constexpr asset_importer_id material_instance{0xa7ca55e700000002ull, 0x000000000000000eull};",
+          "inline constexpr asset_importer_id material_instance{0xa7ca55e700000002ull, 0x000000000000000eull};\ninline constexpr asset_importer_id obj{0xa7ca55e700000002ull, 0x000000000000000full};")
+          replace('engine/assets/src/common/asset_metadata.cpp',
+          "    if (extension == \".fbx\")\n        return asset_metadata{.type = asset_types::imported_scene, .importer = importer_ids::fbx};",
+          "    if (extension == \".fbx\")\n        return asset_metadata{.type = asset_types::imported_scene, .importer = importer_ids::fbx};\n    if (extension == \".obj\")\n        return asset_metadata{.type = asset_types::imported_scene, .importer = importer_ids::obj};")
+          replace('engine/assets/src/common/asset_manager.cpp',
+          "        source_blob_importer(importer_ids::fbx, asset_types::imported_scene, \"FBX\", {\".fbx\"}),",
+          "        source_blob_importer(importer_ids::fbx, asset_types::imported_scene, \"FBX\", {\".fbx\"}),\n        source_blob_importer(importer_ids::obj, asset_types::imported_scene, \"Wavefront OBJ\", {\".obj\"}),")
+
+          # OBJ parser in renderer: vertices/UVs/normals, negative indices and polygon triangulation.
+          replace('engine/render/src/common/mesh.cpp', '#include <algorithm>\n', '#include <algorithm>\n#include <array>\n')
+          marker = "mesh_load_result load_gltf_mesh(const std::filesystem::path& path)\n{"
+          p = Path('engine/render/src/common/mesh.cpp')
+          text = p.read_text()
+          if marker not in text:
+              raise RuntimeError('mesh loader insertion marker missing')
+          obj_loader = r'''mesh_load_result load_obj_mesh(const std::filesystem::path& path)
+{
+    std::ifstream stream(path);
+    if (!stream) return {.message = "failed to open OBJ file"};
+
+    std::vector<std::array<float, 3>> positions;
+    std::vector<std::array<float, 3>> normals;
+    std::vector<std::array<float, 2>> texcoords;
+    mesh_data mesh;
+    mesh.name = path.stem().string();
+
+    const auto resolve_index = [](int value, std::size_t count) -> std::optional<std::size_t>
+    {
+        if (value > 0 && static_cast<std::size_t>(value) <= count) return static_cast<std::size_t>(value - 1);
+        if (value < 0 && static_cast<std::size_t>(-value) <= count)
+            return count - static_cast<std::size_t>(-value);
+        return std::nullopt;
+    };
+
+    struct face_ref
+    {
+        int position{};
+        int texcoord{};
+        int normal{};
+        bool has_texcoord{};
+        bool has_normal{};
+    };
+    const auto parse_ref = [](std::string_view token) -> std::optional<face_ref>
+    {
+        face_ref result;
+        try
+        {
+            const auto first = token.find('/');
+            if (first == std::string_view::npos)
+            {
+                result.position = std::stoi(std::string{token});
+                return result;
+            }
+            result.position = std::stoi(std::string{token.substr(0, first)});
+            const auto second = token.find('/', first + 1);
+            const auto uv = token.substr(first + 1, second == std::string_view::npos ? std::string_view::npos
+                                                                                    : second - first - 1);
+            if (!uv.empty())
+            {
+                result.texcoord = std::stoi(std::string{uv});
+                result.has_texcoord = true;
+            }
+            if (second != std::string_view::npos && second + 1 < token.size())
+            {
+                result.normal = std::stoi(std::string{token.substr(second + 1)});
+                result.has_normal = true;
+            }
+            return result;
+        }
+        catch (...)
+        {
+            return std::nullopt;
+        }
+    };
+
+    const auto make_vertex = [&](const face_ref& ref) -> std::optional<mesh_vertex>
+    {
+        const auto position_index = resolve_index(ref.position, positions.size());
+        if (!position_index) return std::nullopt;
+        mesh_vertex vertex;
+        const auto& position = positions[*position_index];
+        std::copy(position.begin(), position.end(), vertex.position);
+        if (ref.has_texcoord)
+        {
+            const auto uv_index = resolve_index(ref.texcoord, texcoords.size());
+            if (!uv_index) return std::nullopt;
+            vertex.texcoord[0] = texcoords[*uv_index][0];
+            vertex.texcoord[1] = texcoords[*uv_index][1];
+        }
+        if (ref.has_normal)
+        {
+            const auto normal_index = resolve_index(ref.normal, normals.size());
+            if (!normal_index) return std::nullopt;
+            const auto normal = safe_normalize(
+                math::vector3f{normals[*normal_index][0], normals[*normal_index][1], normals[*normal_index][2]},
+                {0.0f, 1.0f, 0.0f});
+            vertex.normal[0] = normal[0];
+            vertex.normal[1] = normal[1];
+            vertex.normal[2] = normal[2];
+        }
+        return vertex;
+    };
+
+    std::string line;
+    std::size_t line_number{};
+    while (std::getline(stream, line))
+    {
+        ++line_number;
+        std::istringstream input(line);
+        std::string kind;
+        input >> kind;
+        if (kind.empty() || kind.starts_with('#')) continue;
+        if (kind == "v")
+        {
+            std::array<float, 3> value{};
+            if (!(input >> value[0] >> value[1] >> value[2]))
+                return {.message = "invalid OBJ position at line " + std::to_string(line_number)};
+            positions.push_back(value);
+        }
+        else if (kind == "vn")
+        {
+            std::array<float, 3> value{};
+            if (!(input >> value[0] >> value[1] >> value[2]))
+                return {.message = "invalid OBJ normal at line " + std::to_string(line_number)};
+            normals.push_back(value);
+        }
+        else if (kind == "vt")
+        {
+            std::array<float, 2> value{};
+            if (!(input >> value[0] >> value[1]))
+                return {.message = "invalid OBJ texcoord at line " + std::to_string(line_number)};
+            texcoords.push_back(value);
+        }
+        else if (kind == "f")
+        {
+            std::vector<face_ref> face;
+            std::string token;
+            while (input >> token)
+            {
+                const auto ref = parse_ref(token);
+                if (!ref) return {.message = "invalid OBJ face at line " + std::to_string(line_number)};
+                face.push_back(*ref);
+            }
+            if (face.size() < 3) return {.message = "OBJ face has fewer than three vertices"};
+            for (std::size_t corner = 1; corner + 1 < face.size(); ++corner)
+            {
+                const std::array<face_ref, 3> triangle{face[0], face[corner], face[corner + 1]};
+                const std::uint32_t base = static_cast<std::uint32_t>(mesh.vertices.size());
+                std::array<bool, 3> missing_normal{};
+                for (std::size_t index = 0; index < triangle.size(); ++index)
+                {
+                    const auto vertex = make_vertex(triangle[index]);
+                    if (!vertex) return {.message = "OBJ face index is out of range"};
+                    missing_normal[index] = !triangle[index].has_normal;
+                    mesh.vertices.push_back(*vertex);
+                    mesh.indices.push_back(base + static_cast<std::uint32_t>(index));
+                }
+                if (missing_normal[0] || missing_normal[1] || missing_normal[2])
+                {
+                    const auto position = [&](std::size_t index)
+                    {
+                        const auto& vertex = mesh.vertices[base + index];
+                        return math::vector3f{vertex.position[0], vertex.position[1], vertex.position[2]};
+                    };
+                    const auto normal = safe_normalize(math::cross(position(1) - position(0), position(2) - position(0)),
+                                                       {0.0f, 1.0f, 0.0f});
+                    for (std::size_t index = 0; index < 3; ++index)
+                        if (missing_normal[index])
+                        {
+                            auto& vertex = mesh.vertices[base + index];
+                            vertex.normal[0] = normal[0];
+                            vertex.normal[1] = normal[1];
+                            vertex.normal[2] = normal[2];
+                        }
+                }
+            }
+        }
+    }
+
+    if (mesh.vertices.empty() || mesh.indices.empty()) return {.message = "OBJ contains no renderable faces"};
+    generate_tangents(mesh);
+    return {.mesh = std::move(mesh), .message = "loaded OBJ mesh"};
+}
+
+'''
+          p.write_text(text.replace(marker, obj_loader + marker, 1))
+          replace('engine/render/src/common/mesh.cpp',
+          "    if (extension == \".fbx\")\n    {",
+          "    if (extension == \".obj\")\n    {\n        if (!report_progress(progress, scene_import_stage::loading, 0.05f, \"Loading OBJ\"))\n            return {.message = \"OBJ import cancelled\"};\n        auto mesh_result = load_obj_mesh(path);\n        scene_import_result result;\n        result.import_directory = default_import_directory(path, options);\n        result.manifest_path = result.import_directory / \"import.json\";\n        result.message = mesh_result.message;\n        if (!mesh_result.succeeded()) return result;\n        result.meshes.push_back(std::move(mesh_result.mesh));\n        result.nodes.push_back({.name = result.meshes.front().name.empty() ? path.stem().string() : result.meshes.front().name,\n                                .mesh_index = 0,\n                                .material_index = result.meshes.front().material_index});\n        report_progress(progress, scene_import_stage::finalizing, 1.0f, \"Import complete\");\n        result.message = \"loaded OBJ scene\";\n        return result;\n    }\n\n    if (extension == \".fbx\")\n    {")
+
+          # Native pick response returns a world-space drop point even when GPU selection completes asynchronously.
+          replace('editor/native/src/arc_host_base.inc',
+          "                editor_pick_result cpu_fallback{};\n                if (camera && transform && viewport.valid())\n                    cpu_fallback = pick_scene_entity(state_->scene.scene, *state_->renderer,\n                                                     screen_ray_from_camera(*camera, *transform, viewport,\n                                                                            static_cast<float>(payload.x),\n                                                                            static_cast<float>(payload.y)));\n                state_->renderer->request_object_pick(pick_request_id, payload.x, payload.y);",
+          "                editor_pick_result cpu_fallback{};\n                editor_ray pick_ray{};\n                math::vector3f drop_position{};\n                if (camera && transform && viewport.valid())\n                {\n                    pick_ray = screen_ray_from_camera(*camera, *transform, viewport, static_cast<float>(payload.x),\n                                                      static_cast<float>(payload.y));\n                    cpu_fallback = pick_scene_entity(state_->scene.scene, *state_->renderer, pick_ray);\n                    if (cpu_fallback.entity.valid() && std::isfinite(cpu_fallback.distance) && cpu_fallback.distance > 0.0f)\n                        drop_position = pick_ray.origin + pick_ray.direction * cpu_fallback.distance;\n                    else\n                    {\n                        const float denominator = pick_ray.direction[1];\n                        const float ground_distance = std::abs(denominator) > 1.0e-5f ? -pick_ray.origin[1] / denominator : -1.0f;\n                        drop_position = ground_distance > 0.0f ? pick_ray.origin + pick_ray.direction * ground_distance\n                                                              : pick_ray.origin + pick_ray.direction * 10.0f;\n                    }\n                }\n                state_->renderer->request_object_pick(pick_request_id, payload.x, payload.y);")
+          replace('editor/native/src/arc_host_base.inc',
+          "                    return success(\"{\\\"pending\\\":true}\");",
+          "                    return success(\"{\\\"pending\\\":true,\\\"worldPosition\\\":[\" +\n                                   std::to_string(drop_position[0]) + ',' + std::to_string(drop_position[1]) + ',' +\n                                   std::to_string(drop_position[2]) + \"]}\");")
+          replace('editor/native/src/arc_host_base.inc',
+          "                return success(\"{\\\"entity\\\":\" + to_json(to_host_entity(cpu_fallback.entity)) + '}');",
+          "                return success(\"{\\\"entity\\\":\" + to_json(to_host_entity(cpu_fallback.entity)) +\n                               \",\\\"worldPosition\\\":[\" + std::to_string(drop_position[0]) + ',' +\n                               std::to_string(drop_position[1]) + ',' + std::to_string(drop_position[2]) + \"]}\");")
+
+          # UI extension lists and native picker recognize OBJ.
+          replace('editor/src/renderer/src/inspector/SchemaComponents.tsx',
+          "const meshAssetExtensions = ['.glb', '.gltf', '.fbx'] as const;",
+          "const meshAssetExtensions = ['.glb', '.gltf', '.fbx', '.obj'] as const;")
+          replace('editor/src/main/main.ts',
+          "{ name: 'Scene Assets', extensions: ['arcscene', 'glb', 'gltf', 'fbx', 'scene'] },",
+          "{ name: 'Scene Assets', extensions: ['arcscene', 'glb', 'gltf', 'fbx', 'obj', 'scene'] },")
+
+          # Tests for model copy and mesh-drop command sequence.
+          Path('editor/src/preload/externalModelImport.test.ts').write_text(r'''import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { importExternalModel, isSupportedModelPath } from './externalModelImport';
+import type { ProjectSnapshot } from './assetSourceBridge';
+
+const temporaryRoots: string[] = [];
+const makeRoot = () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-model-import-'));
+  temporaryRoots.push(root);
+  return root;
+};
+const projectAt = (root: string, writable = true): ProjectSnapshot => ({
+  name: 'Test',
+  descriptorPath: path.join(root, 'Test.arcproject'),
+  projectRoot: root,
+  engineVersion: 'dev',
+  writable,
+  sourceControl: false,
+  assets: [],
+  renderStats: { fps: 0, frameTimeMs: 0, drawCalls: 0 },
+});
+
+afterEach(() => {
+  for (const root of temporaryRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe('external model import', () => {
+  it('recognizes supported model formats including OBJ', () => {
+    for (const file of ['mesh.FBX', 'mesh.glb', 'mesh.gltf', 'mesh.obj']) expect(isSupportedModelPath(file)).toBe(true);
+    expect(isSupportedModelPath('mesh.dae')).toBe(false);
+  });
+
+  it('copies into the requested Content folder and avoids overwriting files', () => {
+    const root = makeRoot();
+    const external = makeRoot();
+    const source = path.join(external, 'crate.obj');
+    fs.writeFileSync(source, 'v 0 0 0\n');
+    const first = importExternalModel(source, projectAt(root), 'Content/Props');
+    const second = importExternalModel(source, projectAt(root), 'Content/Props');
+    expect(first.path).toBe('Content/Props/crate.obj');
+    expect(second.path).toBe('Content/Props/crate_1.obj');
+    expect(fs.readFileSync(path.join(root, first.path), 'utf8')).toBe('v 0 0 0\n');
+  });
+
+  it('defaults to Content/Models and rejects unsafe destinations', () => {
+    const root = makeRoot();
+    const external = makeRoot();
+    const source = path.join(external, 'crate.glb');
+    fs.writeFileSync(source, 'data');
+    expect(importExternalModel(source, projectAt(root)).path).toBe('Content/Models/crate.glb');
+    expect(() => importExternalModel(source, projectAt(root), '../escape')).toThrow();
+    expect(() => importExternalModel(source, projectAt(root), 'Other')).toThrow();
+    expect(() => importExternalModel(source, projectAt(root, false))).toThrow('read-only');
+  });
+});
+''')
+
+          p = Path('editor/src/renderer/src/viewport/viewportAssetDrop.test.ts')
+          tests = p.read_text()
+          tests = tests.replace("import { assignDroppedMaterialToViewport } from './viewportAssetDrop';",
+                                "import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';")
+          tests += r'''
+
+describe('instantiateDroppedMeshInViewport', () => {
+  it('creates, assigns, positions, and names a dropped mesh', async () => {
+    const entity = { index: 7, generation: 2 };
+    const command = vi
+      .fn()
+      .mockResolvedValueOnce({ succeeded: true, payload: { worldPosition: [1, 2, 3] } })
+      .mockResolvedValueOnce({ succeeded: true, payload: { entity } })
+      .mockResolvedValue({ succeeded: true });
+    const result = await instantiateDroppedMeshInViewport(
+      { command, query: vi.fn() },
+      { viewportId: 'viewport-1', x: 10, y: 20, path: 'Content/Models/crate.obj' },
+    );
+    expect(result).toEqual({ succeeded: true });
+    expect(command).toHaveBeenNthCalledWith(1, 'viewport.pick', { viewportId: 'viewport-1', x: 10, y: 20 });
+    expect(command).toHaveBeenNthCalledWith(2, 'entity.create', { kind: 'empty' });
+    expect(command).toHaveBeenNthCalledWith(3, 'entity.setMaterial', {
+      entity,
+      path: '__arc_mesh__/Content/Models/crate.obj',
+    });
+    expect(command).toHaveBeenNthCalledWith(4, 'entity.setTransform', {
+      entity,
+      transform: { position: [1, 2, 3], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+    });
+    expect(command).toHaveBeenNthCalledWith(5, 'entity.rename', { entity, name: 'crate' });
+  });
+});
+'''
+          p.write_text(tests)
+
+          # Remove temporary inspection workflows from the branch as part of the implementation commit.
+          for workflow in [
+              '.github/workflows/temporary-model-import-inspect.yml',
+              '.github/workflows/temporary-model-import-inspect2.yml',
+          ]:
+              Path(workflow).unlink(missing_ok=True)
+      - name: Format TypeScript
+        working-directory: editor
+        run: |
+          npm ci
+          npx prettier --write \
+            src/preload/externalModelImport.ts \
+            src/preload/externalModelImport.test.ts \
+            src/preload/preload.ts \
+            src/renderer/src/content/ContentBrowserPanel.tsx \
+            src/renderer/src/viewport/ViewportPanel.tsx \
+            src/renderer/src/viewport/viewportAssetDrop.ts \
+            src/renderer/src/viewport/viewportAssetDrop.test.ts \
+            src/renderer/src/inspector/SchemaComponents.tsx \
+            src/main/main.ts
+      - name: Format C++
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+          clang-format-18 -i \
+            engine/assets/inc/arc/assets/assets.h \
+            engine/assets/src/common/asset_metadata.cpp \
+            engine/assets/src/common/asset_manager.cpp \
+            engine/render/src/common/mesh.cpp \
+            editor/native/src/arc_host_base.inc
+      - name: Validate editor
+        working-directory: editor
+        run: |
+          npm run typecheck
+          npx vitest run src/preload/externalModelImport.test.ts src/renderer/src/viewport/viewportAssetDrop.test.ts
+      - name: Commit implementation
+        run: |
+          rm .github/workflows/temporary-implement-model-drop.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add model drag and drop and OBJ import support'
+          git push origin HEAD:feature/model-drag-drop-obj
