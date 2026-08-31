@@ -18,16 +18,25 @@ describe('DocumentTypeIcon', () => {
     expect(documentTypeIconCell('folder')).toEqual([2, 2]);
   });
 
-  it('scales the full atlas and positions the requested cell by percentage', () => {
+  it('renders a clipped PNG atlas image at the requested cell', () => {
     const view = render(<DocumentTypeIcon kind="shader" size={20} title="Shader" />);
     const icon = view.getByRole('img', { name: 'Shader' });
+    const atlas = icon.querySelector<HTMLImageElement>('[data-document-type-icon-image]');
 
     expect(icon).toHaveStyle({
       width: '20px',
       height: '20px',
-      backgroundSize: '400% 300%',
-      backgroundPosition: '66.66666666666666% 0%',
+      overflow: 'hidden',
+      position: 'relative',
     });
     expect(icon).toHaveAttribute('data-document-type-icon', 'shader');
+    expect(atlas).not.toBeNull();
+    expect(atlas?.getAttribute('src')).toContain('document-type-icons-atlas.png');
+    expect(atlas).toHaveStyle({
+      width: '80px',
+      height: '60px',
+      left: '-40px',
+      top: '0px',
+    });
   });
 });
