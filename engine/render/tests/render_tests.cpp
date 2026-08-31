@@ -3279,3 +3279,33 @@ TEST_CASE("dynamic indirect lighting graph selects the resolved screen software 
     REQUIRE(contains(builtin_render_pass::reflection_temporal));
     REQUIRE(contains(builtin_render_pass::indirect_lighting_composite));
 }
+
+TEST_CASE("OBJ scene import triangulates polygons and supports negative indices", "[render][mesh][obj]")
+{
+    const auto path = std::filesystem::temp_directory_path() / "arc-render-obj-import-test.obj";
+    {
+        std::ofstream output(path, std::ios::trunc);
+        REQUIRE(output.good());
+        output << "v 0 0 0\n"
+               << "v 1 0 0\n"
+               << "v 1 1 0\n"
+               << "v 0 1 0\n"
+               << "vt 0 0\n"
+               << "vt 1 0\n"
+               << "vt 1 1\n"
+               << "vt 0 1\n"
+               << "f -4/-4 -3/-3 -2/-2 -1/-1\n";
+    }
+
+    arc::render::scene_import_options options;
+    const auto imported = arc::render::load_scene_asset(path, options);
+    std::error_code ignored;
+    std::filesystem::remove(path, ignored);
+
+    REQUIRE(imported.succeeded());
+    REQUIRE(imported.meshes.size() == 1);
+    REQUIRE(imported.nodes.size() == 1);
+    CHECK(imported.meshes.front().indices.size() == 6);
+    CHECK(imported.meshes.front().vertices.size() == 6);
+    CHECK(imported.nodes.front().mesh_index == 0);
+}

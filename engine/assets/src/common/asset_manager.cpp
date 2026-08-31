@@ -390,6 +390,8 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
                                                             std::vector<std::string>{".glb", ".gltf"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::fbx, asset_types::imported_scene, "FBX",
                                                             std::vector<std::string>{".fbx"}));
+    result.push_back(std::make_unique<source_blob_importer>(importer_ids::obj, asset_types::imported_scene,
+                                                            "Wavefront OBJ", std::vector<std::string>{".obj"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::binary, asset_types::binary_blob,
                                                             "Binary source", std::vector<std::string>{".bin"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::animation, asset_types::animation_clip,

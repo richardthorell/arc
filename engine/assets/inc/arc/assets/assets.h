@@ -121,6 +121,7 @@ inline constexpr asset_importer_id collision{0xa7ca55e700000002ull, 0x0000000000
 inline constexpr asset_importer_id navigation{0xa7ca55e700000002ull, 0x000000000000000cull};
 inline constexpr asset_importer_id audio{0xa7ca55e700000002ull, 0x000000000000000dull};
 inline constexpr asset_importer_id material_instance{0xa7ca55e700000002ull, 0x000000000000000eull};
+inline constexpr asset_importer_id obj{0xa7ca55e700000002ull, 0x000000000000000full};
 } // namespace importer_ids
 
 namespace fallback_assets

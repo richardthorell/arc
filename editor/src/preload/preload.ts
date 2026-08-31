@@ -290,13 +290,13 @@ const installExternalAssetDropHandling = (): void => {
           const imported = await importDroppedTexture(file);
           pickerImport ??= pickerTarget ? imported : null;
         }
-        if (!pickerTarget || !pickerImport) return;
-
-        const asset = await waitForImportedAsset(pickerImport.path, 'texture');
-        // Asset publication emits asset.changed; give React one refresh turn so the
-        // existing AssetPicker candidate list contains the newly imported texture.
-        await sleep(75);
-        replayImportedAssetDrop(pickerTarget, asset);
+        if (pickerTarget && pickerImport) {
+          const asset = await waitForImportedAsset(pickerImport.path, 'texture');
+          // Asset publication emits asset.changed; give React one refresh turn so the
+          // existing AssetPicker candidate list contains the newly imported texture.
+          await sleep(75);
+          replayImportedAssetDrop(pickerTarget, asset);
+        }
 
         if (viewportTarget) {
           for (const file of modelFiles) {
@@ -307,7 +307,7 @@ const installExternalAssetDropHandling = (): void => {
           }
         }
       } catch (error) {
-        console.error('[ARC] External texture import failed', error);
+        console.error('[ARC] External asset import failed', error);
       }
     })();
   });
