@@ -12,48 +12,233 @@ jobs:
         with:
           ref: feature/model-drag-drop-obj
           fetch-depth: 0
-      - name: Patch editor model import bridge
+      - name: Patch viewport mesh drop
         shell: python
         run: |
           from pathlib import Path
           def rep(path, old, new):
               p=Path(path); text=p.read_text()
-              if old not in text: raise RuntimeError(f'missing pattern in {path}: {old[:80]}')
+              if old not in text: raise RuntimeError(f'missing pattern in {path}: {old[:100]}')
               p.write_text(text.replace(old,new,1))
 
-          p='editor/src/preload/preload.ts'
-          rep(p,"} from './externalTextureImport';\n","} from './externalTextureImport';\nimport { importExternalModel, isSupportedModelPath, type ExternalModelImportResult } from './externalModelImport';\n")
-          rep(p,"const waitForImportedTexture = async (relativePath: string): Promise<ImportedHostAsset> => {\n","const importDroppedModel = async (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> => {\n  const sourcePath = webUtils.getPathForFile(file);\n  if (!sourcePath) throw new Error(`Could not resolve dropped file '${file.name}'`);\n  const snapshot = (await ipcRenderer.invoke('project:snapshot')) as ArcProjectBrowserSnapshot | null;\n  const project = snapshot?.activeProject;\n  if (!project) throw new Error('Open an ARC project before importing models');\n  return importExternalModel(sourcePath, project, destinationFolder);\n};\n\nconst waitForImportedAsset = async (relativePath: string, label = 'asset'): Promise<ImportedHostAsset> => {\n")
-          rep(p,"if (asset?.state === 'failed') throw new Error(asset.diagnostic || `Texture import failed: ${relativePath}`);","if (asset?.state === 'failed') throw new Error(asset.diagnostic || `${label} import failed: ${relativePath}`);")
-          rep(p,"throw new Error(`Timed out waiting for texture import: ${relativePath}`);","throw new Error(`Timed out waiting for ${label} import: ${relativePath}`);")
-          rep(p,"const replayImportedAssetDrop = (target: Element, asset: ImportedHostAsset): void => {","const replayImportedAssetDrop = (target: Element, asset: ImportedHostAsset, type = asset.typeId, coordinates?: { clientX: number; clientY: number }): void => {")
-          rep(p,"      type: asset.typeId,","      type,")
-          rep(p,"  target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));","  target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer, clientX: coordinates?.clientX ?? 0, clientY: coordinates?.clientY ?? 0 }));")
-          rep(p,"const installExternalTextureDropHandling = (): void => {","const externalModelFiles = (event: DragEvent): File[] => Array.from(event.dataTransfer?.files ?? []).filter((file) => {\n  const sourcePath = webUtils.getPathForFile(file);\n  return Boolean(sourcePath && isSupportedModelPath(sourcePath));\n});\n\nconst installExternalAssetDropHandling = (): void => {")
-          rep(p,"    const files = externalTextureFiles(event);\n    if (!files.length) return;\n    event.preventDefault();\n\n    const pickerTarget = event.target instanceof Element ? event.target.closest('.asset-reference-control') : null;","    const files = externalTextureFiles(event);\n    const modelFiles = externalModelFiles(event);\n    if (!files.length && !modelFiles.length) return;\n    const target = event.target instanceof Element ? event.target : null;\n    if (modelFiles.length && target?.closest('.content-browser-v2')) return;\n    event.preventDefault();\n\n    const pickerTarget = target?.closest('.asset-reference-control') ?? null;\n    const viewportTarget = target?.closest('.arc-viewport-body') ?? null;\n    const dropCoordinates = { clientX: event.clientX, clientY: event.clientY };")
-          rep(p,"        const asset = await waitForImportedTexture(pickerImport.path);","        const asset = await waitForImportedAsset(pickerImport.path, 'texture');")
-          rep(p,"        replayImportedAssetDrop(pickerTarget, asset);","        replayImportedAssetDrop(pickerTarget, asset);\n\n        if (viewportTarget) {\n          for (const file of modelFiles) {\n            const imported = await importDroppedModel(file);\n            const modelAsset = await waitForImportedAsset(imported.path, 'model');\n            await sleep(75);\n            replayImportedAssetDrop(viewportTarget, modelAsset, 'mesh', dropCoordinates);\n          }\n        }")
-          rep(p,"    importTexture: (file: File): Promise<ExternalTextureImportResult> => importDroppedTexture(file),","    importTexture: (file: File): Promise<ExternalTextureImportResult> => importDroppedTexture(file),\n    importModel: (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> => importDroppedModel(file, destinationFolder),")
-          rep(p,"installExternalTextureDropHandling();","installExternalAssetDropHandling();")
+          p='editor/src/renderer/src/viewport/ViewportPanel.tsx'
+          rep(p,"import { assignDroppedMaterialToViewport } from './viewportAssetDrop';","import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';")
+          old="""  const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!viewportActive) return;
+    if (
+      !event.dataTransfer.types.includes(arcAssetDragMime) &&
+      !event.dataTransfer.types.includes(arcEnvironmentDragMime)
+    )
+      return;
+"""
+          new="""  const onAssetDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!viewportActive) return;
+    const externalModel =
+      event.dataTransfer.types.includes('Files') &&
+      Array.from(event.dataTransfer.files).some((file) => /\.(fbx|glb|gltf|obj)$/i.test(file.name));
+    if (
+      !externalModel &&
+      !event.dataTransfer.types.includes(arcAssetDragMime) &&
+      !event.dataTransfer.types.includes(arcEnvironmentDragMime)
+    )
+      return;
+"""
+          rep(p,old,new)
+          old="""    const dropped = readArcAssetDragPayload(event.dataTransfer);
+    if (!dropped || dropped.type !== 'material') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const position = pointerCoordinates(event.clientX, event.clientY);
+    void assignDroppedMaterialToViewport(window.arc.host, {
+      viewportId,
+      ...position,
+      path: dropped.pathHint,
+    }).then((result) => {
+      if (result.succeeded) {
+        setViewportError('');
+      } else if (result.error !== 'No scene object at the drop position') {
+        setViewportError(result.error);
+      }
+    });
+"""
+          new="""    const dropped = readArcAssetDragPayload(event.dataTransfer);
+    if (!dropped) return;
+    const position = pointerCoordinates(event.clientX, event.clientY);
+    if (dropped.type === 'material') {
+      event.preventDefault();
+      event.stopPropagation();
+      void assignDroppedMaterialToViewport(window.arc.host, {
+        viewportId,
+        ...position,
+        path: dropped.pathHint,
+      }).then((result) => {
+        if (result.succeeded) setViewportError('');
+        else if (result.error !== 'No scene object at the drop position') setViewportError(result.error);
+      });
+      return;
+    }
+    if (dropped.type !== 'mesh' && dropped.type !== 'scene') return;
+    event.preventDefault();
+    event.stopPropagation();
+    void instantiateDroppedMeshInViewport(window.arc.host, {
+      viewportId,
+      ...position,
+      path: dropped.pathHint,
+    }).then((result) => {
+      if (result.succeeded) setViewportError('');
+      else setViewportError(result.error);
+    });
+"""
+          rep(p,old,new)
 
-          p='editor/src/renderer/src/content/ContentBrowserPanel.tsx'
-          rep(p,"const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;","const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;\nconst modelFileExtensions = new Set(['fbx', 'glb', 'gltf', 'obj']);\nconst isModelFile = (file: File) => modelFileExtensions.has(file.name.split('.').at(-1)?.toLocaleLowerCase() ?? '');")
-          rep(p,"      onDrop={(event) => {\n        if (!activeOnlineSource && event.dataTransfer.files.length > 0) onCommand('file.importScene');\n      }}","      onDrop={(event) => {\n        if (activeOnlineSource || !project) return;\n        const files = Array.from(event.dataTransfer.files).filter(isModelFile);\n        if (!files.length) return;\n        event.preventDefault();\n        event.stopPropagation();\n        const destination = projectFolderPath(folder);\n        void Promise.all(files.map((file) => window.arc.projects.importModel(file, destination))).catch((error) => console.error('[ARC] Model import failed', error));\n      }}")
+          p=Path('editor/src/renderer/src/viewport/viewportAssetDrop.ts')
+          text=p.read_text()
+          text += r'''
 
-          p='editor/src/renderer/src/inspector/SchemaComponents.tsx'
-          rep(p,"const meshAssetExtensions = ['.glb', '.gltf', '.fbx'] as const;","const meshAssetExtensions = ['.glb', '.gltf', '.fbx', '.obj'] as const;")
-          p='editor/src/main/main.ts'
-          rep(p,"{ name: 'Scene Assets', extensions: ['arcscene', 'glb', 'gltf', 'fbx', 'scene'] },","{ name: 'Scene Assets', extensions: ['arcscene', 'glb', 'gltf', 'fbx', 'obj', 'scene'] },")
-      - name: Format and validate editor
-        working-directory: editor
+export type ViewportMeshDropResult = { succeeded: true; entity: HostEntityId } | { succeeded: false; error: string };
+
+const parseEntity = (payload: unknown): HostEntityId | undefined => {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const entity = (payload as { entity?: HostEntityId }).entity;
+  return validEntity(entity) ? entity : undefined;
+};
+
+const parseWorldPosition = (payload: unknown): [number, number, number] | undefined => {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as { worldPosition?: unknown }).worldPosition;
+  if (!Array.isArray(value) || value.length !== 3 || !value.every((entry) => typeof entry === 'number')) return undefined;
+  return value as [number, number, number];
+};
+
+export async function instantiateDroppedMeshInViewport(
+  host: HostBridge,
+  request: { viewportId: string; x: number; y: number; path: string },
+): Promise<ViewportMeshDropResult> {
+  const pick = (await host.command('viewport.pick', {
+    viewportId: request.viewportId,
+    x: request.x,
+    y: request.y,
+  })) as HostResponse;
+  if (pick?.succeeded === false) return { succeeded: false, error: pick.error || 'Viewport placement failed' };
+
+  const created = (await host.command('entity.create', { kind: 'empty' })) as HostResponse;
+  if (created?.succeeded === false) return { succeeded: false, error: created.error || 'Could not create mesh entity' };
+  const entity = parseEntity(created?.payload);
+  if (!entity) return { succeeded: false, error: 'Host did not return the created mesh entity' };
+
+  const assignment = (await host.command('entity.setMaterial', {
+    entity,
+    path: `__arc_mesh__/${request.path}`,
+  })) as HostResponse;
+  if (assignment?.succeeded === false) {
+    await host.command('entity.delete', { entity }).catch(() => undefined);
+    return { succeeded: false, error: assignment.error || 'Could not assign the dropped mesh' };
+  }
+
+  const worldPosition = parseWorldPosition(pick?.payload);
+  if (worldPosition) {
+    const transformed = (await host.command('entity.setTransform', {
+      entity,
+      transform: { position: worldPosition, rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+    })) as HostResponse;
+    if (transformed?.succeeded === false)
+      return { succeeded: false, error: transformed.error || 'Could not place the dropped mesh' };
+  }
+
+  const fileName = request.path.replaceAll('\\', '/').split('/').at(-1) ?? request.path;
+  const name = fileName.replace(/\.[^.]+$/, '') || 'Mesh';
+  const renamed = (await host.command('entity.rename', { entity, name })) as HostResponse;
+  if (renamed?.succeeded === false) return { succeeded: false, error: renamed.error || 'Could not name the dropped mesh' };
+  return { succeeded: true, entity };
+}
+'''
+          p.write_text(text)
+
+          p=Path('editor/src/renderer/src/viewport/viewportAssetDrop.test.ts')
+          text=p.read_text()
+          text=text.replace("import { assignDroppedMaterialToViewport } from './viewportAssetDrop';","import { assignDroppedMaterialToViewport, instantiateDroppedMeshInViewport } from './viewportAssetDrop';")
+          text += r'''
+
+describe('instantiateDroppedMeshInViewport', () => {
+  it('creates and places an existing mesh asset at the viewport drop point', async () => {
+    const entity = { index: 8, generation: 2 };
+    const command = vi
+      .fn()
+      .mockResolvedValueOnce({ succeeded: true, payload: { worldPosition: [1, 2, 3] } })
+      .mockResolvedValueOnce({ succeeded: true, payload: { entity } })
+      .mockResolvedValue({ succeeded: true });
+    const result = await instantiateDroppedMeshInViewport(
+      { command, query: vi.fn() },
+      { viewportId: 'viewport-1', x: 10, y: 20, path: 'Content/Models/crate.obj' },
+    );
+    expect(result).toEqual({ succeeded: true, entity });
+    expect(command).toHaveBeenNthCalledWith(1, 'viewport.pick', { viewportId: 'viewport-1', x: 10, y: 20 });
+    expect(command).toHaveBeenNthCalledWith(2, 'entity.create', { kind: 'empty' });
+    expect(command).toHaveBeenNthCalledWith(3, 'entity.setMaterial', {
+      entity,
+      path: '__arc_mesh__/Content/Models/crate.obj',
+    });
+    expect(command).toHaveBeenNthCalledWith(4, 'entity.setTransform', {
+      entity,
+      transform: { position: [1, 2, 3], rotation: [0, 0, 0, 1], scale: [1, 1, 1] },
+    });
+    expect(command).toHaveBeenNthCalledWith(5, 'entity.rename', { entity, name: 'crate' });
+  });
+});
+'''
+          p.write_text(text)
+      - name: Patch native viewport drop point
+        shell: python
         run: |
+          from pathlib import Path
+          p=Path('editor/native/src/arc_host_base.inc')
+          text=p.read_text()
+          old='''                editor_pick_result cpu_fallback{};
+                if (camera && transform && viewport.valid())
+                    cpu_fallback = pick_scene_entity(state_->scene.scene, *state_->renderer,
+                                                     screen_ray_from_camera(*camera, *transform, viewport,
+                                                                            static_cast<float>(payload.x),
+                                                                            static_cast<float>(payload.y)));
+'''
+          new='''                editor_pick_result cpu_fallback{};
+                editor_ray pick_ray{};
+                math::vector3f drop_position{};
+                if (camera && transform && viewport.valid())
+                {
+                    pick_ray = screen_ray_from_camera(*camera, *transform, viewport, static_cast<float>(payload.x),
+                                                      static_cast<float>(payload.y));
+                    cpu_fallback = pick_scene_entity(state_->scene.scene, *state_->renderer, pick_ray);
+                    if (cpu_fallback.entity.valid() && std::isfinite(cpu_fallback.distance) && cpu_fallback.distance > 0.0f)
+                        drop_position = pick_ray.origin + pick_ray.direction * cpu_fallback.distance;
+                    else
+                    {
+                        const float denominator = pick_ray.direction[1];
+                        const float ground_distance = std::abs(denominator) > 1.0e-5f ? -pick_ray.origin[1] / denominator : -1.0f;
+                        drop_position = ground_distance > 0.0f ? pick_ray.origin + pick_ray.direction * ground_distance
+                                                              : pick_ray.origin + pick_ray.direction * 10.0f;
+                    }
+                }
+'''
+          if old not in text: raise RuntimeError('viewport pick CPU fallback pattern missing')
+          text=text.replace(old,new,1)
+          text=text.replace('return success("{\\"pending\\":true}");','return success("{\\"pending\\":true,\\"worldPosition\\":[" + std::to_string(drop_position[0]) + "," + std::to_string(drop_position[1]) + "," + std::to_string(drop_position[2]) + "]}");',1)
+          text=text.replace('return success("{\\"entity\\":" + to_json(to_host_entity(cpu_fallback.entity)) + \'}\');','return success("{\\"entity\\":" + to_json(to_host_entity(cpu_fallback.entity)) + ",\\"worldPosition\\":[" + std::to_string(drop_position[0]) + "," + std::to_string(drop_position[1]) + "," + std::to_string(drop_position[2]) + "]}");',1)
+          p.write_text(text)
+      - name: Format and validate
+        run: |
+          cd editor
           npm ci
-          npx prettier --write src/preload/externalModelImport.ts src/preload/preload.ts src/renderer/src/content/ContentBrowserPanel.tsx src/renderer/src/inspector/SchemaComponents.tsx src/main/main.ts
+          npx prettier --write src/renderer/src/viewport/ViewportPanel.tsx src/renderer/src/viewport/viewportAssetDrop.ts src/renderer/src/viewport/viewportAssetDrop.test.ts
           npm run typecheck
+          npx vitest run src/renderer/src/viewport/viewportAssetDrop.test.ts
+          cd ..
+          sudo apt-get update >/dev/null
+          sudo apt-get install -y clang-format-18 >/dev/null
+          clang-format-18 -i editor/native/src/arc_host_base.inc
       - name: Commit
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add editor
-          git commit -m 'Add external model drag and drop import'
+          git commit -m 'Instantiate dropped meshes in the viewport'
           git push origin HEAD:feature/model-drag-drop-obj
