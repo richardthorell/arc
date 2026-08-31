@@ -9,7 +9,13 @@ import { setTextureEditorViewState, useTextureEditorViewState } from './textureE
 import {
   getTextureSettings,
   patchTextureSettings,
+  type TextureAddressMode,
   type TextureColorSpace,
+  type TextureCompressionPolicy,
+  type TextureFilterMode,
+  type TextureMipFilterMode,
+  type TextureMipGenerationFilter,
+  type TexturePowerOfTwoPolicy,
   type TexturePreset,
   type TextureSemantic,
   type TextureSettingsSnapshot,
@@ -255,10 +261,76 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           onToggle={() => toggleSection('sampling')}
           title="Sampling"
         >
-          <TextureProperty label="Wrap U" value="Not configured" />
-          <TextureProperty label="Wrap V" value="Not configured" />
-          <TextureProperty label="Filter Mode" value="Not configured" />
-          <TextureProperty label="Anisotropy" value="Not configured" />
+          {settings ? (
+            <>
+              {(['wrapU', 'wrapV'] as const).map((field) => (
+                <label className="inspector-property texture-inspector-property" key={field}>
+                  <span className="inspector-property-label">{field === 'wrapU' ? 'Wrap U' : 'Wrap V'}</span>
+                  <select
+                    className="texture-inspector-select"
+                    disabled={settingsBusy}
+                    value={settings[field]}
+                    onChange={(event) => void updateSettings({ [field]: event.target.value as TextureAddressMode })}
+                  >
+                    <option value="repeat">Repeat</option>
+                    <option value="clamp_to_edge">Clamp</option>
+                    <option value="mirrored_repeat">Mirror</option>
+                  </select>
+                </label>
+              ))}
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Min Filter</span>
+                <select
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  value={settings.minFilter}
+                  onChange={(event) => void updateSettings({ minFilter: event.target.value as TextureFilterMode })}
+                >
+                  <option value="linear">Linear</option>
+                  <option value="nearest">Nearest</option>
+                </select>
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Mag Filter</span>
+                <select
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  value={settings.magFilter}
+                  onChange={(event) => void updateSettings({ magFilter: event.target.value as TextureFilterMode })}
+                >
+                  <option value="linear">Linear</option>
+                  <option value="nearest">Nearest</option>
+                </select>
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Mip Filter</span>
+                <select
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  value={settings.mipFilter}
+                  onChange={(event) => void updateSettings({ mipFilter: event.target.value as TextureMipFilterMode })}
+                >
+                  <option value="linear">Linear</option>
+                  <option value="nearest">Nearest</option>
+                </select>
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Anisotropy</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy}
+                  max={16}
+                  min={1}
+                  onChange={(event) => void updateSettings({ anisotropy: Number(event.target.value) })}
+                  step={1}
+                  type="number"
+                  value={settings.anisotropy}
+                />
+              </label>
+            </>
+          ) : (
+            <TextureProperty label="Sampling" value={settingsError ?? 'Loading…'} />
+          )}
         </UiPanelSection>
 
         <UiPanelSection
@@ -267,14 +339,94 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           onToggle={() => toggleSection('mipmaps')}
           title="Mipmaps"
         >
-          <TextureProperty label="Generate Mips" value={(asset.mipLevels ?? 1) > 1 ? 'Yes' : 'No'} />
+          {settings && (
+            <>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Generate Mips</span>
+                <input
+                  checked={settings.generateMips}
+                  disabled={settingsBusy}
+                  onChange={(event) => void updateSettings({ generateMips: event.target.checked })}
+                  type="checkbox"
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Generation Filter</span>
+                <select
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  value={settings.mipGenerationFilter}
+                  onChange={(event) =>
+                    void updateSettings({ mipGenerationFilter: event.target.value as TextureMipGenerationFilter })
+                  }
+                >
+                  <option value="box">Box</option>
+                  <option value="nearest">Nearest</option>
+                </select>
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Preserve Alpha</span>
+                <input
+                  checked={settings.preserveAlphaCoverage}
+                  disabled={settingsBusy}
+                  onChange={(event) => void updateSettings({ preserveAlphaCoverage: event.target.checked })}
+                  type="checkbox"
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Alpha Threshold</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy || !settings.preserveAlphaCoverage}
+                  max={1}
+                  min={0}
+                  onChange={(event) => void updateSettings({ alphaCoverageThreshold: Number(event.target.value) })}
+                  step={0.05}
+                  type="number"
+                  value={settings.alphaCoverageThreshold}
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">LOD Bias</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy}
+                  onChange={(event) => void updateSettings({ lodBias: Number(event.target.value) })}
+                  step={0.25}
+                  type="number"
+                  value={settings.lodBias}
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Min LOD</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy}
+                  min={0}
+                  onChange={(event) => void updateSettings({ minimumLod: Number(event.target.value) })}
+                  step={0.25}
+                  type="number"
+                  value={settings.minimumLod}
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Max LOD</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy}
+                  min={0}
+                  onChange={(event) => void updateSettings({ maximumLod: Number(event.target.value) })}
+                  step={0.25}
+                  type="number"
+                  value={settings.maximumLod}
+                />
+              </label>
+            </>
+          )}
           <TextureProperty
             label="Mip Count"
             value={asset.mipLevels === undefined ? 'Not reported' : String(asset.mipLevels)}
           />
-          <TextureProperty label="Generation Filter" value="Not configured" />
-          <TextureProperty label="LOD Bias" value="Not configured" />
-          <TextureProperty label="Min / Max LOD" value="Not configured" />
         </UiPanelSection>
 
         <UiPanelSection
@@ -283,10 +435,27 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           onToggle={() => toggleSection('compression')}
           title="Compression"
         >
-          <TextureProperty label="Compression Preset" value="Not configured" />
-          <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Not reported'} />
-          <TextureProperty label="Quality" value="Not configured" />
-          <TextureProperty label="Alpha Policy" value="Not configured" />
+          {settings && (
+            <label className="inspector-property texture-inspector-property">
+              <span className="inspector-property-label">Policy</span>
+              <select
+                className="texture-inspector-select"
+                disabled={settingsBusy}
+                value={settings.compression}
+                onChange={(event) =>
+                  void updateSettings({ compression: event.target.value as TextureCompressionPolicy })
+                }
+              >
+                <option value="automatic">Automatic</option>
+                <option value="color">Color</option>
+                <option value="normal">Normal</option>
+                <option value="mask">Mask</option>
+                <option value="hdr">HDR</option>
+                <option value="uncompressed">Uncompressed</option>
+              </select>
+            </label>
+          )}
+          <TextureProperty label="GPU Format" value={asset.textureFormat ?? 'Resolved at cook'} />
           <TextureProperty label="Artifact Size" value={formatBytes(asset.artifactSize)} />
         </UiPanelSection>
 
@@ -343,7 +512,38 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
                   : String(asset.settingsVersion)
             }
           />
-          <TextureProperty label="Power-of-Two Policy" value="Not configured" />
+          {settings && (
+            <>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Max Size</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy}
+                  max={32768}
+                  min={1}
+                  onChange={(event) => void updateSettings({ maxSize: Number(event.target.value) })}
+                  step={1}
+                  type="number"
+                  value={settings.maxSize}
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Power of Two</span>
+                <select
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  value={settings.powerOfTwo}
+                  onChange={(event) =>
+                    void updateSettings({ powerOfTwo: event.target.value as TexturePowerOfTwoPolicy })
+                  }
+                >
+                  <option value="preserve">Preserve</option>
+                  <option value="resize_down">Resize Down</option>
+                  <option value="resize_up">Resize Up</option>
+                </select>
+              </label>
+            </>
+          )}
         </UiPanelSection>
 
         <UiPanelSection

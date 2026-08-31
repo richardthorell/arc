@@ -42,15 +42,46 @@ afterEach(() => {
 
 describe('TextureEditor', () => {
   it('renders texture metadata and requests a large preview from the shared asset thumbnail host', async () => {
-    const query = vi.fn().mockResolvedValue({
-      succeeded: true,
-      payload: {
-        path: textureDocument.path,
-        width: 1024,
-        height: 512,
-        dataUrl: 'data:image/png;base64,preview',
-      },
-    });
+    const query = vi.fn().mockImplementation((type: string) =>
+      Promise.resolve(
+        type === 'texture.settings'
+          ? {
+              succeeded: true,
+              payload: {
+                settingsVersion: 4,
+                preset: 'color',
+                semantic: 'base_color',
+                colorSpace: 'srgb',
+                streamingMode: 'streamed_mips',
+                compression: 'color',
+                powerOfTwo: 'preserve',
+                minFilter: 'linear',
+                magFilter: 'linear',
+                mipFilter: 'linear',
+                wrapU: 'repeat',
+                wrapV: 'repeat',
+                mipGenerationFilter: 'box',
+                maxSize: 8192,
+                anisotropy: 8,
+                lodBias: 0,
+                minimumLod: 0,
+                maximumLod: 1000,
+                alphaCoverageThreshold: 0.5,
+                generateMips: true,
+                preserveAlphaCoverage: false,
+              },
+            }
+          : {
+              succeeded: true,
+              payload: {
+                path: textureDocument.path,
+                width: 1024,
+                height: 512,
+                dataUrl: 'data:image/png;base64,preview',
+              },
+            },
+      ),
+    );
     Object.defineProperty(window, 'arc', {
       configurable: true,
       value: { host: { query } },

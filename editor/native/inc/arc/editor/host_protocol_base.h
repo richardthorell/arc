@@ -890,6 +890,22 @@ struct host_patch_texture_settings_command
     std::string semantic;
     std::string color_space;
     std::string streaming_mode;
+    std::string compression;
+    std::string power_of_two;
+    std::string min_filter;
+    std::string mag_filter;
+    std::string mip_filter;
+    std::string wrap_u;
+    std::string wrap_v;
+    std::string mip_generation_filter;
+    std::optional<std::uint32_t> max_size;
+    std::optional<float> anisotropy;
+    std::optional<float> lod_bias;
+    std::optional<float> minimum_lod;
+    std::optional<float> maximum_lod;
+    std::optional<float> alpha_coverage_threshold;
+    std::optional<bool> generate_mips;
+    std::optional<bool> preserve_alpha_coverage;
 };
 struct host_shader_compile_command
 {

@@ -2,11 +2,13 @@
 
 #include <arc/render/texture.h>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 #include <vector>
 
 namespace
@@ -37,7 +39,7 @@ std::vector<std::byte> checker_bmp()
 
 } // namespace
 
-TEST_CASE("texture import settings migrate and serialize authored v3 settings")
+TEST_CASE("texture import settings migrate and serialize authored v4 policy")
 {
     using namespace arc::render;
     using namespace arc::render::tools;
@@ -90,4 +92,74 @@ TEST_CASE("decoded textures cook authored semantic and color space into artifact
     CHECK(inspected.value().semantic == render::texture_semantic::normal);
     CHECK(inspected.value().color_space == render::texture_color_space::linear);
     CHECK(inspected.value().format == render::texture_format::rgba8_unorm);
+}
+
+TEST_CASE("texture presets resolve deterministic group sampling policy")
+{
+    using namespace arc::render;
+    using namespace arc::render::tools;
+    const auto normal = texture_import_settings_for_preset(texture_import_preset::normal_map);
+    CHECK(normal.semantic == texture_semantic::normal);
+    CHECK(normal.color_space == texture_color_space::linear);
+    CHECK(normal.compression == texture_compression_policy::normal);
+    CHECK(normal.generate_mips);
+    CHECK(normal.anisotropy == 8.0f);
+
+    const auto ui = texture_import_settings_for_preset(texture_import_preset::ui);
+    CHECK_FALSE(ui.generate_mips);
+    CHECK(ui.wrap_u == texture_address_mode::clamp_to_edge);
+    CHECK(ui.wrap_v == texture_address_mode::clamp_to_edge);
+    CHECK(ui.streaming_mode == texture_streaming_mode::resident);
+}
+
+TEST_CASE("normal map preprocessing rebuilds and renormalizes authored mip chain")
+{
+    using namespace arc;
+    auto loaded = render::load_texture_asset_bytes(checker_bmp(), "checker.bmp");
+    REQUIRE(loaded.succeeded());
+    auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::normal_map);
+    settings.max_size = 2;
+    const auto processed = render::tools::preprocess_texture_for_cook(std::move(loaded.texture), settings,
+                                                                      assets::windows_vulkan_cook_target());
+    REQUIRE(processed.has_value());
+    REQUIRE(processed.value().texture.mips.size() == 2);
+    CHECK(processed.value().metadata.normal_mips_renormalized);
+    const auto& mip = processed.value().texture.mips.back();
+    const auto offset = mip.offset;
+    const auto x =
+        static_cast<float>(std::to_integer<std::uint8_t>(processed.value().texture.pixels[offset])) / 255.0f * 2.0f -
+        1.0f;
+    const auto y = static_cast<float>(std::to_integer<std::uint8_t>(processed.value().texture.pixels[offset + 1u])) /
+                       255.0f * 2.0f -
+                   1.0f;
+    const auto z = static_cast<float>(std::to_integer<std::uint8_t>(processed.value().texture.pixels[offset + 2u])) /
+                       255.0f * 2.0f -
+                   1.0f;
+    CHECK(std::sqrt(x * x + y * y + z * z) == Catch::Approx(1.0f).margin(0.02f));
+}
+
+TEST_CASE("texture preprocessing applies max size and records artifact policy")
+{
+    using namespace arc;
+    auto loaded = render::load_texture_asset_bytes(checker_bmp(), "checker.bmp");
+    REQUIRE(loaded.succeeded());
+    auto settings = render::tools::texture_import_settings_for_preset(render::tools::texture_import_preset::color);
+    settings.max_size = 1;
+    settings.power_of_two = render::texture_power_of_two_policy::resize_down;
+    settings.preserve_alpha_coverage = true;
+    const auto processed = render::tools::preprocess_texture_for_cook(std::move(loaded.texture), settings,
+                                                                      assets::windows_vulkan_cook_target());
+    REQUIRE(processed.has_value());
+    CHECK(processed.value().texture.width == 1);
+    CHECK(processed.value().texture.height == 1);
+    CHECK(processed.value().metadata.source_width == 2);
+    CHECK(processed.value().metadata.resized);
+    const auto artifact =
+        render::encode_texture_artifact(processed.value().texture, settings.streaming_mode, processed.value().metadata);
+    REQUIRE(artifact.has_value());
+    const auto inspected = render::inspect_texture_artifact(artifact.value());
+    REQUIRE(inspected.has_value());
+    CHECK(inspected.value().metadata.requested_max_size == 1);
+    CHECK(inspected.value().metadata.compression == render::texture_compression_policy::color);
+    CHECK(inspected.value().metadata.anisotropy == 8.0f);
 }

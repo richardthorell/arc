@@ -275,3 +275,24 @@
 .texture-inspector-select:disabled {
   opacity: 0.6;
 }
+
+.texture-inspector-input {
+  min-width: 0;
+  width: 100%;
+  height: var(--inspector-control-height);
+  border: 1px solid var(--inspector-border);
+  border-radius: var(--inspector-radius);
+  color: var(--inspector-text);
+  background: var(--inspector-bg-field);
+  font: inherit;
+  padding: 0 7px;
+}
+
+.texture-inspector-input:focus-visible {
+  outline: 1px solid var(--arc-accent, #5b9bd5);
+  outline-offset: 0;
+}
+
+.texture-inspector-input:disabled {
+  opacity: 0.6;
+}

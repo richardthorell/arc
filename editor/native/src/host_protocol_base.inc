@@ -2217,8 +2217,48 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             string_value(payload, "semantic", command.semantic);
             string_value(payload, "colorSpace", command.color_space);
             string_value(payload, "streamingMode", command.streaming_mode);
+            string_value(payload, "compression", command.compression);
+            string_value(payload, "powerOfTwo", command.power_of_two);
+            string_value(payload, "minFilter", command.min_filter);
+            string_value(payload, "magFilter", command.mag_filter);
+            string_value(payload, "mipFilter", command.mip_filter);
+            string_value(payload, "wrapU", command.wrap_u);
+            string_value(payload, "wrapV", command.wrap_v);
+            string_value(payload, "mipGenerationFilter", command.mip_generation_filter);
+            const auto optional_number = [&](std::string_view key, auto& target)
+            {
+                using value_type = typename std::decay_t<decltype(target)>::value_type;
+                if (find_key(payload, key) == std::string_view::npos) return true;
+                value_type value{};
+                if (!number_value(payload, key, value)) return false;
+                target = value;
+                return true;
+            };
+            const auto optional_bool = [&](std::string_view key, std::optional<bool>& target)
+            {
+                if (find_key(payload, key) == std::string_view::npos) return true;
+                bool value{};
+                if (!bool_value(payload, key, value)) return false;
+                target = value;
+                return true;
+            };
+            if (!optional_number("maxSize", command.max_size) || !optional_number("anisotropy", command.anisotropy) ||
+                !optional_number("lodBias", command.lod_bias) || !optional_number("minimumLod", command.minimum_lod) ||
+                !optional_number("maximumLod", command.maximum_lod) ||
+                !optional_number("alphaCoverageThreshold", command.alpha_coverage_threshold) ||
+                !optional_bool("generateMips", command.generate_mips) ||
+                !optional_bool("preserveAlphaCoverage", command.preserve_alpha_coverage))
+            {
+                error = "Texture settings patch contains an invalid value";
+                return false;
+            }
             if (command.preset.empty() && command.semantic.empty() && command.color_space.empty() &&
-                command.streaming_mode.empty())
+                command.streaming_mode.empty() && command.compression.empty() && command.power_of_two.empty() &&
+                command.min_filter.empty() && command.mag_filter.empty() && command.mip_filter.empty() &&
+                command.wrap_u.empty() && command.wrap_v.empty() && command.mip_generation_filter.empty() &&
+                !command.max_size && !command.anisotropy && !command.lod_bias && !command.minimum_lod &&
+                !command.maximum_lod && !command.alpha_coverage_threshold && !command.generate_mips &&
+                !command.preserve_alpha_coverage)
             {
                 error = "Texture settings patch requires at least one setting";
                 return false;

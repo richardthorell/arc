@@ -2085,8 +2085,47 @@ host_response arc_host::execute(const host_command_envelope& command)
                         const auto mode = render::tools::parse_texture_streaming_mode(payload.streaming_mode);
                         if (!mode) return fail("Unknown texture streaming mode");
                         settings.streaming_mode = *mode;
-                        if (payload.preset.empty()) settings.preset = render::tools::texture_import_preset::custom;
                     }
+                    const auto parse_setting = [&](const std::string& source, auto parser, auto& target)
+                    {
+                        if (source.empty()) return true;
+                        const auto value = parser(source);
+                        if (!value) return false;
+                        target = *value;
+                        return true;
+                    };
+                    if (!parse_setting(payload.compression, render::tools::parse_texture_compression_policy,
+                                       settings.compression) ||
+                        !parse_setting(payload.power_of_two, render::tools::parse_texture_power_of_two_policy,
+                                       settings.power_of_two) ||
+                        !parse_setting(payload.min_filter, render::tools::parse_texture_filter_mode,
+                                       settings.min_filter) ||
+                        !parse_setting(payload.mag_filter, render::tools::parse_texture_filter_mode,
+                                       settings.mag_filter) ||
+                        !parse_setting(payload.mip_filter, render::tools::parse_texture_mip_filter_mode,
+                                       settings.mip_filter) ||
+                        !parse_setting(payload.wrap_u, render::tools::parse_texture_address_mode, settings.wrap_u) ||
+                        !parse_setting(payload.wrap_v, render::tools::parse_texture_address_mode, settings.wrap_v) ||
+                        !parse_setting(payload.mip_generation_filter,
+                                       render::tools::parse_texture_mip_generation_filter,
+                                       settings.mip_generation_filter))
+                        return fail("Unknown texture import policy value");
+                    if (payload.max_size) settings.max_size = *payload.max_size;
+                    if (payload.anisotropy) settings.anisotropy = *payload.anisotropy;
+                    if (payload.lod_bias) settings.lod_bias = *payload.lod_bias;
+                    if (payload.minimum_lod) settings.minimum_lod = *payload.minimum_lod;
+                    if (payload.maximum_lod) settings.maximum_lod = *payload.maximum_lod;
+                    if (payload.alpha_coverage_threshold)
+                        settings.alpha_coverage_threshold = *payload.alpha_coverage_threshold;
+                    if (payload.generate_mips) settings.generate_mips = *payload.generate_mips;
+                    if (payload.preserve_alpha_coverage)
+                        settings.preserve_alpha_coverage = *payload.preserve_alpha_coverage;
+                    if (payload.preset.empty()) settings.preset = render::tools::texture_import_preset::custom;
+                    const auto validated = render::tools::parse_texture_import_settings(
+                        render::tools::serialize_texture_import_settings(settings),
+                        render::tools::texture_import_settings::current_version);
+                    if (!validated) return fail(validated.error());
+                    settings = validated.value();
                     metadata.value().settings_version = render::tools::texture_import_settings::current_version;
                     metadata.value().canonical_settings = render::tools::serialize_texture_import_settings(settings);
                     const auto saved = assets::save_asset_metadata(metadata_path, metadata.value());
@@ -4570,7 +4609,26 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"semantic\":" + to_json_string(render::tools::texture_semantic_name(value.semantic)) +
                     ",\"colorSpace\":" + to_json_string(render::tools::texture_color_space_name(value.color_space)) +
                     ",\"streamingMode\":" +
-                    to_json_string(render::tools::texture_streaming_mode_name(value.streaming_mode)) + '}';
+                    to_json_string(render::tools::texture_streaming_mode_name(value.streaming_mode)) +
+                    ",\"compression\":" +
+                    to_json_string(render::tools::texture_compression_policy_name(value.compression)) +
+                    ",\"powerOfTwo\":" +
+                    to_json_string(render::tools::texture_power_of_two_policy_name(value.power_of_two)) +
+                    ",\"minFilter\":" + to_json_string(render::tools::texture_filter_mode_name(value.min_filter)) +
+                    ",\"magFilter\":" + to_json_string(render::tools::texture_filter_mode_name(value.mag_filter)) +
+                    ",\"mipFilter\":" + to_json_string(render::tools::texture_mip_filter_mode_name(value.mip_filter)) +
+                    ",\"wrapU\":" + to_json_string(render::tools::texture_address_mode_name(value.wrap_u)) +
+                    ",\"wrapV\":" + to_json_string(render::tools::texture_address_mode_name(value.wrap_v)) +
+                    ",\"mipGenerationFilter\":" +
+                    to_json_string(render::tools::texture_mip_generation_filter_name(value.mip_generation_filter)) +
+                    ",\"maxSize\":" + std::to_string(value.max_size) +
+                    ",\"anisotropy\":" + std::to_string(value.anisotropy) +
+                    ",\"lodBias\":" + std::to_string(value.lod_bias) +
+                    ",\"minimumLod\":" + std::to_string(value.minimum_lod) +
+                    ",\"maximumLod\":" + std::to_string(value.maximum_lod) +
+                    ",\"alphaCoverageThreshold\":" + std::to_string(value.alpha_coverage_threshold) +
+                    ",\"generateMips\":" + std::string(value.generate_mips ? "true" : "false") +
+                    ",\"preserveAlphaCoverage\":" + std::string(value.preserve_alpha_coverage ? "true" : "false") + '}';
                 return {.request_id = request_id, .succeeded = true, .payload_json = json};
             }
             else if constexpr (std::is_same_v<query_type, host_asset_thumbnail_query>)
