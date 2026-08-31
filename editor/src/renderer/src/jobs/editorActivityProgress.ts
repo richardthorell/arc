@@ -4,23 +4,11 @@ import type { ArcBuildSnapshot } from '../../../common/buildTypes';
 import type { StartupState } from '../app/workbenchTypes';
 import { beginEditorJob, type EditorJobToken } from './editorJobProgress';
 
-const terminalBuildStep = (state: string) =>
-  state === 'succeeded' || state === 'failed' || state === 'cancelled' || state === 'skipped';
-
-const buildFallbackLabel = (snapshot: ArcBuildSnapshot) => {
-  if (snapshot.action === 'configure') return 'Configuring project';
-  if (snapshot.action === 'test') return 'Running tests';
-  if (snapshot.action === 'run') return 'Launching project';
-  return 'Building project';
-};
-
-const buildActivity = (snapshot: ArcBuildSnapshot) => {
-  const runningStep = snapshot.steps.find((step) => step.state === 'running');
-  const pendingStep = snapshot.steps.find((step) => step.state === 'pending');
-  const label = runningStep?.label || pendingStep?.label || buildFallbackLabel(snapshot);
-  const total = snapshot.steps.length;
-  const completed = snapshot.steps.filter((step) => terminalBuildStep(step.state)).length;
-  return { label, total, completed };
+const buildActivityLabel = (snapshot: ArcBuildSnapshot) => {
+  if (snapshot.state === 'configuring') return 'Configuring project';
+  if (snapshot.state === 'building') return 'Building project';
+  if (snapshot.state === 'cleaning') return 'Cleaning project';
+  return '';
 };
 
 const hostActivityLabel = (type: string, message: string) => {
@@ -74,19 +62,15 @@ export function useEditorActivityProgress(startupState: StartupState | null, act
     if (!enabled || !window.arc?.build) return;
 
     const accept = (snapshot: ArcBuildSnapshot | null) => {
-      if (!snapshot || (snapshot.status !== 'queued' && snapshot.status !== 'running')) {
+      const label = snapshot ? buildActivityLabel(snapshot) : '';
+      if (!label) {
         buildJob.current?.finish();
         buildJob.current = null;
         return;
       }
 
-      const activity = buildActivity(snapshot);
-      const update =
-        activity.total > 0
-          ? { label: activity.label, completed: activity.completed, total: activity.total, indeterminate: false }
-          : { label: activity.label, completed: 0, total: 0, indeterminate: true };
-
-      if (!buildJob.current) buildJob.current = beginEditorJob(activity.label, { priority: 'foreground', ...update });
+      const update = { label, completed: 0, total: 0, indeterminate: true };
+      if (!buildJob.current) buildJob.current = beginEditorJob(label, { priority: 'foreground', ...update });
       else buildJob.current.update(update);
     };
 
