@@ -6,6 +6,15 @@ import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
 import { UiPanel, UiPanelSection } from '../ui';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
+import {
+  getTextureSettings,
+  patchTextureSettings,
+  type TextureColorSpace,
+  type TexturePreset,
+  type TextureSemantic,
+  type TextureSettingsSnapshot,
+  type TextureStreamingMode,
+} from './textureSettings';
 
 import '../inspector/inspector.css';
 import './textureEditor.css';
@@ -108,6 +117,9 @@ function TextureProperty({ label, value }: { label: string; value: string }) {
 }
 
 function TextureInspector({ asset }: { asset: AssetItem }) {
+  const [settings, setSettings] = useState<TextureSettingsSnapshot | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsBusy, setSettingsBusy] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     texture: false,
     sampling: false,
@@ -119,6 +131,46 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
   });
   const toggleSection = (section: string) =>
     setCollapsedSections((current) => ({ ...current, [section]: !current[section] }));
+
+  useEffect(() => {
+    let active = true;
+    if (!asset.guid || asset.readOnly) {
+      setSettings(null);
+      setSettingsError(asset.readOnly ? 'Read-only texture' : 'Settings unavailable');
+      return;
+    }
+    void getTextureSettings(asset.guid)
+      .then((value) => {
+        if (active) {
+          setSettings(value);
+          setSettingsError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) setSettingsError(error instanceof Error ? error.message : 'Could not load texture settings');
+      });
+    return () => {
+      active = false;
+    };
+  }, [asset.guid, asset.generation, asset.readOnly]);
+
+  const updateSettings = async (patch: Parameters<typeof patchTextureSettings>[1]) => {
+    if (!asset.guid || !settings || settingsBusy) return;
+    const previous = settings;
+    const optimistic = { ...settings, ...patch };
+    setSettings(optimistic);
+    setSettingsBusy(true);
+    setSettingsError(null);
+    try {
+      await patchTextureSettings(asset.guid, patch);
+      setSettings(await getTextureSettings(asset.guid));
+    } catch (error) {
+      setSettings(previous);
+      setSettingsError(error instanceof Error ? error.message : 'Could not update texture settings');
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
 
   return (
     <UiPanel aria-label="Texture details" className="texture-inspector" role="complementary" variant="inspector">
@@ -133,7 +185,66 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           <TextureProperty label="Dimensions" value={dimensionsOf(asset)} />
           <TextureProperty label="Depth / Layers" value={asset.depth === undefined ? '1' : String(asset.depth)} />
           <TextureProperty label="Format" value={asset.textureFormat ?? extensionOf(asset.path)} />
-          <TextureProperty label="Color Space / sRGB" value="Not reported" />
+          {settings ? (
+            <>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Preset</span>
+                <select
+                  aria-label="Texture preset"
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  onChange={(event) => void updateSettings({ preset: event.target.value as TexturePreset })}
+                  value={settings.preset}
+                >
+                  <option value="custom">Custom</option>
+                  <option value="color">Color</option>
+                  <option value="normal_map">Normal Map</option>
+                  <option value="data">Data / Mask</option>
+                  <option value="hdr">HDR</option>
+                  <option value="ui">UI</option>
+                  <option value="environment">Environment</option>
+                </select>
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Semantic</span>
+                <select
+                  aria-label="Texture semantic"
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  onChange={(event) => void updateSettings({ semantic: event.target.value as TextureSemantic })}
+                  value={settings.semantic}
+                >
+                  <option value="generic_color">Generic Color</option>
+                  <option value="base_color">Base Color</option>
+                  <option value="emissive">Emissive</option>
+                  <option value="normal">Normal</option>
+                  <option value="metallic_roughness">Metallic / Roughness</option>
+                  <option value="occlusion">Occlusion</option>
+                  <option value="clear_coat">Clear Coat</option>
+                  <option value="anisotropy">Anisotropy</option>
+                  <option value="thickness">Thickness</option>
+                  <option value="transmission">Transmission</option>
+                  <option value="lightmap">Lightmap</option>
+                  <option value="environment">Environment</option>
+                </select>
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Color Space</span>
+                <select
+                  aria-label="Texture color space"
+                  className="texture-inspector-select"
+                  disabled={settingsBusy}
+                  onChange={(event) => void updateSettings({ colorSpace: event.target.value as TextureColorSpace })}
+                  value={settings.colorSpace}
+                >
+                  <option value="srgb">sRGB</option>
+                  <option value="linear">Linear</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <TextureProperty label="Color Space" value={settingsError ?? 'Loading…'} />
+          )}
           <TextureProperty label="Alpha" value="Not reported" />
           <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
         </UiPanelSection>
@@ -185,7 +296,24 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           onToggle={() => toggleSection('streaming')}
           title="Streaming"
         >
-          <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
+          {settings ? (
+            <label className="inspector-property texture-inspector-property">
+              <span className="inspector-property-label">Mode</span>
+              <select
+                aria-label="Texture streaming mode"
+                className="texture-inspector-select"
+                disabled={settingsBusy}
+                onChange={(event) => void updateSettings({ streamingMode: event.target.value as TextureStreamingMode })}
+                value={settings.streamingMode}
+              >
+                <option value="resident">Resident</option>
+                <option value="streamed_mips">Streamed Mips</option>
+                <option value="virtual_tiles">Virtual Tiles</option>
+              </select>
+            </label>
+          ) : (
+            <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
+          )}
           <TextureProperty label="Residency" value={asset.residency ?? 'Not reported'} />
           <TextureProperty
             label="Tile Count"
@@ -207,7 +335,13 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           <TextureProperty label="Source Path" value={asset.path} />
           <TextureProperty
             label="Settings Version"
-            value={asset.settingsVersion === undefined ? 'Not reported' : String(asset.settingsVersion)}
+            value={
+              settings
+                ? String(settings.settingsVersion)
+                : asset.settingsVersion === undefined
+                  ? 'Not reported'
+                  : String(asset.settingsVersion)
+            }
           />
           <TextureProperty label="Power-of-Two Policy" value="Not configured" />
         </UiPanelSection>

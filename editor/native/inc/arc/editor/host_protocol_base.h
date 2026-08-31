@@ -882,6 +882,15 @@ struct host_set_texture_streaming_mode_command
     std::string guid;
     std::string mode;
 };
+
+struct host_patch_texture_settings_command
+{
+    std::string guid;
+    std::string preset;
+    std::string semantic;
+    std::string color_space;
+    std::string streaming_mode;
+};
 struct host_shader_compile_command
 {
     std::filesystem::path path;
@@ -1403,9 +1412,10 @@ using host_command_payload = std::variant<
     host_open_project_command, host_close_project_command, host_reload_project_module_command, host_open_scene_command,
     host_new_scene_command, host_save_scene_command, host_save_scene_as_command, host_autosave_scene_command,
     host_open_recovery_scene_command, host_asset_reimport_command, host_set_texture_streaming_mode_command,
-    host_shader_compile_command, host_asset_cancel_import_command, host_asset_move_command, host_asset_rename_command,
-    host_create_entity_command, host_delete_entity_command, host_duplicate_entity_command, host_create_prefab_command,
-    host_instantiate_prefab_command, host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,
+    host_patch_texture_settings_command, host_shader_compile_command, host_asset_cancel_import_command,
+    host_asset_move_command, host_asset_rename_command, host_create_entity_command, host_delete_entity_command,
+    host_duplicate_entity_command, host_create_prefab_command, host_instantiate_prefab_command,
+    host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,
     host_revert_prefab_override_command, host_reparent_entity_command, host_reorder_entity_command,
     host_rename_entity_command, host_select_entity_command, host_clear_selection_command, host_set_active_command,
     host_set_tag_command, host_set_transform_command, host_set_render_layer_command, host_set_mobility_command,
@@ -1508,6 +1518,11 @@ struct host_asset_thumbnail_query
     std::uint32_t max_size{96};
 };
 
+struct host_texture_settings_query
+{
+    std::string guid;
+};
+
 struct host_viewport_state_query
 {
     std::string viewport_id{"viewport-1"};
@@ -1531,9 +1546,9 @@ using host_query_payload =
     std::variant<host_scene_hierarchy_query, host_selected_entity_query, host_scene_entities_query,
                  host_entity_by_guid_query, host_scene_spatial_query, host_component_schema_query,
                  host_workspace_documents_query, host_gateway_diagnostics_query, host_viewport_capture_query,
-                 host_project_assets_query, host_asset_thumbnail_query, host_viewport_state_query,
-                 host_world_environment_query, host_history_state_query, host_runtime_state_query,
-                 host_terrain_tool_state_query>;
+                 host_project_assets_query, host_asset_thumbnail_query, host_texture_settings_query,
+                 host_viewport_state_query, host_world_environment_query, host_history_state_query,
+                 host_runtime_state_query, host_terrain_tool_state_query>;
 
 struct host_query_envelope
 {

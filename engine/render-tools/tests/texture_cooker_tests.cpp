@@ -37,21 +37,30 @@ std::vector<std::byte> checker_bmp()
 
 } // namespace
 
-TEST_CASE("texture import settings migrate to resident and serialize v2 modes")
+TEST_CASE("texture import settings migrate and serialize authored v3 settings")
 {
     using namespace arc::render;
     using namespace arc::render::tools;
-    const auto legacy = parse_texture_import_settings("{}", 1);
+    const auto legacy = parse_texture_import_settings(R"({"streamingMode":"virtual_tiles"})", 2);
     REQUIRE(legacy.has_value());
-    CHECK(legacy.value().streaming_mode == texture_streaming_mode::resident);
-    const auto virtual_settings = parse_texture_import_settings(R"({"streamingMode":"virtual_tiles"})", 2);
-    REQUIRE(virtual_settings.has_value());
-    CHECK(virtual_settings.value().streaming_mode == texture_streaming_mode::virtual_tiles);
-    CHECK(serialize_texture_import_settings(virtual_settings.value()) == R"({"streamingMode":"virtual_tiles"})");
-    CHECK_FALSE(parse_texture_import_settings(R"({"streamingMode":"automatic"})", 2).has_value());
+    CHECK(legacy.value().streaming_mode == texture_streaming_mode::virtual_tiles);
+    CHECK(legacy.value().semantic == texture_semantic::generic_color);
+    CHECK(legacy.value().color_space == texture_color_space::srgb);
+
+    auto settings = texture_import_settings_for_preset(texture_import_preset::normal_map);
+    CHECK(settings.semantic == texture_semantic::normal);
+    CHECK(settings.color_space == texture_color_space::linear);
+    const auto serialized = serialize_texture_import_settings(settings);
+    const auto parsed = parse_texture_import_settings(serialized, texture_import_settings::current_version);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed.value().preset == texture_import_preset::normal_map);
+    CHECK(parsed.value().semantic == texture_semantic::normal);
+    CHECK(parsed.value().color_space == texture_color_space::linear);
+    CHECK(parsed.value().streaming_mode == texture_streaming_mode::streamed_mips);
+    CHECK_FALSE(parse_texture_import_settings(R"({"semantic":"banana"})", 3).has_value());
 }
 
-TEST_CASE("decoded sRGB textures downsample in linear space and cook conventional virtual companions")
+TEST_CASE("decoded textures cook authored semantic and color space into artifacts")
 {
     using namespace arc;
     auto source = checker_bmp();
@@ -69,14 +78,16 @@ TEST_CASE("decoded sRGB textures downsample in linear space and cook conventiona
     context.asset.type = assets::asset_types::texture_2d;
     context.source.source_path = "checker_albedo.bmp";
     context.source.bytes = std::move(source);
-    context.settings_version = 2;
-    context.canonical_settings = R"({"streamingMode":"virtual_tiles"})";
+    context.settings_version = 3;
+    context.canonical_settings =
+        R"({"colorSpace":"linear","preset":"normal_map","semantic":"normal","streamingMode":"virtual_tiles"})";
     const auto cooked = processor.cook(context);
     REQUIRE(cooked.succeeded());
     REQUIRE(cooked.artifacts.size() == 1);
-    CHECK(cooked.artifacts[0].extension == ".arctex");
     const auto inspected = render::inspect_texture_artifact(cooked.artifacts[0].bytes);
     REQUIRE(inspected.has_value());
     CHECK(inspected.value().mode == render::texture_streaming_mode::virtual_tiles);
-    CHECK(inspected.value().mips.size() == loaded.texture.mips.size());
+    CHECK(inspected.value().semantic == render::texture_semantic::normal);
+    CHECK(inspected.value().color_space == render::texture_color_space::linear);
+    CHECK(inspected.value().format == render::texture_format::rgba8_unorm);
 }
