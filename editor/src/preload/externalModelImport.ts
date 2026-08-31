@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { ProjectSnapshot } from './assetSourceBridge';
+import type { ArcProjectCandidate } from '../common/projectTypes';
 
 export const supportedModelExtensions = new Set(['.fbx', '.glb', '.gltf', '.obj']);
 
@@ -39,13 +39,15 @@ const normalizedProjectFolder = (projectRoot: string, requestedFolder?: string):
 
 export const importExternalModel = (
   sourcePath: string,
-  project: ProjectSnapshot,
+  project: ArcProjectCandidate,
   requestedFolder?: string,
 ): ExternalModelImportResult => {
   if (!project.writable) throw new Error('The active project is read-only');
   if (!path.isAbsolute(sourcePath)) throw new Error('External model source path must be absolute');
-  if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) throw new Error('External model source file does not exist');
-  if (!isSupportedModelPath(sourcePath)) throw new Error(`Unsupported model format: ${path.extname(sourcePath) || 'unknown'}`);
+  if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile())
+    throw new Error('External model source file does not exist');
+  if (!isSupportedModelPath(sourcePath))
+    throw new Error(`Unsupported model format: ${path.extname(sourcePath) || 'unknown'}`);
 
   const projectRoot = fs.realpathSync(project.projectRoot);
   const destinationDirectory = normalizedProjectFolder(projectRoot, requestedFolder);
