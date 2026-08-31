@@ -59,6 +59,8 @@ const parentFolder = (path: string) => cleanPath(path).split('/').slice(0, -1).j
 const normalizedPath = (path: string) => cleanPath(path).toLocaleLowerCase();
 const favoriteId = (asset: AssetItem) => asset.guid ?? asset.path;
 const folderKey = (source: LocalBrowserSource, path: string) => `${source}:${normalizedPath(path)}`;
+const modelFileExtensions = new Set(['fbx', 'glb', 'gltf', 'obj']);
+const isModelFile = (file: File) => modelFileExtensions.has(file.name.split('.').at(-1)?.toLocaleLowerCase() ?? '');
 const contentTreeWidthStorageKey = 'arc.content.treeWidth';
 const defaultContentTreeWidth = 190;
 const minContentTreeWidth = 140;
@@ -502,7 +504,15 @@ export function ContentBrowserPanel({
       onClick={() => createContextMenu && setCreateContextMenu(null)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
-        if (!activeOnlineSource && event.dataTransfer.files.length > 0) onCommand('file.importScene');
+        if (activeOnlineSource || !project) return;
+        const files = Array.from(event.dataTransfer.files).filter(isModelFile);
+        if (!files.length) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const destination = projectFolderPath(folder);
+        void Promise.all(files.map((file) => window.arc.projects.importModel(file, destination))).catch((error) =>
+          console.error('[ARC] Model import failed', error),
+        );
       }}
     >
       <aside className="content-folder-tree" role="tree" aria-label="Content folders">
