@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-import documentTypeIconAtlasUrl from './document-type-icons-atlas.svg';
+import documentTypeIconAtlasUrl from './document-type-icons-atlas.png';
 
 export type DocumentTypeIconKind =
   | 'world'
@@ -42,8 +42,6 @@ const iconCells: Record<DocumentTypeIconKind, readonly [number, number]> = {
 
 export const documentTypeIconCell = (kind: DocumentTypeIconKind) => iconCells[kind];
 
-const atlasPosition = (index: number, count: number) => (count <= 1 ? 0 : (index / (count - 1)) * 100);
-
 export function DocumentTypeIcon({
   kind,
   size = 16,
@@ -58,6 +56,7 @@ export function DocumentTypeIcon({
   style?: CSSProperties;
 }) {
   const [column, row] = documentTypeIconCell(kind);
+
   return (
     <span
       aria-hidden={title ? undefined : true}
@@ -70,12 +69,28 @@ export function DocumentTypeIcon({
         width: size,
         height: size,
         flex: `0 0 ${size}px`,
-        backgroundImage: `url(${documentTypeIconAtlasUrl})`,
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: `${atlasColumns * 100}% ${atlasRows * 100}%`,
-        backgroundPosition: `${atlasPosition(column, atlasColumns)}% ${atlasPosition(row, atlasRows)}%`,
+        overflow: 'hidden',
+        position: 'relative',
         ...style,
       }}
-    />
+    >
+      <img
+        alt=""
+        aria-hidden="true"
+        data-document-type-icon-image=""
+        draggable={false}
+        src={documentTypeIconAtlasUrl}
+        style={{
+          position: 'absolute',
+          width: size * atlasColumns,
+          height: size * atlasRows,
+          maxWidth: 'none',
+          left: -column * size,
+          top: -row * size,
+          pointerEvents: 'none',
+          userSelect: 'none',
+        }}
+      />
+    </span>
   );
 }

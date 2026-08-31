@@ -1,8 +1,8 @@
-import { ChevronDown, ChevronRight, MoreVertical } from 'lucide-react';
+import { MoreVertical } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-import { UiButton, UiContextMenu, UiContextMenuItem, UiIconButton, UiSelect, UiTextInput } from '../ui';
+import { UiButton, UiContextMenu, UiContextMenuItem, UiIconButton, UiPanelSection, UiSelect, UiTextInput } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 import { AssetPicker, AssetPreview, MaterialPicker, PrefabPicker, TexturePicker } from './AssetPicker';
 import { ColorControl, NumberControl, Vector3Control } from './InspectorControls';
@@ -125,121 +125,110 @@ export function SchemaComponentCard<TContext extends object>({
   };
 
   return (
-    <section ref={componentRef} className={`inspector-component-card ${collapsed ? 'is-collapsed' : ''}`}>
-      <header
-        style={{
-          gridTemplateColumns: headerAccessory
-            ? 'minmax(0, 1fr) auto var(--arc-icon-button-size)'
-            : 'minmax(0, 1fr) var(--arc-icon-button-size)',
-          minHeight: 'var(--arc-icon-button-size)',
-        }}
-      >
-        <button aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${schema.title}`} onClick={onToggle} type="button">
-          {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
-          <span>{schema.title}</span>
-        </button>
-        {headerAccessory && <div className="inspector-component-header-accessory">{headerAccessory}</div>}
-        {onAction && (
-          <UiIconButton
-            aria-expanded={actionsOpen}
-            aria-haspopup="menu"
-            label={`${schema.title} component actions`}
-            onClick={() => setActionsOpen((value) => !value)}
-            type="button"
-          >
-            <MoreVertical size={15} />
-          </UiIconButton>
-        )}
-        {onAction && actionsOpen && (
-          <UiContextMenu
-            aria-label={`${schema.title} component actions menu`}
-            style={{
-              left: 'auto',
-              right: '4px',
-              top: 'calc(100% + 2px)',
-              maxWidth: 'calc(100% - 8px)',
-            }}
-          >
-            <UiContextMenuItem onClick={() => runComponentAction('copy')} type="button">
-              Copy Component
-            </UiContextMenuItem>
-            <UiContextMenuItem onClick={() => runComponentAction('paste')} type="button">
-              Paste Component Values
-            </UiContextMenuItem>
-            <UiContextMenuItem onClick={() => runComponentAction('reset')} type="button">
-              Reset Component
-            </UiContextMenuItem>
-            {schema.id !== 'transform' && schema.id !== 'prefab' && (
-              <UiContextMenuItem
-                onClick={() => runComponentAction('remove')}
-                style={{ color: 'var(--arc-color-danger)' }}
-                type="button"
-              >
-                Remove Component
+    <UiPanelSection
+      actions={
+        <>
+          {headerAccessory && <div className="inspector-component-header-accessory">{headerAccessory}</div>}
+          {onAction && (
+            <UiIconButton
+              aria-expanded={actionsOpen}
+              aria-haspopup="menu"
+              label={schema.title + ' component actions'}
+              onClick={() => setActionsOpen((value) => !value)}
+              type="button"
+            >
+              <MoreVertical size={15} />
+            </UiIconButton>
+          )}
+          {onAction && actionsOpen && (
+            <UiContextMenu
+              aria-label={schema.title + ' component actions menu'}
+              style={{ left: 'auto', right: '4px', top: 'calc(100% + 2px)', maxWidth: 'calc(100% - 8px)' }}
+            >
+              <UiContextMenuItem onClick={() => runComponentAction('copy')} type="button">
+                Copy Component
               </UiContextMenuItem>
-            )}
-          </UiContextMenu>
-        )}
-      </header>
-      {!collapsed && (
-        <div className="inspector-component-content">
-          {showMeshAsset && (
-            <AssetPicker
-              allowEmpty={false}
-              allowedExtensions={meshAssetExtensions}
-              assetKinds={['mesh', 'scene']}
-              assetTypeLabel="Mesh"
-              assets={meshAssets}
-              label="Mesh"
-              mixed={mixedFields.includes('meshRenderer.meshPath')}
-              thumbnailProvider={thumbnailProvider}
-              value={(getPathValue(context, 'meshRenderer.meshPath') as string) || ''}
-              onChange={(path) => {
-                const assignment = path.startsWith(primitiveMeshUriPrefix)
-                  ? `${primitiveAssignmentPrefix}${path.slice(primitiveMeshUriPrefix.length)}`
-                  : `${meshAssignmentPrefix}${path}`;
-                onValue('meshRenderer.materialPath', assignment, true);
-              }}
-            />
+              <UiContextMenuItem onClick={() => runComponentAction('paste')} type="button">
+                Paste Component Values
+              </UiContextMenuItem>
+              <UiContextMenuItem onClick={() => runComponentAction('reset')} type="button">
+                Reset Component
+              </UiContextMenuItem>
+              {schema.id !== 'transform' && schema.id !== 'prefab' && (
+                <UiContextMenuItem
+                  onClick={() => runComponentAction('remove')}
+                  style={{ color: 'var(--arc-color-danger)' }}
+                  type="button"
+                >
+                  Remove Component
+                </UiContextMenuItem>
+              )}
+            </UiContextMenu>
           )}
-          {proceduralMesh && selectionCount === 1 && (
-            <ProceduralMeshControls
-              mesh={proceduralMesh}
-              onValue={(parameter, value, settled) =>
-                onValue('meshRenderer.materialPath', `${primitiveParameterPrefix}${parameter}/${value}`, settled)
-              }
-            />
-          )}
-          {visibleFields.map((field) => {
-            const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
-            return (
-              <div className="inspector-schema-field" key={field.id} title={field.tooltip}>
-                <SchemaField
-                  assets={assets}
-                  context={context}
-                  field={field}
-                  linked={linked}
-                  thumbnailProvider={thumbnailProvider}
-                  onToggleLinked={() =>
-                    setUnlinkedFields((current) => {
-                      const next = new Set(current);
-                      if (next.has(field.path)) next.delete(field.path);
-                      else next.add(field.path);
-                      return next;
-                    })
-                  }
-                  onValue={(value, settled) => onValue(field.path, value, settled)}
-                  onAction={(action) => onAction?.(action)}
-                />
-              </div>
-            );
-          })}
-          {!visibleFields.length && !showMeshAsset && (
-            <div className="inspector-component-empty">No settings are active for this mode.</div>
-          )}
-        </div>
+        </>
+      }
+      className="inspector-schema-component"
+      collapsed={collapsed}
+      contentClassName="inspector-component-content"
+      onToggle={onToggle}
+      ref={componentRef}
+      title={schema.title}
+    >
+      {showMeshAsset && (
+        <AssetPicker
+          allowEmpty={false}
+          allowedExtensions={meshAssetExtensions}
+          assetKinds={['mesh', 'scene']}
+          assetTypeLabel="Mesh"
+          assets={meshAssets}
+          label="Mesh"
+          mixed={mixedFields.includes('meshRenderer.meshPath')}
+          thumbnailProvider={thumbnailProvider}
+          value={(getPathValue(context, 'meshRenderer.meshPath') as string) || ''}
+          onChange={(path) => {
+            const assignment = path.startsWith(primitiveMeshUriPrefix)
+              ? `${primitiveAssignmentPrefix}${path.slice(primitiveMeshUriPrefix.length)}`
+              : `${meshAssignmentPrefix}${path}`;
+            onValue('meshRenderer.materialPath', assignment, true);
+          }}
+        />
       )}
-    </section>
+      {proceduralMesh && selectionCount === 1 && (
+        <ProceduralMeshControls
+          mesh={proceduralMesh}
+          onValue={(parameter, value, settled) =>
+            onValue('meshRenderer.materialPath', `${primitiveParameterPrefix}${parameter}/${value}`, settled)
+          }
+        />
+      )}
+      {visibleFields.map((field) => {
+        const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
+        return (
+          <div className="inspector-schema-field" key={field.id} title={field.tooltip}>
+            <SchemaField
+              assets={assets}
+              context={context}
+              field={field}
+              linked={linked}
+              thumbnailProvider={thumbnailProvider}
+              onToggleLinked={() =>
+                setUnlinkedFields((current) => {
+                  const next = new Set(current);
+                  if (next.has(field.path)) next.delete(field.path);
+                  else next.add(field.path);
+                  return next;
+                })
+              }
+              onValue={(value, settled) => onValue(field.path, value, settled)}
+              onAction={(action) => onAction?.(action)}
+            />
+          </div>
+        );
+      })}
+      {!visibleFields.length && !showMeshAsset && (
+        <div className="inspector-component-empty">No settings are active for this mode.</div>
+      )}
+    </UiPanelSection>
   );
 }
 

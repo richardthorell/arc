@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Filter, Globe2, MoreVertical, Search } from 'lucide-react';
 
 import type { SceneEntity } from '../services/editorHostTypes';
+import { UiPanel } from '../ui';
 import type { AssetPickerItem, AssetThumbnailProvider } from './AssetPicker';
 
 import { schemaForSnapshot, setPathValue } from './componentSchemas';
@@ -419,7 +420,7 @@ export function InspectorPanel({
   const mobilityMixed = draft.aggregate?.mixedFields.includes('mobility') ?? false;
 
   return (
-    <section className="data-inspector">
+    <UiPanel className="data-inspector" variant="inspector">
       <header className="inspector-entity-card">
         <div className="inspector-entity-title-row">
           <input
@@ -679,6 +680,6 @@ export function InspectorPanel({
             ))}
         </details>
       </div>
-    </section>
+    </UiPanel>
   );
 }
