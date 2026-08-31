@@ -153,7 +153,7 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
         <UiPanelSection
           className="texture-inspector-section"
           collapsed={collapsedSections.mipmaps}
-          onToggle={() => toggleSection('vmipmaps')}
+          onToggle={() => toggleSection('mipmaps')}
           title="Mipmaps"
         >
           <TextureProperty label="Generate Mips" value={(asset.mipLevels ?? 1) > 1 ? 'Yes' : 'No'} />
@@ -179,7 +179,7 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
         <UiPanelSection
           className="texture-inspector-section"
           collapsed={collapsedSections.streaming}
-          onToggle={() => toggleSection('tstreaming')}
+          onToggle={() => toggleSection('streaming')}
           title="Streaming"
         >
           <TextureProperty label="Mode" value={asset.streamingMode ?? 'Not reported'} />
