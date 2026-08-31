@@ -52,7 +52,7 @@ struct texture_import_settings
     bool preserve_alpha_coverage{};
 };
 
-struct texture_preprocess_result
+struct [[nodiscard]] texture_preprocess_result
 {
     texture_data texture;
     texture_artifact_metadata metadata;
