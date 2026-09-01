@@ -273,6 +273,81 @@ void rebuild_rgba8_mips(texture_data& texture, const texture_import_settings& se
     texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
 }
 
+float mapped_channel(const std::array<float, 4>& rgba, texture_channel_source source) noexcept
+{
+    switch (source)
+    {
+        case texture_channel_source::red:
+            return rgba[0];
+        case texture_channel_source::green:
+            return rgba[1];
+        case texture_channel_source::blue:
+            return rgba[2];
+        case texture_channel_source::alpha:
+            return rgba[3];
+        case texture_channel_source::zero:
+            return 0.0f;
+        case texture_channel_source::one:
+            return 1.0f;
+    }
+    return 0.0f;
+}
+
+void apply_stage3_rgba8(std::vector<std::byte>& pixels, const texture_import_settings& settings) noexcept
+{
+    const texture_channel_source channels[4]{settings.channel_r, settings.channel_g, settings.channel_b,
+                                             settings.channel_a};
+    const bool invert[4]{settings.invert_r, settings.invert_g, settings.invert_b, settings.invert_a};
+    const float level_range = std::max(0.0001f, settings.input_white - settings.input_black);
+    const float exposure = std::exp2(settings.brightness);
+    for (std::size_t offset = 0; offset + 3u < pixels.size(); offset += 4u)
+    {
+        std::array<float, 4> source{};
+        for (std::size_t channel = 0; channel < 4u; ++channel)
+            source[channel] = static_cast<float>(std::to_integer<std::uint8_t>(pixels[offset + channel])) / 255.0f;
+        std::array<float, 4> value{};
+        for (std::size_t channel = 0; channel < 4u; ++channel)
+        {
+            value[channel] = mapped_channel(source, channels[channel]);
+            if (invert[channel]) value[channel] = 1.0f - value[channel];
+        }
+
+        if (settings.semantic != texture_semantic::normal)
+        {
+            for (std::size_t channel = 0; channel < 3u; ++channel)
+            {
+                if (settings.color_space == texture_color_space::srgb)
+                    value[channel] = srgb_to_linear_channel(value[channel]);
+                value[channel] = std::clamp((value[channel] - settings.input_black) / level_range, 0.0f, 1.0f);
+                value[channel] = std::pow(value[channel], 1.0f / settings.gamma);
+                value[channel] *= exposure;
+                value[channel] = (value[channel] - 0.5f) * settings.contrast + 0.5f;
+            }
+            const float luminance = value[0] * 0.2126f + value[1] * 0.7152f + value[2] * 0.0722f;
+            for (std::size_t channel = 0; channel < 3u; ++channel)
+                value[channel] = luminance + (value[channel] - luminance) * settings.saturation;
+            const float maximum = std::max({value[0], value[1], value[2]});
+            const float minimum = std::min({value[0], value[1], value[2]});
+            const float vibrance = 1.0f + settings.vibrance * (1.0f - std::clamp(maximum - minimum, 0.0f, 1.0f));
+            for (std::size_t channel = 0; channel < 3u; ++channel)
+                value[channel] = luminance + (value[channel] - luminance) * vibrance;
+            value[0] *= settings.tint_r;
+            value[1] *= settings.tint_g;
+            value[2] *= settings.tint_b;
+            for (std::size_t channel = 0; channel < 3u; ++channel)
+            {
+                value[channel] = settings.output_black + std::clamp(value[channel], 0.0f, 1.0f) *
+                                                             (settings.output_white - settings.output_black);
+                value[channel] = std::clamp(value[channel], 0.0f, 1.0f);
+                if (settings.color_space == texture_color_space::srgb)
+                    value[channel] = linear_to_srgb_channel(value[channel]);
+            }
+        }
+        for (std::size_t channel = 0; channel < 4u; ++channel)
+            pixels[offset + channel] = byte_channel(value[channel]);
+    }
+}
+
 } // namespace
 
 std::string_view texture_import_preset_name(texture_import_preset value) noexcept
@@ -401,6 +476,25 @@ std::string_view texture_mip_generation_filter_name(texture_mip_generation_filte
 {
     return value == texture_mip_generation_filter::nearest ? "nearest" : "box";
 }
+std::string_view texture_channel_source_name(texture_channel_source value) noexcept
+{
+    switch (value)
+    {
+        case texture_channel_source::red:
+            return "red";
+        case texture_channel_source::green:
+            return "green";
+        case texture_channel_source::blue:
+            return "blue";
+        case texture_channel_source::alpha:
+            return "alpha";
+        case texture_channel_source::zero:
+            return "zero";
+        case texture_channel_source::one:
+            return "one";
+    }
+    return "zero";
+}
 
 std::optional<texture_import_preset> parse_texture_import_preset(std::string_view value) noexcept
 {
@@ -485,6 +579,15 @@ std::optional<texture_mip_generation_filter> parse_texture_mip_generation_filter
 {
     return enum_value<texture_mip_generation_filter>(
         value, {{"box", texture_mip_generation_filter::box}, {"nearest", texture_mip_generation_filter::nearest}});
+}
+std::optional<texture_channel_source> parse_texture_channel_source(std::string_view value) noexcept
+{
+    return enum_value<texture_channel_source>(value, {{"red", texture_channel_source::red},
+                                                      {"green", texture_channel_source::green},
+                                                      {"blue", texture_channel_source::blue},
+                                                      {"alpha", texture_channel_source::alpha},
+                                                      {"zero", texture_channel_source::zero},
+                                                      {"one", texture_channel_source::one}});
 }
 
 texture_import_settings texture_import_settings_for_preset(texture_import_preset preset) noexcept
@@ -590,6 +693,33 @@ texture_import_settings_result parse_texture_import_settings(std::string_view ca
     if (const auto error = parse_string_field("mipGenerationFilter", parse_texture_mip_generation_filter,
                                               settings.mip_generation_filter))
         return texture_import_settings_result::failure(*error);
+    if (settings_version >= 5)
+    {
+        if (const auto error = parse_string_field("channelR", parse_texture_channel_source, settings.channel_r))
+            return texture_import_settings_result::failure(*error);
+        if (const auto error = parse_string_field("channelG", parse_texture_channel_source, settings.channel_g))
+            return texture_import_settings_result::failure(*error);
+        if (const auto error = parse_string_field("channelB", parse_texture_channel_source, settings.channel_b))
+            return texture_import_settings_result::failure(*error);
+        if (const auto error = parse_string_field("channelA", parse_texture_channel_source, settings.channel_a))
+            return texture_import_settings_result::failure(*error);
+        settings.brightness = document.value("brightness", settings.brightness);
+        settings.gamma = document.value("gamma", settings.gamma);
+        settings.contrast = document.value("contrast", settings.contrast);
+        settings.saturation = document.value("saturation", settings.saturation);
+        settings.vibrance = document.value("vibrance", settings.vibrance);
+        settings.tint_r = document.value("tintR", settings.tint_r);
+        settings.tint_g = document.value("tintG", settings.tint_g);
+        settings.tint_b = document.value("tintB", settings.tint_b);
+        settings.input_black = document.value("inputBlack", settings.input_black);
+        settings.input_white = document.value("inputWhite", settings.input_white);
+        settings.output_black = document.value("outputBlack", settings.output_black);
+        settings.output_white = document.value("outputWhite", settings.output_white);
+        settings.invert_r = document.value("invertR", settings.invert_r);
+        settings.invert_g = document.value("invertG", settings.invert_g);
+        settings.invert_b = document.value("invertB", settings.invert_b);
+        settings.invert_a = document.value("invertA", settings.invert_a);
+    }
     settings.max_size = document.value("maxSize", settings.max_size);
     settings.anisotropy = document.value("anisotropy", settings.anisotropy);
     settings.lod_bias = document.value("lodBias", settings.lod_bias);
@@ -602,7 +732,19 @@ texture_import_settings_result parse_texture_import_settings(std::string_view ca
         settings.anisotropy < 1.0f || settings.anisotropy > 16.0f || !std::isfinite(settings.lod_bias) ||
         !std::isfinite(settings.minimum_lod) || !std::isfinite(settings.maximum_lod) ||
         settings.maximum_lod < settings.minimum_lod || !std::isfinite(settings.alpha_coverage_threshold) ||
-        settings.alpha_coverage_threshold < 0.0f || settings.alpha_coverage_threshold > 1.0f)
+        settings.alpha_coverage_threshold < 0.0f || settings.alpha_coverage_threshold > 1.0f ||
+        !std::isfinite(settings.brightness) || settings.brightness < -8.0f || settings.brightness > 8.0f ||
+        !std::isfinite(settings.gamma) || settings.gamma < 0.05f || settings.gamma > 8.0f ||
+        !std::isfinite(settings.contrast) || settings.contrast < 0.0f || settings.contrast > 4.0f ||
+        !std::isfinite(settings.saturation) || settings.saturation < 0.0f || settings.saturation > 4.0f ||
+        !std::isfinite(settings.vibrance) || settings.vibrance < -1.0f || settings.vibrance > 1.0f ||
+        !std::isfinite(settings.tint_r) || !std::isfinite(settings.tint_g) || !std::isfinite(settings.tint_b) ||
+        settings.tint_r < 0.0f || settings.tint_r > 4.0f || settings.tint_g < 0.0f || settings.tint_g > 4.0f ||
+        settings.tint_b < 0.0f || settings.tint_b > 4.0f || !std::isfinite(settings.input_black) ||
+        !std::isfinite(settings.input_white) || settings.input_black < 0.0f || settings.input_white > 1.0f ||
+        settings.input_white <= settings.input_black || !std::isfinite(settings.output_black) ||
+        !std::isfinite(settings.output_white) || settings.output_black < 0.0f || settings.output_white > 1.0f ||
+        settings.output_white < settings.output_black)
         return texture_import_settings_result::failure("texture import settings contain an invalid numeric value");
     return texture_import_settings_result::success(settings);
 }
@@ -611,9 +753,22 @@ std::string serialize_texture_import_settings(const texture_import_settings& set
 {
     return json{{"alphaCoverageThreshold", settings.alpha_coverage_threshold},
                 {"anisotropy", settings.anisotropy},
+                {"brightness", settings.brightness},
+                {"channelA", texture_channel_source_name(settings.channel_a)},
+                {"channelB", texture_channel_source_name(settings.channel_b)},
+                {"channelG", texture_channel_source_name(settings.channel_g)},
+                {"channelR", texture_channel_source_name(settings.channel_r)},
                 {"colorSpace", texture_color_space_name(settings.color_space)},
                 {"compression", texture_compression_policy_name(settings.compression)},
+                {"contrast", settings.contrast},
+                {"gamma", settings.gamma},
                 {"generateMips", settings.generate_mips},
+                {"inputBlack", settings.input_black},
+                {"inputWhite", settings.input_white},
+                {"invertA", settings.invert_a},
+                {"invertB", settings.invert_b},
+                {"invertG", settings.invert_g},
+                {"invertR", settings.invert_r},
                 {"lodBias", settings.lod_bias},
                 {"magFilter", texture_filter_mode_name(settings.mag_filter)},
                 {"maxSize", settings.max_size},
@@ -622,11 +777,18 @@ std::string serialize_texture_import_settings(const texture_import_settings& set
                 {"minimumLod", settings.minimum_lod},
                 {"mipFilter", texture_mip_filter_mode_name(settings.mip_filter)},
                 {"mipGenerationFilter", texture_mip_generation_filter_name(settings.mip_generation_filter)},
+                {"outputBlack", settings.output_black},
+                {"outputWhite", settings.output_white},
                 {"powerOfTwo", texture_power_of_two_policy_name(settings.power_of_two)},
                 {"preset", texture_import_preset_name(settings.preset)},
                 {"preserveAlphaCoverage", settings.preserve_alpha_coverage},
+                {"saturation", settings.saturation},
                 {"semantic", texture_semantic_name(settings.semantic)},
                 {"streamingMode", texture_streaming_mode_name(settings.streaming_mode)},
+                {"tintB", settings.tint_b},
+                {"tintG", settings.tint_g},
+                {"tintR", settings.tint_r},
+                {"vibrance", settings.vibrance},
                 {"wrapU", texture_address_mode_name(settings.wrap_u)},
                 {"wrapV", texture_address_mode_name(settings.wrap_v)}}
         .dump();
@@ -689,6 +851,7 @@ texture_preprocess_result_type preprocess_texture_for_cook(texture_data texture,
         auto level = desired_width == texture.width && desired_height == texture.height
                          ? std::vector<std::byte>(base.begin(), base.end())
                          : resize_rgba8(base, texture.width, texture.height, desired_width, desired_height);
+        apply_stage3_rgba8(level, settings);
         texture.width = desired_width;
         texture.height = desired_height;
         rebuild_rgba8_mips(texture, settings, std::move(level));
@@ -760,7 +923,7 @@ texture_cook_processor::texture_cook_processor()
 {
     descriptor_ = {.id = assets::cook_processor_ids::texture,
                    .name = "ARC Texture Cooker",
-                   .version = 4,
+                   .version = 5,
                    .schema = assets::artifact_schemas::texture,
                    .schema_version = texture_artifact_schema_version,
                    .affinity = jobs::job_affinity::any_worker,
@@ -772,7 +935,7 @@ const assets::asset_cook_processor_descriptor& texture_cook_processor::descripto
 }
 std::string texture_cook_processor::toolchain_fingerprint() const
 {
-    return "arc-texture-cooker-v4:arctex-v2:deterministic-preprocessing:sampling-policy";
+    return "arc-texture-cooker-v5:arctex-v2:stage3-adjustments:channel-mapping";
 }
 
 assets::asset_cook_result texture_cook_processor::cook(const assets::asset_cook_context& context)

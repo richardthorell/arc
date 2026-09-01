@@ -4,8 +4,11 @@ import { Image, Maximize2 } from 'lucide-react';
 
 import type { EditorDocument } from '../editors/editorTypes';
 import type { AssetItem } from '../services/editorHostTypes';
-import { UiPanel, UiPanelSection } from '../ui';
+import { UiButton, UiPanel, UiPanelSection } from '../ui';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
+import { TextureStage3Controls } from './TextureStage3Controls';
+import { analyzeTexturePreview, type TexturePreviewAnalysis } from './texturePreviewProcessing';
+import { useTextureSettings } from './useTextureSettings';
 import {
   getTextureSettings,
   patchTextureSettings,
@@ -254,6 +257,8 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
           <TextureProperty label="Alpha" value="Not reported" />
           <TextureProperty label="Source Size" value={formatBytes(asset.sourceBytes)} />
         </UiPanelSection>
+
+        <TextureStage3Controls asset={asset} />
 
         <UiPanelSection
           className="texture-inspector-section"
@@ -624,6 +629,9 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
   const resizeRef = useRef<{ startX: number; width: number } | null>(null);
   const [preview, setPreview] = useState<HostAssetThumbnailSnapshot | null>(null);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const [analysis, setAnalysis] = useState<TexturePreviewAnalysis | null>(null);
+  const [pixelReadout, setPixelReadout] = useState<string>('');
+  const { settings: previewSettings } = useTextureSettings(asset.guid, asset.generation);
   const [viewport, setViewport] = useState<ViewportMetrics>({ scrollLeft: 0, scrollTop: 0, width: 0, height: 0 });
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
@@ -667,6 +675,24 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
       active = false;
     };
   }, [asset.path, asset.generation]);
+
+  useEffect(() => {
+    let active = true;
+    if (!preview?.dataUrl || !previewSettings) {
+      setAnalysis(null);
+      return;
+    }
+    void analyzeTexturePreview(preview.dataUrl, previewSettings)
+      .then((value) => {
+        if (active) setAnalysis(value);
+      })
+      .catch(() => {
+        if (active) setAnalysis(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [preview?.dataUrl, previewSettings]);
 
   useEffect(() => {
     const scroll = scrollRef.current;
@@ -778,6 +804,33 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
     setInspectorWidth(Math.min(maxInspectorWidth, Math.max(minInspectorWidth, width)));
   };
 
+  const inspectPixel = (event: ReactPointerEvent<HTMLImageElement>) => {
+    if (!analysis) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.min(
+      analysis.width - 1,
+      Math.max(0, Math.floor(((event.clientX - rect.left) / rect.width) * analysis.width)),
+    );
+    const y = Math.min(
+      analysis.height - 1,
+      Math.max(0, Math.floor(((event.clientY - rect.top) / rect.height) * analysis.height)),
+    );
+    const offset = (y * analysis.width + x) * 4;
+    const s = analysis.sourcePixels;
+    const p = analysis.processedPixels;
+    setPixelReadout(
+      `${x}, ${y}  Source ${s[offset]}, ${s[offset + 1]}, ${s[offset + 2]}, ${s[offset + 3]}  Processed ${p[offset]}, ${p[offset + 1]}, ${p[offset + 2]}, ${p[offset + 3]}`,
+    );
+  };
+
+  const previewDataUrl = analysis
+    ? viewState.previewMode === 'source'
+      ? analysis.sourceDataUrl
+      : viewState.previewMode === 'difference'
+        ? analysis.differenceDataUrl
+        : analysis.processedDataUrl
+    : preview?.dataUrl;
+
   const endResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     resizeRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId))
@@ -803,7 +856,36 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
             {preview && <VerticalRuler height={displayHeight} zoom={zoom} offset={imageTop - viewport.scrollTop} />}
           </div>
           <div className="texture-preview-scroll" onScroll={onScroll} ref={scrollRef}>
-            {preview?.dataUrl && !previewFailed ? (
+            <div className="texture-preview-analysis-bar" onPointerDown={(event) => event.stopPropagation()}>
+              <span className="texture-preview-mode-group">
+                {(['source', 'processed', 'difference'] as const).map((mode) => (
+                  <UiButton
+                    active={viewState.previewMode === mode}
+                    key={mode}
+                    onClick={() => setTextureEditorViewState(document.id, { previewMode: mode })}
+                    variant="toolbar"
+                  >
+                    {mode[0].toUpperCase() + mode.slice(1)}
+                  </UiButton>
+                ))}
+              </span>
+              {analysis && (
+                <span className="texture-preview-histogram" title="Processed RGB histogram">
+                  {Array.from({ length: 32 }, (_, index) => {
+                    const start = index * 8;
+                    const value = Math.max(
+                      ...analysis.histogram.r.slice(start, start + 8),
+                      ...analysis.histogram.g.slice(start, start + 8),
+                      ...analysis.histogram.b.slice(start, start + 8),
+                    );
+                    const peak = Math.max(1, ...analysis.histogram.r, ...analysis.histogram.g, ...analysis.histogram.b);
+                    return <i key={index} style={{ height: `${Math.max(2, (value / peak) * 20)}px` }} />;
+                  })}
+                </span>
+              )}
+              <span className="texture-preview-pixel-readout">{pixelReadout || 'Hover image for pixel values'}</span>
+            </div>
+            {previewDataUrl && !previewFailed ? (
               <div className="texture-preview-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
                 <div
                   className="texture-preview-image-frame"
@@ -826,7 +908,9 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
                     alt={`${asset.name} texture preview`}
                     draggable={false}
                     height={renderedHeight}
-                    src={preview.dataUrl}
+                    onPointerMove={inspectPixel}
+                    onPointerLeave={() => setPixelReadout('')}
+                    src={previewDataUrl}
                     style={{ filter: `url(#texture-channel-filter-${document.id.replace(/[^a-zA-Z0-9_-]/g, '-')})` }}
                     width={renderedWidth}
                   />

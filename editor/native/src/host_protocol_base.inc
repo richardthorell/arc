@@ -2225,6 +2225,10 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             string_value(payload, "wrapU", command.wrap_u);
             string_value(payload, "wrapV", command.wrap_v);
             string_value(payload, "mipGenerationFilter", command.mip_generation_filter);
+            string_value(payload, "channelR", command.channel_r);
+            string_value(payload, "channelG", command.channel_g);
+            string_value(payload, "channelB", command.channel_b);
+            string_value(payload, "channelA", command.channel_a);
             const auto optional_number = [&](std::string_view key, auto& target)
             {
                 using value_type = typename std::decay_t<decltype(target)>::value_type;
@@ -2246,7 +2250,16 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                 !optional_number("lodBias", command.lod_bias) || !optional_number("minimumLod", command.minimum_lod) ||
                 !optional_number("maximumLod", command.maximum_lod) ||
                 !optional_number("alphaCoverageThreshold", command.alpha_coverage_threshold) ||
-                !optional_bool("generateMips", command.generate_mips) ||
+                !optional_number("brightness", command.brightness) || !optional_number("gamma", command.gamma) ||
+                !optional_number("contrast", command.contrast) || !optional_number("saturation", command.saturation) ||
+                !optional_number("vibrance", command.vibrance) || !optional_number("tintR", command.tint_r) ||
+                !optional_number("tintG", command.tint_g) || !optional_number("tintB", command.tint_b) ||
+                !optional_number("inputBlack", command.input_black) ||
+                !optional_number("inputWhite", command.input_white) ||
+                !optional_number("outputBlack", command.output_black) ||
+                !optional_number("outputWhite", command.output_white) || !optional_bool("invertR", command.invert_r) ||
+                !optional_bool("invertG", command.invert_g) || !optional_bool("invertB", command.invert_b) ||
+                !optional_bool("invertA", command.invert_a) || !optional_bool("generateMips", command.generate_mips) ||
                 !optional_bool("preserveAlphaCoverage", command.preserve_alpha_coverage))
             {
                 error = "Texture settings patch contains an invalid value";
@@ -2256,8 +2269,13 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                 command.streaming_mode.empty() && command.compression.empty() && command.power_of_two.empty() &&
                 command.min_filter.empty() && command.mag_filter.empty() && command.mip_filter.empty() &&
                 command.wrap_u.empty() && command.wrap_v.empty() && command.mip_generation_filter.empty() &&
-                !command.max_size && !command.anisotropy && !command.lod_bias && !command.minimum_lod &&
-                !command.maximum_lod && !command.alpha_coverage_threshold && !command.generate_mips &&
+                command.channel_r.empty() && command.channel_g.empty() && command.channel_b.empty() &&
+                command.channel_a.empty() && !command.max_size && !command.anisotropy && !command.lod_bias &&
+                !command.minimum_lod && !command.maximum_lod && !command.alpha_coverage_threshold &&
+                !command.brightness && !command.gamma && !command.contrast && !command.saturation &&
+                !command.vibrance && !command.tint_r && !command.tint_g && !command.tint_b && !command.input_black &&
+                !command.input_white && !command.output_black && !command.output_white && !command.invert_r &&
+                !command.invert_g && !command.invert_b && !command.invert_a && !command.generate_mips &&
                 !command.preserve_alpha_coverage)
             {
                 error = "Texture settings patch requires at least one setting";
