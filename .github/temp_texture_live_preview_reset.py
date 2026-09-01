@@ -1,0 +1,188 @@
+from pathlib import Path
+
+controls = Path('editor/src/renderer/src/texture/TextureStage3Controls.tsx')
+text = controls.read_text()
+text = text.replace("import { useEffect, useRef, useState } from 'react';", "import { useEffect, useRef, useState } from 'react';\nimport { RotateCcw } from 'lucide-react';")
+text = text.replace("  disabled,\n  onChange,\n}: {", "  disabled,\n  defaultValue,\n  onChange,\n}: {")
+text = text.replace("  disabled?: boolean;\n  onChange: (value: number) => void;", "  disabled?: boolean;\n  defaultValue: number;\n  onChange: (value: number) => void;")
+marker = '''        <input
+          aria-label={label}
+          className="texture-inspector-input"
+          disabled={disabled}
+          min={min}
+          max={max}
+          step={step}
+          type="number"
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+      </span>'''
+replacement = '''        <input
+          aria-label={label}
+          className="texture-inspector-input"
+          disabled={disabled}
+          min={min}
+          max={max}
+          step={step}
+          type="number"
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+        />
+        <button
+          aria-label={`Reset ${label}`}
+          className="inspector-field-reset"
+          disabled={disabled || Object.is(value, defaultValue)}
+          onClick={() => onChange(defaultValue)}
+          title={`Reset ${label}`}
+          type="button"
+        >
+          <RotateCcw aria-hidden="true" size={12} />
+        </button>
+      </span>'''
+if marker not in text:
+    raise SystemExit('number input marker not found')
+text = text.replace(marker, replacement, 1)
+defaults = {
+    'Brightness': '0', 'Gamma': '1', 'Contrast': '1', 'Saturation': '1', 'Vibrance': '0',
+    'Tint R': '1', 'Tint G': '1', 'Tint B': '1', 'Input Black': '0', 'Input White': '1',
+    'Output Black': '0', 'Output White': '1'
+}
+for label, value in defaults.items():
+    needle = f'          label="{label}"\n'
+    if needle not in text:
+        raise SystemExit(f'missing {label}')
+    text = text.replace(needle, f'          defaultValue={{{value}}}\n' + needle, 1)
+old = '''  const update = (patch: TextureSettingsPatch) => {
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      void patchTextureSettings(asset.guid!, patch);
+    }, 250);
+  };'''
+new = '''  const update = (patch: TextureSettingsPatch) => {
+    setDraft((current) => (current ? { ...current, ...patch } : current));
+    window.dispatchEvent(new CustomEvent('arc:texture-settings-preview', { detail: { guid: asset.guid, patch } }));
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      void patchTextureSettings(asset.guid!, patch);
+    }, 250);
+  };'''
+if old not in text:
+    raise SystemExit('update marker missing')
+controls.write_text(text.replace(old, new, 1))
+
+hook = Path('editor/src/renderer/src/texture/useTextureSettings.ts')
+text = hook.read_text()
+text = text.replace("import { getTextureSettings, type TextureSettingsSnapshot } from './textureSettings';", "import {\n  getTextureSettings,\n  type TextureSettingsPatch,\n  type TextureSettingsSnapshot,\n} from './textureSettings';")
+old = '''    const onChanged = (event: Event) => {
+      if ((event as CustomEvent<{ guid?: string }>).detail?.guid === guid) load();
+    };
+    load();
+    window.addEventListener('arc:texture-settings-changed', onChanged);
+    return () => {
+      active = false;
+      window.removeEventListener('arc:texture-settings-changed', onChanged);
+    };'''
+new = '''    const onChanged = (event: Event) => {
+      if ((event as CustomEvent<{ guid?: string }>).detail?.guid === guid) load();
+    };
+    const onPreview = (event: Event) => {
+      const detail = (event as CustomEvent<{ guid?: string; patch?: TextureSettingsPatch }>).detail;
+      if (detail?.guid !== guid || !detail.patch) return;
+      setSettings((current) => (current ? { ...current, ...detail.patch } : current));
+    };
+    load();
+    window.addEventListener('arc:texture-settings-changed', onChanged);
+    window.addEventListener('arc:texture-settings-preview', onPreview);
+    return () => {
+      active = false;
+      window.removeEventListener('arc:texture-settings-changed', onChanged);
+      window.removeEventListener('arc:texture-settings-preview', onPreview);
+    };'''
+if old not in text:
+    raise SystemExit('hook marker missing')
+hook.write_text(text.replace(old, new, 1))
+
+css = Path('editor/src/renderer/src/texture/textureEditor.css')
+text = css.read_text()
+old = 'grid-template-columns: minmax(70px, 1fr) 68px;'
+if old not in text:
+    raise SystemExit('css grid marker missing')
+css.write_text(text.replace(old, 'grid-template-columns: minmax(70px, 1fr) 68px 22px;', 1))
+
+Path('editor/src/renderer/src/texture/TextureStage3Controls.test.tsx').write_text(r'''import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { TextureStage3Controls } from './TextureStage3Controls';
+
+const settings = {
+  settingsVersion: 5,
+  preset: 'color' as const,
+  semantic: 'base_color' as const,
+  colorSpace: 'linear' as const,
+  streamingMode: 'streamed_mips' as const,
+  compression: 'color' as const,
+  powerOfTwo: 'preserve' as const,
+  minFilter: 'linear' as const,
+  magFilter: 'linear' as const,
+  mipFilter: 'linear' as const,
+  wrapU: 'repeat' as const,
+  wrapV: 'repeat' as const,
+  mipGenerationFilter: 'box' as const,
+  maxSize: 8192,
+  anisotropy: 8,
+  lodBias: 0,
+  minimumLod: 0,
+  maximumLod: 1000,
+  alphaCoverageThreshold: 0.5,
+  brightness: 0.2,
+  gamma: 1.55,
+  contrast: 1,
+  saturation: 1,
+  vibrance: 0,
+  tintR: 1,
+  tintG: 1,
+  tintB: 1,
+  inputBlack: 0,
+  inputWhite: 1,
+  outputBlack: 0,
+  outputWhite: 1,
+  channelR: 'red' as const,
+  channelG: 'green' as const,
+  channelB: 'blue' as const,
+  channelA: 'alpha' as const,
+  invertR: false,
+  invertG: false,
+  invertB: false,
+  invertA: false,
+  generateMips: true,
+  preserveAlphaCoverage: false,
+};
+
+describe('TextureStage3Controls', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('previews slider changes immediately and resets controls to their neutral default', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
+    const query = vi.fn().mockResolvedValue({ succeeded: true, payload: settings });
+    Object.defineProperty(window, 'arc', { configurable: true, value: { host: { command, query } } });
+    const preview = vi.fn();
+    window.addEventListener('arc:texture-settings-preview', preview);
+
+    render(
+      <TextureStage3Controls
+        asset={{ id: 'texture', name: 'T', path: 'T.png', kind: 'texture', status: 'ready', guid: 'guid' }}
+      />,
+    );
+    const slider = await screen.findByLabelText('Brightness slider');
+    fireEvent.change(slider, { target: { value: '0.6' } });
+    expect(preview).toHaveBeenCalled();
+    expect(screen.getByLabelText('Brightness')).toHaveValue(0.6);
+
+    fireEvent.click(screen.getByLabelText('Reset Brightness'));
+    expect(screen.getByLabelText('Brightness')).toHaveValue(0);
+    await waitFor(() => expect(command).toHaveBeenCalled());
+    window.removeEventListener('arc:texture-settings-preview', preview);
+  });
+});
+''')
