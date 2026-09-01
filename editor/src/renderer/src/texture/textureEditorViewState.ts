@@ -5,12 +5,14 @@ export type TextureEditorViewState = {
   zoom: number;
   mipLevel: number;
   channels: TextureChannels;
+  previewMode: 'source' | 'processed' | 'difference';
 };
 
 const createInitialState = (): TextureEditorViewState => ({
   zoom: 1,
   mipLevel: 0,
   channels: { r: true, g: true, b: true, a: true },
+  previewMode: 'processed',
 });
 
 const states = new Map<string, TextureEditorViewState>();

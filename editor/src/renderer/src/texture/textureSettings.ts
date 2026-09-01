@@ -20,6 +20,7 @@ export type TextureFilterMode = 'nearest' | 'linear';
 export type TextureMipFilterMode = 'nearest' | 'linear';
 export type TextureAddressMode = 'repeat' | 'clamp_to_edge' | 'mirrored_repeat';
 export type TextureMipGenerationFilter = 'box' | 'nearest';
+export type TextureChannelSource = 'red' | 'green' | 'blue' | 'alpha' | 'zero' | 'one';
 
 export type TextureSettingsSnapshot = {
   settingsVersion: number;
@@ -41,6 +42,26 @@ export type TextureSettingsSnapshot = {
   minimumLod: number;
   maximumLod: number;
   alphaCoverageThreshold: number;
+  brightness: number;
+  gamma: number;
+  contrast: number;
+  saturation: number;
+  vibrance: number;
+  tintR: number;
+  tintG: number;
+  tintB: number;
+  inputBlack: number;
+  inputWhite: number;
+  outputBlack: number;
+  outputWhite: number;
+  channelR: TextureChannelSource;
+  channelG: TextureChannelSource;
+  channelB: TextureChannelSource;
+  channelA: TextureChannelSource;
+  invertR: boolean;
+  invertG: boolean;
+  invertB: boolean;
+  invertA: boolean;
   generateMips: boolean;
   preserveAlphaCoverage: boolean;
 };
@@ -63,4 +84,5 @@ export async function patchTextureSettings(guid: string, patch: TextureSettingsP
     ...patch,
   })) as HostResponse<unknown>;
   if (!response.succeeded) throw new Error(response.error || 'Could not update texture settings');
+  window.dispatchEvent(new CustomEvent('arc:texture-settings-changed', { detail: { guid } }));
 }

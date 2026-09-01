@@ -2108,7 +2108,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                         !parse_setting(payload.wrap_v, render::tools::parse_texture_address_mode, settings.wrap_v) ||
                         !parse_setting(payload.mip_generation_filter,
                                        render::tools::parse_texture_mip_generation_filter,
-                                       settings.mip_generation_filter))
+                                       settings.mip_generation_filter) ||
+                        !parse_setting(payload.channel_r, render::tools::parse_texture_channel_source,
+                                       settings.channel_r) ||
+                        !parse_setting(payload.channel_g, render::tools::parse_texture_channel_source,
+                                       settings.channel_g) ||
+                        !parse_setting(payload.channel_b, render::tools::parse_texture_channel_source,
+                                       settings.channel_b) ||
+                        !parse_setting(payload.channel_a, render::tools::parse_texture_channel_source,
+                                       settings.channel_a))
                         return fail("Unknown texture import policy value");
                     if (payload.max_size) settings.max_size = *payload.max_size;
                     if (payload.anisotropy) settings.anisotropy = *payload.anisotropy;
@@ -2117,6 +2125,22 @@ host_response arc_host::execute(const host_command_envelope& command)
                     if (payload.maximum_lod) settings.maximum_lod = *payload.maximum_lod;
                     if (payload.alpha_coverage_threshold)
                         settings.alpha_coverage_threshold = *payload.alpha_coverage_threshold;
+                    if (payload.brightness) settings.brightness = *payload.brightness;
+                    if (payload.gamma) settings.gamma = *payload.gamma;
+                    if (payload.contrast) settings.contrast = *payload.contrast;
+                    if (payload.saturation) settings.saturation = *payload.saturation;
+                    if (payload.vibrance) settings.vibrance = *payload.vibrance;
+                    if (payload.tint_r) settings.tint_r = *payload.tint_r;
+                    if (payload.tint_g) settings.tint_g = *payload.tint_g;
+                    if (payload.tint_b) settings.tint_b = *payload.tint_b;
+                    if (payload.input_black) settings.input_black = *payload.input_black;
+                    if (payload.input_white) settings.input_white = *payload.input_white;
+                    if (payload.output_black) settings.output_black = *payload.output_black;
+                    if (payload.output_white) settings.output_white = *payload.output_white;
+                    if (payload.invert_r) settings.invert_r = *payload.invert_r;
+                    if (payload.invert_g) settings.invert_g = *payload.invert_g;
+                    if (payload.invert_b) settings.invert_b = *payload.invert_b;
+                    if (payload.invert_a) settings.invert_a = *payload.invert_a;
                     if (payload.generate_mips) settings.generate_mips = *payload.generate_mips;
                     if (payload.preserve_alpha_coverage)
                         settings.preserve_alpha_coverage = *payload.preserve_alpha_coverage;
@@ -3781,7 +3805,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->camera_controller.pan(payload.pan_x * movement_scale, payload.pan_y * movement_scale);
                 if (payload.forward != 0.0f) state_->camera_controller.move_forward(payload.forward * movement_scale);
                 if (payload.move_right != 0.0f || payload.move_up != 0.0f || payload.move_forward != 0.0f)
-                    state_->camera_controller.move(payload.move_right * movement_scale, payload.move_up * movement_scale,
+                    state_->camera_controller.move(payload.move_right * movement_scale,
+                                                   payload.move_up * movement_scale,
                                                    payload.move_forward * movement_scale);
                 if (payload.zoom != 0.0f) state_->camera_controller.zoom(payload.zoom * movement_scale);
                 if (auto* camera_transform =
@@ -4630,6 +4655,23 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"minimumLod\":" + std::to_string(value.minimum_lod) +
                     ",\"maximumLod\":" + std::to_string(value.maximum_lod) +
                     ",\"alphaCoverageThreshold\":" + std::to_string(value.alpha_coverage_threshold) +
+                    ",\"brightness\":" + std::to_string(value.brightness) +
+                    ",\"gamma\":" + std::to_string(value.gamma) + ",\"contrast\":" + std::to_string(value.contrast) +
+                    ",\"saturation\":" + std::to_string(value.saturation) +
+                    ",\"vibrance\":" + std::to_string(value.vibrance) + ",\"tintR\":" + std::to_string(value.tint_r) +
+                    ",\"tintG\":" + std::to_string(value.tint_g) + ",\"tintB\":" + std::to_string(value.tint_b) +
+                    ",\"inputBlack\":" + std::to_string(value.input_black) +
+                    ",\"inputWhite\":" + std::to_string(value.input_white) +
+                    ",\"outputBlack\":" + std::to_string(value.output_black) +
+                    ",\"outputWhite\":" + std::to_string(value.output_white) +
+                    ",\"channelR\":" + to_json_string(render::tools::texture_channel_source_name(value.channel_r)) +
+                    ",\"channelG\":" + to_json_string(render::tools::texture_channel_source_name(value.channel_g)) +
+                    ",\"channelB\":" + to_json_string(render::tools::texture_channel_source_name(value.channel_b)) +
+                    ",\"channelA\":" + to_json_string(render::tools::texture_channel_source_name(value.channel_a)) +
+                    ",\"invertR\":" + std::string(value.invert_r ? "true" : "false") +
+                    ",\"invertG\":" + std::string(value.invert_g ? "true" : "false") +
+                    ",\"invertB\":" + std::string(value.invert_b ? "true" : "false") +
+                    ",\"invertA\":" + std::string(value.invert_a ? "true" : "false") +
                     ",\"generateMips\":" + std::string(value.generate_mips ? "true" : "false") +
                     ",\"preserveAlphaCoverage\":" + std::string(value.preserve_alpha_coverage ? "true" : "false") + '}';
                 return {.request_id = request_id, .succeeded = true, .payload_json = json};
