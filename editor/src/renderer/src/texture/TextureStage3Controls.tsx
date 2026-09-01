@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { RotateCcw } from 'lucide-react';
 
 import type { AssetItem } from '../services/editorHostTypes';
 import { UiPanelSection } from '../ui';
@@ -26,6 +27,7 @@ function NumberControl({
   max,
   step,
   disabled,
+  defaultValue,
   onChange,
 }: {
   label: string;
@@ -34,6 +36,7 @@ function NumberControl({
   max: number;
   step: number;
   disabled?: boolean;
+  defaultValue: number;
   onChange: (value: number) => void;
 }) {
   return (
@@ -61,6 +64,16 @@ function NumberControl({
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
         />
+        <button
+          aria-label={`Reset ${label}`}
+          className="inspector-field-reset"
+          disabled={disabled || Object.is(value, defaultValue)}
+          onClick={() => onChange(defaultValue)}
+          title={`Reset ${label}`}
+          type="button"
+        >
+          <RotateCcw aria-hidden="true" size={12} />
+        </button>
       </span>
     </label>
   );
@@ -81,6 +94,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
 
   const update = (patch: TextureSettingsPatch) => {
     setDraft((current) => (current ? { ...current, ...patch } : current));
+    window.dispatchEvent(new CustomEvent('arc:texture-settings-preview', { detail: { guid: asset.guid, patch } }));
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       void patchTextureSettings(asset.guid!, patch);
@@ -93,6 +107,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         {normal && <div className="texture-stage3-note">Color adjustments are bypassed for normal-map semantics.</div>}
         <NumberControl
           disabled={normal}
+          defaultValue={0}
           label="Brightness"
           min={-4}
           max={4}
@@ -102,6 +117,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Gamma"
           min={0.1}
           max={4}
@@ -111,6 +127,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Contrast"
           min={0}
           max={2}
@@ -120,6 +137,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Saturation"
           min={0}
           max={2}
@@ -129,6 +147,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={0}
           label="Vibrance"
           min={-1}
           max={1}
@@ -138,6 +157,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Tint R"
           min={0}
           max={2}
@@ -147,6 +167,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Tint G"
           min={0}
           max={2}
@@ -156,6 +177,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Tint B"
           min={0}
           max={2}
@@ -167,6 +189,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
       <UiPanelSection className="texture-inspector-section" collapsed title="Levels">
         <NumberControl
           disabled={normal}
+          defaultValue={0}
           label="Input Black"
           min={0}
           max={0.99}
@@ -176,6 +199,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Input White"
           min={0.01}
           max={1}
@@ -185,6 +209,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={0}
           label="Output Black"
           min={0}
           max={1}
@@ -194,6 +219,7 @@ export function TextureStage3Controls({ asset }: { asset: AssetItem }) {
         />
         <NumberControl
           disabled={normal}
+          defaultValue={1}
           label="Output White"
           min={0}
           max={1}
