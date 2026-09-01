@@ -726,13 +726,21 @@ private:
         bool rendered{};
         std::string message;
         update_terrain_hover();
-        {
-            std::lock_guard lock(host_mutex_);
-            host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = viewport_id_,
-                                                                       .frame_index = frame_index_++,
-                                                                       .width = value.width,
-                                                                       .height = value.height});
-        }
+        const auto host_wait_start = std::chrono::steady_clock::now();
+        std::unique_lock host_lock(host_mutex_);
+        const auto host_lock_acquired = std::chrono::steady_clock::now();
+        const auto request_start = host_lock_acquired;
+        host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = viewport_id_,
+                                                                   .frame_index = frame_index_++,
+                                                                   .width = value.width,
+                                                                   .height = value.height});
+        const auto request_end = std::chrono::steady_clock::now();
+        host_lock.unlock();
+        const auto host_wait_ms = std::chrono::duration<double, std::milli>(host_lock_acquired - host_wait_start).count();
+        const auto request_ms = std::chrono::duration<double, std::milli>(request_end - request_start).count();
+        if (host_wait_ms >= 5.0 || request_ms >= 5.0)
+            std::cerr << "[perf][host.viewport] " << viewport_id_ << " mutex-wait=" << std::fixed
+                      << std::setprecision(1) << host_wait_ms << "ms request_viewport=" << request_ms << "ms\n";
         auto present = backend_->present_surface_frame(value.width, value.height);
         rendered = present.has_value();
         if (!rendered) message = std::move(present.error().message);
@@ -750,13 +758,21 @@ private:
         if (!backend_) return;
         bool rendered{};
         std::string message;
-        {
-            std::lock_guard lock(host_mutex_);
-            host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
-                                                                       .frame_index = target.frame_index,
-                                                                       .width = target.width,
-                                                                       .height = target.height});
-        }
+        const auto host_wait_start = std::chrono::steady_clock::now();
+        std::unique_lock host_lock(host_mutex_);
+        const auto host_lock_acquired = std::chrono::steady_clock::now();
+        const auto request_start = host_lock_acquired;
+        host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
+                                                                   .frame_index = target.frame_index,
+                                                                   .width = target.width,
+                                                                   .height = target.height});
+        const auto request_end = std::chrono::steady_clock::now();
+        host_lock.unlock();
+        const auto host_wait_ms = std::chrono::duration<double, std::milli>(host_lock_acquired - host_wait_start).count();
+        const auto request_ms = std::chrono::duration<double, std::milli>(request_end - request_start).count();
+        if (host_wait_ms >= 5.0 || request_ms >= 5.0)
+            std::cerr << "[perf][host.viewport] " << target.viewport_id << " mutex-wait=" << std::fixed
+                      << std::setprecision(1) << host_wait_ms << "ms request_viewport=" << request_ms << "ms\n";
         auto present = backend_->present_viewport_output(target.viewport_id);
         rendered = present.has_value();
         if (!rendered) message = std::move(present.error().message);
@@ -1862,10 +1878,19 @@ int main()
                 continue;
             }
             arc::editor::host_response response;
-            {
-                std::lock_guard lock(host_mutex);
-                response = host->query(query);
-            }
+            const auto lock_wait_start = std::chrono::steady_clock::now();
+            std::unique_lock lock(host_mutex);
+            const auto lock_acquired = std::chrono::steady_clock::now();
+            const auto execute_start = lock_acquired;
+            response = host->query(query);
+            const auto execute_end = std::chrono::steady_clock::now();
+            lock.unlock();
+            const auto lock_wait_ms = std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
+            const auto execute_ms = std::chrono::duration<double, std::milli>(execute_end - execute_start).count();
+            if (lock_wait_ms >= 5.0 || execute_ms >= 5.0)
+                std::cerr << "[perf][host.request] query " << query.query_type << " id=" << query.request_id
+                          << " mutex-wait=" << std::fixed << std::setprecision(1) << lock_wait_ms
+                          << "ms execute=" << execute_ms << "ms\n";
             write_response(response);
         }
         else
@@ -1882,10 +1907,19 @@ int main()
             if (const auto* create = std::get_if<arc::editor::host_viewport_create_command>(&command.payload);
                 create && create->output == arc::editor::host_viewport_output_type::shared_texture)
             {
-                {
-                    std::lock_guard lock(host_mutex);
-                    response = host->execute(command);
-                }
+                const auto lock_wait_start = std::chrono::steady_clock::now();
+                std::unique_lock lock(host_mutex);
+                const auto lock_acquired = std::chrono::steady_clock::now();
+                const auto execute_start = lock_acquired;
+                response = host->execute(command);
+                const auto execute_end = std::chrono::steady_clock::now();
+                lock.unlock();
+                const auto lock_wait_ms = std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
+                const auto execute_ms = std::chrono::duration<double, std::milli>(execute_end - execute_start).count();
+                if (lock_wait_ms >= 5.0 || execute_ms >= 5.0)
+                    std::cerr << "[perf][host.request] command " << command.command_type << " id=" << command.request_id
+                              << " mutex-wait=" << std::fixed << std::setprecision(1) << lock_wait_ms
+                              << "ms execute=" << execute_ms << "ms\n";
                 if (response.succeeded)
                 {
                     std::string setup_error;
@@ -1899,8 +1933,19 @@ int main()
             }
             else
             {
-                std::lock_guard lock(host_mutex);
+                const auto lock_wait_start = std::chrono::steady_clock::now();
+                std::unique_lock lock(host_mutex);
+                const auto lock_acquired = std::chrono::steady_clock::now();
+                const auto execute_start = lock_acquired;
                 response = host->execute(command);
+                const auto execute_end = std::chrono::steady_clock::now();
+                lock.unlock();
+                const auto lock_wait_ms = std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
+                const auto execute_ms = std::chrono::duration<double, std::milli>(execute_end - execute_start).count();
+                if (lock_wait_ms >= 5.0 || execute_ms >= 5.0)
+                    std::cerr << "[perf][host.request] command " << command.command_type << " id=" << command.request_id
+                              << " mutex-wait=" << std::fixed << std::setprecision(1) << lock_wait_ms
+                              << "ms execute=" << execute_ms << "ms\n";
             }
             write_response(response);
 

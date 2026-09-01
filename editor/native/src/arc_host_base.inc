@@ -5430,6 +5430,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
 {
     if (request.viewport_id != state_->active_viewport_id)
         return {.message = "Viewport render skipped: viewport is not attached"};
+    const auto asset_poll_start = std::chrono::steady_clock::now();
     if (state_->asset_registry)
     {
         state_->asset_registry->poll();
@@ -5443,11 +5444,25 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
                            ",\"progress\":" + std::to_string(event.progress) + "}");
         }
     }
+    const auto asset_poll_end = std::chrono::steady_clock::now();
+    const auto asset_poll_ms =
+        std::chrono::duration<double, std::milli>(asset_poll_end - asset_poll_start).count();
+    if (asset_poll_ms >= 5.0)
+        arc::diagnostics::info("editor.performance", "[perf][viewport.stage] asset-poll=" +
+                                                        std::to_string(asset_poll_ms) + "ms");
+
     const auto frame_start = std::chrono::steady_clock::now();
     float delta_seconds = 0.0f;
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)
         delta_seconds = std::chrono::duration<float>(frame_start - state_->last_viewport_frame_time).count();
+    const auto simulation_start = std::chrono::steady_clock::now();
     const framework::frame_time runtime_frame = state_->simulation.advance(delta_seconds);
+    const auto simulation_ms = std::chrono::duration<double, std::milli>(
+                                   std::chrono::steady_clock::now() - simulation_start)
+                                   .count();
+    if (simulation_ms >= 5.0)
+        arc::diagnostics::info("editor.performance", "[perf][viewport.stage] simulation=" +
+                                                        std::to_string(simulation_ms) + "ms");
     if (runtime_frame.last_completed_tick.value != state_->last_runtime_tick_event)
     {
         state_->last_runtime_tick_event = runtime_frame.last_completed_tick.value;
@@ -5595,10 +5610,18 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
     view_config.features.temporal_antialiasing = view_config.anti_aliasing == render::anti_aliasing_method::taa ||
                                                  view_config.anti_aliasing == render::anti_aliasing_method::taau;
     view_config.features.temporal_upscaling = view_config.anti_aliasing == render::anti_aliasing_method::taau;
-    const auto submit_result = state_->renderer->render_frame(
-        request.frame_index,
-        render::make_scene_draw_graph("viewport", view_config, true, state_->scene.last_render.environment));
+    const auto graph_start = std::chrono::steady_clock::now();
+    auto draw_graph = render::make_scene_draw_graph("viewport", view_config, true, state_->scene.last_render.environment);
+    const auto graph_end = std::chrono::steady_clock::now();
+    const auto render_start = graph_end;
+    const auto submit_result = state_->renderer->render_frame(request.frame_index, std::move(draw_graph));
     const auto frame_end = std::chrono::steady_clock::now();
+    const auto graph_ms = std::chrono::duration<double, std::milli>(graph_end - graph_start).count();
+    const auto render_ms = std::chrono::duration<double, std::milli>(frame_end - render_start).count();
+    if (graph_ms >= 5.0 || render_ms >= 5.0)
+        arc::diagnostics::info("editor.performance", "[perf][viewport.stage] draw-graph=" +
+                                                        std::to_string(graph_ms) + "ms render-frame=" +
+                                                        std::to_string(render_ms) + "ms");
     state_->viewport_frame_ms = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
     if (state_->last_viewport_frame_time.time_since_epoch().count() != 0)
     {
