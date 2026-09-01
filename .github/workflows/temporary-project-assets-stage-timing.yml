@@ -1,0 +1,56 @@
+name: Temporary project assets stage timing
+on:
+  push:
+    branches: [perf/project-assets-texture-metadata]
+permissions:
+  contents: write
+jobs:
+  instrument:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/project-assets-texture-metadata
+      - name: Add project assets stage timing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('editor/native/src/arc_host_base.inc')
+          s = p.read_text()
+
+          loop = '''        for (const auto& asset : state_->asset_registry->search())\n        {\n'''
+          repl = '''        const auto snapshot_started = std::chrono::steady_clock::now();\n        const auto registry_search_started = std::chrono::steady_clock::now();\n        const auto registry_assets = state_->asset_registry->search();\n        const auto registry_search_ms = std::chrono::duration<double, std::milli>(\n                                            std::chrono::steady_clock::now() - registry_search_started)\n                                            .count();\n        arc::diagnostics::info(\n            "editor.assets.perf",\n            "project.assets registry search count=" + std::to_string(registry_assets.size()) +\n                " time=" + std::to_string(registry_search_ms) + "ms");\n        double metadata_load_ms{};\n        double texture_inspect_ms{};\n        std::size_t texture_count{};\n        for (const auto& asset : registry_assets)\n        {\n'''
+          if loop not in s: raise SystemExit('registry loop anchor missing')
+          s = s.replace(loop, repl, 1)
+
+          meta = '''                const auto metadata_path = assets::metadata_path_for(absolute_path);\n                if (const auto metadata = assets::load_asset_metadata(metadata_path); metadata)\n                {\n'''
+          meta_repl = '''                const auto metadata_path = assets::metadata_path_for(absolute_path);\n                const auto metadata_started = std::chrono::steady_clock::now();\n                const auto metadata = assets::load_asset_metadata(metadata_path);\n                metadata_load_ms += std::chrono::duration<double, std::milli>(\n                                        std::chrono::steady_clock::now() - metadata_started)\n                                        .count();\n                if (metadata)\n                {\n'''
+          if meta not in s: raise SystemExit('metadata anchor missing')
+          s = s.replace(meta, meta_repl, 1)
+
+          inspect = '''                    const auto texture = render::inspect_texture_asset(absolute_path);\n                    if (texture.succeeded())\n'''
+          inspect_repl = '''                    ++texture_count;\n                    const auto texture_started = std::chrono::steady_clock::now();\n                    const auto texture = render::inspect_texture_asset(absolute_path);\n                    const auto texture_elapsed_ms = std::chrono::duration<double, std::milli>(\n                                                        std::chrono::steady_clock::now() - texture_started)\n                                                        .count();\n                    texture_inspect_ms += texture_elapsed_ms;\n                    if (texture_elapsed_ms >= 25.0)\n                        arc::diagnostics::info(\n                            "editor.assets.perf",\n                            "slow texture inspect " + absolute_path.generic_string() + " time=" +\n                                std::to_string(texture_elapsed_ms) + "ms");\n                    if (texture.succeeded())\n'''
+          if inspect not in s: raise SystemExit('inspect anchor missing')
+          s = s.replace(inspect, inspect_repl, 1)
+
+          end = '''            snapshot.assets.push_back(std::move(host_asset));\n        }\n        return snapshot;\n'''
+          end_repl = '''            snapshot.assets.push_back(std::move(host_asset));\n        }\n        const auto snapshot_ms = std::chrono::duration<double, std::milli>(\n                                     std::chrono::steady_clock::now() - snapshot_started)\n                                     .count();\n        arc::diagnostics::info(\n            "editor.assets.perf",\n            "project.assets registry snapshot assets=" + std::to_string(snapshot.assets.size()) +\n                " textures=" + std::to_string(texture_count) + " metadata=" + std::to_string(metadata_load_ms) +\n                "ms texture-inspect=" + std::to_string(texture_inspect_ms) + "ms total=" +\n                std::to_string(snapshot_ms) + "ms");\n        return snapshot;\n'''
+          if end not in s: raise SystemExit('snapshot end anchor missing')
+          s = s.replace(end, end_repl, 1)
+          p.write_text(s)
+          PY
+      - name: Validate native editor build
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: |
+          cmake -S . -B out/build/project-assets-timing -G Ninja -DARC_BUILD_ENGINE_TESTS=OFF -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build out/build/project-assets-timing --target arc_host_process --parallel 2
+      - name: Commit instrumentation
+        run: |
+          rm .github/workflows/temporary-project-assets-stage-timing.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Instrument project asset snapshot stages'
+          git push
