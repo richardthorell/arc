@@ -5258,20 +5258,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             }
             return "Unknown";
         };
-        const auto snapshot_started = std::chrono::steady_clock::now();
-        const auto registry_search_started = std::chrono::steady_clock::now();
-        const auto registry_assets = state_->asset_registry->search();
-        const auto registry_search_ms = std::chrono::duration<double, std::milli>(
-                                            std::chrono::steady_clock::now() - registry_search_started)
-                                            .count();
-        arc::diagnostics::info(
-            "editor.assets.perf",
-            "project.assets registry search count=" + std::to_string(registry_assets.size()) +
-                " time=" + std::to_string(registry_search_ms) + "ms");
-        double metadata_load_ms{};
-        double texture_inspect_ms{};
-        std::size_t texture_count{};
-        for (const auto& asset : registry_assets)
+        for (const auto& asset : state_->asset_registry->search())
         {
             const bool running =
                 asset.state == arc::assets::asset_state::queued || asset.state == arc::assets::asset_state::importing;
@@ -5295,12 +5282,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             if (asset.type == arc::assets::asset_types::texture_2d)
             {
                 const auto metadata_path = assets::metadata_path_for(absolute_path);
-                const auto metadata_started = std::chrono::steady_clock::now();
-                const auto metadata = assets::load_asset_metadata(metadata_path);
-                metadata_load_ms += std::chrono::duration<double, std::milli>(
-                                        std::chrono::steady_clock::now() - metadata_started)
-                                        .count();
-                if (metadata)
+                if (const auto metadata = assets::load_asset_metadata(metadata_path); metadata)
                 {
                     host_asset.settings_version = metadata.value().settings_version;
                     const auto settings = render::tools::parse_texture_import_settings(
@@ -5320,18 +5302,7 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                         "Streaming supports DDS, PNG, JPEG, TGA, and BMP ordinary 2D textures";
                 else
                 {
-                    ++texture_count;
-                    const auto texture_started = std::chrono::steady_clock::now();
                     const auto texture = render::inspect_texture_asset(absolute_path);
-                    const auto texture_elapsed_ms = std::chrono::duration<double, std::milli>(
-                                                        std::chrono::steady_clock::now() - texture_started)
-                                                        .count();
-                    texture_inspect_ms += texture_elapsed_ms;
-                    if (texture_elapsed_ms >= 25.0)
-                        arc::diagnostics::info(
-                            "editor.assets.perf",
-                            "slow texture inspect " + absolute_path.generic_string() + " time=" +
-                                std::to_string(texture_elapsed_ms) + "ms");
                     if (texture.succeeded())
                     {
                         host_asset.width = texture.width;
@@ -5371,15 +5342,6 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             host_asset.import_running = running;
             snapshot.assets.push_back(std::move(host_asset));
         }
-        const auto snapshot_ms = std::chrono::duration<double, std::milli>(
-                                     std::chrono::steady_clock::now() - snapshot_started)
-                                     .count();
-        arc::diagnostics::info(
-            "editor.assets.perf",
-            "project.assets registry snapshot assets=" + std::to_string(snapshot.assets.size()) +
-                " textures=" + std::to_string(texture_count) + " metadata=" + std::to_string(metadata_load_ms) +
-                "ms texture-inspect=" + std::to_string(texture_inspect_ms) + "ms total=" +
-                std::to_string(snapshot_ms) + "ms");
         return snapshot;
     }
     if (!state_->assets.default_mesh_path.empty())
