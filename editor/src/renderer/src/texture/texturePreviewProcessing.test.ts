@@ -3,7 +3,7 @@ import { processTexturePixel } from './texturePreviewProcessing';
 import type { TextureSettingsSnapshot } from './textureSettings';
 
 const settings: TextureSettingsSnapshot = {
-  settingsVersion: 5,
+  settingsVersion: 6,
   preset: 'color',
   semantic: 'base_color',
   colorSpace: 'linear',
@@ -22,6 +22,10 @@ const settings: TextureSettingsSnapshot = {
   minimumLod: 0,
   maximumLod: 1000,
   alphaCoverageThreshold: 0.5,
+  mipSharpen: 0,
+  ditherMips: false,
+  debandMips: false,
+  debandStrength: 0.25,
   brightness: 0,
   gamma: 1,
   contrast: 1,
