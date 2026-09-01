@@ -20,48 +20,23 @@ jobs:
           path = Path('run_editor.py')
           text = path.read_text()
 
-          anchor = '''    parser.add_argument(
-        "--ui-lab",
-        action="store_true",
-        help="Launch the standalone editor UI control lab without building or starting the native engine host.",
-    )
-'''
-          addition = anchor + '''    parser.add_argument(
-        "--perf",
-        action="store_true",
-        help="Enable ARC editor performance diagnostics ([ARC PERF] startup and slow-operation timings).",
-    )
-    parser.add_argument(
-        "--perf-slow-ms",
-        type=float,
-        default=None,
-        metavar="MS",
-        help="Set the slow-operation threshold in milliseconds and enable performance diagnostics.",
-    )
-'''
-          if anchor not in text:
+          ui_lab = '    parser.add_argument(\n        "--ui-lab",\n        action="store_true",\n        help="Launch the standalone editor UI control lab without building or starting the native engine host.",\n    )\n'
+          perf_args = '    parser.add_argument(\n        "--perf",\n        action="store_true",\n        help="Enable ARC editor performance diagnostics ([ARC PERF] startup and slow-operation timings).",\n    )\n    parser.add_argument(\n        "--perf-slow-ms",\n        type=float,\n        default=None,\n        metavar="MS",\n        help="Set the slow-operation threshold in milliseconds and enable performance diagnostics.",\n    )\n'
+          if ui_lab not in text:
               raise SystemExit('parse_args anchor not found')
-          text = text.replace(anchor, addition, 1)
+          text = text.replace(ui_lab, ui_lab + perf_args, 1)
 
-          validation_anchor = '''    if args.ui_lab and args.quick_start:
-        parser.error("--ui-lab and --quick-start cannot be used together")
-'''
-          validation = validation_anchor + '''    if args.perf_slow_ms is not None and args.perf_slow_ms < 0:
-        parser.error("--perf-slow-ms must be zero or greater")
-'''
-          if validation_anchor not in text:
+          validation = '    if args.ui_lab and args.quick_start:\n        parser.error("--ui-lab and --quick-start cannot be used together")\n'
+          perf_validation = '    if args.perf_slow_ms is not None and args.perf_slow_ms < 0:\n        parser.error("--perf-slow-ms must be zero or greater")\n'
+          if validation not in text:
               raise SystemExit('argument validation anchor not found')
-          text = text.replace(validation_anchor, validation, 1)
+          text = text.replace(validation, validation + perf_validation, 1)
 
-          env_anchor = '    environment = os.environ.copy()\n'
-          env_block = env_anchor + '''    if args.perf or args.perf_slow_ms is not None:
-        environment["ARC_EDITOR_PERF"] = "1"
-    if args.perf_slow_ms is not None:
-        environment["ARC_EDITOR_PERF_SLOW_MS"] = str(args.perf_slow_ms)
-'''
+          env_anchor = '    tool_env = os.environ.copy()\n'
+          perf_env = '    if args.perf or args.perf_slow_ms is not None:\n        tool_env["ARC_EDITOR_PERF"] = "1"\n    if args.perf_slow_ms is not None:\n        tool_env["ARC_EDITOR_PERF_SLOW_MS"] = str(args.perf_slow_ms)\n'
           if env_anchor not in text:
               raise SystemExit('launch environment anchor not found')
-          text = text.replace(env_anchor, env_block, 1)
+          text = text.replace(env_anchor, env_anchor + perf_env, 1)
 
           path.write_text(text)
           PY
