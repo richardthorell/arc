@@ -1,0 +1,32 @@
+name: Texture live preview patch
+on: [push]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-live-preview-reset
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.12.x
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - run: python3 .github/temp_texture_live_preview_reset.py
+      - working-directory: editor
+        run: |
+          npm ci
+          npx prettier --write src/renderer/src/texture/TextureStage3Controls.tsx src/renderer/src/texture/useTextureSettings.ts src/renderer/src/texture/textureEditor.css src/renderer/src/texture/TextureStage3Controls.test.tsx
+          npm run typecheck
+          npm test -- src/renderer/src/texture/TextureStage3Controls.test.tsx src/renderer/src/texture/TextureEditor.test.tsx src/renderer/src/texture/texturePreviewProcessing.test.ts
+      - run: |
+          rm .github/workflows/temp-texture-live-preview-reset.yml .github/workflows/temp-texture-live-preview-reset-run.yml .github/temp_texture_live_preview_reset.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add live texture adjustment preview and reset controls"
+          git push origin HEAD:feat/texture-live-preview-reset
