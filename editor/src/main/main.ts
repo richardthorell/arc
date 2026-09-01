@@ -337,6 +337,18 @@ export class ArcHostClient {
   private lastError = '';
   private pendingRuntimeTick: HostEvent | null = null;
   private runtimeTickScheduled = false;
+  private readonly coalescedQueries = new Map<string, Promise<HostResponse>>();
+  private pointerMoveInFlight = new Map<string, Promise<HostResponse>>();
+  private pendingPointerMove = new Map<
+    string,
+    {
+      payload: Record<string, unknown>;
+      waiters: Array<{ resolve: (value: HostResponse) => void; reject: (error: unknown) => void }>;
+    }
+  >();
+  private thumbnailActive = 0;
+  private readonly thumbnailQueue: Array<() => void> = [];
+  private static readonly maxConcurrentThumbnails = 2;
   private readonly eventListeners = new Set<(event: HostEvent) => void>();
 
   constructor() {
@@ -437,11 +449,74 @@ export class ArcHostClient {
     edit?: Record<string, unknown>,
     expectedSceneRevision?: number,
   ): Promise<HostResponse> {
+    if (type === 'viewport.pointer' && payload.phase === 'move') return this.sendPointerMove(payload);
     return this.send({ kind: 'command', type, payload, edit, expectedSceneRevision });
   }
 
   query(type: string, payload: Record<string, unknown> = {}): Promise<HostResponse> {
+    if (type === 'viewport.state') {
+      const key = `${type}:${JSON.stringify(payload)}`;
+      const current = this.coalescedQueries.get(key);
+      if (current) return current;
+      const request = this.send({ kind: 'query', type, payload });
+      this.coalescedQueries.set(key, request);
+      void request.finally(() => {
+        if (this.coalescedQueries.get(key) === request) this.coalescedQueries.delete(key);
+      });
+      return request;
+    }
+    if (type === 'asset.thumbnail') return this.sendThumbnailQuery(type, payload);
     return this.send({ kind: 'query', type, payload });
+  }
+
+  private sendPointerMove(payload: Record<string, unknown>): Promise<HostResponse> {
+    const viewportId = typeof payload.viewportId === 'string' ? payload.viewportId : 'viewport-1';
+    if (!this.pointerMoveInFlight.has(viewportId)) {
+      const request = this.send({ kind: 'command', type: 'viewport.pointer', payload });
+      this.pointerMoveInFlight.set(viewportId, request);
+      void request.finally(() => this.flushPointerMove(viewportId));
+      return request;
+    }
+    return new Promise((resolve, reject) => {
+      const pending = this.pendingPointerMove.get(viewportId);
+      if (pending) {
+        pending.payload = payload;
+        pending.waiters.push({ resolve, reject });
+      } else {
+        this.pendingPointerMove.set(viewportId, { payload, waiters: [{ resolve, reject }] });
+      }
+    });
+  }
+
+  private flushPointerMove(viewportId: string): void {
+    this.pointerMoveInFlight.delete(viewportId);
+    const pending = this.pendingPointerMove.get(viewportId);
+    if (!pending) return;
+    this.pendingPointerMove.delete(viewportId);
+    const request = this.send({ kind: 'command', type: 'viewport.pointer', payload: pending.payload });
+    this.pointerMoveInFlight.set(viewportId, request);
+    void request
+      .then(
+        (response) => pending.waiters.forEach((waiter) => waiter.resolve(response)),
+        (error) => pending.waiters.forEach((waiter) => waiter.reject(error)),
+      )
+      .finally(() => this.flushPointerMove(viewportId));
+  }
+
+  private sendThumbnailQuery(type: string, payload: Record<string, unknown>): Promise<HostResponse> {
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        this.thumbnailActive += 1;
+        void this.send({ kind: 'query', type, payload })
+          .then(resolve, reject)
+          .finally(() => {
+            this.thumbnailActive -= 1;
+            this.thumbnailQueue.shift()?.();
+          });
+      };
+      if (this.thumbnailActive < ArcHostClient.maxConcurrentThumbnails) run();
+      else this.thumbnailQueue.push(run);
+    });
   }
 
   onEvent(listener: (event: HostEvent) => void): () => void {

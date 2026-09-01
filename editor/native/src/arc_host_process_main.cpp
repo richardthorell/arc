@@ -271,13 +271,9 @@ public:
                                           .priority = arc::jobs::job_priority::critical,
                                           .affinity = arc::jobs::job_affinity::render_thread},
                                          [this] { render_loop(); });
-        std::unique_lock lock(setup_mutex_);
-        if (!setup_cv_.wait_for(lock, std::chrono::seconds(10), [this] { return setup_complete_; }))
-            setup_error_ = "Timed out creating shared viewport renderer";
-        error = setup_error_;
-        lock.unlock();
-        if (!error.empty() && render_task_.valid()) (void)render_task_.wait_result();
-        return error.empty();
+        // Do not block the stdin command loop while Vulkan starts on the render thread.
+        error.clear();
+        return true;
     }
 
     void release_frame(std::string viewport_id, std::uint64_t generation, std::uint64_t frame_id,
@@ -660,7 +656,12 @@ private:
             config.surface_user_data = window_;
         }
 
+        const auto backend_start = std::chrono::steady_clock::now();
         auto result = arc::render::vulkan::create_vulkan_backend(config);
+        const auto backend_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - backend_start).count();
+        std::cerr << "[perf][render.vulkan] backend creation " << std::fixed << std::setprecision(1) << backend_ms
+                  << "ms\n";
         if (!result)
         {
             std::cerr << "arc_host_process Vulkan backend error: " << result.error().message << '\n';
@@ -731,10 +732,10 @@ private:
                                                                        .frame_index = frame_index_++,
                                                                        .width = value.width,
                                                                        .height = value.height});
-            auto present = backend_->present_surface_frame(value.width, value.height);
-            rendered = present.has_value();
-            if (!rendered) message = std::move(present.error().message);
         }
+        auto present = backend_->present_surface_frame(value.width, value.height);
+        rendered = present.has_value();
+        if (!rendered) message = std::move(present.error().message);
         if (rendered)
         {
             last_render_error_.clear();
@@ -755,10 +756,10 @@ private:
                                                                        .frame_index = target.frame_index,
                                                                        .width = target.width,
                                                                        .height = target.height});
-            auto present = backend_->present_viewport_output(target.viewport_id);
-            rendered = present.has_value();
-            if (!rendered) message = std::move(present.error().message);
         }
+        auto present = backend_->present_viewport_output(target.viewport_id);
+        rendered = present.has_value();
+        if (!rendered) message = std::move(present.error().message);
         if (rendered)
         {
             last_render_error_.clear();
