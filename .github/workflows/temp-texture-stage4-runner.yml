@@ -34,7 +34,7 @@ jobs:
       - name: Validate editor
         working-directory: editor
         run: |
-          npx prettier --write src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/TextureEditor.tsx
+          npx prettier --write src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/TextureEditor.tsx src/renderer/src/texture/texturePreviewProcessing.test.ts
           npm run typecheck
           npm test -- src/renderer/src/texture/TextureEditor.test.tsx src/renderer/src/texture/texturePreviewProcessing.test.ts src/renderer/src/texture/TextureStage3Controls.test.tsx
       - name: Configure native
