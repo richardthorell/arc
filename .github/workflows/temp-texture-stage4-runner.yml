@@ -26,7 +26,12 @@ jobs:
           from pathlib import Path
           text = Path('.github/workflows/temp-texture-stage4.yml').read_text()
           body = text.split("cat > /tmp/stage4.py <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
-          Path('/tmp/stage4.py').write_text('\n'.join(line[10:] if line.startswith('          ') else line for line in body.splitlines()))
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in body.splitlines())
+          start = script.index("replace(cpp, '''        settings.output_white < settings.output_black)")
+          end = script.index("\nreplace(cpp, '''        {\"maxSize\"", start)
+          fixed = "replace(cpp, 'settings.output_white < settings.output_black)', 'settings.output_white < settings.output_black || !std::isfinite(settings.mip_sharpen) || settings.mip_sharpen < 0.0f || settings.mip_sharpen > 2.0f || !std::isfinite(settings.deband_strength) || settings.deband_strength < 0.0f || settings.deband_strength > 1.0f)')"
+          script = script[:start] + fixed + script[end:]
+          Path('/tmp/stage4.py').write_text(script)
           PY
           python3 /tmp/stage4.py
       - name: Remove temporary files
