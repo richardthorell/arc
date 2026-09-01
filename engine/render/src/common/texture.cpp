@@ -538,8 +538,8 @@ texture_asset_info inspect_texture_asset(const std::filesystem::path& path)
     return {.width = static_cast<std::uint32_t>(width),
             .height = static_cast<std::uint32_t>(height),
             .format = metadata.format,
-            .mip_count = hdr ? 0u : generated_mip_count(static_cast<std::uint32_t>(width),
-                                                        static_cast<std::uint32_t>(height)),
+            .mip_count =
+                hdr ? 0u : generated_mip_count(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)),
             .message = "inspected texture metadata"};
 #else
     return {.message = "texture metadata inspection requires an image decoder for non-DDS assets"};
