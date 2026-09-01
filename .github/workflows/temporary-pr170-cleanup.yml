@@ -1,0 +1,48 @@
+name: Temporary PR 170 cleanup
+on:
+  push:
+    branches: [perf/project-assets-texture-metadata]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/project-assets-texture-metadata
+      - name: Remove temporary asset timing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('editor/native/src/arc_host_base.inc')
+          s = p.read_text()
+          s = s.replace('''        const auto snapshot_started = std::chrono::steady_clock::now();\n        const auto registry_search_started = std::chrono::steady_clock::now();\n        const auto registry_assets = state_->asset_registry->search();\n        const auto registry_search_ms = std::chrono::duration<double, std::milli>(\n                                            std::chrono::steady_clock::now() - registry_search_started)\n                                            .count();\n        arc::diagnostics::info(\n            "editor.assets.perf",\n            "project.assets registry search count=" + std::to_string(registry_assets.size()) +\n                " time=" + std::to_string(registry_search_ms) + "ms");\n        double metadata_load_ms{};\n        double texture_inspect_ms{};\n        std::size_t texture_count{};\n        for (const auto& asset : registry_assets)\n''','''        for (const auto& asset : state_->asset_registry->search())\n''',1)
+          s = s.replace('''                const auto metadata_started = std::chrono::steady_clock::now();\n                const auto metadata = assets::load_asset_metadata(metadata_path);\n                metadata_load_ms += std::chrono::duration<double, std::milli>(\n                                        std::chrono::steady_clock::now() - metadata_started)\n                                        .count();\n                if (metadata)\n''','''                if (const auto metadata = assets::load_asset_metadata(metadata_path); metadata)\n''',1)
+          s = s.replace('''                    ++texture_count;\n                    const auto texture_started = std::chrono::steady_clock::now();\n                    const auto texture = render::inspect_texture_asset(absolute_path);\n                    const auto texture_elapsed_ms = std::chrono::duration<double, std::milli>(\n                                                        std::chrono::steady_clock::now() - texture_started)\n                                                        .count();\n                    texture_inspect_ms += texture_elapsed_ms;\n                    if (texture_elapsed_ms >= 25.0)\n                        arc::diagnostics::info(\n                            "editor.assets.perf",\n                            "slow texture inspect " + absolute_path.generic_string() + " time=" +\n                                std::to_string(texture_elapsed_ms) + "ms");\n''','''                    const auto texture = render::inspect_texture_asset(absolute_path);\n''',1)
+          start = s.find('''        const auto snapshot_ms = std::chrono::duration<double, std::milli>(''')
+          if start != -1:
+              end_marker = '''                std::to_string(snapshot_ms) + "ms");\n'''
+              end = s.find(end_marker, start)
+              if end == -1: raise SystemExit('snapshot timing end not found')
+              s = s[:start] + s[end + len(end_marker):]
+          if 'editor.assets.perf' in s:
+              raise SystemExit('temporary timing remained')
+          p.write_text(s)
+          PY
+      - name: Validate
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: |
+          cmake -S . -B out/build/pr170-clean -G Ninja -DARC_BUILD_ENGINE_TESTS=ON -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build out/build/pr170-clean --target arc_render_tests arc_host_process --parallel 2
+          ctest --test-dir out/build/pr170-clean -R arc_render_tests --output-on-failure
+      - name: Commit cleanup
+        run: |
+          rm .github/workflows/temporary-pr170-cleanup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Clean up project asset performance fix'
+          git push
