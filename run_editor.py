@@ -319,9 +319,23 @@ def parse_args():
         action="store_true",
         help="Launch the standalone editor UI control lab without building or starting the native engine host.",
     )
+    parser.add_argument(
+        "--perf",
+        action="store_true",
+        help="Enable ARC editor performance diagnostics ([ARC PERF] startup and slow-operation timings).",
+    )
+    parser.add_argument(
+        "--perf-slow-ms",
+        type=float,
+        default=None,
+        metavar="MS",
+        help="Set the slow-operation threshold in milliseconds and enable performance diagnostics.",
+    )
     args = parser.parse_args()
     if args.ui_lab and args.quick_start:
         parser.error("--ui-lab and --quick-start cannot be used together")
+    if args.perf_slow_ms is not None and args.perf_slow_ms < 0:
+        parser.error("--perf-slow-ms must be zero or greater")
     return args
 
 
@@ -481,6 +495,10 @@ def main():
     host = None
     project_tool = None
     tool_env = os.environ.copy()
+    if args.perf or args.perf_slow_ms is not None:
+        tool_env["ARC_EDITOR_PERF"] = "1"
+    if args.perf_slow_ms is not None:
+        tool_env["ARC_EDITOR_PERF_SLOW_MS"] = str(args.perf_slow_ms)
     if not args.ui_lab:
         try:
             slangc = resolve_slangc(repo_root)
