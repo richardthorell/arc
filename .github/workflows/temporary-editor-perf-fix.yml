@@ -21,6 +21,9 @@ jobs:
           npm ci --prefix editor
           npm run typecheck --prefix editor
       - name: Validate native host
+        env:
+          CC: clang-18
+          CXX: clang++-18
         run: |
           cmake -S . -B out/build/perf-fix -G Ninja -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DCMAKE_BUILD_TYPE=Release
           cmake --build out/build/perf-fix --target arc_host_process --parallel 2
