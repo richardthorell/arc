@@ -3780,6 +3780,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (payload.pan_x != 0.0f || payload.pan_y != 0.0f)
                     state_->camera_controller.pan(payload.pan_x * movement_scale, payload.pan_y * movement_scale);
                 if (payload.forward != 0.0f) state_->camera_controller.move_forward(payload.forward * movement_scale);
+                if (payload.move_right != 0.0f || payload.move_up != 0.0f || payload.move_forward != 0.0f)
+                    state_->camera_controller.move(payload.move_right * movement_scale, payload.move_up * movement_scale,
+                                                   payload.move_forward * movement_scale);
                 if (payload.zoom != 0.0f) state_->camera_controller.zoom(payload.zoom * movement_scale);
                 if (auto* camera_transform =
                         state_->scene.scene.try_get<scene::transform_component>(state_->scene.camera_entity))

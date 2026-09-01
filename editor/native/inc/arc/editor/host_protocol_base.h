@@ -1337,6 +1337,9 @@ struct host_viewport_camera_input_command
     float pan_x{};
     float pan_y{};
     float forward{};
+    float move_right{};
+    float move_up{};
+    float move_forward{};
     float zoom{};
     bool focus_selected{};
 };

@@ -78,6 +78,9 @@ export type ViewportCameraInput = {
   panX?: number;
   panY?: number;
   forward?: number;
+  moveRight?: number;
+  moveUp?: number;
+  moveForward?: number;
   zoom?: number;
   focusSelected?: boolean;
 };

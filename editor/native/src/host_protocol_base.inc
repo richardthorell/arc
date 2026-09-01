@@ -3003,6 +3003,9 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         number_value(payload, "panX", command.pan_x);
         number_value(payload, "panY", command.pan_y);
         number_value(payload, "forward", command.forward);
+        number_value(payload, "moveRight", command.move_right);
+        number_value(payload, "moveUp", command.move_up);
+        number_value(payload, "moveForward", command.move_forward);
         number_value(payload, "zoom", command.zoom);
         bool_value(payload, "focusSelected", command.focus_selected);
         envelope.payload = command;

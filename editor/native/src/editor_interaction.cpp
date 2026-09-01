@@ -220,6 +220,17 @@ void editor_camera_controller::move_forward(float delta_y) noexcept
     position_ = math::add(position_, translation);
 }
 
+void editor_camera_controller::move(float right, float up, float forward) noexcept
+{
+    if (!std::isfinite(right) || !std::isfinite(up) || !std::isfinite(forward)) return;
+    const auto basis = basis_from_yaw_pitch(yaw_, pitch_);
+    constexpr math::vector3f world_up{0.0f, 1.0f, 0.0f};
+    math::vector3f translation = math::mul(basis.right, right);
+    translation = math::add(translation, math::mul(world_up, up));
+    translation = math::add(translation, math::mul(basis.forward, forward));
+    position_ = math::add(position_, translation);
+}
+
 void editor_camera_controller::zoom(float wheel_delta) noexcept
 {
     if (!std::isfinite(wheel_delta) || wheel_delta == 0.0f) return;
