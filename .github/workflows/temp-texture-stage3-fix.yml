@@ -1,0 +1,95 @@
+name: Temporary Texture Stage 3 Fix
+
+on:
+  push:
+    branches: [feat/texture-editor-stage3]
+    paths: [.github/workflows/temp-texture-stage3-fix.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-editor-stage3
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.12.x
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Apply Stage 3 implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          workflow = Path('.github/workflows/temp-texture-stage3.yml').read_text()
+          match = re.search(r"cat > /tmp/apply_stage3\.py <<'PY'\n(.*?)\n          PY\n", workflow, re.S)
+          if not match:
+              raise SystemExit('Could not extract Stage 3 implementation script')
+          script = match.group(1)
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in script.splitlines())
+          old = '''def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"pattern not found in {path}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))'''
+          # Depending on YAML indentation stripping, the extracted helper may already be unindented.
+          helper = '''def replace_once(path, old, new):
+    p = Path(path)
+    text = p.read_text()
+    if old in text:
+        p.write_text(text.replace(old, new, 1))
+        return
+    tokens = [re.escape(token) for token in re.split(r'\\s+', old.strip()) if token]
+    pattern = r'\\s+'.join(tokens)
+    updated, count = re.subn(pattern, lambda _match: new, text, count=1, flags=re.S)
+    if count != 1:
+        raise SystemExit(f"pattern not found in {path}: {old[:120]!r}")
+    p.write_text(updated)'''
+          # Ensure regex is available to the extracted implementation.
+          script = script.replace('from pathlib import Path\n', 'from pathlib import Path\nimport re\n', 1)
+          normalized_old = '''def replace_once(path, old, new):
+    p = Path(path)
+    text = p.read_text()
+    if old not in text:
+        raise SystemExit(f"pattern not found in {path}: {old[:120]!r}")
+    p.write_text(text.replace(old, new, 1))'''
+          if normalized_old not in script:
+              raise SystemExit('Could not replace Stage 3 replace_once helper')
+          script = script.replace(normalized_old, helper, 1)
+          Path('/tmp/apply_stage3.py').write_text(script)
+          PY
+          python3 /tmp/apply_stage3.py
+          rm .github/workflows/temp-texture-stage3.yml .github/workflows/temp-texture-stage3-fix.yml
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Format
+        run: |
+          clang-format -i engine/render-tools/inc/arc/render_tools/texture_cooker.h engine/render-tools/src/common/texture_cooker.cpp editor/native/inc/arc/editor/host_protocol_base.h editor/native/src/host_protocol_base.inc editor/native/src/arc_host_base.inc
+          cd editor && npx prettier --write src/renderer/src/texture/TextureEditor.tsx src/renderer/src/texture/textureEditor.css src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/useTextureSettings.ts src/renderer/src/texture/TextureStage3Controls.tsx src/renderer/src/texture/texturePreviewProcessing.ts src/renderer/src/texture/texturePreviewProcessing.test.ts src/renderer/src/texture/textureEditorViewState.ts
+      - name: Validate editor
+        working-directory: editor
+        run: |
+          npm run typecheck
+          npm test -- src/renderer/src/texture/texturePreviewProcessing.test.ts src/renderer/src/texture/TextureEditor.test.tsx
+      - name: Configure native
+        run: cmake --preset clang-vulkan -DARC_BUILD_EDITOR=ON -DARC_BUILD_ENGINE_TESTS=ON
+      - name: Build native texture tests
+        run: cmake --build --preset clang-vulkan --target arc_render_tools_tests arc-editor-host -j2
+      - name: Run native texture tests
+        run: ctest --test-dir out/build/clang-vulkan -R arc_render_tools_tests --output-on-failure
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add Stage 3 texture editor workflow"
+          git push origin HEAD:feat/texture-editor-stage3
