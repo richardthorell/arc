@@ -658,9 +658,8 @@ private:
 
         const auto backend_start = std::chrono::steady_clock::now();
         auto result = arc::render::vulkan::create_vulkan_backend(config);
-        const auto backend_ms = std::chrono::duration<double, std::milli>(
-                                    std::chrono::steady_clock::now() - backend_start)
-                                    .count();
+        const auto backend_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - backend_start).count();
         std::cerr << "[perf][render.vulkan] backend creation " << std::fixed << std::setprecision(1) << backend_ms
                   << "ms\n";
         if (!result)

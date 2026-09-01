@@ -341,7 +341,10 @@ export class ArcHostClient {
   private pointerMoveInFlight = new Map<string, Promise<HostResponse>>();
   private pendingPointerMove = new Map<
     string,
-    { payload: Record<string, unknown>; waiters: Array<{ resolve: (value: HostResponse) => void; reject: (error: unknown) => void }> }
+    {
+      payload: Record<string, unknown>;
+      waiters: Array<{ resolve: (value: HostResponse) => void; reject: (error: unknown) => void }>;
+    }
   >();
   private thumbnailActive = 0;
   private readonly thumbnailQueue: Array<() => void> = [];
