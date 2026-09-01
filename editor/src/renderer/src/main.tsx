@@ -14,6 +14,9 @@ import './ui-polish.css';
 import './viewport/viewportChromeOverrides.css';
 import './viewport/viewportChromeBehavior';
 import { App } from './App';
+import { installRendererPerformanceDiagnostics } from './performanceDiagnostics';
+
+installRendererPerformanceDiagnostics();
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
