@@ -1,0 +1,567 @@
+name: Temporary Texture Stage 4
+
+on:
+  push:
+    branches: [feat/texture-mip-pipeline-stage4]
+    paths: [.github/workflows/temp-texture-stage4.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-mip-pipeline-stage4
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.x
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Apply Stage 4 mip pipeline
+        shell: bash
+        run: |
+          cat > /tmp/stage4.py <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'missing marker in {path}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          h = 'engine/render-tools/inc/arc/render_tools/texture_cooker.h'
+          replace(h, '''enum class texture_mip_generation_filter : std::uint8_t
+          {
+              box,
+              nearest
+          };''', '''enum class texture_mip_generation_filter : std::uint8_t
+          {
+              nearest,
+              box,
+              bilinear,
+              bicubic,
+              lanczos,
+              kaiser
+          };''')
+          replace(h, 'static constexpr std::uint32_t current_version = 5;', 'static constexpr std::uint32_t current_version = 6;')
+          replace(h, '''    float alpha_coverage_threshold{0.5f};
+              float brightness{};''', '''    float alpha_coverage_threshold{0.5f};
+              float mip_sharpen{};
+              float deband_strength{0.25f};
+              bool dither_mips{};
+              bool deband_mips{};
+              float brightness{};''')
+
+          cpp = 'engine/render-tools/src/common/texture_cooker.cpp'
+          old = '''std::vector<std::byte> downsample_rgba8(std::span<const std::byte> source, std::uint32_t width, std::uint32_t height,
+                                                  std::uint32_t next_width, std::uint32_t next_height,
+                                                  const texture_import_settings& settings)
+          {
+              std::vector<std::byte> next(static_cast<std::size_t>(next_width) * next_height * 4u);
+              for (std::uint32_t y = 0; y < next_height; ++y)
+                  for (std::uint32_t x = 0; x < next_width; ++x)
+                  {
+                      const auto destination = (static_cast<std::size_t>(y) * next_width + x) * 4u;
+                      if (settings.mip_generation_filter == texture_mip_generation_filter::nearest)
+                      {
+                          const auto source_x = std::min(width - 1u, x * 2u);
+                          const auto source_y = std::min(height - 1u, y * 2u);
+                          const auto from = (static_cast<std::size_t>(source_y) * width + source_x) * 4u;
+                          std::memcpy(next.data() + destination, source.data() + from, 4u);
+                          continue;
+                      }
+                      float accumulated[4]{};
+                      std::uint32_t samples{};
+                      for (std::uint32_t oy = 0; oy < 2u; ++oy)
+                          for (std::uint32_t ox = 0; ox < 2u; ++ox)
+                          {
+                              const auto source_x = std::min(width - 1u, x * 2u + ox);
+                              const auto source_y = std::min(height - 1u, y * 2u + oy);
+                              const auto source_index = (static_cast<std::size_t>(source_y) * width + source_x) * 4u;
+                              for (std::uint32_t channel = 0; channel < 4u; ++channel)
+                              {
+                                  float value =
+                                      static_cast<float>(std::to_integer<std::uint8_t>(source[source_index + channel])) / 255.0f;
+                                  if (settings.semantic == texture_semantic::normal && channel < 3u)
+                                      value = value * 2.0f - 1.0f;
+                                  else if (settings.color_space == texture_color_space::srgb && channel < 3u)
+                                      value = srgb_to_linear_channel(value);
+                                  accumulated[channel] += value;
+                              }
+                              ++samples;
+                          }
+                      for (auto& value : accumulated)
+                          value /= static_cast<float>(samples);
+                      if (settings.semantic == texture_semantic::normal)
+                      {
+                          const float length = std::sqrt(accumulated[0] * accumulated[0] + accumulated[1] * accumulated[1] +
+                                                         accumulated[2] * accumulated[2]);
+                          if (length > 0.00001f)
+                              for (std::uint32_t channel = 0; channel < 3u; ++channel)
+                                  accumulated[channel] /= length;
+                          else
+                          {
+                              accumulated[0] = 0.0f;
+                              accumulated[1] = 0.0f;
+                              accumulated[2] = 1.0f;
+                          }
+                          next[destination] = byte_channel(accumulated[0] * 0.5f + 0.5f);
+                          next[destination + 1u] = byte_channel(accumulated[1] * 0.5f + 0.5f);
+                          next[destination + 2u] = byte_channel(accumulated[2] * 0.5f + 0.5f);
+                      }
+                      else
+                          for (std::uint32_t channel = 0; channel < 3u; ++channel)
+                              next[destination + channel] = byte_channel(settings.color_space == texture_color_space::srgb
+                                                                             ? linear_to_srgb_channel(accumulated[channel])
+                                                                             : accumulated[channel]);
+                      next[destination + 3u] = byte_channel(accumulated[3]);
+                  }
+              return next;
+          }'''
+          new = r'''float sinc(float value) noexcept
+          {
+              if (std::abs(value) < 0.00001f) return 1.0f;
+              const float x = std::numbers::pi_v<float> * value;
+              return std::sin(x) / x;
+          }
+
+          float bessel_i0(float value) noexcept
+          {
+              const float x = value * value * 0.25f;
+              float sum = 1.0f;
+              float term = 1.0f;
+              for (std::uint32_t index = 1; index <= 8; ++index)
+              {
+                  term *= x / static_cast<float>(index * index);
+                  sum += term;
+              }
+              return sum;
+          }
+
+          float mip_kernel(texture_mip_generation_filter filter, float distance) noexcept
+          {
+              const float x = std::abs(distance);
+              switch (filter)
+              {
+                  case texture_mip_generation_filter::nearest: return x < 0.5f ? 1.0f : 0.0f;
+                  case texture_mip_generation_filter::box: return x <= 1.0f ? 1.0f : 0.0f;
+                  case texture_mip_generation_filter::bilinear: return std::max(0.0f, 1.0f - x);
+                  case texture_mip_generation_filter::bicubic:
+                  {
+                      if (x >= 2.0f) return 0.0f;
+                      if (x <= 1.0f) return 1.5f * x * x * x - 2.5f * x * x + 1.0f;
+                      return -0.5f * x * x * x + 2.5f * x * x - 4.0f * x + 2.0f;
+                  }
+                  case texture_mip_generation_filter::lanczos:
+                      return x < 3.0f ? sinc(x) * sinc(x / 3.0f) : 0.0f;
+                  case texture_mip_generation_filter::kaiser:
+                  {
+                      if (x >= 3.0f) return 0.0f;
+                      constexpr float beta = 4.0f;
+                      const float ratio = x / 3.0f;
+                      const float window = bessel_i0(beta * std::sqrt(std::max(0.0f, 1.0f - ratio * ratio))) /
+                                           bessel_i0(beta);
+                      return sinc(x) * window;
+                  }
+              }
+              return 0.0f;
+          }
+
+          float mip_filter_radius(texture_mip_generation_filter filter) noexcept
+          {
+              switch (filter)
+              {
+                  case texture_mip_generation_filter::nearest: return 0.5f;
+                  case texture_mip_generation_filter::box:
+                  case texture_mip_generation_filter::bilinear: return 1.0f;
+                  case texture_mip_generation_filter::bicubic: return 2.0f;
+                  case texture_mip_generation_filter::lanczos:
+                  case texture_mip_generation_filter::kaiser: return 3.0f;
+              }
+              return 1.0f;
+          }
+
+          float decode_mip_channel(std::span<const std::byte> source, std::size_t index, std::uint32_t channel,
+                                   const texture_import_settings& settings) noexcept
+          {
+              float value = static_cast<float>(std::to_integer<std::uint8_t>(source[index + channel])) / 255.0f;
+              if (settings.semantic == texture_semantic::normal && channel < 3u) return value * 2.0f - 1.0f;
+              if (settings.color_space == texture_color_space::srgb && channel < 3u) return srgb_to_linear_channel(value);
+              return value;
+          }
+
+          std::vector<std::byte> downsample_rgba8(std::span<const std::byte> source, std::uint32_t width,
+                                                  std::uint32_t height, std::uint32_t next_width,
+                                                  std::uint32_t next_height, const texture_import_settings& settings)
+          {
+              std::vector<std::byte> next(static_cast<std::size_t>(next_width) * next_height * 4u);
+              const float scale_x = static_cast<float>(width) / static_cast<float>(next_width);
+              const float scale_y = static_cast<float>(height) / static_cast<float>(next_height);
+              const float radius = mip_filter_radius(settings.mip_generation_filter);
+              for (std::uint32_t y = 0; y < next_height; ++y)
+                  for (std::uint32_t x = 0; x < next_width; ++x)
+                  {
+                      const auto destination = (static_cast<std::size_t>(y) * next_width + x) * 4u;
+                      const float center_x = (static_cast<float>(x) + 0.5f) * scale_x - 0.5f;
+                      const float center_y = (static_cast<float>(y) + 0.5f) * scale_y - 0.5f;
+                      const int minimum_x = static_cast<int>(std::floor(center_x - radius));
+                      const int maximum_x = static_cast<int>(std::ceil(center_x + radius));
+                      const int minimum_y = static_cast<int>(std::floor(center_y - radius));
+                      const int maximum_y = static_cast<int>(std::ceil(center_y + radius));
+                      float accumulated[4]{};
+                      float total_weight{};
+                      for (int source_y = minimum_y; source_y <= maximum_y; ++source_y)
+                          for (int source_x = minimum_x; source_x <= maximum_x; ++source_x)
+                          {
+                              const float weight = mip_kernel(settings.mip_generation_filter, center_x - source_x) *
+                                                   mip_kernel(settings.mip_generation_filter, center_y - source_y);
+                              if (std::abs(weight) < 0.000001f) continue;
+                              const auto clamped_x = static_cast<std::uint32_t>(std::clamp(source_x, 0, static_cast<int>(width) - 1));
+                              const auto clamped_y = static_cast<std::uint32_t>(std::clamp(source_y, 0, static_cast<int>(height) - 1));
+                              const auto source_index = (static_cast<std::size_t>(clamped_y) * width + clamped_x) * 4u;
+                              for (std::uint32_t channel = 0; channel < 4u; ++channel)
+                                  accumulated[channel] += decode_mip_channel(source, source_index, channel, settings) * weight;
+                              total_weight += weight;
+                          }
+                      if (std::abs(total_weight) < 0.000001f) total_weight = 1.0f;
+                      for (auto& value : accumulated) value /= total_weight;
+                      if (settings.semantic == texture_semantic::normal)
+                      {
+                          const float length = std::sqrt(accumulated[0] * accumulated[0] + accumulated[1] * accumulated[1] +
+                                                         accumulated[2] * accumulated[2]);
+                          if (length > 0.00001f)
+                              for (std::uint32_t channel = 0; channel < 3u; ++channel) accumulated[channel] /= length;
+                          else
+                          {
+                              accumulated[0] = 0.0f;
+                              accumulated[1] = 0.0f;
+                              accumulated[2] = 1.0f;
+                          }
+                          for (std::uint32_t channel = 0; channel < 3u; ++channel)
+                              next[destination + channel] = byte_channel(accumulated[channel] * 0.5f + 0.5f);
+                      }
+                      else
+                          for (std::uint32_t channel = 0; channel < 3u; ++channel)
+                              next[destination + channel] = byte_channel(settings.color_space == texture_color_space::srgb
+                                                                             ? linear_to_srgb_channel(accumulated[channel])
+                                                                             : accumulated[channel]);
+                      next[destination + 3u] = byte_channel(accumulated[3]);
+                  }
+              return next;
+          }
+
+          void sharpen_mip(std::vector<std::byte>& pixels, std::uint32_t width, std::uint32_t height,
+                           const texture_import_settings& settings)
+          {
+              if (settings.mip_sharpen <= 0.0f || settings.semantic == texture_semantic::normal || width < 2u || height < 2u)
+                  return;
+              const auto source = pixels;
+              for (std::uint32_t y = 0; y < height; ++y)
+                  for (std::uint32_t x = 0; x < width; ++x)
+                      for (std::uint32_t channel = 0; channel < 3u; ++channel)
+                      {
+                          const auto sample = [&](int sx, int sy)
+                          {
+                              sx = std::clamp(sx, 0, static_cast<int>(width) - 1);
+                              sy = std::clamp(sy, 0, static_cast<int>(height) - 1);
+                              const auto index = (static_cast<std::size_t>(sy) * width + static_cast<std::uint32_t>(sx)) * 4u + channel;
+                              float value = static_cast<float>(std::to_integer<std::uint8_t>(source[index])) / 255.0f;
+                              return settings.color_space == texture_color_space::srgb ? srgb_to_linear_channel(value) : value;
+                          };
+                          const float center = sample(static_cast<int>(x), static_cast<int>(y));
+                          const float blur = (sample(static_cast<int>(x) - 1, static_cast<int>(y)) +
+                                              sample(static_cast<int>(x) + 1, static_cast<int>(y)) +
+                                              sample(static_cast<int>(x), static_cast<int>(y) - 1) +
+                                              sample(static_cast<int>(x), static_cast<int>(y) + 1)) * 0.25f;
+                          float value = std::clamp(center + (center - blur) * settings.mip_sharpen, 0.0f, 1.0f);
+                          if (settings.color_space == texture_color_space::srgb) value = linear_to_srgb_channel(value);
+                          const auto index = (static_cast<std::size_t>(y) * width + x) * 4u + channel;
+                          pixels[index] = byte_channel(value);
+                      }
+          }
+
+          void deband_mip(std::vector<std::byte>& pixels, std::uint32_t width, std::uint32_t height,
+                          const texture_import_settings& settings)
+          {
+              if (!settings.deband_mips || settings.deband_strength <= 0.0f || settings.semantic == texture_semantic::normal ||
+                  width < 2u || height < 2u) return;
+              const auto source = pixels;
+              const float threshold = 2.0f + settings.deband_strength * 10.0f;
+              for (std::uint32_t y = 0; y < height; ++y)
+                  for (std::uint32_t x = 0; x < width; ++x)
+                      for (std::uint32_t channel = 0; channel < 3u; ++channel)
+                      {
+                          float minimum = 255.0f;
+                          float maximum = 0.0f;
+                          float sum{};
+                          std::uint32_t count{};
+                          for (int oy = -1; oy <= 1; ++oy)
+                              for (int ox = -1; ox <= 1; ++ox)
+                              {
+                                  const auto sx = static_cast<std::uint32_t>(std::clamp(static_cast<int>(x) + ox, 0, static_cast<int>(width) - 1));
+                                  const auto sy = static_cast<std::uint32_t>(std::clamp(static_cast<int>(y) + oy, 0, static_cast<int>(height) - 1));
+                                  const auto index = (static_cast<std::size_t>(sy) * width + sx) * 4u + channel;
+                                  const float value = static_cast<float>(std::to_integer<std::uint8_t>(source[index]));
+                                  minimum = std::min(minimum, value);
+                                  maximum = std::max(maximum, value);
+                                  sum += value;
+                                  ++count;
+                              }
+                          if (maximum - minimum <= threshold)
+                          {
+                              const auto index = (static_cast<std::size_t>(y) * width + x) * 4u + channel;
+                              const float center = static_cast<float>(std::to_integer<std::uint8_t>(source[index]));
+                              const float mixed = std::lerp(center, sum / static_cast<float>(count), settings.deband_strength * 0.35f);
+                              pixels[index] = static_cast<std::byte>(static_cast<std::uint8_t>(std::clamp(std::lround(mixed), 0l, 255l)));
+                          }
+                      }
+          }
+
+          void dither_mip(std::vector<std::byte>& pixels, std::uint32_t width, std::uint32_t height,
+                          const texture_import_settings& settings)
+          {
+              if (!settings.dither_mips || settings.semantic == texture_semantic::normal) return;
+              static constexpr int bayer[4][4]{{0, 8, 2, 10}, {12, 4, 14, 6}, {3, 11, 1, 9}, {15, 7, 13, 5}};
+              for (std::uint32_t y = 0; y < height; ++y)
+                  for (std::uint32_t x = 0; x < width; ++x)
+                  {
+                      const float noise = (static_cast<float>(bayer[y & 3u][x & 3u]) / 15.0f - 0.5f);
+                      const auto base = (static_cast<std::size_t>(y) * width + x) * 4u;
+                      for (std::uint32_t channel = 0; channel < 3u; ++channel)
+                      {
+                          const int value = static_cast<int>(std::to_integer<std::uint8_t>(pixels[base + channel]));
+                          pixels[base + channel] = static_cast<std::byte>(static_cast<std::uint8_t>(std::clamp(value + static_cast<int>(std::round(noise)), 0, 255)));
+                      }
+                  }
+          }'''
+          replace(cpp, old, new)
+          replace(cpp, '''        auto next = downsample_rgba8(level, width, height, next_width, next_height, settings);
+                  if (settings.preserve_alpha_coverage)''', '''        auto next = downsample_rgba8(level, width, height, next_width, next_height, settings);
+                  sharpen_mip(next, next_width, next_height, settings);
+                  deband_mip(next, next_width, next_height, settings);
+                  dither_mip(next, next_width, next_height, settings);
+                  if (settings.preserve_alpha_coverage)''')
+          replace(cpp, '''std::string_view texture_mip_generation_filter_name(texture_mip_generation_filter value) noexcept
+          {
+              return value == texture_mip_generation_filter::nearest ? "nearest" : "box";
+          }''', '''std::string_view texture_mip_generation_filter_name(texture_mip_generation_filter value) noexcept
+          {
+              switch (value)
+              {
+                  case texture_mip_generation_filter::nearest: return "nearest";
+                  case texture_mip_generation_filter::box: return "box";
+                  case texture_mip_generation_filter::bilinear: return "bilinear";
+                  case texture_mip_generation_filter::bicubic: return "bicubic";
+                  case texture_mip_generation_filter::lanczos: return "lanczos";
+                  case texture_mip_generation_filter::kaiser: return "kaiser";
+              }
+              return "box";
+          }''')
+          replace(cpp, '''    return enum_value<texture_mip_generation_filter>(
+                  value, {{"box", texture_mip_generation_filter::box}, {"nearest", texture_mip_generation_filter::nearest}});''', '''    return enum_value<texture_mip_generation_filter>(value,
+                                                             {{"nearest", texture_mip_generation_filter::nearest},
+                                                              {"box", texture_mip_generation_filter::box},
+                                                              {"bilinear", texture_mip_generation_filter::bilinear},
+                                                              {"bicubic", texture_mip_generation_filter::bicubic},
+                                                              {"lanczos", texture_mip_generation_filter::lanczos},
+                                                              {"kaiser", texture_mip_generation_filter::kaiser}});''')
+          replace(cpp, '''    if (settings_version >= 5)
+              {''', '''    if (settings_version >= 5)
+              {''')
+          replace(cpp, '''        settings.invert_a = document.value("invertA", settings.invert_a);
+              }
+              settings.max_size''', '''        settings.invert_a = document.value("invertA", settings.invert_a);
+              }
+              if (settings_version >= 6)
+              {
+                  settings.mip_sharpen = document.value("mipSharpen", settings.mip_sharpen);
+                  settings.dither_mips = document.value("ditherMips", settings.dither_mips);
+                  settings.deband_mips = document.value("debandMips", settings.deband_mips);
+                  settings.deband_strength = document.value("debandStrength", settings.deband_strength);
+              }
+              settings.max_size''')
+          replace(cpp, '''        settings.output_white < settings.output_black)
+              return texture_import_settings_result::failure("texture import settings contain an invalid numeric value");''', '''        settings.output_white < settings.output_black || !std::isfinite(settings.mip_sharpen) ||
+                  settings.mip_sharpen < 0.0f || settings.mip_sharpen > 2.0f || !std::isfinite(settings.deband_strength) ||
+                  settings.deband_strength < 0.0f || settings.deband_strength > 1.0f)
+              return texture_import_settings_result::failure("texture import settings contain an invalid numeric value");''')
+          replace(cpp, '''        {"maxSize", settings.max_size},
+                  {"maximumLod", settings.maximum_lod},''', '''        {"maxSize", settings.max_size},
+                  {"maximumLod", settings.maximum_lod},
+                  {"mipSharpen", settings.mip_sharpen},
+                  {"ditherMips", settings.dither_mips},
+                  {"debandMips", settings.deband_mips},
+                  {"debandStrength", settings.deband_strength},''')
+          replace(cpp, '.version = 5,', '.version = 6,')
+          replace(cpp, 'return "arc-texture-cooker-v5:arctex-v2:stage3-adjustments:channel-mapping";',
+                       'return "arc-texture-cooker-v6:arctex-v2:advanced-mip-filtering:sharpen-deband-dither";')
+          # std::numbers for sinc.
+          replace(cpp, '#include <limits>\n', '#include <limits>\n#include <numbers>\n')
+
+          hp = 'editor/native/inc/arc/editor/host_protocol_base.h'
+          replace(hp, '''    std::optional<float> alpha_coverage_threshold;
+              std::optional<float> brightness;''', '''    std::optional<float> alpha_coverage_threshold;
+              std::optional<float> mip_sharpen;
+              std::optional<float> deband_strength;
+              std::optional<bool> dither_mips;
+              std::optional<bool> deband_mips;
+              std::optional<float> brightness;''')
+
+          proto = 'editor/native/src/host_protocol_base.inc'
+          replace(proto, '''                !optional_number("alphaCoverageThreshold", command.alpha_coverage_threshold) ||
+                          !optional_number("brightness", command.brightness)''', '''                !optional_number("alphaCoverageThreshold", command.alpha_coverage_threshold) ||
+                          !optional_number("mipSharpen", command.mip_sharpen) ||
+                          !optional_number("debandStrength", command.deband_strength) ||
+                          !optional_bool("ditherMips", command.dither_mips) || !optional_bool("debandMips", command.deband_mips) ||
+                          !optional_number("brightness", command.brightness)''')
+          replace(proto, '''                !command.minimum_lod && !command.maximum_lod && !command.alpha_coverage_threshold &&
+                          !command.brightness''', '''                !command.minimum_lod && !command.maximum_lod && !command.alpha_coverage_threshold &&
+                          !command.mip_sharpen && !command.deband_strength && !command.dither_mips && !command.deband_mips &&
+                          !command.brightness''')
+
+          host = 'editor/native/src/arc_host_base.inc'
+          replace(host, '''                    if (payload.alpha_coverage_threshold)
+                              settings.alpha_coverage_threshold = *payload.alpha_coverage_threshold;
+                          if (payload.brightness)''', '''                    if (payload.alpha_coverage_threshold)
+                              settings.alpha_coverage_threshold = *payload.alpha_coverage_threshold;
+                          if (payload.mip_sharpen) settings.mip_sharpen = *payload.mip_sharpen;
+                          if (payload.deband_strength) settings.deband_strength = *payload.deband_strength;
+                          if (payload.dither_mips) settings.dither_mips = *payload.dither_mips;
+                          if (payload.deband_mips) settings.deband_mips = *payload.deband_mips;
+                          if (payload.brightness)''')
+          replace(host, '''                    ",\\\"alphaCoverageThreshold\\\":" + std::to_string(value.alpha_coverage_threshold) +
+                              ",\\\"brightness\\\":"''', '''                    ",\\\"alphaCoverageThreshold\\\":" + std::to_string(value.alpha_coverage_threshold) +
+                              ",\\\"mipSharpen\\\":" + std::to_string(value.mip_sharpen) +
+                              ",\\\"ditherMips\\\":" + std::string(value.dither_mips ? "true" : "false") +
+                              ",\\\"debandMips\\\":" + std::string(value.deband_mips ? "true" : "false") +
+                              ",\\\"debandStrength\\\":" + std::to_string(value.deband_strength) +
+                              ",\\\"brightness\\\":"''')
+
+          ts = 'editor/src/renderer/src/texture/textureSettings.ts'
+          replace(ts, "export type TextureMipGenerationFilter = 'box' | 'nearest';",
+                       "export type TextureMipGenerationFilter = 'nearest' | 'box' | 'bilinear' | 'bicubic' | 'lanczos' | 'kaiser';")
+          replace(ts, '''  alphaCoverageThreshold: number;
+            brightness: number;''', '''  alphaCoverageThreshold: number;
+            mipSharpen: number;
+            ditherMips: boolean;
+            debandMips: boolean;
+            debandStrength: number;
+            brightness: number;''')
+
+          editor = 'editor/src/renderer/src/texture/TextureEditor.tsx'
+          replace(editor, '''                  <option value="box">Box</option>
+                            <option value="nearest">Nearest</option>''', '''                  <option value="kaiser">Kaiser</option>
+                            <option value="lanczos">Lanczos</option>
+                            <option value="bicubic">Bicubic</option>
+                            <option value="bilinear">Bilinear</option>
+                            <option value="box">Box</option>
+                            <option value="nearest">Nearest</option>''')
+          marker = '''              <label className="inspector-property texture-inspector-property">
+                          <span className="inspector-property-label">Preserve Alpha</span>'''
+          insertion = '''              <label className="inspector-property texture-inspector-property">
+                          <span className="inspector-property-label">Sharpen</span>
+                          <input className="texture-inspector-input" disabled={settingsBusy || !settings.generateMips}
+                            max={2} min={0} step={0.05} type="number" value={settings.mipSharpen}
+                            onChange={(event) => void updateSettings({ mipSharpen: Number(event.target.value) })} />
+                        </label>
+                        <label className="inspector-property texture-inspector-property">
+                          <span className="inspector-property-label">Dither</span>
+                          <input checked={settings.ditherMips} disabled={settingsBusy || !settings.generateMips}
+                            type="checkbox" onChange={(event) => void updateSettings({ ditherMips: event.target.checked })} />
+                        </label>
+                        <label className="inspector-property texture-inspector-property">
+                          <span className="inspector-property-label">De-band</span>
+                          <input checked={settings.debandMips} disabled={settingsBusy || !settings.generateMips}
+                            type="checkbox" onChange={(event) => void updateSettings({ debandMips: event.target.checked })} />
+                        </label>
+                        <label className="inspector-property texture-inspector-property">
+                          <span className="inspector-property-label">De-band Strength</span>
+                          <input className="texture-inspector-input" disabled={settingsBusy || !settings.generateMips || !settings.debandMips}
+                            max={1} min={0} step={0.05} type="number" value={settings.debandStrength}
+                            onChange={(event) => void updateSettings({ debandStrength: Number(event.target.value) })} />
+                        </label>
+''' + marker
+          replace(editor, marker, insertion)
+
+          tests = 'engine/render-tools/tests/texture_cooker_tests.cpp'
+          p = Path(tests)
+          text = p.read_text()
+          text += r'''
+
+          TEST_CASE("Stage 4 mip settings round trip advanced filters")
+          {
+              using namespace arc::render::tools;
+              auto settings = texture_import_settings_for_preset(texture_import_preset::color);
+              settings.mip_generation_filter = texture_mip_generation_filter::kaiser;
+              settings.mip_sharpen = 0.75f;
+              settings.dither_mips = true;
+              settings.deband_mips = true;
+              settings.deband_strength = 0.4f;
+              const auto serialized = serialize_texture_import_settings(settings);
+              const auto parsed = parse_texture_import_settings(serialized, texture_import_settings::current_version);
+              REQUIRE(parsed.has_value());
+              CHECK(parsed.value().mip_generation_filter == texture_mip_generation_filter::kaiser);
+              CHECK(parsed.value().mip_sharpen == Catch::Approx(0.75f));
+              CHECK(parsed.value().dither_mips);
+              CHECK(parsed.value().deband_mips);
+              CHECK(parsed.value().deband_strength == Catch::Approx(0.4f));
+          }
+
+          TEST_CASE("Stage 4 mip filters generate complete deterministic chains")
+          {
+              using namespace arc;
+              using namespace arc::render;
+              using namespace arc::render::tools;
+              for (const auto filter : {texture_mip_generation_filter::box, texture_mip_generation_filter::bilinear,
+                                        texture_mip_generation_filter::bicubic, texture_mip_generation_filter::lanczos,
+                                        texture_mip_generation_filter::kaiser})
+              {
+                  auto loaded = load_texture_asset_bytes(checker_bmp(), "checker.bmp");
+                  REQUIRE(loaded.succeeded());
+                  auto settings = texture_import_settings_for_preset(texture_import_preset::color);
+                  settings.mip_generation_filter = filter;
+                  settings.mip_sharpen = 0.5f;
+                  settings.dither_mips = true;
+                  settings.deband_mips = true;
+                  auto processed = preprocess_texture_for_cook(std::move(loaded.texture), settings,
+                                                               assets::windows_vulkan_cook_target());
+                  REQUIRE(processed.has_value());
+                  CHECK(processed.value().texture.mips.size() == 2);
+                  CHECK(processed.value().texture.mips.back().width == 1);
+                  CHECK(processed.value().texture.mips.back().height == 1);
+              }
+          }
+          '''
+          p.write_text(text)
+          PY
+          python3 /tmp/stage4.py
+          rm .github/workflows/temp-texture-stage4.yml
+      - name: Format native
+        run: clang-format -i engine/render-tools/inc/arc/render_tools/texture_cooker.h engine/render-tools/src/common/texture_cooker.cpp engine/render-tools/tests/texture_cooker_tests.cpp editor/native/inc/arc/editor/host_protocol_base.h editor/native/src/host_protocol_base.inc editor/native/src/arc_host_base.inc
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Format and validate editor
+        working-directory: editor
+        run: |
+          npx prettier --write src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/TextureEditor.tsx
+          npm run typecheck
+          npm test -- src/renderer/src/texture/TextureEditor.test.tsx src/renderer/src/texture/texturePreviewProcessing.test.ts src/renderer/src/texture/TextureStage3Controls.test.tsx
+      - name: Configure native
+        run: cmake -S . -B out/build/stage4 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DARC_BUILD_ENGINE_TESTS=ON
+      - name: Build native
+        run: cmake --build out/build/stage4 --target arc_render_tools_tests arc-editor-host -j2
+      - name: Test native
+        run: ctest --test-dir out/build/stage4 -R arc_render_tools_tests --output-on-failure
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add Stage 4 texture mip pipeline"
+          git push origin HEAD:feat/texture-mip-pipeline-stage4
