@@ -1,0 +1,85 @@
+name: Temporary run_editor perf
+on:
+  push:
+    branches:
+      - diagnostics/run-editor-perf
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: diagnostics/run-editor-perf
+      - name: Add performance launcher options
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('run_editor.py')
+          text = path.read_text()
+
+          anchor = '''    parser.add_argument(
+        "--ui-lab",
+        action="store_true",
+        help="Launch the standalone editor UI control lab without building or starting the native engine host.",
+    )
+'''
+          addition = anchor + '''    parser.add_argument(
+        "--perf",
+        action="store_true",
+        help="Enable ARC editor performance diagnostics ([ARC PERF] startup and slow-operation timings).",
+    )
+    parser.add_argument(
+        "--perf-slow-ms",
+        type=float,
+        default=None,
+        metavar="MS",
+        help="Set the slow-operation threshold in milliseconds and enable performance diagnostics.",
+    )
+'''
+          if anchor not in text:
+              raise SystemExit('parse_args anchor not found')
+          text = text.replace(anchor, addition, 1)
+
+          validation_anchor = '''    if args.ui_lab and args.quick_start:
+        parser.error("--ui-lab and --quick-start cannot be used together")
+'''
+          validation = validation_anchor + '''    if args.perf_slow_ms is not None and args.perf_slow_ms < 0:
+        parser.error("--perf-slow-ms must be zero or greater")
+'''
+          if validation_anchor not in text:
+              raise SystemExit('argument validation anchor not found')
+          text = text.replace(validation_anchor, validation, 1)
+
+          env_anchor = '    environment = os.environ.copy()\n'
+          env_block = env_anchor + '''    if args.perf or args.perf_slow_ms is not None:
+        environment["ARC_EDITOR_PERF"] = "1"
+    if args.perf_slow_ms is not None:
+        environment["ARC_EDITOR_PERF_SLOW_MS"] = str(args.perf_slow_ms)
+'''
+          if env_anchor not in text:
+              raise SystemExit('launch environment anchor not found')
+          text = text.replace(env_anchor, env_block, 1)
+
+          path.write_text(text)
+          PY
+      - name: Validate launcher
+        run: |
+          python3 -m py_compile run_editor.py
+          python3 run_editor.py --help | grep -F -- '--perf'
+          python3 run_editor.py --help | grep -F -- '--perf-slow-ms'
+          if python3 run_editor.py --perf-slow-ms=-1 --build-only >/tmp/run_editor.out 2>/tmp/run_editor.err; then
+            echo 'negative perf threshold unexpectedly accepted'
+            exit 1
+          fi
+          grep -F -- '--perf-slow-ms must be zero or greater' /tmp/run_editor.err
+      - name: Cleanup and commit
+        run: |
+          rm .github/workflows/temporary-run-editor-perf.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add performance options to run_editor'
+          git push
