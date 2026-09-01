@@ -1,0 +1,258 @@
+name: Temporary editor performance fix
+on:
+  push:
+    branches:
+      - perf/editor-host-contention
+permissions:
+  contents: write
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/editor-host-contention
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: editor/.nvmrc
+      - name: Apply host contention fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('editor/native/src/arc_host_process_main.cpp')
+          s = p.read_text()
+
+          old = '''        if (renderer_running) return true;
+        {
+            std::lock_guard lock(setup_mutex_);
+            setup_complete_ = false;
+            setup_error_.clear();
+        }
+        if (!running_.exchange(true))
+            render_task_ = jobs_->submit({.name = "editor.shared_viewport",
+                                          .priority = arc::jobs::job_priority::critical,
+                                          .affinity = arc::jobs::job_affinity::render_thread},
+                                         [this] { render_loop(); });
+        std::unique_lock lock(setup_mutex_);
+        if (!setup_cv_.wait_for(lock, std::chrono::seconds(10), [this] { return setup_complete_; }))
+            setup_error_ = "Timed out creating shared viewport renderer";
+        error = setup_error_;
+        lock.unlock();
+        if (!error.empty() && render_task_.valid()) (void)render_task_.wait_result();
+        return error.empty();
+'''
+          new = '''        if (renderer_running) return true;
+        {
+            std::lock_guard lock(setup_mutex_);
+            setup_complete_ = false;
+            setup_error_.clear();
+        }
+        if (!running_.exchange(true))
+            render_task_ = jobs_->submit({.name = "editor.shared_viewport",
+                                          .priority = arc::jobs::job_priority::critical,
+                                          .affinity = arc::jobs::job_affinity::render_thread},
+                                         [this] { render_loop(); });
+        // Shared viewport setup runs on the render thread. Do not synchronously wait here:
+        // this function is called by the stdin command loop and a wait stalls every editor
+        // query/command while Vulkan is starting. Setup failures are reported by the render
+        // thread and the viewport can be recreated by the renderer if needed.
+        error.clear();
+        return true;
+'''
+          if old not in s: raise SystemExit('create_shared block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''        {
+            std::lock_guard lock(host_mutex_);
+            host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = viewport_id_,
+                                                                       .frame_index = frame_index_++,
+                                                                       .width = value.width,
+                                                                       .height = value.height});
+            auto present = backend_->present_surface_frame(value.width, value.height);
+            rendered = present.has_value();
+            if (!rendered) message = std::move(present.error().message);
+        }
+'''
+          new = '''        {
+            std::lock_guard lock(host_mutex_);
+            host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = viewport_id_,
+                                                                       .frame_index = frame_index_++,
+                                                                       .width = value.width,
+                                                                       .height = value.height});
+        }
+        auto present = backend_->present_surface_frame(value.width, value.height);
+        rendered = present.has_value();
+        if (!rendered) message = std::move(present.error().message);
+'''
+          if old not in s: raise SystemExit('render_once block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''        {
+            std::lock_guard lock(host_mutex_);
+            host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
+                                                                       .frame_index = target.frame_index,
+                                                                       .width = target.width,
+                                                                       .height = target.height});
+            auto present = backend_->present_viewport_output(target.viewport_id);
+            rendered = present.has_value();
+            if (!rendered) message = std::move(present.error().message);
+        }
+'''
+          new = '''        {
+            std::lock_guard lock(host_mutex_);
+            host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
+                                                                       .frame_index = target.frame_index,
+                                                                       .width = target.width,
+                                                                       .height = target.height});
+        }
+        auto present = backend_->present_viewport_output(target.viewport_id);
+        rendered = present.has_value();
+        if (!rendered) message = std::move(present.error().message);
+'''
+          if old not in s: raise SystemExit('render_shared_once block not found')
+          s = s.replace(old, new, 1)
+
+          old = '''        auto result = arc::render::vulkan::create_vulkan_backend(config);
+        if (!result)
+'''
+          new = '''        const auto backend_start = std::chrono::steady_clock::now();
+        auto result = arc::render::vulkan::create_vulkan_backend(config);
+        const auto backend_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - backend_start).count();
+        std::cerr << "[perf][render.vulkan] backend creation " << std::fixed << std::setprecision(1) << backend_ms << "ms\\n";
+        if (!result)
+'''
+          if old not in s: raise SystemExit('backend create anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('editor/src/main/main.ts')
+          s = p.read_text()
+          old = '''  private pendingRuntimeTick: HostEvent | null = null;
+  private runtimeTickScheduled = false;
+  private readonly eventListeners = new Set<(event: HostEvent) => void>();
+'''
+          new = '''  private pendingRuntimeTick: HostEvent | null = null;
+  private runtimeTickScheduled = false;
+  private readonly coalescedQueries = new Map<string, Promise<HostResponse>>();
+  private pointerMoveInFlight = new Map<string, Promise<HostResponse>>();
+  private pendingPointerMove = new Map<
+    string,
+    { payload: Record<string, unknown>; waiters: Array<{ resolve: (value: HostResponse) => void; reject: (error: unknown) => void }> }
+  >();
+  private thumbnailActive = 0;
+  private readonly thumbnailQueue: Array<() => void> = [];
+  private static readonly maxConcurrentThumbnails = 2;
+  private readonly eventListeners = new Set<(event: HostEvent) => void>();
+'''
+          if old not in s: raise SystemExit('ArcHostClient fields anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''  command(
+    type: string,
+    payload: Record<string, unknown> = {},
+    edit?: Record<string, unknown>,
+    expectedSceneRevision?: number,
+  ): Promise<HostResponse> {
+    return this.send({ kind: 'command', type, payload, edit, expectedSceneRevision });
+  }
+
+  query(type: string, payload: Record<string, unknown> = {}): Promise<HostResponse> {
+    return this.send({ kind: 'query', type, payload });
+  }
+'''
+          new = '''  command(
+    type: string,
+    payload: Record<string, unknown> = {},
+    edit?: Record<string, unknown>,
+    expectedSceneRevision?: number,
+  ): Promise<HostResponse> {
+    if (type === 'viewport.pointer' && payload.phase === 'move') return this.sendPointerMove(payload);
+    return this.send({ kind: 'command', type, payload, edit, expectedSceneRevision });
+  }
+
+  query(type: string, payload: Record<string, unknown> = {}): Promise<HostResponse> {
+    if (type === 'viewport.state') {
+      const key = `${type}:${JSON.stringify(payload)}`;
+      const current = this.coalescedQueries.get(key);
+      if (current) return current;
+      const request = this.send({ kind: 'query', type, payload });
+      this.coalescedQueries.set(key, request);
+      void request.finally(() => {
+        if (this.coalescedQueries.get(key) === request) this.coalescedQueries.delete(key);
+      });
+      return request;
+    }
+    if (type === 'asset.thumbnail') return this.sendThumbnailQuery(type, payload);
+    return this.send({ kind: 'query', type, payload });
+  }
+
+  private sendPointerMove(payload: Record<string, unknown>): Promise<HostResponse> {
+    const viewportId = typeof payload.viewportId === 'string' ? payload.viewportId : 'viewport-1';
+    const inFlight = this.pointerMoveInFlight.get(viewportId);
+    if (!inFlight) {
+      const request = this.send({ kind: 'command', type: 'viewport.pointer', payload });
+      this.pointerMoveInFlight.set(viewportId, request);
+      void request.finally(() => this.flushPointerMove(viewportId));
+      return request;
+    }
+    return new Promise((resolve, reject) => {
+      const pending = this.pendingPointerMove.get(viewportId);
+      if (pending) {
+        pending.payload = payload;
+        pending.waiters.push({ resolve, reject });
+      } else {
+        this.pendingPointerMove.set(viewportId, { payload, waiters: [{ resolve, reject }] });
+      }
+    });
+  }
+
+  private flushPointerMove(viewportId: string): void {
+    this.pointerMoveInFlight.delete(viewportId);
+    const pending = this.pendingPointerMove.get(viewportId);
+    if (!pending) return;
+    this.pendingPointerMove.delete(viewportId);
+    const request = this.send({ kind: 'command', type: 'viewport.pointer', payload: pending.payload });
+    this.pointerMoveInFlight.set(viewportId, request);
+    void request
+      .then(
+        (response) => pending.waiters.forEach((waiter) => waiter.resolve(response)),
+        (error) => pending.waiters.forEach((waiter) => waiter.reject(error)),
+      )
+      .finally(() => this.flushPointerMove(viewportId));
+  }
+
+  private sendThumbnailQuery(type: string, payload: Record<string, unknown>): Promise<HostResponse> {
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        this.thumbnailActive += 1;
+        void this.send({ kind: 'query', type, payload })
+          .then(resolve, reject)
+          .finally(() => {
+            this.thumbnailActive -= 1;
+            this.thumbnailQueue.shift()?.();
+          });
+      };
+      if (this.thumbnailActive < ArcHostClient.maxConcurrentThumbnails) run();
+      else this.thumbnailQueue.push(run);
+    });
+  }
+'''
+          if old not in s: raise SystemExit('command/query block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - name: Validate editor
+        run: |
+          npm ci --prefix editor
+          npm run typecheck --prefix editor
+          cmake -S . -B out/build/perf-fix -G Ninja -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build out/build/perf-fix --target arc_host_process --parallel 2
+      - name: Remove temporary workflow and commit
+        run: |
+          rm .github/workflows/temporary-editor-perf-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Reduce editor host contention and request backlog'
+          git push
