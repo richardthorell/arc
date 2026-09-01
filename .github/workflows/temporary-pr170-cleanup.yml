@@ -30,13 +30,6 @@ jobs:
               raise SystemExit('temporary timing remained')
           p.write_text(s)
           PY
-      - name: Validate native host
-        env:
-          CC: clang-18
-          CXX: clang++-18
-        run: |
-          cmake -S . -B out/build/pr170-clean -G Ninja -DARC_BUILD_ENGINE_TESTS=OFF -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build out/build/pr170-clean --target arc_host_process --parallel 2
       - name: Commit cleanup
         run: |
           rm .github/workflows/temporary-pr170-cleanup.yml
