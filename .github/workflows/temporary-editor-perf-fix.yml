@@ -1,5 +1,5 @@
 name: Temporary editor performance fix
-on:
+"on":
   push:
     branches:
       - perf/editor-host-contention
@@ -19,10 +19,8 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           p = Path('editor/native/src/arc_host_process_main.cpp')
           s = p.read_text()
-
           old = '''        if (renderer_running) return true;
         {
             std::lock_guard lock(setup_mutex_);
@@ -53,16 +51,11 @@ jobs:
                                           .priority = arc::jobs::job_priority::critical,
                                           .affinity = arc::jobs::job_affinity::render_thread},
                                          [this] { render_loop(); });
-        // Shared viewport setup runs on the render thread. Do not synchronously wait here:
-        // this function is called by the stdin command loop and a wait stalls every editor
-        // query/command while Vulkan is starting. Setup failures are reported by the render
-        // thread and the viewport can be recreated by the renderer if needed.
         error.clear();
         return true;
 '''
           if old not in s: raise SystemExit('create_shared block not found')
           s = s.replace(old, new, 1)
-
           old = '''        {
             std::lock_guard lock(host_mutex_);
             host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = viewport_id_,
@@ -87,7 +80,6 @@ jobs:
 '''
           if old not in s: raise SystemExit('render_once block not found')
           s = s.replace(old, new, 1)
-
           old = '''        {
             std::lock_guard lock(host_mutex_);
             host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = target.viewport_id,
@@ -112,7 +104,6 @@ jobs:
 '''
           if old not in s: raise SystemExit('render_shared_once block not found')
           s = s.replace(old, new, 1)
-
           old = '''        auto result = arc::render::vulkan::create_vulkan_backend(config);
         if (!result)
 '''
@@ -122,7 +113,7 @@ jobs:
         std::cerr << "[perf][render.vulkan] backend creation " << std::fixed << std::setprecision(1) << backend_ms << "ms\\n";
         if (!result)
 '''
-          if old not in s: raise SystemExit('backend create anchor not found')
+          if old not in s: raise SystemExit('backend anchor not found')
           s = s.replace(old, new, 1)
           p.write_text(s)
 
@@ -145,9 +136,8 @@ jobs:
   private static readonly maxConcurrentThumbnails = 2;
   private readonly eventListeners = new Set<(event: HostEvent) => void>();
 '''
-          if old not in s: raise SystemExit('ArcHostClient fields anchor not found')
+          if old not in s: raise SystemExit('fields anchor not found')
           s = s.replace(old, new, 1)
-
           old = '''  command(
     type: string,
     payload: Record<string, unknown> = {},
@@ -189,8 +179,7 @@ jobs:
 
   private sendPointerMove(payload: Record<string, unknown>): Promise<HostResponse> {
     const viewportId = typeof payload.viewportId === 'string' ? payload.viewportId : 'viewport-1';
-    const inFlight = this.pointerMoveInFlight.get(viewportId);
-    if (!inFlight) {
+    if (!this.pointerMoveInFlight.has(viewportId)) {
       const request = this.send({ kind: 'command', type: 'viewport.pointer', payload });
       this.pointerMoveInFlight.set(viewportId, request);
       void request.finally(() => this.flushPointerMove(viewportId));
@@ -214,31 +203,27 @@ jobs:
     this.pendingPointerMove.delete(viewportId);
     const request = this.send({ kind: 'command', type: 'viewport.pointer', payload: pending.payload });
     this.pointerMoveInFlight.set(viewportId, request);
-    void request
-      .then(
-        (response) => pending.waiters.forEach((waiter) => waiter.resolve(response)),
-        (error) => pending.waiters.forEach((waiter) => waiter.reject(error)),
-      )
-      .finally(() => this.flushPointerMove(viewportId));
+    void request.then(
+      (response) => pending.waiters.forEach((waiter) => waiter.resolve(response)),
+      (error) => pending.waiters.forEach((waiter) => waiter.reject(error)),
+    ).finally(() => this.flushPointerMove(viewportId));
   }
 
   private sendThumbnailQuery(type: string, payload: Record<string, unknown>): Promise<HostResponse> {
     return new Promise((resolve, reject) => {
       const run = () => {
         this.thumbnailActive += 1;
-        void this.send({ kind: 'query', type, payload })
-          .then(resolve, reject)
-          .finally(() => {
-            this.thumbnailActive -= 1;
-            this.thumbnailQueue.shift()?.();
-          });
+        void this.send({ kind: 'query', type, payload }).then(resolve, reject).finally(() => {
+          this.thumbnailActive -= 1;
+          this.thumbnailQueue.shift()?.();
+        });
       };
       if (this.thumbnailActive < ArcHostClient.maxConcurrentThumbnails) run();
       else this.thumbnailQueue.push(run);
     });
   }
 '''
-          if old not in s: raise SystemExit('command/query block not found')
+          if old not in s: raise SystemExit('command/query anchor not found')
           s = s.replace(old, new, 1)
           p.write_text(s)
           PY
