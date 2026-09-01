@@ -28,6 +28,23 @@ struct [[nodiscard]] texture_load_result
 };
 
 /**
+ * @brief Lightweight texture source metadata without decoding pixel payloads.
+ */
+struct [[nodiscard]] texture_asset_info
+{
+    std::uint32_t width{};
+    std::uint32_t height{};
+    texture_format format{texture_format::rgba8_unorm};
+    std::uint32_t mip_count{};
+    std::string message;
+
+    bool succeeded() const noexcept
+    {
+        return width > 0 && height > 0;
+    }
+};
+
+/**
  * @brief Parse DDS bytes and preserve compressed/uncompressed mip payloads.
  */
 texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::string name = {});
@@ -41,6 +58,11 @@ texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::
  * builds without a decoder preserve the encoded bytes for later processing.
  */
 texture_load_result load_texture_asset(const std::filesystem::path& path);
+
+/**
+ * @brief Inspect dimensions, format, and mip metadata without decoding texture pixels.
+ */
+texture_asset_info inspect_texture_asset(const std::filesystem::path& path);
 
 /**
  * @brief Decode texture bytes already supplied by an async or streaming source.

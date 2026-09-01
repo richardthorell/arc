@@ -5302,24 +5302,30 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
                         "Streaming supports DDS, PNG, JPEG, TGA, and BMP ordinary 2D textures";
                 else
                 {
-                    const auto texture = render::load_texture_asset(absolute_path);
+                    const auto texture = render::inspect_texture_asset(absolute_path);
                     if (texture.succeeded())
                     {
-                        host_asset.width = texture.texture.width;
-                        host_asset.height = texture.texture.height;
-                        host_asset.texture_format = texture_format_name(texture.texture.format);
-                        host_asset.mip_count = static_cast<std::uint32_t>(texture.texture.mips.size());
+                        host_asset.width = texture.width;
+                        host_asset.height = texture.height;
+                        host_asset.texture_format = texture_format_name(texture.format);
+                        host_asset.mip_count = texture.mip_count;
                         if (host_asset.streaming_mode == "virtual_tiles")
-                            for (const auto& mip : texture.texture.mips)
+                        {
+                            auto mip_width = texture.width;
+                            auto mip_height = texture.height;
+                            for (std::uint32_t mip = 0; mip < texture.mip_count; ++mip)
                             {
-                                if (mip.width <= render::virtual_texture_tile_size &&
-                                    mip.height <= render::virtual_texture_tile_size)
+                                if (mip_width <= render::virtual_texture_tile_size &&
+                                    mip_height <= render::virtual_texture_tile_size)
                                     break;
-                                host_asset.tile_count += ((mip.width + render::virtual_texture_tile_size - 1u) /
+                                host_asset.tile_count += ((mip_width + render::virtual_texture_tile_size - 1u) /
                                                           render::virtual_texture_tile_size) *
-                                                         ((mip.height + render::virtual_texture_tile_size - 1u) /
+                                                         ((mip_height + render::virtual_texture_tile_size - 1u) /
                                                           render::virtual_texture_tile_size);
+                                mip_width = std::max(1u, mip_width / 2u);
+                                mip_height = std::max(1u, mip_height / 2u);
                             }
+                        }
                     }
                     else
                         host_asset.streaming_eligibility_error = texture.message;

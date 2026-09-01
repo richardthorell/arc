@@ -148,6 +148,31 @@ std::vector<std::byte> read_binary_file(const std::filesystem::path& path)
     return stream ? bytes : std::vector<std::byte>{};
 }
 
+std::vector<std::byte> read_binary_prefix(const std::filesystem::path& path, std::size_t maximum_bytes)
+{
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream || maximum_bytes == 0) return {};
+    std::vector<std::byte> bytes(maximum_bytes);
+    stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    const auto read = stream.gcount();
+    if (read <= 0) return {};
+    bytes.resize(static_cast<std::size_t>(read));
+    return bytes;
+}
+
+std::uint32_t generated_mip_count(std::uint32_t width, std::uint32_t height) noexcept
+{
+    if (width == 0 || height == 0) return 0;
+    std::uint32_t count{1};
+    while (width > 1 || height > 1)
+    {
+        width = std::max(1u, width / 2u);
+        height = std::max(1u, height / 2u);
+        ++count;
+    }
+    return count;
+}
+
 float srgb_to_linear(float value) noexcept
 {
     return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
@@ -453,6 +478,72 @@ texture_load_result parse_dds_texture(const std::vector<std::byte>& bytes, std::
                            bytes.begin() + static_cast<std::ptrdiff_t>(cursor));
     texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
     return {.texture = std::move(texture), .message = "loaded DDS texture"};
+}
+
+texture_asset_info inspect_texture_asset(const std::filesystem::path& path)
+{
+    const auto extension = lowercase(path.extension().string());
+    if (extension == ".dds")
+    {
+        const auto bytes = read_binary_prefix(path, 148);
+        if (bytes.size() < 128) return {.message = "DDS header is truncated"};
+        if (read_u32(bytes, 0) != fourcc('D', 'D', 'S', ' ')) return {.message = "file is not a DDS texture"};
+        if (read_u32(bytes, 4) != 124 || read_u32(bytes, 76) != 32) return {.message = "DDS header is invalid"};
+
+        texture_format format{};
+        bool compressed{};
+        bool has_dx10_header{};
+        if (!map_legacy_format(read_u32(bytes, 80), read_u32(bytes, 84), read_u32(bytes, 88), read_u32(bytes, 92),
+                               read_u32(bytes, 96), read_u32(bytes, 100), read_u32(bytes, 104), format, compressed,
+                               has_dx10_header))
+            return {.message = "DDS pixel format is not supported"};
+        if (has_dx10_header)
+        {
+            if (bytes.size() < 148) return {.message = "DDS DX10 header is truncated"};
+            if (!map_dxgi_format(read_u32(bytes, 128), format, compressed))
+                return {.message = "DDS DXGI format is not supported"};
+            if (std::max(1u, read_u32(bytes, 140)) != 1u)
+                return {.message = "DDS texture arrays are not supported yet"};
+        }
+
+        const auto width = read_u32(bytes, 16);
+        const auto height = read_u32(bytes, 12);
+        if (width == 0 || height == 0) return {.message = "DDS dimensions are invalid"};
+        texture_data metadata;
+        metadata.name = path.filename().string();
+        metadata.format = format;
+        apply_filename_color_space(metadata, path);
+        return {.width = width,
+                .height = height,
+                .format = metadata.format,
+                .mip_count = std::max(1u, read_u32(bytes, 28)),
+                .message = "inspected DDS texture"};
+    }
+
+#if defined(ARC_RENDER_HAS_STB)
+    int width{};
+    int height{};
+    int channels{};
+    const auto native_path = path.string();
+    if (stbi_info(native_path.c_str(), &width, &height, &channels) == 0 || width <= 0 || height <= 0)
+        return {.message = "image metadata inspection failed: " +
+                           std::string(stbi_failure_reason() ? stbi_failure_reason() : "unknown image error")};
+    const bool hdr = stbi_is_hdr(native_path.c_str()) != 0;
+    texture_data metadata;
+    metadata.name = path.filename().string();
+    metadata.format = hdr ? texture_format::rgba32f : texture_format::rgba8_srgb;
+    metadata.color_space = hdr ? texture_color_space::linear : texture_color_space::srgb;
+    metadata.semantic = hdr ? texture_semantic::environment : texture_semantic::generic_color;
+    apply_filename_color_space(metadata, path);
+    return {.width = static_cast<std::uint32_t>(width),
+            .height = static_cast<std::uint32_t>(height),
+            .format = metadata.format,
+            .mip_count =
+                hdr ? 0u : generated_mip_count(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)),
+            .message = "inspected texture metadata"};
+#else
+    return {.message = "texture metadata inspection requires an image decoder for non-DDS assets"};
+#endif
 }
 
 texture_load_result load_texture_asset(const std::filesystem::path& path)
