@@ -730,13 +730,12 @@ private:
         std::unique_lock host_lock(host_mutex_);
         const auto host_lock_acquired = std::chrono::steady_clock::now();
         const auto request_start = host_lock_acquired;
-        host_->request_viewport(arc::editor::host_viewport_request{.viewport_id = viewport_id_,
-                                                                   .frame_index = frame_index_++,
-                                                                   .width = value.width,
-                                                                   .height = value.height});
+        host_->request_viewport(arc::editor::host_viewport_request{
+            .viewport_id = viewport_id_, .frame_index = frame_index_++, .width = value.width, .height = value.height});
         const auto request_end = std::chrono::steady_clock::now();
         host_lock.unlock();
-        const auto host_wait_ms = std::chrono::duration<double, std::milli>(host_lock_acquired - host_wait_start).count();
+        const auto host_wait_ms =
+            std::chrono::duration<double, std::milli>(host_lock_acquired - host_wait_start).count();
         const auto request_ms = std::chrono::duration<double, std::milli>(request_end - request_start).count();
         if (host_wait_ms >= 5.0 || request_ms >= 5.0)
             std::cerr << "[perf][host.viewport] " << viewport_id_ << " mutex-wait=" << std::fixed
@@ -768,7 +767,8 @@ private:
                                                                    .height = target.height});
         const auto request_end = std::chrono::steady_clock::now();
         host_lock.unlock();
-        const auto host_wait_ms = std::chrono::duration<double, std::milli>(host_lock_acquired - host_wait_start).count();
+        const auto host_wait_ms =
+            std::chrono::duration<double, std::milli>(host_lock_acquired - host_wait_start).count();
         const auto request_ms = std::chrono::duration<double, std::milli>(request_end - request_start).count();
         if (host_wait_ms >= 5.0 || request_ms >= 5.0)
             std::cerr << "[perf][host.viewport] " << target.viewport_id << " mutex-wait=" << std::fixed
@@ -1885,7 +1885,8 @@ int main()
             response = host->query(query);
             const auto execute_end = std::chrono::steady_clock::now();
             lock.unlock();
-            const auto lock_wait_ms = std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
+            const auto lock_wait_ms =
+                std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
             const auto execute_ms = std::chrono::duration<double, std::milli>(execute_end - execute_start).count();
             if (lock_wait_ms >= 5.0 || execute_ms >= 5.0)
                 std::cerr << "[perf][host.request] query " << query.query_type << " id=" << query.request_id
@@ -1914,7 +1915,8 @@ int main()
                 response = host->execute(command);
                 const auto execute_end = std::chrono::steady_clock::now();
                 lock.unlock();
-                const auto lock_wait_ms = std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
+                const auto lock_wait_ms =
+                    std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
                 const auto execute_ms = std::chrono::duration<double, std::milli>(execute_end - execute_start).count();
                 if (lock_wait_ms >= 5.0 || execute_ms >= 5.0)
                     std::cerr << "[perf][host.request] command " << command.command_type << " id=" << command.request_id
@@ -1940,7 +1942,8 @@ int main()
                 response = host->execute(command);
                 const auto execute_end = std::chrono::steady_clock::now();
                 lock.unlock();
-                const auto lock_wait_ms = std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
+                const auto lock_wait_ms =
+                    std::chrono::duration<double, std::milli>(lock_acquired - lock_wait_start).count();
                 const auto execute_ms = std::chrono::duration<double, std::milli>(execute_end - execute_start).count();
                 if (lock_wait_ms >= 5.0 || execute_ms >= 5.0)
                     std::cerr << "[perf][host.request] command " << command.command_type << " id=" << command.request_id
