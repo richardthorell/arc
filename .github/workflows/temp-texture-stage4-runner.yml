@@ -1,0 +1,57 @@
+name: Temporary Texture Stage 4 Runner
+on:
+  push:
+    branches:
+      - feat/texture-mip-pipeline-stage4
+    paths:
+      - .github/workflows/temp-texture-stage4-runner.yml
+permissions:
+  contents: write
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-mip-pipeline-stage4
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.x
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Apply implementation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('.github/workflows/temp-texture-stage4.yml').read_text()
+          body = text.split("cat > /tmp/stage4.py <<'PY'\n", 1)[1].split("\n          PY", 1)[0]
+          Path('/tmp/stage4.py').write_text('\n'.join(line[10:] if line.startswith('          ') else line for line in body.splitlines()))
+          PY
+          python3 /tmp/stage4.py
+      - name: Remove temporary files
+        run: rm .github/workflows/temp-texture-stage4.yml .github/workflows/temp-texture-stage4-runner.yml
+      - name: Format native
+        run: clang-format -i engine/render-tools/inc/arc/render_tools/texture_cooker.h engine/render-tools/src/common/texture_cooker.cpp engine/render-tools/tests/texture_cooker_tests.cpp editor/native/inc/arc/editor/host_protocol_base.h editor/native/src/host_protocol_base.inc editor/native/src/arc_host_base.inc
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Validate editor
+        working-directory: editor
+        run: |
+          npx prettier --write src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/TextureEditor.tsx
+          npm run typecheck
+          npm test -- src/renderer/src/texture/TextureEditor.test.tsx src/renderer/src/texture/texturePreviewProcessing.test.ts src/renderer/src/texture/TextureStage3Controls.test.tsx
+      - name: Configure native
+        run: cmake -S . -B out/build/stage4 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DARC_BUILD_ENGINE_TESTS=ON
+      - name: Build native
+        run: cmake --build out/build/stage4 --target arc_render_tools_tests arc-editor-host -j2
+      - name: Test native
+        run: ctest --test-dir out/build/stage4 -R arc_render_tools_tests --output-on-failure
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add Stage 4 texture mip pipeline"
+          git push origin HEAD:feat/texture-mip-pipeline-stage4
