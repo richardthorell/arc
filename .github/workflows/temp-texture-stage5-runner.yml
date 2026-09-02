@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
-          node-version: 22.12.x
+          node-version: 22.13.x
           cache: npm
           cache-dependency-path: editor/package-lock.json
       - name: Apply implementation
@@ -53,6 +53,14 @@ jobs:
           Path('/tmp/stage5.py').write_text(script)
           PY
           python3 /tmp/stage5.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('editor/src/renderer/src/ui/UiCurveEditor.tsx')
+          text = path.read_text()
+          text = text.replace('<UiIconButton aria-label="Delete curve point"', '<UiIconButton label="Delete curve point" aria-label="Delete curve point"')
+          text = text.replace('<UiIconButton aria-label="Reset curve"', '<UiIconButton label="Reset curve" aria-label="Reset curve"')
+          path.write_text(text)
+          PY
           rm .github/workflows/temp-texture-stage5.yml .github/workflows/temp-texture-stage5-runner.yml
       - name: Format
         run: |
