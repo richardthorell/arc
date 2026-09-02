@@ -2250,6 +2250,10 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                 !optional_number("lodBias", command.lod_bias) || !optional_number("minimumLod", command.minimum_lod) ||
                 !optional_number("maximumLod", command.maximum_lod) ||
                 !optional_number("alphaCoverageThreshold", command.alpha_coverage_threshold) ||
+                !optional_number("mipSharpen", command.mip_sharpen) ||
+                !optional_number("debandStrength", command.deband_strength) ||
+                !optional_bool("ditherMips", command.dither_mips) ||
+                !optional_bool("debandMips", command.deband_mips) ||
                 !optional_number("brightness", command.brightness) || !optional_number("gamma", command.gamma) ||
                 !optional_number("contrast", command.contrast) || !optional_number("saturation", command.saturation) ||
                 !optional_number("vibrance", command.vibrance) || !optional_number("tintR", command.tint_r) ||
@@ -2272,6 +2276,7 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
                 command.channel_r.empty() && command.channel_g.empty() && command.channel_b.empty() &&
                 command.channel_a.empty() && !command.max_size && !command.anisotropy && !command.lod_bias &&
                 !command.minimum_lod && !command.maximum_lod && !command.alpha_coverage_threshold &&
+                !command.mip_sharpen && !command.deband_strength && !command.dither_mips && !command.deband_mips &&
                 !command.brightness && !command.gamma && !command.contrast && !command.saturation &&
                 !command.vibrance && !command.tint_r && !command.tint_g && !command.tint_b && !command.input_black &&
                 !command.input_white && !command.output_black && !command.output_white && !command.invert_r &&
