@@ -29,7 +29,7 @@ const curveTangent = (curve: TextureCurve, i: number) => {
 };
 export const evaluateTextureCurve = (curve: TextureCurve, input: number) => {
   const x = clamp(input);
-  let ri = curve.findIndex((p) => p.x > x);
+  const ri = curve.findIndex((p) => p.x > x);
   if (ri < 0) return curve.at(-1)?.y ?? x;
   if (ri === 0) return curve[0].y;
   const li = ri - 1,
