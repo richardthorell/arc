@@ -36,7 +36,7 @@ const autoTangent = (points: UiCurvePoint[], i: number) => {
 export function evaluateUiCurve(points: UiCurvePoint[], input: number) {
   const x = clamp(input);
   if (points.length < 2) return x;
-  let ri = points.findIndex((p) => p.x > x);
+  const ri = points.findIndex((p) => p.x > x);
   if (ri < 0) return points.at(-1)!.y;
   if (ri === 0) return points[0].y;
   const li = ri - 1;
