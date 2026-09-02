@@ -23,8 +23,12 @@ enum class texture_import_preset : std::uint8_t
 
 enum class texture_mip_generation_filter : std::uint8_t
 {
+    nearest,
     box,
-    nearest
+    bilinear,
+    bicubic,
+    lanczos,
+    kaiser
 };
 
 enum class texture_channel_source : std::uint8_t
@@ -39,7 +43,7 @@ enum class texture_channel_source : std::uint8_t
 
 struct texture_import_settings
 {
-    static constexpr std::uint32_t current_version = 5;
+    static constexpr std::uint32_t current_version = 6;
     texture_import_preset preset{texture_import_preset::custom};
     texture_semantic semantic{texture_semantic::generic_color};
     texture_color_space color_space{texture_color_space::srgb};
@@ -58,6 +62,10 @@ struct texture_import_settings
     float minimum_lod{};
     float maximum_lod{1000.0f};
     float alpha_coverage_threshold{0.5f};
+    float mip_sharpen{};
+    float deband_strength{0.25f};
+    bool dither_mips{};
+    bool deband_mips{};
     float brightness{};
     float gamma{1.0f};
     float contrast{1.0f};

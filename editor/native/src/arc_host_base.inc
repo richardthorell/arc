@@ -2125,6 +2125,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                     if (payload.maximum_lod) settings.maximum_lod = *payload.maximum_lod;
                     if (payload.alpha_coverage_threshold)
                         settings.alpha_coverage_threshold = *payload.alpha_coverage_threshold;
+                    if (payload.mip_sharpen) settings.mip_sharpen = *payload.mip_sharpen;
+                    if (payload.deband_strength) settings.deband_strength = *payload.deband_strength;
+                    if (payload.dither_mips) settings.dither_mips = *payload.dither_mips;
+                    if (payload.deband_mips) settings.deband_mips = *payload.deband_mips;
                     if (payload.brightness) settings.brightness = *payload.brightness;
                     if (payload.gamma) settings.gamma = *payload.gamma;
                     if (payload.contrast) settings.contrast = *payload.contrast;
@@ -4655,6 +4659,10 @@ host_response arc_host::query(const host_query_envelope& query) const
                     ",\"minimumLod\":" + std::to_string(value.minimum_lod) +
                     ",\"maximumLod\":" + std::to_string(value.maximum_lod) +
                     ",\"alphaCoverageThreshold\":" + std::to_string(value.alpha_coverage_threshold) +
+                    ",\"mipSharpen\":" + std::to_string(value.mip_sharpen) +
+                    ",\"ditherMips\":" + std::string(value.dither_mips ? "true" : "false") +
+                    ",\"debandMips\":" + std::string(value.deband_mips ? "true" : "false") +
+                    ",\"debandStrength\":" + std::to_string(value.deband_strength) +
                     ",\"brightness\":" + std::to_string(value.brightness) +
                     ",\"gamma\":" + std::to_string(value.gamma) + ",\"contrast\":" + std::to_string(value.contrast) +
                     ",\"saturation\":" + std::to_string(value.saturation) +

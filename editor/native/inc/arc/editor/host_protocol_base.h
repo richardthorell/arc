@@ -908,6 +908,10 @@ struct host_patch_texture_settings_command
     std::optional<float> minimum_lod;
     std::optional<float> maximum_lod;
     std::optional<float> alpha_coverage_threshold;
+    std::optional<float> mip_sharpen;
+    std::optional<float> deband_strength;
+    std::optional<bool> dither_mips;
+    std::optional<bool> deband_mips;
     std::optional<float> brightness;
     std::optional<float> gamma;
     std::optional<float> contrast;

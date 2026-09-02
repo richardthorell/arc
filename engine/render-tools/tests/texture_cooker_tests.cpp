@@ -163,3 +163,47 @@ TEST_CASE("texture preprocessing applies max size and records artifact policy")
     CHECK(inspected.value().metadata.compression == render::texture_compression_policy::color);
     CHECK(inspected.value().metadata.anisotropy == 8.0f);
 }
+
+TEST_CASE("Stage 4 mip settings round trip advanced filters")
+{
+    using namespace arc::render::tools;
+    auto settings = texture_import_settings_for_preset(texture_import_preset::color);
+    settings.mip_generation_filter = texture_mip_generation_filter::kaiser;
+    settings.mip_sharpen = 0.75f;
+    settings.dither_mips = true;
+    settings.deband_mips = true;
+    settings.deband_strength = 0.4f;
+    const auto serialized = serialize_texture_import_settings(settings);
+    const auto parsed = parse_texture_import_settings(serialized, texture_import_settings::current_version);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed.value().mip_generation_filter == texture_mip_generation_filter::kaiser);
+    CHECK(parsed.value().mip_sharpen == Catch::Approx(0.75f));
+    CHECK(parsed.value().dither_mips);
+    CHECK(parsed.value().deband_mips);
+    CHECK(parsed.value().deband_strength == Catch::Approx(0.4f));
+}
+
+TEST_CASE("Stage 4 mip filters generate complete deterministic chains")
+{
+    using namespace arc;
+    using namespace arc::render;
+    using namespace arc::render::tools;
+    for (const auto filter : {texture_mip_generation_filter::box, texture_mip_generation_filter::bilinear,
+                              texture_mip_generation_filter::bicubic, texture_mip_generation_filter::lanczos,
+                              texture_mip_generation_filter::kaiser})
+    {
+        auto loaded = load_texture_asset_bytes(checker_bmp(), "checker.bmp");
+        REQUIRE(loaded.succeeded());
+        auto settings = texture_import_settings_for_preset(texture_import_preset::color);
+        settings.mip_generation_filter = filter;
+        settings.mip_sharpen = 0.5f;
+        settings.dither_mips = true;
+        settings.deband_mips = true;
+        auto processed =
+            preprocess_texture_for_cook(std::move(loaded.texture), settings, assets::windows_vulkan_cook_target());
+        REQUIRE(processed.has_value());
+        CHECK(processed.value().texture.mips.size() == 2);
+        CHECK(processed.value().texture.mips.back().width == 1);
+        CHECK(processed.value().texture.mips.back().height == 1);
+    }
+}

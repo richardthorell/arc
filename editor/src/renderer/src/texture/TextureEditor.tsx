@@ -365,9 +365,57 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
                     void updateSettings({ mipGenerationFilter: event.target.value as TextureMipGenerationFilter })
                   }
                 >
+                  <option value="kaiser">Kaiser</option>
+                  <option value="lanczos">Lanczos</option>
+                  <option value="bicubic">Bicubic</option>
+                  <option value="bilinear">Bilinear</option>
                   <option value="box">Box</option>
                   <option value="nearest">Nearest</option>
                 </select>
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Sharpen</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy || !settings.generateMips}
+                  max={2}
+                  min={0}
+                  step={0.05}
+                  type="number"
+                  value={settings.mipSharpen}
+                  onChange={(event) => void updateSettings({ mipSharpen: Number(event.target.value) })}
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">Dither</span>
+                <input
+                  checked={settings.ditherMips}
+                  disabled={settingsBusy || !settings.generateMips}
+                  type="checkbox"
+                  onChange={(event) => void updateSettings({ ditherMips: event.target.checked })}
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">De-band</span>
+                <input
+                  checked={settings.debandMips}
+                  disabled={settingsBusy || !settings.generateMips}
+                  type="checkbox"
+                  onChange={(event) => void updateSettings({ debandMips: event.target.checked })}
+                />
+              </label>
+              <label className="inspector-property texture-inspector-property">
+                <span className="inspector-property-label">De-band Strength</span>
+                <input
+                  className="texture-inspector-input"
+                  disabled={settingsBusy || !settings.generateMips || !settings.debandMips}
+                  max={1}
+                  min={0}
+                  step={0.05}
+                  type="number"
+                  value={settings.debandStrength}
+                  onChange={(event) => void updateSettings({ debandStrength: Number(event.target.value) })}
+                />
               </label>
               <label className="inspector-property texture-inspector-property">
                 <span className="inspector-property-label">Preserve Alpha</span>

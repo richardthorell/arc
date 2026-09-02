@@ -19,7 +19,7 @@ export type TexturePowerOfTwoPolicy = 'preserve' | 'resize_down' | 'resize_up';
 export type TextureFilterMode = 'nearest' | 'linear';
 export type TextureMipFilterMode = 'nearest' | 'linear';
 export type TextureAddressMode = 'repeat' | 'clamp_to_edge' | 'mirrored_repeat';
-export type TextureMipGenerationFilter = 'box' | 'nearest';
+export type TextureMipGenerationFilter = 'nearest' | 'box' | 'bilinear' | 'bicubic' | 'lanczos' | 'kaiser';
 export type TextureChannelSource = 'red' | 'green' | 'blue' | 'alpha' | 'zero' | 'one';
 
 export type TextureSettingsSnapshot = {
@@ -42,6 +42,10 @@ export type TextureSettingsSnapshot = {
   minimumLod: number;
   maximumLod: number;
   alphaCoverageThreshold: number;
+  mipSharpen: number;
+  ditherMips: boolean;
+  debandMips: boolean;
+  debandStrength: number;
   brightness: number;
   gamma: number;
   contrast: number;
