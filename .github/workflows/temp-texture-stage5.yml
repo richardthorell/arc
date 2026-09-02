@@ -1,0 +1,514 @@
+name: Temporary Texture Stage 5
+
+on:
+  push:
+    branches: [feat/texture-curve-editor-stage5]
+    paths: [.github/workflows/temp-texture-stage5.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: feat/texture-curve-editor-stage5
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.12.x
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Apply Stage 5 implementation
+        shell: bash
+        run: |
+          cat > /tmp/stage5.py <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'pattern missing in {path}: {old[:100]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Native settings model.
+          path = 'engine/render-tools/inc/arc/render_tools/texture_cooker.h'
+          replace(path, '#include <string_view>\n', '#include <string_view>\n#include <vector>\n')
+          replace(path, '''enum class texture_channel_source : std::uint8_t
+          {
+              red,
+              green,
+              blue,
+              alpha,
+              zero,
+              one
+          };
+
+          struct texture_import_settings''', '''enum class texture_channel_source : std::uint8_t
+          {
+              red,
+              green,
+              blue,
+              alpha,
+              zero,
+              one
+          };
+
+          enum class texture_curve_interpolation : std::uint8_t
+          {
+              constant,
+              linear,
+              smooth,
+              manual
+          };
+
+          struct texture_curve_point
+          {
+              float x{};
+              float y{};
+              float in_tangent{1.0f};
+              float out_tangent{1.0f};
+              texture_curve_interpolation interpolation{texture_curve_interpolation::smooth};
+          };
+
+          struct texture_curve
+          {
+              std::vector<texture_curve_point> points{{.x = 0.0f, .y = 0.0f}, {.x = 1.0f, .y = 1.0f}};
+          };
+
+          struct texture_import_settings''')
+          replace(path, 'static constexpr std::uint32_t current_version = 6;', 'static constexpr std::uint32_t current_version = 7;')
+          replace(path, '''    float output_black{};
+              float output_white{1.0f};
+              texture_channel_source channel_r''', '''    float output_black{};
+              float output_white{1.0f};
+              bool curves_enabled{};
+              texture_curve curve_master{};
+              texture_curve curve_r{};
+              texture_curve curve_g{};
+              texture_curve curve_b{};
+              texture_curve curve_a{};
+              texture_channel_source channel_r''')
+          replace(path, '''[[nodiscard]] std::optional<texture_channel_source> parse_texture_channel_source(std::string_view value) noexcept;
+
+          [[nodiscard]] texture_import_settings''', '''[[nodiscard]] std::optional<texture_channel_source> parse_texture_channel_source(std::string_view value) noexcept;
+          [[nodiscard]] std::string_view texture_curve_interpolation_name(texture_curve_interpolation interpolation) noexcept;
+          [[nodiscard]] core::result<texture_curve, std::string> parse_texture_curve(std::string_view canonical_json);
+          [[nodiscard]] std::string serialize_texture_curve(const texture_curve& curve);
+          [[nodiscard]] float evaluate_texture_curve(const texture_curve& curve, float value) noexcept;
+
+          [[nodiscard]] texture_import_settings''')
+
+          path = 'engine/render-tools/src/common/texture_cooker.cpp'
+          # Curve helpers before mapped_channel.
+          replace(path, '''float mapped_channel(const std::array<float, 4>& rgba, texture_channel_source source) noexcept
+          {''', '''float curve_slope(const texture_curve_point& left, const texture_curve_point& right) noexcept
+          {
+              const float width = right.x - left.x;
+              return width > 0.000001f ? (right.y - left.y) / width : 0.0f;
+          }
+
+          float automatic_curve_tangent(const texture_curve& curve, std::size_t index) noexcept
+          {
+              if (curve.points.size() < 2u) return 1.0f;
+              if (index == 0u) return curve_slope(curve.points[0], curve.points[1]);
+              if (index + 1u >= curve.points.size()) return curve_slope(curve.points[index - 1u], curve.points[index]);
+              const float left = curve_slope(curve.points[index - 1u], curve.points[index]);
+              const float right = curve_slope(curve.points[index], curve.points[index + 1u]);
+              if (left * right <= 0.0f) return 0.0f;
+              return (left + right) * 0.5f;
+          }
+
+          float mapped_channel(const std::array<float, 4>& rgba, texture_channel_source source) noexcept
+          {''')
+          # Apply curves after levels, before gamma.
+          replace(path, '''                value[channel] = std::clamp((value[channel] - settings.input_black) / level_range, 0.0f, 1.0f);
+                          value[channel] = std::pow(value[channel], 1.0f / settings.gamma);''', '''                value[channel] = std::clamp((value[channel] - settings.input_black) / level_range, 0.0f, 1.0f);
+                          if (settings.curves_enabled)
+                          {
+                              const texture_curve* channel_curve = channel == 0u ? &settings.curve_r : channel == 1u ? &settings.curve_g : &settings.curve_b;
+                              value[channel] = evaluate_texture_curve(*channel_curve, value[channel]);
+                              value[channel] = evaluate_texture_curve(settings.curve_master, value[channel]);
+                          }
+                          value[channel] = std::pow(std::clamp(value[channel], 0.0f, 1.0f), 1.0f / settings.gamma);''')
+          replace(path, '''        for (std::size_t channel = 0; channel < 4u; ++channel)
+                      pixels[offset + channel] = byte_channel(value[channel]);''', '''        if (settings.curves_enabled)
+                      value[3] = evaluate_texture_curve(settings.curve_a, value[3]);
+                  for (std::size_t channel = 0; channel < 4u; ++channel)
+                      pixels[offset + channel] = byte_channel(value[channel]);''')
+          # Public curve helpers before preset factory.
+          replace(path, '''texture_import_settings texture_import_settings_for_preset(texture_import_preset preset) noexcept
+          {''', '''std::string_view texture_curve_interpolation_name(texture_curve_interpolation value) noexcept
+          {
+              switch (value)
+              {
+                  case texture_curve_interpolation::constant: return "constant";
+                  case texture_curve_interpolation::linear: return "linear";
+                  case texture_curve_interpolation::smooth: return "smooth";
+                  case texture_curve_interpolation::manual: return "manual";
+              }
+              return "smooth";
+          }
+
+          core::result<texture_curve, std::string> parse_texture_curve(std::string_view canonical_json)
+          {
+              const auto document = json::parse(canonical_json, nullptr, false);
+              if (!document.is_array() || document.size() < 2u || document.size() > 32u)
+                  return core::result<texture_curve, std::string>::failure("texture curve must contain between 2 and 32 points");
+              texture_curve curve;
+              curve.points.clear();
+              float previous_x = -1.0f;
+              for (const auto& point : document)
+              {
+                  if (!point.is_object()) return core::result<texture_curve, std::string>::failure("texture curve point must be an object");
+                  texture_curve_point value;
+                  value.x = point.value("x", -1.0f);
+                  value.y = point.value("y", -1.0f);
+                  value.in_tangent = point.value("inTangent", 1.0f);
+                  value.out_tangent = point.value("outTangent", 1.0f);
+                  const auto interpolation = lowercase(point.value("interpolation", std::string{"smooth"}));
+                  if (interpolation == "constant") value.interpolation = texture_curve_interpolation::constant;
+                  else if (interpolation == "linear") value.interpolation = texture_curve_interpolation::linear;
+                  else if (interpolation == "smooth") value.interpolation = texture_curve_interpolation::smooth;
+                  else if (interpolation == "manual") value.interpolation = texture_curve_interpolation::manual;
+                  else return core::result<texture_curve, std::string>::failure("texture curve interpolation is invalid");
+                  if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.in_tangent) || !std::isfinite(value.out_tangent) ||
+                      value.x < 0.0f || value.x > 1.0f || value.y < 0.0f || value.y > 1.0f || value.x <= previous_x ||
+                      std::abs(value.in_tangent) > 16.0f || std::abs(value.out_tangent) > 16.0f)
+                      return core::result<texture_curve, std::string>::failure("texture curve point is invalid");
+                  previous_x = value.x;
+                  curve.points.push_back(value);
+              }
+              if (curve.points.front().x != 0.0f || curve.points.back().x != 1.0f)
+                  return core::result<texture_curve, std::string>::failure("texture curve endpoints must be at x=0 and x=1");
+              return core::result<texture_curve, std::string>::success(std::move(curve));
+          }
+
+          std::string serialize_texture_curve(const texture_curve& curve)
+          {
+              json result = json::array();
+              for (const auto& point : curve.points)
+                  result.push_back({{"x", point.x}, {"y", point.y}, {"inTangent", point.in_tangent},
+                                    {"outTangent", point.out_tangent}, {"interpolation", texture_curve_interpolation_name(point.interpolation)}});
+              return result.dump();
+          }
+
+          float evaluate_texture_curve(const texture_curve& curve, float input) noexcept
+          {
+              if (curve.points.empty()) return std::clamp(input, 0.0f, 1.0f);
+              const float value = std::clamp(input, 0.0f, 1.0f);
+              if (value <= curve.points.front().x) return curve.points.front().y;
+              if (value >= curve.points.back().x) return curve.points.back().y;
+              auto right = std::upper_bound(curve.points.begin(), curve.points.end(), value,
+                                            [](float x, const texture_curve_point& point) { return x < point.x; });
+              const auto right_index = static_cast<std::size_t>(std::distance(curve.points.begin(), right));
+              const auto left_index = right_index - 1u;
+              const auto& left = curve.points[left_index];
+              const auto& next = curve.points[right_index];
+              const float width = next.x - left.x;
+              const float t = width > 0.0f ? (value - left.x) / width : 0.0f;
+              if (left.interpolation == texture_curve_interpolation::constant) return left.y;
+              if (left.interpolation == texture_curve_interpolation::linear) return std::lerp(left.y, next.y, t);
+              const float left_tangent = left.interpolation == texture_curve_interpolation::manual ? left.out_tangent : automatic_curve_tangent(curve, left_index);
+              const float right_tangent = next.interpolation == texture_curve_interpolation::manual ? next.in_tangent : automatic_curve_tangent(curve, right_index);
+              const float t2 = t * t;
+              const float t3 = t2 * t;
+              const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
+              const float h10 = t3 - 2.0f * t2 + t;
+              const float h01 = -2.0f * t3 + 3.0f * t2;
+              const float h11 = t3 - t2;
+              return std::clamp(h00 * left.y + h10 * width * left_tangent + h01 * next.y + h11 * width * right_tangent, 0.0f, 1.0f);
+          }
+
+          texture_import_settings texture_import_settings_for_preset(texture_import_preset preset) noexcept
+          {''')
+          # Parse v7 curves after stage6 settings.
+          replace(path, '''    if (settings_version >= 6)
+              {
+                  settings.mip_sharpen = document.value("mipSharpen", settings.mip_sharpen);
+                  settings.dither_mips = document.value("ditherMips", settings.dither_mips);
+                  settings.deband_mips = document.value("debandMips", settings.deband_mips);
+                  settings.deband_strength = document.value("debandStrength", settings.deband_strength);
+              }
+              settings.max_size''', '''    if (settings_version >= 6)
+              {
+                  settings.mip_sharpen = document.value("mipSharpen", settings.mip_sharpen);
+                  settings.dither_mips = document.value("ditherMips", settings.dither_mips);
+                  settings.deband_mips = document.value("debandMips", settings.deband_mips);
+                  settings.deband_strength = document.value("debandStrength", settings.deband_strength);
+              }
+              if (settings_version >= 7)
+              {
+                  settings.curves_enabled = document.value("curvesEnabled", settings.curves_enabled);
+                  const auto parse_curve_field = [&](const char* name, texture_curve& target) -> std::optional<std::string>
+                  {
+                      const auto field = document.find(name);
+                      if (field == document.end()) return std::nullopt;
+                      const auto parsed = parse_texture_curve(field->dump());
+                      if (!parsed) return parsed.error();
+                      target = parsed.value();
+                      return std::nullopt;
+                  };
+                  if (const auto error = parse_curve_field("curveMaster", settings.curve_master)) return texture_import_settings_result::failure(*error);
+                  if (const auto error = parse_curve_field("curveR", settings.curve_r)) return texture_import_settings_result::failure(*error);
+                  if (const auto error = parse_curve_field("curveG", settings.curve_g)) return texture_import_settings_result::failure(*error);
+                  if (const auto error = parse_curve_field("curveB", settings.curve_b)) return texture_import_settings_result::failure(*error);
+                  if (const auto error = parse_curve_field("curveA", settings.curve_a)) return texture_import_settings_result::failure(*error);
+              }
+              settings.max_size''')
+          # Serialize curves into JSON object.
+          replace(path, '''                {"compression", texture_compression_policy_name(settings.compression)},
+                          {"contrast", settings.contrast},''', '''                {"compression", texture_compression_policy_name(settings.compression)},
+                          {"contrast", settings.contrast},
+                          {"curvesEnabled", settings.curves_enabled},
+                          {"curveMaster", json::parse(serialize_texture_curve(settings.curve_master))},
+                          {"curveR", json::parse(serialize_texture_curve(settings.curve_r))},
+                          {"curveG", json::parse(serialize_texture_curve(settings.curve_g))},
+                          {"curveB", json::parse(serialize_texture_curve(settings.curve_b))},
+                          {"curveA", json::parse(serialize_texture_curve(settings.curve_a))},''')
+          replace(path, '.version = 6,', '.version = 7,')
+          replace(path, 'return "arc-texture-cooker-v6:arctex-v2:advanced-mip-filtering:sharpen-deband-dither";',
+                       'return "arc-texture-cooker-v7:arctex-v2:color-curves:deterministic-lut-equivalent";')
+
+          # Host protocol curve payloads.
+          path = 'editor/native/inc/arc/editor/host_protocol_base.h'
+          replace(path, '''    std::string channel_a;
+              std::optional<std::uint32_t> max_size;''', '''    std::string channel_a;
+              std::string curve_master;
+              std::string curve_r;
+              std::string curve_g;
+              std::string curve_b;
+              std::string curve_a;
+              std::optional<std::uint32_t> max_size;''')
+          replace(path, '''    std::optional<bool> invert_a;
+              std::optional<bool> generate_mips;''', '''    std::optional<bool> invert_a;
+              std::optional<bool> curves_enabled;
+              std::optional<bool> generate_mips;''')
+
+          path = 'editor/native/src/host_protocol_base.inc'
+          replace(path, '''            string_value(payload, "channelA", command.channel_a);
+                      const auto optional_number''', '''            string_value(payload, "channelA", command.channel_a);
+                      string_value(payload, "curveMaster", command.curve_master);
+                      string_value(payload, "curveR", command.curve_r);
+                      string_value(payload, "curveG", command.curve_g);
+                      string_value(payload, "curveB", command.curve_b);
+                      string_value(payload, "curveA", command.curve_a);
+                      const auto optional_number''')
+          replace(path, '''                !optional_bool("invertA", command.invert_a) || !optional_bool("generateMips", command.generate_mips) ||''', '''                !optional_bool("invertA", command.invert_a) || !optional_bool("curvesEnabled", command.curves_enabled) ||
+                          !optional_bool("generateMips", command.generate_mips) ||''')
+          replace(path, '''                command.channel_r.empty() && command.channel_g.empty() && command.channel_b.empty() &&
+                          command.channel_a.empty() && !command.max_size''', '''                command.channel_r.empty() && command.channel_g.empty() && command.channel_b.empty() && command.channel_a.empty() &&
+                          command.curve_master.empty() && command.curve_r.empty() && command.curve_g.empty() && command.curve_b.empty() && command.curve_a.empty() &&
+                          !command.max_size''')
+          replace(path, '''                !command.invert_g && !command.invert_b && !command.invert_a && !command.generate_mips &&
+                          !command.preserve_alpha_coverage)''', '''                !command.invert_g && !command.invert_b && !command.invert_a && !command.curves_enabled &&
+                          !command.generate_mips && !command.preserve_alpha_coverage)''')
+
+          path = 'editor/native/src/arc_host_base.inc'
+          replace(path, '''                    if (payload.invert_a) settings.invert_a = *payload.invert_a;
+                          if (payload.generate_mips) settings.generate_mips = *payload.generate_mips;''', '''                    if (payload.invert_a) settings.invert_a = *payload.invert_a;
+                          if (payload.curves_enabled) settings.curves_enabled = *payload.curves_enabled;
+                          const auto parse_curve_patch = [&](const std::string& source, render::tools::texture_curve& target)
+                          {
+                              if (source.empty()) return true;
+                              const auto parsed = render::tools::parse_texture_curve(source);
+                              if (!parsed) return false;
+                              target = parsed.value();
+                              return true;
+                          };
+                          if (!parse_curve_patch(payload.curve_master, settings.curve_master) ||
+                              !parse_curve_patch(payload.curve_r, settings.curve_r) ||
+                              !parse_curve_patch(payload.curve_g, settings.curve_g) ||
+                              !parse_curve_patch(payload.curve_b, settings.curve_b) ||
+                              !parse_curve_patch(payload.curve_a, settings.curve_a))
+                              return fail("Texture curve payload is invalid");
+                          if (payload.generate_mips) settings.generate_mips = *payload.generate_mips;''')
+          replace(path, '''                    ",\\\"debandStrength\\\":" + std::to_string(value.deband_strength) +
+                              ",\\\"brightness\\\":"''', '''                    ",\\\"debandStrength\\\":" + std::to_string(value.deband_strength) +
+                              ",\\\"curvesEnabled\\\":" + std::string(value.curves_enabled ? "true" : "false") +
+                              ",\\\"curveMaster\\\":" + render::tools::serialize_texture_curve(value.curve_master) +
+                              ",\\\"curveR\\\":" + render::tools::serialize_texture_curve(value.curve_r) +
+                              ",\\\"curveG\\\":" + render::tools::serialize_texture_curve(value.curve_g) +
+                              ",\\\"curveB\\\":" + render::tools::serialize_texture_curve(value.curve_b) +
+                              ",\\\"curveA\\\":" + render::tools::serialize_texture_curve(value.curve_a) +
+                              ",\\\"brightness\\\":"''')
+
+          # Editor settings contract and wire curves as JSON strings over the simple host protocol.
+          path = 'editor/src/renderer/src/texture/textureSettings.ts'
+          replace(path, "export type TextureChannelSource = 'red' | 'green' | 'blue' | 'alpha' | 'zero' | 'one';\n", "export type TextureChannelSource = 'red' | 'green' | 'blue' | 'alpha' | 'zero' | 'one';\nexport type TextureCurveInterpolation = 'constant' | 'linear' | 'smooth' | 'manual';\nexport type TextureCurvePoint = { x: number; y: number; inTangent: number; outTangent: number; interpolation: TextureCurveInterpolation };\nexport type TextureCurve = TextureCurvePoint[];\n")
+          replace(path, '''  outputBlack: number;
+            outputWhite: number;
+            channelR: TextureChannelSource;''', '''  outputBlack: number;
+            outputWhite: number;
+            curvesEnabled: boolean;
+            curveMaster: TextureCurve;
+            curveR: TextureCurve;
+            curveG: TextureCurve;
+            curveB: TextureCurve;
+            curveA: TextureCurve;
+            channelR: TextureChannelSource;''')
+          replace(path, '''  const response = (await window.arc.host.command('texture.settings.patch', {
+              guid,
+              ...patch,
+            })) as HostResponse<unknown>;''', '''  const payload: Record<string, unknown> = { guid, ...patch };
+            for (const key of ['curveMaster', 'curveR', 'curveG', 'curveB', 'curveA'] as const) {
+              if (patch[key]) payload[key] = JSON.stringify(patch[key]);
+            }
+            const response = (await window.arc.host.command('texture.settings.patch', payload)) as HostResponse<unknown>;''')
+
+          # Shared curve editor.
+          Path('editor/src/renderer/src/ui/UiCurveEditor.tsx').write_text(r'''import { useMemo, useRef, useState } from 'react';
+          import type { PointerEvent as ReactPointerEvent } from 'react';
+          import { RotateCcw, Trash2 } from 'lucide-react';
+          import { UiIconButton } from './UiIconButton';
+          import './UiCurveEditor.css';
+
+          export type UiCurveInterpolation = 'constant' | 'linear' | 'smooth' | 'manual';
+          export type UiCurvePoint = { x: number; y: number; inTangent: number; outTangent: number; interpolation: UiCurveInterpolation };
+          export type UiCurveHistogram = number[];
+          export type UiCurveEditorProps = { value: UiCurvePoint[]; onChange: (value: UiCurvePoint[]) => void; histogram?: UiCurveHistogram; disabled?: boolean; ariaLabel?: string };
+          const clamp = (v: number, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, v));
+          const identity = (): UiCurvePoint[] => [{ x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' }, { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' }];
+          const slope = (a: UiCurvePoint, b: UiCurvePoint) => (b.x > a.x ? (b.y - a.y) / (b.x - a.x) : 0);
+          const autoTangent = (points: UiCurvePoint[], i: number) => { if (i === 0) return slope(points[0], points[1]); if (i === points.length - 1) return slope(points[i - 1], points[i]); const l = slope(points[i - 1], points[i]); const r = slope(points[i], points[i + 1]); return l * r <= 0 ? 0 : (l + r) / 2; };
+          export function evaluateUiCurve(points: UiCurvePoint[], input: number) { const x = clamp(input); if (points.length < 2) return x; let ri = points.findIndex((p) => p.x > x); if (ri < 0) return points.at(-1)!.y; if (ri === 0) return points[0].y; const li = ri - 1; const a = points[li], b = points[ri]; const t = (x - a.x) / Math.max(1e-6, b.x - a.x); if (a.interpolation === 'constant') return a.y; if (a.interpolation === 'linear') return a.y + (b.y - a.y) * t; const m0 = a.interpolation === 'manual' ? a.outTangent : autoTangent(points, li); const m1 = b.interpolation === 'manual' ? b.inTangent : autoTangent(points, ri); const t2=t*t,t3=t2*t,w=b.x-a.x; return clamp((2*t3-3*t2+1)*a.y+(t3-2*t2+t)*w*m0+(-2*t3+3*t2)*b.y+(t3-t2)*w*m1); }
+          export function UiCurveEditor({ value, onChange, histogram, disabled, ariaLabel='Curve editor' }: UiCurveEditorProps) {
+            const svgRef = useRef<SVGSVGElement | null>(null); const [selected, setSelected] = useState<number | null>(null); const [dragging, setDragging] = useState<number | null>(null);
+            const path = useMemo(() => Array.from({length:129},(_,i)=>{ const x=i/128; const y=evaluateUiCurve(value,x); return `${i?'L':'M'} ${x*100} ${(1-y)*100}`; }).join(' '), [value]);
+            const histogramPath = useMemo(() => { if (!histogram?.length) return ''; const peak=Math.max(1,...histogram); return histogram.map((v,i)=>`${i?'L':'M'} ${(i/(histogram.length-1))*100} ${100-(v/peak)*92}`).join(' ')+' L 100 100 L 0 100 Z'; }, [histogram]);
+            const eventPoint = (event: ReactPointerEvent<SVGSVGElement>) => { const r=event.currentTarget.getBoundingClientRect(); return { x: clamp((event.clientX-r.left)/r.width), y: clamp(1-(event.clientY-r.top)/r.height) }; };
+            const move = (event: ReactPointerEvent<SVGSVGElement>) => { if (dragging === null || disabled) return; const p=eventPoint(event); const next=value.map((point,i)=>i===dragging?{...point,x:i===0?0:i===value.length-1?1:Math.min(value[i+1].x-.005,Math.max(value[i-1].x+.005,p.x)),y:p.y}:point); onChange(next); };
+            const add = (event: ReactPointerEvent<SVGSVGElement>) => { if (disabled || value.length>=32) return; const p=eventPoint(event); const next=[...value,{x:p.x,y:p.y,inTangent:1,outTangent:1,interpolation:'smooth' as const}].sort((a,b)=>a.x-b.x); onChange(next); setSelected(next.findIndex((q)=>q.x===p.x && q.y===p.y)); };
+            const remove = () => { if (selected===null || selected===0 || selected===value.length-1) return; onChange(value.filter((_,i)=>i!==selected)); setSelected(null); };
+            return <div className="ui-curve-editor" aria-label={ariaLabel}>
+              <div className="ui-curve-toolbar"><select aria-label="Curve interpolation" disabled={disabled||selected===null} value={selected===null?'smooth':value[selected].interpolation} onChange={(e)=>selected!==null&&onChange(value.map((p,i)=>i===selected?{...p,interpolation:e.target.value as UiCurveInterpolation}:p))}><option value="constant">Constant</option><option value="linear">Linear</option><option value="smooth">Smooth</option><option value="manual">Manual</option></select><UiIconButton aria-label="Delete curve point" disabled={disabled||selected===null||selected===0||selected===value.length-1} onClick={remove}><Trash2 size={13}/></UiIconButton><UiIconButton aria-label="Reset curve" disabled={disabled} onClick={()=>{onChange(identity());setSelected(null);}}><RotateCcw size={13}/></UiIconButton></div>
+              <svg ref={svgRef} className="ui-curve-canvas" viewBox="0 0 100 100" preserveAspectRatio="none" onDoubleClick={add} onPointerMove={move} onPointerUp={(e)=>{setDragging(null);if(e.currentTarget.hasPointerCapture(e.pointerId))e.currentTarget.releasePointerCapture(e.pointerId);}}>
+                <g className="ui-curve-grid"><path d="M 0 25 H 100 M 0 50 H 100 M 0 75 H 100 M 25 0 V 100 M 50 0 V 100 M 75 0 V 100"/></g>{histogramPath&&<path className="ui-curve-histogram" d={histogramPath}/>}<path className="ui-curve-line" d={path}/>{value.map((p,i)=><circle aria-label={`Curve point ${i+1}`} className={selected===i?'ui-curve-point selected':'ui-curve-point'} cx={p.x*100} cy={(1-p.y)*100} key={`${i}-${p.x}`} r="2.2" onPointerDown={(e)=>{if(disabled)return;e.stopPropagation();setSelected(i);setDragging(i);e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId);}}/>)}
+              </svg>
+              <div className="ui-curve-readout">{selected===null?'Double-click to add a point':`X ${value[selected].x.toFixed(3)}  Y ${value[selected].y.toFixed(3)}`}</div>
+            </div>;
+          }
+          ''')
+          Path('editor/src/renderer/src/ui/UiCurveEditor.css').write_text(r'''.ui-curve-editor{display:grid;gap:4px;padding:6px 8px}.ui-curve-toolbar{display:flex;justify-content:flex-end;gap:4px}.ui-curve-toolbar select{margin-right:auto;min-width:90px;height:24px;background:var(--arc-color-surface-control,#20262c);color:var(--arc-color-text,#e7e9ed);border:1px solid var(--arc-color-border,#303841);border-radius:3px}.ui-curve-canvas{width:100%;height:190px;border:1px solid var(--arc-color-border,#303841);border-radius:3px;background:#11161b;touch-action:none;cursor:crosshair}.ui-curve-grid path{fill:none;stroke:rgba(255,255,255,.08);stroke-width:.35}.ui-curve-histogram{fill:rgba(255,255,255,.08);stroke:none}.ui-curve-line{fill:none;stroke:currentColor;stroke-width:1.1;vector-effect:non-scaling-stroke}.ui-curve-point{fill:#171c22;stroke:currentColor;stroke-width:1;vector-effect:non-scaling-stroke;cursor:grab}.ui-curve-point.selected{fill:currentColor}.ui-curve-readout{min-height:14px;color:var(--arc-color-text-muted,#9ca3ad);font:10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace}
+          ''')
+          Path('editor/src/renderer/src/ui/UiCurveEditor.test.tsx').write_text(r'''import { describe, expect, it } from 'vitest'; import { evaluateUiCurve, type UiCurvePoint } from './UiCurveEditor';
+          const identity: UiCurvePoint[]=[{x:0,y:0,inTangent:1,outTangent:1,interpolation:'smooth'},{x:1,y:1,inTangent:1,outTangent:1,interpolation:'smooth'}];
+          describe('UiCurveEditor evaluation',()=>{it('keeps identity values stable',()=>{expect(evaluateUiCurve(identity,.25)).toBeCloseTo(.25);expect(evaluateUiCurve(identity,.75)).toBeCloseTo(.75)});it('supports constant and linear segments',()=>{const points=[{...identity[0],interpolation:'constant' as const},{x:.5,y:.8,inTangent:1,outTangent:1,interpolation:'linear' as const},identity[1]];expect(evaluateUiCurve(points,.25)).toBe(0);expect(evaluateUiCurve(points,.75)).toBeCloseTo(.9)})});
+          ''')
+          path='editor/src/renderer/src/ui/index.ts'
+          replace(path, "export { UiColorControl } from './UiColorControl';\n", "export { UiColorControl } from './UiColorControl';\nexport { UiCurveEditor, evaluateUiCurve } from './UiCurveEditor';\nexport type { UiCurvePoint, UiCurveInterpolation, UiCurveHistogram } from './UiCurveEditor';\n")
+
+          # Texture curve inspector using shared UI.
+          Path('editor/src/renderer/src/texture/TextureCurveControls.tsx').write_text(r'''import { useEffect, useRef, useState } from 'react';
+          import type { AssetItem } from '../services/editorHostTypes'; import { UiButton, UiCurveEditor, UiPanelSection, type UiCurveHistogram } from '../ui';
+          import { patchTextureSettings, type TextureCurve, type TextureSettingsPatch, type TextureSettingsSnapshot } from './textureSettings'; import { useTextureSettings } from './useTextureSettings';
+          type CurveKey='curveMaster'|'curveR'|'curveG'|'curveB'|'curveA'; const channels:Array<[CurveKey,string]>=[['curveMaster','Master'],['curveR','R'],['curveG','G'],['curveB','B'],['curveA','A']];
+          export function TextureCurveControls({asset,histogram}:{asset:AssetItem;histogram?:{r:number[];g:number[];b:number[];a:number[]}}){ const {settings}=useTextureSettings(asset.guid,asset.generation); const [draft,setDraft]=useState<TextureSettingsSnapshot|null>(settings); const [active,setActive]=useState<CurveKey>('curveMaster'); const timer=useRef<number|null>(null); useEffect(()=>setDraft(settings),[settings]); useEffect(()=>()=>{if(timer.current!==null)window.clearTimeout(timer.current)},[]); if(!asset.guid||!draft||asset.readOnly)return null;
+            const update=(patch:TextureSettingsPatch)=>{setDraft(c=>c?{...c,...patch}:c);window.dispatchEvent(new CustomEvent('arc:texture-settings-preview',{detail:{guid:asset.guid,patch}}));if(timer.current!==null)window.clearTimeout(timer.current);timer.current=window.setTimeout(()=>void patchTextureSettings(asset.guid!,patch),250)};
+            const h:UiCurveHistogram|undefined=active==='curveR'?histogram?.r:active==='curveG'?histogram?.g:active==='curveB'?histogram?.b:active==='curveA'?histogram?.a:histogram?histogram.r.map((v,i)=>v+histogram.g[i]+histogram.b[i]):undefined;
+            return <UiPanelSection className="texture-inspector-section" collapsed title="Curves"><label className="inspector-property texture-inspector-property"><span className="inspector-property-label">Enable Curves</span><input checked={draft.curvesEnabled} type="checkbox" onChange={e=>update({curvesEnabled:e.target.checked})}/></label><div className="texture-curve-tabs">{channels.map(([key,label])=><UiButton active={active===key} key={key} onClick={()=>setActive(key)} variant="toolbar">{label}</UiButton>)}</div><UiCurveEditor ariaLabel={`${channels.find(([key])=>key===active)?.[1]} texture curve`} disabled={!draft.curvesEnabled||draft.semantic==='normal'} histogram={h} value={draft[active]} onChange={value=>update({[active]:value as TextureCurve})}/>{draft.semantic==='normal'&&<div className="texture-stage3-note">RGB curves are bypassed for normal-map semantics.</div>}</UiPanelSection>;
+          }
+          ''')
+          # Preview curve evaluation.
+          path='editor/src/renderer/src/texture/texturePreviewProcessing.ts'
+          replace(path, "import type { TextureChannelSource, TextureSettingsSnapshot } from './textureSettings';", "import type { TextureChannelSource, TextureCurve, TextureSettingsSnapshot } from './textureSettings';")
+          replace(path, '''const mapped = (rgba: readonly number[], source: TextureChannelSource) => {''', '''const curveSlope = (a: TextureCurve[number], b: TextureCurve[number]) => (b.x > a.x ? (b.y - a.y) / (b.x - a.x) : 0);
+          const curveTangent = (curve: TextureCurve, i: number) => { if (i === 0) return curveSlope(curve[0], curve[1]); if (i === curve.length - 1) return curveSlope(curve[i - 1], curve[i]); const l=curveSlope(curve[i-1],curve[i]),r=curveSlope(curve[i],curve[i+1]); return l*r<=0?0:(l+r)/2; };
+          export const evaluateTextureCurve = (curve: TextureCurve, input: number) => { const x=clamp(input); let ri=curve.findIndex(p=>p.x>x); if(ri<0)return curve.at(-1)?.y??x;if(ri===0)return curve[0].y;const li=ri-1,a=curve[li],b=curve[ri],w=Math.max(1e-6,b.x-a.x),t=(x-a.x)/w;if(a.interpolation==='constant')return a.y;if(a.interpolation==='linear')return a.y+(b.y-a.y)*t;const m0=a.interpolation==='manual'?a.outTangent:curveTangent(curve,li),m1=b.interpolation==='manual'?b.inTangent:curveTangent(curve,ri),t2=t*t,t3=t2*t;return clamp((2*t3-3*t2+1)*a.y+(t3-2*t2+t)*w*m0+(-2*t3+3*t2)*b.y+(t3-t2)*w*m1); };
+          const mapped = (rgba: readonly number[], source: TextureChannelSource) => {''')
+          replace(path, '''      value[channel] = clamp((value[channel] - settings.inputBlack) / range);
+                value[channel] = value[channel] ** (1 / settings.gamma);''', '''      value[channel] = clamp((value[channel] - settings.inputBlack) / range);
+                if (settings.curvesEnabled) { const curve=channel===0?settings.curveR:channel===1?settings.curveG:settings.curveB; value[channel]=evaluateTextureCurve(settings.curveMaster,evaluateTextureCurve(curve,value[channel])); }
+                value[channel] = clamp(value[channel]) ** (1 / settings.gamma);''')
+          replace(path, '''  return [clamp(value[0]), clamp(value[1]), clamp(value[2]), clamp(value[3])];''', '''  if (settings.curvesEnabled) value[3] = evaluateTextureCurve(settings.curveA, value[3]);
+            return [clamp(value[0]), clamp(value[1]), clamp(value[2]), clamp(value[3])];''')
+
+          # Texture editor integrates histogram-backed curve section.
+          path='editor/src/renderer/src/texture/TextureEditor.tsx'
+          replace(path, "import { TextureStage3Controls } from './TextureStage3Controls';", "import { TextureStage3Controls } from './TextureStage3Controls';\nimport { TextureCurveControls } from './TextureCurveControls';")
+          replace(path, 'function TextureInspector({ asset }: { asset: AssetItem }) {', 'function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: TexturePreviewAnalysis[\'histogram\'] }) {')
+          replace(path, '''        <TextureStage3Controls asset={asset} />
+
+                  <UiPanelSection''', '''        <TextureStage3Controls asset={asset} />
+                  <TextureCurveControls asset={asset} histogram={histogram} />
+
+                  <UiPanelSection''')
+          replace(path, '<TextureInspector asset={asset} />', '<TextureInspector asset={asset} histogram={analysis?.histogram} />')
+          css=Path('editor/src/renderer/src/texture/textureEditor.css'); css.write_text(css.read_text()+"\n.texture-curve-tabs{display:flex;gap:2px;padding:6px 8px 0}\n")
+
+          # Update preview fixture and add curve tests.
+          path='editor/src/renderer/src/texture/texturePreviewProcessing.test.ts'
+          replace(path, '''    brightness: 0,
+              gamma: 1,''', '''    brightness: 0,
+              curvesEnabled: false,
+              curveMaster: [{ x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' }, { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' }],
+              curveR: [{ x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' }, { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' }],
+              curveG: [{ x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' }, { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' }],
+              curveB: [{ x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' }, { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' }],
+              curveA: [{ x: 0, y: 0, inTangent: 1, outTangent: 1, interpolation: 'smooth' }, { x: 1, y: 1, inTangent: 1, outTangent: 1, interpolation: 'smooth' }],
+              gamma: 1,''')
+          with open(path,'a') as f: f.write("\n")
+
+          # Native tests.
+          with open('engine/render-tools/tests/texture_cooker_tests.cpp','a') as f:
+              f.write(r'''
+
+          TEST_CASE("texture curves serialize and evaluate deterministically")
+          {
+              using namespace arc::render::tools;
+              texture_curve curve;
+              curve.points = {{.x = 0.0f, .y = 0.0f, .interpolation = texture_curve_interpolation::linear},
+                              {.x = 0.5f, .y = 0.8f, .interpolation = texture_curve_interpolation::linear},
+                              {.x = 1.0f, .y = 1.0f, .interpolation = texture_curve_interpolation::linear}};
+              CHECK(evaluate_texture_curve(curve, 0.25f) == Catch::Approx(0.4f));
+              const auto parsed = parse_texture_curve(serialize_texture_curve(curve));
+              REQUIRE(parsed.has_value());
+              CHECK(parsed.value().points.size() == 3u);
+              CHECK(evaluate_texture_curve(parsed.value(), 0.75f) == Catch::Approx(0.9f));
+          }
+
+          TEST_CASE("texture curve settings round trip in version seven")
+          {
+              using namespace arc::render::tools;
+              auto settings = texture_import_settings_for_preset(texture_import_preset::color);
+              settings.curves_enabled = true;
+              settings.curve_master.points = {{.x = 0.0f, .y = 0.0f, .interpolation = texture_curve_interpolation::linear},
+                                              {.x = 1.0f, .y = 0.75f, .interpolation = texture_curve_interpolation::linear}};
+              const auto parsed = parse_texture_import_settings(serialize_texture_import_settings(settings), texture_import_settings::current_version);
+              REQUIRE(parsed.has_value());
+              CHECK(parsed.value().curves_enabled);
+              CHECK(parsed.value().curve_master.points.back().y == Catch::Approx(0.75f));
+          }
+          ''')
+          PY
+          python3 /tmp/stage5.py
+          rm .github/workflows/temp-texture-stage5.yml
+      - name: Format
+        run: |
+          clang-format -i engine/render-tools/inc/arc/render_tools/texture_cooker.h engine/render-tools/src/common/texture_cooker.cpp engine/render-tools/tests/texture_cooker_tests.cpp editor/native/inc/arc/editor/host_protocol_base.h editor/native/src/host_protocol_base.inc editor/native/src/arc_host_base.inc
+          cd editor && npx prettier --write src/renderer/src/ui/UiCurveEditor.tsx src/renderer/src/ui/UiCurveEditor.css src/renderer/src/ui/UiCurveEditor.test.tsx src/renderer/src/ui/index.ts src/renderer/src/texture/TextureCurveControls.tsx src/renderer/src/texture/TextureEditor.tsx src/renderer/src/texture/textureEditor.css src/renderer/src/texture/textureSettings.ts src/renderer/src/texture/texturePreviewProcessing.ts src/renderer/src/texture/texturePreviewProcessing.test.ts
+      - name: Install editor dependencies
+        working-directory: editor
+        run: npm ci
+      - name: Validate editor
+        working-directory: editor
+        run: |
+          npm run typecheck
+          npm test -- --run src/renderer/src/ui/UiCurveEditor.test.tsx src/renderer/src/texture/texturePreviewProcessing.test.ts src/renderer/src/texture/TextureEditor.test.tsx src/renderer/src/texture/TextureStage3Controls.test.tsx
+      - name: Configure native
+        run: cmake -S . -B out/build/stage5 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 -DARC_BUILD_EDITOR=ON -DARC_BUILD_RENDER_VULKAN=OFF -DARC_BUILD_ENGINE_TESTS=ON
+      - name: Build native
+        run: cmake --build out/build/stage5 --target arc_render_tools_tests arc-editor-host -j2
+      - name: Test native
+        run: ctest --test-dir out/build/stage5 -R arc_render_tools_tests --output-on-failure
+      - name: Commit implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Add Stage 5 texture curve editor"
+          git push origin HEAD:feat/texture-curve-editor-stage5
