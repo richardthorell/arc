@@ -27,24 +27,26 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-
           workflow = Path('.github/workflows/temp-texture-stage5.yml').read_text()
           match = re.search(r"cat > /tmp/stage5\.py <<'PY'\n(.*?)\n          PY\n", workflow, re.S)
           if not match:
               raise SystemExit('Could not extract Stage 5 implementation script')
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in match.group(1).splitlines())
-          helper = '''def replace(path, old, new):
-    p = Path(path)
-    text = p.read_text()
-    if old in text:
-        p.write_text(text.replace(old, new, 1))
-        return
-    tokens = [re.escape(token) for token in re.split(r'\\s+', old.strip()) if token]
-    pattern = r'\\s+'.join(tokens)
-    updated, count = re.subn(pattern, lambda _match: new, text, count=1, flags=re.S)
-    if count != 1:
-        raise SystemExit(f'pattern missing in {path}: {old[:100]!r}')
-    p.write_text(updated)'''
+          helper_lines = [
+              'def replace(path, old, new):',
+              '    p = Path(path)',
+              '    text = p.read_text()',
+              '    if old in text:',
+              '        p.write_text(text.replace(old, new, 1))',
+              '        return',
+              "    tokens = [re.escape(token) for token in re.split(r'\\s+', old.strip()) if token]",
+              "    pattern = r'\\s+'.join(tokens)",
+              '    updated, count = re.subn(pattern, lambda _match: new, text, count=1, flags=re.S)',
+              '    if count != 1:',
+              "        raise SystemExit(f'pattern missing in {path}: {old[:100]!r}')",
+              '    p.write_text(updated)',
+          ]
+          helper = '\n'.join(helper_lines)
           script, count = re.subn(r"def replace\(path, old, new\):\n.*?(?=\n# Native settings model\.)", lambda _m: helper, script, count=1, flags=re.S)
           if count != 1:
               raise SystemExit('Could not replace Stage 5 patch helper')
