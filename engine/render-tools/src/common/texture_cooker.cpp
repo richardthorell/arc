@@ -446,6 +446,23 @@ void rebuild_rgba8_mips(texture_data& texture, const texture_import_settings& se
     texture.mip_levels = static_cast<std::uint32_t>(texture.mips.size());
 }
 
+float curve_slope(const texture_curve_point& left, const texture_curve_point& right) noexcept
+{
+    const float width = right.x - left.x;
+    return width > 0.000001f ? (right.y - left.y) / width : 0.0f;
+}
+
+float automatic_curve_tangent(const texture_curve& curve, std::size_t index) noexcept
+{
+    if (curve.points.size() < 2u) return 1.0f;
+    if (index == 0u) return curve_slope(curve.points[0], curve.points[1]);
+    if (index + 1u >= curve.points.size()) return curve_slope(curve.points[index - 1u], curve.points[index]);
+    const float left = curve_slope(curve.points[index - 1u], curve.points[index]);
+    const float right = curve_slope(curve.points[index], curve.points[index + 1u]);
+    if (left * right <= 0.0f) return 0.0f;
+    return (left + right) * 0.5f;
+}
+
 float mapped_channel(const std::array<float, 4>& rgba, texture_channel_source source) noexcept
 {
     switch (source)
@@ -492,7 +509,15 @@ void apply_stage3_rgba8(std::vector<std::byte>& pixels, const texture_import_set
                 if (settings.color_space == texture_color_space::srgb)
                     value[channel] = srgb_to_linear_channel(value[channel]);
                 value[channel] = std::clamp((value[channel] - settings.input_black) / level_range, 0.0f, 1.0f);
-                value[channel] = std::pow(value[channel], 1.0f / settings.gamma);
+                if (settings.curves_enabled)
+                {
+                    const texture_curve* channel_curve = channel == 0u   ? &settings.curve_r
+                                                         : channel == 1u ? &settings.curve_g
+                                                                         : &settings.curve_b;
+                    value[channel] = evaluate_texture_curve(*channel_curve, value[channel]);
+                    value[channel] = evaluate_texture_curve(settings.curve_master, value[channel]);
+                }
+                value[channel] = std::pow(std::clamp(value[channel], 0.0f, 1.0f), 1.0f / settings.gamma);
                 value[channel] *= exposure;
                 value[channel] = (value[channel] - 0.5f) * settings.contrast + 0.5f;
             }
@@ -516,6 +541,7 @@ void apply_stage3_rgba8(std::vector<std::byte>& pixels, const texture_import_set
                     value[channel] = linear_to_srgb_channel(value[channel]);
             }
         }
+        if (settings.curves_enabled) value[3] = evaluate_texture_curve(settings.curve_a, value[3]);
         for (std::size_t channel = 0; channel < 4u; ++channel)
             pixels[offset + channel] = byte_channel(value[channel]);
     }
@@ -782,6 +808,106 @@ std::optional<texture_channel_source> parse_texture_channel_source(std::string_v
                                                       {"one", texture_channel_source::one}});
 }
 
+std::string_view texture_curve_interpolation_name(texture_curve_interpolation value) noexcept
+{
+    switch (value)
+    {
+        case texture_curve_interpolation::constant:
+            return "constant";
+        case texture_curve_interpolation::linear:
+            return "linear";
+        case texture_curve_interpolation::smooth:
+            return "smooth";
+        case texture_curve_interpolation::manual:
+            return "manual";
+    }
+    return "smooth";
+}
+
+core::result<texture_curve, std::string> parse_texture_curve(std::string_view canonical_json)
+{
+    const auto document = json::parse(canonical_json, nullptr, false);
+    if (!document.is_array() || document.size() < 2u || document.size() > 32u)
+        return core::result<texture_curve, std::string>::failure("texture curve must contain between 2 and 32 points");
+    texture_curve curve;
+    curve.points.clear();
+    float previous_x = -1.0f;
+    for (const auto& point : document)
+    {
+        if (!point.is_object())
+            return core::result<texture_curve, std::string>::failure("texture curve point must be an object");
+        texture_curve_point value;
+        value.x = point.value("x", -1.0f);
+        value.y = point.value("y", -1.0f);
+        value.in_tangent = point.value("inTangent", 1.0f);
+        value.out_tangent = point.value("outTangent", 1.0f);
+        const auto interpolation = lowercase(point.value("interpolation", std::string{"smooth"}));
+        if (interpolation == "constant")
+            value.interpolation = texture_curve_interpolation::constant;
+        else if (interpolation == "linear")
+            value.interpolation = texture_curve_interpolation::linear;
+        else if (interpolation == "smooth")
+            value.interpolation = texture_curve_interpolation::smooth;
+        else if (interpolation == "manual")
+            value.interpolation = texture_curve_interpolation::manual;
+        else
+            return core::result<texture_curve, std::string>::failure("texture curve interpolation is invalid");
+        if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.in_tangent) ||
+            !std::isfinite(value.out_tangent) || value.x < 0.0f || value.x > 1.0f || value.y < 0.0f || value.y > 1.0f ||
+            value.x <= previous_x || std::abs(value.in_tangent) > 16.0f || std::abs(value.out_tangent) > 16.0f)
+            return core::result<texture_curve, std::string>::failure("texture curve point is invalid");
+        previous_x = value.x;
+        curve.points.push_back(value);
+    }
+    if (curve.points.front().x != 0.0f || curve.points.back().x != 1.0f)
+        return core::result<texture_curve, std::string>::failure("texture curve endpoints must be at x=0 and x=1");
+    return core::result<texture_curve, std::string>::success(std::move(curve));
+}
+
+std::string serialize_texture_curve(const texture_curve& curve)
+{
+    json result = json::array();
+    for (const auto& point : curve.points)
+        result.push_back({{"x", point.x},
+                          {"y", point.y},
+                          {"inTangent", point.in_tangent},
+                          {"outTangent", point.out_tangent},
+                          {"interpolation", texture_curve_interpolation_name(point.interpolation)}});
+    return result.dump();
+}
+
+float evaluate_texture_curve(const texture_curve& curve, float input) noexcept
+{
+    if (curve.points.empty()) return std::clamp(input, 0.0f, 1.0f);
+    const float value = std::clamp(input, 0.0f, 1.0f);
+    if (value <= curve.points.front().x) return curve.points.front().y;
+    if (value >= curve.points.back().x) return curve.points.back().y;
+    auto right = std::upper_bound(curve.points.begin(), curve.points.end(), value,
+                                  [](float x, const texture_curve_point& point) { return x < point.x; });
+    const auto right_index = static_cast<std::size_t>(std::distance(curve.points.begin(), right));
+    const auto left_index = right_index - 1u;
+    const auto& left = curve.points[left_index];
+    const auto& next = curve.points[right_index];
+    const float width = next.x - left.x;
+    const float t = width > 0.0f ? (value - left.x) / width : 0.0f;
+    if (left.interpolation == texture_curve_interpolation::constant) return left.y;
+    if (left.interpolation == texture_curve_interpolation::linear) return std::lerp(left.y, next.y, t);
+    const float left_tangent = left.interpolation == texture_curve_interpolation::manual
+                                   ? left.out_tangent
+                                   : automatic_curve_tangent(curve, left_index);
+    const float right_tangent = next.interpolation == texture_curve_interpolation::manual
+                                    ? next.in_tangent
+                                    : automatic_curve_tangent(curve, right_index);
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
+    const float h10 = t3 - 2.0f * t2 + t;
+    const float h01 = -2.0f * t3 + 3.0f * t2;
+    const float h11 = t3 - t2;
+    return std::clamp(h00 * left.y + h10 * width * left_tangent + h01 * next.y + h11 * width * right_tangent, 0.0f,
+                      1.0f);
+}
+
 texture_import_settings texture_import_settings_for_preset(texture_import_preset preset) noexcept
 {
     texture_import_settings settings;
@@ -919,6 +1045,29 @@ texture_import_settings_result parse_texture_import_settings(std::string_view ca
         settings.deband_mips = document.value("debandMips", settings.deband_mips);
         settings.deband_strength = document.value("debandStrength", settings.deband_strength);
     }
+    if (settings_version >= 7)
+    {
+        settings.curves_enabled = document.value("curvesEnabled", settings.curves_enabled);
+        const auto parse_curve_field = [&](const char* name, texture_curve& target) -> std::optional<std::string>
+        {
+            const auto field = document.find(name);
+            if (field == document.end()) return std::nullopt;
+            const auto parsed = parse_texture_curve(field->dump());
+            if (!parsed) return parsed.error();
+            target = parsed.value();
+            return std::nullopt;
+        };
+        if (const auto error = parse_curve_field("curveMaster", settings.curve_master))
+            return texture_import_settings_result::failure(*error);
+        if (const auto error = parse_curve_field("curveR", settings.curve_r))
+            return texture_import_settings_result::failure(*error);
+        if (const auto error = parse_curve_field("curveG", settings.curve_g))
+            return texture_import_settings_result::failure(*error);
+        if (const auto error = parse_curve_field("curveB", settings.curve_b))
+            return texture_import_settings_result::failure(*error);
+        if (const auto error = parse_curve_field("curveA", settings.curve_a))
+            return texture_import_settings_result::failure(*error);
+    }
     settings.max_size = document.value("maxSize", settings.max_size);
     settings.anisotropy = document.value("anisotropy", settings.anisotropy);
     settings.lod_bias = document.value("lodBias", settings.lod_bias);
@@ -962,6 +1111,12 @@ std::string serialize_texture_import_settings(const texture_import_settings& set
                 {"colorSpace", texture_color_space_name(settings.color_space)},
                 {"compression", texture_compression_policy_name(settings.compression)},
                 {"contrast", settings.contrast},
+                {"curvesEnabled", settings.curves_enabled},
+                {"curveMaster", json::parse(serialize_texture_curve(settings.curve_master))},
+                {"curveR", json::parse(serialize_texture_curve(settings.curve_r))},
+                {"curveG", json::parse(serialize_texture_curve(settings.curve_g))},
+                {"curveB", json::parse(serialize_texture_curve(settings.curve_b))},
+                {"curveA", json::parse(serialize_texture_curve(settings.curve_a))},
                 {"gamma", settings.gamma},
                 {"generateMips", settings.generate_mips},
                 {"inputBlack", settings.input_black},
@@ -1128,7 +1283,7 @@ texture_cook_processor::texture_cook_processor()
 {
     descriptor_ = {.id = assets::cook_processor_ids::texture,
                    .name = "ARC Texture Cooker",
-                   .version = 6,
+                   .version = 7,
                    .schema = assets::artifact_schemas::texture,
                    .schema_version = texture_artifact_schema_version,
                    .affinity = jobs::job_affinity::any_worker,
@@ -1140,7 +1295,7 @@ const assets::asset_cook_processor_descriptor& texture_cook_processor::descripto
 }
 std::string texture_cook_processor::toolchain_fingerprint() const
 {
-    return "arc-texture-cooker-v6:arctex-v2:advanced-mip-filtering:sharpen-deband-dither";
+    return "arc-texture-cooker-v7:arctex-v2:color-curves:deterministic-lut-equivalent";
 }
 
 assets::asset_cook_result texture_cook_processor::cook(const assets::asset_cook_context& context)

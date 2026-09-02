@@ -1,5 +1,7 @@
 export { UiButton } from './UiButton';
 export { UiColorControl } from './UiColorControl';
+export { UiCurveEditor, evaluateUiCurve } from './UiCurveEditor';
+export type { UiCurvePoint, UiCurveInterpolation, UiCurveHistogram } from './UiCurveEditor';
 export { UiContextMenu, UiContextMenuItem } from './UiContextMenu';
 export { UiDialog } from './UiDialog';
 export { UiFloatingSurface } from './UiFloatingSurface';

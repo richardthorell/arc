@@ -207,3 +207,31 @@ TEST_CASE("Stage 4 mip filters generate complete deterministic chains")
         CHECK(processed.value().texture.mips.back().height == 1);
     }
 }
+
+TEST_CASE("texture curves serialize and evaluate deterministically")
+{
+    using namespace arc::render::tools;
+    texture_curve curve;
+    curve.points = {{.x = 0.0f, .y = 0.0f, .interpolation = texture_curve_interpolation::linear},
+                    {.x = 0.5f, .y = 0.8f, .interpolation = texture_curve_interpolation::linear},
+                    {.x = 1.0f, .y = 1.0f, .interpolation = texture_curve_interpolation::linear}};
+    CHECK(evaluate_texture_curve(curve, 0.25f) == Catch::Approx(0.4f));
+    const auto parsed = parse_texture_curve(serialize_texture_curve(curve));
+    REQUIRE(parsed.has_value());
+    CHECK(parsed.value().points.size() == 3u);
+    CHECK(evaluate_texture_curve(parsed.value(), 0.75f) == Catch::Approx(0.9f));
+}
+
+TEST_CASE("texture curve settings round trip in version seven")
+{
+    using namespace arc::render::tools;
+    auto settings = texture_import_settings_for_preset(texture_import_preset::color);
+    settings.curves_enabled = true;
+    settings.curve_master.points = {{.x = 0.0f, .y = 0.0f, .interpolation = texture_curve_interpolation::linear},
+                                    {.x = 1.0f, .y = 0.75f, .interpolation = texture_curve_interpolation::linear}};
+    const auto parsed = parse_texture_import_settings(serialize_texture_import_settings(settings),
+                                                      texture_import_settings::current_version);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed.value().curves_enabled);
+    CHECK(parsed.value().curve_master.points.back().y == Catch::Approx(0.75f));
+}

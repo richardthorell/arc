@@ -7,6 +7,7 @@ import type { AssetItem } from '../services/editorHostTypes';
 import { UiButton, UiPanel, UiPanelSection } from '../ui';
 import { setTextureEditorViewState, useTextureEditorViewState } from './textureEditorViewState';
 import { TextureStage3Controls } from './TextureStage3Controls';
+import { TextureCurveControls } from './TextureCurveControls';
 import { analyzeTexturePreview, type TexturePreviewAnalysis } from './texturePreviewProcessing';
 import { useTextureSettings } from './useTextureSettings';
 import {
@@ -125,7 +126,7 @@ function TextureProperty({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TextureInspector({ asset }: { asset: AssetItem }) {
+function TextureInspector({ asset, histogram }: { asset: AssetItem; histogram?: TexturePreviewAnalysis['histogram'] }) {
   const [settings, setSettings] = useState<TextureSettingsSnapshot | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
@@ -259,6 +260,7 @@ function TextureInspector({ asset }: { asset: AssetItem }) {
         </UiPanelSection>
 
         <TextureStage3Controls asset={asset} />
+        <TextureCurveControls asset={asset} histogram={histogram} />
 
         <UiPanelSection
           className="texture-inspector-section"
@@ -988,7 +990,7 @@ export function TextureEditor({ document }: { document: EditorDocument }) {
         onPointerUp={endResize}
         role="separator"
       />
-      <TextureInspector asset={asset} />
+      <TextureInspector asset={asset} histogram={analysis?.histogram} />
     </section>
   );
 }

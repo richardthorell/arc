@@ -1,4 +1,4 @@
-import type { TextureChannelSource, TextureSettingsSnapshot } from './textureSettings';
+import type { TextureChannelSource, TextureCurve, TextureSettingsSnapshot } from './textureSettings';
 
 export type TexturePreviewMode = 'source' | 'processed' | 'difference';
 export type TextureHistogram = { r: number[]; g: number[]; b: number[]; a: number[] };
@@ -18,6 +18,34 @@ const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((va
 const linearToSrgb = (value: number) => {
   const v = clamp(value);
   return v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+};
+const curveSlope = (a: TextureCurve[number], b: TextureCurve[number]) => (b.x > a.x ? (b.y - a.y) / (b.x - a.x) : 0);
+const curveTangent = (curve: TextureCurve, i: number) => {
+  if (i === 0) return curveSlope(curve[0], curve[1]);
+  if (i === curve.length - 1) return curveSlope(curve[i - 1], curve[i]);
+  const l = curveSlope(curve[i - 1], curve[i]),
+    r = curveSlope(curve[i], curve[i + 1]);
+  return l * r <= 0 ? 0 : (l + r) / 2;
+};
+export const evaluateTextureCurve = (curve: TextureCurve, input: number) => {
+  const x = clamp(input);
+  let ri = curve.findIndex((p) => p.x > x);
+  if (ri < 0) return curve.at(-1)?.y ?? x;
+  if (ri === 0) return curve[0].y;
+  const li = ri - 1,
+    a = curve[li],
+    b = curve[ri],
+    w = Math.max(1e-6, b.x - a.x),
+    t = (x - a.x) / w;
+  if (a.interpolation === 'constant') return a.y;
+  if (a.interpolation === 'linear') return a.y + (b.y - a.y) * t;
+  const m0 = a.interpolation === 'manual' ? a.outTangent : curveTangent(curve, li),
+    m1 = b.interpolation === 'manual' ? b.inTangent : curveTangent(curve, ri),
+    t2 = t * t,
+    t3 = t2 * t;
+  return clamp(
+    (2 * t3 - 3 * t2 + 1) * a.y + (t3 - 2 * t2 + t) * w * m0 + (-2 * t3 + 3 * t2) * b.y + (t3 - t2) * w * m1,
+  );
 };
 const mapped = (rgba: readonly number[], source: TextureChannelSource) => {
   if (source === 'red') return rgba[0];
@@ -42,7 +70,11 @@ export function processTexturePixel(
     for (let channel = 0; channel < 3; channel += 1) {
       if (settings.colorSpace === 'srgb') value[channel] = srgbToLinear(value[channel]);
       value[channel] = clamp((value[channel] - settings.inputBlack) / range);
-      value[channel] = value[channel] ** (1 / settings.gamma);
+      if (settings.curvesEnabled) {
+        const curve = channel === 0 ? settings.curveR : channel === 1 ? settings.curveG : settings.curveB;
+        value[channel] = evaluateTextureCurve(settings.curveMaster, evaluateTextureCurve(curve, value[channel]));
+      }
+      value[channel] = clamp(value[channel]) ** (1 / settings.gamma);
       value[channel] *= 2 ** settings.brightness;
       value[channel] = (value[channel] - 0.5) * settings.contrast + 0.5;
     }
@@ -61,6 +93,7 @@ export function processTexturePixel(
       value[channel] = settings.colorSpace === 'srgb' ? linearToSrgb(value[channel]) : clamp(value[channel]);
     }
   }
+  if (settings.curvesEnabled) value[3] = evaluateTextureCurve(settings.curveA, value[3]);
   return [clamp(value[0]), clamp(value[1]), clamp(value[2]), clamp(value[3])];
 }
 
