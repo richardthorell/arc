@@ -82,7 +82,7 @@ const defaultRenderOptions: ViewportRenderOptions = {
   visualization: 'standard',
   overlay: 'selectedWireframe',
   shadows: true,
-  grid: true,
+  grid: false,
   realtime: true,
   cameraSpeed: 4,
   antiAliasing: 'inherit',
@@ -148,7 +148,7 @@ export function ViewportPanel({
   const [viewportError, setViewportError] = useState('');
   const [sharedFailure, setSharedFailure] = useState('');
   const [viewportStats, setViewportStats] = useState<ViewportStats>(() => fallbackStats(project));
-  const [localGridVisible, setLocalGridVisible] = useState(true);
+  const [localGridVisible, setLocalGridVisible] = useState(false);
   const [projection, setProjection] = useState('perspective');
   const [transport, setTransport] = useState<'unavailable' | 'native' | 'streamed'>(
     startupState?.viewportMode ?? 'unavailable',
