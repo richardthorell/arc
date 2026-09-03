@@ -142,7 +142,6 @@ export function UiLabContentCards() {
           />
         ))}
       </div>
-      <p>Hover any card to preview the production asset-details tooltip.</p>
     </div>
   );
 }
