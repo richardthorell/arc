@@ -212,6 +212,10 @@ struct texture_residency_snapshot
     std::uint32_t virtual_texture_resources{};
     std::uint32_t resident_mips{};
     std::uint32_t resident_tiles{};
+    std::uint32_t requested_mips{};
+    std::uint32_t requested_tiles{};
+    std::uint32_t failed_mips{};
+    std::uint32_t failed_tiles{};
     std::uint32_t requested_subresources{};
     std::uint32_t failed_subresources{};
     std::uint32_t evictions{};
@@ -219,7 +223,19 @@ struct texture_residency_snapshot
     std::uint32_t stale_requests{};
     std::uint32_t feedback_overflow{};
     std::uint32_t parent_fallbacks{};
+    double upload_latency_milliseconds{};
+    float cache_hit_rate{};
     bool over_budget{};
+};
+
+struct texture_streaming_io_snapshot
+{
+    std::uint64_t read_bytes{};
+    std::uint64_t failed_bytes{};
+    std::uint32_t completed_reads{};
+    std::uint32_t failed_reads{};
+    std::uint32_t in_flight_reads{};
+    double total_read_latency_milliseconds{};
 };
 
 /** @brief Backend-neutral authority for mip and virtual-tile demand, publication, and eviction. */

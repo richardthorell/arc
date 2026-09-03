@@ -160,6 +160,7 @@ void texture_streaming_controller::update(const jobs::cancellation_token& cancel
             {.load = load, .future = std::move(future), .started = std::chrono::steady_clock::now()});
     }
     state.statistics.in_flight_reads = static_cast<std::uint32_t>(state.pending.size());
+    state.target->report_texture_streaming_io(state.statistics);
 }
 
 texture_streaming_io_snapshot texture_streaming_controller::snapshot() const noexcept

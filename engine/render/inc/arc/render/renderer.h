@@ -243,6 +243,7 @@ public:
     take_texture_stream_loads(std::uint32_t maximum_requests = std::numeric_limits<std::uint32_t>::max());
     [[nodiscard]] bool publish_texture_subresource(texture_stream_upload upload);
     void fail_texture_subresource(const texture_stream_load& load);
+    void report_texture_streaming_io(texture_streaming_io_snapshot snapshot) noexcept;
 
     /**
      * @brief Create a renderer-owned material resource and enqueue its upload.
@@ -402,6 +403,7 @@ private:
     std::unordered_map<std::uint64_t, std::uint32_t> virtual_mesh_content_generations_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const streamed_texture_descriptor>> streamed_texture_data_;
+    texture_streaming_io_snapshot texture_streaming_io_;
     std::unordered_map<std::uint64_t, lighting_geometry_handle> mesh_lighting_geometry_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const lighting_geometry_descriptor>> lighting_geometry_data_;
     std::unordered_map<std::uint64_t, temporal_view_state> temporal_views_;

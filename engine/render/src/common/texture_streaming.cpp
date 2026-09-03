@@ -1,6 +1,7 @@
 #include <arc/render/texture_streaming.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <unordered_map>
@@ -93,6 +94,7 @@ struct texture_residency_manager::implementation
         std::uint32_t cpu_bytes{};
         float priority{};
         bool pinned{};
+        std::chrono::steady_clock::time_point upload_started{};
     };
 
     struct resource_entry
@@ -125,6 +127,9 @@ struct texture_residency_manager::implementation
     std::uint32_t stale_requests{};
     std::uint32_t feedback_overflow{};
     std::uint32_t parent_fallbacks{};
+    std::uint64_t demand_count{};
+    std::uint64_t cache_hit_count{};
+    double upload_latency_milliseconds{};
 
     resource_entry* find_resource(texture_handle handle, std::uint32_t generation) noexcept
     {
@@ -162,9 +167,14 @@ struct texture_residency_manager::implementation
 
     void demand(subresource_entry& entry, float priority)
     {
+        ++demand_count;
         entry.last_used_frame = frame_index;
         entry.priority = std::max(entry.priority, priority);
-        if (entry.state == texture_residency_state::resident) return;
+        if (entry.state == texture_residency_state::resident)
+        {
+            ++cache_hit_count;
+            return;
+        }
         if (entry.state == texture_residency_state::requested || entry.state == texture_residency_state::loading ||
             entry.state == texture_residency_state::uploading)
         {
@@ -321,6 +331,9 @@ void texture_residency_manager::begin_frame(std::uint64_t frame_index)
     implementation_->stale_requests = 0;
     implementation_->feedback_overflow = 0;
     implementation_->parent_fallbacks = 0;
+    implementation_->demand_count = 0;
+    implementation_->cache_hit_count = 0;
+    implementation_->upload_latency_milliseconds = 0.0;
     implementation_->trim();
 }
 
@@ -435,6 +448,7 @@ void texture_residency_manager::mark_uploading(const texture_stream_upload& uplo
     {
         entry->state = texture_residency_state::uploading;
         entry->cpu_bytes = upload.stored_bytes;
+        entry->upload_started = std::chrono::steady_clock::now();
     }
 }
 
@@ -454,6 +468,9 @@ void texture_residency_manager::complete(const texture_stream_upload_result& res
             implementation_->frame_index + std::min<std::uint64_t>(120u, 1ull << std::min(7u, ++entry->failures));
         return;
     }
+    if (entry->upload_started != std::chrono::steady_clock::time_point{})
+        implementation_->upload_latency_milliseconds +=
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - entry->upload_started).count();
     implementation_->gpu_bytes -= std::min<std::uint64_t>(implementation_->gpu_bytes, entry->gpu_bytes);
     implementation_->cpu_bytes -= std::min<std::uint64_t>(implementation_->cpu_bytes, entry->cpu_bytes);
     entry->state = texture_residency_state::resident;
@@ -525,6 +542,11 @@ texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
                                       .stale_requests = implementation_->stale_requests,
                                       .feedback_overflow = implementation_->feedback_overflow,
                                       .parent_fallbacks = implementation_->parent_fallbacks,
+                                      .upload_latency_milliseconds = implementation_->upload_latency_milliseconds,
+                                      .cache_hit_rate = implementation_->demand_count == 0
+                                                            ? 1.0f
+                                                            : static_cast<float>(implementation_->cache_hit_count) /
+                                                                  static_cast<float>(implementation_->demand_count),
                                       .over_budget =
                                           implementation_->gpu_bytes > implementation_->config.gpu_budget_bytes ||
                                           implementation_->cpu_bytes > implementation_->config.cpu_cache_budget_bytes};
@@ -543,8 +565,21 @@ texture_residency_snapshot texture_residency_manager::snapshot() const noexcept
             }
             if (entry.state == texture_residency_state::requested || entry.state == texture_residency_state::loading ||
                 entry.state == texture_residency_state::uploading)
+            {
                 ++result.requested_subresources;
-            if (entry.state == texture_residency_state::failed) ++result.failed_subresources;
+                if (entry.kind == texture_subresource_kind::mip)
+                    ++result.requested_mips;
+                else
+                    ++result.requested_tiles;
+            }
+            if (entry.state == texture_residency_state::failed)
+            {
+                ++result.failed_subresources;
+                if (entry.kind == texture_subresource_kind::mip)
+                    ++result.failed_mips;
+                else
+                    ++result.failed_tiles;
+            }
         };
         for (const auto& mip : resource.mips)
             accumulate(mip);

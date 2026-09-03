@@ -1403,6 +1403,10 @@ render_backend_frame_profile renderer::last_frame_profile() const
                                 .virtual_textures = textures.virtual_texture_resources,
                                 .resident_mips = textures.resident_mips,
                                 .resident_pages = textures.resident_tiles,
+                                .requested_mips = textures.requested_mips,
+                                .requested_pages = textures.requested_tiles,
+                                .failed_mips = textures.failed_mips,
+                                .failed_pages = textures.failed_tiles,
                                 .requested_subresources = textures.requested_subresources,
                                 .failed_subresources = textures.failed_subresources,
                                 .evictions = textures.evictions,
@@ -1410,6 +1414,14 @@ render_backend_frame_profile renderer::last_frame_profile() const
                                 .stale_requests = textures.stale_requests,
                                 .feedback_overflow = textures.feedback_overflow,
                                 .parent_fallbacks = textures.parent_fallbacks,
+                                .io_read_bytes = texture_streaming_io_.read_bytes,
+                                .io_failed_bytes = texture_streaming_io_.failed_bytes,
+                                .io_completed_reads = texture_streaming_io_.completed_reads,
+                                .io_failed_reads = texture_streaming_io_.failed_reads,
+                                .io_in_flight_reads = texture_streaming_io_.in_flight_reads,
+                                .io_latency_milliseconds = texture_streaming_io_.total_read_latency_milliseconds,
+                                .upload_latency_milliseconds = textures.upload_latency_milliseconds,
+                                .cache_hit_rate = textures.cache_hit_rate,
                                 .over_budget = textures.over_budget,
                                 .fallback_reason = !resolved_config_.features.texture_streaming
                                                        ? "texture streaming unavailable or disabled"
@@ -1435,6 +1447,11 @@ render_backend_frame_profile renderer::last_frame_profile() const
                                         ? "dynamic indirect lighting is unavailable; using lightmaps, probes, and IBL"
                                         : std::string{}};
     return result;
+}
+
+void renderer::report_texture_streaming_io(texture_streaming_io_snapshot snapshot) noexcept
+{
+    texture_streaming_io_ = snapshot;
 }
 
 void renderer::request_object_pick(std::uint64_t request_id, std::uint32_t x, std::uint32_t y)

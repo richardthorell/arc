@@ -980,6 +980,10 @@ struct render_texture_streaming_profile
     std::uint32_t virtual_textures{};
     std::uint32_t resident_mips{};
     std::uint32_t resident_pages{};
+    std::uint32_t requested_mips{};
+    std::uint32_t requested_pages{};
+    std::uint32_t failed_mips{};
+    std::uint32_t failed_pages{};
     std::uint32_t requested_subresources{};
     std::uint32_t failed_subresources{};
     std::uint32_t evictions{};
@@ -987,6 +991,14 @@ struct render_texture_streaming_profile
     std::uint32_t stale_requests{};
     std::uint32_t feedback_overflow{};
     std::uint32_t parent_fallbacks{};
+    std::uint64_t io_read_bytes{};
+    std::uint64_t io_failed_bytes{};
+    std::uint32_t io_completed_reads{};
+    std::uint32_t io_failed_reads{};
+    std::uint32_t io_in_flight_reads{};
+    double io_latency_milliseconds{};
+    double upload_latency_milliseconds{};
+    float cache_hit_rate{};
     bool over_budget{};
     std::string fallback_reason;
 };

@@ -50,16 +50,6 @@ private:
     std::unique_ptr<implementation> implementation_;
 };
 
-struct texture_streaming_io_snapshot
-{
-    std::uint64_t read_bytes{};
-    std::uint64_t failed_bytes{};
-    std::uint32_t completed_reads{};
-    std::uint32_t failed_reads{};
-    std::uint32_t in_flight_reads{};
-    double total_read_latency_milliseconds{};
-};
-
 /** @brief Non-blocking bridge from prioritized renderer loads to range I/O and publication. */
 class texture_streaming_controller
 {
