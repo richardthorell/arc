@@ -1,7 +1,6 @@
 #include <arc/editor/model_preview.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -106,6 +105,24 @@ struct projected_vertex
     bool visible{};
 };
 
+struct projected_bounds
+{
+    float minimum_x{std::numeric_limits<float>::max()};
+    float minimum_y{std::numeric_limits<float>::max()};
+    float maximum_x{std::numeric_limits<float>::lowest()};
+    float maximum_y{std::numeric_limits<float>::lowest()};
+    bool valid{};
+
+    void include(float x, float y) noexcept
+    {
+        minimum_x = std::min(minimum_x, x);
+        minimum_y = std::min(minimum_y, y);
+        maximum_x = std::max(maximum_x, x);
+        maximum_y = std::max(maximum_y, y);
+        valid = true;
+    }
+};
+
 float edge(float ax, float ay, float bx, float by, float px, float py) noexcept
 {
     return (px - ax) * (by - ay) - (py - ay) * (bx - ax);
@@ -167,14 +184,37 @@ model_preview_result render_model_preview(const render::scene_import_result& sce
     const vec3 extent = sub(bounds.maximum, bounds.minimum);
     const float radius = std::max(length(extent) * 0.5f, 0.001f);
     const float fov = 35.0f * std::numbers::pi_v<float> / 180.0f;
-    const float distance = radius / std::tan(fov * 0.5f) * 1.28f;
+    const float focal = 1.0f / std::tan(fov * 0.5f);
+    const float distance = radius * focal * 1.34f;
     const vec3 camera_direction = normalize(vec3{1.0f, 0.72f, 1.0f});
-    const vec3 camera_position = add(center, mul(camera_direction, distance));
+    vec3 camera_position = add(center, mul(camera_direction, distance));
     const vec3 forward = normalize(sub(center, camera_position));
     vec3 right = normalize(cross(forward, {0.0f, 1.0f, 0.0f}));
     if (length(right) < 1.0e-4f) right = {1.0f, 0.0f, 0.0f};
     const vec3 up = normalize(cross(right, forward));
-    const float focal = 1.0f / std::tan(fov * 0.5f);
+
+    // Perspective can shift asymmetric geometry away from the apparent center even when the
+    // camera looks at the world-space AABB center. Measure the projected bounds and translate
+    // the camera parallel to its image plane so the visible model is centered in the thumbnail.
+    projected_bounds screen_bounds;
+    for (const auto& node : scene.nodes)
+    {
+        if (node.mesh_index >= scene.meshes.size()) continue;
+        for (const auto& vertex : scene.meshes[node.mesh_index].vertices)
+        {
+            const vec3 relative = sub(transform_position(node, vertex), camera_position);
+            const float depth = dot(relative, forward);
+            if (depth <= 1.0e-4f) continue;
+            screen_bounds.include(dot(relative, right) * focal / depth, dot(relative, up) * focal / depth);
+        }
+    }
+    if (screen_bounds.valid)
+    {
+        const float center_x = (screen_bounds.minimum_x + screen_bounds.maximum_x) * 0.5f;
+        const float center_y = (screen_bounds.minimum_y + screen_bounds.maximum_y) * 0.5f;
+        camera_position = add(camera_position, add(mul(right, center_x * distance / focal),
+                                                   mul(up, center_y * distance / focal)));
+    }
 
     render::texture_data texture;
     texture.name = "model-thumbnail";
@@ -184,12 +224,8 @@ model_preview_result render_model_preview(const render::scene_import_result& sce
     texture.color_space = render::texture_color_space::srgb;
     texture.semantic = render::texture_semantic::generic_color;
     texture.mip_levels = 1;
+    // Value-initialized RGBA pixels stay fully transparent until geometry writes them.
     texture.pixels.resize(static_cast<std::size_t>(size) * size * 4u);
-
-    constexpr std::array<std::uint8_t, 4> background{22u, 25u, 30u, 255u};
-    for (std::size_t offset = 0; offset < texture.pixels.size(); offset += 4u)
-        for (std::size_t channel = 0; channel < 4u; ++channel)
-            texture.pixels[offset + channel] = static_cast<std::byte>(background[channel]);
 
     std::vector<float> depth_buffer(static_cast<std::size_t>(size) * size, std::numeric_limits<float>::max());
     const auto material = options.material_override.value_or(default_preview_material());
