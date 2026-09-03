@@ -148,7 +148,8 @@ vec3 shade(const render::material_descriptor& material, vec3 position, vec3 norm
 
 } // namespace
 
-model_preview_result render_model_preview(const render::scene_import_result& scene, const model_preview_options& options)
+model_preview_result render_model_preview(const render::scene_import_result& scene,
+                                          const model_preview_options& options)
 {
     const std::uint32_t size = std::clamp(options.size, 32u, 256u);
     if (!scene.succeeded()) return {.message = "model preview requires imported mesh nodes"};
@@ -238,11 +239,11 @@ model_preview_result render_model_preview(const render::scene_import_result& sce
             const float area = edge(a.x, a.y, b.x, b.y, c.x, c.y);
             if (std::abs(area) < 1.0e-6f) continue;
             const int min_x = std::max(0, static_cast<int>(std::floor(std::min({a.x, b.x, c.x}))));
-            const int max_x = std::min(static_cast<int>(size) - 1,
-                                       static_cast<int>(std::ceil(std::max({a.x, b.x, c.x}))));
+            const int max_x =
+                std::min(static_cast<int>(size) - 1, static_cast<int>(std::ceil(std::max({a.x, b.x, c.x}))));
             const int min_y = std::max(0, static_cast<int>(std::floor(std::min({a.y, b.y, c.y}))));
-            const int max_y = std::min(static_cast<int>(size) - 1,
-                                       static_cast<int>(std::ceil(std::max({a.y, b.y, c.y}))));
+            const int max_y =
+                std::min(static_cast<int>(size) - 1, static_cast<int>(std::ceil(std::max({a.y, b.y, c.y}))));
 
             for (int y = min_y; y <= max_y; ++y)
             {

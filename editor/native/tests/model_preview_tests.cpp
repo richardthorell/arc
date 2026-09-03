@@ -54,7 +54,6 @@ TEST_CASE("model preview material can be overridden", "[editor][thumbnail][model
     arc::render::material_descriptor override_material;
     override_material.base_color = arc::math::vector4f{0.95f, 0.12f, 0.08f, 1.0f};
     override_material.roughness = 0.35f;
-    const auto preview = arc::editor::render_model_preview(
-        scene, {.size = 48, .material_override = override_material});
+    const auto preview = arc::editor::render_model_preview(scene, {.size = 48, .material_override = override_material});
     REQUIRE(preview.succeeded());
 }
