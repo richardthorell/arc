@@ -41,13 +41,6 @@ export function AddComponentPicker({ snapshot, projectSchemas, onAdd }: AddCompo
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -113,7 +106,7 @@ export function AddComponentPicker({ snapshot, projectSchemas, onAdd }: AddCompo
           <label className="inspector-add-component-search">
             <Search aria-hidden="true" size={14} />
             <input
-              ref={searchRef}
+              autoFocus
               aria-label="Search add components"
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
