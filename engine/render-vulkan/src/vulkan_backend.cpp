@@ -3865,9 +3865,8 @@ private:
             index = free_texture_feedback_slots_.back();
             free_texture_feedback_slots_.pop_back();
             auto& slot = texture_feedback_slots_[index];
-            slot.slot_generation = slot.slot_generation == std::numeric_limits<std::uint32_t>::max()
-                                       ? 1u
-                                       : slot.slot_generation + 1u;
+            slot.slot_generation =
+                slot.slot_generation == std::numeric_limits<std::uint32_t>::max() ? 1u : slot.slot_generation + 1u;
         }
         else
         {
@@ -4030,15 +4029,12 @@ private:
         if (eviction.kind == texture_subresource_kind::tile)
         {
             if (texture.virtual_page_base == resource_handle::invalid_index) return;
-            const auto tile = std::ranges::find_if(texture.streaming.artifact.tiles,
-                                                   [&](const texture_artifact_tile_range& candidate)
-                                                   {
-                                                       return candidate.mip == eviction.mip && candidate.x == eviction.x &&
-                                                              candidate.y == eviction.y;
-                                                   });
+            const auto tile = std::ranges::find_if(
+                texture.streaming.artifact.tiles, [&](const texture_artifact_tile_range& candidate)
+                { return candidate.mip == eviction.mip && candidate.x == eviction.x && candidate.y == eviction.y; });
             if (tile == texture.streaming.artifact.tiles.end()) return;
-            const auto page_index = texture.virtual_page_base +
-                                    static_cast<std::uint32_t>(tile - texture.streaming.artifact.tiles.begin());
+            const auto page_index =
+                texture.virtual_page_base + static_cast<std::uint32_t>(tile - texture.streaming.artifact.tiles.begin());
             if (page_index >= virtual_texture_pages_.size()) return;
             auto& page = virtual_texture_pages_[page_index];
             if (virtual_texture_page_resident(page) && page.cache_descriptor < virtual_texture_caches_.size() &&
@@ -4073,10 +4069,10 @@ private:
 
     bool ensure_virtual_texture_table_capacity()
     {
-        const auto metadata_capacity = std::max(
-            64u, std::bit_ceil(std::max(static_cast<std::uint32_t>(virtual_texture_metadata_.size()), 1u)));
-        const auto page_capacity = std::max(
-            256u, std::bit_ceil(std::max(static_cast<std::uint32_t>(virtual_texture_pages_.size()), 1u)));
+        const auto metadata_capacity =
+            std::max(64u, std::bit_ceil(std::max(static_cast<std::uint32_t>(virtual_texture_metadata_.size()), 1u)));
+        const auto page_capacity =
+            std::max(256u, std::bit_ceil(std::max(static_cast<std::uint32_t>(virtual_texture_pages_.size()), 1u)));
         const auto replace = [&](gpu_buffer& buffer, std::uint32_t& capacity, std::uint32_t required,
                                  VkDeviceSize stride, const void* contents, std::size_t count)
         {
@@ -4127,16 +4123,15 @@ private:
             std::uint32_t parent = resource_handle::invalid_index;
             if (tile.mip + 1u < texture.streaming.artifact.tail_first_mip)
             {
-                const auto found = std::ranges::find_if(
-                    texture.streaming.artifact.tiles,
-                    [&](const texture_artifact_tile_range& candidate)
-                    {
-                        return candidate.mip == tile.mip + 1u && candidate.x == tile.x / 2u &&
-                               candidate.y == tile.y / 2u;
-                    });
+                const auto found = std::ranges::find_if(texture.streaming.artifact.tiles,
+                                                        [&](const texture_artifact_tile_range& candidate) {
+                                                            return candidate.mip == tile.mip + 1u &&
+                                                                   candidate.x == tile.x / 2u &&
+                                                                   candidate.y == tile.y / 2u;
+                                                        });
                 if (found != texture.streaming.artifact.tiles.end())
-                    parent = texture.virtual_page_base + static_cast<std::uint32_t>(
-                                                             found - texture.streaming.artifact.tiles.begin());
+                    parent = texture.virtual_page_base +
+                             static_cast<std::uint32_t>(found - texture.streaming.artifact.tiles.begin());
             }
             virtual_texture_pages_.push_back({.generation = texture.streaming.content_generation,
                                               .parent_page = parent,
@@ -4264,12 +4259,9 @@ private:
                                      texture_stream_upload_result& result)
     {
         if (texture.virtual_page_base == resource_handle::invalid_index || !upload.bytes) return false;
-        const auto tile = std::ranges::find_if(texture.streaming.artifact.tiles,
-                                               [&](const texture_artifact_tile_range& candidate)
-                                               {
-                                                   return candidate.mip == upload.mip && candidate.x == upload.x &&
-                                                          candidate.y == upload.y;
-                                               });
+        const auto tile = std::ranges::find_if(
+            texture.streaming.artifact.tiles, [&](const texture_artifact_tile_range& candidate)
+            { return candidate.mip == upload.mip && candidate.x == upload.x && candidate.y == upload.y; });
         if (tile == texture.streaming.artifact.tiles.end()) return false;
         const auto local_page = static_cast<std::uint32_t>(tile - texture.streaming.artifact.tiles.begin());
         const auto page_index = texture.virtual_page_base + local_page;
@@ -4455,8 +4447,8 @@ private:
         frame = {};
         if (!create_buffer(buffer_size(demand_capacity, sizeof(gpu_texture_mip_demand)),
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, frame.demands) ||
-            !create_buffer(buffer_size(slot_capacity, sizeof(gpu_texture_mip_slot)),
-                           VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, frame.slots))
+            !create_buffer(buffer_size(slot_capacity, sizeof(gpu_texture_mip_slot)), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                           VMA_MEMORY_USAGE_CPU_TO_GPU, frame.slots))
         {
             destroy_buffer(frame.demands);
             destroy_buffer(frame.slots);
@@ -4497,8 +4489,7 @@ private:
                                     center[2] - frame_camera_.position[2]};
         const float distance = std::max(std::sqrt(math::length_squared(offset)), diameter * 0.5f);
         const float render_height = static_cast<float>(std::max(frame_camera_.render_height, viewport_height_));
-        return diameter * std::abs(frame_camera_.projection(1, 1)) * render_height /
-               std::max(2.0f * distance, 0.001f);
+        return diameter * std::abs(frame_camera_.projection(1, 1)) * render_height / std::max(2.0f * distance, 0.001f);
     }
 
     std::vector<gpu_texture_mip_demand> build_texture_mip_demands() const
@@ -4513,11 +4504,11 @@ private:
             const auto slot_index = found->second.feedback_slot;
             if (slot_index >= texture_feedback_slots_.size() || !texture_feedback_slots_[slot_index].active) return;
             const auto& texture = found->second;
-            const auto desired = texture_requested_mip(texture.streaming.texture.width,
-                                                       texture.streaming.texture.height,
-                                                       texture.streaming.artifact.mip_count, extent);
-            const float coverage = std::clamp(extent / static_cast<float>(std::max(
-                                                  texture.streaming.texture.width, texture.streaming.texture.height)),
+            const auto desired =
+                texture_requested_mip(texture.streaming.texture.width, texture.streaming.texture.height,
+                                      texture.streaming.artifact.mip_count, extent);
+            const float coverage = std::clamp(extent / static_cast<float>(std::max(texture.streaming.texture.width,
+                                                                                   texture.streaming.texture.height)),
                                               0.0f, 1.0f);
             demands.push_back({.slot = slot_index,
                                .generation = texture_feedback_slots_[slot_index].slot_generation,
@@ -4573,14 +4564,12 @@ private:
 
         std::vector<gpu_texture_mip_slot> slots(slot_count);
         for (std::uint32_t index = 0; index < slot_count; ++index)
-            slots[index].generation = texture_feedback_slots_[index].active
-                                          ? texture_feedback_slots_[index].slot_generation
-                                          : 0u;
+            slots[index].generation =
+                texture_feedback_slots_[index].active ? texture_feedback_slots_[index].slot_generation : 0u;
         void* mapped{};
         if (vmaMapMemory(allocator_, frame.demands.allocation, &mapped) != VK_SUCCESS) return;
         std::memcpy(mapped, demands.data(), demands.size() * sizeof(gpu_texture_mip_demand));
-        vmaFlushAllocation(allocator_, frame.demands.allocation, 0,
-                           demands.size() * sizeof(gpu_texture_mip_demand));
+        vmaFlushAllocation(allocator_, frame.demands.allocation, 0, demands.size() * sizeof(gpu_texture_mip_demand));
         vmaUnmapMemory(allocator_, frame.demands.allocation);
         if (vmaMapMemory(allocator_, frame.slots.allocation, &mapped) != VK_SUCCESS) return;
         std::memcpy(mapped, slots.data(), slots.size() * sizeof(gpu_texture_mip_slot));
@@ -4604,8 +4593,8 @@ private:
                              nullptr);
         const texture_feedback_push_constants constants{static_cast<std::uint32_t>(demands.size()), slot_count};
         vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, texture_feedback_pipeline_);
-        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, texture_feedback_pipeline_layout_, 0,
-                                1, &frame.descriptor_set, 0, nullptr);
+        vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, texture_feedback_pipeline_layout_, 0, 1,
+                                &frame.descriptor_set, 0, nullptr);
         vkCmdPushConstants(command_buffer, texture_feedback_pipeline_layout_, VK_SHADER_STAGE_COMPUTE_BIT, 0,
                            sizeof(constants), &constants);
         vkCmdDispatch(command_buffer, (constants.demand_count + 63u) / 64u, 1u, 1u);

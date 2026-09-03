@@ -301,12 +301,7 @@ TEST_CASE("virtual texture page tables resolve the closest generation-valid ance
 {
     using namespace arc::render;
     std::vector<virtual_texture_page_table_entry> pages(3);
-    pages[0] = {.generation = 7,
-                .parent_page = 1,
-                .flags = virtual_texture_page_flag::none,
-                .mip = 0,
-                .x = 1,
-                .y = 1};
+    pages[0] = {.generation = 7, .parent_page = 1, .flags = virtual_texture_page_flag::none, .mip = 0, .x = 1, .y = 1};
     pages[1] = {.cache_descriptor = 2,
                 .cache_layer = 11,
                 .generation = 7,

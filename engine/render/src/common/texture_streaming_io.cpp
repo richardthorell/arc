@@ -31,8 +31,8 @@ filesystem_texture_artifact_source::filesystem_texture_artifact_source(io::async
 }
 
 filesystem_texture_artifact_source::~filesystem_texture_artifact_source() = default;
-filesystem_texture_artifact_source::filesystem_texture_artifact_source(
-    filesystem_texture_artifact_source&&) noexcept = default;
+filesystem_texture_artifact_source::filesystem_texture_artifact_source(filesystem_texture_artifact_source&&) noexcept =
+    default;
 filesystem_texture_artifact_source&
 filesystem_texture_artifact_source::operator=(filesystem_texture_artifact_source&&) noexcept = default;
 

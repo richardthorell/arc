@@ -7,9 +7,9 @@
 
 namespace arc::render
 {
-std::optional<std::uint32_t>
-resolve_virtual_texture_page(std::span<const virtual_texture_page_table_entry> pages, std::uint32_t requested_page,
-                             std::uint32_t generation) noexcept
+std::optional<std::uint32_t> resolve_virtual_texture_page(std::span<const virtual_texture_page_table_entry> pages,
+                                                          std::uint32_t requested_page,
+                                                          std::uint32_t generation) noexcept
 {
     for (std::uint32_t remaining = 0; remaining <= pages.size() && requested_page < pages.size(); ++remaining)
     {

@@ -78,8 +78,8 @@ struct virtual_texture_page_table_entry
 
 [[nodiscard]] constexpr bool virtual_texture_page_resident(const virtual_texture_page_table_entry& page) noexcept
 {
-    return (static_cast<std::uint32_t>(page.flags) &
-            static_cast<std::uint32_t>(virtual_texture_page_flag::resident)) != 0u;
+    return (static_cast<std::uint32_t>(page.flags) & static_cast<std::uint32_t>(virtual_texture_page_flag::resident)) !=
+           0u;
 }
 
 /** @brief Walk software page-table parents to the closest resident mapping. */
